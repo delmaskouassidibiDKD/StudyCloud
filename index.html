@@ -1,0 +1,32 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content" />
+    <title>UniFolder Share</title>
+    <meta name="description" content="Plateforme web et mobile pour étudiants permettant d'importer des dossiers de fichiers et de générer des liens de partage uniques et sécurisés." />
+    <meta property="og:title" content="UniFolder Share" />
+    <meta property="og:description" content="Plateforme web et mobile pour étudiants permettant d'importer des dossiers de fichiers et de générer des liens de partage uniques et sécurisés." />
+    <meta property="og:type" content="website" />
+    <meta name="twitter:card" content="summary_large_image" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <script type="module" src="/src/main.tsx"></script>
+    <script>
+      if (window.visualViewport) {
+        const initialHeight = window.visualViewport.height;
+        window.visualViewport.addEventListener('resize', () => {
+          const bottomNav = document.querySelector('.bottom-nav');
+          if (!bottomNav) return;
+          if (window.visualViewport.height < initialHeight * 0.8) {
+            bottomNav.style.display = 'none';
+          } else {
+            bottomNav.style.display = 'flex';
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
+

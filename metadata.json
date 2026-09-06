@@ -1,0 +1,7 @@
+{
+  "name": "UniFolder Share",
+  "description": "Plateforme web et mobile pour étudiants permettant d'importer des dossiers de fichiers et de générer des liens de partage uniques et sécurisés.",
+  "requestFramePermissions": [],
+  "majorCapabilities": ["MAJOR_CAPABILITY_SERVER_SIDE_GEMINI_API"]
+}
+
