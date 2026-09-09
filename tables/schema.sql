@@ -53,15 +53,17 @@ CREATE INDEX IF NOT EXISTS idx_matieres_user ON matieres(user_id);
 CREATE TABLE IF NOT EXISTS files (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,
-    matiere_id TEXT, -- NULL si fichier à la racine
+    matiere_id TEXT, -- NULL si fichier à la racine (Mes fichiers)
     name TEXT NOT NULL,
     size INTEGER NOT NULL DEFAULT 0,
     type TEXT NOT NULL,
     extension TEXT,
-    r2_key TEXT NOT NULL, -- Clé unique dans le bucket Cloudflare R2
+    r2_key TEXT, -- Clé unique dans Cloudflare R2 (NULL si stockage local/temporaire)
     file_url TEXT,
     is_favorite INTEGER DEFAULT 0,
     is_imported INTEGER DEFAULT 0,
+    is_study_session INTEGER DEFAULT 0, -- 1 si importé pendant la session d'étude Delmas
+    last_imported INTEGER DEFAULT 0, -- Timestamp de dernier import pour affichage en tête
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
@@ -70,6 +72,7 @@ CREATE TABLE IF NOT EXISTS files (
 
 CREATE INDEX IF NOT EXISTS idx_files_user ON files(user_id);
 CREATE INDEX IF NOT EXISTS idx_files_matiere ON files(matiere_id);
+CREATE INDEX IF NOT EXISTS idx_files_study ON files(user_id, is_study_session);
 
 -- ============================================================================
 -- 4. PARTAGES & LIENS PUBLICS / SÉCURISÉS (PIN / Mot de passe)
@@ -346,3 +349,25 @@ CREATE TABLE IF NOT EXISTS user_subscriptions (
 );
 
 CREATE INDEX IF NOT EXISTS idx_subs_user ON user_subscriptions(user_id);
+
+-- ============================================================================
+-- 15. CONTENUS GÉNÉRÉS PAR L'IA (Résumés, Cartes Mentales, Cartes Mémoire, Quiz)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS ai_generated_contents (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    file_id TEXT, -- NULL si généré hors document ou document global
+    tool_type TEXT NOT NULL, -- 'summary' | 'mindmap' | 'flashcards' | 'quiz' | 'infographic'
+    title TEXT NOT NULL,
+    content_json TEXT NOT NULL DEFAULT '{}', -- Données structurées générées
+    source_file_name TEXT,
+    is_pinned INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (file_id) REFERENCES files(id) ON DELETE SET NULL
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_contents_user ON ai_generated_contents(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_contents_tool ON ai_generated_contents(user_id, tool_type);
+CREATE INDEX IF NOT EXISTS idx_ai_contents_file ON ai_generated_contents(file_id);

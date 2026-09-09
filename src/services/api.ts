@@ -88,9 +88,10 @@ export const StudyCloudAPI = {
   // --------------------------------------------------------------------------
   // Fichiers & Stockage R2
   // --------------------------------------------------------------------------
-  async getFiles(userId: string, matiereId?: string) {
+  async getFiles(userId: string, matiereId?: string, isStudySession?: boolean) {
     let endpoint = `/api/files?userId=${encodeURIComponent(userId)}`;
     if (matiereId) endpoint += `&matiereId=${encodeURIComponent(matiereId)}`;
+    if (isStudySession !== undefined) endpoint += `&isStudySession=${isStudySession ? '1' : '0'}`;
     return request<{ success: boolean; data: any[] }>(endpoint);
   },
 
@@ -118,10 +119,12 @@ export const StudyCloudAPI = {
     size: number;
     type: string;
     extension?: string;
-    r2Key: string;
-    fileUrl: string;
+    r2Key?: string | null;
+    fileUrl?: string;
     isFavorite?: boolean;
     isImported?: boolean;
+    isStudySession?: boolean;
+    lastImported?: number;
   }) {
     return request('/api/files', { method: 'POST', body: JSON.stringify(fileData) });
   },
@@ -294,5 +297,65 @@ export const StudyCloudAPI = {
   // --------------------------------------------------------------------------
   async getSubscription(userId: string) {
     return request<{ success: boolean; data: any }>(`/api/subscriptions?userId=${encodeURIComponent(userId)}`);
+  },
+
+  // --------------------------------------------------------------------------
+  // Contenus Générés par l'IA (Résumés, Cartes, Quiz, etc.)
+  // --------------------------------------------------------------------------
+  async getAiContents(userId: string, toolType?: string, fileId?: string) {
+    let endpoint = `/api/ai-contents?userId=${encodeURIComponent(userId)}`;
+    if (toolType) endpoint += `&toolType=${encodeURIComponent(toolType)}`;
+    if (fileId) endpoint += `&fileId=${encodeURIComponent(fileId)}`;
+    return request<{ success: boolean; data: any[] }>(endpoint);
+  },
+
+  async saveAiContent(data: {
+    id?: string;
+    userId: string;
+    fileId?: string | null;
+    toolType: string;
+    title: string;
+    contentJson: any;
+    sourceFileName?: string;
+    isPinned?: boolean;
+  }) {
+    return request<{ success: boolean; data: { id: string } }>('/api/ai-contents', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteAiContent(id: string) {
+    return request(`/api/ai-contents/${id}`, { method: 'DELETE' });
+  },
+
+  async togglePinAiContent(id: string, isPinned: boolean) {
+    return request(`/api/ai-contents/${id}/pin`, {
+      method: 'PUT',
+      body: JSON.stringify({ isPinned }),
+    });
+  },
+
+  // --------------------------------------------------------------------------
+  // Synchronisation Globale & Sauvegarde Cloud
+  // --------------------------------------------------------------------------
+  async backupCloud(payload: {
+    userId: string;
+    userProfile?: any;
+    matieres?: any[];
+    notes?: any[];
+    scheduleSlots?: any[];
+    scheduleConfig?: any;
+    alarms?: any[];
+    shopProfile?: any;
+  }) {
+    return request<{ success: boolean; message: string; timestamp: string }>('/api/sync/backup', {
+      method: 'POST',
+      body: JSON.stringify(payload),
+    });
+  },
+
+  async restoreCloud(userId: string) {
+    return request<{ success: boolean; data: any }>(`/api/sync/restore?userId=${encodeURIComponent(userId)}`);
   },
 };

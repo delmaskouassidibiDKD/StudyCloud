@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
 import { Maximize, Minimize, Menu, X, AlignLeft, Brain, Copy, MessageSquare, Presentation, Clock, ArrowLeft, Loader2, Sparkles, Dna, MoreVertical, Pin, CheckSquare, Square, Trash2 } from 'lucide-react';
+import { StudyCloudAPI } from '../services/api';
 
 interface RightMenuProps {
   isRightFullscreen: boolean;
@@ -35,9 +36,21 @@ export function RightMenu({
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
   const [activeHistoryContent, setActiveHistoryContent] = useState<string | null>(null);
   const [isGenerating, setIsGenerating] = useState<string | null>(null);
-  const [historyItems, setHistoryItems] = useState(INITIAL_HISTORY);
+  const [historyItems, setHistoryItems] = useState(() => {
+    try {
+      const saved = localStorage.getItem('unifolder_ai_history');
+      return saved ? JSON.parse(saved) : INITIAL_HISTORY;
+    } catch {
+      return INITIAL_HISTORY;
+    }
+  });
   const [selectedHistoryIds, setSelectedHistoryIds] = useState<string[]>([]);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  const saveHistory = (items: any[]) => {
+    setHistoryItems(items);
+    localStorage.setItem('unifolder_ai_history', JSON.stringify(items));
+  };
 
   const sortedHistory = [...historyItems].sort((a, b) => {
     if (a.pinned && !b.pinned) return -1;
@@ -64,6 +77,36 @@ export function RightMenu({
     setTimeout(() => {
       setIsGenerating(null);
       setActiveHistoryContent(prop.title);
+
+      const newItem = {
+        id: 'ai-' + Date.now(),
+        title: prop.title,
+        dateStr: "À l'instant",
+        colorClass: prop.colorClass.split(' ').find(c => c.startsWith('text-')) || 'text-orange-300',
+        desc: `Généré pour "${activePreviewItem?.name || 'Document sélectionné'}"`,
+        pinned: false,
+      };
+
+      setHistoryItems((prev: any[]) => {
+        const updated = [newItem, ...prev];
+        localStorage.setItem('unifolder_ai_history', JSON.stringify(updated));
+        return updated;
+      });
+
+      // Background sync to Cloudflare D1
+      try {
+        const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+        StudyCloudAPI.saveAiContent({
+          id: newItem.id,
+          userId,
+          fileId: activePreviewItem?.id || null,
+          toolType: prop.id,
+          title: prop.title,
+          contentJson: { desc: newItem.desc },
+          sourceFileName: activePreviewItem?.name || '',
+          isPinned: false,
+        }).catch(() => {});
+      } catch {}
     }, 4000);
   };
 
@@ -205,7 +248,11 @@ export function RightMenu({
                    </button>
                    <button 
                      onClick={() => {
-                        setHistoryItems(prev => prev.filter(h => !selectedHistoryIds.includes(h.id)));
+                        const updated = historyItems.filter(h => !selectedHistoryIds.includes(h.id));
+                        saveHistory(updated);
+                        selectedHistoryIds.forEach(id => {
+                          try { StudyCloudAPI.deleteAiContent(id).catch(() => {}); } catch {}
+                        });
                         setSelectedHistoryIds([]);
                      }}
                      className="text-xs bg-red-600 hover:bg-red-500 text-white font-bold px-3 py-1 rounded cursor-pointer"
@@ -260,8 +307,12 @@ export function RightMenu({
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              setHistoryItems(prev => prev.map(h => h.id === item.id ? { ...h, pinned: !h.pinned } : h));
+                              const updated = historyItems.map(h => h.id === item.id ? { ...h, pinned: !h.pinned } : h);
+                              saveHistory(updated);
                               setOpenMenuId(null);
+                              try {
+                                StudyCloudAPI.togglePinAiContent(item.id, !item.pinned).catch(() => {});
+                              } catch {}
                             }}
                             className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-zinc-800 text-zinc-300 hover:text-white cursor-pointer"
                           >
@@ -271,8 +322,12 @@ export function RightMenu({
                           <button 
                             onClick={(e) => {
                               e.stopPropagation();
-                              setHistoryItems(prev => prev.filter(h => h.id !== item.id));
+                              const updated = historyItems.filter(h => h.id !== item.id);
+                              saveHistory(updated);
                               setOpenMenuId(null);
+                              try {
+                                StudyCloudAPI.deleteAiContent(item.id).catch(() => {});
+                              } catch {}
                             }}
                             className="w-full text-left flex items-center gap-2 px-3 py-2 text-xs hover:bg-red-900/30 text-red-400 hover:text-red-300 cursor-pointer"
                           >

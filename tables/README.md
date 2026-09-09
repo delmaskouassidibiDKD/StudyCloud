@@ -39,12 +39,12 @@ Ce dossier contient le schéma SQL officiel pour la base de données relationnel
 
 ---
 
-## 📊 Récapitulatif des 21 Tables
+## 📊 Récapitulatif des 22 Tables
 
 1. **`users`** : Profil étudiant (nom, email, école, filière, avatar).
 2. **`user_preferences`** : Préférences UI (mode grille/liste, thème sombre).
 3. **`matieres`** : Matières scolaires (coefficients, couleurs, catégories).
-4. **`files`** : Fichiers avec pointeurs vers le bucket R2.
+4. **`files`** : Fichiers avec pointeurs vers le bucket R2 et flags d'importation/session d'étude.
 5. **`shared_folders`** : Liens et dossiers de partage avec ou sans mot de passe/PIN.
 6. **`shared_folder_files`** : Fichiers associés aux dossiers partagés.
 7. **`schedule_config`** : Configuration des jours et tranches horaires de l'emploi du temps.
@@ -62,3 +62,4 @@ Ce dossier contient le schéma SQL officiel pour la base de données relationnel
 19. **`notifications`** : Boîte de réception et alertes système.
 20. **`chat_messages`** : Historique des discussions avec l'Assistant Delmas.
 21. **`user_subscriptions`** : Abonnements et forfaits actifs.
+22. **`ai_generated_contents`** : Résumés, cartes mentales, flashcards, questionnaires et infographies générés par l'IA.

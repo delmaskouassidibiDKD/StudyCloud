@@ -158,16 +158,26 @@ export default {
         if (method === 'GET') {
           const userId = url.searchParams.get('userId');
           const matiereId = url.searchParams.get('matiereId');
+          const isStudySession = url.searchParams.get('isStudySession');
           if (!userId) return errorResponse('userId requis', 400, origin);
 
           let query = 'SELECT * FROM files WHERE user_id = ?';
           const params: any[] = [userId];
 
-          if (matiereId !== null && matiereId !== undefined) {
+          if (matiereId === 'root' || matiereId === 'none') {
+            query += ' AND (matiere_id IS NULL OR matiere_id = "" OR matiere_id = "Mes fichiers")';
+          } else if (matiereId && matiereId !== 'all') {
             query += ' AND matiere_id = ?';
             params.push(matiereId);
           }
-          query += ' ORDER BY created_at DESC';
+
+          if (isStudySession === 'true' || isStudySession === '1') {
+            query += ' AND is_study_session = 1';
+          } else if (isStudySession === 'false' || isStudySession === '0') {
+            query += ' AND (is_study_session IS NULL OR is_study_session = 0)';
+          }
+
+          query += ' ORDER BY last_imported DESC, updated_at DESC, created_at DESC';
 
           const { results } = await env.DB.prepare(query).bind(...params).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
@@ -175,13 +185,39 @@ export default {
 
         if (method === 'POST') {
           const body: any = await request.json();
-          const { id, userId, matiereId, name, size, type, extension, r2Key, fileUrl, isFavorite, isImported } = body;
-          if (!id || !userId || !name || !r2Key) return errorResponse('Champs obligatoires manquants', 400, origin);
+          const { id, userId, matiereId, name, size, type, extension, r2Key, fileUrl, isFavorite, isImported, isStudySession, lastImported } = body;
+          if (!id || !userId || !name) return errorResponse('id, userId et name requis', 400, origin);
 
           await env.DB.prepare(`
-            INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).bind(id, userId, matiereId || null, name, size || 0, type || 'application/octet-stream', extension || '', r2Key, fileUrl || '', isFavorite ? 1 : 0, isImported ? 1 : 0).run();
+            INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              matiere_id = excluded.matiere_id,
+              size = excluded.size,
+              type = excluded.type,
+              r2_key = COALESCE(excluded.r2_key, files.r2_key),
+              file_url = COALESCE(excluded.file_url, files.file_url),
+              is_favorite = excluded.is_favorite,
+              is_imported = excluded.is_imported,
+              is_study_session = excluded.is_study_session,
+              last_imported = excluded.last_imported,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id,
+            userId,
+            matiereId || null,
+            name,
+            size || 0,
+            type || 'application/octet-stream',
+            extension || '',
+            r2Key || null,
+            fileUrl || '',
+            isFavorite ? 1 : 0,
+            isImported ? 1 : 0,
+            isStudySession ? 1 : 0,
+            lastImported || Date.now()
+          ).run();
 
           return jsonResponse({ success: true, data: { id, name } }, 201, origin);
         }
@@ -620,6 +656,233 @@ export default {
           `).bind(id || crypto.randomUUID(), userId, planName, billingCycle || 'monthly', expiresAt || null).run();
           return jsonResponse({ success: true }, 201, origin);
         }
+      }
+
+      // ----------------------------------------------------------------------
+      // 16. CONTENUS GÉNÉRÉS PAR L'IA (Résumés, Cartes, Quiz, etc.)
+      // ----------------------------------------------------------------------
+      if (path === '/api/ai-contents') {
+        const userId = url.searchParams.get('userId');
+        const toolType = url.searchParams.get('toolType');
+        const fileId = url.searchParams.get('fileId');
+
+        if (method === 'GET') {
+          if (!userId) return errorResponse('userId requis', 400, origin);
+          let query = 'SELECT * FROM ai_generated_contents WHERE user_id = ?';
+          const params: any[] = [userId];
+
+          if (toolType && toolType !== 'all') {
+            query += ' AND tool_type = ?';
+            params.push(toolType);
+          }
+          if (fileId) {
+            query += ' AND file_id = ?';
+            params.push(fileId);
+          }
+
+          query += ' ORDER BY is_pinned DESC, updated_at DESC, created_at DESC';
+          const { results } = await env.DB.prepare(query).bind(...params).all();
+          return jsonResponse({ success: true, data: results }, 200, origin);
+        }
+
+        if (method === 'POST') {
+          const body: any = await request.json();
+          const { id, userId, fileId, toolType, title, contentJson, sourceFileName, isPinned } = body;
+          if (!userId || !toolType || !title) return errorResponse('userId, toolType et title requis', 400, origin);
+
+          const contentId = id || crypto.randomUUID();
+          await env.DB.prepare(`
+            INSERT INTO ai_generated_contents (id, user_id, file_id, tool_type, title, content_json, source_file_name, is_pinned, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              title = excluded.title,
+              content_json = excluded.content_json,
+              source_file_name = excluded.source_file_name,
+              is_pinned = excluded.is_pinned,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            contentId,
+            userId,
+            fileId || null,
+            toolType,
+            title,
+            typeof contentJson === 'string' ? contentJson : JSON.stringify(contentJson || {}),
+            sourceFileName || '',
+            isPinned ? 1 : 0
+          ).run();
+
+          return jsonResponse({ success: true, data: { id: contentId } }, 201, origin);
+        }
+      }
+
+      if (path.startsWith('/api/ai-contents/') && method === 'DELETE') {
+        const id = path.split('/')[3];
+        await env.DB.prepare('DELETE FROM ai_generated_contents WHERE id = ?').bind(id).run();
+        return jsonResponse({ success: true, message: 'Élément IA supprimé' }, 200, origin);
+      }
+
+      if (path.startsWith('/api/ai-contents/') && path.endsWith('/pin') && method === 'PUT') {
+        const id = path.split('/')[3];
+        const body: any = await request.json().catch(() => ({}));
+        await env.DB.prepare('UPDATE ai_generated_contents SET is_pinned = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
+          .bind(body.isPinned ? 1 : 0, id).run();
+        return jsonResponse({ success: true }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
+      // 17. SYNCHRONISATION GLOBALE & SAUVEGARDE CLOUD (Backup / Restore)
+      // ----------------------------------------------------------------------
+      if (path === '/api/sync/backup' && method === 'POST') {
+        const body: any = await request.json();
+        const { userId, userProfile, matieres, notes, scheduleSlots, scheduleConfig, alarms, shopProfile } = body;
+        if (!userId) return errorResponse('userId requis', 400, origin);
+
+        // 1. Profil
+        if (userProfile) {
+          await env.DB.prepare(`
+            INSERT INTO users (id, name, email, school, filiere, avatar_url, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              email = excluded.email,
+              school = excluded.school,
+              filiere = excluded.filiere,
+              avatar_url = excluded.avatar_url,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            userId,
+            userProfile.name || 'Étudiant',
+            userProfile.email || `${userId}@studycloud.app`,
+            userProfile.school || 'CME',
+            userProfile.filiere || 'Général',
+            userProfile.avatarUrl || null
+          ).run();
+        }
+
+        // 2. Matières
+        if (Array.isArray(matieres)) {
+          for (const m of matieres) {
+            await env.DB.prepare(`
+              INSERT INTO matieres (id, user_id, name, coefficient, color, category, display_order)
+              VALUES (?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                name = excluded.name,
+                coefficient = excluded.coefficient,
+                color = excluded.color,
+                category = excluded.category,
+                display_order = excluded.display_order
+            `).bind(m.id || crypto.randomUUID(), userId, m.name || m.title, m.coefficient || 1.0, m.color || '#EA580C', m.category || 'Général', m.order || 0).run();
+          }
+        }
+
+        // 3. Notes Keep
+        if (Array.isArray(notes)) {
+          for (const n of notes) {
+            await env.DB.prepare(`
+              INSERT INTO notes (id, user_id, title, content, color, is_pinned, image_url, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET
+                title = excluded.title,
+                content = excluded.content,
+                color = excluded.color,
+                is_pinned = excluded.is_pinned,
+                image_url = excluded.image_url,
+                updated_at = CURRENT_TIMESTAMP
+            `).bind(n.id || crypto.randomUUID(), userId, n.title || 'Note', n.content || '', n.color || '#FFFFFF', n.isPinned ? 1 : 0, n.imageUrl || null).run();
+          }
+        }
+
+        // 4. Emploi du temps
+        if (scheduleConfig) {
+          await env.DB.prepare(`
+            INSERT INTO schedule_config (user_id, days_json, hours_json, zoom_level, updated_at)
+            VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET
+              days_json = excluded.days_json,
+              hours_json = excluded.hours_json,
+              zoom_level = excluded.zoom_level,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(userId, JSON.stringify(scheduleConfig.days || []), JSON.stringify(scheduleConfig.hours || []), scheduleConfig.zoomLevel || 100).run();
+        }
+
+        if (Array.isArray(scheduleSlots)) {
+          for (const s of scheduleSlots) {
+            await env.DB.prepare(`
+              INSERT INTO schedule_slots (id, user_id, day, hour_slot, subject, room, note_or_teacher, color)
+              VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                day = excluded.day,
+                hour_slot = excluded.hour_slot,
+                subject = excluded.subject,
+                room = excluded.room,
+                note_or_teacher = excluded.note_or_teacher,
+                color = excluded.color
+            `).bind(s.id || crypto.randomUUID(), userId, s.day, s.hourSlot, s.subject, s.room || '', s.noteOrTeacher || '', s.color || '#EA580C').run();
+          }
+        }
+
+        // 5. Alarmes
+        if (Array.isArray(alarms)) {
+          for (const a of alarms) {
+            await env.DB.prepare(`
+              INSERT INTO alarms (id, user_id, time, label, is_active, days_json)
+              VALUES (?, ?, ?, ?, ?, ?)
+              ON CONFLICT(id) DO UPDATE SET
+                time = excluded.time,
+                label = excluded.label,
+                is_active = excluded.is_active,
+                days_json = excluded.days_json
+            `).bind(a.id || crypto.randomUUID(), userId, a.time, a.label || 'Réveil étude', a.isActive ? 1 : 0, JSON.stringify(a.days || ['Tous les jours'])).run();
+          }
+        }
+
+        return jsonResponse({
+          success: true,
+          message: 'Sauvegarde Cloud effectuée avec succès',
+          timestamp: new Date().toISOString()
+        }, 200, origin);
+      }
+
+      if (path === '/api/sync/restore' && method === 'GET') {
+        const userId = url.searchParams.get('userId');
+        if (!userId) return errorResponse('userId requis', 400, origin);
+
+        const [
+          user,
+          { results: matieres },
+          { results: files },
+          { results: notes },
+          scheduleConfig,
+          { results: scheduleSlots },
+          { results: grades },
+          { results: alarms },
+          { results: aiContents }
+        ] = await Promise.all([
+          env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first(),
+          env.DB.prepare('SELECT * FROM matieres WHERE user_id = ? ORDER BY display_order ASC').bind(userId).all(),
+          env.DB.prepare('SELECT * FROM files WHERE user_id = ? ORDER BY last_imported DESC, created_at DESC').bind(userId).all(),
+          env.DB.prepare('SELECT * FROM notes WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC').bind(userId).all(),
+          env.DB.prepare('SELECT * FROM schedule_config WHERE user_id = ?').bind(userId).first(),
+          env.DB.prepare('SELECT * FROM schedule_slots WHERE user_id = ?').bind(userId).all(),
+          env.DB.prepare('SELECT * FROM grades WHERE user_id = ?').bind(userId).all(),
+          env.DB.prepare('SELECT * FROM alarms WHERE user_id = ?').bind(userId).all(),
+          env.DB.prepare('SELECT * FROM ai_generated_contents WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC').bind(userId).all()
+        ]);
+
+        return jsonResponse({
+          success: true,
+          data: {
+            user,
+            matieres,
+            files,
+            notes,
+            scheduleConfig,
+            scheduleSlots,
+            grades,
+            alarms,
+            aiContents
+          }
+        }, 200, origin);
       }
 
       // Route 404 par défaut

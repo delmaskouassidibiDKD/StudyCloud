@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { ArrowLeft, User, GraduationCap, Mail, BookOpen, ShieldCheck, LogOut, Check, Edit2, X, Home } from 'lucide-react';
+import { ArrowLeft, User, GraduationCap, Mail, BookOpen, ShieldCheck, LogOut, Check, Edit2, X, Home, Cloud, Database, RefreshCw, CheckCircle2, AlertCircle, Loader2, Server } from 'lucide-react';
+import { StudyCloudAPI, getWorkerApiUrl, setWorkerApiUrl } from '../services/api';
 
 interface UserSettingsViewProps {
   onBack: () => void;
@@ -14,6 +15,13 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
 
+  // Cloud & Worker state
+  const [workerUrl, setWorkerUrl] = useState(() => getWorkerApiUrl());
+  const [cloudStatus, setCloudStatus] = useState<'idle' | 'checking' | 'connected' | 'error'>('idle');
+  const [isSyncing, setIsSyncing] = useState(false);
+  const [isRestoring, setIsRestoring] = useState(false);
+  const [lastSyncTime, setLastSyncTime] = useState(() => localStorage.getItem('studycloud_last_sync') || '');
+
   // Edit modal state
   const [editingField, setEditingField] = useState<'name' | 'school' | 'filiere' | 'email' | null>(null);
   const [tempValue, setTempValue] = useState('');
@@ -21,6 +29,104 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 2500);
+  };
+
+  const handleTestConnection = async () => {
+    setCloudStatus('checking');
+    try {
+      setWorkerApiUrl(workerUrl);
+      const res = await StudyCloudAPI.checkHealth();
+      if (res && res.success) {
+        setCloudStatus('connected');
+        triggerToast("Connexion au Cloudflare Worker réussie !");
+      } else {
+        setCloudStatus('error');
+        triggerToast("Le Worker a répondu mais le statut est invalide.");
+      }
+    } catch (e: any) {
+      setCloudStatus('error');
+      triggerToast("Impossible de joindre le Worker. Vérifiez l'URL.");
+    }
+  };
+
+  const handleSyncToCloud = async () => {
+    setIsSyncing(true);
+    try {
+      setWorkerApiUrl(workerUrl);
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      const matieres = JSON.parse(localStorage.getItem('unifolder_saved_matieres') || '[]');
+      const notes = JSON.parse(localStorage.getItem('unifolder_keep_notes') || '[]');
+      const scheduleSlots = JSON.parse(localStorage.getItem('user_schedule_data') || '[]');
+      const scheduleConfig = {
+        days: JSON.parse(localStorage.getItem('user_schedule_days') || '["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"]'),
+        hours: JSON.parse(localStorage.getItem('user_schedule_hours') || '["08:00 - 10:00","10:00 - 12:00","14:00 - 16:00","16:00 - 18:00"]'),
+        zoomLevel: Number(localStorage.getItem('user_schedule_zoom') || '100'),
+      };
+      const alarms = JSON.parse(localStorage.getItem('unifolder_alarms') || '[]');
+
+      await StudyCloudAPI.backupCloud({
+        userId,
+        userProfile: { name, email, school, filiere },
+        matieres,
+        notes,
+        scheduleSlots,
+        scheduleConfig,
+        alarms,
+      });
+
+      const nowStr = new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) + ' - ' + new Date().toLocaleDateString();
+      setLastSyncTime(nowStr);
+      localStorage.setItem('studycloud_last_sync', nowStr);
+      setCloudStatus('connected');
+      triggerToast("Données sauvegardées sur Cloudflare D1 avec succès !");
+    } catch (err: any) {
+      setCloudStatus('error');
+      triggerToast("Erreur lors de la sauvegarde Cloud : " + (err.message || 'Erreur réseau'));
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  const handleRestoreFromCloud = async () => {
+    if (!window.confirm("Voulez-vous restaurer vos données depuis le Cloud ? Cela mettra à jour vos données locales.")) return;
+    setIsRestoring(true);
+    try {
+      setWorkerApiUrl(workerUrl);
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      const res = await StudyCloudAPI.restoreCloud(userId);
+      if (res && res.data) {
+        const d = res.data;
+        if (d.user) {
+          if (d.user.name) { setName(d.user.name); localStorage.setItem('unifolder_user_name', d.user.name); }
+          if (d.user.school) { setSchool(d.user.school); localStorage.setItem('unifolder_user_school', d.user.school); }
+          if (d.user.filiere) { setFiliere(d.user.filiere); localStorage.setItem('unifolder_user_filiere', d.user.filiere); }
+          if (d.user.email) { setEmail(d.user.email); localStorage.setItem('unifolder_user_email', d.user.email); }
+        }
+        if (d.matieres && d.matieres.length > 0) {
+          localStorage.setItem('unifolder_saved_matieres', JSON.stringify(d.matieres));
+        }
+        if (d.notes && d.notes.length > 0) {
+          localStorage.setItem('unifolder_keep_notes', JSON.stringify(d.notes));
+        }
+        if (d.scheduleSlots && d.scheduleSlots.length > 0) {
+          localStorage.setItem('user_schedule_data', JSON.stringify(d.scheduleSlots));
+        }
+        if (d.scheduleConfig) {
+          if (d.scheduleConfig.days_json) localStorage.setItem('user_schedule_days', d.scheduleConfig.days_json);
+          if (d.scheduleConfig.hours_json) localStorage.setItem('user_schedule_hours', d.scheduleConfig.hours_json);
+          if (d.scheduleConfig.zoom_level) localStorage.setItem('user_schedule_zoom', String(d.scheduleConfig.zoom_level));
+        }
+        if (d.alarms && d.alarms.length > 0) {
+          localStorage.setItem('unifolder_alarms', JSON.stringify(d.alarms));
+        }
+        window.dispatchEvent(new Event('unifolder_files_updated'));
+        triggerToast("Restauration depuis le Cloud réussie !");
+      }
+    } catch (err: any) {
+      triggerToast("Erreur lors de la restauration : " + (err.message || 'Erreur réseau'));
+    } finally {
+      setIsRestoring(false);
+    }
   };
 
   const getOriginalValue = (field: 'name' | 'school' | 'filiere' | 'email') => {
@@ -212,6 +318,101 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
             </div>
             <span className="text-stone-400 text-xs md:text-sm">→</span>
           </button>
+        </div>
+
+        {/* Cloudflare Cloud & Database Synchronization */}
+        <div className="p-4 md:p-6 bg-white border border-stone-200 rounded-xl md:rounded-2xl shadow-xs space-y-4 text-left">
+          <div className="flex items-center justify-between border-b border-stone-100 pb-3">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-orange-100 flex items-center justify-center text-orange-600">
+                <Cloud className="w-4 h-4" />
+              </div>
+              <div>
+                <h4 className="font-bold text-xs md:text-sm text-stone-900">Cloud & Base de Données</h4>
+                <p className="text-[10px] md:text-xs text-stone-500">Cloudflare D1 (SQL) & R2 Storage</p>
+              </div>
+            </div>
+            <div>
+              {cloudStatus === 'connected' && (
+                <span className="flex items-center gap-1.5 px-2.5 py-1 bg-emerald-50 text-emerald-700 rounded-full text-[10px] md:text-xs font-bold border border-emerald-200">
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span>Connecté</span>
+                </span>
+              )}
+              {cloudStatus === 'error' && (
+                <span className="flex items-center gap-1.5 px-2.5 py-1 bg-red-50 text-red-700 rounded-full text-[10px] md:text-xs font-bold border border-red-200">
+                  <AlertCircle className="w-3.5 h-3.5" />
+                  <span>Hors-ligne</span>
+                </span>
+              )}
+              {cloudStatus === 'checking' && (
+                <span className="flex items-center gap-1.5 px-2.5 py-1 bg-orange-50 text-orange-700 rounded-full text-[10px] md:text-xs font-bold border border-orange-200">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                  <span>Test en cours...</span>
+                </span>
+              )}
+              {cloudStatus === 'idle' && (
+                <span className="flex items-center gap-1.5 px-2.5 py-1 bg-stone-100 text-stone-600 rounded-full text-[10px] md:text-xs font-bold border border-stone-200">
+                  <Server className="w-3.5 h-3.5" />
+                  <span>Prêt</span>
+                </span>
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-1.5">
+            <label className="text-[11px] md:text-xs font-bold text-stone-600">
+              Adresse API du Worker Cloudflare :
+            </label>
+            <div className="flex gap-2">
+              <input
+                type="url"
+                value={workerUrl}
+                onChange={(e) => {
+                  setWorkerUrl(e.target.value);
+                  setWorkerApiUrl(e.target.value);
+                }}
+                placeholder="https://studycloud-worker.votre-compte.workers.dev"
+                className="flex-1 px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 focus:outline-none focus:border-orange-500 font-mono"
+              />
+              <button
+                type="button"
+                onClick={handleTestConnection}
+                disabled={cloudStatus === 'checking'}
+                className="px-3 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 text-xs font-bold rounded-xl flex items-center gap-1.5 transition-colors cursor-pointer disabled:opacity-50"
+              >
+                {cloudStatus === 'checking' ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Server className="w-3.5 h-3.5" />}
+                <span>Tester</span>
+              </button>
+            </div>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 pt-1">
+            <button
+              type="button"
+              onClick={handleSyncToCloud}
+              disabled={isSyncing}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+            >
+              {isSyncing ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <RefreshCw className="w-3.5 h-3.5" />}
+              <span>Sauvegarder vers le Cloud</span>
+            </button>
+            <button
+              type="button"
+              onClick={handleRestoreFromCloud}
+              disabled={isRestoring}
+              className="w-full flex items-center justify-center gap-2 py-2.5 px-4 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl border border-stone-200 transition-all cursor-pointer disabled:opacity-50 active:scale-[0.98]"
+            >
+              {isRestoring ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Database className="w-3.5 h-3.5" />}
+              <span>Restaurer depuis le Cloud</span>
+            </button>
+          </div>
+
+          {lastSyncTime && (
+            <p className="text-[10px] md:text-xs text-stone-400 text-center pt-1">
+              Dernière sauvegarde Cloud : <span className="font-semibold text-stone-600">{lastSyncTime}</span>
+            </p>
+          )}
         </div>
 
         {/* Bottom Logout Button */}
