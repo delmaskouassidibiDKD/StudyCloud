@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Menu, X, Search, Upload, Home, MoreVertical } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
+import { DnaLogo } from './DnaLogo';
 
 interface MenuDrawerProps {
   onNavigateHome: () => void;
@@ -104,28 +105,42 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             animate={{ x: 0 }}
             exit={{ x: '-100%' }}
             transition={{ type: 'tween', ease: 'easeOut', duration: 0.25 }}
-            className="fixed top-0 left-0 bottom-0 z-[9999] w-80 bg-[#FDFBF7] border-r-3 border-stone-800 px-6 pt-3 pb-6 flex flex-col shadow-2xl"
+            className="fixed top-0 left-0 bottom-0 z-[9999] w-80 md:w-96 bg-[#FDFBF7] border-r-3 border-stone-800 px-6 pt-4 pb-6 flex flex-col shadow-2xl"
           >
-            {/* Header with Search and Close */}
-            <div className="flex items-center gap-2 pb-2 mb-2">
-              <div className="relative flex-1">
-                <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-stone-400">
-                  <Search className="w-3.5 h-3.5" />
-                </span>
-                <input
-                  type="text"
-                  value={searchQuery}
-                  onChange={(e) => setSearchQuery(e.target.value)}
-                  placeholder="Rechercher..."
-                  className="w-full bg-white border-2 border-stone-800 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917] focus:ring-0"
-                />
+            {/* Brand Header */}
+            <div className="flex items-center justify-between pb-3 mb-3 border-b-2 border-stone-200">
+              <div className="flex items-center gap-2 notranslate">
+                <DnaLogo className="w-8 h-8 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
+                <div className="flex flex-col truncate text-left leading-none mt-0.5">
+                  <h1 className="font-extrabold text-[18px] md:text-[20px] tracking-tight truncate leading-none" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                    <span className="text-orange-600">Study</span><span className="text-blue-600">Cloud</span>
+                  </h1>
+                  <p className="text-[8px] md:text-[8.5px] font-bold text-orange-400/90 uppercase tracking-widest leading-none truncate mt-[2px]">
+                    DKD Technologies
+                  </p>
+                </div>
               </div>
               <button
                 onClick={() => setIsOpen(false)}
-                className="p-1.5 hover:bg-stone-200 rounded-lg transition-colors text-stone-700 border-2 border-stone-800 bg-[#F5F1E9] shadow-[2px_2px_0px_0px_#1c1917] shrink-0"
+                className="p-1.5 hover:bg-stone-200 rounded-lg transition-colors text-stone-700 border-2 border-stone-800 bg-[#F5F1E9] shadow-[2px_2px_0px_0px_#1c1917] shrink-0 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
+                title="Fermer"
               >
                 <X className="w-4 h-4" />
               </button>
+            </div>
+
+            {/* Search */}
+            <div className="relative w-full mb-3">
+              <span className="absolute inset-y-0 left-0 flex items-center pl-3 pointer-events-none text-stone-400">
+                <Search className="w-3.5 h-3.5" />
+              </span>
+              <input
+                type="text"
+                value={searchQuery}
+                onChange={(e) => setSearchQuery?.(e.target.value)}
+                placeholder="Rechercher..."
+                className="w-full bg-white border-2 border-stone-800 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917] focus:ring-0"
+              />
             </div>
 
             {/* Action buttons */}
@@ -163,7 +178,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             <nav className="flex flex-col gap-2 flex-1 overflow-y-auto">
               {matieres && matieres.length > 0 && (
                 <div className="space-y-2 mt-2">
-                  <div className="text-[10px] font-extrabold text-stone-500 uppercase tracking-wider px-1">Matières créées</div>
+                  <div className="text-[10px] font-extrabold text-stone-500 uppercase tracking-wider px-1">Matières créées ou autres</div>
                   {matieres
                     .map((m, originalIdx) => ({ m, originalIdx }))
                     .filter(({ m }) => m.name.trim() && m.name.toLowerCase().includes(searchQuery.toLowerCase()))
@@ -174,7 +189,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
                           setIsOpen(false);
                           if (onSelectMatiere) onSelectMatiere(m.name);
                         }}
-                        className={`flex items-center justify-between p-3 ${m.color || 'bg-white text-stone-900'} hover:opacity-95 border-2 border-stone-800 rounded-xl shadow-[2px_2px_0px_0px_#1c1917] relative cursor-pointer transition-all`}
+                        className={`flex items-center justify-between p-3 ${m.color || 'bg-white text-stone-900'} hover:opacity-95 border-2 border-stone-800 rounded-xl shadow-[2px_2px_0px_0px_#1c1917] relative cursor-pointer transition-all ${activeMenuIndex === originalIdx ? 'z-50' : 'z-0'}`}
                       >
                         <span className="text-xs font-bold">{m.name}</span>
                         <div className="flex items-center gap-2 relative">

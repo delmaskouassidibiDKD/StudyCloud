@@ -14,8 +14,14 @@ import { CreateShareLinkModal } from './components/CreateShareLinkModal';
 import { PublishFileView } from './components/PublishFileView';
 import { INITIAL_FOLDERS } from './data/initialData';
 import { SharedFolder, NavigationTab } from './types';
-import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight } from 'lucide-react';
+import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight, Maximize, Minimize, Dna, Menu, Clock } from 'lucide-react';
 import { FileIconBadge } from './components/FileIconBadge';
+import { AssistantChat } from './components/AssistantChat';
+import { DnaLogo } from './components/DnaLogo';
+import { LeftMenu } from './components/LeftMenu';
+import { CenterMenu } from './components/CenterMenu';
+import { RightMenu } from './components/RightMenu';
+import { StudyTimerModal, formatTimerDisplay } from './components/StudyTimerModal';
 
 export default function App() {
   const [folders, setFolders] = useState<SharedFolder[]>(() => {
@@ -105,17 +111,25 @@ export default function App() {
     }
     return [];
   });
-  const [activePreviewItemState, setActivePreviewItemState] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean } | null>(null);
+  const [activePreviewItemState, setActivePreviewItemState] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null>(null);
+  const [previewOwnerTab, setPreviewOwnerTab] = useState<NavigationTab | null>('folders');
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
-  const setActivePreviewItem = (item: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean } | null) => {
+  const setActivePreviewItem = (item: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null) => {
     if (!item) {
       setActivePreviewItemState(null);
+      setPreviewOwnerTab(null);
       setIsPreviewLoading(false);
+      setIsCenterFullscreen(false);
       return;
     }
     setIsPreviewLoading(true);
     setActivePreviewItemState(item);
+    setPreviewOwnerTab(currentTab || 'folders');
+    if (item.lockFullscreen) {
+      setIsCenterFullscreen(true);
+      setMobilePreviewTab(1);
+    }
     setTimeout(() => {
       setIsPreviewLoading(false);
     }, 1000);
@@ -123,10 +137,63 @@ export default function App() {
 
   const activePreviewItem = activePreviewItemState;
   const [previewScrollMode, setPreviewScrollMode] = useState<'vertical' | 'horizontal'>('vertical');
+  const [mobilePreviewTab, setMobilePreviewTab] = useState<0 | 1 | 2>(1);
+  const [previewLeftWidth, setPreviewLeftWidth] = useState(33.33);
+  const [previewRightWidth, setPreviewRightWidth] = useState(33.33);
+  const previewContainerRef = useRef<HTMLDivElement>(null);
+  const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const [isResizingRight, setIsResizingRight] = useState(false);
+  const [isCenterFullscreen, setIsCenterFullscreen] = useState(false);
+  const [isRightFullscreen, setIsRightFullscreen] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  
   const [shareToast, setShareToast] = useState(false);
   const [activeLongPressItem, setActiveLongPressItem] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean } | null>(null);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   const [replacingItemId, setReplacingItemId] = useState<string | null>(null);
+
+  // Study Timer State
+  const [showStudyTimer, setShowStudyTimer] = useState(false);
+  const [customHours, setCustomHours] = useState(0);
+  const [customMinutes, setCustomMinutes] = useState(5);
+  const [customSeconds, setCustomSeconds] = useState(0);
+  const [timerDuration, setTimerDuration] = useState(300);
+  const [timerLeft, setTimerLeft] = useState(300);
+  const [timerRunning, setTimerRunning] = useState(false);
+  const [timerFinishedAlert, setTimerFinishedAlert] = useState(false);
+
+  // Audio Beep helper for Study Timer
+  const playTimerBeep = () => {
+    try {
+      const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+      const osc = audioCtx.createOscillator();
+      const gain = audioCtx.createGain();
+      osc.type = 'sine';
+      osc.frequency.setValueAtTime(880, audioCtx.currentTime);
+      gain.gain.setValueAtTime(0.4, audioCtx.currentTime);
+      osc.connect(gain);
+      gain.connect(audioCtx.destination);
+      osc.start();
+      osc.stop(audioCtx.currentTime + 1.2);
+    } catch (e) {
+      console.error(e);
+    }
+  };
+
+  useEffect(() => {
+    let interval: any;
+    if (timerRunning && timerLeft > 0) {
+      interval = setInterval(() => {
+        setTimerLeft((prev) => prev - 1);
+      }, 1000);
+    } else if (timerRunning && timerLeft === 0) {
+      setTimerRunning(false);
+      setTimerFinishedAlert(true);
+      setShowStudyTimer(true);
+      playTimerBeep();
+    }
+    return () => clearInterval(interval);
+  }, [timerRunning, timerLeft]);
   
   const folderInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -163,33 +230,72 @@ export default function App() {
         const img = new Image();
         img.onload = () => {
           const canvas = document.createElement('canvas');
+          const ctx = canvas.getContext('2d');
+          if (!ctx) return resolve(e.target?.result as string);
+          
           let width = img.width;
           let height = img.height;
-          const maxDim = 400;
-          if (width > height) {
-            if (width > maxDim) {
-              height = Math.round((height * maxDim) / width);
-              width = maxDim;
-            }
-          } else {
-            if (height > maxDim) {
-              width = Math.round((width * maxDim) / height);
-              height = maxDim;
-            }
+          const maxDim = 1200;
+          
+          if (width > height && width > maxDim) {
+            height *= maxDim / width;
+            width = maxDim;
+          } else if (height > maxDim) {
+            width *= maxDim / height;
+            height = maxDim;
           }
+          
           canvas.width = width;
           canvas.height = height;
-          const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          resolve(canvas.toDataURL('image/jpeg', 0.75));
+          ctx.drawImage(img, 0, 0, width, height);
+          resolve(canvas.toDataURL('image/jpeg', 0.7));
         };
-        img.onerror = () => resolve(e.target?.result as string || '');
         img.src = e.target?.result as string;
       };
-      reader.onerror = () => resolve('');
       reader.readAsDataURL(file);
     });
   };
+
+  useEffect(() => {
+    if (!isResizingLeft && !isResizingRight) return;
+
+    const handleMouseMove = (e: MouseEvent | TouchEvent) => {
+      if (!previewContainerRef.current) return;
+      const rect = previewContainerRef.current.getBoundingClientRect();
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const x = clientX - rect.left;
+      const percentage = (x / rect.width) * 100;
+
+      if (isResizingLeft) {
+        // Limit left column width between 25% and (100% - rightWidth - 30% for center)
+        const newWidth = Math.min(Math.max(25, percentage), 100 - previewRightWidth - 30);
+        setPreviewLeftWidth(newWidth);
+      } else if (isResizingRight) {
+        // Limit right column width between 25% and (100% - leftWidth - 30% for center)
+        const newRightWidth = 100 - percentage;
+        const boundedRight = Math.min(Math.max(25, newRightWidth), 100 - previewLeftWidth - 30);
+        setPreviewRightWidth(boundedRight);
+      }
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingLeft(false);
+      setIsResizingRight(false);
+    };
+
+    window.addEventListener('mousemove', handleMouseMove);
+    window.addEventListener('touchmove', handleMouseMove);
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('touchend', handleMouseUp);
+
+    return () => {
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('touchmove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchend', handleMouseUp);
+    };
+  }, [isResizingLeft, isResizingRight, previewLeftWidth, previewRightWidth]);
+
 
   const handleReplaceFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0] && replacingItemId) {
@@ -351,7 +457,7 @@ export default function App() {
     const sharedFolder = folders.find((f) => f.id === shareId);
     if (!sharedFolder) {
       return (
-        <div className="min-h-screen bg-[#FDFBF7] flex items-center justify-center p-4">
+        <div className="min-h-dvh bg-[#FDFBF7] flex items-center justify-center p-4">
           <div className="bg-[#F5F1E9] border-3 border-stone-800 rounded-2xl p-8 max-w-md text-center shadow-[6px_6px_0px_0px_#1c1917]">
             <h2 className="text-xl font-extrabold text-stone-900 mb-2">Dossier introuvable</h2>
             <p className="text-sm text-stone-600 mb-6">Le lien de partage est invalide ou le dossier a été supprimé par l'étudiant.</p>
@@ -391,7 +497,7 @@ export default function App() {
   });
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] flex flex-col md:flex-row font-sans text-stone-900">
+    <div className="min-h-dvh bg-[#FDFBF7] flex flex-col md:flex-row font-sans text-stone-900">
       {/* Sidebar (Desktop & Mobile Nav) */}
       <Sidebar
         currentTab={currentTab}
@@ -401,7 +507,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-h-screen pb-20 md:pb-0">
+      <div className="flex-1 flex flex-col min-h-dvh pb-20 md:pb-0 md:ml-64">
         <main className={`flex-1 ${currentTab === 'library' ? 'p-0 w-full' : 'p-6 md:p-8 max-w-7xl w-full mx-auto'}`}>
           {currentTab === 'folders' ? (
             <FoldersView
@@ -655,17 +761,24 @@ export default function App() {
         />
       )}
 
-      {activePreviewItem && (
-        <div className="fixed inset-0 z-[99999] bg-[#FDFBF7] flex flex-col animate-fadeIn overflow-hidden">
+      {activePreviewItem && (previewOwnerTab ? previewOwnerTab === currentTab : currentTab === 'folders') && (
+        <div className="fixed inset-0 md:left-64 z-[99999] bg-[#FDFBF7] flex flex-col animate-fadeIn overflow-hidden">
           {/* Top Header Bar */}
-          <div className="fixed top-0 left-0 right-0 z-50 bg-[#FDFBF7] py-1.5 px-3 md:px-6 border-b-2 border-stone-800 shadow-sm flex items-center justify-between gap-2">
-            <button
-              onClick={() => setActivePreviewItem(null)}
-              className="flex items-center gap-1 px-2 py-1 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer shrink-0"
-            >
-              <ArrowLeft className="w-3 h-3" />
-              <span>Retour</span>
-            </button>
+          <div className="fixed top-0 left-0 right-0 md:left-64 z-50 bg-[#FDFBF7] py-1.5 px-3 md:px-6 border-b-2 border-stone-800 shadow-sm flex items-center justify-between gap-2">
+            <div className="flex items-center gap-2 md:gap-4 shrink-0">
+              <button
+                onClick={() => setActivePreviewItem(null)}
+                className="flex items-center gap-1 px-2 py-1 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+              >
+                <ArrowLeft className="w-3 h-3" />
+                <span>Retour</span>
+              </button>
+              {(activePreviewItem.folderName || activeFolderDetail?.title) && (
+                <span className="text-[10px] sm:text-[11px] font-black text-stone-700 uppercase tracking-widest max-w-[120px] sm:max-w-[250px] truncate bg-stone-100/80 px-2 py-0.5 rounded border border-stone-200">
+                  {activePreviewItem.folderName || activeFolderDetail?.title}
+                </span>
+              )}
+            </div>
             <div className="text-center px-2 flex-1 max-w-xs sm:max-w-xl overflow-hidden">
               <p className="text-[11px] sm:text-xs font-bold text-stone-900 leading-tight line-clamp-3 overflow-hidden text-ellipsis break-all">{activePreviewItem.name}</p>
             </div>
@@ -682,6 +795,31 @@ export default function App() {
                 })()}
               </span>
               <div className="flex items-center gap-2 sm:gap-3">
+                {/* Clock / Study Timer Button */}
+                <button
+                  onClick={() => setShowStudyTimer(true)}
+                  className={`px-2 py-0.5 rounded-md border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-[10px] sm:text-xs font-extrabold ${
+                    timerRunning
+                      ? 'bg-amber-400 text-stone-950 border-stone-900 animate-pulse'
+                      : timerLeft < timerDuration
+                      ? 'bg-amber-100 text-amber-900 border-stone-800'
+                      : 'bg-white hover:bg-stone-100 text-stone-900'
+                  }`}
+                  title="Minuteur d'étude"
+                >
+                  <Clock className={`w-3.5 h-3.5 ${timerRunning ? 'text-stone-950' : 'text-blue-600'}`} />
+                  <span className="hidden sm:inline">
+                    {timerRunning || timerLeft < timerDuration
+                      ? formatTimerDisplay(timerLeft)
+                      : 'Minuteur'}
+                  </span>
+                  <span className="sm:hidden">
+                    {timerRunning || timerLeft < timerDuration
+                      ? formatTimerDisplay(timerLeft)
+                      : ''}
+                  </span>
+                </button>
+
                 {/* Share Button */}
                 <button
                   onClick={() => {
@@ -714,7 +852,7 @@ export default function App() {
                 <button
                   onClick={() => {
                     const content = activePreviewItem.url || `Ceci est le fichier ${activePreviewItem.name} téléchargé depuis UniFolder Share.`;
-                    const blob = activePreviewItem.url && activePreviewItem.url.startsWith('data:') 
+                    const blob = activePreviewItem.url && (activePreviewItem.url.startsWith('data:') || activePreviewItem.url.startsWith('blob:') || activePreviewItem.url.startsWith('http')) 
                       ? fetch(activePreviewItem.url).then(r => r.blob()).catch(() => new Blob([content], { type: 'text/plain;charset=utf-8' }))
                       : Promise.resolve(new Blob([content], { type: 'text/plain;charset=utf-8' }));
                     blob.then((b) => {
@@ -738,42 +876,82 @@ export default function App() {
             </div>
           </div>
 
-          {/* Main Content Area */}
-          <div className={`flex-1 w-full max-w-6xl mx-auto flex items-center justify-center p-4 md:p-8 mt-16 md:mt-20 mb-6 ${previewScrollMode === 'horizontal' ? 'overflow-x-auto flex-row snap-x' : 'overflow-auto flex-col'}`}>
-            {isPreviewLoading ? (
-              <div className="flex flex-col items-center justify-center gap-4">
-                <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-                <p className="text-stone-800 font-extrabold text-sm tracking-wide">Chargement du document...</p>
-              </div>
-            ) : activePreviewItem.isImage && activePreviewItem.url ? (
-              <div className={`bg-white border-3 border-stone-800 rounded-3xl p-6 shadow-[6px_6px_0px_0px_#1c1917] max-h-full flex items-center justify-center overflow-hidden ${previewScrollMode === 'horizontal' ? 'min-w-[80vw] snap-center shrink-0' : ''}`}>
-                <img
-                  src={activePreviewItem.url}
-                  alt={activePreviewItem.name}
-                  className="max-w-full max-h-[70vh] object-contain rounded-xl"
+          {/* Main Content Area: 3 Columns on Desktop, Navigable Tabs on Mobile */}
+          <div className="flex-1 w-full h-dvh">
+            
+            {/* Desktop 3-Column Grid / Mobile Single Tab */}
+            <div 
+              ref={previewContainerRef}
+              className={`w-full h-full flex flex-col md:grid gap-0 relative ${isResizingLeft || isResizingRight ? 'select-none pointer-events-none' : ''}`}
+              style={{
+                gridTemplateColumns: isCenterFullscreen || isRightFullscreen ? '100%' : `${previewLeftWidth}% ${100 - previewLeftWidth - previewRightWidth}% ${previewRightWidth}%`,
+              }}
+            >
+              
+              {/* Left Navigation Buttons (Mobile) */}
+              {!activePreviewItem?.lockFullscreen && (
+                <div className="md:hidden absolute left-0 top-1/2 -translate-y-1/2 -ml-2 z-20">
+                  <button 
+                    onClick={() => setMobilePreviewTab(prev => Math.max(0, prev - 1) as 0|1|2)}
+                    disabled={mobilePreviewTab === 0}
+                    className={`p-2 rounded-full bg-white border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all ${mobilePreviewTab === 0 ? 'opacity-50' : 'active:translate-x-0.5 active:translate-y-0.5'}`}
+                  >
+                    <ArrowLeft className="w-5 h-5" />
+                  </button>
+                </div>
+              )}
+
+              {/* Right Navigation Buttons (Mobile) */}
+              {!activePreviewItem?.lockFullscreen && (
+                <div className="md:hidden absolute right-0 top-1/2 -translate-y-1/2 -mr-2 z-20">
+                  <button 
+                    onClick={() => setMobilePreviewTab(prev => Math.min(2, prev + 1) as 0|1|2)}
+                    disabled={mobilePreviewTab === 2}
+                    className={`p-2 rounded-full bg-white border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all ${mobilePreviewTab === 2 ? 'opacity-50' : 'active:translate-x-0.5 active:translate-y-0.5'}`}
+                  >
+                    <ArrowLeftRight className="w-5 h-5 rotate-180" />
+                  </button>
+                </div>
+              )}
+
+                {/* Column 1: Left Area */}
+                <LeftMenu 
+                  isCenterFullscreen={isCenterFullscreen}
+                  isRightFullscreen={isRightFullscreen}
+                  mobilePreviewTab={mobilePreviewTab}
+                  isAssistantOpen={isAssistantOpen}
+                  setIsAssistantOpen={setIsAssistantOpen}
+                  setIsResizingLeft={setIsResizingLeft}
+                  activePreviewItem={activePreviewItem}
+                  setActivePreviewItem={setActivePreviewItem}
+                  activeFolderDetail={activeFolderDetail}
+                  onImportFile={() => {
+                    setActivePreviewItem(null);
+                    handleSetTab('upload');
+                  }}
                 />
-              </div>
-            ) : (
-              <div className={`bg-white border-3 border-stone-800 rounded-3xl p-8 sm:p-12 flex flex-col items-center justify-center text-center shadow-[6px_6px_0px_0px_#1c1917] max-w-md w-full animate-fadeIn ${previewScrollMode === 'horizontal' ? 'snap-center shrink-0 min-w-[320px]' : ''}`}>
-                <div className="mb-6">
-                  <FileIconBadge fileName={activePreviewItem.name} size={64} />
-                </div>
-                <h4 className="text-lg font-extrabold text-stone-900 mb-2">{activePreviewItem.name}</h4>
-                <p className="text-xs text-stone-500 font-mono mb-6">
-                  Taille : {(() => {
-                    const bytes = activePreviewItem.size;
-                    if (!bytes) return '0 o';
-                    const k = 1024;
-                    const sizes = ['o', 'Ko', 'Mo', 'Go'];
-                    const i = Math.floor(Math.log(bytes) / Math.log(k));
-                    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-                  })()} • Mode {previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}
-                </p>
-                <div className="bg-orange-50 border-2 border-orange-200 rounded-xl p-4 text-xs text-orange-900 font-medium leading-relaxed">
-                  Ce document est entièrement chargé en mode {previewScrollMode === 'vertical' ? 'vertical (défilement haut en bas)' : 'horizontal (défilement latéral)'}.
-                </div>
-              </div>
-            )}
+
+                {/* Column 2: Center Area */}
+                <CenterMenu 
+                  isCenterFullscreen={isCenterFullscreen}
+                  setIsCenterFullscreen={setIsCenterFullscreen}
+                  isRightFullscreen={isRightFullscreen}
+                  mobilePreviewTab={mobilePreviewTab}
+                  isPreviewLoading={isPreviewLoading}
+                  activePreviewItem={activePreviewItem}
+                  previewScrollMode={previewScrollMode}
+                />
+
+                {/* Column 3: Right Area */}
+                <RightMenu 
+                  isRightFullscreen={isRightFullscreen}
+                  setIsRightFullscreen={setIsRightFullscreen}
+                  isCenterFullscreen={isCenterFullscreen}
+                  mobilePreviewTab={mobilePreviewTab}
+                  activePreviewItem={activePreviewItem}
+                />
+
+            </div>
           </div>
 
           {/* Share Toast Notification */}
@@ -784,6 +962,26 @@ export default function App() {
           )}
         </div>
       )}
+
+      {/* Study Timer Modal */}
+      <StudyTimerModal
+        isOpen={showStudyTimer}
+        onClose={() => setShowStudyTimer(false)}
+        timerLeft={timerLeft}
+        setTimerLeft={setTimerLeft}
+        timerDuration={timerDuration}
+        setTimerDuration={setTimerDuration}
+        timerRunning={timerRunning}
+        setTimerRunning={setTimerRunning}
+        customHours={customHours}
+        setCustomHours={setCustomHours}
+        customMinutes={customMinutes}
+        setCustomMinutes={setCustomMinutes}
+        customSeconds={customSeconds}
+        setCustomSeconds={setCustomSeconds}
+        timerFinishedAlert={timerFinishedAlert}
+        setTimerFinishedAlert={setTimerFinishedAlert}
+      />
     </div>
   );
 }

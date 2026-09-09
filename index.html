@@ -9,11 +9,40 @@
     <meta property="og:description" content="Plateforme web et mobile pour étudiants permettant d'importer des dossiers de fichiers et de générer des liens de partage uniques et sécurisés." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
+    <style>
+      /* Hide Google Translate Banner and Tooltip aggressively */
+      .goog-te-banner-frame.skiptranslate, 
+      iframe.goog-te-banner-frame { display: none !important; } 
+      body { top: 0px !important; position: static !important; }
+      .VIpgJd-ZVi9od-ORHb-OEVmcd { display: none !important; }
+      #goog-gt-tt { display: none !important; }
+      .goog-tooltip { display: none !important; }
+      .goog-tooltip:hover { display: none !important; }
+      .goog-text-highlight { background-color: transparent !important; border: none !important; box-shadow: none !important; }
+    </style>
+    <script type="text/javascript">
+      function googleTranslateElementInit() {
+        new google.translate.TranslateElement({pageLanguage: 'fr', autoDisplay: false}, 'google_translate_element');
+      }
+    </script>
+    <script type="text/javascript" src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
   </head>
   <body>
+    <div id="google_translate_element" style="display:none;"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
+      // Force block text selection and copying everywhere except inputs
+      ['selectstart', 'copy', 'contextmenu'].forEach(eventType => {
+        document.addEventListener(eventType, function(e) {
+          const tag = e.target.tagName;
+          const isContentEditable = e.target.isContentEditable || e.target.getAttribute('contenteditable') === 'true';
+          if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !isContentEditable) {
+            e.preventDefault();
+          }
+        });
+      });
+
       if (window.visualViewport) {
         const initialHeight = window.visualViewport.height;
         window.visualViewport.addEventListener('resize', () => {

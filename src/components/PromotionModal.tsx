@@ -31,76 +31,76 @@ export const PromotionModal: React.FC<PromotionModalProps> = ({ onClose }) => {
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-xs p-4 animate-fadeIn overflow-y-auto">
-      <div className="bg-[#FDFBF7] border-3 border-stone-800 rounded-3xl shadow-[8px_8px_0px_0px_#1c1917] max-w-lg w-full p-6 text-stone-900 relative my-auto max-h-[90vh] overflow-y-auto">
+      <div className="bg-[#FDFBF7] border-3 border-stone-800 rounded-3xl shadow-[8px_8px_0px_0px_#1c1917] max-w-xl md:max-w-3xl w-full p-6 md:p-10 text-stone-900 relative my-auto max-h-[90vh] overflow-y-auto">
         {/* Top Header */}
-        <div className="flex items-center justify-between pb-4 border-b border-stone-300 mb-6">
+        <div className="flex items-center justify-between pb-4 border-b border-stone-300 mb-6 md:mb-8">
           <button
             onClick={() => alert("Record de promotion")}
-            className="text-xs text-stone-700 hover:text-stone-900 transition-colors font-bold px-3 py-1.5 bg-stone-100 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]"
+            className="text-xs md:text-sm text-stone-700 hover:text-stone-900 transition-colors font-bold px-3 py-1.5 md:px-4 md:py-2 bg-stone-100 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]"
           >
             Record
           </button>
-          <h2 className="text-xl font-extrabold tracking-tight text-stone-900">Promotion</h2>
+          <h2 className="text-xl md:text-3xl font-extrabold tracking-tight text-stone-900">Promotion</h2>
           <button
             onClick={onClose}
-            className="p-2 hover:bg-stone-200 rounded-xl transition-colors text-stone-700 border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]"
+            className="p-2 md:p-2.5 hover:bg-stone-200 rounded-xl transition-colors text-stone-700 border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]"
           >
-            <X className="w-5 h-5" />
+            <X className="w-5 h-5 md:w-6 md:h-6" />
           </button>
         </div>
 
         {/* Déjà promu */}
-        <div className="text-center mb-6">
-          <p className="text-stone-800 font-bold text-lg">
-            Déjà promu <span className="text-orange-600 font-extrabold text-xl">9</span> personne(s)
+        <div className="text-center mb-6 md:mb-8">
+          <p className="text-stone-800 font-bold text-lg md:text-2xl">
+            Déjà promu <span className="text-orange-600 font-extrabold text-xl md:text-3xl">9</span> personne(s)
           </p>
         </div>
 
         {/* QR Code Card */}
-        <div className="bg-white border-3 border-stone-800 rounded-2xl p-6 flex flex-col items-center justify-center shadow-[4px_4px_0px_0px_#1c1917] mb-6">
-          <div className="w-48 h-48 bg-stone-900 rounded-xl p-3 flex items-center justify-center relative group">
+        <div className="bg-white border-3 border-stone-800 rounded-2xl md:rounded-3xl p-6 md:p-8 flex flex-col items-center justify-center shadow-[4px_4px_0px_0px_#1c1917] md:shadow-[6px_6px_0px_0px_#1c1917] mb-6 md:mb-8">
+          <div className="w-48 h-48 md:w-64 md:h-64 bg-stone-900 rounded-xl md:rounded-2xl p-3 md:p-5 flex items-center justify-center relative group">
             <svg viewBox="0 0 24 24" className="w-full h-full text-white fill-current">
               <path d="M2,2H10V10H2V2M4,4V8H8V4H4M14,2H22V10H14V2M16,4V8H20V4H16M2,14H10V22H2V14M4,16V20H8V16H4M18,14V18H22V14H18M14,18H16V22H14V18M18,20H22V22H18V20M12,2H14V6H12V2M12,8H14V12H12V8M6,12H8V14H6V12M10,12H12V14H10V12M16,12H20V14H16V12M12,14H14V18H12V14M12,20H14V22H12V20Z" />
             </svg>
           </div>
-          <p className="text-xs text-stone-700 mt-3 font-mono font-bold">
+          <p className="text-xs md:text-base text-stone-700 mt-4 md:mt-5 font-mono font-bold">
             Mon code d'invitation: <span className="text-orange-600">{invitationCode}</span>
           </p>
-          <div className="mt-4 flex items-center gap-2 w-full">
+          <div className="mt-4 md:mt-6 flex items-center gap-2 md:gap-3 w-full md:w-3/4 mx-auto">
             <input
               type="text"
               readOnly
               value={shareUrl}
-              className="bg-stone-100 border-2 border-stone-800 rounded-xl text-xs px-3 py-2.5 text-stone-700 font-mono flex-1 outline-none"
+              className="bg-stone-100 border-2 border-stone-800 rounded-xl md:rounded-2xl text-xs md:text-sm px-3 md:px-4 py-2.5 md:py-3 text-stone-700 font-mono flex-1 outline-none"
             />
             <button
               onClick={handleCopy}
-              className="bg-stone-900 hover:bg-stone-800 text-white text-xs font-bold px-4 py-2.5 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center gap-1.5 transition-all active:scale-95"
+              className="bg-stone-900 hover:bg-stone-800 text-white text-xs md:text-sm font-bold px-4 md:px-5 py-2.5 md:py-3 rounded-xl md:rounded-2xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center gap-1.5 md:gap-2 transition-all active:scale-95"
             >
-              {copied ? <Check className="w-4 h-4 text-emerald-400" /> : <Copy className="w-4 h-4" />}
+              {copied ? <Check className="w-4 h-4 md:w-5 md:h-5 text-emerald-400" /> : <Copy className="w-4 h-4 md:w-5 md:h-5" />}
               {copied ? 'Copié' : 'Copier'}
             </button>
           </div>
         </div>
 
         {/* Partager maintenant button */}
-        <div className="mb-6">
+        <div className="mb-6 md:mb-8 md:w-3/4 lg:w-2/3 mx-auto">
           <button
             onClick={handleShare}
-            className="w-full bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-base py-3.5 px-6 rounded-2xl border-3 border-stone-800 shadow-[4px_4px_0px_0px_#1c1917] flex items-center justify-center gap-2 transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
+            className="w-full bg-orange-600 hover:bg-orange-700 text-white font-extrabold text-base md:text-lg py-3.5 md:py-4 px-6 rounded-2xl md:rounded-3xl border-3 border-stone-800 shadow-[4px_4px_0px_0px_#1c1917] md:shadow-[6px_6px_0px_0px_#1c1917] flex items-center justify-center gap-2 md:gap-3 transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[2px_2px_0px_0px_#1c1917]"
           >
-            <Share2 className="w-5 h-5" />
+            <Share2 className="w-5 h-5 md:w-6 md:h-6" />
             <span>Partager maintenant</span>
           </button>
         </div>
 
         {/* Informations promotionnelles */}
-        <div className="bg-stone-100 border-2 border-stone-800 rounded-2xl p-5 shadow-inner space-y-3">
-          <div className="flex items-center gap-2 mb-2">
-            <Trophy className="w-5 h-5 text-amber-600" />
-            <h3 className="font-extrabold text-base text-stone-900">Informations promotionnelles</h3>
+        <div className="bg-stone-100 border-2 border-stone-800 rounded-2xl md:rounded-3xl p-5 md:p-8 shadow-inner space-y-3 md:space-y-4">
+          <div className="flex items-center gap-2 md:gap-3 mb-2 md:mb-4">
+            <Trophy className="w-5 h-5 md:w-7 md:h-7 text-amber-600" />
+            <h3 className="font-extrabold text-base md:text-xl text-stone-900">Informations promotionnelles</h3>
           </div>
-          <ol className="text-xs text-stone-700 space-y-2.5 list-decimal pl-4 leading-relaxed font-medium">
+          <ol className="text-xs md:text-sm lg:text-base text-stone-700 space-y-2.5 md:space-y-4 list-decimal pl-4 md:pl-6 leading-relaxed font-medium">
             <li>
               Chaque fois que vous promouvez avec succès une personne, vous bénéficierez de 5 jours de publicité gratuite, qui peuvent être accumulés de manière illimitée~
             </li>

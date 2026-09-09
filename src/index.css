@@ -14,6 +14,23 @@ html, body {
   -ms-overflow-style: none; /* IE and Edge */
 }
 
+/* Force prevent text selection on ALL elements aggressively */
+* {
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+  user-select: none !important;
+  -webkit-touch-callout: none !important;
+}
+
+/* Re-enable text selection only in input fields so they remain usable */
+input, textarea, [contenteditable="true"], input *, textarea *, [contenteditable="true"] * {
+  -webkit-user-select: auto !important;
+  -moz-user-select: auto !important;
+  -ms-user-select: auto !important;
+  user-select: auto !important;
+}
+
 html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar {
   display: none; /* Chrome, Safari and Opera */
 }
@@ -40,9 +57,6 @@ html::-webkit-scrollbar, body::-webkit-scrollbar, *::-webkit-scrollbar {
   html, body, #root {
     overflow-y: auto;
     height: auto;
-  }
-  .app-scroll-container {
-    padding-bottom: 0;
   }
 }
 

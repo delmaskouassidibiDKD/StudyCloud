@@ -299,7 +299,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
   return (
     <div 
-      className="absolute inset-0 z-30 w-full h-full bg-[#FDFBF7] text-stone-900 overflow-y-auto overscroll-contain animate-fadeIn"
+      className="absolute inset-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] h-full bg-[#FDFBF7] text-stone-900 overflow-y-auto overscroll-contain animate-fadeIn"
       style={{ WebkitOverflowScrolling: 'touch' }}
     >
       {/* Toast Notification */}
@@ -437,9 +437,9 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
       <div className="pb-40">
         {/* Product Picker Full-Screen Page */}
         {activePage === 'product-picker' && (
-          <div className="w-full max-w-md mx-auto px-4 py-4 animate-fadeIn space-y-4 text-left">
+          <div className="w-full max-w-5xl mx-auto px-4 sm:px-8 py-4 sm:py-8 animate-fadeIn space-y-4 text-left">
             {/* Search Input */}
-            <div>
+            <div className="max-w-xl mx-auto">
               <input
                 type="text"
                 value={productSearchQuery}
@@ -459,7 +459,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                   Aucun produit trouvé.
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
                   {products.filter(p => 
                     p.title.toLowerCase().includes(productSearchQuery.toLowerCase()) ||
                     (p.category && p.category.toLowerCase().includes(productSearchQuery.toLowerCase()))
@@ -613,36 +613,36 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
         {/* 1. Publish Page - Up to 3 images import */}
         {activePage === 'publish' && (
-          <div className="w-full max-w-md mx-auto px-4 py-6 animate-fadeIn space-y-4 text-left">
-            <div className="flex items-center gap-3 pb-2">
-              <div className="w-10 h-10 rounded-xl bg-purple-100 border-2 border-stone-800 flex items-center justify-center text-purple-700 shadow-[2px_2px_0px_0px_#1c1917]">
-                <Plus className="w-5 h-5" />
+          <div className="w-full max-w-2xl lg:max-w-4xl mx-auto px-4 sm:px-8 py-6 md:py-10 animate-fadeIn space-y-4 md:space-y-6 text-left">
+            <div className="flex items-center gap-3 md:gap-4 pb-2 md:pb-4">
+              <div className="w-10 h-10 md:w-14 md:h-14 rounded-xl md:rounded-2xl bg-purple-100 border-2 border-stone-800 flex items-center justify-center text-purple-700 shadow-[2px_2px_0px_0px_#1c1917]">
+                <Plus className="w-5 h-5 md:w-7 md:h-7" />
               </div>
               <div>
-                <h3 className="font-extrabold text-sm text-stone-900">Nouveau Produit / Service</h3>
-                <p className="text-[11px] text-stone-500 font-medium">Proposez vos ressources à la communauté</p>
+                <h3 className="font-extrabold text-sm md:text-lg text-stone-900">Nouveau Produit / Service</h3>
+                <p className="text-[11px] md:text-xs text-stone-500 font-medium">Proposez vos ressources à la communauté</p>
               </div>
             </div>
 
-            <form onSubmit={handlePublishProduct} className="space-y-4">
+            <form onSubmit={handlePublishProduct} className="space-y-4 md:space-y-6">
               <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">Nom du produit *</label>
+                <label className="block text-xs md:text-sm font-bold text-stone-700 mb-1 md:mb-1.5">Nom du produit *</label>
                 <input
                   type="text"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   placeholder="Ex: Résumé de Cours d'Électrotechnique"
                   required
-                  className="w-full bg-white border-2 border-stone-800 rounded-xl p-3 text-xs text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                  className="w-full bg-white border-2 border-stone-800 rounded-xl md:rounded-2xl p-3 md:p-4 text-xs md:text-sm text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
                 />
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">Catégorie *</label>
+                <label className="block text-xs md:text-sm font-bold text-stone-700 mb-1 md:mb-1.5">Catégorie *</label>
                 <select
                   value={newCategory}
                   onChange={(e) => setNewCategory(e.target.value)}
-                  className="w-full bg-white border-2 border-stone-800 rounded-xl p-3 text-xs text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                  className="w-full bg-white border-2 border-stone-800 rounded-xl md:rounded-2xl p-3 md:p-4 text-xs md:text-sm text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
                 >
                   <option value="Vente digital (PDF)">Vente digital (PDF)</option>
                   <option value="Vente de documents (livre) à la livraison">Vente de documents (livre) à la livraison</option>
@@ -650,22 +650,22 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                   <option value="Autre">Autre</option>
                 </select>
                 {newCategory === 'Autre' && (
-                  <div className="mt-2">
+                  <div className="mt-2 md:mt-3">
                     <input
                       type="text"
                       value={customCategory}
                       onChange={(e) => setCustomCategory(e.target.value)}
                       placeholder="Écrivez votre catégorie..."
                       required
-                      className="w-full bg-white border-2 border-stone-800 rounded-xl p-3 text-xs text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                      className="w-full bg-white border-2 border-stone-800 rounded-xl md:rounded-2xl p-3 md:p-4 text-xs md:text-sm text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
                     />
                   </div>
                 )}
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">Prix (Chiffres uniquement) *</label>
-                <div className="flex gap-2">
+                <label className="block text-xs md:text-sm font-bold text-stone-700 mb-1 md:mb-1.5">Prix (Chiffres uniquement) *</label>
+                <div className="flex gap-2 md:gap-3">
                   <input
                     type="text"
                     inputMode="numeric"
@@ -676,12 +676,12 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                     }}
                     placeholder="Ex: 5000"
                     required
-                    className="flex-1 bg-white border-2 border-stone-800 rounded-xl p-3 text-xs text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                    className="flex-1 bg-white border-2 border-stone-800 rounded-xl md:rounded-2xl p-3 md:p-4 text-xs md:text-sm text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
                   />
                   <select
                     value={newCurrency}
                     onChange={(e) => setNewCurrency(e.target.value)}
-                    className="bg-white border-2 border-stone-800 rounded-xl px-3 py-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
+                    className="bg-white border-2 border-stone-800 rounded-xl md:rounded-2xl px-3 md:px-5 py-3 md:py-4 text-xs md:text-sm font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
                   >
                     <option value="FCFA">FCFA</option>
                     <option value="$">($) Dollars</option>
@@ -694,9 +694,9 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
               </div>
 
               <div>
-                <div className="flex items-center justify-between mb-1">
-                  <label className="block text-xs font-bold text-stone-700">Images du produit (Max 3) *</label>
-                  <span className="text-[11px] font-bold text-stone-500">{newImageUrls.length}/3 importées</span>
+                <div className="flex items-center justify-between mb-1 md:mb-1.5">
+                  <label className="block text-xs md:text-sm font-bold text-stone-700">Images du produit (Max 3) *</label>
+                  <span className="text-[11px] md:text-xs font-bold text-stone-500">{newImageUrls.length}/3 importées</span>
                 </div>
                 <input
                   type="file"
@@ -706,17 +706,17 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                   className="hidden"
                 />
                 
-                <div className="flex flex-wrap items-center gap-3">
+                <div className="flex flex-wrap items-center gap-3 md:gap-4 mt-2">
                   {newImageUrls.map((imgUrl, idx) => (
-                    <div key={idx} className="relative w-16 h-16 rounded-xl border-2 border-stone-800 overflow-hidden shadow-[2px_2px_0px_0px_#1c1917] bg-white">
+                    <div key={idx} className="relative w-16 h-16 md:w-24 md:h-24 rounded-xl md:rounded-2xl border-2 border-stone-800 overflow-hidden shadow-[2px_2px_0px_0px_#1c1917] bg-white">
                       <img src={imgUrl} alt={`Aperçu ${idx + 1}`} className="w-full h-full object-cover" />
                       <button
                         type="button"
                         onClick={() => handleRemoveImage(idx)}
-                        className="absolute top-0.5 right-0.5 bg-red-600 text-white rounded-full p-1 text-[9px] shadow cursor-pointer hover:bg-red-700"
+                        className="absolute top-1 right-1 bg-red-600 text-white rounded-full p-1.5 md:p-2 text-[9px] shadow cursor-pointer hover:bg-red-700"
                         title="Supprimer cette image"
                       >
-                        <X className="w-3 h-3" />
+                        <X className="w-3 h-3 md:w-4 md:h-4" />
                       </button>
                     </div>
                   ))}
@@ -725,35 +725,35 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                     <button
                       type="button"
                       onClick={() => imageInputRef.current?.click()}
-                      className="w-16 h-16 rounded-xl border-2 border-stone-800 border-dashed bg-white hover:bg-purple-50 text-purple-700 font-extrabold text-xs flex flex-col items-center justify-center gap-1 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5"
+                      className="w-16 h-16 md:w-24 md:h-24 rounded-xl md:rounded-2xl border-2 border-stone-800 border-dashed bg-white hover:bg-purple-50 text-purple-700 font-extrabold text-xs md:text-sm flex flex-col items-center justify-center gap-1 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5"
                     >
-                      <Upload className="w-4 h-4" />
-                      <span className="text-[9px]">Ajouter</span>
+                      <Upload className="w-4 h-4 md:w-6 md:h-6" />
+                      <span className="text-[9px] md:text-[11px]">Ajouter</span>
                     </button>
                   )}
                 </div>
                 {newImageUrls.length === 0 && (
-                  <p className="text-[10px] text-red-600 font-bold mt-1">Veuillez importer au moins 1 image (Max 3).</p>
+                  <p className="text-[10px] md:text-xs text-red-600 font-bold mt-1.5">Veuillez importer au moins 1 image (Max 3).</p>
                 )}
               </div>
 
               <div>
-                <label className="block text-xs font-bold text-stone-700 mb-1">Description détaillée *</label>
+                <label className="block text-xs md:text-sm font-bold text-stone-700 mb-1 md:mb-1.5">Description détaillée *</label>
                 <textarea
-                  rows={4}
+                  rows={5}
                   value={newDesc}
                   onChange={(e) => setNewDesc(e.target.value)}
                   placeholder="Décrivez votre offre..."
                   required
-                  className="w-full bg-white border-2 border-stone-800 rounded-xl p-3 text-xs text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917] resize-none"
+                  className="w-full bg-white border-2 border-stone-800 rounded-xl md:rounded-2xl p-3 md:p-4 text-xs md:text-sm text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917] resize-none"
                 />
               </div>
 
-              <div className="pt-3">
+              <div className="pt-3 md:pt-5">
                 <button
                   type="submit"
                   disabled={!newTitle.trim() || !newPrice.trim() || !newDesc.trim() || newImageUrls.length === 0 || (newCategory === 'Autre' && !customCategory.trim())}
-                  className={`w-full py-3.5 font-extrabold text-xs rounded-xl border-2 border-stone-800 transition-all ${
+                  className={`w-full py-3.5 md:py-4 font-extrabold text-xs md:text-sm rounded-xl md:rounded-2xl border-2 border-stone-800 transition-all ${
                     newTitle.trim() && newPrice.trim() && newDesc.trim() && newImageUrls.length > 0 && (newCategory !== 'Autre' || customCategory.trim() !== '')
                       ? 'bg-purple-600 hover:bg-purple-700 text-white shadow-[3px_3px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 cursor-pointer'
                       : 'bg-stone-200 text-stone-400 shadow-none cursor-not-allowed'
@@ -770,12 +770,12 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
         {activePage === 'list' && (
           <div className="w-full animate-fadeIn">
             {/* Sticky Top Switcher: Mes publications & Boutique */}
-            <div className="sticky top-[51px] z-30 bg-[#FDFBF7]/95 backdrop-blur-xs px-4 py-2 border-b border-stone-200/60 shadow-xs">
-              <div className="max-w-md mx-auto flex items-center gap-2 bg-stone-100 p-1.5 rounded-2xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]">
+            <div className="sticky top-[51px] z-30 bg-[#FDFBF7]/95 backdrop-blur-xs px-4 py-2 md:py-4 border-b border-stone-200/60 shadow-xs">
+              <div className="max-w-3xl lg:max-w-4xl mx-auto flex items-center gap-2 bg-stone-100 p-1.5 md:p-2 rounded-2xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]">
                 <button
                   type="button"
                   onClick={() => setListSubView('publications')}
-                  className={`flex-1 py-2 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer ${
+                  className={`flex-1 py-2 md:py-3 font-extrabold text-xs md:text-sm rounded-xl md:rounded-2xl border-2 transition-all cursor-pointer ${
                     listSubView === 'publications'
                       ? 'bg-stone-900 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
                       : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
@@ -786,7 +786,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                 <button
                   type="button"
                   onClick={() => setListSubView('boutique')}
-                  className={`flex-1 py-2 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer ${
+                  className={`flex-1 py-2 md:py-3 font-extrabold text-xs md:text-sm rounded-xl md:rounded-2xl border-2 transition-all cursor-pointer ${
                     listSubView === 'boutique'
                       ? 'bg-stone-900 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
                       : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
@@ -797,17 +797,17 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
               </div>
             </div>
 
-            <div className="max-w-md mx-auto px-4 py-4 space-y-4">
+            <div className="max-w-7xl mx-auto px-4 sm:px-8 py-4 md:py-8 space-y-4 md:space-y-6">
               {listSubView === 'publications' ? (
-                <div className="space-y-4">
+                <div className="space-y-4 md:space-y-6">
                   {showPubSearchInput && (
-                    <div className="animate-fadeIn">
+                    <div className="animate-fadeIn max-w-xl mx-auto">
                       <input
                         type="text"
                         value={pubSearchQuery}
                         onChange={(e) => setPubSearchQuery(e.target.value)}
                         placeholder="Rechercher un produit..."
-                        className="w-full bg-white border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                        className="w-full bg-white border-2 border-stone-800 rounded-xl md:rounded-2xl p-3 md:p-4 text-xs md:text-sm font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
                         autoFocus
                       />
                     </div>
@@ -830,7 +830,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                       )}
                     </div>
                   ) : (
-                    <div className="grid grid-cols-2 gap-3">
+                    <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
                       {products.filter(item => 
                         item.title.toLowerCase().includes(pubSearchQuery.toLowerCase()) ||
                         (item.category && item.category.toLowerCase().includes(pubSearchQuery.toLowerCase()))
@@ -844,38 +844,38 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                           >
                             <div>
                               {/* Top Image */}
-                              <div className="w-full h-36 bg-stone-100 relative overflow-hidden">
+                              <div className="w-full h-36 md:h-48 bg-stone-100 relative overflow-hidden">
                                 {displayImages.length > 0 ? (
                                   <img src={displayImages[0]} alt={item.title} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-stone-400">
-                                    <Package className="w-8 h-8" />
+                                    <Package className="w-8 h-8 md:w-12 md:h-12" />
                                   </div>
                                 )}
                               </div>
 
                               {/* Details */}
-                              <div className="p-3 space-y-1">
-                                <h4 className="font-bold text-xs text-stone-900 line-clamp-2">{item.title}</h4>
+                              <div className="p-3 md:p-4 space-y-1 md:space-y-1.5">
+                                <h4 className="font-bold text-xs md:text-sm text-stone-900 line-clamp-2">{item.title}</h4>
                                 {item.description && (
-                                  <p className="text-[11px] text-stone-500 line-clamp-1">{item.description}</p>
+                                  <p className="text-[11px] md:text-xs text-stone-500 line-clamp-1">{item.description}</p>
                                 )}
                               </div>
                             </div>
 
-                            <div className="p-3 pt-0 space-y-2">
+                            <div className="p-3 md:p-4 pt-0 space-y-2">
                               <div className="flex items-center justify-between">
-                                <span className="font-black text-xs text-orange-600">{item.price}</span>
+                                <span className="font-black text-xs md:text-sm text-orange-600">{item.price}</span>
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     handleDeleteProduct(item.id);
                                   }}
-                                  className="text-red-500 hover:text-red-700 p-1 cursor-pointer"
+                                  className="text-red-500 hover:text-red-700 p-1 md:p-1.5 cursor-pointer"
                                   title="Supprimer"
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
+                                  <Trash2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
                                 </button>
                               </div>
                             </div>
@@ -887,10 +887,10 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                 </div>
               ) : (
                 /* Boutique Storefront View */
-                <div className="space-y-4 text-left">
-                  <div className="bg-white rounded-2xl border border-stone-200 p-5 shadow-sm space-y-4">
-                    <div className="flex items-center gap-3">
-                      <div className="w-14 h-14 rounded-full bg-amber-100 border-2 border-stone-800 overflow-hidden shrink-0 shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center font-black text-amber-900 text-base">
+                <div className="space-y-4 md:space-y-6 text-left max-w-7xl mx-auto">
+                  <div className="bg-white rounded-2xl md:rounded-3xl border border-stone-200 p-5 md:p-8 shadow-sm space-y-4 md:space-y-6">
+                    <div className="flex items-center gap-3 md:gap-5">
+                      <div className="w-14 h-14 md:w-20 md:h-20 rounded-full bg-amber-100 border-2 border-stone-800 overflow-hidden shrink-0 shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center font-black text-amber-900 text-base md:text-2xl">
                         {shopAvatarUrl ? (
                           <img src={shopAvatarUrl} alt={shopName} className="w-full h-full object-cover" />
                         ) : (
@@ -898,22 +898,22 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                         )}
                       </div>
                       <div className="overflow-hidden">
-                        <h3 className="font-extrabold text-sm text-stone-900 truncate">{shopName}</h3>
-                        <p className="text-xs text-stone-500 font-medium truncate">{shopPhone}</p>
+                        <h3 className="font-extrabold text-sm md:text-xl text-stone-900 truncate">{shopName}</h3>
+                        <p className="text-xs md:text-sm text-stone-500 font-medium truncate">{shopPhone}</p>
                         {shopWhatsapp && shopWhatsapp !== shopPhone && (
-                          <p className="text-[10px] text-emerald-700 font-bold truncate">WhatsApp: {shopWhatsapp}</p>
+                          <p className="text-[10px] md:text-xs text-emerald-700 font-bold truncate">WhatsApp: {shopWhatsapp}</p>
                         )}
                       </div>
                     </div>
 
-                    <div className="flex items-center gap-2 pt-1">
+                    <div className="flex items-center gap-2 md:gap-4 pt-1 md:pt-2">
                       <button
                         type="button"
                         onClick={() => {
                           setIsSubscribed(!isSubscribed);
                           triggerToast(isSubscribed ? "Vous êtes désabonné de la boutique." : "Vous êtes abonné à la boutique !");
                         }}
-                        className={`flex-1 py-2 font-bold text-xs rounded-xl border-2 transition-all cursor-pointer ${
+                        className={`flex-1 py-2 md:py-3 font-bold text-xs md:text-sm rounded-xl md:rounded-2xl border-2 transition-all cursor-pointer ${
                           isSubscribed
                             ? 'bg-stone-100 text-stone-800 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
                             : 'bg-blue-600 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-blue-700'
@@ -924,9 +924,9 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                       <button
                         type="button"
                         onClick={() => triggerToast("Lien de la boutique copié !")}
-                        className="flex-1 py-2 bg-white text-stone-800 font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-stone-50 cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                        className="flex-1 py-2 md:py-3 bg-white text-stone-800 font-bold text-xs md:text-sm rounded-xl md:rounded-2xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-stone-50 cursor-pointer transition-all flex items-center justify-center gap-1.5 md:gap-2"
                       >
-                        <Share2 className="w-3.5 h-3.5" />
+                        <Share2 className="w-3.5 h-3.5 md:w-5 md:h-5" />
                         <span>Partager</span>
                       </button>
                     </div>
@@ -939,7 +939,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                         <p className="text-xs font-bold text-stone-700">Aucun produit dans la boutique.</p>
                       </div>
                     ) : (
-                      <div className="grid grid-cols-2 gap-3">
+                      <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
                         {products.map((item) => {
                           const displayImages = item.imageUrls && item.imageUrls.length > 0 ? item.imageUrls : (item.imageUrl ? [item.imageUrl] : []);
                           return (
@@ -950,34 +950,34 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                             >
                               <div>
                                 {/* Top Image */}
-                                <div className="w-full h-36 bg-stone-100 relative overflow-hidden">
+                                <div className="w-full h-36 md:h-48 bg-stone-100 relative overflow-hidden">
                                   {displayImages.length > 0 ? (
                                     <img src={displayImages[0]} alt={item.title} className="w-full h-full object-cover" />
                                   ) : (
                                     <div className="w-full h-full flex items-center justify-center text-stone-400">
-                                      <Package className="w-8 h-8" />
+                                      <Package className="w-8 h-8 md:w-12 md:h-12" />
                                     </div>
                                   )}
                                 </div>
 
                                 {/* Details */}
-                                <div className="p-3 space-y-1">
-                                  <h4 className="font-bold text-xs text-stone-900 line-clamp-2">{item.title}</h4>
+                                <div className="p-3 md:p-4 space-y-1 md:space-y-1.5">
+                                  <h4 className="font-bold text-xs md:text-sm text-stone-900 line-clamp-2">{item.title}</h4>
                                   {item.description && (
-                                    <p className="text-[11px] text-stone-500 line-clamp-1">{item.description}</p>
+                                    <p className="text-[11px] md:text-xs text-stone-500 line-clamp-1">{item.description}</p>
                                   )}
                                 </div>
                               </div>
 
-                              <div className="p-3 pt-0 space-y-2">
-                                <div className="font-black text-sm text-orange-600">{item.price}</div>
+                              <div className="p-3 md:p-4 pt-0 space-y-2 md:space-y-3">
+                                <div className="font-black text-sm md:text-base text-orange-600">{item.price}</div>
                                 <button
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     triggerToast(`Commande initiée pour "${item.title}" !`);
                                   }}
-                                  className="w-full py-1.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-[11px] rounded-xl shadow-xs cursor-pointer transition-all"
+                                  className="w-full py-1.5 md:py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-[11px] md:text-sm rounded-xl md:rounded-2xl shadow-xs cursor-pointer transition-all"
                                 >
                                   Commander
                                 </button>
@@ -996,53 +996,53 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
         {/* 3. Advertise Page */}
         {activePage === 'advertise' && (
-          <div className="w-full max-w-md mx-auto px-4 py-6 animate-fadeIn space-y-6 text-left">
-            <div className="space-y-1">
-              <h2 className="font-serif font-black text-xl text-stone-900">Services de Publicité</h2>
-              <p className="text-xs text-stone-600 font-medium">Choisissez une formule pour booster la visibilité de vos produits et atteindre plus de clients.</p>
+          <div className="w-full max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-8 py-6 md:py-10 animate-fadeIn space-y-6 md:space-y-10 text-left">
+            <div className="space-y-2 md:space-y-3">
+              <h2 className="font-serif font-black text-xl md:text-3xl lg:text-4xl text-stone-900">Services de Publicité</h2>
+              <p className="text-xs md:text-sm lg:text-base text-stone-600 font-medium">Choisissez une formule pour booster la visibilité de vos produits et atteindre plus de clients.</p>
             </div>
 
-            <div className="space-y-4">
+            <div className="grid md:grid-cols-2 gap-6 md:gap-8 lg:gap-10">
               {/* Card 1: Basique */}
-              <div className="bg-[#FAF7F2] rounded-3xl border border-stone-200/80 p-6 shadow-sm space-y-5">
-                <div className="space-y-1">
-                  <h3 className="font-serif font-black text-xl text-stone-900">Basique (Sur l'application)</h3>
-                  <p className="text-xs text-stone-600 font-medium">La publication sera faite exclusivement sur l'application. Choisissez votre budget pour définir le nombre de vues et booster votre visibilité.</p>
+              <div className="bg-[#FAF7F2] rounded-3xl border border-stone-200/80 p-6 md:p-8 lg:p-10 shadow-sm space-y-5 md:space-y-8">
+                <div className="space-y-2">
+                  <h3 className="font-serif font-black text-xl md:text-2xl lg:text-3xl text-stone-900">Basique (Sur l'application)</h3>
+                  <p className="text-xs md:text-sm text-stone-600 font-medium">La publication sera faite exclusivement sur l'application. Choisissez votre budget pour définir le nombre de vues et booster votre visibilité.</p>
                 </div>
 
-                <div className="bg-stone-100 rounded-2xl p-4 border border-stone-200 text-xs text-stone-700 font-medium">
+                <div className="bg-stone-100 rounded-2xl p-4 md:p-6 border border-stone-200 text-xs md:text-sm text-stone-700 font-medium leading-relaxed">
                   Diffusion ciblée au sein de la communauté DKD Technologies. Sélectionnez votre budget lors du lancement.
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setShowBasiqueModal(true)}
-                  className="w-full py-3 bg-[#D4C5B9] hover:bg-[#C5B5A8] text-stone-900 font-extrabold text-xs rounded-xl shadow-xs transition-all cursor-pointer"
+                  className="w-full py-3 md:py-4 bg-[#D4C5B9] hover:bg-[#C5B5A8] text-stone-900 font-extrabold text-xs md:text-sm rounded-xl md:rounded-2xl shadow-xs transition-all cursor-pointer"
                 >
                   Commencer
                 </button>
               </div>
 
               {/* Card 2: Pro */}
-              <div className="bg-[#1C3B32] text-white rounded-3xl border border-stone-800 p-6 shadow-md space-y-5">
+              <div className="bg-[#1C3B32] text-white rounded-3xl border border-stone-800 p-6 md:p-8 lg:p-10 shadow-md space-y-5 md:space-y-8">
                 <div className="flex items-start justify-between gap-3">
-                  <div className="space-y-1">
-                    <h3 className="font-serif font-black text-xl text-white">Pro (App &amp; Réseaux Sociaux)</h3>
-                    <p className="text-xs text-stone-300 font-medium">La publication sera faite sur l'application et partagée sur les réseaux sociaux partenaires de DKD Technologies.</p>
+                  <div className="space-y-2">
+                    <h3 className="font-serif font-black text-xl md:text-2xl lg:text-3xl text-white">Pro (App &amp; Réseaux Sociaux)</h3>
+                    <p className="text-xs md:text-sm text-stone-300 font-medium">La publication sera faite sur l'application et partagée sur les réseaux sociaux partenaires de DKD Technologies.</p>
                   </div>
-                  <span className="px-2.5 py-1 bg-amber-400 text-stone-900 font-black text-[9px] rounded-full tracking-wider uppercase shrink-0">
+                  <span className="px-2.5 md:px-3 py-1 md:py-1.5 bg-amber-400 text-stone-900 font-black text-[9px] md:text-[11px] rounded-full md:rounded-lg tracking-wider uppercase shrink-0">
                     Populaire
                   </span>
                 </div>
 
-                <div className="bg-stone-800/60 rounded-2xl p-4 border border-stone-700 text-xs text-stone-200 font-medium">
+                <div className="bg-stone-800/60 rounded-2xl p-4 md:p-6 border border-stone-700 text-xs md:text-sm text-stone-200 font-medium leading-relaxed">
                   Diffusion multi-plateforme maximale (App + Facebook, Instagram &amp; TikTok). Choisissez votre budget lors du lancement.
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setShowProModal(true)}
-                  className="w-full py-3 bg-amber-400 hover:bg-amber-500 text-stone-900 font-extrabold text-xs rounded-xl shadow-md transition-all cursor-pointer"
+                  className="w-full py-3 md:py-4 bg-amber-400 hover:bg-amber-500 text-stone-900 font-extrabold text-xs md:text-sm rounded-xl md:rounded-2xl shadow-md transition-all cursor-pointer"
                 >
                   Commencer
                 </button>
@@ -1053,7 +1053,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
         {/* 4. Sales Analytics Page */}
         {activePage === 'analytics' && (
-          <div className="w-full max-w-md mx-auto px-4 py-6 animate-fadeIn space-y-4 text-left">
+          <div className="w-full max-w-4xl lg:max-w-6xl mx-auto px-4 sm:px-8 py-6 md:py-10 animate-fadeIn space-y-6 text-left">
             <div className="flex items-center justify-between gap-2 pb-2">
               <div className="flex items-center gap-2.5 min-w-0">
                 <div className="w-10 h-10 rounded-xl bg-blue-100 border-2 border-stone-800 flex items-center justify-center text-blue-700 shadow-[2px_2px_0px_0px_#1c1917] shrink-0">
@@ -1136,7 +1136,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
           <div className="w-full animate-fadeIn">
             {/* Sticky Top Switcher: En cours de boost & Terminé */}
             <div className="sticky top-[51px] z-30 bg-[#FDFBF7]/95 backdrop-blur-xs px-4 py-2 border-b border-stone-200/60 shadow-xs">
-              <div className="max-w-md mx-auto flex items-center gap-2 bg-stone-100 p-1.5 rounded-2xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]">
+              <div className="max-w-3xl lg:max-w-4xl mx-auto flex items-center gap-2 bg-stone-100 p-1.5 md:p-2 rounded-2xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]">
                 <button
                   type="button"
                   onClick={() => setBoostSubView('active')}
@@ -1164,7 +1164,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
               </div>
             </div>
 
-            <div className="max-w-md mx-auto px-4 py-4 space-y-4 text-left">
+            <div className="max-w-7xl mx-auto px-4 sm:px-8 py-4 md:py-8 space-y-4 md:space-y-6 text-left">
               {(() => {
                 const filtered = products.filter(p => 
                   p.isBoosted && (boostSubView === 'active' ? p.boostStatus === 'active' : p.boostStatus === 'completed')
@@ -1197,7 +1197,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                 }
 
                 return (
-                  <div className="grid grid-cols-2 gap-3">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">
                     {filtered.map((item) => {
                       const displayImages = item.imageUrls && item.imageUrls.length > 0 ? item.imageUrls : (item.imageUrl ? [item.imageUrl] : []);
                       return (
@@ -1293,7 +1293,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'tween', ease: 'easeOut', duration: 0.25 }}
-              className="absolute top-0 right-0 bottom-0 w-72 sm:w-80 bg-[#FDFBF7] border-l-3 border-stone-800 shadow-2xl p-5 flex flex-col justify-between pointer-events-auto overflow-y-auto text-left"
+              className="absolute top-0 right-0 bottom-0 w-72 sm:w-80 md:w-96 bg-[#FDFBF7] border-l-3 border-stone-800 shadow-2xl p-5 flex flex-col justify-between pointer-events-auto overflow-y-auto text-left"
             >
               <div className="space-y-5">
                 <div className="flex items-center justify-between pb-3 border-b-2 border-stone-200">
@@ -1394,32 +1394,32 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
       {/* Single Field Edit Modal Popup */}
       {editingField && (
         <div className="fixed inset-0 z-[100001] flex items-center justify-center p-4 bg-black/50 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white rounded-3xl border-3 border-stone-800 p-6 max-w-sm w-full shadow-[5px_5px_0px_0px_#1c1917] space-y-5 text-left relative">
-            <div className="flex items-center justify-between pb-3 border-b-2 border-stone-200">
+          <div className="bg-white rounded-3xl border-3 border-stone-800 p-6 md:p-8 max-w-sm md:max-w-lg w-full shadow-[5px_5px_0px_0px_#1c1917] space-y-5 md:space-y-7 text-left relative">
+            <div className="flex items-center justify-between pb-3 md:pb-4 border-b-2 border-stone-200">
               <div>
-                <h3 className="font-extrabold text-sm text-stone-900">
+                <h3 className="font-extrabold text-sm md:text-lg text-stone-900">
                   {editingField === 'name' && "Nom de la boutique"}
                   {editingField === 'phone' && "Numéro de téléphone"}
                   {editingField === 'whatsapp' && "Numéro WhatsApp"}
                   {editingField === 'avatar' && "Photo de profil"}
                 </h3>
-                <p className="text-[11px] text-stone-500 font-medium">
+                <p className="text-[11px] md:text-xs text-stone-500 font-medium">
                   Modifiez cette information pour votre boutique
                 </p>
               </div>
               <button
                 type="button"
                 onClick={() => setEditingField(null)}
-                className="w-8 h-8 rounded-xl bg-stone-100 hover:bg-stone-200 border-2 border-stone-800 flex items-center justify-center text-stone-900 font-bold text-xs cursor-pointer shadow-[2px_2px_0px_0px_#1c1917]"
+                className="w-8 h-8 md:w-10 md:h-10 rounded-xl md:rounded-2xl bg-stone-100 hover:bg-stone-200 border-2 border-stone-800 flex items-center justify-center text-stone-900 font-bold text-xs cursor-pointer shadow-[2px_2px_0px_0px_#1c1917]"
               >
-                <X className="w-4 h-4" />
+                <X className="w-4 h-4 md:w-5 md:h-5" />
               </button>
             </div>
 
-            <form onSubmit={handleApplyFieldEdit} className="space-y-4">
+            <form onSubmit={handleApplyFieldEdit} className="space-y-4 md:space-y-6">
               {editingField === 'name' && (
                 <div>
-                  <label className="block text-xs font-bold text-stone-700 mb-1">Nom de la boutique *</label>
+                  <label className="block text-xs md:text-sm font-bold text-stone-700 mb-1 md:mb-1.5">Nom de la boutique *</label>
                   <input
                     type="text"
                     value={tempFieldValue}
@@ -1427,14 +1427,14 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                     placeholder="Ex: DKD Technologies"
                     required
                     autoFocus
-                    className="w-full bg-white border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                    className="w-full bg-white border-2 border-stone-800 rounded-xl md:rounded-2xl p-3 md:p-4 text-xs md:text-sm font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
                   />
                 </div>
               )}
 
               {editingField === 'phone' && (
                 <div>
-                  <label className="block text-xs font-bold text-stone-700 mb-1">Numéro de téléphone *</label>
+                  <label className="block text-xs md:text-sm font-bold text-stone-700 mb-1 md:mb-1.5">Numéro de téléphone *</label>
                   <input
                     type="text"
                     value={tempFieldValue}
@@ -1442,14 +1442,14 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                     placeholder="Ex: +225 07 00 00 00 00"
                     required
                     autoFocus
-                    className="w-full bg-white border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                    className="w-full bg-white border-2 border-stone-800 rounded-xl md:rounded-2xl p-3 md:p-4 text-xs md:text-sm font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
                   />
                 </div>
               )}
 
               {editingField === 'whatsapp' && (
                 <div>
-                  <label className="block text-xs font-bold text-stone-700 mb-1">Numéro WhatsApp *</label>
+                  <label className="block text-xs md:text-sm font-bold text-stone-700 mb-1 md:mb-1.5">Numéro WhatsApp *</label>
                   <input
                     type="text"
                     value={tempFieldValue}
@@ -1457,14 +1457,14 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                     placeholder="Ex: +225 07 00 00 00 00"
                     required
                     autoFocus
-                    className="w-full bg-white border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                    className="w-full bg-white border-2 border-stone-800 rounded-xl md:rounded-2xl p-3 md:p-4 text-xs md:text-sm font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
                   />
                 </div>
               )}
 
               {editingField === 'avatar' && (
-                <div className="flex flex-col items-center justify-center gap-3 py-2">
-                  <div className="relative w-24 h-24 rounded-full bg-amber-100 border-2 border-stone-800 overflow-hidden shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center text-amber-900 font-black text-2xl">
+                <div className="flex flex-col items-center justify-center gap-3 md:gap-4 py-2 md:py-4">
+                  <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-full bg-amber-100 border-2 border-stone-800 overflow-hidden shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center text-amber-900 font-black text-2xl md:text-4xl">
                     {tempFieldValue ? (
                       <img src={tempFieldValue} alt="Avatar" className="w-full h-full object-cover" />
                     ) : (
@@ -1476,7 +1476,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                       className="absolute inset-0 bg-black/30 hover:bg-black/40 text-white flex items-center justify-center transition-all cursor-pointer opacity-80 hover:opacity-100"
                       title="Changer la photo de profil"
                     >
-                      <Camera className="w-7 h-7" />
+                      <Camera className="w-7 h-7 md:w-10 md:h-10" />
                     </button>
                   </div>
                   <input
@@ -1489,25 +1489,25 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                   <button
                     type="button"
                     onClick={() => avatarInputRef.current?.click()}
-                    className="text-xs font-bold text-orange-600 hover:text-orange-700 underline cursor-pointer"
+                    className="text-xs md:text-sm font-bold text-orange-600 hover:text-orange-700 underline cursor-pointer"
                   >
                     {tempFieldValue ? "Changer la photo" : "Ajouter une photo"}
                   </button>
                 </div>
               )}
 
-              <div className="flex items-center gap-3 pt-2">
+              <div className="flex items-center gap-3 md:gap-5 pt-2 md:pt-4">
                 <button
                   type="button"
                   onClick={() => setEditingField(null)}
-                  className="flex-1 py-3 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer transition-all"
+                  className="flex-1 py-3 md:py-4 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs md:text-sm rounded-xl md:rounded-2xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer transition-all"
                 >
                   Annuler
                 </button>
                 <button
                   type="submit"
                   disabled={!isFieldModified}
-                  className={`flex-1 py-3 font-extrabold text-xs rounded-xl border-2 transition-all ${
+                  className={`flex-1 py-3 md:py-4 font-extrabold text-xs md:text-sm rounded-xl md:rounded-2xl border-2 transition-all ${
                     isFieldModified
                       ? 'bg-orange-600 hover:bg-orange-700 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer active:translate-x-0.5 active:translate-y-0.5'
                       : 'bg-stone-200 text-stone-400 border-stone-300 cursor-not-allowed opacity-70'
@@ -1834,7 +1834,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
       {/* Product Detail Full Screen View */}
       {selectedDetailProduct && (
-        <div className="fixed inset-0 z-[100000] bg-[#FAF8F5] flex flex-col animate-fadeIn overflow-y-auto text-left">
+        <div className="fixed inset-0 md:left-64 z-[100000] bg-[#FAF8F5] flex flex-col animate-fadeIn overflow-y-auto text-left">
           {/* Top Sticky Header */}
           <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-stone-200/80 shadow-2xs">
             <button

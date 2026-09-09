@@ -1,7 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Menu, X, BarChart2, Calendar, FolderTree, Award } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { ResponsiveContainer, BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell } from 'recharts';
+import { ResponsiveContainer, BarChart as RechartsBarChart, Bar, XAxis, YAxis, Tooltip, CartesianGrid, Cell, Radar, RadarChart, PolarGrid, PolarAngleAxis, PolarRadiusAxis, PieChart, Pie, AreaChart, Area } from 'recharts';
 
 interface LevelMenuViewProps {
   onBack: () => void;
@@ -67,7 +67,7 @@ const getTrimesterAverage = (trimestreKey: string, standardScale: number) => {
 
 export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
   const [isRightDrawerOpen, setIsRightDrawerOpen] = useState(false);
-  const [selectedAnalysis, setSelectedAnalysis] = useState<string>('analyse par trimestre');
+  const [selectedAnalysis, setSelectedAnalysis] = useState<string>('analyse globale');
   const [subjectTrimestre, setSubjectTrimestre] = useState<'1' | '2' | '3'>('1');
   const [noteTrimestre, setNoteTrimestre] = useState<'1' | '2' | '3'>('1');
   const [selectedNoteSubject, setSelectedNoteSubject] = useState<string>('');
@@ -227,6 +227,108 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
 
   const subjectData = getSubjectAveragesForTrimester(subjectTrimestre, standardScale);
 
+  const getGlobalSubjectAverages = (scale: number) => {
+    try {
+      const data = localStorage.getItem('user_grades_trimesters_data');
+      const trimData = data ? JSON.parse(data) : {};
+      
+      const subjectMap: Record<string, { totalW: number; totalC: number }> = {};
+      
+      Object.keys(trimData).forEach((trimKey) => {
+        const items = trimData[trimKey] || [];
+        if (Array.isArray(items)) {
+          items.forEach((item: any) => {
+            const subName = item.subject || 'Matière';
+            const subs = item.subGrades || [];
+            if (subs.length > 0) {
+              if (!subjectMap[subName]) subjectMap[subName] = { totalW: 0, totalC: 0 };
+              
+              subs.forEach((s: any) => {
+                let val = 0, max = 20, coeff = 1;
+                if (typeof s === 'object' && s !== null) {
+                  val = Number(s.value) || 0;
+                  max = Number(s.max) || 20;
+                  coeff = Number(s.coefficient) || 1;
+                } else if (typeof s === 'number') {
+                  val = s;
+                }
+                const norm = max > 0 ? (val / max) * scale : val;
+                subjectMap[subName].totalW += norm * coeff;
+                subjectMap[subName].totalC += coeff;
+              });
+            }
+          });
+        }
+      });
+
+      const result = Object.keys(subjectMap).map(sub => {
+        const avg = subjectMap[sub].totalC > 0 ? subjectMap[sub].totalW / subjectMap[sub].totalC : 0;
+        return {
+          subject: sub.length > 15 ? sub.substring(0, 12) + '...' : sub,
+          fullSubject: sub,
+          A: Math.min(Math.max(avg, 0), scale),
+          fullMark: scale,
+        };
+      });
+      return result.length > 0 ? result : [
+        { subject: 'Math', A: 0, fullMark: scale },
+        { subject: 'Phys', A: 0, fullMark: scale },
+        { subject: 'Hist', A: 0, fullMark: scale },
+        { subject: 'Lang', A: 0, fullMark: scale },
+      ];
+    } catch (e) {}
+    return [];
+  };
+
+  const getGlobalGradeDistribution = (scale: number) => {
+    let exc = 0, bien = 0, moyen = 0, faible = 0;
+    try {
+      const data = localStorage.getItem('user_grades_trimesters_data');
+      const trimData = data ? JSON.parse(data) : {};
+      
+      Object.keys(trimData).forEach((trimKey) => {
+        const items = trimData[trimKey] || [];
+        if (Array.isArray(items)) {
+          items.forEach((item: any) => {
+            const subs = item.subGrades || [];
+            subs.forEach((s: any) => {
+              let val = 0, max = 20;
+              if (typeof s === 'object' && s !== null) {
+                val = Number(s.value) || 0;
+                max = Number(s.max) || 20;
+              } else if (typeof s === 'number') {
+                val = s;
+              }
+              const norm = max > 0 ? (val / max) * 20 : val; // Normalize to 20 for bucketing
+              if (norm >= 16) exc++;
+              else if (norm >= 12) bien++;
+              else if (norm >= 10) moyen++;
+              else faible++;
+            });
+          });
+        }
+      });
+    } catch (e) {}
+    
+    const total = exc + bien + moyen + faible;
+    if (total === 0) return [];
+    
+    return [
+      { name: 'Excellent (≥16)', value: exc, color: '#16a34a' },
+      { name: 'Bien (12-16)', value: bien, color: '#9333ea' },
+      { name: 'Moyen (10-12)', value: moyen, color: '#ea580c' },
+      { name: 'Faible (<10)', value: faible, color: '#ef4444' },
+    ].filter(d => d.value > 0);
+  };
+
+  const globalSubjectData = getGlobalSubjectAverages(standardScale);
+  const gradeDistributionData = getGlobalGradeDistribution(standardScale);
+  const globalProgressData = [
+    { name: 'Trimestre 1', avg: t1Avg !== null ? t1Avg : 0, hasNote: t1Avg !== null },
+    { name: 'Trimestre 2', avg: t2Avg !== null ? t2Avg : 0, hasNote: t2Avg !== null },
+    { name: 'Trimestre 3', avg: t3Avg !== null ? t3Avg : 0, hasNote: t3Avg !== null }
+  ];
+
   const ticks = [0, 5, 10, 15, standardScale];
 
   const CustomYTick = (props: any) => {
@@ -317,7 +419,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] z-30 w-full bg-[#F5F0E8] text-[#2D4A3E] px-4 py-6 overflow-y-auto">
+    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] text-[#2D4A3E] px-4 py-6 overflow-y-auto">
       <svg style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
         <defs>
           {trimesterData.map((item, idx) => {
@@ -353,7 +455,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
         </defs>
       </svg>
 
-      <div className="fixed top-14 left-4 right-4 grid grid-cols-3 items-start z-40 pointer-events-none">
+      <div className="fixed top-14 left-4 right-4 md:left-[17rem] grid grid-cols-3 items-start z-40 pointer-events-none">
         <div className="flex flex-col items-start gap-1.5 pointer-events-auto justify-self-start">
           <button
             onClick={onBack}
@@ -442,7 +544,102 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
       </div>
 
       <div className="w-full h-[calc(100vh-100px)] px-2 sm:px-4 pt-12 flex flex-col">
-        {selectedAnalysis === 'analyse par trimestre' ? (
+        {selectedAnalysis === 'analyse globale' ? (
+          <div className="w-full h-full py-4 overflow-y-auto">
+            <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 h-auto min-h-full pb-10">
+              {/* Radar Chart: Capabilities Profile */}
+              <div className="bg-[#E8DFD0]/40 rounded-xl p-4 border border-[#2D4A3E]/10 flex flex-col items-center justify-center min-h-[350px]">
+                <h3 className="font-serif font-bold text-[#2D4A3E] mb-2 text-center">Profil de Compétences</h3>
+                <p className="text-xs text-[#5C6B5A] mb-4 text-center">Moyenne par matière sur l'année</p>
+                <div className="w-full h-[250px]">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <RadarChart cx="50%" cy="50%" outerRadius="70%" data={globalSubjectData}>
+                      <PolarGrid stroke="#2D4A3E/30" />
+                      <PolarAngleAxis dataKey="subject" tick={{ fill: '#2D4A3E', fontSize: 10, fontWeight: 'bold' }} />
+                      <PolarRadiusAxis angle={30} domain={[0, standardScale]} tick={{ fill: '#2D4A3E', fontSize: 10 }} />
+                      <Radar name="Moyenne" dataKey="A" stroke="#2D4A3E" fill="#2D4A3E" fillOpacity={0.5} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
+                        formatter={(value: any, name: any, item: any) => [`${Number(value).toFixed(2).replace('.', ',')} / ${standardScale}`, item.payload.fullSubject || 'Moyenne']}
+                      />
+                    </RadarChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+
+              {/* Pie Chart: Consistency */}
+              <div className="bg-[#E8DFD0]/40 rounded-xl p-4 border border-[#2D4A3E]/10 flex flex-col items-center justify-center min-h-[350px]">
+                <h3 className="font-serif font-bold text-[#2D4A3E] mb-2 text-center">Régularité des Notes</h3>
+                <p className="text-xs text-[#5C6B5A] mb-4 text-center">Répartition de toutes les notes</p>
+                {gradeDistributionData.length > 0 ? (
+                  <div className="w-full flex-1 flex flex-col items-center justify-center min-h-[250px]">
+                    <div className="w-full h-[200px]">
+                      <ResponsiveContainer width="100%" height="100%">
+                        <PieChart>
+                          <Pie
+                            data={gradeDistributionData}
+                            cx="50%"
+                            cy="50%"
+                            innerRadius={60}
+                            outerRadius={90}
+                            paddingAngle={5}
+                            dataKey="value"
+                          >
+                            {gradeDistributionData.map((entry, index) => (
+                              <Cell key={`cell-${index}`} fill={entry.color} />
+                            ))}
+                          </Pie>
+                          <Tooltip 
+                            contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
+                            formatter={(value: any) => [`${value} notes`, 'Quantité']}
+                          />
+                        </PieChart>
+                      </ResponsiveContainer>
+                    </div>
+                    <div className="flex flex-wrap justify-center gap-3 mt-4 mb-2 px-2">
+                      {gradeDistributionData.map((entry, idx) => (
+                        <div key={idx} className="flex items-center gap-1.5 text-xs font-bold" style={{ color: entry.color }}>
+                          <div className="w-3 h-3 rounded-full" style={{ backgroundColor: entry.color }}></div>
+                          {entry.name}: {entry.value}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex items-center justify-center h-[250px] text-sm text-[#5C6B5A] italic">
+                    Pas de notes enregistrées
+                  </div>
+                )}
+              </div>
+
+              {/* Area Chart: Progression */}
+              <div className="bg-[#E8DFD0]/40 rounded-xl p-4 border border-[#2D4A3E]/10 flex flex-col items-center justify-center min-h-[350px] md:col-span-2">
+                <h3 className="font-serif font-bold text-[#2D4A3E] mb-2 text-center">Progression Annuelle</h3>
+                <p className="text-xs text-[#5C6B5A] mb-4 text-center">Évolution de la moyenne globale</p>
+                <div className="w-full h-[250px] max-w-2xl">
+                  <ResponsiveContainer width="100%" height="100%">
+                    <AreaChart data={globalProgressData} margin={{ top: 10, right: 30, left: 0, bottom: 0 }}>
+                      <defs>
+                        <linearGradient id="colorAvg" x1="0" y1="0" x2="0" y2="1">
+                          <stop offset="5%" stopColor="#2D4A3E" stopOpacity={0.8}/>
+                          <stop offset="95%" stopColor="#2D4A3E" stopOpacity={0}/>
+                        </linearGradient>
+                      </defs>
+                      <CartesianGrid strokeDasharray="3 3" stroke="#2D4A3E/15" />
+                      <XAxis dataKey="name" stroke="#2D4A3E" tick={{ fill: '#2D4A3E', fontWeight: 'bold', fontSize: 11 }} />
+                      <YAxis stroke="#2D4A3E" domain={[0, standardScale]} tick={<CustomYTick />} ticks={ticks} />
+                      <Tooltip 
+                        contentStyle={{ backgroundColor: '#F5F0E8', borderColor: '#2D4A3E', borderRadius: '8px', color: '#2D4A3E', fontWeight: 'bold' }}
+                        formatter={(value: any, name: any, item: any) => item.payload.hasNote ? [`${Number(value).toFixed(2).replace('.', ',')} / ${standardScale}`, 'Moyenne'] : ['Pas de note', 'Moyenne']}
+                      />
+                      <Area type="monotone" dataKey="avg" stroke="#2D4A3E" strokeWidth={3} fillOpacity={1} fill="url(#colorAvg)" />
+                    </AreaChart>
+                  </ResponsiveContainer>
+                </div>
+              </div>
+            </div>
+          </div>
+        ) : selectedAnalysis === 'analyse par trimestre' ? (
           <div className="w-full h-full py-4">
             <ResponsiveContainer width="100%" height="100%">
               <RechartsBarChart data={trimesterData} margin={{ top: 20, right: 10, left: 15, bottom: 10 }}>
@@ -587,7 +784,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
         ) : (
           <div className="text-center py-24">
             <h2 className="text-xl font-serif font-bold text-[#2D4A3E] mb-2 capitalize">{selectedAnalysis}</h2>
-            <p className="text-sm font-sans text-[#5C6B5A]">Affichage des données pour ce mode en cours de chargement...</p>
+            <p className="text-sm font-sans text-[#5C6B5A]">Sélectionnez un autre type d'analyse.</p>
           </div>
         )}
       </div>
@@ -611,7 +808,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'spring', damping: 25, stiffness: 300 }}
-              className="absolute top-0 right-0 bottom-0 w-64 sm:w-72 bg-[#F5F0E8] border-l-2 border-[#2D4A3E] rounded-l-2xl shadow-2xl p-5 flex flex-col justify-between pointer-events-auto overflow-hidden"
+              className="absolute top-0 right-0 bottom-0 w-64 sm:w-72 md:w-96 bg-[#F5F0E8] border-l-2 border-[#2D4A3E] rounded-l-2xl shadow-2xl p-5 flex flex-col justify-between pointer-events-auto overflow-hidden"
             >
               <div>
                 <div className="flex items-center justify-between pb-3 mb-5">

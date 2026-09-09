@@ -61,10 +61,21 @@ export const FileIconBadge: React.FC<FileIconBadgeProps> = ({ fileName = '', siz
         <path d="M24 2V12H34" fill="#ffffff" fillOpacity="0.35" />
         {/* Folded corner shadow */}
         <path d="M24 2L34 12H24Z" fill="#000000" fillOpacity="0.2" />
+        
+        {/* Text Label */}
+        <text
+           x="18"
+           y="28"
+           fill="white"
+           fontSize={isFolder ? "6.5" : (label.length > 3 ? "7" : "8.5")}
+           fontWeight="900"
+           fontFamily="ui-sans-serif, system-ui, sans-serif"
+           textAnchor="middle"
+           letterSpacing={label.length > 3 ? "-0.5" : "0"}
+        >
+          {label}
+        </text>
       </svg>
-      <span className={`absolute inset-0 flex items-center justify-center text-white font-black ${isFolder ? 'text-[6px] sm:text-[7px]' : 'text-[7px] sm:text-[8.5px]'} tracking-tighter pt-1 px-0.5 text-center leading-none`}>
-        {label}
-      </span>
     </div>
   );
 };

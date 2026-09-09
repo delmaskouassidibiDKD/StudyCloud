@@ -40,7 +40,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onBack }) 
   ];
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-0 z-30 w-full bg-[#FDFBF7] text-stone-900 overflow-y-auto animate-fadeIn">
+    <div className="absolute inset-x-0 bottom-0 top-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#FDFBF7] text-stone-900 overflow-y-auto animate-fadeIn">
       {/* Sticky Top Bar with Back Button */}
       <div className="sticky top-0 left-0 right-0 z-40 bg-[#FDFBF7]/95 backdrop-blur-xs px-4 py-2 flex items-center justify-between border-b border-stone-200/60">
         <button
@@ -54,7 +54,7 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onBack }) 
         <div className="w-16"></div> {/* Spacer for symmetry */}
       </div>
 
-      <div className="w-full max-w-md mx-auto px-4 py-6 space-y-4 pb-20">
+      <div className="w-full max-w-4xl lg:max-w-6xl mx-auto px-4 sm:px-8 py-6 md:py-10 space-y-4 md:space-y-6 pb-20">
         {notifications.map((notif) => {
           const isExpanded = !!expandedIds[notif.id];
           const isLong = notif.description.length > 80;
@@ -62,47 +62,47 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onBack }) 
           return (
             <div
               key={notif.id}
-              className={`bg-white border-2 border-stone-800 rounded-2xl p-4 shadow-[3px_3px_0px_0px_#1c1917] relative transition-all ${
+              className={`bg-white border-2 border-stone-800 rounded-2xl md:rounded-3xl p-4 md:p-6 shadow-[3px_3px_0px_0px_#1c1917] relative transition-all ${
                 notif.unread ? 'border-l-4 border-l-orange-600' : ''
               }`}
             >
-              <div className="flex items-center justify-between mb-2">
-                <span className="text-[11px] font-bold text-stone-500 flex items-center gap-1">
-                  <Clock className="w-3 h-3 text-orange-600" />
+              <div className="flex items-center justify-between mb-2 md:mb-4">
+                <span className="text-[11px] md:text-xs font-bold text-stone-500 flex items-center gap-1 md:gap-1.5">
+                  <Clock className="w-3 h-3 md:w-4 md:h-4 text-orange-600" />
                   {notif.time}
                 </span>
                 {notif.unread && (
-                  <span className="bg-orange-100 text-orange-700 text-[10px] font-extrabold px-2 py-0.5 rounded-full border border-orange-300">
+                  <span className="bg-orange-100 text-orange-700 text-[10px] md:text-xs font-extrabold px-2 py-0.5 md:py-1 md:px-3 rounded-full border border-orange-300">
                     Nouveau
                   </span>
                 )}
               </div>
 
-              <h3 className="font-extrabold text-sm text-stone-900 mb-1.5">
+              <h3 className="font-extrabold text-sm md:text-lg text-stone-900 mb-1.5 md:mb-2">
                 {notif.title}
               </h3>
 
-              <div className="mb-3">
-                <p className={`text-xs text-stone-600 leading-relaxed ${!isExpanded && isLong ? 'line-clamp-2' : ''}`}>
+              <div className="mb-3 md:mb-5">
+                <p className={`text-xs md:text-sm text-stone-600 leading-relaxed ${!isExpanded && isLong ? 'line-clamp-2 md:line-clamp-3' : ''}`}>
                   {notif.description}
                 </p>
                 {isLong && (
-                  <div className="flex justify-end mt-1.5">
+                  <div className="flex justify-end mt-1.5 md:mt-2.5">
                     <button
                       onClick={() => toggleExpand(notif.id)}
-                      className="inline-flex items-center gap-1 text-[11px] font-bold text-orange-600 hover:text-orange-700 bg-orange-50 px-2.5 py-1 rounded-lg border border-orange-200 transition-all cursor-pointer active:scale-95"
+                      className="inline-flex items-center gap-1 md:gap-1.5 text-[11px] md:text-xs font-bold text-orange-600 hover:text-orange-700 bg-orange-50 px-2.5 md:px-3 py-1 md:py-1.5 rounded-lg border border-orange-200 transition-all cursor-pointer active:scale-95"
                     >
                       <span>{isExpanded ? 'Voir moins' : 'Voir plus'}</span>
-                      {isExpanded ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                      {isExpanded ? <ChevronUp className="w-3 h-3 md:w-4 md:h-4" /> : <ChevronDown className="w-3 h-3 md:w-4 md:h-4" />}
                     </button>
                   </div>
                 )}
               </div>
 
               {/* Related Item Card */}
-              <div className="bg-[#FDFBF7] border border-stone-300 rounded-xl p-2.5 flex items-center gap-2.5 text-xs text-stone-800 font-medium">
-                <div className="w-8 h-8 rounded-lg bg-orange-100 border border-stone-800 flex items-center justify-center text-orange-600 shrink-0">
-                  <FileText className="w-4 h-4" />
+              <div className="bg-[#FDFBF7] border border-stone-300 rounded-xl md:rounded-2xl p-2.5 md:p-4 flex items-center gap-2.5 md:gap-3.5 text-xs md:text-sm text-stone-800 font-medium">
+                <div className="w-8 h-8 md:w-10 md:h-10 rounded-lg md:rounded-xl bg-orange-100 border border-stone-800 flex items-center justify-center text-orange-600 shrink-0">
+                  <FileText className="w-4 h-4 md:w-5 md:h-5" />
                 </div>
                 <span className="truncate">{notif.item}</span>
               </div>

@@ -21,7 +21,7 @@ interface LibraryViewProps {
   searchQuery: string;
   setSearchQuery: (q: string) => void;
   onSelectFolder: (folder: SharedFolder) => void;
-  setActivePreviewItem: (file: SharedFile) => void;
+  setActivePreviewItem: (file: any) => void;
 }
 
 const DEFAULT_PRODUCTS: ProductItem[] = [
@@ -79,6 +79,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [showFiliereModal, setShowFiliereModal] = useState(false);
   const [showMenuModal, setShowMenuModal] = useState(false);
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
+  const [activeCategoryTooltipId, setActiveCategoryTooltipId] = useState<string | null>(null);
+
+  useEffect(() => {
+    const handleDocumentClick = () => setActiveCategoryTooltipId(null);
+    document.addEventListener('click', handleDocumentClick);
+    return () => document.removeEventListener('click', handleDocumentClick);
+  }, []);
 
   // Products state for Librairie tab
   const [productsList, setProductsList] = useState<ProductItem[]>(() => {
@@ -518,18 +525,18 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
       {/* Three-line Menu Side Modal */}
       {showMenuModal && (
-        <div className="fixed inset-0 z-[99999]" onClick={() => setShowMenuModal(false)}>
-          <div className="absolute top-16 right-3 bg-[#2A2A2A] text-white border-2 border-stone-700 rounded-2xl py-2 w-64 shadow-[0px_10px_30px_rgba(0,0,0,0.3)] animate-fadeIn" onClick={(e) => e.stopPropagation()}>
-            <div className="px-4 py-2 border-b border-stone-700 mb-1 flex items-center justify-between">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-orange-400">Options du menu</span>
-              <button onClick={() => setShowMenuModal(false)} className="text-stone-400 hover:text-white text-xs font-bold">✕</button>
+        <div className="fixed inset-0 z-[99999] bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setShowMenuModal(false)}>
+          <div className="absolute top-16 right-3 md:right-8 bg-[#2A2A2A] text-white border-2 border-stone-700 rounded-2xl py-2 w-64 md:w-80 shadow-[0px_10px_30px_rgba(0,0,0,0.3)] animate-fadeIn" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 md:px-5 py-3 md:py-4 border-b border-stone-700 mb-1 flex items-center justify-between">
+              <span className="text-xs md:text-sm font-extrabold uppercase tracking-wider text-orange-400">Options du menu</span>
+              <button onClick={() => setShowMenuModal(false)} className="text-stone-400 hover:text-white text-xs md:text-sm font-bold">✕</button>
             </div>
             <div className="flex flex-col">
               <button 
                 onClick={() => { setShowMenuModal(false); }}
-                className="w-full text-left px-4 py-3 hover:bg-stone-700/60 text-xs font-semibold text-stone-200 transition-colors border-b border-stone-800 flex items-center gap-2 cursor-pointer"
+                className="w-full text-left px-4 md:px-5 py-3 md:py-4 hover:bg-stone-700/60 text-xs md:text-sm font-semibold text-stone-200 transition-colors border-b border-stone-800 flex items-center gap-3 cursor-pointer"
               >
-                <span>👁️</span> Voir l'aperçu des fichiers
+                <span className="text-base md:text-lg">👁️</span> Voir l'aperçu des fichiers
               </button>
               <button 
                 onClick={() => {
@@ -540,9 +547,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   setActiveSubTab('ressources');
                   setShowMenuModal(false);
                 }}
-                className="w-full text-left px-4 py-3 hover:bg-stone-700/60 text-xs font-semibold text-stone-200 transition-colors flex items-center gap-2 cursor-pointer"
+                className="w-full text-left px-4 md:px-5 py-3 md:py-4 hover:bg-stone-700/60 text-xs md:text-sm font-semibold text-stone-200 transition-colors flex items-center gap-3 cursor-pointer"
               >
-                <span>📚</span> Tous les fichiers récents
+                <span className="text-base md:text-lg">📚</span> Tous les fichiers récents
               </button>
             </div>
           </div>
@@ -589,7 +596,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     <p className="text-xs text-stone-600 mt-1">Parcourez les produits de la librairie pour ajouter des articles à votre panier !</p>
                   </div>
                 ) : (
-                  <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 w-full">
                     {cartProducts.map((item) => {
                       const displayImages = item.imageUrls && item.imageUrls.length > 0
                         ? item.imageUrls
@@ -687,7 +694,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   <p className="text-xs text-stone-600 mt-1">Aucun produit ne correspond à votre recherche.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 gap-3 sm:gap-4 w-full">
+                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 w-full">
                   {productsList
                     .filter(item => 
                       item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
@@ -857,7 +864,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <p className="text-xs text-stone-600 mt-1">Essayez de modifier vos termes de recherche ou filtre.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-3 gap-2 sm:gap-3.5 w-full">
+              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-2.5 lg:gap-3 w-full">
                 {filteredItems.map(({ file, folder }) => {
                   const formatSize = (bytes: number) => {
                     if (!bytes) return '0 o';
@@ -870,14 +877,46 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   return (
                     <div
                       key={file.id}
-                      className="bg-[#FDFBF7] border-2 border-stone-800 rounded-xl p-2.5 sm:p-3.5 shadow-[2px_2px_0px_0px_#1c1917] hover:shadow-[4px_4px_0px_0px_#1c1917] transition-all flex flex-col justify-between group overflow-hidden h-full"
+                      className="bg-[#FDFBF7] border-2 border-stone-800 rounded-xl p-2.5 sm:p-3 shadow-[2px_2px_0px_0px_#1c1917] hover:shadow-[3.5px_3.5px_0px_0px_#1c1917] transition-all flex flex-col justify-between group h-full relative"
                     >
                       <div>
                         <div className="flex items-start justify-between gap-1.5 mb-1.5">
                           <FileIconBadge fileName={file.name} size={30} />
-                          <span className="text-[9px] sm:text-[10px] font-extrabold bg-orange-100 text-orange-800 px-1.5 py-0.5 rounded-md border border-stone-800 truncate max-w-[65px]">
-                            {folder.category}
-                          </span>
+                          <div className="relative">
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                setActiveCategoryTooltipId(prev => prev === file.id ? null : file.id);
+                              }}
+                              className="text-[9px] sm:text-[10px] font-extrabold bg-orange-100 hover:bg-orange-200 active:bg-orange-300 text-orange-800 px-1.5 py-0.5 rounded-md border border-stone-800 truncate max-w-[65px] transition-all cursor-pointer block text-left active:scale-95"
+                              title={folder.category}
+                            >
+                              {folder.category}
+                            </button>
+
+                            {/* Full name popup next to the badge */}
+                            {activeCategoryTooltipId === file.id && (
+                              <div 
+                                onClick={(e) => e.stopPropagation()}
+                                className="absolute right-0 top-full mt-1.5 z-50 bg-stone-900 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl shadow-2xl border-2 border-stone-700 whitespace-nowrap animate-fadeIn flex items-center gap-2"
+                              >
+                                <span className="text-orange-400 text-xs">🎓</span>
+                                <span>{folder.category}</span>
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveCategoryTooltipId(null);
+                                  }}
+                                  className="p-0.5 hover:bg-stone-800 rounded text-stone-400 hover:text-white transition-colors cursor-pointer"
+                                  title="Fermer"
+                                >
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </div>
+                            )}
+                          </div>
                         </div>
 
                         <h3 className="text-[11px] sm:text-xs font-extrabold text-stone-900 truncate mb-1 group-hover:text-orange-600 transition-colors" title={file.name}>
@@ -904,7 +943,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         <span className="text-[9px] sm:text-[10px] font-bold text-stone-500">{formatSize(file.size)}</span>
                         <div className="flex items-center gap-2">
                           <button
-                            onClick={() => setActivePreviewItem(file)}
+                            onClick={() => setActivePreviewItem({ ...file, folderName: folder.title, lockFullscreen: true })}
                             className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1 transition-all cursor-pointer"
                             title="Visualiser"
                           >
@@ -957,7 +996,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   </p>
                 </div>
               ) : (
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 w-full">
+                <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 w-full">
                   {filteredPublicFolders.map((folder) => {
                     const isCopied = copiedLinkId === folder.id;
                     const totalBytes = folder.totalSize || folder.files.reduce((acc, f) => acc + (f.size || 0), 0);
@@ -1061,7 +1100,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
       {/* Product Detail Full Screen View */}
       {selectedDetailProduct && (
-        <div id="product-detail-modal" className="fixed inset-0 z-[100000] bg-[#FAF8F5] flex flex-col animate-fadeIn overflow-y-auto text-left">
+        <div id="product-detail-modal" className="fixed inset-0 md:left-64 z-[100000] bg-[#FAF8F5] flex flex-col animate-fadeIn overflow-y-auto text-left">
           {/* Top Sticky Header */}
           <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-stone-200/80 shadow-2xs">
             <button
@@ -1079,7 +1118,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
 
           {/* Body Content */}
-          <div className="flex-1 max-w-md w-full mx-auto space-y-5 pb-12">
+          <div className="flex-1 max-w-7xl w-full mx-auto flex flex-col md:flex-row gap-6 md:gap-10 p-0 md:p-8 pb-12 items-start">
+            
+            {/* Left Column (Image & Info - Sticky on desktop) */}
+            <div className="flex-1 w-full space-y-5 md:sticky md:top-6">
             {/* Horizontal Image Gallery Slider */}
             {(() => {
               const rawImages = selectedDetailProduct.imageUrls && selectedDetailProduct.imageUrls.length > 0
@@ -1189,9 +1231,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </button>
             </div>
 
-            {/* Shop Profile Card */}
-            <div className="px-4 pt-4">
-              <div className="bg-white rounded-3xl border border-stone-200/90 p-4 shadow-sm space-y-3.5 text-left">
+            </div>
+
+            {/* Right Column (Shop & Related Products - Scrollable) */}
+            <div className="flex-1 w-full space-y-5 min-w-0">
+              
+              {/* Shop Profile Card */}
+              <div className="px-4 pt-4 md:px-0 md:pt-0">
+                <div className="bg-white rounded-3xl border border-stone-200/90 p-4 shadow-sm space-y-3.5 text-left">
                 <div className="flex items-center gap-3.5">
                   <div className="w-14 h-14 rounded-full bg-amber-100/90 border-2 border-stone-800 overflow-hidden shrink-0 shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center font-black text-amber-900 text-base">
                     {shopAvatarUrl ? (
@@ -1236,14 +1283,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
             {/* Related Products displayed when scrolling down */}
             <div className="px-4 pt-4 pb-8 space-y-3">
-              <div className="flex items-center justify-between">
+              <div className="flex items-center justify-between md:px-0">
                 <h3 className="font-extrabold text-sm text-stone-900">
                   Autres produits
                 </h3>
                 <span className="text-[11px] text-stone-500 font-bold">📚 Librairie</span>
               </div>
 
-              <div className="grid grid-cols-2 gap-3 pt-1">
+              <div className="grid grid-cols-2 gap-3 pt-1 md:px-0">
                 {productsList
                   .filter((p) => p.id !== selectedDetailProduct.id)
                   .map((item, idx) => {
@@ -1267,7 +1314,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       >
                         <div>
                           {/* Top Image Box */}
-                          <div className="w-full h-32 sm:h-36 bg-stone-100/80 relative overflow-hidden flex items-center justify-center p-2.5">
+                          <div className="w-full h-32 sm:h-36 md:h-48 bg-stone-100/80 relative overflow-hidden flex items-center justify-center p-2.5 md:p-3">
                             {displayImages.length > 0 ? (
                               <img
                                 src={displayImages[0]}
@@ -1276,27 +1323,27 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-stone-300">
-                                <Package className="w-10 h-10 stroke-[1.5]" />
+                                <Package className="w-10 h-10 md:w-12 md:h-12 stroke-[1.5]" />
                               </div>
                             )}
                           </div>
 
                           {/* Details */}
-                          <div className="p-2.5 space-y-0.5">
-                            <h4 className="font-extrabold text-xs text-stone-900 line-clamp-2 leading-snug group-hover:text-orange-600 transition-colors">
+                          <div className="p-2.5 md:p-3 space-y-0.5 md:space-y-1">
+                            <h4 className="font-extrabold text-xs md:text-sm text-stone-900 line-clamp-2 leading-snug group-hover:text-orange-600 transition-colors">
                               {item.title}
                             </h4>
                             {item.description && (
-                              <p className="text-[10px] text-stone-500 line-clamp-1">
+                              <p className="text-[10px] md:text-xs text-stone-500 line-clamp-1">
                                 {item.description}
                               </p>
                             )}
                           </div>
                         </div>
 
-                        <div className="p-2.5 pt-0 space-y-1.5">
+                        <div className="p-2.5 md:p-3 pt-0 space-y-1.5 md:space-y-2.5">
                           <div className="flex items-center justify-between gap-1">
-                            <div className="font-extrabold text-xs text-orange-600">
+                            <div className="font-extrabold text-xs md:text-sm text-orange-600">
                               {item.price}
                             </div>
                             <button
@@ -1305,14 +1352,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                                 e.stopPropagation();
                                 toggleCartItem(item.id, item.title);
                               }}
-                              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border ${
+                              className={`px-2 md:px-2.5 py-0.5 md:py-1 rounded-lg md:rounded-xl text-[10px] md:text-xs font-bold transition-all cursor-pointer flex items-center gap-1 border ${
                                 cartItemIds.includes(item.id)
                                   ? 'bg-amber-100 text-amber-900 border-amber-300 font-extrabold hover:bg-amber-200'
                                   : 'bg-stone-50 hover:bg-stone-100 text-stone-700 border-stone-200'
                               }`}
                               title={cartItemIds.includes(item.id) ? "Retirer du panier" : "Ajouter au panier"}
                             >
-                              <ShoppingCart className={`w-3 h-3 ${cartItemIds.includes(item.id) ? 'text-amber-800 fill-amber-700' : 'text-stone-700'}`} />
+                              <ShoppingCart className={`w-3 h-3 md:w-3.5 md:h-3.5 ${cartItemIds.includes(item.id) ? 'text-amber-800 fill-amber-700' : 'text-stone-700'}`} />
                               <span>{cartItemIds.includes(item.id) ? 'Ajouté' : 'Ajouter'}</span>
                             </button>
                           </div>
@@ -1322,7 +1369,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               e.stopPropagation();
                               triggerToast(`Commande initiée pour "${item.title}" !`);
                             }}
-                            className="w-full py-1.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-[11px] rounded-xl shadow-xs transition-all cursor-pointer text-center active:scale-[0.98]"
+                            className="w-full py-1.5 md:py-2.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-[11px] md:text-sm rounded-xl md:rounded-2xl shadow-xs transition-all cursor-pointer text-center active:scale-[0.98]"
                           >
                             Commander
                           </button>
@@ -1331,6 +1378,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     );
                   })}
               </div>
+            </div>
             </div>
           </div>
         </div>

@@ -156,11 +156,30 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
       const deltaX = Math.abs(e.clientX - p.x);
       const deltaY = Math.abs(e.clientY - p.y);
 
-      // If finger/mouse moves more than 10px before long press fires, cancel long press -> user is scrolling page
-      if (!p.isDragging && (deltaX > 10 || deltaY > 10)) {
-        if (longPressTimerRef.current) {
-          clearTimeout(longPressTimerRef.current);
-          longPressTimerRef.current = null;
+      // If finger/mouse moves more than 5px before long press fires
+      if (!p.isDragging && (deltaX > 5 || deltaY > 5)) {
+        if (e.pointerType === 'mouse') {
+          // Immediately start drag for mouse
+          p.isDragging = true;
+          if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+          }
+          setDragState({
+            note: p.note,
+            x: p.currentX,
+            y: p.currentY,
+            width: p.cardRect.width,
+            height: p.cardRect.height,
+            offsetX: p.x - p.cardRect.left,
+            offsetY: p.y - p.cardRect.top,
+          });
+        } else {
+          // Touch device: user is scrolling page, cancel long press
+          if (longPressTimerRef.current) {
+            clearTimeout(longPressTimerRef.current);
+            longPressTimerRef.current = null;
+          }
         }
       }
 
@@ -372,15 +391,15 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
   const pinnedNotes = notes.filter(n => n.isPinned);
   const unpinnedNotes = notes.filter(n => !n.isPinned);
 
-  // ---------------- RENDER FULL NOTE EDITOR PAGE ----------------
-  if (viewMode === 'editor') {
-    return (
+  // ---------------- RENDER MAIN NOTES LIST VIEW & FULL NOTE EDITOR PAGE ----------------
+  return (
+    <>
       <div 
         style={{ backgroundColor: editorColor }}
-        className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] z-30 w-full text-white overflow-y-auto flex flex-col min-h-[calc(100vh-60px)] select-none transition-colors"
+        className={`absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 w-full md:w-[calc(100%-16rem)] text-white overflow-y-auto flex-col min-h-[calc(100vh-60px)] select-none transition-all duration-300 ease-in-out flex ${viewMode === 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
       >
         {/* Floating Fixed Buttons (No background bar) */}
-        <div className="fixed top-14 left-4 right-4 flex items-center justify-between z-50 pointer-events-none">
+        <div className="fixed top-14 left-4 right-4 md:left-[17rem] flex items-center justify-between z-50 pointer-events-none">
           <button
             onClick={handleSaveAndBack}
             className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-xs rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
@@ -448,7 +467,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         )}
 
         {/* Editor Main Canvas Body */}
-        <div className="flex-1 w-full max-w-3xl mx-auto p-4 sm:p-6 pt-16 flex flex-col space-y-4 pb-20">
+        <div className="flex-1 w-full max-w-5xl mx-auto p-4 sm:p-6 pt-16 flex flex-col space-y-4 pb-20">
           {/* Image Attachment Preview */}
           {editorImage && (
             <div className="relative rounded-2xl overflow-hidden max-h-72 border border-white/20 bg-black/30">
@@ -463,34 +482,53 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
             </div>
           )}
 
-          {/* Title Input */}
-          <input
-            type="text"
-            placeholder="Titre"
-            value={editorTitle}
-            onChange={(e) => setEditorTitle(e.target.value)}
-            className="w-full bg-transparent font-black text-xl sm:text-2xl text-white placeholder-stone-400 focus:outline-none tracking-wide"
-          />
+          {/* Title Textarea (Auto-resizing) */}
+          <div className="relative w-full">
+            {!editorTitle && (
+              <span 
+                className="absolute top-0 left-0 pointer-events-none font-black text-xl sm:text-2xl text-stone-400 tracking-wide select-none"
+                dangerouslySetInnerHTML={{ __html: 'Titre' }}
+              />
+            )}
+            <textarea
+              value={editorTitle}
+              maxLength={120}
+              onChange={(e) => {
+                setEditorTitle(e.target.value);
+                e.target.style.height = 'auto';
+                e.target.style.height = e.target.scrollHeight + 'px';
+              }}
+              rows={1}
+              className="w-full bg-transparent font-black text-xl sm:text-2xl text-white focus:outline-none tracking-wide resize-none overflow-hidden"
+            />
+          </div>
 
           {/* Content Textarea */}
-          <textarea
-            placeholder="Note..."
-            value={editorContent}
-            onChange={(e) => setEditorContent(e.target.value)}
-            rows={20}
-            className="w-full flex-1 bg-transparent text-sm sm:text-base text-stone-100 font-normal placeholder-stone-400 focus:outline-none resize-none leading-relaxed min-h-[450px]"
-          />
+          <div className="relative w-full flex-1 flex flex-col min-h-[450px]">
+            {!editorContent && (
+              <span 
+                className="absolute top-0 left-0 pointer-events-none text-sm sm:text-base text-stone-400 font-normal select-none"
+                dangerouslySetInnerHTML={{ __html: 'Note...' }}
+              />
+            )}
+            <textarea
+              value={editorContent}
+              maxLength={10000}
+              onChange={(e) => setEditorContent(e.target.value)}
+              className="w-full flex-1 bg-transparent text-sm sm:text-base text-stone-100 font-normal focus:outline-none resize-none leading-relaxed h-full"
+            />
+          </div>
         </div>
       </div>
-    );
-  }
 
-  // ---------------- RENDER MAIN NOTES LIST VIEW ----------------
-  return (
-    <div ref={listContainerRef} className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] z-30 w-full bg-[#F5F0E8] text-[#2D4A3E] overflow-y-auto flex flex-col min-h-[calc(100vh-60px)] select-none">
+      {/* ---------------- RENDER MAIN NOTES LIST VIEW ---------------- */}
+      <div 
+        ref={listContainerRef} 
+        className={`absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] text-[#2D4A3E] overflow-y-auto flex-col min-h-[calc(100vh-60px)] select-none transition-all duration-300 ease-in-out flex ${viewMode !== 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
+      >
       
       {/* Fixed 3D Header */}
-      <div className="fixed top-14 left-4 right-4 flex items-center justify-between z-40 pointer-events-none">
+      <div className="fixed top-14 left-4 right-4 md:left-[17rem] flex items-center justify-between z-40 pointer-events-none">
         <button
           onClick={onBack}
           className="pointer-events-auto flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
@@ -499,9 +537,10 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
           <span>Retour</span>
         </button>
 
-        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] bg-[#E8DFD0] px-3 py-1 rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] text-center">
-          Bloc-notes
-        </h1>
+        <h1 
+          className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] bg-[#E8DFD0] px-3 py-1 rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] text-center"
+          dangerouslySetInnerHTML={{ __html: 'Bloc-notes' }}
+        />
 
         <div className="w-16"></div>
       </div>
@@ -522,7 +561,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
                   <h3 className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D4A3E] mb-3 px-1">
                     Épinglées
                   </h3>
-                  <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                  <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                     {pinnedNotes.map((note) => renderNoteCard(note))}
                   </div>
                 </div>
@@ -535,7 +574,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
                     Autres notes
                   </h3>
                 )}
-                <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-3">
                   {unpinnedNotes.map((note) => renderNoteCard(note))}
                 </div>
               </div>
@@ -591,10 +630,11 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
           className="bg-[#2D4A3E] hover:bg-[#1e332a] text-white font-bold rounded-2xl px-4 sm:px-5 py-3 border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
         >
           <Plus className="w-5 h-5 stroke-[2.5]" />
-          <span className="text-xs sm:text-sm font-bold tracking-wide">Créer une note</span>
+          <span className="text-xs sm:text-sm font-bold tracking-wide" dangerouslySetInnerHTML={{ __html: 'Créer une note' }} />
         </button>
       </div>
     </div>
+    </>
   );
 
   function renderNoteCard(note: NoteItem) {
@@ -621,7 +661,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         )}
 
         {/* Card Content */}
-        <div className="pointer-events-none">
+        <div className="pointer-events-none notranslate">
           {note.imageUrl && (
             <div className="mb-3 -mx-4 -mt-4 rounded-t-xl overflow-hidden max-h-36 bg-black/40 border-b border-stone-800">
               <img src={note.imageUrl} alt={note.title} className="w-full h-full object-cover" />

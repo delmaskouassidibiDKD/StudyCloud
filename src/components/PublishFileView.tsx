@@ -362,9 +362,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   };
 
   return (
-    <div ref={containerRef} className="absolute inset-0 z-30 w-full min-h-screen bg-[#FDFBF7] text-stone-950 px-3 sm:px-6 py-4 overflow-y-auto">
+    <div ref={containerRef} className="absolute inset-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#FDFBF7] text-stone-950 px-3 sm:px-6 py-4 overflow-y-auto">
       {/* Top Fixed Bar */}
-      <div className="fixed top-4 left-3 right-3 sm:left-6 sm:right-6 flex items-center justify-between z-40 pointer-events-none">
+      <div className="fixed top-4 left-3 right-3 sm:left-6 sm:right-6 md:left-[calc(16rem+1.5rem)] flex items-center justify-between z-40 pointer-events-none">
         <button
           onClick={handleBack}
           className="pointer-events-auto flex items-center gap-1 px-2.5 py-1 bg-[#F5F1E9] hover:bg-[#EBE5DA] text-stone-900 font-bold text-[10px] rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"

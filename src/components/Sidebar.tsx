@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Folder, Upload, Share2, BarChart3, Settings, BookOpen, Sparkles, LogOut } from 'lucide-react';
+import { Folder, Upload, Share2, BarChart3, Settings, BookOpen, Sparkles, LogOut, LayoutDashboard } from 'lucide-react';
+import { DnaLogo } from './DnaLogo';
 import { NavigationTab } from '../types';
 
 interface SidebarProps {
@@ -10,9 +11,9 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCount, onOpenUpload }) => {
-  const navItems = [
-    { id: 'folders' as NavigationTab, label: 'Mes Dossiers', icon: Folder, badge: foldersCount },
-    { id: 'upload' as NavigationTab, label: 'Importer / Créer', icon: Upload, highlight: true },
+  const navItems: Array<{ id: NavigationTab; label: string; icon: any; highlight?: boolean; badge?: string | number }> = [
+    { id: 'folders' as NavigationTab, label: 'Tableau de bord', icon: LayoutDashboard },
+    { id: 'upload' as NavigationTab, label: 'Importer', icon: Upload, highlight: true },
     { id: 'shared' as NavigationTab, label: 'Liens Actifs', icon: Share2 },
     { id: 'library' as NavigationTab, label: 'Bibliothèque', icon: BookOpen },
     { id: 'settings' as NavigationTab, label: 'Paramètres', icon: Settings },
@@ -21,15 +22,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
   return (
     <>
       {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 bg-[#F5F1E9] p-6 shrink-0 select-none">
+      <aside className="hidden md:flex flex-col w-64 h-screen fixed top-0 left-0 overflow-y-auto bg-[#F5F1E9] p-6 pb-24 shrink-0 select-none z-40 border-r-2 border-stone-800 shadow-[2px_0px_5px_-2px_rgba(0,0,0,0.1)]">
         {/* Brand Header */}
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-10 h-10 bg-orange-500 border-2 border-stone-800 rounded-xl flex items-center justify-center text-white shadow-[3px_3px_0px_0px_#1c1917]">
-            <Folder className="w-5 h-5 fill-white" />
-          </div>
-          <div>
-            <h1 className="font-extrabold text-stone-900 tracking-tight text-lg leading-tight">UniFolder</h1>
-            <p className="text-xs text-stone-600 font-medium">Partage Étudiant 🚀</p>
+        <div className="flex items-center gap-2 mb-8">
+          <DnaLogo className="w-8 h-8 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
+          <div className="notranslate">
+            <h1 className="font-extrabold tracking-tight text-2xl leading-tight">
+              <span className="text-orange-600">Study</span>
+              <span className="text-blue-600">Cloud</span>
+            </h1>
+            <p className="text-[9px] text-orange-400/90 font-bold uppercase tracking-widest mt-0.5">DKD Technologies</p>
           </div>
         </div>
 
@@ -45,20 +47,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
               <button
                 key={item.id}
                 onClick={() => {
-                  if (item.id === 'upload') {
-                    onOpenUpload();
-                  } else {
-                    setTab(item.id);
-                  }
+                  setTab(item.id);
                 }}
-                className={`w-full flex items-center justify-between px-3.5 py-3 rounded-xl font-bold text-sm transition-all border-2 ${
+                className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl font-bold text-base transition-all border-2 ${
                   isActive
                     ? 'bg-orange-100 border-stone-800 text-stone-900 shadow-[3px_3px_0px_0px_#1c1917]'
                     : 'border-transparent text-stone-600 hover:bg-[#EBE5DA] hover:border-stone-800 hover:text-stone-900'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Icon className={`w-4 h-4 ${isActive ? 'text-orange-600' : 'text-stone-500'}`} />
+                  <Icon className={`w-5 h-5 ${isActive ? 'text-orange-600' : 'text-stone-500'}`} />
                   <span>{item.label}</span>
                 </div>
                 {item.badge !== undefined && (
@@ -83,9 +81,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
         </div>
       </aside>
 
-      {/* Mobile Bottom Navigation Bar */}
+      {/* Bottom Navigation Bar */}
       <div 
-        className="md:hidden mobile-fixed-bottom bottom-nav bg-[#F5F1E9] border-t-3 border-stone-800 px-3 py-1.5 z-[99999] flex items-center justify-around shadow-[0px_-4px_10px_rgba(0,0,0,0.05)]"
+        className="mobile-fixed-bottom bottom-nav bg-[#F5F1E9] border-t-3 border-stone-800 px-3 py-0 z-[99999] flex items-center justify-around shadow-[0px_-4px_10px_rgba(0,0,0,0.05)] md:!hidden"
       >
         {navItems.map((item) => {
           const Icon = item.icon;
@@ -97,11 +95,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
                 setTab(item.id);
               }}
               className={`flex flex-col items-center justify-center p-1 rounded-lg transition-all ${
-                isActive ? 'text-orange-600 font-bold scale-105' : 'text-stone-600 hover:text-stone-900'
+                isActive ? 'text-orange-600 font-bold scale-110' : 'text-stone-600 hover:text-stone-900'
               }`}
             >
-              <Icon className="w-4 h-4 mb-0.5" />
-              <span className="text-[9px] leading-tight">{item.label.split(' ')[0]}</span>
+              <Icon className="w-5 h-5 md:w-6 md:h-6 mb-0" />
+              <span className="text-[10px] md:text-xs leading-tight">{item.label.split(' ')[0]}</span>
             </button>
           );
         })}

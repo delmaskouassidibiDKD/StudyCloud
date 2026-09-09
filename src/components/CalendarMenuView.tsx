@@ -33,39 +33,12 @@ const EVENT_COLORS = [
 export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) => {
   const calendarRef = useRef<any>(null);
 
-  // Initial demo events
-  const defaultEvents: CalendarEventItem[] = [
-    {
-      id: 'demo-1',
-      title: 'Examen de Mathématiques',
-      start: new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0] + 'T09:00:00',
-      end: new Date(new Date().setDate(new Date().getDate() + 1)).toISOString().split('T')[0] + 'T11:00:00',
-      color: '#DC2626',
-      description: 'Réviser les intégrales et les matrices.',
-      location: 'Salle 204'
-    },
-    {
-      id: 'demo-2',
-      title: 'Rendu Devoir de Physique',
-      start: new Date(new Date().setDate(new Date().getDate() + 3)).toISOString().split('T')[0],
-      allDay: true,
-      color: '#2563EB',
-      description: 'Téléverser le rapport PDF en ligne.'
-    },
-    {
-      id: 'demo-3',
-      title: 'Réunion Groupe de Projet',
-      start: new Date(new Date().setDate(new Date().getDate() + 5)).toISOString().split('T')[0] + 'T14:30:00',
-      end: new Date(new Date().setDate(new Date().getDate() + 5)).toISOString().split('T')[0] + 'T16:00:00',
-      color: '#16A34A',
-      description: 'Présentation des maquettes et répartition des tâches.',
-      location: 'Bibliothèque'
-    }
-  ];
+  // Initial events
+  const defaultEvents: CalendarEventItem[] = [];
 
   // Load events from localStorage
   const [events, setEvents] = useState<CalendarEventItem[]>(() => {
-    const saved = localStorage.getItem('unifolder_calendar_events');
+    const saved = localStorage.getItem('unifolder_calendar_data');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
     }
@@ -74,7 +47,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
 
   // Save events to localStorage
   useEffect(() => {
-    localStorage.setItem('unifolder_calendar_events', JSON.stringify(events));
+    localStorage.setItem('unifolder_calendar_data', JSON.stringify(events));
   }, [events]);
 
   // Modal State for New Event
@@ -174,10 +147,10 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] z-30 w-full bg-[#F5F0E8] text-[#2D4A3E] px-2 sm:px-4 py-6 overflow-y-auto min-h-[calc(100vh-60px)] flex flex-col">
+    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] text-[#2D4A3E] px-2 sm:px-4 py-6 overflow-y-auto min-h-[calc(100vh-60px)] flex flex-col">
       
       {/* Header Bar */}
-      <div className="fixed top-14 left-4 right-4 flex items-center justify-between z-40 pointer-events-none">
+      <div className="fixed top-14 left-4 right-4 md:left-[17rem] flex items-center justify-between z-40 pointer-events-none">
         <button
           onClick={onBack}
           className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-xs rounded-xl border-2 border-[#2D4A3E] shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"

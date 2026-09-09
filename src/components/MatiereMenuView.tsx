@@ -101,8 +101,10 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   }, [isSearchOpen]);
 
   const filteredFiles = importedFiles.filter(f => {
+    if (f.isLeftMenuImport) return false;
+
     if (showDuplicatesOnly) {
-      const isDup = f.name.includes('(Copie)') || importedFiles.filter(item => item.name.toLowerCase() === f.name.toLowerCase()).length > 1;
+      const isDup = f.name.includes('(Copie)') || importedFiles.filter(item => item.name.toLowerCase() === f.name.toLowerCase() && !item.isLeftMenuImport).length > 1;
       if (!isDup) return false;
     }
     return (
@@ -362,7 +364,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] z-30 w-full bg-[#F5F0E8] text-[#2D4A3E] px-4 py-8 overflow-y-auto">
+    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] text-[#2D4A3E] px-4 py-8 overflow-y-auto">
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -370,7 +372,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         multiple 
         onChange={handleFileChange} 
       />
-      <div className="fixed top-14 left-4 right-4 flex items-center justify-between z-40 pointer-events-none gap-2">
+      <div className="fixed top-14 left-4 right-4 md:left-[17rem] flex items-center justify-between z-40 pointer-events-none gap-2">
         <button
           onClick={onBack}
           className="pointer-events-auto shrink-0 flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
@@ -484,7 +486,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
       {/* Top Selection Action Bar */}
       {isSelectionMode && !classifyFileIds && (
-        <div className="fixed top-12 left-2 right-2 max-w-4xl mx-auto z-[99999] bg-[#FDFBF7] border-2 border-stone-800 rounded-xl px-3 py-2 shadow-xl flex items-center justify-between gap-2 animate-fadeIn pointer-events-auto">
+        <div className="fixed top-12 left-2 right-2 md:left-[16.5rem] max-w-4xl mx-auto z-[99999] bg-[#FDFBF7] border-2 border-stone-800 rounded-xl px-3 py-2 shadow-xl flex items-center justify-between gap-2 animate-fadeIn pointer-events-auto">
           <div className="flex items-center gap-1.5 shrink-0">
             <span className="bg-[#2D4A3E] text-white px-2 py-0.5 rounded-lg text-[11px] font-bold">
               {selectedFileIds.length} sélec.
@@ -524,8 +526,8 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       )}
 
       <div className="w-full px-2 sm:px-4 pt-12">
-        <div className="pt-1 pb-64 max-w-4xl mx-auto">
-          {importedFiles.length === 0 ? (
+        <div className="pt-1 pb-64 w-full max-w-7xl mx-auto">
+          {filteredFiles.length === 0 ? (
             <div className="text-center pt-2">
               <p className="text-xs font-sans text-[#5C6B5A] mb-6">Importez vos cours, exercices et documents pour cette matière.</p>
               
@@ -542,7 +544,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
             </div>
           ) : (
             <div className="w-full">
-              <div className="grid grid-cols-3 gap-3 sm:gap-6 justify-items-center w-full pt-2">
+              <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-9 gap-3 justify-items-center w-full pt-2">
                 {filteredFiles.map((f, idx) => {
                   const ext = f.extension || (f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
                   const isPdf = ext === 'PDF';
@@ -568,10 +570,10 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                             prev.includes(f.id) ? prev.filter(i => i !== f.id) : [...prev, f.id]
                           );
                         } else {
-                          setActivePreviewItem && setActivePreviewItem(f);
+                          setActivePreviewItem && setActivePreviewItem({ ...f, folderName: matiereName });
                         }
                       }} 
-                      className="group flex flex-col items-center w-24 sm:w-32 cursor-pointer transition-all hover:scale-105 relative"
+                      className={`group flex flex-col items-center w-full max-w-[90px] sm:max-w-[110px] cursor-pointer transition-all hover:scale-105 relative ${openMenuId === f.id ? 'z-50' : 'z-0'}`}
                     >
                       {/* Selection Checkbox or Three dots button */}
                       {isSelectionMode ? (

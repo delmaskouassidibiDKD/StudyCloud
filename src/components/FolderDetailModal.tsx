@@ -39,7 +39,7 @@ export const FolderDetailModal: React.FC<FolderDetailModalProps> = ({ folder, on
   };
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-fadeIn">
+    <div className="fixed inset-0 md:left-64 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-3 sm:p-4 animate-fadeIn">
       <div className="bg-[#FDFBF7] border-3 border-stone-800 rounded-3xl shadow-[8px_8px_0px_0px_#1c1917] max-w-4xl w-full p-4 sm:p-6 relative flex flex-col max-h-[90vh]">
         {/* Header */}
         <div className="flex items-center justify-between pb-3 sm:pb-4 border-b-2 border-stone-800 mb-4 sm:mb-5 shrink-0">
@@ -70,7 +70,7 @@ export const FolderDetailModal: React.FC<FolderDetailModalProps> = ({ folder, on
                 key={file.id}
                 onClick={() => {
                   if (setActivePreviewItem) {
-                    setActivePreviewItem(file);
+                    setActivePreviewItem({ ...file, folderName: folder.title });
                   }
                 }}
                 className="bg-[#2A2B2E] border-2 border-stone-800 rounded-xl p-2 flex flex-col justify-between shadow-sm hover:shadow-md transition-all relative group cursor-pointer select-none"

@@ -298,7 +298,7 @@ export const CalculatorMenuView: React.FC<CalculatorMenuViewProps> = ({ onBack }
   }, [discountPrice, discountPercent]);
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] z-30 w-full bg-stone-950 text-white px-2 sm:px-4 pt-4 pb-44 sm:pb-48 overflow-y-auto min-h-screen">
+    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-stone-950 text-white px-2 sm:px-4 pt-4 pb-44 sm:pb-48 overflow-y-auto min-h-screen">
       
 
       {/* APP HEADER */}
@@ -330,7 +330,7 @@ export const CalculatorMenuView: React.FC<CalculatorMenuViewProps> = ({ onBack }
 
             {/* FLOATING POPOVER DROPDOWN (Anchored right next to Historique button) */}
             {showHistoryModal && (
-              <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 z-50 bg-stone-900/98 backdrop-blur-md border-2 border-stone-700 rounded-2xl p-3 shadow-2xl font-mono text-xs animate-in fade-in zoom-in duration-150">
+              <div className="absolute right-0 top-full mt-2 w-72 sm:w-80 md:w-96 z-50 bg-stone-900/98 backdrop-blur-md border-2 border-stone-700 rounded-2xl p-3 shadow-2xl font-mono text-xs animate-in fade-in zoom-in duration-150">
                 <div className="flex items-center justify-between mb-2 pb-2 border-b border-stone-800">
                   <div className="flex items-center gap-1.5">
                     <History className="w-3.5 h-3.5 text-amber-400" />

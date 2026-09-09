@@ -10,7 +10,7 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
   const [billingCycle, setBillingCycle] = useState<'annual' | 'monthly'>('annual');
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-0 z-30 w-full min-h-screen bg-[#F5F0E8] text-[#2D4A3E] overflow-y-auto animate-fadeIn pb-24">
+    <div className="absolute inset-x-0 bottom-0 top-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] text-[#2D4A3E] overflow-y-auto animate-fadeIn pb-24">
       {/* Sticky Top Bar exactly below the top header */}
       <div className="sticky top-0 z-40 bg-[#F5F0E8]/95 backdrop-blur-xs px-4 py-3 flex items-center justify-between border-b-2 border-[#2D4A3E]/20 shadow-xs">
         <button

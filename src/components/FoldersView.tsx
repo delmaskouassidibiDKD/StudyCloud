@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
-import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, X, Search } from 'lucide-react';
+import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, X, Search, Globe } from 'lucide-react';
 import { MenuDrawer } from './MenuDrawer';
 import { GeminiDrawer } from './GeminiDrawer';
+import { DnaLogo } from './DnaLogo';
 import { PricingView } from './PricingView';
 import { FilesMenuView } from './FilesMenuView';
 import { ScheduleMenuView } from './ScheduleMenuView';
@@ -34,8 +35,30 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   onOpenPublishView,
   setActivePreviewItem,
 }) => {
-  const [activeNotification, setActiveNotification] = useState<string | null>(null);
+  const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [isGeminiOpen, setIsGeminiOpen] = useState(false);
+  const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
+  const [currentLang, setCurrentLang] = useState('fr');
+
+  useEffect(() => {
+    const match = document.cookie.match(/(?:^|; )googtrans=([^;]*)/);
+    if (match) {
+      const parts = match[1].split('/');
+      if (parts.length === 3) {
+        setCurrentLang(parts[2]);
+      }
+    }
+  }, []);
+
+  const handleLanguageChange = (langCode: string) => {
+    if (langCode === 'fr') {
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+    } else {
+      document.cookie = `googtrans=/fr/${langCode}; path=/;`;
+    }
+    window.location.reload();
+  };
+  const [activeNotification, setActiveNotification] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | string>(() => {
     const saved = localStorage.getItem('unifolder_view_mode');
     return saved || 'home';
@@ -344,12 +367,12 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       <div 
         key={id}
         onClick={defaultAction}
-        className="group flex flex-col items-center cursor-pointer w-20 sm:w-24 transition-all duration-200 hover:scale-105"
+        className="group flex flex-col items-center cursor-pointer w-20 sm:w-24 md:w-24 lg:w-28 transition-all duration-200 hover:scale-105"
       >
         <div className="w-full aspect-square bg-stone-900 dark:bg-stone-800 border-3 border-stone-800 dark:border-stone-700 rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[3px_3px_0px_0px_#000] flex items-center justify-center group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all relative">
           {iconContent}
         </div>
-        <span className="text-[11px] font-black text-blue-600 dark:text-blue-400 mt-1.5 text-center px-0.5 leading-tight tracking-wide">{label}</span>
+        <span className="text-xs sm:text-[13px] md:text-sm font-extrabold text-blue-600 dark:text-blue-400 mt-2 text-center px-0.5 leading-snug tracking-wide">{label}</span>
       </div>
     );
   };
@@ -430,6 +453,52 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-3">
+          {/* Language button */}
+          <div className="flex flex-col items-center relative">
+            <button
+              onClick={() => setIsLanguageMenuOpen(!isLanguageMenuOpen)}
+              className="p-1.5 bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 rounded-lg border-2 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
+              title="Langue"
+            >
+              <Globe className="w-3.5 h-3.5 text-red-600" />
+            </button>
+            <span className="text-[9px] font-bold text-stone-700 leading-none mt-0.5">Langue</span>
+            
+            {isLanguageMenuOpen && (
+              <div className="absolute top-full right-0 mt-2 bg-[#F5F1E9] border-2 border-stone-800 rounded-xl shadow-xl z-50 min-w-[140px] py-1.5 max-h-[300px] overflow-y-auto">
+                {[
+                  { code: 'fr', label: 'Français' },
+                  { code: 'en', label: 'English' },
+                  { code: 'es', label: 'Español' },
+                  { code: 'pt', label: 'Português' },
+                  { code: 'it', label: 'Italiano' },
+                  { code: 'de', label: 'Deutsch' },
+                  { code: 'zh-CN', label: '中文 (Chinois)' },
+                  { code: 'ja', label: '日本語 (Japonais)' },
+                  { code: 'ko', label: '한국어 (Coréen)' },
+                  { code: 'ar', label: 'العربية (Arabe)' },
+                  { code: 'hi', label: 'हिन्दी (Hindi)' },
+                  { code: 'ru', label: 'Русский (Russe)' }
+                ].map(lang => {
+                  const isSelected = currentLang === lang.code;
+                  return (
+                    <button
+                      key={lang.code}
+                      onClick={() => handleLanguageChange(lang.code)}
+                      className={`w-full text-left px-3 py-1.5 text-xs font-bold transition-colors ${
+                        isSelected 
+                          ? 'bg-red-100/50 text-red-600 border-l-4 border-red-600' 
+                          : 'text-stone-700 hover:bg-stone-200 border-l-4 border-transparent'
+                      }`}
+                    >
+                      {lang.label}
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+
           {/* Gemini button */}
           <div className="flex flex-col items-center">
             <button
@@ -481,7 +550,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             className="bg-[#2d2d2d] text-white rounded-3xl p-6 w-full max-w-md shadow-2xl border border-stone-700 space-y-4 text-left relative max-h-[90vh] overflow-y-auto"
             onClick={(e) => e.stopPropagation()}
           >
-            <h2 className="text-xl font-bold mb-2">Ajouter des matières</h2>
+            <h2 className="text-xl font-bold mb-2">Ajouter des matières ou autres</h2>
             
             <div className="space-y-3">
               {matieresList.map((item, index) => {
@@ -914,11 +983,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'calculator-menu' && <CalculatorMenuView onBack={() => setViewMode('home')} />}
 
       {viewMode === 'home' && (
-        <div className="w-full max-w-md mx-auto px-4 py-1">
+        <div className="w-full max-w-md md:max-w-5xl lg:max-w-6xl mx-auto px-4 py-1">
           <div className="flex items-center justify-between mb-3 px-1">
             <span className="text-xs font-bold text-stone-500 dark:text-stone-400">Écran d'accueil</span>
           </div>
-          <div className="grid grid-cols-3 gap-3 sm:gap-4 justify-items-center w-full">
+          <div className="grid grid-cols-3 md:grid-cols-9 gap-3 sm:gap-4 md:gap-2 lg:gap-4 justify-items-center items-start w-full">
             {['files', 'schedule', 'notes', 'grades', 'level', 'calendar', 'favorites', 'clock', 'calculator'].map((id, index) => renderBlock(id, index))}
           </div>
         </div>
