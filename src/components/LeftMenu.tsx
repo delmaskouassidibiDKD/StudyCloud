@@ -16,6 +16,7 @@ interface LeftMenuProps {
   activePreviewItem?: any;
   setActivePreviewItem?: (item: any) => void;
   activeFolderDetail?: any;
+  isMobileScreen?: boolean;
 }
 
 export function LeftMenu({
@@ -29,7 +30,8 @@ export function LeftMenu({
   onImportFile,
   activePreviewItem,
   setActivePreviewItem,
-  activeFolderDetail
+  activeFolderDetail,
+  isMobileScreen
 }: LeftMenuProps) {
   const [menuFiles, setMenuFiles] = useState<any[]>([]);
   const [viewHistory, setViewHistory] = useState<string[]>([]);

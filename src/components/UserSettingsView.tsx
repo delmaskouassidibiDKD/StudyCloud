@@ -1,3 +1,4 @@
+import React, { useState } from 'react';
 import { ArrowLeft, User, GraduationCap, Mail, BookOpen, ShieldCheck, LogOut, Check, Edit2, X, Home } from 'lucide-react';
 
 interface UserSettingsViewProps {
