@@ -44,17 +44,49 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     const match = document.cookie.match(/(?:^|; )googtrans=([^;]*)/);
     if (match) {
       const parts = match[1].split('/');
-      if (parts.length === 3) {
+      if (parts.length === 3 && parts[2] && parts[2] !== 'fr') {
         setCurrentLang(parts[2]);
+        document.documentElement.removeAttribute('translate');
+        document.documentElement.classList.remove('notranslate');
+        document.body.removeAttribute('translate');
+        document.body.classList.remove('notranslate');
+        return;
       }
     }
+    // Langue par défaut = Français
+    setCurrentLang('fr');
+    document.documentElement.setAttribute('lang', 'fr');
+    document.documentElement.setAttribute('translate', 'no');
+    document.documentElement.classList.add('notranslate');
+    document.body.setAttribute('translate', 'no');
+    document.body.classList.add('notranslate');
   }, []);
 
   const handleLanguageChange = (langCode: string) => {
+    const hostname = window.location.hostname;
+    const hostParts = hostname.split('.');
+
     if (langCode === 'fr') {
       document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${hostname};`;
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${hostname};`;
+      if (hostParts.length > 2) {
+        const rootDomain = hostParts.slice(-2).join('.');
+        document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${rootDomain};`;
+      }
+      document.documentElement.setAttribute('lang', 'fr');
+      document.documentElement.setAttribute('translate', 'no');
+      document.documentElement.classList.add('notranslate');
+      document.body.setAttribute('translate', 'no');
+      document.body.classList.add('notranslate');
     } else {
       document.cookie = `googtrans=/fr/${langCode}; path=/;`;
+      document.cookie = `googtrans=/fr/${langCode}; path=/; domain=${hostname};`;
+      document.cookie = `googtrans=/fr/${langCode}; path=/; domain=.${hostname};`;
+      document.documentElement.removeAttribute('translate');
+      document.documentElement.classList.remove('notranslate');
+      document.body.removeAttribute('translate');
+      document.body.classList.remove('notranslate');
     }
     window.location.reload();
   };
@@ -367,12 +399,12 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       <div 
         key={id}
         onClick={defaultAction}
-        className="group flex flex-col items-center cursor-pointer shrink-0 w-20 sm:w-22 md:w-24 lg:w-26 transition-all duration-200 hover:scale-105"
+        className="group flex flex-col items-center cursor-pointer w-full max-w-[94px] sm:max-w-[102px] md:w-24 lg:w-26 md:shrink-0 transition-all duration-200 hover:scale-105"
       >
         <div className="w-full aspect-square bg-stone-900 dark:bg-stone-800 border-2 border-stone-800 dark:border-stone-700 rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[3px_3px_0px_0px_#000] flex items-center justify-center group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all relative">
           {iconContent}
         </div>
-        <span className="text-xs sm:text-[13px] font-extrabold text-blue-600 dark:text-blue-400 mt-2 text-center px-0.5 leading-snug tracking-wide max-w-[90px] sm:max-w-[105px] line-clamp-2">{label}</span>
+        <span className="text-[11px] sm:text-xs md:text-sm font-extrabold text-blue-600 dark:text-blue-400 mt-1.5 sm:mt-2 text-center px-0.5 leading-snug tracking-wide w-full line-clamp-2">{label}</span>
       </div>
     );
   };
@@ -429,7 +461,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [newGradeCoeff, setNewGradeCoeff] = useState('');
 
   return (
-    <div className="flex flex-col items-center justify-start min-h-[75vh] px-4 text-center pt-12 md:pt-14 pb-24">
+    <div className="flex flex-col items-center justify-start min-h-[75vh] px-2 sm:px-4 text-center pt-12 md:pt-14 pb-24">
       {/* Fixed Header bar with action buttons */}
       <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#FDFBF7] border-b-2 border-stone-800 shadow-sm px-3 md:px-6 py-1.5 flex items-center justify-between gap-2 md:gap-4">
         <div className="flex items-center gap-2">
@@ -968,6 +1000,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'files-menu' && <FilesMenuView onBack={() => setViewMode('home')} onImportFile={onOpenUpload} setActivePreviewItem={setActivePreviewItem} />}
       {typeof viewMode === 'string' && viewMode.startsWith('matiere-') && (
         <MatiereMenuView 
+          key={viewMode}
           matiereName={viewMode.replace('matiere-', '')} 
           onBack={() => setViewMode('home')} 
           setActivePreviewItem={setActivePreviewItem} 
@@ -983,12 +1016,13 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'calculator-menu' && <CalculatorMenuView onBack={() => setViewMode('home')} />}
 
       {viewMode === 'home' && (
-        <div className="w-full max-w-[1400px] mx-auto px-2 sm:px-4 py-2">
+        <div className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-2">
           <div className="flex items-center justify-between mb-3 px-2">
             <span className="text-xs font-bold text-stone-500 dark:text-stone-400">Écran d'accueil</span>
           </div>
-          <div className="flex items-start justify-start md:justify-center gap-3.5 sm:gap-4 md:gap-5 lg:gap-6 overflow-x-auto pb-4 pt-1 px-2 no-scrollbar w-full">
-            {['files', 'schedule', 'notes', 'grades', 'level', 'calendar', 'favorites', 'clock', 'calculator'].map((id, index) => renderBlock(id, index))}
+          {/* Sur mobile : 3 blocs par ligne disposés verticalement sans coupure | Sur desktop : ligne horizontale fluide */}
+          <div className="grid grid-cols-3 gap-y-6 gap-x-2 sm:gap-x-4 justify-items-center w-full md:flex md:flex-row md:items-start md:justify-center md:gap-4 lg:gap-6 md:overflow-x-auto md:pb-4 md:pt-1 md:no-scrollbar">
+            {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator'].map((id, index) => renderBlock(id, index))}
           </div>
         </div>
       )}

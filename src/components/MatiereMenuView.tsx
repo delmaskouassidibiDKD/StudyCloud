@@ -1,5 +1,6 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Edit3, ArrowLeft, Upload, File, MoreVertical, X, Search, Check, Copy } from 'lucide-react';
+import { Edit3, ArrowLeft, Upload, File, MoreVertical, X, Search, Check, Copy, Plus } from 'lucide-react';
+import { getFileTimestamp } from './FilesMenuView';
 
 interface MatiereMenuViewProps {
   matiereName: string;
@@ -16,27 +17,40 @@ interface ImportedItem {
   url?: string;
   isImage?: boolean;
   isFavorite?: boolean;
+  isLeftMenuImport?: boolean;
+  matiere?: string;
+  importedAt?: number | string;
+  createdAt?: number | string;
+  timestamp?: number;
 }
 
 export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, onBack, setActivePreviewItem }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const storageKey = `unifolder_matiere_files_${matiereName}`;
+  const currentKeyRef = useRef(storageKey);
   
-  const [importedFiles, setImportedFiles] = useState<ImportedItem[]>(() => {
-    const saved = localStorage.getItem(storageKey);
+  const loadFilesForMatiere = (name: string) => {
+    const key = `unifolder_matiere_files_${name}`;
+    const saved = localStorage.getItem(key);
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        return parsed.map((item: any) => ({
-          ...item,
-          extension: item.extension || (item.name.includes('.') ? item.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
-        }));
+        if (Array.isArray(parsed)) {
+          return parsed.map((item: any) => ({
+            ...item,
+            matiere: item.matiere || (item.isLeftMenuImport ? undefined : name),
+            extension: item.extension || (item.name && item.name.includes('.') ? item.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+          }));
+        }
       } catch (e) {
         return [];
       }
     }
+
     return [];
-  });
+  };
+
+  const [importedFiles, setImportedFiles] = useState<ImportedItem[]>(() => loadFilesForMatiere(matiereName));
 
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
   const [newFileName, setNewFileName] = useState('');
@@ -115,11 +129,23 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     if (!!a.isFavorite !== !!b.isFavorite) {
       return a.isFavorite ? -1 : 1;
     }
+    const lastId = localStorage.getItem('unifolder_last_imported_id');
+    if (lastId) {
+      if (a.id === lastId && b.id !== lastId) return -1;
+      if (b.id === lastId && a.id !== lastId) return 1;
+    }
     if (sortBy === 'size') {
       return (b.size || 0) - (a.size || 0);
     } else if (sortBy === 'oldest') {
-      return a.id.localeCompare(b.id);
+      const timeA = getFileTimestamp(a);
+      const timeB = getFileTimestamp(b);
+      if (timeA !== timeB) return timeA - timeB;
+      return a.name.localeCompare(b.name);
     } else {
+      // 'recent' : les plus récents en premier
+      const timeA = getFileTimestamp(a);
+      const timeB = getFileTimestamp(b);
+      if (timeA !== timeB) return timeB - timeA;
       return b.id.localeCompare(a.id);
     }
   });
@@ -135,8 +161,18 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     };
   }, [openMenuId]);
 
+  // Recharger les fichiers si la matière change
   useEffect(() => {
-    localStorage.setItem(storageKey, JSON.stringify(importedFiles));
+    currentKeyRef.current = storageKey;
+    setImportedFiles(loadFilesForMatiere(matiereName));
+  }, [matiereName, storageKey]);
+
+  // Sauvegarder uniquement pour la matière active
+  useEffect(() => {
+    if (currentKeyRef.current === storageKey) {
+      localStorage.setItem(storageKey, JSON.stringify(importedFiles));
+      window.dispatchEvent(new Event('unifolder_files_updated'));
+    }
   }, [importedFiles, storageKey]);
 
   const handleDelete = (id: string) => {
@@ -178,13 +214,20 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   const handleDuplicate = (id: string) => {
     const fileToDup = importedFiles.find(item => item.id === id);
     if (!fileToDup) return;
-    const newId = 'file-' + Math.random().toString(36).substring(2, 9);
+    const now = Date.now();
+    const newId = `file-${now}-${Math.random().toString(36).substring(2, 7)}`;
     const duplicated: ImportedItem = {
       ...fileToDup,
       id: newId,
-      name: fileToDup.name.includes('.') ? fileToDup.name.replace(/\.([^.]+)$/, ' (Copie).$1') : `${fileToDup.name} (Copie)`
+      name: fileToDup.name.includes('.') ? fileToDup.name.replace(/\.([^.]+)$/, ' (Copie).$1') : `${fileToDup.name} (Copie)`,
+      matiere: matiereName,
+      importedAt: now,
+      createdAt: now,
+      timestamp: now
     };
-    setImportedFiles(prev => [...prev, duplicated]);
+    setImportedFiles(prev => [duplicated, ...prev]);
+    localStorage.setItem('unifolder_last_imported_id', newId);
+    window.dispatchEvent(new Event('unifolder_files_updated'));
     setOpenMenuId(null);
   };
 
@@ -224,7 +267,8 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           let list: ImportedItem[] = existing ? JSON.parse(existing) : [];
           const copiedFile: ImportedItem = {
             ...fileToClassify,
-            id: 'file-' + Math.random().toString(36).substring(2, 9)
+            id: 'file-' + Math.random().toString(36).substring(2, 9),
+            matiere: matName
           };
           list.push(copiedFile);
           localStorage.setItem(targetKey, JSON.stringify(list));
@@ -239,6 +283,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     setSelectedMatiereIds([]);
     setIsSelectionMode(false);
     setSelectedFileIds([]);
+    window.dispatchEvent(new Event('unifolder_files_updated'));
     setSuccessMessage("Ajouté avec succès !");
     setTimeout(() => setSuccessMessage(null), 3000);
   };
@@ -289,10 +334,11 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       const newItems: ImportedItem[] = [];
       const imageFilesToCompress: { id: string; file: File }[] = [];
 
+      const now = Date.now();
       for (let i = 0; i < fileList.length; i++) {
         const f = fileList[i];
         const isImg = f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg)$/i.test(f.name);
-        const id = 'file-' + Math.random().toString(36).substring(2, 9);
+        const id = `file-${now + i}-${Math.random().toString(36).substring(2, 7)}`;
         let url: string | undefined = undefined;
 
         if (isImg) {
@@ -312,11 +358,20 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           type: f.type || 'Fichier',
           extension: extVal,
           url,
-          isImage: isImg
+          isImage: isImg,
+          matiere: matiereName,
+          importedAt: now + i,
+          createdAt: now + i,
+          timestamp: now + i
         });
       }
 
-      setImportedFiles(prev => [...prev, ...newItems]);
+      setImportedFiles(prev => [...newItems, ...prev]);
+
+      if (newItems.length > 0) {
+        localStorage.setItem('unifolder_last_imported_id', newItems[newItems.length - 1].id);
+        window.dispatchEvent(new Event('unifolder_files_updated'));
+      }
 
       try {
         const existingShares = JSON.parse(localStorage.getItem('unifolder_shares') || '[]');
@@ -324,7 +379,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         const newSharedFolder = {
           id: 'folder-' + Math.random().toString(36).substring(2, 9),
           title: folderTitle,
-          description: 'Document publié dans la bibliothèque via UniFolder',
+          description: `Document ajouté dans ${matiereName}`,
           category: 'Cours',
           author: 'Utilisateur',
           createdAt: new Date().toISOString(),
@@ -345,7 +400,10 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         console.error(err);
       }
 
-      setSuccessMessage('Fichier publié avec succès dans la bibliothèque !');
+      const successMsg = newItems.length > 1
+        ? `Fichiers importés avec succès dans ${matiereName} !`
+        : `Fichier importé avec succès dans ${matiereName} !`;
+      setSuccessMessage(successMsg);
       setTimeout(() => setSuccessMessage(null), 3500);
 
       imageFilesToCompress.forEach(({ id, file }) => {
@@ -372,23 +430,34 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         multiple 
         onChange={handleFileChange} 
       />
-      <div className="fixed top-14 left-4 right-4 md:left-[17rem] flex items-center justify-between z-40 pointer-events-none gap-2">
-        <button
-          onClick={onBack}
-          className="pointer-events-auto shrink-0 flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
-        >
-          <ArrowLeft className="w-3 h-3" />
-          <span>Retour</span>
-        </button>
+      <div className="fixed top-14 left-4 right-4 md:left-[17rem] flex items-start justify-between z-40 pointer-events-none gap-2">
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          >
+            <ArrowLeft className="w-3 h-3" />
+            <span>Retour</span>
+          </button>
+          
+          <button
+            onClick={handleButtonClick}
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            title="Importer des fichiers"
+          >
+            <Upload className="w-3 h-3 text-[#2D4A3E]" />
+            <span>Importer</span>
+          </button>
+        </div>
 
         <h1 
-          className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] bg-[#E8DFD0] px-3 py-1 rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] truncate max-w-[180px] sm:max-w-xs text-center"
+          className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] bg-[#E8DFD0] px-3 py-1 rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] truncate max-w-[180px] sm:max-w-xs text-center self-start mt-0.5"
           title={matiereName}
         >
           {matiereName}
         </h1>
 
-        <div className="pointer-events-auto shrink-0 relative flex items-center gap-1.5">
+        <div className="pointer-events-auto shrink-0 relative flex items-center gap-1.5 self-start mt-0.5">
           <button
             onClick={(e) => {
               e.stopPropagation();
@@ -525,7 +594,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         </div>
       )}
 
-      <div className="w-full px-2 sm:px-4 pt-12">
+      <div className="w-full px-2 sm:px-4 pt-16 sm:pt-20">
         <div className="pt-1 pb-64 w-full max-w-7xl mx-auto">
           {filteredFiles.length === 0 ? (
             <div className="text-center pt-2">
@@ -708,6 +777,25 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                     </div>
                   );
                 })}
+
+                {/* Carte Importer avec "+" placée derrière les fichiers */}
+                <div 
+                  onClick={handleButtonClick}
+                  className="group flex flex-col items-center w-full max-w-[90px] sm:max-w-[110px] cursor-pointer transition-all hover:scale-105 relative select-none"
+                  title="Importer des fichiers"
+                >
+                  <div className="w-full aspect-[3/4] bg-white hover:bg-[#E8DFD0]/30 border-2 border-dashed border-[#2D4A3E]/60 hover:border-[#2D4A3E] rounded-xl shadow-[3px_3px_0px_0px_#1c1917] flex flex-col items-center justify-center p-3 text-[#2D4A3E] relative group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-[#E8DFD0] border-2 border-[#2D4A3E] flex items-center justify-center text-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] group-hover:scale-110 transition-transform">
+                      <Plus className="w-6 h-6 sm:w-7 sm:h-7 stroke-[3]" />
+                    </div>
+                    <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-[#2D4A3E] mt-2.5">
+                      Ajouter
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-bold text-[#2D4A3E] mt-2 text-center px-1 leading-tight line-clamp-2 w-full">
+                    Importer
+                  </span>
+                </div>
               </div>
             </div>
           )}

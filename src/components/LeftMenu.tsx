@@ -46,6 +46,9 @@ export function LeftMenu({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
+  const currentFolderName = activePreviewItem?.folderName || activePreviewItem?.matiere || activeFolderDetail?.title;
+  const isMesFichiersMode = currentFolderName === 'Mes fichiers' || (!currentFolderName && !!activePreviewItem);
+
   useEffect(() => {
     if (!containerRef.current) return;
     const observer = new ResizeObserver((entries) => {
@@ -78,6 +81,7 @@ export function LeftMenu({
     if (!files || files.length === 0) return;
     
     const file = files[0];
+    const now = Date.now();
     const newFile = {
       id: Date.now().toString(),
       name: file.name,
@@ -87,27 +91,35 @@ export function LeftMenu({
       extension: file.name.split('.').pop()?.toUpperCase() || 'FICHIER',
       isImage: file.type.startsWith('image/'),
       url: URL.createObjectURL(file),
-      isLeftMenuImport: true
+      isLeftMenuImport: true,
+      isStudyImport: true,
+      isImported: true,
+      importedAt: now,
+      createdAt: now,
+      timestamp: now
     };
     
-    // Save to localStorage
-    if (activePreviewItem?.folderName || activeFolderDetail?.title) {
-      const folder = activePreviewItem?.folderName || activeFolderDetail?.title;
-      const storageKey = `unifolder_matiere_files_${folder}`;
-      const saved = localStorage.getItem(storageKey);
-      let parsed = [];
-      if (saved) {
-        try { parsed = JSON.parse(saved); } catch (err) {}
-      }
-      parsed.push(newFile);
-      localStorage.setItem(storageKey, JSON.stringify(parsed));
-    }
+    // Save to dedicated study imports localStorage (global and independent of current menu)
+    try {
+      const keys = ['unifolder_study_imported_files', 'unifolder_left_menu_general_imports'];
+      keys.forEach(k => {
+        const saved = localStorage.getItem(k);
+        let parsed: any[] = [];
+        if (saved) {
+          try { parsed = JSON.parse(saved); } catch (err) {}
+        }
+        parsed = [newFile, ...parsed.filter((f: any) => f.id !== newFile.id)];
+        localStorage.setItem(k, JSON.stringify(parsed));
+      });
+      localStorage.setItem('unifolder_last_imported_id', newFile.id);
+      window.dispatchEvent(new Event('unifolder_files_updated'));
+    } catch (err) {}
     
-    setMenuFiles(prev => [newFile, ...prev]);
-    setSessionImportedIds(prev => [...prev, newFile.id]);
+    setMenuFiles(prev => [newFile, ...prev.filter(f => f.id !== newFile.id)]);
+    setSessionImportedIds(prev => [newFile.id, ...prev.filter(id => id !== newFile.id)]);
     
     if (setActivePreviewItem) {
-      setActivePreviewItem({ ...newFile, folderName: activePreviewItem?.folderName || activeFolderDetail?.title });
+      setActivePreviewItem({ ...newFile, folderName: currentFolderName || 'Mes fichiers' });
       setViewHistory(prev => [newFile.id, ...prev.filter(id => id !== newFile.id)]);
     }
     
@@ -122,18 +134,42 @@ export function LeftMenu({
     setSessionImportedIds(prev => prev.filter(id => id !== fileId));
     
     // Update localStorage
-    if (activePreviewItem?.folderName || activeFolderDetail?.title) {
-      const folder = activePreviewItem?.folderName || activeFolderDetail?.title;
-      const storageKey = `unifolder_matiere_files_${folder}`;
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          const newParsed = parsed.filter((f: any) => f.id !== fileId);
-          localStorage.setItem(storageKey, JSON.stringify(newParsed));
-        } catch (err) {}
+    try {
+      const keys = ['unifolder_study_imported_files', 'unifolder_left_menu_general_imports', 'unifolder_imported_files'];
+      keys.forEach(key => {
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              const newParsed = parsed.filter((f: any) => f.id !== fileId);
+              if (newParsed.length !== parsed.length) {
+                localStorage.setItem(key, JSON.stringify(newParsed));
+              }
+            }
+          } catch (e) {}
+        }
+      });
+
+      // Clean in any other keys
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('unifolder_matiere_files_') || k === 'unifolder_files_menu_items')) {
+          const saved = localStorage.getItem(k);
+          if (saved && saved.includes(fileId)) {
+            try {
+              const parsed = JSON.parse(saved);
+              if (Array.isArray(parsed)) {
+                const newParsed = parsed.filter((f: any) => f.id !== fileId);
+                if (newParsed.length !== parsed.length) {
+                  localStorage.setItem(k, JSON.stringify(newParsed));
+                }
+              }
+            } catch (e) {}
+          }
+        }
       }
-    }
+    } catch (err) {}
     
     if (activePreviewItem?.id === fileId && setActivePreviewItem) {
       setActivePreviewItem(null);
@@ -148,18 +184,41 @@ export function LeftMenu({
     setSessionImportedIds(prev => prev.filter(id => !selectedIds.includes(id)));
     
     // Update localStorage
-    if (activePreviewItem?.folderName || activeFolderDetail?.title) {
-      const folder = activePreviewItem?.folderName || activeFolderDetail?.title;
-      const storageKey = `unifolder_matiere_files_${folder}`;
-      const saved = localStorage.getItem(storageKey);
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          const newParsed = parsed.filter((f: any) => !selectedIds.includes(f.id));
-          localStorage.setItem(storageKey, JSON.stringify(newParsed));
-        } catch (err) {}
+    try {
+      const keys = ['unifolder_study_imported_files', 'unifolder_left_menu_general_imports', 'unifolder_imported_files'];
+      keys.forEach(key => {
+        const saved = localStorage.getItem(key);
+        if (saved) {
+          try {
+            const parsed = JSON.parse(saved);
+            if (Array.isArray(parsed)) {
+              const newParsed = parsed.filter((f: any) => !selectedIds.includes(f.id));
+              if (newParsed.length !== parsed.length) {
+                localStorage.setItem(key, JSON.stringify(newParsed));
+              }
+            }
+          } catch (e) {}
+        }
+      });
+
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (k && (k.startsWith('unifolder_matiere_files_') || k === 'unifolder_files_menu_items')) {
+          const saved = localStorage.getItem(k);
+          if (saved) {
+            try {
+              const parsed = JSON.parse(saved);
+              if (Array.isArray(parsed)) {
+                const newParsed = parsed.filter((f: any) => !selectedIds.includes(f.id));
+                if (newParsed.length !== parsed.length) {
+                  localStorage.setItem(k, JSON.stringify(newParsed));
+                }
+              }
+            } catch (e) {}
+          }
+        }
       }
-    }
+    } catch (err) {}
     
     if (activePreviewItem && selectedIds.includes(activePreviewItem.id) && setActivePreviewItem) {
       setActivePreviewItem(null);
@@ -233,13 +292,13 @@ export function LeftMenu({
       let textClass = "text-stone-700";
       
       if (isActive) {
-        containerClass = "bg-orange-50 border-2 border-orange-500 shadow-[0_0_15px_rgba(249,115,22,0.2)]";
-        textClass = "text-orange-600";
+        containerClass = "bg-orange-50/90 border-2 border-orange-500 rounded-xl shadow-[0_0_0_1.5px_#f97316] ring-2 ring-orange-400/40";
+        textClass = "text-orange-600 font-black";
       } else if (isAttached) {
-        containerClass = "bg-blue-50 border-2 border-blue-500 shadow-[0_0_15px_rgba(59,130,246,0.2)]";
-        textClass = "text-blue-600";
+        containerClass = "bg-blue-50/90 border-2 border-blue-500 rounded-xl shadow-[0_0_0_1.5px_#3b82f6] ring-2 ring-blue-400/40";
+        textClass = "text-blue-600 font-black";
       } else if (isSelectionMode && isImportedSection && isSelected) {
-        containerClass = "bg-orange-100 border-2 border-orange-400";
+        containerClass = "bg-orange-100 border-2 border-orange-400 rounded-xl";
       }
 
       return (
@@ -253,13 +312,16 @@ export function LeftMenu({
               return;
             }
             if (setActivePreviewItem) {
-               setActivePreviewItem({ ...f, folderName: activePreviewItem?.folderName || activeFolderDetail?.title });
+               const nextFolder = isImportedSection 
+                 ? (currentFolderName || 'Mes fichiers') 
+                 : (f.matiere || f.folderName || currentFolderName || 'Mes fichiers');
+               setActivePreviewItem({ ...f, folderName: nextFolder });
                setViewHistory(prev => [f.id, ...prev.filter(id => id !== f.id)]);
             }
-          }}
-          className={`group flex flex-col items-center cursor-pointer transition-all ${isHorizontal ? 'w-[100px] shrink-0' : 'w-full min-w-0'} relative ${isActive || isAttached ? 'scale-105' : 'hover:scale-105'} ${openMenuId === f.id ? 'z-[200]' : 'z-10'}`}
+          }} 
+          className={`group flex flex-col items-center cursor-pointer transition-all ${isHorizontal ? 'w-[100px] shrink-0' : 'w-full min-w-0'} relative ${isActive || isAttached ? 'scale-[1.03]' : 'hover:scale-105'} ${openMenuId === f.id ? 'z-[200]' : 'z-10'} p-1`}
         >
-          <div className={`relative p-2 rounded-xl transition-all ${containerClass}`}>
+          <div className={`relative p-2.5 rounded-xl transition-all ${containerClass}`}>
             <FileIconBadge fileName={f.name} size={48} />
             
             {!isSelectionMode && !isActive && (
@@ -365,43 +427,174 @@ export function LeftMenu({
   };
 
   useEffect(() => {
-    let baseFiles = [];
-    let folder = '';
-
-    if (activeFolderDetail && activeFolderDetail.files) {
-      baseFiles = activeFolderDetail.files;
+    let folder = currentFolderName || '';
+    if (activeFolderDetail && activeFolderDetail.title) {
       folder = activeFolderDetail.title;
-    } else if (activePreviewItem?.folderName) {
-      folder = activePreviewItem.folderName;
     }
 
-    if (folder) {
-      const storageKey = `unifolder_matiere_files_${folder}`;
-      const saved = localStorage.getItem(storageKey);
-      let importedFiles: any[] = [];
-      let leftMenuImports: any[] = [];
-      
-      if (saved) {
-        try {
-          const parsed = JSON.parse(saved);
-          importedFiles = parsed.map((item: any) => ({
-            ...item,
-            extension: item.extension || (item.name.includes('.') ? item.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-            isImported: true
-          }));
-          
-          leftMenuImports = importedFiles.filter((f: any) => f.isLeftMenuImport);
-        } catch(e) {}
+    // -------------------------------------------------------------
+    // 1. SECTION DU HAUT : TOUS LES FICHIERS IMPORTÉS PENDANT L'ÉTUDE
+    // (Indépendants du menu actif - s'affichent toujours en haut)
+    // -------------------------------------------------------------
+    const allLeftImportsMap = new Map<string, any>();
+
+    const addStudyImportFromRaw = (raw: string | null) => {
+      if (!raw) return;
+      try {
+        const parsed = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach((f: any) => {
+            if (f && f.id && (f.isLeftMenuImport || f.isStudyImport)) {
+              allLeftImportsMap.set(f.id, {
+                ...f,
+                isLeftMenuImport: true,
+                isStudyImport: true,
+                isImported: true,
+                extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+              });
+            }
+          });
+        }
+      } catch (e) {}
+    };
+
+    // Charger les clés principales dédiées aux imports d'étude
+    addStudyImportFromRaw(localStorage.getItem('unifolder_study_imported_files'));
+    addStudyImportFromRaw(localStorage.getItem('unifolder_left_menu_general_imports'));
+
+    // Récupérer et nettoyer également tout import d'étude qui aurait été sauvegardé dans une matière ou ailleurs
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && (key.startsWith('unifolder_matiere_files_') || key === 'unifolder_imported_files' || key === 'unifolder_files_menu_items')) {
+          const raw = localStorage.getItem(key);
+          if (raw && raw.includes('isLeftMenuImport')) {
+            addStudyImportFromRaw(raw);
+            try {
+              const parsed = JSON.parse(raw);
+              if (Array.isArray(parsed)) {
+                const cleaned = parsed.filter((item: any) => !item.isLeftMenuImport && !item.isStudyImport);
+                if (cleaned.length !== parsed.length) {
+                  localStorage.setItem(key, JSON.stringify(cleaned));
+                }
+              }
+            } catch (err) {}
+          }
+        }
       }
-      
-      setMenuFiles([...importedFiles, ...baseFiles]);
-      // Keep track of ONLY the explicitly imported files from LeftMenu
-      setSessionImportedIds(leftMenuImports.map((f: any) => f.id));
+    } catch (e) {}
+
+    const importedFilesList = Array.from(allLeftImportsMap.values());
+    // Mettre à jour le stockage global pour que tous les imports restent toujours persistants
+    try {
+      localStorage.setItem('unifolder_study_imported_files', JSON.stringify(importedFilesList));
+      localStorage.setItem('unifolder_left_menu_general_imports', JSON.stringify(importedFilesList));
+    } catch (e) {}
+
+    const importedIds = importedFilesList.map(f => f.id);
+
+    // -------------------------------------------------------------
+    // 2. SECTION DU BAS : FICHIERS SELON LE MENU PAR LEQUEL ON EST PASSÉ
+    // -------------------------------------------------------------
+    let baseFiles: any[] = [];
+
+    if (folder && !isMesFichiersMode) {
+      // CAS DANS UNE MATIÈRE (ex: Mathématiques) -> Uniquement les fichiers de cette matière
+      const matiereMap = new Map<string, any>();
+
+      // A. Charger les fichiers de cette matière depuis le localStorage
+      const matiereRaw = localStorage.getItem(`unifolder_matiere_files_${folder}`);
+      if (matiereRaw) {
+        try {
+          const parsed = JSON.parse(matiereRaw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((f: any) => {
+              if (f && f.id && !f.isLeftMenuImport && !f.isStudyImport && !importedIds.includes(f.id)) {
+                matiereMap.set(f.id, {
+                  ...f,
+                  matiere: folder,
+                  extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+                });
+              }
+            });
+          }
+        } catch (e) {}
+      }
+
+      // B. Fusionner avec activeFolderDetail.files si disponible
+      if (activeFolderDetail && Array.isArray(activeFolderDetail.files)) {
+        activeFolderDetail.files.forEach((f: any) => {
+          if (f && f.id && !f.isLeftMenuImport && !f.isStudyImport && !importedIds.includes(f.id)) {
+            if (!matiereMap.has(f.id)) {
+              matiereMap.set(f.id, {
+                ...f,
+                matiere: folder,
+                extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+              });
+            }
+          }
+        });
+      }
+
+      // C. S'assurer que le fichier actif sélectionné (si de cette matière) est présent
+      if (activePreviewItem && activePreviewItem.id && !importedIds.includes(activePreviewItem.id)) {
+        const itemFolder = activePreviewItem.folderName || activePreviewItem.matiere;
+        if (itemFolder === folder && !matiereMap.has(activePreviewItem.id)) {
+          matiereMap.set(activePreviewItem.id, {
+            ...activePreviewItem,
+            matiere: folder,
+            extension: activePreviewItem.extension || (activePreviewItem.name && activePreviewItem.name.includes('.') ? activePreviewItem.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+          });
+        }
+      }
+
+      baseFiles = Array.from(matiereMap.values());
     } else {
-      setMenuFiles([...baseFiles]);
-      setSessionImportedIds([]);
+      // CAS "MES FICHIERS" -> Uniquement les fichiers qui n'appartiennent à aucune matière
+      const directMap = new Map<string, any>();
+
+      const addDirectFiles = (raw: string | null) => {
+        if (!raw) return;
+        try {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            parsed.forEach((f: any) => {
+              if (f && f.id && (!f.matiere || f.matiere === 'Mes fichiers') && !f.isLeftMenuImport && !f.isStudyImport && !importedIds.includes(f.id)) {
+                directMap.set(f.id, {
+                  ...f,
+                  matiere: 'Mes fichiers',
+                  extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+                });
+              }
+            });
+          }
+        } catch (e) {}
+      };
+
+      addDirectFiles(localStorage.getItem('unifolder_files_menu_items'));
+      addDirectFiles(localStorage.getItem('unifolder_imported_files'));
+      addDirectFiles(localStorage.getItem('unifolder_matiere_files'));
+
+      // S'assurer que le fichier actif sélectionné (hors matière et non importé) est inclus
+      if (activePreviewItem && activePreviewItem.id && !importedIds.includes(activePreviewItem.id)) {
+        const itemFolder = activePreviewItem.folderName || activePreviewItem.matiere;
+        if (!itemFolder || itemFolder === 'Mes fichiers') {
+          if (!directMap.has(activePreviewItem.id)) {
+            directMap.set(activePreviewItem.id, {
+              ...activePreviewItem,
+              matiere: 'Mes fichiers',
+              extension: activePreviewItem.extension || (activePreviewItem.name && activePreviewItem.name.includes('.') ? activePreviewItem.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+            });
+          }
+        }
+      }
+
+      baseFiles = Array.from(directMap.values());
     }
-  }, [activeFolderDetail, activePreviewItem]);
+
+    setMenuFiles([...importedFilesList, ...baseFiles]);
+    setSessionImportedIds(importedIds);
+  }, [activeFolderDetail, activePreviewItem, isMesFichiersMode, currentFolderName]);
 
   // Filtered files according to search query
   const query = searchQuery.toLowerCase().trim();
@@ -429,7 +622,7 @@ export function LeftMenu({
           />
           <button
             onClick={() => fileInputRef.current?.click()}
-            className="absolute top-[60px] md:top-[64px] left-2 md:left-4 z-50 px-2 py-0.5 bg-white rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-stone-50 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-stone-800"
+            className="absolute top-[64px] md:top-[66px] left-2 md:left-4 z-50 px-2 py-0.5 bg-white rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-stone-50 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-stone-800"
             title="Importer un fichier depuis l'appareil"
           >
             <Upload className="w-3.5 h-3.5" />
@@ -439,7 +632,7 @@ export function LeftMenu({
       ) : hasChatMessages ? (
         <button
           onClick={() => setChatKey(prev => prev + 1)}
-          className="absolute top-[60px] md:top-[64px] left-2 md:left-4 z-50 px-2 py-0.5 bg-[#1e2024] rounded border border-stone-600 shadow-[1px_1px_0px_0px_#444] hover:bg-[#2a2d33] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-zinc-300"
+          className="absolute top-[64px] md:top-[66px] left-2 md:left-4 z-50 px-2 py-0.5 bg-[#1e2024] rounded border border-stone-600 shadow-[1px_1px_0px_0px_#444] hover:bg-[#2a2d33] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-zinc-300"
           title="Réinitialiser la discussion"
         >
           <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
@@ -463,7 +656,7 @@ export function LeftMenu({
 
       {/* Search Bar between Importer and Assistante DKD */}
       {!isAssistantOpen && (
-        <div className="absolute top-[60px] md:top-[64px] left-[118px] md:left-[132px] z-50 flex items-center">
+        <div className="absolute top-[64px] md:top-[66px] left-[118px] md:left-[132px] z-50 flex items-center">
           <div className="relative w-[125px] sm:w-[145px] md:w-[160px] flex items-center">
             <Search className="w-3 h-3 text-stone-400 absolute left-2 pointer-events-none" />
             <input
@@ -511,7 +704,7 @@ export function LeftMenu({
 
       {/* Available Files in current Folder/Subject */}
       {!isAssistantOpen && (
-        <div className="absolute top-[100px] md:top-[110px] bottom-0 left-0 right-0 flex flex-col overflow-hidden px-4 pb-4 pt-2">
+        <div className="absolute top-[138px] md:top-[142px] bottom-0 left-0 right-0 flex flex-col overflow-hidden px-3 sm:px-4 pb-4">
           {menuFiles.length > 0 ? (
             <div className="w-full flex flex-col gap-4 h-full overflow-hidden">
               {/* Imported Files Section - fixed at top */}
@@ -520,11 +713,9 @@ export function LeftMenu({
                   <div className="flex items-center justify-between border-b-2 border-orange-200 mb-2 pb-1 px-2 w-full">
                     <div className="flex items-center gap-1.5">
                       <h4 className="text-[10px] font-bold text-orange-600 uppercase tracking-wider text-left m-0">Fichiers Importés</h4>
-                      {searchQuery && (
-                        <span className="text-[9px] font-bold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded-full">
-                          {importedFiles.length}
-                        </span>
-                      )}
+                      <span className="text-[9px] font-bold text-orange-700 bg-orange-100 px-1.5 py-0.5 rounded-full">
+                        {importedFiles.length}
+                      </span>
                     </div>
                     {isSelectionMode && (
                       <div className="flex items-center gap-1.5 animate-fadeIn">
@@ -539,7 +730,7 @@ export function LeftMenu({
                     )}
                   </div>
                   {importedFiles.length > 0 ? (
-                    <div className="w-full grid grid-rows-2 grid-flow-col auto-cols-[100px] overflow-x-auto gap-3 py-2 px-1 justify-start hide-scrollbar pb-2">
+                    <div className="w-full grid grid-rows-2 grid-flow-col auto-cols-[100px] overflow-x-auto gap-3 pt-2 pb-3 px-2 justify-start hide-scrollbar">
                       {renderFileGroup(importedFiles, true, true)}
                     </div>
                   ) : (
@@ -550,30 +741,30 @@ export function LeftMenu({
                 </div>
               )}
               
-              {/* Subject Files Section - scrolls independently */}
-              {menuFiles.some(f => !sessionImportedIds.includes(f.id)) && (
-                <div className="w-full flex flex-col flex-1 overflow-hidden min-h-0">
-                  {sessionImportedIds.length > 0 && (
-                    <div className="flex items-center justify-between border-b border-stone-200 mb-2 pb-1 px-2 w-full shrink-0">
-                      <h4 className="text-[10px] font-bold text-stone-500 uppercase tracking-wider text-left m-0">Fichiers de la matière</h4>
-                      {searchQuery && (
-                        <span className="text-[9px] font-bold text-stone-600 bg-stone-100 px-1.5 py-0.5 rounded-full">
-                          {subjectFiles.length}
-                        </span>
-                      )}
-                    </div>
-                  )}
-                  {subjectFiles.length > 0 ? (
-                    <div className="w-full grid grid-cols-[repeat(auto-fit,minmax(100px,1fr))] gap-3 py-2 px-1 justify-items-center justify-start overflow-y-auto flex-1">
-                      {renderFileGroup(subjectFiles, false)}
-                    </div>
-                  ) : (
-                    <p className="text-[11px] text-stone-400 italic py-4 text-center w-full">
-                      Aucun fichier de matière correspondant
-                    </p>
-                  )}
+              {/* Context Files Section - scrolls independently */}
+              <div className="w-full flex flex-col flex-1 overflow-hidden min-h-0">
+                <div className="flex items-center justify-between border-b border-stone-200 mb-2 pb-1 px-2 w-full shrink-0">
+                  <div className="flex items-center gap-1.5">
+                    <h4 className="text-[10px] font-bold text-stone-500 uppercase tracking-wider text-left m-0">
+                      {isMesFichiersMode ? 'Mes fichiers' : (currentFolderName ? `Fichiers de ${currentFolderName}` : 'Fichiers de la matière')}
+                    </h4>
+                    {subjectFiles.length > 0 && (
+                      <span className="text-[9px] font-bold text-stone-600 bg-stone-100 px-1.5 py-0.5 rounded-full">
+                        {subjectFiles.length}
+                      </span>
+                    )}
+                  </div>
                 </div>
-              )}
+                {subjectFiles.length > 0 ? (
+                  <div className="w-full grid grid-cols-[repeat(auto-fit,minmax(100px,1fr))] gap-3 pt-2 pb-6 px-2 justify-items-center justify-start overflow-y-auto flex-1">
+                    {renderFileGroup(subjectFiles, false)}
+                  </div>
+                ) : (
+                  <p className="text-[11px] text-stone-400 italic py-4 text-center w-full">
+                    {isMesFichiersMode ? 'Aucun fichier dans Mes fichiers' : 'Aucun fichier dans cette matière'}
+                  </p>
+                )}
+              </div>
             </div>
           ) : (
              <div className="flex flex-col items-center justify-center h-full text-stone-400 gap-2">

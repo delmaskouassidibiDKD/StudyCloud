@@ -7,6 +7,7 @@ interface RightMenuProps {
   isCenterFullscreen: boolean;
   mobilePreviewTab: number;
   activePreviewItem?: any;
+  isMobileScreen?: boolean;
 }
 
 const PROPOSALS = [
@@ -28,7 +29,8 @@ export function RightMenu({
   setIsRightFullscreen, 
   isCenterFullscreen, 
   mobilePreviewTab,
-  activePreviewItem
+  activePreviewItem,
+  isMobileScreen
 }: RightMenuProps) {
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
   const [activeHistoryContent, setActiveHistoryContent] = useState<string | null>(null);
@@ -66,7 +68,7 @@ export function RightMenu({
   };
 
   return (
-    <div className={`w-full h-full pointer-events-auto relative bg-[#1e2024] overflow-x-hidden overflow-y-auto ${isCenterFullscreen ? 'hidden' : (mobilePreviewTab === 2 || isRightFullscreen ? 'flex' : 'hidden md:flex')}`}>
+    <div className={`w-full h-full pointer-events-auto relative bg-[#1e2024] overflow-x-hidden overflow-y-auto ${isCenterFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 2 || isRightFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
       {/* Fullscreen Toggle Button for Right Area */}
       {(!isRightSidebarOpen || isRightFullscreen) && (
         <button

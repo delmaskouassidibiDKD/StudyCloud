@@ -1,10 +1,13 @@
 <!doctype html>
-<html lang="en">
+<html lang="fr" translate="no" class="notranslate">
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>StudyCloud</title>
     <meta name="description" content="StudyCloud - Plateforme cloud éducative et collaborative pour étudiants." />
+    <meta name="google" content="notranslate" />
+    <meta name="googlebot" content="notranslate" />
+    <meta http-equiv="content-language" content="fr" />
     <meta property="og:title" content="StudyCloud" />
     <meta property="og:description" content="StudyCloud - Plateforme cloud éducative et collaborative pour étudiants." />
     <meta property="og:type" content="website" />
@@ -27,7 +30,7 @@
     </script>
     <script type="text/javascript" src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
   </head>
-  <body>
+  <body class="notranslate" translate="no">
     <div id="google_translate_element" style="display:none;"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
@@ -43,19 +46,23 @@
         });
       });
 
-      // 2. Bloquer le zoom clavier (Ctrl +, Ctrl -, Ctrl 0, Cmd +, Cmd -)
+      // 2. Gestion intelligente du zoom : adapter le zoom au document/contenu sans déformer l'interface
       window.addEventListener('keydown', function(e) {
         if ((e.ctrlKey || e.metaKey) && (
           e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0' ||
           e.code === 'NumpadAdd' || e.code === 'NumpadSubtract' || e.code === 'Equal' || e.code === 'Minus' || e.code === 'Digit0'
         )) {
+          var delta = (e.key === '-' || e.code === 'NumpadSubtract' || e.code === 'Minus') ? -15 : (e.key === '0' || e.code === 'Digit0') ? 0 : 15;
+          window.dispatchEvent(new CustomEvent('studycloud:doc-zoom', { detail: { delta: delta, reset: delta === 0 } }));
           e.preventDefault();
         }
       }, { passive: false });
 
-      // 3. Bloquer le zoom molette de souris & pincement trackpad (Ctrl + Wheel)
+      // 3. Zoom molette de souris sur document sans déformer l'application
       window.addEventListener('wheel', function(e) {
         if (e.ctrlKey) {
+          var delta = e.deltaY < 0 ? 15 : -15;
+          window.dispatchEvent(new CustomEvent('studycloud:doc-zoom', { detail: { delta: delta, reset: false } }));
           e.preventDefault();
         }
       }, { passive: false });

@@ -864,7 +864,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <p className="text-xs text-stone-600 mt-1">Essayez de modifier vos termes de recherche ou filtre.</p>
               </div>
             ) : (
-              <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2 sm:gap-2.5 lg:gap-3 w-full">
+              <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-2.5 lg:gap-3 w-full">
                 {filteredItems.map(({ file, folder }) => {
                   const formatSize = (bytes: number) => {
                     if (!bytes) return '0 o';
@@ -877,11 +877,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   return (
                     <div
                       key={file.id}
-                      className="bg-[#FDFBF7] border-2 border-stone-800 rounded-xl p-2.5 sm:p-3 shadow-[2px_2px_0px_0px_#1c1917] hover:shadow-[3.5px_3.5px_0px_0px_#1c1917] transition-all flex flex-col justify-between group h-full relative"
+                      className="bg-[#FDFBF7] border-2 border-stone-800 rounded-xl p-2 sm:p-2.5 md:p-3 shadow-[2px_2px_0px_0px_#1c1917] hover:shadow-[3.5px_3.5px_0px_0px_#1c1917] transition-all flex flex-col justify-between group h-full relative"
                     >
                       <div>
                         <div className="flex items-start justify-between gap-1.5 mb-1.5">
-                          <FileIconBadge fileName={file.name} size={30} />
+                          <FileIconBadge fileName={file.name} size={28} />
                           <div className="relative">
                             <button
                               type="button"
@@ -889,7 +889,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                                 e.stopPropagation();
                                 setActiveCategoryTooltipId(prev => prev === file.id ? null : file.id);
                               }}
-                              className="text-[9px] sm:text-[10px] font-extrabold bg-orange-100 hover:bg-orange-200 active:bg-orange-300 text-orange-800 px-1.5 py-0.5 rounded-md border border-stone-800 truncate max-w-[65px] transition-all cursor-pointer block text-left active:scale-95"
+                              className="text-[8.5px] sm:text-[10px] font-extrabold bg-orange-100 hover:bg-orange-200 active:bg-orange-300 text-orange-800 px-1.5 py-0.5 rounded-md border border-stone-800 truncate max-w-[55px] sm:max-w-[70px] transition-all cursor-pointer block text-left active:scale-95"
                               title={folder.category}
                             >
                               {folder.category}
@@ -923,8 +923,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           {file.name}
                         </h3>
 
-                        <div className="min-h-[18px] mb-2.5 flex items-center">
-                          <div className="flex items-center gap-1 text-[9px] sm:text-[11px] text-stone-600 truncate w-full">
+                        <div className="min-h-[18px] mb-2 sm:mb-2.5 flex items-center">
+                          <div className="flex items-center gap-1 text-[8.5px] sm:text-[11px] text-stone-600 truncate w-full">
                             <Building2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-stone-500 shrink-0" />
                             {folder.school && folder.school.trim() ? (
                               <span className="font-bold truncate text-stone-800" title={folder.school}>
@@ -939,12 +939,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         </div>
                       </div>
 
-                      <div className="flex items-center justify-between pt-2 border-t border-stone-200">
-                        <span className="text-[9px] sm:text-[10px] font-bold text-stone-500">{formatSize(file.size)}</span>
-                        <div className="flex items-center gap-2">
+                      <div className="flex items-center justify-between pt-1.5 sm:pt-2 border-t border-stone-200 gap-1">
+                        <span className="text-[8.5px] sm:text-[10px] font-bold text-stone-500 truncate">{formatSize(file.size)}</span>
+                        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                           <button
                             onClick={() => setActivePreviewItem({ ...file, folderName: folder.title, lockFullscreen: true })}
-                            className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1 transition-all cursor-pointer"
+                            className="p-1 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1 transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
                             title="Visualiser"
                           >
                             <Eye className="w-3 h-3" />
@@ -952,7 +952,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           </button>
                           <button
                             onClick={(e) => handleDownloadSingle(file, folder.title, e)}
-                            className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center"
+                            className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5"
                             title="Télécharger"
                           >
                             <Download className="w-3 h-3" />

@@ -1,5 +1,5 @@
 import React, { useRef, useState, useEffect } from 'react';
-import { Edit3, ArrowLeft, Upload, File, Folder, Check, MoreVertical, X, Search, Copy } from 'lucide-react';
+import { Edit3, ArrowLeft, Upload, File, Folder, Check, MoreVertical, X, Search, Copy, Plus } from 'lucide-react';
 
 interface FilesMenuViewProps {
   onBack: () => void;
@@ -16,25 +16,163 @@ interface ImportedItem {
   url?: string;
   isImage?: boolean;
   matiere?: string;
+  isLeftMenuImport?: boolean;
+  importedAt?: number | string;
+  createdAt?: number | string;
+  timestamp?: number;
+  _orderIndex?: number;
+  isFavorite?: boolean;
 }
 
-export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFile, setActivePreviewItem }) => {
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const [importedFiles, setImportedFiles] = useState<ImportedItem[]>(() => {
-    const saved = localStorage.getItem('unifolder_files_menu_items');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        return parsed.map((item: any) => ({
-          ...item,
-          extension: item.extension || (item.name.includes('.') ? item.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
-        }));
-      } catch (e) {
-        return [];
+export const getFileTimestamp = (item: any): number => {
+  if (!item) return 0;
+  
+  if (typeof item.importedAt === 'number' && item.importedAt > 0) return item.importedAt;
+  if (typeof item.timestamp === 'number' && item.timestamp > 0) return item.timestamp;
+  if (typeof item.createdAt === 'number' && item.createdAt > 0) return item.createdAt;
+
+  if (typeof item.createdAt === 'string') {
+    const t = new Date(item.createdAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+  if (typeof item.importedAt === 'string') {
+    const t = new Date(item.importedAt).getTime();
+    if (!isNaN(t) && t > 0) return t;
+  }
+
+  // Timestamp inside ID (e.g. file-17889... or 17889...)
+  if (item.id && typeof item.id === 'string') {
+    const match = item.id.match(/1[6-9]\d{11,12}/);
+    if (match) {
+      const parsed = parseInt(match[0], 10);
+      if (!isNaN(parsed) && parsed > 1000000000000) return parsed;
+    }
+  }
+
+  // Timestamp in fileName (e.g. Screenshot_20260322_103941_Chrome.jpg)
+  if (item.name && typeof item.name === 'string') {
+    const matchDate = item.name.match(/20\d{2}[-_]?(0[1-9]|1[0-2])[-_]?([0-2][0-9]|3[01])(?:[-_]?([01][0-9]|2[0-3])([0-5][0-9])([0-5][0-9]))?/);
+    if (matchDate) {
+      const full = matchDate[0].replace(/[-_]/g, '');
+      if (full.length >= 8) {
+        const year = parseInt(full.substring(0, 4), 10);
+        const month = parseInt(full.substring(4, 6), 10) - 1;
+        const day = parseInt(full.substring(6, 8), 10);
+        const hour = full.length >= 10 ? parseInt(full.substring(8, 10), 10) : 12;
+        const min = full.length >= 12 ? parseInt(full.substring(10, 12), 10) : 0;
+        const sec = full.length >= 14 ? parseInt(full.substring(12, 14), 10) : 0;
+        const d = new Date(year, month, day, hour, min, sec).getTime();
+        if (!isNaN(d) && d > 0) return d;
       }
     }
-    return [];
-  });
+  }
+
+  // Date formatted 'DD/MM/YYYY'
+  if (item.date && typeof item.date === 'string') {
+    const parts = item.date.split('/');
+    if (parts.length === 3) {
+      const d = new Date(parseInt(parts[2]), parseInt(parts[1]) - 1, parseInt(parts[0])).getTime();
+      if (!isNaN(d) && d > 0) return d;
+    }
+  }
+
+  if (typeof item._orderIndex === 'number') {
+    return item._orderIndex;
+  }
+
+  return 0;
+};
+
+export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFile, setActivePreviewItem }) => {
+  const loadAllUserFiles = (): ImportedItem[] => {
+    const allFilesMap = new Map<string, ImportedItem>();
+    let orderCounter = 0;
+
+    const addFiles = (raw: string | null, fallbackMatiere?: string) => {
+      if (!raw) return;
+      try {
+        const parsed: any[] = JSON.parse(raw);
+        if (Array.isArray(parsed)) {
+          parsed.forEach(f => {
+            if (f && f.id) {
+              orderCounter++;
+              const existing = allFilesMap.get(f.id);
+              const matiere = f.matiere || fallbackMatiere || existing?.matiere;
+              const ext = f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
+              
+              const calculatedTime = getFileTimestamp(f) || (1700000000000 + orderCounter * 1000);
+
+              allFilesMap.set(f.id, {
+                ...f,
+                matiere,
+                extension: ext,
+                importedAt: f.importedAt || calculatedTime,
+                _orderIndex: orderCounter
+              });
+            }
+          });
+        }
+      } catch (e) {
+        console.error(e);
+      }
+    };
+
+    // 1. Charger les fichiers directement importés dans "Mes fichiers"
+    addFiles(localStorage.getItem('unifolder_files_menu_items'));
+
+    // 2. Charger les fichiers importés pendant l'étude (quelque soit où le fichier a été importé)
+    addFiles(localStorage.getItem('unifolder_study_imported_files'));
+    addFiles(localStorage.getItem('unifolder_left_menu_general_imports'));
+
+    // 3. Charger les fichiers hérités d'anciennes versions
+    addFiles(localStorage.getItem('unifolder_imported_files'));
+    addFiles(localStorage.getItem('unifolder_matiere_files'));
+
+    // 4. Charger les fichiers de toutes les matières enregistrées
+    try {
+      const savedMat = localStorage.getItem('unifolder_saved_matieres');
+      if (savedMat) {
+        const parsedMat = JSON.parse(savedMat);
+        if (Array.isArray(parsedMat)) {
+          parsedMat.forEach((m: any) => {
+            if (m && m.name) {
+              addFiles(localStorage.getItem(`unifolder_matiere_files_${m.name}`), m.name);
+            }
+          });
+        }
+      }
+    } catch (e) {}
+
+    // 5. Parcourir toutes les clés de matières existantes dans localStorage
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith('unifolder_matiere_files_')) {
+          const matName = key.replace('unifolder_matiere_files_', '');
+          addFiles(localStorage.getItem(key), matName);
+        }
+      }
+    } catch (e) {
+      console.error(e);
+    }
+
+    return Array.from(allFilesMap.values());
+  };
+
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [importedFiles, setImportedFiles] = useState<ImportedItem[]>(() => loadAllUserFiles());
+
+  useEffect(() => {
+    const handleSync = () => {
+      setImportedFiles(loadAllUserFiles());
+    };
+    window.addEventListener('storage', handleSync);
+    window.addEventListener('unifolder_files_updated', handleSync);
+    return () => {
+      window.removeEventListener('storage', handleSync);
+      window.removeEventListener('unifolder_files_updated', handleSync);
+    };
+  }, []);
 
   const [renamingFileId, setRenamingFileId] = useState<string | null>(null);
   const [newFileName, setNewFileName] = useState('');
@@ -83,13 +221,26 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       (f.matiere && f.matiere.toLowerCase().includes(searchQuery.toLowerCase()))
     );
   }).sort((a, b) => {
+    // Le dernier fichier importé dans toute l'application s'affiche toujours à l'en-tête même
+    const lastId = localStorage.getItem('unifolder_last_imported_id');
+    if (lastId) {
+      if (a.id === lastId && b.id !== lastId) return -1;
+      if (b.id === lastId && a.id !== lastId) return 1;
+    }
+
     if (sortBy === 'size') {
       return (b.size || 0) - (a.size || 0);
     } else if (sortBy === 'oldest') {
-      return a.id.localeCompare(b.id);
+      const timeA = getFileTimestamp(a);
+      const timeB = getFileTimestamp(b);
+      if (timeA !== timeB) return timeA - timeB;
+      return a.name.localeCompare(b.name);
     } else {
-      // 'recent'
-      return b.id.localeCompare(a.id);
+      // 'recent' : Les plus récents s'affichent en haut (à l'en-tête)
+      const timeA = getFileTimestamp(a);
+      const timeB = getFileTimestamp(b);
+      if (timeA !== timeB) return timeB - timeA;
+      return (b._orderIndex || 0) - (a._orderIndex || 0);
     }
   });
 
@@ -136,6 +287,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
     const handleSaveRename = () => {
     if (!renamingFileId || !newFileName.trim()) return;
+    const targetFile = importedFiles.find(item => item.id === renamingFileId);
+
     setImportedFiles(prev => prev.map(item => {
       if (item.id === renamingFileId) {
         const existingExt = item.extension || (item.name.includes('.') ? item.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
@@ -147,6 +300,40 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       }
       return item;
     }));
+
+    // Mettre à jour dans unifolder_files_menu_items
+    try {
+      const directSaved = localStorage.getItem('unifolder_files_menu_items');
+      if (directSaved) {
+        const parsed: ImportedItem[] = JSON.parse(directSaved);
+        const updated = parsed.map(item => item.id === renamingFileId ? { ...item, name: newFileName.trim() } : item);
+        localStorage.setItem('unifolder_files_menu_items', JSON.stringify(updated));
+      }
+    } catch (e) {}
+
+    // Si le fichier provient d'une matière, mettre à jour dans sa matière
+    if (targetFile?.matiere) {
+      try {
+        const matKey = `unifolder_matiere_files_${targetFile.matiere}`;
+        const matSaved = localStorage.getItem(matKey);
+        if (matSaved) {
+          const parsed: ImportedItem[] = JSON.parse(matSaved);
+          const updated = parsed.map(item => item.id === renamingFileId ? { ...item, name: newFileName.trim() } : item);
+          localStorage.setItem(matKey, JSON.stringify(updated));
+        }
+      } catch (e) {}
+    }
+
+    try {
+      const legSaved = localStorage.getItem('unifolder_matiere_files');
+      if (legSaved) {
+        const parsed: ImportedItem[] = JSON.parse(legSaved);
+        const updated = parsed.map(item => item.id === renamingFileId ? { ...item, name: newFileName.trim() } : item);
+        localStorage.setItem('unifolder_matiere_files', JSON.stringify(updated));
+      }
+    } catch (e) {}
+
+    window.dispatchEvent(new Event('unifolder_files_updated'));
     setRenamingFileId(null);
     setSuccessMessage("Fichier renommé avec succès !");
     setTimeout(() => setSuccessMessage(null), 3000);
@@ -155,25 +342,124 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   const handleDuplicate = (id: string) => {
     const fileToDup = importedFiles.find(item => item.id === id);
     if (!fileToDup) return;
-    const newId = 'file-' + Math.random().toString(36).substring(2, 9);
+    const now = Date.now();
+    const newId = `file-${now}-${Math.random().toString(36).substring(2, 7)}`;
     const duplicated: ImportedItem = {
       ...fileToDup,
       id: newId,
-      name: fileToDup.name + ' (Copie)'
+      name: fileToDup.name.includes('.') ? fileToDup.name.replace(/\.([^.]+)$/, ' (Copie).$1') : `${fileToDup.name} (Copie)`,
+      importedAt: now,
+      createdAt: now,
+      timestamp: now
     };
-    setImportedFiles(prev => [...prev, duplicated]);
+    setImportedFiles(prev => [duplicated, ...prev]);
+    localStorage.setItem('unifolder_last_imported_id', newId);
+
+    // Sauvegarder la copie dans le bon stockage
+    if (fileToDup.matiere) {
+      try {
+        const matKey = `unifolder_matiere_files_${fileToDup.matiere}`;
+        const matSaved = localStorage.getItem(matKey);
+        let list: ImportedItem[] = matSaved ? JSON.parse(matSaved) : [];
+        list = [duplicated, ...list];
+        localStorage.setItem(matKey, JSON.stringify(list));
+      } catch (e) {}
+    } else {
+      try {
+        const directSaved = localStorage.getItem('unifolder_files_menu_items');
+        let list: ImportedItem[] = directSaved ? JSON.parse(directSaved) : [];
+        list = [duplicated, ...list];
+        localStorage.setItem('unifolder_files_menu_items', JSON.stringify(list));
+      } catch (e) {}
+    }
+
+    window.dispatchEvent(new Event('unifolder_files_updated'));
     setOpenMenuId(null);
   };
 
   const handleDelete = (id: string) => {
+    const fileToDelete = importedFiles.find(item => item.id === id);
     setImportedFiles(prev => prev.filter(item => item.id !== id));
     setOpenMenuId(null);
     setSelectedFileIds(prev => prev.filter(i => i !== id));
+
+    // Supprimer du stockage direct
+    try {
+      const directSaved = localStorage.getItem('unifolder_files_menu_items');
+      if (directSaved) {
+        const parsed: ImportedItem[] = JSON.parse(directSaved);
+        const filtered = parsed.filter(item => item.id !== id);
+        localStorage.setItem('unifolder_files_menu_items', JSON.stringify(filtered));
+      }
+    } catch (e) {}
+
+    // Si le fichier provient d'une matière, le supprimer de cette matière
+    if (fileToDelete?.matiere) {
+      try {
+        const matKey = `unifolder_matiere_files_${fileToDelete.matiere}`;
+        const matSaved = localStorage.getItem(matKey);
+        if (matSaved) {
+          const parsed: ImportedItem[] = JSON.parse(matSaved);
+          const filtered = parsed.filter(item => item.id !== id);
+          localStorage.setItem(matKey, JSON.stringify(filtered));
+        }
+      } catch (e) {}
+    }
+
+    // Supprimer également des clés historiques si présentes
+    try {
+      const legSaved = localStorage.getItem('unifolder_matiere_files');
+      if (legSaved) {
+        const parsed: ImportedItem[] = JSON.parse(legSaved);
+        const filtered = parsed.filter(item => item.id !== id);
+        localStorage.setItem('unifolder_matiere_files', JSON.stringify(filtered));
+      }
+    } catch (e) {}
+
+    window.dispatchEvent(new Event('unifolder_files_updated'));
   };
 
   const handleBatchDelete = () => {
     if (selectedFileIds.length === 0) return;
+    const filesToDelete = importedFiles.filter(item => selectedFileIds.includes(item.id));
     setImportedFiles(prev => prev.filter(item => !selectedFileIds.includes(item.id)));
+
+    // Supprimer du stockage direct
+    try {
+      const directSaved = localStorage.getItem('unifolder_files_menu_items');
+      if (directSaved) {
+        const parsed: ImportedItem[] = JSON.parse(directSaved);
+        const filtered = parsed.filter(item => !selectedFileIds.includes(item.id));
+        localStorage.setItem('unifolder_files_menu_items', JSON.stringify(filtered));
+      }
+    } catch (e) {}
+
+    // Supprimer des matières respectives
+    filesToDelete.forEach(f => {
+      if (f.matiere) {
+        try {
+          const matKey = `unifolder_matiere_files_${f.matiere}`;
+          const matSaved = localStorage.getItem(matKey);
+          if (matSaved) {
+            const parsed: ImportedItem[] = JSON.parse(matSaved);
+            const filtered = parsed.filter(item => item.id !== f.id);
+            localStorage.setItem(matKey, JSON.stringify(filtered));
+          }
+        } catch (e) {}
+      }
+    });
+
+    // Supprimer des clés historiques
+    try {
+      const legSaved = localStorage.getItem('unifolder_matiere_files');
+      if (legSaved) {
+        const parsed: ImportedItem[] = JSON.parse(legSaved);
+        const filtered = parsed.filter(item => !selectedFileIds.includes(item.id));
+        localStorage.setItem('unifolder_matiere_files', JSON.stringify(filtered));
+      }
+    } catch (e) {}
+
+    window.dispatchEvent(new Event('unifolder_files_updated'));
     setSelectedFileIds([]);
     setIsSelectionMode(false);
   };
@@ -220,7 +506,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           const copiedFile: ImportedItem = {
             ...fileToClassify,
             id: 'file-' + Math.random().toString(36).substring(2, 9),
-            matiere: undefined
+            matiere: matName
           };
           list.push(copiedFile);
           localStorage.setItem(storageKey, JSON.stringify(list));
@@ -232,6 +518,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
     cleanupUnusedMatieres();
     setClassifyFileIds(null);
+    window.dispatchEvent(new Event('unifolder_files_updated'));
     setSuccessMessage("Ajouté avec succès !");
     setTimeout(() => {
       setSuccessMessage(null);
@@ -287,11 +574,12 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       const fileList = e.target.files;
       const newItems: ImportedItem[] = [];
       const imageFilesToCompress: { id: string; file: File }[] = [];
+      const now = Date.now();
 
       for (let i = 0; i < fileList.length; i++) {
         const f = fileList[i];
         const isImg = f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg)$/i.test(f.name);
-        const id = 'file-' + Math.random().toString(36).substring(2, 9);
+        const id = `file-${now + i}-${Math.random().toString(36).substring(2, 7)}`;
         let url: string | undefined = undefined;
 
         if (isImg) {
@@ -311,11 +599,30 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           type: f.type || 'Fichier',
           extension: extVal,
           url,
-          isImage: isImg
+          isImage: isImg,
+          importedAt: now + i,
+          createdAt: now + i,
+          timestamp: now + i
         });
       }
 
-      setImportedFiles(prev => [...prev, ...newItems]);
+      // Placer en tête de liste pour affichage immédiat à l'en-tête même
+      setImportedFiles(prev => [...newItems, ...prev]);
+
+      if (newItems.length > 0) {
+        localStorage.setItem('unifolder_last_imported_id', newItems[newItems.length - 1].id);
+      }
+
+      // Sauvegarder dans unifolder_files_menu_items (en tête)
+      try {
+        const directSaved = localStorage.getItem('unifolder_files_menu_items');
+        let directList: ImportedItem[] = directSaved ? JSON.parse(directSaved) : [];
+        directList = [...newItems, ...directList];
+        localStorage.setItem('unifolder_files_menu_items', JSON.stringify(directList));
+        window.dispatchEvent(new Event('unifolder_files_updated'));
+      } catch (e) {
+        console.error(e);
+      }
 
       try {
         const existingShares = JSON.parse(localStorage.getItem('unifolder_shares') || '[]');
@@ -323,7 +630,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         const newSharedFolder = {
           id: 'folder-' + Math.random().toString(36).substring(2, 9),
           title: folderTitle,
-          description: 'Document publié dans la bibliothèque via UniFolder',
+          description: 'Document ajouté dans Mes fichiers',
           category: 'Cours',
           author: 'Utilisateur',
           createdAt: new Date().toISOString(),
@@ -344,7 +651,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         console.error(err);
       }
 
-      setSuccessMessage('Fichier publié avec succès dans la bibliothèque !');
+      const successMsg = newItems.length > 1
+        ? 'Fichiers importés avec succès dans Mes fichiers !'
+        : 'Fichier importé avec succès dans Mes fichiers !';
+      setSuccessMessage(successMsg);
       setTimeout(() => setSuccessMessage(null), 3500);
 
       imageFilesToCompress.forEach(({ id, file }) => {
@@ -353,6 +663,14 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
             setImportedFiles(prev =>
               prev.map(item => item.id === id ? { ...item, url: dataUrl } : item)
             );
+            try {
+              const directSaved = localStorage.getItem('unifolder_files_menu_items');
+              if (directSaved) {
+                let directList: ImportedItem[] = JSON.parse(directSaved);
+                directList = directList.map(item => item.id === id ? { ...item, url: dataUrl } : item);
+                localStorage.setItem('unifolder_files_menu_items', JSON.stringify(directList));
+              }
+            } catch (e) {}
           }
         });
       });
@@ -371,16 +689,27 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         multiple 
         onChange={handleFileChange} 
       />
-      <div className="fixed top-14 left-4 right-4 md:left-[17rem] flex items-center justify-between z-40 pointer-events-none">
-        <button
-          onClick={onBack}
-          className="pointer-events-auto flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
-        >
-          <ArrowLeft className="w-3 h-3" />
-          <span>Retour</span>
-        </button>
+      <div className="fixed top-14 left-4 right-4 md:left-[17rem] flex items-start justify-between z-40 pointer-events-none gap-2">
+        <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          >
+            <ArrowLeft className="w-3 h-3" />
+            <span>Retour</span>
+          </button>
 
-        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] bg-[#E8DFD0] px-3 py-1 rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917]">
+          <button
+            onClick={handleButtonClick}
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            title="Importer des fichiers"
+          >
+            <Upload className="w-3 h-3 text-[#2D4A3E]" />
+            <span>Importer</span>
+          </button>
+        </div>
+
+        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] bg-[#E8DFD0] px-3 py-1 rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] self-start mt-0.5">
           Mes fichiers
         </h1>
 
@@ -583,7 +912,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                             isSelected ? prev.filter(i => i !== f.id) : [...prev, f.id]
                           );
                         } else {
-                          setActivePreviewItem && setActivePreviewItem({ ...f, folderName: f.matiere || 'Fichiers' });
+                          setActivePreviewItem && setActivePreviewItem({ ...f, folderName: f.matiere || 'Mes fichiers' });
                         }
                       }} 
                       className={`group flex flex-col items-center w-full max-w-[90px] sm:max-w-[110px] cursor-pointer transition-all hover:scale-105 relative ${openMenuId === f.id ? 'z-50' : 'z-0'}`}
@@ -705,9 +1034,33 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                         </div>
                       </div>
                       <span className="text-[11px] font-bold text-[#2D4A3E] mt-2 text-center px-1 leading-tight line-clamp-2 break-all w-full">{f.name}</span>
+                      {f.matiere && (
+                        <span className="text-[8.5px] font-extrabold uppercase tracking-wider text-[#2D4A3E] bg-[#E8DFD0] border border-[#2D4A3E]/40 rounded px-1.5 py-0.5 mt-1 max-w-[95%] truncate shadow-[1px_1px_0px_0px_#2D4A3E]">
+                          {f.matiere}
+                        </span>
+                      )}
                     </div>
                   );
                 })}
+
+                {/* Carte Importer avec "+" placée derrière les fichiers */}
+                <div 
+                  onClick={handleButtonClick}
+                  className="group flex flex-col items-center w-full max-w-[90px] sm:max-w-[110px] cursor-pointer transition-all hover:scale-105 relative select-none"
+                  title="Importer des fichiers"
+                >
+                  <div className="w-full aspect-[3/4] bg-white hover:bg-[#E8DFD0]/30 border-2 border-dashed border-[#2D4A3E]/60 hover:border-[#2D4A3E] rounded-xl shadow-[3px_3px_0px_0px_#1c1917] flex flex-col items-center justify-center p-3 text-[#2D4A3E] relative group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all">
+                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-2xl bg-[#E8DFD0] border-2 border-[#2D4A3E] flex items-center justify-center text-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] group-hover:scale-110 transition-transform">
+                      <Plus className="w-6 h-6 sm:w-7 sm:h-7 stroke-[3]" />
+                    </div>
+                    <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider text-[#2D4A3E] mt-2.5">
+                      Ajouter
+                    </span>
+                  </div>
+                  <span className="text-[11px] font-bold text-[#2D4A3E] mt-2 text-center px-1 leading-tight line-clamp-2 w-full">
+                    Importer
+                  </span>
+                </div>
               </div>
             </div>
           )}

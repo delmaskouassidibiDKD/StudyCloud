@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Maximize, Minimize, Mic, Pause, Play, Square, RotateCcw, X, FileText } from 'lucide-react';
+import { Maximize, Minimize, Mic, Pause, Play, Square, RotateCcw, X, FileText, ArrowLeftRight } from 'lucide-react';
 import { FileIconBadge } from './FileIconBadge';
 import * as pdfjsLib from 'pdfjs-dist';
 
@@ -16,6 +16,8 @@ interface CenterMenuProps {
   isPreviewLoading: boolean;
   activePreviewItem: any;
   previewScrollMode: 'vertical' | 'horizontal';
+  setPreviewScrollMode?: React.Dispatch<React.SetStateAction<'vertical' | 'horizontal'>>;
+  isMobileScreen?: boolean;
 }
 
 export function CenterMenu({
@@ -25,16 +27,33 @@ export function CenterMenu({
   mobilePreviewTab,
   isPreviewLoading,
   activePreviewItem,
-  previewScrollMode
+  previewScrollMode,
+  setPreviewScrollMode,
+  isMobileScreen
 }: CenterMenuProps) {
+  const [docZoom, setDocZoom] = useState<number>(100);
   const [speechState, setSpeechState] = useState<'idle' | 'loading' | 'playing' | 'paused' | 'stopped'>('idle');
   const [isAudioMenuOpen, setIsAudioMenuOpen] = useState(false);
   const [currentText, setCurrentText] = useState<string>('');
   const sentencesRef = useRef<string[]>([]);
   const currentSentenceIdxRef = useRef<number>(0);
 
-  // Stop audio and reset state when switching file
+  // Listen to external/keyboard zoom events
   useEffect(() => {
+    const handleDocZoomEvent = (e: any) => {
+      if (e.detail?.reset) {
+        setDocZoom(100);
+      } else if (e.detail?.delta) {
+        setDocZoom(prev => Math.min(250, Math.max(50, prev + e.detail.delta)));
+      }
+    };
+    window.addEventListener('studycloud:doc-zoom', handleDocZoomEvent);
+    return () => window.removeEventListener('studycloud:doc-zoom', handleDocZoomEvent);
+  }, []);
+
+  // Reset zoom & speech when switching file
+  useEffect(() => {
+    setDocZoom(100);
     if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
       window.speechSynthesis.cancel();
     }
@@ -232,20 +251,35 @@ export function CenterMenu({
   };
 
   return (
-    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r-2 border-stone-800'} flex items-center justify-center animate-fadeIn p-4 md:p-8 pt-[60px] md:pt-[72px] relative pointer-events-auto ${isRightFullscreen ? 'hidden' : (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden md:flex')}`}>
-      {/* Fullscreen Toggle Button (Top Left) */}
-      {!activePreviewItem?.lockFullscreen && (
-        <button
-          onClick={() => setIsCenterFullscreen(!isCenterFullscreen)}
-          className="hidden md:flex absolute top-[60px] md:top-[64px] left-1 md:left-2 z-50 p-1 bg-yellow-400 rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-yellow-300 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900"
-          title={isCenterFullscreen ? "Réduire" : "Plein écran"}
-        >
-          {isCenterFullscreen ? <Minimize className="w-3 h-3" /> : <Maximize className="w-3 h-3" />}
-        </button>
-      )}
+    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r-2 border-stone-800'} flex items-center justify-center animate-fadeIn p-4 md:p-8 pt-[70px] md:pt-[76px] relative pointer-events-auto ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
+      {/* Top Left Controls: Zoom/Fullscreen (Ordinateur uniquement) + Mode Défilement */}
+      <div className="flex items-center gap-1.5 absolute top-[64px] sm:top-[68px] md:top-[70px] left-2 md:left-4 z-50">
+        {!activePreviewItem?.lockFullscreen && (
+          <button
+            onClick={() => setIsCenterFullscreen(!isCenterFullscreen)}
+            className="hidden md:flex p-1 bg-yellow-400 rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-yellow-300 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900 items-center justify-center shrink-0"
+            title={isCenterFullscreen ? "Réduire" : "Plein écran"}
+          >
+            {isCenterFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+          </button>
+        )}
+
+        {/* Bouton Vertical / Horizontal placé sur la page du milieu derrière le bouton zoom */}
+        {setPreviewScrollMode && (
+          <button
+            onClick={() => setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
+            className="px-2 py-0.5 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-[10px] sm:text-xs rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 shrink-0"
+            title="Basculer entre défilement vertical et horizontal"
+          >
+            <ArrowLeftRight className="w-3 h-3 text-stone-700" />
+            <span>{previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
+          </button>
+        )}
+      </div>
 
       {/* Audio Reading Controls (Top Right of Center Menu) */}
-      <div className="absolute top-[60px] md:top-[64px] right-2 md:right-4 z-50 flex items-center gap-1.5">
+      <div className="absolute top-[64px] sm:top-[68px] md:top-[70px] right-2 md:right-4 z-50 flex items-center gap-1.5">
+
         {/* Small Action Menu to the left on the same line */}
         {isAudioMenuOpen && (
           <div className="flex items-center gap-1 bg-[#FDFBF7] border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] rounded-lg px-2 py-1 animate-fadeIn text-stone-800">
@@ -345,15 +379,19 @@ export function CenterMenu({
           <p className="text-xs font-bold text-stone-500">Aucun document sélectionné</p>
         </div>
       ) : activePreviewItem?.isImage && activePreviewItem?.url ? (
-        <div className="w-full h-full flex items-center justify-center overflow-hidden p-6">
+        <div className="w-full h-full flex items-center justify-center overflow-auto p-4 sm:p-6">
           <img
             src={activePreviewItem.url}
             alt={activePreviewItem?.name || 'Document'}
-            className="max-w-full max-h-full object-contain rounded-xl"
+            style={{ zoom: `${docZoom}%`, transformOrigin: 'center center' }}
+            className="max-w-full max-h-full object-contain rounded-xl transition-all"
           />
         </div>
       ) : (
-        <div className="w-full h-full flex flex-col items-center justify-center text-center p-8">
+        <div 
+          className="w-full h-full flex flex-col items-center justify-center text-center p-4 sm:p-8 overflow-auto origin-center transition-all"
+          style={{ zoom: `${docZoom}%` }}
+        >
           <div className="mb-6">
             <FileIconBadge fileName={activePreviewItem?.name || ''} size={64} />
           </div>
