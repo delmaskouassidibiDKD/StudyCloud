@@ -2,11 +2,11 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, interactive-widget=resizes-content" />
-    <title>UniFolder Share</title>
-    <meta name="description" content="Plateforme web et mobile pour étudiants permettant d'importer des dossiers de fichiers et de générer des liens de partage uniques et sécurisés." />
-    <meta property="og:title" content="UniFolder Share" />
-    <meta property="og:description" content="Plateforme web et mobile pour étudiants permettant d'importer des dossiers de fichiers et de générer des liens de partage uniques et sécurisés." />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover, interactive-widget=resizes-content" />
+    <title>StudyCloud</title>
+    <meta name="description" content="StudyCloud - Plateforme cloud éducative et collaborative pour étudiants." />
+    <meta property="og:title" content="StudyCloud" />
+    <meta property="og:description" content="StudyCloud - Plateforme cloud éducative et collaborative pour étudiants." />
     <meta property="og:type" content="website" />
     <meta name="twitter:card" content="summary_large_image" />
     <style>
@@ -32,7 +32,7 @@
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
     <script>
-      // Force block text selection and copying everywhere except inputs
+      // 1. Force block text selection and copying everywhere except inputs
       ['selectstart', 'copy', 'contextmenu'].forEach(eventType => {
         document.addEventListener(eventType, function(e) {
           const tag = e.target.tagName;
@@ -42,6 +42,51 @@
           }
         });
       });
+
+      // 2. Bloquer le zoom clavier (Ctrl +, Ctrl -, Ctrl 0, Cmd +, Cmd -)
+      window.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && (
+          e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0' ||
+          e.code === 'NumpadAdd' || e.code === 'NumpadSubtract' || e.code === 'Equal' || e.code === 'Minus' || e.code === 'Digit0'
+        )) {
+          e.preventDefault();
+        }
+      }, { passive: false });
+
+      // 3. Bloquer le zoom molette de souris & pincement trackpad (Ctrl + Wheel)
+      window.addEventListener('wheel', function(e) {
+        if (e.ctrlKey) {
+          e.preventDefault();
+        }
+      }, { passive: false });
+
+      // 4. Bloquer le zoom par pincement tactile multi-touch (iOS, Android, Écrans tactiles)
+      window.addEventListener('touchstart', function(e) {
+        if (e.touches && e.touches.length > 1) {
+          e.preventDefault();
+        }
+      }, { passive: false });
+
+      // 5. Bloquer les gestes de zoom spécifiques Safari / WebKit
+      ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(event) {
+        window.addEventListener(event, function(e) {
+          e.preventDefault();
+        }, { passive: false });
+      });
+
+      // 6. Bloquer le double-tap to zoom sur mobile
+      var lastTouchEnd = 0;
+      document.addEventListener('touchend', function(e) {
+        var now = Date.now();
+        if (now - lastTouchEnd <= 300) {
+          var tag = e.target.tagName;
+          var isContentEditable = e.target.isContentEditable || (e.target.getAttribute && e.target.getAttribute('contenteditable') === 'true');
+          if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !isContentEditable) {
+            e.preventDefault();
+          }
+        }
+        lastTouchEnd = now;
+      }, { passive: false });
 
       if (window.visualViewport) {
         const initialHeight = window.visualViewport.height;

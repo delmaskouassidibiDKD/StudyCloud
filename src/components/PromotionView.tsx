@@ -19,8 +19,8 @@ export const PromotionView: React.FC<PromotionViewProps> = ({ onBack }) => {
   const handleShare = () => {
     if (navigator.share) {
       navigator.share({
-        title: 'Promotion UniFolder',
-        text: `Rejoins-moi sur UniFolder avec mon code d'invitation : ${invitationCode}`,
+        title: 'Promotion StudyCloud',
+        text: `Rejoins-moi sur StudyCloud avec mon code d'invitation : ${invitationCode}`,
         url: shareUrl,
       }).catch(() => {});
     } else {

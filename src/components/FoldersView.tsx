@@ -367,12 +367,12 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       <div 
         key={id}
         onClick={defaultAction}
-        className="group flex flex-col items-center cursor-pointer w-20 sm:w-24 md:w-24 lg:w-28 transition-all duration-200 hover:scale-105"
+        className="group flex flex-col items-center cursor-pointer shrink-0 w-20 sm:w-22 md:w-24 lg:w-26 transition-all duration-200 hover:scale-105"
       >
-        <div className="w-full aspect-square bg-stone-900 dark:bg-stone-800 border-3 border-stone-800 dark:border-stone-700 rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[3px_3px_0px_0px_#000] flex items-center justify-center group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all relative">
+        <div className="w-full aspect-square bg-stone-900 dark:bg-stone-800 border-2 border-stone-800 dark:border-stone-700 rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[3px_3px_0px_0px_#000] flex items-center justify-center group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all relative">
           {iconContent}
         </div>
-        <span className="text-xs sm:text-[13px] md:text-sm font-extrabold text-blue-600 dark:text-blue-400 mt-2 text-center px-0.5 leading-snug tracking-wide">{label}</span>
+        <span className="text-xs sm:text-[13px] font-extrabold text-blue-600 dark:text-blue-400 mt-2 text-center px-0.5 leading-snug tracking-wide max-w-[90px] sm:max-w-[105px] line-clamp-2">{label}</span>
       </div>
     );
   };
@@ -983,11 +983,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'calculator-menu' && <CalculatorMenuView onBack={() => setViewMode('home')} />}
 
       {viewMode === 'home' && (
-        <div className="w-full max-w-md md:max-w-5xl lg:max-w-6xl mx-auto px-4 py-1">
-          <div className="flex items-center justify-between mb-3 px-1">
+        <div className="w-full max-w-[1400px] mx-auto px-2 sm:px-4 py-2">
+          <div className="flex items-center justify-between mb-3 px-2">
             <span className="text-xs font-bold text-stone-500 dark:text-stone-400">Écran d'accueil</span>
           </div>
-          <div className="grid grid-cols-3 md:grid-cols-9 gap-3 sm:gap-4 md:gap-2 lg:gap-4 justify-items-center items-start w-full">
+          <div className="flex items-start justify-start md:justify-center gap-3.5 sm:gap-4 md:gap-5 lg:gap-6 overflow-x-auto pb-4 pt-1 px-2 no-scrollbar w-full">
             {['files', 'schedule', 'notes', 'grades', 'level', 'calendar', 'favorites', 'clock', 'calculator'].map((id, index) => renderBlock(id, index))}
           </div>
         </div>

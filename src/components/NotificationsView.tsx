@@ -32,9 +32,9 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onBack }) 
     {
       id: '3',
       time: 'Il y a 2 jours',
-      title: 'Bienvenue sur UniFolder !',
+      title: 'Bienvenue sur StudyCloud !',
       description: 'Merci d\'avoir créé votre compte. Explorez les fonctionnalités de gestion de dossiers, de partage sécurisé et de suivi de vos notes académiques pour booster votre réussite universitaire tout au long de l\'année.',
-      item: 'Guide de démarrage rapide UniFolder',
+      item: 'Guide de démarrage rapide StudyCloud',
       unread: false,
     },
   ];

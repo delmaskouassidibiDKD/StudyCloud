@@ -1384,7 +1384,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
               </div>
 
               <div className="pt-3 border-t-2 border-stone-200 text-center mt-4">
-                <p className="text-[10px] font-bold text-stone-400">UniFolder Services • Profil Boutique</p>
+                <p className="text-[10px] font-bold text-stone-400">StudyCloud Services • Profil Boutique</p>
               </div>
             </motion.div>
           </div>

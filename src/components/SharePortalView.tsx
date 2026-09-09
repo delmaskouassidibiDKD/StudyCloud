@@ -31,7 +31,7 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
     try {
       const zip = new JSZip();
       folder.files.forEach((file) => {
-        const content = `Contenu officiel du fichier ${file.name}\nDossier partagé: ${folder.title}\nPartagé via UniFolder Share - Plateforme étudiante`;
+        const content = `Contenu officiel du fichier ${file.name}\nDossier partagé: ${folder.title}\nPartagé via StudyCloud - Plateforme étudiante`;
         zip.file(file.name, content);
       });
 
@@ -82,7 +82,7 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
             <Folder className="w-5 h-5 fill-white" />
           </div>
           <div>
-            <h1 className="font-extrabold text-stone-900 text-lg">UniFolder Share</h1>
+            <h1 className="font-extrabold text-stone-900 text-lg">StudyCloud Share</h1>
             <p className="text-xs text-stone-600">Portail de téléchargement direct étudiant</p>
           </div>
         </div>
@@ -197,7 +197,7 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
 
             <div className="mt-8 pt-6 border-t-2 border-stone-300 text-center">
               <p className="text-xs text-stone-500">
-                UniFolder Share • Permet aux étudiants de partager leurs dossiers de téléphone ou PC en toute simplicité.
+                StudyCloud Share • Permet aux étudiants de partager leurs dossiers de téléphone ou PC en toute simplicité.
               </p>
             </div>
           </div>

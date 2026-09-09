@@ -293,9 +293,9 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
               </button>
             </div>
             <div className="text-xs md:text-sm text-stone-600 space-y-3 md:space-y-4 leading-relaxed max-h-60 overflow-y-auto pr-2">
-              <p>Bienvenue sur UniFolder. En utilisant notre plateforme de partage de documents et de dossiers universitaires, vous acceptez les présentes conditions générales d'utilisation.</p>
+              <p>Bienvenue sur StudyCloud. En utilisant notre plateforme de partage de documents et de dossiers universitaires, vous acceptez les présentes conditions générales d'utilisation.</p>
               <p>1. Les utilisateurs s'engagent à partager uniquement des contenus pédagogiques légaux et respectueux des droits d'auteur.</p>
-              <p>2. UniFolder protège la confidentialité de vos données académiques et personnelles.</p>
+              <p>2. StudyCloud protège la confidentialité de vos données académiques et personnelles.</p>
               <p>3. L'utilisation abusive de la plateforme pourra entraîner la suspension du compte.</p>
             </div>
             <button
