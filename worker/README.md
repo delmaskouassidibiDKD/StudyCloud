@@ -30,7 +30,11 @@ Ce dossier contient le code complet du **Cloudflare Worker** qui sert d'intermé
      - Variable name : `BUCKET`
      - R2 bucket : Sélectionnez votre bucket `studycloud-files`.
    - Cliquez sur **Save and Deploy**.
-7. Votre API est prête ! Votre URL sera de la forme : `https://studycloud-worker.<votre-sous-domaine>.workers.dev`.
+3. **Attacher votre Domaine Personnalisé** :
+   - Dans le tableau de bord du Worker > onglet **Settings** > **Triggers** (ou **Domains & Routes**).
+   - Cliquez sur **Add Custom Domain**.
+   - Entrez `api-worker.dkd-technologies.com`. Cloudflare configurera automatiquement le DNS et le certificat SSL gratuit !
+   - Votre API officielle sera accessible en direct sur : **`https://api-worker.dkd-technologies.com`**.
 
 ---
 
@@ -44,6 +48,7 @@ Ce dossier contient le code complet du **Cloudflare Worker** qui sert d'intermé
    ```bash
    npx wrangler deploy
    ```
+   *Wrangler attachera automatiquement le domaine personnalisé configuré dans `wrangler.toml` (`api-worker.dkd-technologies.com`).*
 
 ---
 

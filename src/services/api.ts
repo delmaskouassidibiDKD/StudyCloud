@@ -8,7 +8,7 @@ export const getWorkerApiUrl = (): string => {
   return (
     (import.meta as any).env?.VITE_WORKER_API_URL ||
     localStorage.getItem('studycloud_worker_url') ||
-    'https://studycloud-worker.votre-nom.workers.dev'
+    'https://api-worker.dkd-technologies.com'
   );
 };
 

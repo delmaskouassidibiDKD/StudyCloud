@@ -372,7 +372,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
                   setWorkerUrl(e.target.value);
                   setWorkerApiUrl(e.target.value);
                 }}
-                placeholder="https://studycloud-worker.votre-compte.workers.dev"
+                placeholder="https://api-worker.dkd-technologies.com"
                 className="flex-1 px-3 py-2 bg-stone-50 border border-stone-200 rounded-xl text-xs text-stone-800 focus:outline-none focus:border-orange-500 font-mono"
               />
               <button
