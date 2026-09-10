@@ -13,13 +13,13 @@ routes = [
 # Liaison Base de Données Cloudflare D1
 # ==============================================================================
 [[d1_databases]]
-binding = "DB"
-database_name = "studycloud-db"
-database_id = "VOTRE_DATABASE_ID_ICI" # Remplacez par l'ID fourni par wrangler d1 create
+binding = "MON_D1_STUDYCLOUD"
+database_name = "d1-studycloud"
+database_id = "d1-studycloud" # Remplacez par votre database_id si nécessaire
 
 # ==============================================================================
 # Liaison Bucket de Stockage Cloudflare R2
 # ==============================================================================
 [[r2_buckets]]
-binding = "BUCKET"
-bucket_name = "studycloud-files"
+binding = "MON_R2_STUDYCLOUD"
+bucket_name = "r2-studycloud"

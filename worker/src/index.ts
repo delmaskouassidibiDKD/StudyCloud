@@ -4,8 +4,13 @@
  */
 
 export interface Env {
-  DB: D1Database;
-  BUCKET: R2Bucket;
+  DB?: D1Database;
+  BUCKET?: R2Bucket;
+  'MON_D1-STUDYCLOUD'?: D1Database;
+  'MON_R2-STUDYCLOUD'?: R2Bucket;
+  MON_D1_STUDYCLOUD?: D1Database;
+  MON_R2_STUDYCLOUD?: R2Bucket;
+  [key: string]: any;
 }
 
 // ============================================================================
@@ -37,11 +42,20 @@ function errorResponse(error: string, status = 400, origin = '*') {
 // Gestionnaire Principal du Worker
 // ============================================================================
 export default {
-  async fetch(request: Request, env: Env): Promise<Response> {
+  async fetch(request: Request, rawEnv: Env): Promise<Response> {
     const url = new URL(request.url);
     const path = url.pathname;
     const method = request.method;
     const origin = request.headers.get('Origin') || '*';
+
+    // Normalisation des liaisons D1 & R2 (prend en compte MON_D1-STUDYCLOUD, MON_D1_STUDYCLOUD ou DB)
+    const dbInstance = rawEnv['MON_D1-STUDYCLOUD'] || rawEnv.MON_D1_STUDYCLOUD || rawEnv.DB;
+    const bucketInstance = rawEnv['MON_R2-STUDYCLOUD'] || rawEnv.MON_R2_STUDYCLOUD || rawEnv.BUCKET;
+    const env: { DB: D1Database; BUCKET: R2Bucket } = {
+      ...rawEnv,
+      DB: dbInstance as D1Database,
+      BUCKET: bucketInstance as R2Bucket,
+    };
 
     // Gestion du Preflight CORS
     if (method === 'OPTIONS') {
@@ -53,15 +67,40 @@ export default {
 
     try {
       // ----------------------------------------------------------------------
-      // Health Check
+      // Health Check & Diagnostic des liaisons Cloudflare
       // ----------------------------------------------------------------------
       if (path === '/' || path === '/api/health') {
         return jsonResponse({
           success: true,
           service: 'StudyCloud Cloudflare Worker API',
           status: 'online',
+          database: dbInstance ? 'Connecté (D1: d1-studycloud)' : 'Non lié',
+          storage: bucketInstance ? 'Connecté (R2: r2-studycloud)' : 'Non lié',
+          bindings: {
+            d1: !!dbInstance,
+            r2: !!bucketInstance,
+          },
           timestamp: new Date().toISOString(),
         }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
+      // Vérification de sécurité des liaisons D1 & R2
+      // ----------------------------------------------------------------------
+      if (path.startsWith('/api/') && !path.startsWith('/api/storage/') && !env.DB) {
+        return errorResponse(
+          "Base de données D1 non accessible. Veuillez lier votre base 'd1-studycloud' avec le nom de variable 'MON_D1_STUDYCLOUD' (ou 'MON_D1-STUDYCLOUD') dans Cloudflare Workers > Settings > Variables and Bindings > D1 Database Bindings.",
+          503,
+          origin
+        );
+      }
+
+      if (path.startsWith('/api/storage/') && !env.BUCKET) {
+        return errorResponse(
+          "Stockage R2 non accessible. Veuillez lier votre bucket 'r2-studycloud' avec le nom de variable 'MON_R2_STUDYCLOUD' (ou 'MON_R2-STUDYCLOUD') dans Cloudflare Workers > Settings > Variables and Bindings > R2 Bucket Bindings.",
+          503,
+          origin
+        );
       }
 
       // ----------------------------------------------------------------------

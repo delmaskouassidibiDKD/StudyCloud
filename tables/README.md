@@ -11,20 +11,14 @@ Ce dossier contient le schéma SQL officiel pour la base de données relationnel
 
 ### Méthode 1 : Avec la CLI Wrangler (Recommandé)
 
-1. **Créer votre base D1 (si ce n'est pas déjà fait) :**
+1. **Exécuter le schéma en local pour tester :**
    ```bash
-   npx wrangler d1 create studycloud-db
-   ```
-   *Wrangler vous donnera un `database_id` à copier dans votre `wrangler.toml`.*
-
-2. **Exécuter le schéma en local pour tester :**
-   ```bash
-   npx wrangler d1 execute studycloud-db --local --file=./tables/schema.sql
+   npx wrangler d1 execute d1-studycloud --local --file=./tables/schema.sql
    ```
 
-3. **Déployer le schéma en production sur Cloudflare :**
+2. **Déployer le schéma en production sur Cloudflare (sur votre base `d1-studycloud`) :**
    ```bash
-   npx wrangler d1 execute studycloud-db --remote --file=./tables/schema.sql
+   npx wrangler d1 execute d1-studycloud --remote --file=./tables/schema.sql
    ```
 
 ---
@@ -32,8 +26,8 @@ Ce dossier contient le schéma SQL officiel pour la base de données relationnel
 ### Méthode 2 : Directement depuis le Dashboard Cloudflare
 
 1. Rendez-vous sur votre tableau de bord **Cloudflare** > **Storage & Databases** > **D1 SQL Database**.
-2. Créez votre base de données nommée `studycloud-db`.
-3. Cliquez sur l'onglet **Console** ou **Import Database**.
+2. Cliquez sur votre base **`d1-studycloud`**.
+3. Cliquez sur l'onglet **Console**.
 4. Copiez l'intégralité du contenu de `tables/schema.sql` et collez-le dans la console SQL.
 5. Cliquez sur **Execute**.
 
