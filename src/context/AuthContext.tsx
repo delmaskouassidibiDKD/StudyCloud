@@ -181,16 +181,15 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   const isAuthenticated = !!user && !!token;
-  // Le paramétrage de sécurité (mot de passe manuel + questions) ne bloque que les comptes par email direct.
-  // Avec Google, l'authentification est déjà sécurisée par Google et l'utilisateur est connecté immédiatement.
+  // 1. D'abord les questions d'onboarding (école, filière, niveau, pays, téléphone, photo/logo)
+  const needsOnboarding = Boolean(isAuthenticated && user && user.is_onboarded === 0);
+  // 2. Ensuite la configuration de sécurité (mot de passe pour reconnexion + questions secrètes de récupération)
   const needsSecuritySetup = Boolean(
     isAuthenticated &&
+    !needsOnboarding &&
     user &&
-    user.provider === 'email' &&
-    !user.google_id &&
     (user.has_password === false || user.has_security_questions === false)
   );
-  const needsOnboarding = isAuthenticated && !needsSecuritySetup && user?.is_onboarded === 0;
 
   return (
     <AuthContext.Provider value={{

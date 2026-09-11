@@ -1329,6 +1329,9 @@ export default {
           return errorResponse("L'école et la filière sont obligatoires pour les étudiants", 400, origin);
         }
 
+        const hasAvatarInBody = avatarUrl !== undefined;
+        const avatarVal = avatarUrl ? String(avatarUrl) : null;
+
         await env.DB.prepare(`
           UPDATE users SET
             name = COALESCE(?, name),
@@ -1338,11 +1341,22 @@ export default {
             country = ?,
             phone = COALESCE(?, phone),
             bio = COALESCE(?, bio),
-            avatar_url = COALESCE(?, avatar_url),
+            avatar_url = CASE WHEN ? = 1 THEN ? ELSE avatar_url END,
             is_onboarded = 1,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
-        `).bind(name || null, finalSchool, finalFiliere, finalLevel, country, phone || null, bio || null, avatarUrl || null, payload.userId).run();
+        `).bind(
+          name || null,
+          finalSchool,
+          finalFiliere,
+          finalLevel,
+          country,
+          phone || null,
+          bio || null,
+          hasAvatarInBody ? 1 : 0,
+          avatarVal,
+          payload.userId
+        ).run();
 
         const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.userId).first();
         
@@ -1379,13 +1393,13 @@ export default {
         await sendWelcomeEmail(
           user.email,
           user.name || 'Étudiant',
-          user.is_student === 1 || user.is_student === null,
+          user.school && user.school !== 'Particulier / Professionnel',
           user.school || '',
           user.filiere || '',
           clientOrigin
         );
 
-        return jsonResponse({ success: true, message: 'Email de bienvenue envoyé avec succès' }, 200, origin);
+        return jsonResponse({ success: true, message: 'Email de bienvenue envoyé' }, 200, origin);
       }
 
       // ----------------------------------------------------------------------
@@ -1396,6 +1410,9 @@ export default {
         const { id, name, email, school, filiere, country, avatarUrl } = body;
         if (!id || !email) return errorResponse('ID et email requis', 400, origin);
 
+        const hasAvatar = avatarUrl !== undefined;
+        const avatarVal = avatarUrl ? String(avatarUrl) : null;
+
         await env.DB.prepare(`
           INSERT INTO users (id, name, email, school, filiere, country, avatar_url, updated_at)
           VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -1405,9 +1422,19 @@ export default {
             school = excluded.school,
             filiere = excluded.filiere,
             country = excluded.country,
-            avatar_url = excluded.avatar_url,
+            avatar_url = CASE WHEN ? = 1 THEN ? ELSE users.avatar_url END,
             updated_at = CURRENT_TIMESTAMP
-        `).bind(id, name || 'Étudiant', email, school || 'CME', filiere || 'Général', country || "Côte d'Ivoire", avatarUrl || null).run();
+        `).bind(
+          id,
+          name || 'Étudiant',
+          email,
+          school || 'CME',
+          filiere || 'Général',
+          country || "Côte d'Ivoire",
+          avatarVal,
+          hasAvatar ? 1 : 0,
+          avatarVal
+        ).run();
 
         // Initialiser les préférences utilisateur si inexistantes
         await env.DB.prepare(`

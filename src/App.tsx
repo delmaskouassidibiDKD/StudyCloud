@@ -640,14 +640,14 @@ export default function App() {
     return <AuthPage />;
   }
 
-  // 2.5 Si connecté avec Google mais sans mot de passe ni questions de sécurité : configuration obligatoire
-  if (needsSecuritySetup) {
-    return <GoogleSecuritySetupPage />;
-  }
-
-  // 3. Si connecté mais profil incomplet : afficher le formulaire d'onboarding obligatoire
+  // 3. Si connecté mais profil incomplet : afficher les questions d'onboarding (école, filière, niveau, pays, téléphone, photo/logo)
   if (needsOnboarding) {
     return <OnboardingPage />;
+  }
+
+  // 4. Si profil complété mais mot de passe ou questions de sécurité non définis : configuration de sécurité obligatoire
+  if (needsSecuritySetup) {
+    return <GoogleSecuritySetupPage />;
   }
 
   // If viewing a share link (e.g. #share=folder-id)

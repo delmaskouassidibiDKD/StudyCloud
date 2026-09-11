@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { StudyCloudAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
+import { compressAvatarImage } from '../../services/imageUtils';
 import { DnaLogo } from '../DnaLogo';
 import studentLogo from '../../assets/student-logo.jpg';
 import proLogo from '../../assets/pro-logo.jpg';
@@ -124,18 +125,14 @@ export function OnboardingPage() {
       return;
     }
 
-    // 3. Lecture du fichier en Base64 Data URL pour affichage immédiat et enregistrement
-    const reader = new FileReader();
-    reader.onload = (loadEvt) => {
-      const result = loadEvt.target?.result as string;
-      if (result) {
+    // 3. Compression et recadrage carré optimal (256x256 px, ~15-25 Ko) pour Cloudflare D1
+    compressAvatarImage(file, 256, 0.85)
+      .then((result) => {
         setAvatarUrl(result);
-      }
-    };
-    reader.onerror = () => {
-      setAvatarError("Impossible de lire l'image sélectionnée. Veuillez réessayer.");
-    };
-    reader.readAsDataURL(file);
+      })
+      .catch(() => {
+        setAvatarError("Impossible de traiter l'image sélectionnée. Veuillez réessayer.");
+      });
   };
 
   const handleRemoveAvatar = () => {

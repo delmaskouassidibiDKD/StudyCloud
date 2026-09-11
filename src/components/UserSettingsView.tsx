@@ -17,6 +17,7 @@ import {
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { StudyCloudAPI } from '../services/api';
+import { compressAvatarImage } from '../services/imageUtils';
 
 interface UserSettingsViewProps {
   onBack: () => void;
@@ -125,31 +126,31 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (event) => {
-      const dataUrl = event.target?.result as string;
-      if (!dataUrl) return;
+    // Compression et recadrage carré optimal (256x256 px, ~15-25 Ko) pour Cloudflare D1
+    compressAvatarImage(file, 256, 0.85)
+      .then((dataUrl) => {
+        setAvatarUrl(dataUrl);
+        localStorage.setItem('unifolder_user_avatar', dataUrl);
+        updateProfile({ avatar_url: dataUrl });
 
-      setAvatarUrl(dataUrl);
-      localStorage.setItem('unifolder_user_avatar', dataUrl);
-      updateProfile({ avatar_url: dataUrl });
+        const userId = user?.id || localStorage.getItem('unifolder_user_id');
+        if (userId) {
+          StudyCloudAPI.syncUser({
+            id: userId,
+            name,
+            email,
+            school,
+            filiere,
+            country,
+            avatarUrl: dataUrl,
+          }).catch((err) => console.warn('Erreur synchronisation avatar:', err));
+        }
 
-      const userId = user?.id || localStorage.getItem('unifolder_user_id');
-      if (userId) {
-        StudyCloudAPI.syncUser({
-          id: userId,
-          name,
-          email,
-          school,
-          filiere,
-          country,
-          avatarUrl: dataUrl,
-        }).catch((err) => console.warn('Erreur synchronisation avatar:', err));
-      }
-
-      triggerToast("Logo / Photo de profil mis à jour avec succès !");
-    };
-    reader.readAsDataURL(file);
+        triggerToast("Logo / Photo de profil mis à jour avec succès !");
+      })
+      .catch(() => {
+        alert("Impossible de traiter l'image sélectionnée. Veuillez réessayer.");
+      });
   };
 
   const handleRemoveAvatar = () => {
