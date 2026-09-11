@@ -379,6 +379,9 @@ export function AuthPage({ onBack }: AuthPageProps) {
                       <span className="text-orange-500">Study</span>
                       <span className="text-blue-500">Cloud</span>
                     </h1>
+                    <p className="text-[9px] text-amber-400 font-bold uppercase tracking-widest mt-1">
+                      DKD TECHNOLOGIES
+                    </p>
                   </div>
                 </div>
 
@@ -423,7 +426,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
 
               {/* Bottom info */}
               <div className="pt-6 border-t border-white/10 flex items-center justify-between text-[11px] text-white/40">
-                <span>StudyCloud</span>
+                <span>DKD TECHNOLOGIES Cloud</span>
                 <span className="font-semibold text-orange-400">Étudiants, Élèves & Entreprises</span>
               </div>
             </div>
@@ -459,6 +462,9 @@ export function AuthPage({ onBack }: AuthPageProps) {
                       <span className="text-orange-500">Study</span>
                       <span className="text-blue-500">Cloud</span>
                     </h1>
+                    <p className="text-[8px] text-amber-400 font-bold uppercase tracking-widest mt-0.5">
+                      DKD TECHNOLOGIES
+                    </p>
                   </div>
                 </div>
               </div>

@@ -180,6 +180,9 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
                 <span className="text-orange-500">Study</span>
                 <span className="text-blue-500">Cloud</span>
               </h1>
+              <p className="text-[8px] text-amber-400 font-bold uppercase tracking-widest mt-0.5">
+                DKD TECHNOLOGIES
+              </p>
             </div>
           </div>
           <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">
