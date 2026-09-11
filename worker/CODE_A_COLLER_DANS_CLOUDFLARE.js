@@ -243,6 +243,7 @@ var src_default = {
             body: JSON.stringify({
               from: "StudyCloud <noreply@dkd-technologies.com>",
               to: [toEmail],
+              reply_to: "StudyClouddkd@gmail.com",
               subject,
               html: `<!DOCTYPE html>
 <html lang="fr">
@@ -356,6 +357,7 @@ var src_default = {
             body: JSON.stringify({
               from: "StudyCloud <noreply@dkd-technologies.com>",
               to: [toEmail],
+              reply_to: "StudyClouddkd@gmail.com",
               subject: "\u{1F389} Bienvenue sur StudyCloud - Votre espace est pr\xEAt !",
               html: `<!DOCTYPE html>
 <html lang="fr">
@@ -442,7 +444,7 @@ var src_default = {
               </table>
 
               <p style="margin:20px 0 0 0;color:#64748b;font-size:13px;line-height:1.5;text-align:center;">
-                Besoin d'aide ou d'assistance ? Notre support est \xE0 votre disposition \xE0 <a href="mailto:support@dkd-technologies.com" style="color:#2563EB;text-decoration:none;font-weight:600;">support@dkd-technologies.com</a>.
+                Besoin d'aide ou d'assistance ? Notre support est \xE0 votre disposition \xE0 <a href="mailto:StudyClouddkd@gmail.com" style="color:#2563EB;text-decoration:none;font-weight:600;">StudyClouddkd@gmail.com</a>.
               </p>
             </td>
           </tr>
@@ -479,6 +481,7 @@ var src_default = {
             body: JSON.stringify({
               from: "StudyCloud <noreply@dkd-technologies.com>",
               to: [toEmail],
+              reply_to: "StudyClouddkd@gmail.com",
               subject,
               html: `<!DOCTYPE html>
 <html lang="fr">
