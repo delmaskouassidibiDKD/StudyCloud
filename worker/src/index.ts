@@ -1168,7 +1168,15 @@ export default {
 
         const body: any = await request.json();
         const { name, school, filiere, level, country, phone, bio, avatarUrl } = body;
-        if (!school || !filiere || !country) return errorResponse('École, filière et pays sont obligatoires', 400, origin);
+        const isStudent = body.is_student === 0 || body.isStudent === false ? false : true;
+        const finalSchool = !isStudent ? (school || body.profession || 'Particulier / Professionnel') : school;
+        const finalFiliere = !isStudent ? (filiere || body.profession || 'Général') : filiere;
+        const finalLevel = !isStudent ? (level || 'Professionnel') : (level || '');
+
+        if (!country) return errorResponse('Le pays est obligatoire', 400, origin);
+        if (isStudent && (!finalSchool || !finalFiliere)) {
+          return errorResponse("L'école et la filière sont obligatoires pour les étudiants", 400, origin);
+        }
 
         await env.DB.prepare(`
           UPDATE users SET
@@ -1183,7 +1191,7 @@ export default {
             is_onboarded = 1,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
-        `).bind(name || null, school, filiere, level || '', country, phone || null, bio || null, avatarUrl || null, payload.userId).run();
+        `).bind(name || null, finalSchool, finalFiliere, finalLevel, country, phone || null, bio || null, avatarUrl || null, payload.userId).run();
 
         const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.userId).first();
         const safeUser = sanitizeUser(user);

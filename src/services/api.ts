@@ -121,8 +121,9 @@ export const StudyCloudAPI = {
   },
 
   async completeOnboarding(token: string, data: {
-    name?: string; school: string; filiere: string; level?: string;
+    name?: string; school?: string; filiere?: string; level?: string;
     country: string; phone?: string; bio?: string; avatarUrl?: string;
+    is_student?: number; profession?: string;
   }) {
     return requestAuth('/api/auth/onboarding', { method: 'PUT', body: JSON.stringify(data) }, token);
   },

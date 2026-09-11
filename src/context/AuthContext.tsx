@@ -17,6 +17,7 @@ export interface AuthUser {
   phone: string;
   avatar_url: string | null;
   is_onboarded: number;
+  is_student?: number;
   email_verified: number;
   created_at: string;
   has_password?: boolean;
