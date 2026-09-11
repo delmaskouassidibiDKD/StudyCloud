@@ -133,6 +133,10 @@ export const StudyCloudAPI = {
     return requestAuth('/api/auth/onboarding', { method: 'PUT', body: JSON.stringify(data) }, token);
   },
 
+  async sendWelcomeEmail(token: string) {
+    return requestAuth('/api/auth/welcome-email', { method: 'POST' }, token);
+  },
+
   async setupSecurity(token: string, data: {
     name: string;
     password: string;

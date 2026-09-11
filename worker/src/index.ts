@@ -345,36 +345,148 @@ export default {
         }
       }
 
-      async function sendWelcomeEmail(toEmail: string, name: string): Promise<void> {
+      async function sendWelcomeEmail(
+        toEmail: string,
+        name: string,
+        isStudent = true,
+        school = '',
+        filiere = '',
+        appOrigin = 'https://studycloud.dkd-technologies.com'
+      ): Promise<void> {
         try {
+          const cleanOrigin = (appOrigin || 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
+          const title = '🎉 Bienvenue sur StudyCloud !';
+          const profileSubtitle = isStudent
+            ? (filiere ? `Étudiant(e) · ${filiere}${school ? ' (' + school + ')' : ''}` : 'Espace Étudiant')
+            : (filiere ? `Profil Professionnel · ${filiere}` : 'Espace Professionnel');
+
           await fetch('https://api.resend.com/emails', {
             method: 'POST',
             headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
             body: JSON.stringify({
               from: 'StudyCloud <noreply@dkd-technologies.com>',
               to: [toEmail],
-              subject: '🎉 Bienvenue sur StudyCloud !',
-              html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#fafafa;border-radius:16px;border:1px solid #eee">
-                <div style="text-align:center;margin-bottom:24px">
-                  <div style="width:56px;height:56px;background:linear-gradient(135deg,#EA580C,#F97316);border-radius:14px;margin:auto;display:flex;align-items:center;justify-content:center;font-size:28px">🧬</div>
-                  <h1 style="color:#1f1f1f;margin:12px 0 4px;font-size:22px">Bienvenue, ${name} !</h1>
-                  <p style="color:#666;font-size:14px;margin:0">Votre compte StudyCloud est prêt.</p>
-                </div>
-                <div style="background:#fff;border-radius:12px;padding:24px;border:1px solid #eee;margin-bottom:20px">
-                  <p style="color:#333;font-size:14px;line-height:1.6;margin:0">
-                    Vous pouvez maintenant organiser vos cours, partager des ressources avec vos camarades et profiter de l'assistant IA Delmas pour booster vos révisions.
-                  </p>
-                </div>
-                <div style="text-align:center">
-                  <a href="https://studycloud.dkd-technologies.com" style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#EA580C,#F97316);color:#fff;text-decoration:none;border-radius:12px;font-weight:700;font-size:14px">
-                    Accéder à StudyCloud →
-                  </a>
-                </div>
-                <p style="text-align:center;color:#999;font-size:12px;margin-top:24px">DKD Technologies · Abidjan, Côte d'Ivoire</p>
-              </div>`,
+              subject: '🎉 Bienvenue sur StudyCloud - Votre espace est prêt !',
+              html: `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0f0c29;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#0f0c29;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.35);">
+          <tr>
+            <td height="6" style="background:linear-gradient(90deg, #EA580C, #F97316, #2563EB);"></td>
+          </tr>
+          <tr>
+            <td style="padding:40px 36px 32px 36px;">
+              <!-- Header with Official StudyCloud & DKD Technologies Brand -->
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom:24px;">
+                <tr>
+                  <td>
+                    <table border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="vertical-align:middle;padding-right:12px;">
+                          <div style="width:48px;height:48px;border-radius:14px;background:#fff7ed;border:1.5px solid #fed7aa;text-align:center;line-height:48px;font-size:24px;">
+                            🧬
+                          </div>
+                        </td>
+                        <td style="vertical-align:middle;">
+                          <div style="line-height:1;">
+                            <span style="font-size:26px;font-weight:900;color:#EA580C;letter-spacing:-0.5px;">Study</span><span style="font-size:26px;font-weight:900;color:#2563EB;letter-spacing:-0.5px;">Cloud</span>
+                          </div>
+                          <div style="font-size:9.5px;font-weight:800;color:#D97706;letter-spacing:2px;text-transform:uppercase;margin-top:5px;">
+                            DKD TECHNOLOGIES
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <div style="height:1px;background:#f1f5f9;margin-bottom:26px;"></div>
+
+              <div style="display:inline-block;padding:6px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:14px;">
+                ✨ Compte configuré avec succès · ${profileSubtitle}
+              </div>
+
+              <h1 style="margin:0 0 16px 0;color:#0f172a;font-size:22px;font-weight:800;line-height:1.3;">
+                Bienvenue sur StudyCloud, ${name} ! 🎓
+              </h1>
+
+              <p style="margin:0 0 16px 0;color:#334155;font-size:15px;line-height:1.6;">
+                Toute l'équipe de <strong>StudyCloud</strong> et de <strong>DKD Technologies</strong> a le plaisir de vous accueillir ! Votre profil a été configuré avec succès et votre espace de travail numérique personnel est immédiatement opérationnel.
+              </p>
+
+              <!-- Highlights Box -->
+              <div style="background:#f8fafc;border-radius:16px;padding:20px;border:1px solid #e2e8f0;margin:24px 0;">
+                <p style="margin:0 0 12px 0;font-size:13px;font-weight:800;color:#0f172a;text-transform:uppercase;letter-spacing:0.5px;">
+                  🚀 Ce que vous pouvez faire dès maintenant :
+                </p>
+                <table width="100%" border="0" cellspacing="0" cellpadding="0">
+                  <tr>
+                    <td style="padding-bottom:10px;font-size:14px;color:#334155;line-height:1.5;">
+                      📚 <strong>Gestion & Stockage de cours :</strong> Centralisez vos documents, fiches et polycopiés en lieu sûr.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding-bottom:10px;font-size:14px;color:#334155;line-height:1.5;">
+                      🤖 <strong>Assistant IA Delmas :</strong> Posez des questions sur vos cours, générez des résumés et préparez vos examens plus vite.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="padding-bottom:10px;font-size:14px;color:#334155;line-height:1.5;">
+                      👥 <strong>Partage & Collaboration :</strong> Échangez des dossiers de révision avec d'autres étudiants ou collègues.
+                    </td>
+                  </tr>
+                  <tr>
+                    <td style="font-size:14px;color:#334155;line-height:1.5;">
+                      🔒 <strong>Sécurité DKD :</strong> Vos fichiers et données sont protégés et sauvegardés de manière isolée.
+                    </td>
+                  </tr>
+                </table>
+              </div>
+
+              <!-- CTA Button -->
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin:32px 0 24px 0;">
+                <tr>
+                  <td align="center">
+                    <a href="${cleanOrigin}" target="_blank" style="display:inline-block;padding:16px 36px;background:linear-gradient(135deg, #EA580C 0%, #F97316 100%);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;border-radius:14px;box-shadow:0 8px 24px rgba(234,88,12,0.35);">
+                      Accéder à mon tableau de bord StudyCloud &rarr;
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <p style="margin:20px 0 0 0;color:#64748b;font-size:13px;line-height:1.5;text-align:center;">
+                Besoin d'aide ou d'assistance ? Notre support est à votre disposition à <a href="mailto:support@dkd-technologies.com" style="color:#2563EB;text-decoration:none;font-weight:600;">support@dkd-technologies.com</a>.
+              </p>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#f8fafc;padding:20px 36px;border-top:1px solid #e2e8f0;text-align:center;">
+              <p style="margin:0;color:#94a3b8;font-size:12px;line-height:1.5;">
+                StudyCloud conçu et propulsé par <strong>DKD Technologies</strong> · Abidjan, Côte d'Ivoire<br>
+                Vous recevez cet email suite à la validation de votre profil sur StudyCloud.
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
             }),
           });
-        } catch (e) { /* Non bloquant */ }
+        } catch (e) {
+          console.error('Failed to send welcome email via Resend:', e);
+        }
       }
 
       async function sendPasswordResetEmail(toEmail: string, name: string, code: string, appOrigin = 'https://studycloud.dkd-technologies.com'): Promise<void> {
@@ -1233,8 +1345,47 @@ export default {
         `).bind(name || null, finalSchool, finalFiliere, finalLevel, country, phone || null, bio || null, avatarUrl || null, payload.userId).run();
 
         const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.userId).first();
+        
+        // Envoi automatique de l'email de bienvenue professionnel StudyCloud / DKD Technologies
+        if (user && user.email) {
+          const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
+          sendWelcomeEmail(
+            user.email,
+            user.name || name || 'Étudiant',
+            isStudent,
+            finalSchool,
+            finalFiliere,
+            clientOrigin
+          );
+        }
+
         const safeUser = sanitizeUser(user);
         return jsonResponse({ success: true, data: safeUser }, 200, origin);
+      }
+
+      // POST /api/auth/welcome-email — Envoi de l'email de bienvenue professionnel à la demande
+      if (path === '/api/auth/welcome-email' && method === 'POST') {
+        const authHeader = request.headers.get('Authorization') || '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (!token) return errorResponse('Token requis', 401, origin);
+
+        const payload = await verifyJWT(token);
+        if (!payload?.userId) return errorResponse('Token invalide', 401, origin);
+
+        const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.userId).first();
+        if (!user || !user.email) return errorResponse('Utilisateur ou email introuvable', 404, origin);
+
+        const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
+        await sendWelcomeEmail(
+          user.email,
+          user.name || 'Étudiant',
+          user.is_student === 1 || user.is_student === null,
+          user.school || '',
+          user.filiere || '',
+          clientOrigin
+        );
+
+        return jsonResponse({ success: true, message: 'Email de bienvenue envoyé avec succès' }, 200, origin);
       }
 
       // ----------------------------------------------------------------------

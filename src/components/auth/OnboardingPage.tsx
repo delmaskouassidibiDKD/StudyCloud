@@ -15,6 +15,8 @@ import {
   Camera,
   Check,
   ShieldCheck,
+  Upload,
+  X,
 } from 'lucide-react';
 import { StudyCloudAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -22,12 +24,39 @@ import { DnaLogo } from '../DnaLogo';
 import studentLogo from '../../assets/student-logo.jpg';
 import proLogo from '../../assets/pro-logo.jpg';
 
-const COUNTRIES = [
-  "Côte d'Ivoire", 'Sénégal', 'Mali', 'Burkina Faso', 'Guinée', 'Cameroun',
-  'Gabon', 'Congo', "République démocratique du Congo", 'Madagascar', 'Bénin',
-  'Togo', 'Niger', 'Tchad', 'Mauritanie', 'Maroc', 'Algérie', 'Tunisie',
-  'France', 'Belgique', 'Canada', 'Autre',
-];
+export interface CountryMeta {
+  name: string;
+  dialCode: string;
+  flag: string;
+  placeholder: string;
+}
+
+export const COUNTRY_DATA: Record<string, CountryMeta> = {
+  "Côte d'Ivoire": { name: "Côte d'Ivoire", dialCode: '+225', flag: '🇨🇮', placeholder: '07 00 00 00 00' },
+  'Sénégal': { name: 'Sénégal', dialCode: '+221', flag: '🇸🇳', placeholder: '77 000 00 00' },
+  'Mali': { name: 'Mali', dialCode: '+223', flag: '🇲🇱', placeholder: '70 00 00 00' },
+  'Burkina Faso': { name: 'Burkina Faso', dialCode: '+226', flag: '🇧🇫', placeholder: '70 00 00 00' },
+  'Guinée': { name: 'Guinée', dialCode: '+224', flag: '🇬🇳', placeholder: '620 00 00 00' },
+  'Cameroun': { name: 'Cameroun', dialCode: '+237', flag: '🇨🇲', placeholder: '6 00 00 00 00' },
+  'Gabon': { name: 'Gabon', dialCode: '+241', flag: '🇬🇦', placeholder: '06 00 00 00' },
+  'Congo': { name: 'Congo', dialCode: '+242', flag: '🇨🇬', placeholder: '06 000 00 00' },
+  "République démocratique du Congo": { name: "République démocratique du Congo", dialCode: '+243', flag: '🇨🇩', placeholder: '81 000 0000' },
+  'Madagascar': { name: 'Madagascar', dialCode: '+261', flag: '🇲🇬', placeholder: '32 00 000 00' },
+  'Bénin': { name: 'Bénin', dialCode: '+229', flag: '🇧🇯', placeholder: '97 00 00 00' },
+  'Togo': { name: 'Togo', dialCode: '+228', flag: '🇹🇬', placeholder: '90 00 00 00' },
+  'Niger': { name: 'Niger', dialCode: '+227', flag: '🇳🇪', placeholder: '90 00 00 00' },
+  'Tchad': { name: 'Tchad', dialCode: '+235', flag: '🇹🇩', placeholder: '66 00 00 00' },
+  'Mauritanie': { name: 'Mauritanie', dialCode: '+222', flag: '🇲🇷', placeholder: '45 00 00 00' },
+  'Maroc': { name: 'Maroc', dialCode: '+212', flag: '🇲🇦', placeholder: '6 00 00 00 00' },
+  'Algérie': { name: 'Algérie', dialCode: '+213', flag: '🇩🇿', placeholder: '5 00 00 00 00' },
+  'Tunisie': { name: 'Tunisie', dialCode: '+216', flag: '🇹🇳', placeholder: '20 000 000' },
+  'France': { name: 'France', dialCode: '+33', flag: '🇫🇷', placeholder: '6 12 34 56 78' },
+  'Belgique': { name: 'Belgique', dialCode: '+32', flag: '🇧🇪', placeholder: '470 12 34 56' },
+  'Canada': { name: 'Canada', dialCode: '+1', flag: '🇨🇦', placeholder: '514 123 4567' },
+  'Autre': { name: 'Autre', dialCode: '+', flag: '🌍', placeholder: 'Numéro avec indicatif' },
+};
+
+const COUNTRIES = Object.keys(COUNTRY_DATA);
 
 const LEVELS = [
   'Lycée / Terminale', 'BTS 1', 'BTS 2', 'Licence 1', 'Licence 2', 'Licence 3',
@@ -45,6 +74,9 @@ export function OnboardingPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [avatarError, setAvatarError] = useState<string | null>(null);
+
+  const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
   // Champs généraux (communs à tous)
   const [name, setName] = useState(user?.name || '');
@@ -53,6 +85,9 @@ export function OnboardingPage() {
   const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
   const [bio, setBio] = useState(user?.bio || '');
 
+  // Métadonnées du pays actif (indicatif, drapeau, format)
+  const currentCountry = COUNTRY_DATA[country] || { name: country, dialCode: '+225', flag: '🇨🇮', placeholder: '07 00 00 00 00' };
+
   // Champ spécifique non-étudiant
   const [profession, setProfession] = useState('');
 
@@ -60,6 +95,54 @@ export function OnboardingPage() {
   const [school, setSchool] = useState(user?.school || '');
   const [filiere, setFiliere] = useState(user?.filiere || '');
   const [level, setLevel] = useState(user?.level || '');
+
+  // Gestion de l'import direct de l'image (logo ou photo) depuis l'appareil
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    setAvatarError(null);
+    setError(null);
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    // 1. Validation de la taille : max 1 Mo (1 048 576 octets)
+    const MAX_SIZE_BYTES = 1024 * 1024;
+    if (file.size > MAX_SIZE_BYTES) {
+      setAvatarError("L'image dépasse 1 Mo. Veuillez choisir une image ne dépassant pas 1 Mo.");
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    // 2. Validation des formats autorisés : JPG, PNG, BMP
+    const validExtensions = ['.jpg', '.jpeg', '.png', '.bmp'];
+    const fileName = file.name.toLowerCase();
+    const hasValidExt = validExtensions.some((ext) => fileName.endsWith(ext));
+    const validMimeTypes = ['image/jpeg', 'image/png', 'image/bmp', 'image/x-ms-bmp'];
+    const hasValidMime = validMimeTypes.includes(file.type);
+
+    if (!hasValidExt && !hasValidMime) {
+      setAvatarError("Format non autorisé. Les formats d'image autorisés sont JPG, PNG et BMP.");
+      if (fileInputRef.current) fileInputRef.current.value = '';
+      return;
+    }
+
+    // 3. Lecture du fichier en Base64 Data URL pour affichage immédiat et enregistrement
+    const reader = new FileReader();
+    reader.onload = (loadEvt) => {
+      const result = loadEvt.target?.result as string;
+      if (result) {
+        setAvatarUrl(result);
+      }
+    };
+    reader.onerror = () => {
+      setAvatarError("Impossible de lire l'image sélectionnée. Veuillez réessayer.");
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const handleRemoveAvatar = () => {
+    setAvatarUrl('');
+    setAvatarError(null);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   // Passage de l'Étape 1 (Choix du profil) vers l'Étape 2
   const handleProceedFromStep1 = () => {
@@ -125,6 +208,17 @@ export function OnboardingPage() {
       ? (level || 'Non spécifié')
       : 'Professionnel';
 
+    // Normalisation du téléphone avec l'indicatif correspondant au pays choisi
+    const cleanPhone = phone.trim();
+    let finalPhone = '';
+    if (cleanPhone) {
+      if (cleanPhone.startsWith('+')) {
+        finalPhone = cleanPhone;
+      } else {
+        finalPhone = `${currentCountry.dialCode} ${cleanPhone}`;
+      }
+    }
+
     try {
       const res: any = await StudyCloudAPI.completeOnboarding(token!, {
         name: name.trim(),
@@ -132,7 +226,7 @@ export function OnboardingPage() {
         filiere: finalFiliere,
         level: finalLevel,
         country,
-        phone: phone.trim(),
+        phone: finalPhone || undefined,
         bio: bio.trim(),
         avatarUrl: avatarUrl.trim() || undefined,
         is_student: studentStatus ? 1 : 0,
@@ -146,10 +240,13 @@ export function OnboardingPage() {
         localStorage.setItem('unifolder_user_country', res.data.country || country);
         localStorage.setItem('unifolder_user_school', res.data.school || finalSchool);
         localStorage.setItem('unifolder_user_filiere', res.data.filiere || finalFiliere);
-        if (phone.trim()) localStorage.setItem('unifolder_user_phone', phone.trim());
+        if (finalPhone) localStorage.setItem('unifolder_user_phone', finalPhone);
         if (!studentStatus && profession.trim()) {
           localStorage.setItem('unifolder_user_profession', profession.trim());
         }
+
+        // Déclencher l'envoi de l'email de bienvenue professionnel à son arrivée à l'accueil
+        StudyCloudAPI.sendWelcomeEmail(token!).catch(() => {});
 
         updateProfile({
           ...res.data,
@@ -415,7 +512,7 @@ export function OnboardingPage() {
                 />
               </div>
 
-              {/* Pays & Téléphone en 2 colonnes */}
+              {/* Pays & Téléphone en 2 colonnes avec indicatif dynamique */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 mb-3.5">
                 <div>
                   <label className="text-xs font-bold text-white/70 mb-1.5 block">
@@ -431,29 +528,41 @@ export function OnboardingPage() {
                       className={`${inputClass} pl-10 cursor-pointer`}
                       style={{ ...inputStyle, WebkitAppearance: 'none' }}
                     >
-                      {COUNTRIES.map((c) => (
-                        <option key={c} value={c} style={{ background: '#1a1a3e', color: 'white' }}>
-                          {c}
-                        </option>
-                      ))}
+                      {COUNTRIES.map((c) => {
+                        const meta = COUNTRY_DATA[c];
+                        return (
+                          <option key={c} value={c} style={{ background: '#1a1a3e', color: 'white' }}>
+                            {meta ? `${meta.flag} ${c} (${meta.dialCode})` : c}
+                          </option>
+                        );
+                      })}
                     </select>
                   </div>
                 </div>
 
                 <div>
-                  <label className="text-xs font-bold text-white/70 mb-1.5 block">
-                    Numéro de téléphone
+                  <label className="text-xs font-bold text-white/70 mb-1.5 flex items-center justify-between">
+                    <span>Numéro de téléphone</span>
+                    <span className="text-[11px] font-semibold text-orange-400/90">
+                      Indicatif {currentCountry.dialCode}
+                    </span>
                   </label>
-                  <div className="relative">
-                    <Phone className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
+                  <div className="flex rounded-xl overflow-hidden" style={inputStyle}>
+                    {/* Badge indicatif pays synchronisé automatiquement avec le pays choisi */}
+                    <div
+                      className="flex items-center gap-1.5 px-3.5 py-3 bg-white/10 border-r border-white/10 text-orange-400 font-extrabold text-sm select-none shrink-0"
+                      title={`Indicatif téléphonique pour ${country}`}
+                    >
+                      <span className="text-base leading-none">{currentCountry.flag}</span>
+                      <span className="tracking-tight">{currentCountry.dialCode}</span>
+                    </div>
                     <input
                       id="onboard-phone"
                       type="tel"
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
-                      placeholder="+225 07 00 00 00 00"
-                      className={`${inputClass} pl-10`}
-                      style={inputStyle}
+                      placeholder={currentCountry.placeholder}
+                      className="w-full px-3.5 py-3 text-sm font-medium text-white placeholder-white/30 outline-none bg-transparent"
                     />
                   </div>
                 </div>
@@ -480,23 +589,109 @@ export function OnboardingPage() {
                 </div>
               )}
 
-              {/* Photo de profil (URL) */}
-              <div className="mb-3.5">
-                <label className="text-xs font-bold text-white/70 mb-1.5 block">
-                  Photo de profil (URL - optionnel)
-                </label>
-                <div className="relative">
-                  <Camera className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
-                  <input
-                    id="onboard-avatar"
-                    type="url"
-                    value={avatarUrl}
-                    onChange={(e) => setAvatarUrl(e.target.value)}
-                    placeholder="https://exemple.com/photo.jpg"
-                    className={`${inputClass} pl-10`}
-                    style={inputStyle}
-                  />
+              {/* Photo de profil ou Logo (Import direct depuis l'appareil - pas de lien URL) */}
+              <div className="mb-4">
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-white/70 block">
+                    {isStudent ? 'Photo de profil' : 'Photo de profil ou logo'}
+                  </label>
+                  <span className="text-[10.5px] font-semibold text-emerald-400/90 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
+                    Optionnel (non obligatoire)
+                  </span>
                 </div>
+
+                {/* Input fichier caché activé au clic */}
+                <input
+                  ref={fileInputRef}
+                  type="file"
+                  accept=".jpg,.jpeg,.png,.bmp,image/jpeg,image/png,image/bmp"
+                  onChange={handleAvatarFileChange}
+                  className="hidden"
+                />
+
+                {avatarUrl ? (
+                  /* Affichage immédiat de l'image envoyée au format carré 120x120 */
+                  <div
+                    className="p-3.5 rounded-2xl flex flex-col sm:flex-row items-center gap-4 transition-all"
+                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)' }}
+                  >
+                    <div className="relative shrink-0 w-[120px] h-[120px] rounded-2xl overflow-hidden border-2 border-orange-500/50 shadow-[0_0_16px_rgba(234,88,12,0.25)] bg-black/40 flex items-center justify-center group">
+                      <img
+                        src={avatarUrl}
+                        alt="Aperçu importé"
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="text-[11px] font-bold text-white bg-orange-600 px-2.5 py-1 rounded-lg shadow-sm hover:bg-orange-500 cursor-pointer"
+                        >
+                          Changer
+                        </button>
+                      </div>
+                    </div>
+
+                    <div className="flex-1 text-center sm:text-left min-w-0">
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold mb-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5" />
+                        <span>Image importée avec succès (120×120 px)</span>
+                      </div>
+                      <p className="text-xs text-white/70 mb-3 leading-relaxed">
+                        Votre image s'affichera sur votre profil StudyCloud et vos documents partagés.
+                      </p>
+                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                        <button
+                          type="button"
+                          onClick={() => fileInputRef.current?.click()}
+                          className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/15 border border-white/15 transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <Upload className="w-3.5 h-3.5 text-orange-400" />
+                          Changer l'image
+                        </button>
+                        <button
+                          type="button"
+                          onClick={handleRemoveAvatar}
+                          className="px-3 py-1.5 rounded-xl text-xs font-bold text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                          Supprimer
+                        </button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  /* Zone de sélection directe depuis l'appareil (sans lien URL) */
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    className="group p-4 sm:p-5 rounded-2xl border-2 border-dashed border-white/20 hover:border-orange-500/60 bg-white/[0.04] hover:bg-white/[0.07] transition-all cursor-pointer text-center flex flex-col items-center justify-center"
+                  >
+                    <div className="w-12 h-12 rounded-2xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center mb-2.5 group-hover:scale-105 group-hover:bg-orange-500/25 transition-all text-orange-400 shadow-sm">
+                      <Upload className="w-6 h-6" />
+                    </div>
+
+                    <p className="text-sm font-bold text-white group-hover:text-orange-300 transition-colors mb-1">
+                      Cliquez ici pour importer une image directe de votre appareil
+                    </p>
+
+                    {/* Consigne officielle exacte demandée par l'utilisateur */}
+                    <p className="text-[11.5px] text-white/70 max-w-lg leading-relaxed mt-1">
+                      importez une image ne dépassant pas 1 Mo Les formats d'image autorisés sont JPG, PNG et BMP. Pour des résultats optimaux, les logos doivent être au format carré et d'une dimension de 120 px par 120 px.
+                    </p>
+
+                    <span className="text-[11px] text-emerald-400/90 font-medium mt-2 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
+                      ✓ Cette étape n'est pas obligatoire, vous pouvez continuer sans image
+                    </span>
+                  </div>
+                )}
+
+                {/* Message d'erreur format ou taille */}
+                {avatarError && (
+                  <div className="mt-2.5 p-2.5 rounded-xl bg-red-500/15 border border-red-500/30 flex items-center gap-2 text-xs text-red-300 font-medium">
+                    <AlertCircle className="w-4 h-4 shrink-0 text-red-400" />
+                    <span>{avatarError}</span>
+                  </div>
+                )}
               </div>
 
               {/* Courte bio pour les non-étudiants directement à cette étape */}
