@@ -627,8 +627,8 @@ var src_default = {
         const existing = await env.DB.prepare("SELECT id, email_verified FROM users WHERE email = ?").bind(cleanEmail).first();
         const q1 = securityQuestion1 || "Quelle est votre ville de naissance ?";
         const q2 = securityQuestion2 || "Quel est le pr\xE9nom de votre m\xE8re ?";
-        const answer1Hash = securityAnswer1 ? await hashToken(securityAnswer1.toLowerCase().trim()) : "";
-        const answer2Hash = securityAnswer2 ? await hashToken(securityAnswer2.toLowerCase().trim()) : "";
+        const answer1Hash = securityAnswer1 ? await hashToken(securityAnswer1.slice(0, 30).toLowerCase().trim()) : "";
+        const answer2Hash = securityAnswer2 ? await hashToken(securityAnswer2.slice(0, 30).toLowerCase().trim()) : "";
         if (existing) {
           if (existing.email_verified === 1) {
             return errorResponse("Un compte v\xE9rifi\xE9 existe d\xE9j\xE0 avec cet email", 409, origin);
@@ -944,11 +944,11 @@ var src_default = {
         if (!user)
           return errorResponse("Utilisateur introuvable", 404, origin);
         if (user.security_answer_1_hash) {
-          const hash1 = await hashToken(answer1.toLowerCase().trim());
+          const hash1 = await hashToken(answer1.slice(0, 30).toLowerCase().trim());
           const match1 = hash1 === user.security_answer_1_hash;
           let match2 = true;
           if (user.security_answer_2_hash && answer2) {
-            const hash2 = await hashToken(answer2.toLowerCase().trim());
+            const hash2 = await hashToken(answer2.slice(0, 30).toLowerCase().trim());
             match2 = hash2 === user.security_answer_2_hash;
           }
           if (!match1 || !match2) {
@@ -1163,8 +1163,8 @@ var src_default = {
           return errorResponse("Veuillez renseigner les r\xE9ponses \xE0 vos deux questions de s\xE9curit\xE9", 400, origin);
         }
         const passwordHash = await hashPassword(password);
-        const ans1Hash = await hashToken(securityAnswer1.toLowerCase().trim());
-        const ans2Hash = await hashToken(securityAnswer2.toLowerCase().trim());
+        const ans1Hash = await hashToken(securityAnswer1.slice(0, 30).toLowerCase().trim());
+        const ans2Hash = await hashToken(securityAnswer2.slice(0, 30).toLowerCase().trim());
         const q1 = securityQuestion1 || "Quelle est votre ville de naissance ?";
         const q2 = securityQuestion2 || "Quel est le pr\xE9nom de votre m\xE8re ?";
         const finalName = name && typeof name === "string" && name.trim() ? name.trim() : null;

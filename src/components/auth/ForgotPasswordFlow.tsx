@@ -402,14 +402,20 @@ export function ForgotPasswordFlow({
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {/* Question 1 */}
                 <div className="p-4 rounded-2xl bg-white/[0.04] border border-white/10">
-                  <label className="text-xs font-bold text-orange-400 mb-2 block">
-                    Question 1 : {question1}
-                  </label>
+                  <div className="flex items-center justify-between mb-2">
+                    <label className="text-xs font-bold text-orange-400 block">
+                      Question 1 : {question1}
+                    </label>
+                    <span className={`text-[10px] font-semibold ${answer1.length >= 30 ? 'text-amber-400' : 'text-white/40'}`}>
+                      {answer1.length}/30 max
+                    </span>
+                  </div>
                   <input
                     type="text"
                     value={answer1}
-                    onChange={(e) => setAnswer1(e.target.value)}
-                    placeholder="Votre réponse secrète *"
+                    onChange={(e) => setAnswer1(e.target.value.slice(0, 30))}
+                    maxLength={30}
+                    placeholder="Votre réponse secrète (max. 30 car.) *"
                     required
                     autoFocus
                     className="w-full px-4 py-3 rounded-xl text-sm font-medium text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-orange-500/50 transition-all bg-white/10 border border-white/15"
@@ -419,14 +425,20 @@ export function ForgotPasswordFlow({
                 {/* Question 2 */}
                 {question2 && (
                   <div className="p-4 rounded-2xl bg-white/[0.04] border border-white/10">
-                    <label className="text-xs font-bold text-orange-400 mb-2 block">
-                      Question 2 : {question2}
-                    </label>
+                    <div className="flex items-center justify-between mb-2">
+                      <label className="text-xs font-bold text-orange-400 block">
+                        Question 2 : {question2}
+                      </label>
+                      <span className={`text-[10px] font-semibold ${answer2.length >= 30 ? 'text-amber-400' : 'text-white/40'}`}>
+                        {answer2.length}/30 max
+                      </span>
+                    </div>
                     <input
                       type="text"
                       value={answer2}
-                      onChange={(e) => setAnswer2(e.target.value)}
-                      placeholder="Votre réponse secrète *"
+                      onChange={(e) => setAnswer2(e.target.value.slice(0, 30))}
+                      maxLength={30}
+                      placeholder="Votre réponse secrète (max. 30 car.) *"
                       className="w-full px-4 py-3 rounded-xl text-sm font-medium text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-orange-500/50 transition-all bg-white/10 border border-white/15"
                     />
                   </div>

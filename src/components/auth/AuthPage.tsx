@@ -863,19 +863,31 @@ export function AuthPage({ onBack }: AuthPageProps) {
                         <option value="Quel est votre plat ivoirien préféré ?" className="bg-slate-900 text-white">Quel est votre plat ivoirien préféré ?</option>
                         <option value="Quel est le prénom de votre meilleur(e) ami(e) d'enfance ?" className="bg-slate-900 text-white">Quel est le prénom de votre meilleur(e) ami(e) d'enfance ?</option>
                       </select>
+                      <div className="flex items-center justify-between mt-1">
+                        <span className="text-[10px] text-white/40"></span>
+                        <span className={`text-[10px] font-medium ${securityAnswer1.length >= 30 ? 'text-amber-400' : 'text-white/40'}`}>
+                          {securityAnswer1.length}/30 max
+                        </span>
+                      </div>
                       <input
                         type="text"
                         value={securityAnswer1}
-                        onChange={(e) => setSecurityAnswer1(e.target.value)}
-                        placeholder="Votre réponse secrète *"
+                        onChange={(e) => setSecurityAnswer1(e.target.value.slice(0, 30))}
+                        maxLength={30}
+                        placeholder="Votre réponse secrète (max 30 car.) *"
                         required
-                        className="w-full mt-1.5 px-3 py-2.5 rounded-xl text-xs font-medium text-white placeholder-white/30 bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-orange-500/50"
+                        className="w-full mt-1 px-3 py-2.5 rounded-xl text-xs font-medium text-white placeholder-white/30 bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-orange-500/50"
                       />
                     </div>
 
                     {/* Question 2 */}
                     <div>
-                      <label className="text-[11px] font-bold text-white/70 mb-1 block">Question secrète 2 *</label>
+                      <div className="flex items-center justify-between mb-1">
+                        <label className="text-[11px] font-bold text-white/70 block">Question secrète 2 *</label>
+                        <span className={`text-[10px] font-medium ${securityAnswer2.length >= 30 ? 'text-amber-400' : 'text-white/40'}`}>
+                          {securityAnswer2.length}/30 max
+                        </span>
+                      </div>
                       <select
                         value={securityQuestion2}
                         onChange={(e) => setSecurityQuestion2(e.target.value)}
@@ -889,8 +901,9 @@ export function AuthPage({ onBack }: AuthPageProps) {
                       <input
                         type="text"
                         value={securityAnswer2}
-                        onChange={(e) => setSecurityAnswer2(e.target.value)}
-                        placeholder="Votre réponse secrète *"
+                        onChange={(e) => setSecurityAnswer2(e.target.value.slice(0, 30))}
+                        maxLength={30}
+                        placeholder="Votre réponse secrète (max 30 car.) *"
                         required
                         className="w-full mt-1.5 px-3 py-2 rounded-xl text-xs font-medium text-white placeholder-white/30 bg-white/10 border border-white/15 outline-none focus:ring-2 focus:ring-orange-500/50"
                       />

@@ -56,8 +56,18 @@ export function GoogleSecuritySetupPage() {
       return;
     }
 
+    if (securityAnswer1.trim().length > 30) {
+      setError('La première réponse secrète ne doit pas dépasser 30 caractères.');
+      return;
+    }
+
     if (!securityAnswer2.trim()) {
       setError('Veuillez renseigner la réponse à la deuxième question de sécurité.');
+      return;
+    }
+
+    if (securityAnswer2.trim().length > 30) {
+      setError('La deuxième réponse secrète ne doit pas dépasser 30 caractères.');
       return;
     }
 
@@ -67,9 +77,9 @@ export function GoogleSecuritySetupPage() {
       const res = await StudyCloudAPI.setupSecurity(token, {
         password,
         securityQuestion1,
-        securityAnswer1: securityAnswer1.trim(),
+        securityAnswer1: securityAnswer1.trim().slice(0, 30),
         securityQuestion2,
-        securityAnswer2: securityAnswer2.trim(),
+        securityAnswer2: securityAnswer2.trim().slice(0, 30),
       });
 
       if (res.success && res.user) {
@@ -206,10 +216,15 @@ export function GoogleSecuritySetupPage() {
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 sm:gap-6">
               {/* Question 1 */}
               <div className="space-y-2">
-                <label className="text-xs sm:text-sm md:text-base font-bold text-white/80 flex items-center gap-2">
-                  <HelpCircle className="w-4 h-4 text-orange-400" />
-                  <span>Question 1 *</span>
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs sm:text-sm md:text-base font-bold text-white/80 flex items-center gap-2">
+                    <HelpCircle className="w-4 h-4 text-orange-400" />
+                    <span>Question 1 *</span>
+                  </label>
+                  <span className={`text-xs font-semibold ${securityAnswer1.length >= 30 ? 'text-amber-400' : 'text-white/40'}`}>
+                    {securityAnswer1.length}/30 car. max
+                  </span>
+                </div>
                 <select
                   value={securityQuestion1}
                   onChange={(e) => setSecurityQuestion1(e.target.value)}
@@ -223,8 +238,9 @@ export function GoogleSecuritySetupPage() {
                 <input
                   type="text"
                   value={securityAnswer1}
-                  onChange={(e) => setSecurityAnswer1(e.target.value)}
-                  placeholder="Votre réponse secrète 1 *"
+                  onChange={(e) => setSecurityAnswer1(e.target.value.slice(0, 30))}
+                  maxLength={30}
+                  placeholder="Votre réponse secrète 1 (max 30 car.) *"
                   required
                   className="w-full px-4 py-3 sm:py-3.5 rounded-2xl text-xs sm:text-sm md:text-base font-medium text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-orange-500/60 bg-white/[0.06] border border-white/15"
                 />
@@ -232,10 +248,15 @@ export function GoogleSecuritySetupPage() {
 
               {/* Question 2 */}
               <div className="space-y-2">
-                <label className="text-xs sm:text-sm md:text-base font-bold text-white/80 flex items-center gap-2">
-                  <HelpCircle className="w-4 h-4 text-orange-400" />
-                  <span>Question 2 *</span>
-                </label>
+                <div className="flex items-center justify-between">
+                  <label className="text-xs sm:text-sm md:text-base font-bold text-white/80 flex items-center gap-2">
+                    <HelpCircle className="w-4 h-4 text-orange-400" />
+                    <span>Question 2 *</span>
+                  </label>
+                  <span className={`text-xs font-semibold ${securityAnswer2.length >= 30 ? 'text-amber-400' : 'text-white/40'}`}>
+                    {securityAnswer2.length}/30 car. max
+                  </span>
+                </div>
                 <select
                   value={securityQuestion2}
                   onChange={(e) => setSecurityQuestion2(e.target.value)}
@@ -249,8 +270,9 @@ export function GoogleSecuritySetupPage() {
                 <input
                   type="text"
                   value={securityAnswer2}
-                  onChange={(e) => setSecurityAnswer2(e.target.value)}
-                  placeholder="Votre réponse secrète 2 *"
+                  onChange={(e) => setSecurityAnswer2(e.target.value.slice(0, 30))}
+                  maxLength={30}
+                  placeholder="Votre réponse secrète 2 (max 30 car.) *"
                   required
                   className="w-full px-4 py-3 sm:py-3.5 rounded-2xl text-xs sm:text-sm md:text-base font-medium text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-orange-500/60 bg-white/[0.06] border border-white/15"
                 />
