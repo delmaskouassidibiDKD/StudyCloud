@@ -791,11 +791,35 @@ export default {
         if (!isValidEmail(email)) return errorResponse('Format d\'adresse email invalide (ex: exemple@gmail.com)', 400, origin);
 
         const cleanEmail = email.toLowerCase().trim();
-        const user: any = await env.DB.prepare('SELECT * FROM users WHERE email = ? AND provider = \'email\'').bind(cleanEmail).first();
-        if (!user || !user.password_hash) return errorResponse('Email ou mot de passe incorrect', 401, origin);
+        const existingUser: any = await env.DB.prepare('SELECT * FROM users WHERE email = ?').bind(cleanEmail).first();
+        if (!existingUser) {
+          return jsonResponse({
+            success: false,
+            userNotFound: true,
+            code: 'USER_NOT_FOUND',
+            error: 'Aucun compte associé à cette adresse email n\'a été trouvé. Veuillez créer votre compte pour continuer.',
+          }, 404, origin);
+        }
 
-        const valid = await verifyPassword(password, user.password_hash);
-        if (!valid) return errorResponse('Email ou mot de passe incorrect', 401, origin);
+        if (existingUser.provider === 'google' && !existingUser.password_hash) {
+          return jsonResponse({
+            success: false,
+            isGoogleAccount: true,
+            code: 'GOOGLE_ACCOUNT_DETECTED',
+            error: 'Ce compte utilise la connexion Google. Veuillez cliquer sur "Continuer avec Google" pour vous connecter instantanément.',
+          }, 400, origin);
+        }
+
+        if (!existingUser.password_hash) {
+          return errorResponse('Compte incomplet ou sans mot de passe défini.', 401, origin);
+        }
+
+        const valid = await verifyPassword(password, existingUser.password_hash);
+        if (!valid) {
+          return errorResponse('Mot de passe incorrect. Veuillez vérifier votre saisie ou réinitialiser votre mot de passe.', 401, origin);
+        }
+
+        const user = existingUser;
 
         // Générer le token de confirmation de connexion (2FA / validation par email)
         const verificationToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');

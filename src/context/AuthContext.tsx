@@ -20,6 +20,7 @@ export interface AuthUser {
   is_student?: number;
   email_verified: number;
   created_at: string;
+  google_id?: string | null;
   has_password?: boolean;
   has_security_questions?: boolean;
   security_question_1?: string;
@@ -152,9 +153,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   const isAuthenticated = !!user && !!token;
+  // Le paramétrage de sécurité (mot de passe manuel + questions) ne bloque que les comptes par email direct.
+  // Avec Google, l'authentification est déjà sécurisée par Google et l'utilisateur est connecté immédiatement.
   const needsSecuritySetup = Boolean(
     isAuthenticated &&
     user &&
+    user.provider === 'email' &&
+    !user.google_id &&
     (user.has_password === false || user.has_security_questions === false)
   );
   const needsOnboarding = isAuthenticated && !needsSecuritySetup && user?.is_onboarded === 0;

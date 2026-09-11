@@ -51,8 +51,13 @@ async function requestAuth<T = any>(endpoint: string, options: RequestInit = {},
   if (token) headers['Authorization'] = `Bearer ${token}`;
   const response = await fetch(url, { ...options, headers: { ...headers, ...(options.headers as any || {}) } });
   const data = await response.json().catch(() => ({ error: response.statusText }));
-  if (!response.ok && response.status !== 409) {
-    throw new Error((data as any).error || `Erreur ${response.status}`);
+  if (!response.ok && response.status !== 409 && response.status !== 404 && !(data as any)?.isGoogleAccount && !(data as any)?.userNotFound) {
+    const err: any = new Error((data as any).error || `Erreur ${response.status}`);
+    err.status = response.status;
+    err.userNotFound = Boolean((data as any)?.userNotFound || response.status === 404);
+    err.isGoogleAccount = Boolean((data as any)?.isGoogleAccount);
+    err.data = data;
+    throw err;
   }
   return data as T;
 }

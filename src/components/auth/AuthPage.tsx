@@ -1,5 +1,5 @@
 import React, { useState } from 'react';
-import { Mail, Lock, Eye, EyeOff, ArrowLeft, AlertCircle, CheckCircle2, User, ShieldCheck, KeyRound } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowLeft, AlertCircle, CheckCircle2, User, ShieldCheck, KeyRound, UserPlus, X, Sparkles } from 'lucide-react';
 import { StudyCloudAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { DnaLogo } from '../DnaLogo';
@@ -73,6 +73,8 @@ export function AuthPage({ onBack }: AuthPageProps) {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
+  // Message informatif professionnel si compte non trouvé lors d'une tentative de connexion
+  const [accountNotFoundNotice, setAccountNotFoundNotice] = useState<string | null>(null);
 
   // Questions de sécurité personnelles pour récupération de mot de passe
   const [securityQuestion1, setSecurityQuestion1] = useState('Quelle est votre ville de naissance ?');
@@ -108,6 +110,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
     setSecurityAnswer1('');
     setSecurityAnswer2('');
     setError(null);
+    setAccountNotFoundNotice(null);
     setSuccess(null);
   };
 
@@ -164,6 +167,23 @@ export function AuthPage({ onBack }: AuthPageProps) {
         res = await StudyCloudAPI.login({ email: email.trim(), password });
       }
 
+      // Si aucun compte trouvé : Redirection automatique vers l'inscription avec message professionnel
+      if (res.userNotFound || (res as any).code === 'USER_NOT_FOUND') {
+        setMode('register');
+        setPassword('');
+        setError(null);
+        setAccountNotFoundNotice(
+          "Aucun compte associé à cette adresse email n'a été trouvé. Nous vous avons orienté vers l'inscription : complétez simplement vos informations ci-dessous pour créer votre compte StudyCloud gratuitement !"
+        );
+        return;
+      }
+
+      // Si compte créé avec Google
+      if (res.isGoogleAccount) {
+        setError("Ce compte est associé à Google. Veuillez cliquer sur le bouton « Continuer avec Google » ci-dessous pour vous connecter.");
+        return;
+      }
+
       // Si confirmation email requise (inscription OU connexion 2FA)
       if (res.requiresVerification) {
         const targetEmail = email.trim().toLowerCase();
@@ -184,7 +204,18 @@ export function AuthPage({ onBack }: AuthPageProps) {
         setError(res.error || 'Une erreur est survenue.');
       }
     } catch (err: any) {
-      setError(err.message || 'Impossible de joindre le serveur. Réessayez.');
+      if (err.userNotFound || err.status === 404 || err.message?.includes('Aucun compte') || err.message?.includes('non trouvé')) {
+        setMode('register');
+        setPassword('');
+        setError(null);
+        setAccountNotFoundNotice(
+          "Aucun compte associé à cette adresse email n'a été trouvé. Nous vous avons orienté vers l'inscription : complétez simplement vos informations ci-dessous pour créer votre compte StudyCloud gratuitement !"
+        );
+      } else if (err.isGoogleAccount) {
+        setError("Ce compte est associé à Google. Veuillez cliquer sur le bouton « Continuer avec Google » ci-dessous pour vous connecter.");
+      } else {
+        setError(err.message || 'Impossible de joindre le serveur. Réessayez.');
+      }
     } finally {
       setIsLoading(false);
     }
@@ -487,6 +518,49 @@ export function AuthPage({ onBack }: AuthPageProps) {
                 ? 'Créez votre espace Cloud sécurisé pour vos études, cours et dossiers professionnels'
                 : 'Accédez à vos cours, documents et dossiers sauvegardés en toute sécurité'}
             </p>
+
+            {/* Bannière professionnelle d'information quand aucun compte n'est trouvé */}
+            {accountNotFoundNotice && mode === 'register' && (
+              <div
+                className="mb-6 p-4 sm:p-5 rounded-2xl flex items-start gap-3.5 border transition-all animate-fadeIn"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.16) 0%, rgba(37, 99, 235, 0.12) 100%)',
+                  borderColor: 'rgba(249, 115, 22, 0.35)',
+                  boxShadow: '0 8px 30px rgba(234, 88, 12, 0.15)',
+                }}
+              >
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-br from-orange-500/25 to-amber-500/20 border border-orange-500/40 flex items-center justify-center shrink-0 mt-0.5 text-orange-400 shadow-sm">
+                  <UserPlus className="w-4.5 h-4.5" />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <div className="flex items-center justify-between gap-2 mb-1.5">
+                    <div className="flex items-center gap-1.5">
+                      <span className="text-xs font-black text-orange-300 uppercase tracking-wider">
+                        Compte non trouvé
+                      </span>
+                      <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-500/20 text-orange-200 border border-orange-500/30">
+                        <Sparkles className="w-2.5 h-2.5" /> Inscription
+                      </span>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setAccountNotFoundNotice(null)}
+                      className="text-white/40 hover:text-white/90 text-xs p-1 transition-colors rounded-lg hover:bg-white/10 cursor-pointer"
+                      title="Fermer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                  <p className="text-xs sm:text-sm text-white/90 leading-relaxed font-normal">
+                    {accountNotFoundNotice}
+                  </p>
+                  <p className="text-[11px] text-orange-200/70 font-semibold mt-2 flex items-center gap-1.5">
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
+                    <span>Votre adresse email a été conservée ci-dessous pour vous faire gagner du temps.</span>
+                  </p>
+                </div>
+              </div>
+            )}
 
             <form onSubmit={handleEmailAuth} className="space-y-4">
               {/* Nom (register only) */}
