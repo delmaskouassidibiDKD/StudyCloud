@@ -19,8 +19,8 @@ import {
 import { StudyCloudAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { DnaLogo } from '../DnaLogo';
-import studentAvatar from '../../assets/student-avatar.png';
-import proAvatar from '../../assets/pro-avatar.png';
+import studentLogo from '../../assets/student-logo.jpg';
+import proLogo from '../../assets/pro-logo.jpg';
 
 const COUNTRIES = [
   "Côte d'Ivoire", 'Sénégal', 'Mali', 'Burkina Faso', 'Guinée', 'Cameroun',
@@ -290,8 +290,8 @@ export function OnboardingPage() {
                 )}
 
                 <div>
-                  <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 flex items-center justify-center mb-4 p-2">
-                    <img src={studentAvatar} alt="Profil étudiant" className="w-full h-full object-contain drop-shadow-[0_0_8px_rgba(16,185,129,0.4)]" />
+                  <div className="w-14 h-14 rounded-2xl bg-white border-2 border-emerald-400/80 flex items-center justify-center mb-4 p-1.5 shadow-[0_0_20px_rgba(16,185,129,0.35)] overflow-hidden">
+                    <img src={studentLogo} alt="Profil étudiant" className="w-full h-full object-contain" />
                   </div>
 
                   <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 block mb-1">
@@ -328,8 +328,8 @@ export function OnboardingPage() {
                 )}
 
                 <div>
-                  <div className="w-12 h-12 rounded-2xl bg-orange-500/20 border border-orange-500/40 flex items-center justify-center mb-4 p-2">
-                    <img src={proAvatar} alt="Profil standard / pro" className="w-full h-full object-contain drop-shadow-[0_0_8px_rgba(234,88,12,0.4)]" />
+                  <div className="w-14 h-14 rounded-2xl bg-white border-2 border-orange-400/80 flex items-center justify-center mb-4 p-1.5 shadow-[0_0_20px_rgba(234,88,12,0.35)] overflow-hidden">
+                    <img src={proLogo} alt="Profil standard / pro" className="w-full h-full object-contain" />
                   </div>
 
                   <span className="text-[10px] font-extrabold uppercase tracking-widest text-orange-400 block mb-1">
