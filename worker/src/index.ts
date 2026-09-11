@@ -42,16 +42,6 @@ const DNA_LOGO_SVG = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none
   </g>
 </svg>`;
 
-function base64ToUint8Array(b64: string): Uint8Array {
-  const bin = atob(b64);
-  const len = bin.length;
-  const bytes = new Uint8Array(len);
-  for (let i = 0; i < len; i++) {
-    bytes[i] = bin.charCodeAt(i);
-  }
-  return bytes;
-}
-
 // ============================================================================
 // Utilitaires HTTP & CORS
 // ============================================================================
@@ -109,7 +99,8 @@ export default {
       // Assets publics (Logo ADN pour emails et applications)
       // ----------------------------------------------------------------------
       if (path === '/api/assets/dna-logo.png' || path === '/assets/dna-logo.png') {
-        return new Response(base64ToUint8Array(DNA_LOGO_PNG_B64), {
+        const pngBytes = Uint8Array.from(atob(DNA_LOGO_PNG_B64), (c) => c.charCodeAt(0));
+        return new Response(pngBytes, {
           status: 200,
           headers: {
             'Content-Type': 'image/png',

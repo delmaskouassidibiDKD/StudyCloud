@@ -3,6 +3,7 @@ const path = require('path');
 
 const distDir = path.join(__dirname, 'dist');
 const indexPath = path.join(distDir, 'index.js');
+const cleanPath = path.join(distDir, 'worker-clean.js');
 const swPath = path.join(distDir, 'service-worker.js');
 
 if (!fs.existsSync(indexPath)) {
@@ -23,7 +24,9 @@ if (!moduleCode.startsWith('// @ts-nocheck')) {
   moduleCode = header + moduleCode;
 }
 
+// Écrire à la fois dans index.js et dans un nouveau fichier worker-clean.js
 fs.writeFileSync(indexPath, moduleCode + '\n', 'utf8');
+fs.writeFileSync(cleanPath, moduleCode + '\n', 'utf8');
 
 // Version Service Worker (sans aucun mot-clé export, utilise addEventListener)
 let swCode = originalCode;
@@ -39,5 +42,6 @@ if (!swCode.startsWith('// @ts-nocheck')) {
 fs.writeFileSync(swPath, swCode, 'utf8');
 
 console.log('Build terminé avec succès :');
-console.log(' - worker/dist/index.js (format ES Modules - propre, sans sourceMap cassée, ts-nocheck inclus)');
-console.log(' - worker/dist/service-worker.js (format Service Worker - propre, addEventListener inclus)');
+console.log(' - worker/dist/index.js (format ES Modules)');
+console.log(' - worker/dist/worker-clean.js (format ES Modules - nouveau fichier frais sans cache éditeur)');
+console.log(' - worker/dist/service-worker.js (format Service Worker)');
