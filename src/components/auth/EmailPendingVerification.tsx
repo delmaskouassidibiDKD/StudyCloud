@@ -169,16 +169,8 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
         />
       </div>
 
-      {/* Card */}
-      <div
-        className="relative z-10 w-full max-w-xl md:max-w-2xl p-6 sm:p-8 md:p-10 rounded-3xl"
-        style={{
-          background: 'rgba(255,255,255,0.06)',
-          backdropFilter: 'blur(24px)',
-          border: '1px solid rgba(255,255,255,0.12)',
-          boxShadow: '0 32px 80px rgba(0,0,0,0.5)',
-        }}
-      >
+      {/* Direct Content */}
+      <div className="relative z-10 w-full max-w-xl md:max-w-2xl py-6 my-auto">
         {/* Top brand header with official DnaLogo */}
         <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/10">
           <div className="flex items-center gap-2.5 notranslate select-none">
@@ -188,9 +180,6 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
                 <span className="text-orange-500">Study</span>
                 <span className="text-blue-500">Cloud</span>
               </h1>
-              <p className="text-[8px] text-amber-400 font-bold uppercase tracking-widest mt-0.5">
-                DKD TECHNOLOGIES
-              </p>
             </div>
           </div>
           <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">

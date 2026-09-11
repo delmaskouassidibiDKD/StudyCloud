@@ -363,119 +363,105 @@ export function AuthPage({ onBack }: AuthPageProps) {
       <div className="min-h-full w-full flex flex-col items-center justify-start p-4 sm:p-6 lg:p-8 py-8 sm:py-12">
         {/* Main Responsive Layout Wrapper (Wide Desktop Hero + Form Split Layout) */}
         <div className="relative z-10 w-full max-w-6xl xl:max-w-7xl my-auto">
-        <div
-          className="grid grid-cols-1 md:grid-cols-12 overflow-hidden rounded-3xl"
-          style={{
-            background: 'rgba(255, 255, 255, 0.05)',
-            backdropFilter: 'blur(30px)',
-            border: '1px solid rgba(255, 255, 255, 0.12)',
-            boxShadow: '0 32px 100px rgba(0, 0, 0, 0.65), 0 0 1px 1px rgba(255, 255, 255, 0.08)',
-          }}
-        >
-          {/* Left Column (Desktop Hero & Brand Showcase - Visible on md: and up) */}
-          <div className="hidden md:flex md:col-span-5 flex-col justify-between p-8 lg:p-10 bg-gradient-to-br from-white/[0.04] to-white/[0.01] border-r border-white/10 relative overflow-hidden">
-            {/* Inner background glow */}
-            <div className="absolute -top-20 -left-20 w-64 h-64 rounded-full bg-orange-500/20 blur-[60px] pointer-events-none" />
-            <div className="absolute -bottom-20 -right-20 w-64 h-64 rounded-full bg-blue-500/20 blur-[60px] pointer-events-none" />
+          <div className="grid grid-cols-1 md:grid-cols-12 gap-8 lg:gap-14 items-center">
+            {/* Left Column (Desktop Hero & Brand Showcase - Visible on md: and up) */}
+            <div className="hidden md:flex md:col-span-5 flex-col justify-between py-6 relative">
+              {/* Inner background glow */}
+              <div className="absolute -top-20 -left-20 w-64 h-64 rounded-full bg-orange-500/20 blur-[60px] pointer-events-none" />
+              <div className="absolute -bottom-20 -right-20 w-64 h-64 rounded-full bg-blue-500/20 blur-[60px] pointer-events-none" />
 
-            <div>
-              {/* Brand Top */}
-              <div className="flex items-center gap-3 mb-8 notranslate select-none">
-                <DnaLogo className="w-11 h-11 drop-shadow-[0_0_8px_rgba(234,88,12,0.6)] shrink-0" glow={true} />
-                <div className="flex flex-col leading-tight">
-                  <h1 className="font-black tracking-tight text-2xl leading-none">
-                    <span className="text-orange-500">Study</span>
-                    <span className="text-blue-500">Cloud</span>
-                  </h1>
-                  <p className="text-[9px] text-amber-400 font-bold uppercase tracking-widest mt-1">
-                    DKD TECHNOLOGIES
-                  </p>
+              <div>
+                {/* Brand Top */}
+                <div className="flex items-center gap-3 mb-8 notranslate select-none">
+                  <DnaLogo className="w-11 h-11 drop-shadow-[0_0_8px_rgba(234,88,12,0.6)] shrink-0" glow={true} />
+                  <div className="flex flex-col leading-tight">
+                    <h1 className="font-black tracking-tight text-2xl leading-none">
+                      <span className="text-orange-500">Study</span>
+                      <span className="text-blue-500">Cloud</span>
+                    </h1>
+                  </div>
+                </div>
+
+                {/* Catchphrase */}
+                <h2 className="text-2xl xl:text-3xl font-black text-white leading-tight mb-3">
+                  Votre espace Cloud sécurisé pour stocker, classer et protéger toutes vos données.
+                </h2>
+                <p className="text-xs xl:text-sm text-white/60 leading-relaxed mb-8">
+                  Étudiants, élèves, professionnels et entreprises : conservez vos cours, fiches, dossiers et données importantes en lieu sûr pour ne jamais les perdre. Accédez-y partout, avec l'intelligence artificielle intégrée.
+                </p>
+
+                {/* Information list written directly on background (no icons in front, no enclosing box borders) */}
+                <div className="space-y-6">
+                  <div>
+                    <h4 className="text-sm font-bold text-white mb-1">
+                      Stockage Cloud & Classement Intelligent
+                    </h4>
+                    <p className="text-xs text-white/50 leading-relaxed">
+                      Organisez vos cours scolaires et universitaires, documents personnels et archives d'entreprise en toute sécurité avec accès instantané partout.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-bold text-white mb-1">
+                      Assistant IA Delmas Intégré
+                    </h4>
+                    <p className="text-xs text-white/50 leading-relaxed">
+                      Révisez plus vite, posez des questions sur vos cours ou documents, et générez des résumés précis grâce à l'intelligence artificielle.
+                    </p>
+                  </div>
+
+                  <div>
+                    <h4 className="text-sm font-bold text-white mb-1">
+                      Sécurité Maximale & Données Protégées
+                    </h4>
+                    <p className="text-xs text-white/50 leading-relaxed">
+                      Chiffrement avancé, double authentification (2FA) et isolation étanche pour protéger vos cours, vos fiches et vos projets professionnels.
+                    </p>
+                  </div>
                 </div>
               </div>
 
-              {/* Catchphrase */}
-              <h2 className="text-2xl xl:text-3xl font-black text-white leading-tight mb-3">
-                Votre espace Cloud sécurisé pour stocker, classer et protéger toutes vos données.
-              </h2>
-              <p className="text-xs xl:text-sm text-white/60 leading-relaxed mb-8">
-                Étudiants, élèves, professionnels et entreprises : conservez vos cours, fiches, dossiers et données importantes en lieu sûr pour ne jamais les perdre. Accédez-y partout, avec l'intelligence artificielle intégrée.
-              </p>
-
-              {/* Information list written directly on background (no icons in front, no enclosing box borders) */}
-              <div className="space-y-6">
-                <div>
-                  <h4 className="text-sm font-bold text-white mb-1">
-                    Stockage Cloud & Classement Intelligent
-                  </h4>
-                  <p className="text-xs text-white/50 leading-relaxed">
-                    Organisez vos cours scolaires et universitaires, documents personnels et archives d'entreprise en toute sécurité avec accès instantané partout.
-                  </p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-bold text-white mb-1">
-                    Assistant IA Delmas Intégré
-                  </h4>
-                  <p className="text-xs text-white/50 leading-relaxed">
-                    Révisez plus vite, posez des questions sur vos cours ou documents, et générez des résumés précis grâce à l'intelligence artificielle.
-                  </p>
-                </div>
-
-                <div>
-                  <h4 className="text-sm font-bold text-white mb-1">
-                    Sécurité Maximale & Données Protégées
-                  </h4>
-                  <p className="text-xs text-white/50 leading-relaxed">
-                    Chiffrement avancé, double authentification (2FA) et isolation étanche pour protéger vos cours, vos fiches et vos projets professionnels.
-                  </p>
-                </div>
+              {/* Bottom info */}
+              <div className="pt-6 border-t border-white/10 flex items-center justify-between text-[11px] text-white/40">
+                <span>StudyCloud</span>
+                <span className="font-semibold text-orange-400">Étudiants, Élèves & Entreprises</span>
               </div>
             </div>
 
-            {/* Bottom info */}
-            <div className="pt-6 border-t border-white/10 flex items-center justify-between text-[11px] text-white/40">
-              <span>DKD TECHNOLOGIES Cloud</span>
-              <span className="font-semibold text-orange-400">Étudiants, Élèves & Entreprises</span>
-            </div>
-          </div>
+            {/* Right Column (Auth Form) - 7 cols on md: and up, full width on mobile */}
+            <div className="md:col-span-7 py-4 flex flex-col justify-center">
+              {/* Header (visible on mobile/tablet or when back button needed) */}
+              <div className="flex items-center gap-3 mb-6">
+                {mode !== 'login' ? (
+                  <button
+                    type="button"
+                    onClick={() => { setMode('login'); resetForm(); }}
+                    className="w-8 h-8 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+                    title="Retour à la connexion"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                ) : onBack ? (
+                  <button
+                    type="button"
+                    onClick={onBack}
+                    className="w-8 h-8 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
+                  >
+                    <ArrowLeft className="w-4 h-4" />
+                  </button>
+                ) : null}
 
-          {/* Right Column (Auth Form) - 7 cols on md: and up, full width on mobile */}
-          <div className="md:col-span-7 p-6 sm:p-8 md:p-10 lg:p-12 flex flex-col justify-center">
-            {/* Header (visible on mobile/tablet or when back button needed) */}
-            <div className="flex items-center gap-3 mb-6">
-              {mode !== 'login' ? (
-                <button
-                  type="button"
-                  onClick={() => { setMode('login'); resetForm(); }}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
-                  title="Retour à la connexion"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-              ) : onBack ? (
-                <button
-                  type="button"
-                  onClick={onBack}
-                  className="w-8 h-8 rounded-xl flex items-center justify-center text-white/60 hover:text-white hover:bg-white/10 transition-all cursor-pointer"
-                >
-                  <ArrowLeft className="w-4 h-4" />
-                </button>
-              ) : null}
-
-              {/* Mobile brand header (shown on small screens) */}
-              <div className="flex md:hidden items-center gap-2.5 notranslate select-none">
-                <DnaLogo className="w-8 h-8 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
-                <div className="flex flex-col leading-tight">
-                  <h1 className="font-extrabold tracking-tight text-xl leading-none">
-                    <span className="text-orange-500">Study</span>
-                    <span className="text-blue-500">Cloud</span>
-                  </h1>
-                  <p className="text-[8px] text-amber-400 font-bold uppercase tracking-widest mt-0.5">
-                    DKD TECHNOLOGIES
-                  </p>
+                {/* Mobile brand header (shown on small screens) */}
+                <div className="flex md:hidden items-center gap-2.5 notranslate select-none">
+                  <DnaLogo className="w-8 h-8 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
+                  <div className="flex flex-col leading-tight">
+                    <h1 className="font-extrabold tracking-tight text-xl leading-none">
+                      <span className="text-orange-500">Study</span>
+                      <span className="text-blue-500">Cloud</span>
+                    </h1>
+                  </div>
                 </div>
               </div>
-            </div>
 
         {/* ── CHOOSE MODE ── */}
         {mode === 'choose' && (

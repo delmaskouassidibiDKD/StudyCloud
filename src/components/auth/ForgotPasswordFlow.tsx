@@ -233,35 +233,24 @@ export function ForgotPasswordFlow({
       </div>
 
       <div className="min-h-full w-full flex flex-col items-center justify-start py-8 sm:py-12 px-4">
-        {/* Card */}
-        <div
-          className="relative z-10 w-full max-w-2xl md:max-w-3xl lg:max-w-4xl p-6 sm:p-8 md:p-10 rounded-3xl my-auto"
-        style={{
-          background: 'rgba(255,255,255,0.06)',
-          backdropFilter: 'blur(24px)',
-          border: '1px solid rgba(255,255,255,0.12)',
-          boxShadow: '0 32px 80px rgba(0,0,0,0.5)',
-        }}
-      >
-        {/* Brand Header with DnaLogo */}
-        <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/10">
-          <div className="flex items-center gap-2.5 notranslate select-none">
-            <DnaLogo className="w-8 h-8 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
-            <div className="flex flex-col leading-tight">
-              <h1 className="font-extrabold tracking-tight text-xl leading-none">
-                <span className="text-orange-500">Study</span>
-                <span className="text-blue-500">Cloud</span>
-              </h1>
-              <p className="text-[8px] text-amber-400 font-bold uppercase tracking-widest mt-0.5">
-                DKD TECHNOLOGIES
-              </p>
+        {/* Direct Content */}
+        <div className="relative z-10 w-full max-w-2xl md:max-w-3xl lg:max-w-4xl py-6 my-auto">
+          {/* Brand Header with DnaLogo */}
+          <div className="flex items-center justify-between mb-6 pb-4 border-b border-white/10">
+            <div className="flex items-center gap-2.5 notranslate select-none">
+              <DnaLogo className="w-8 h-8 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
+              <div className="flex flex-col leading-tight">
+                <h1 className="font-extrabold tracking-tight text-xl leading-none">
+                  <span className="text-orange-500">Study</span>
+                  <span className="text-blue-500">Cloud</span>
+                </h1>
+              </div>
             </div>
+            <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 flex items-center gap-1">
+              <KeyRound className="w-3 h-3" />
+              Récupération
+            </span>
           </div>
-          <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 flex items-center gap-1">
-            <KeyRound className="w-3 h-3" />
-            Récupération
-          </span>
-        </div>
 
         {/* Blocage Quota 24h Banner */}
         {isBlocked && (
