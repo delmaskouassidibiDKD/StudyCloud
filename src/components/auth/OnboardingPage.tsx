@@ -13,7 +13,6 @@ import {
   Phone,
   FileText,
   Camera,
-  Sparkles,
   Check,
   ShieldCheck,
 } from 'lucide-react';
@@ -265,8 +264,7 @@ export function OnboardingPage() {
         {step === 1 && (
           <div className="space-y-6">
             <div className="text-center sm:text-left">
-              <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-400 text-xs font-bold uppercase tracking-wider mb-2.5">
-                <Sparkles className="w-3.5 h-3.5" />
+              <div className="inline-flex items-center px-3 py-1 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-400 text-xs font-bold uppercase tracking-wider mb-2.5">
                 Question essentielle
               </div>
               <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
@@ -311,24 +309,9 @@ export function OnboardingPage() {
                   <h4 className="text-base sm:text-lg font-bold text-white mb-2">
                     Oui, je suis étudiant
                   </h4>
-                  <p className="text-xs text-white/60 font-medium leading-relaxed mb-4">
+                  <p className="text-xs text-white/60 font-medium leading-relaxed">
                     Vous êtes au lycée, à l'université, en BTS, en école supérieure ou en préparation de concours.
                   </p>
-                </div>
-
-                <div className="space-y-1.5 pt-3 border-t border-white/10 text-[11px] text-white/50 font-medium">
-                  <div className="flex items-center gap-2 text-white/70">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span>Calculateur de moyennes & coefficients</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-white/70">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span>Emploi du temps & gestion des matières</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-white/70">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                    <span>Dossiers de révision & cours partagés</span>
-                  </div>
                 </div>
               </div>
 
@@ -364,24 +347,9 @@ export function OnboardingPage() {
                   <h4 className="text-base sm:text-lg font-bold text-white mb-2">
                     Non, je ne suis pas étudiant
                   </h4>
-                  <p className="text-xs text-white/60 font-medium leading-relaxed mb-4">
+                  <p className="text-xs text-white/60 font-medium leading-relaxed">
                     Vous êtes un professionnel, un enseignant, un particulier, un commerçant ou un indépendant.
                   </p>
-                </div>
-
-                <div className="space-y-1.5 pt-3 border-t border-white/10 text-[11px] text-white/50 font-medium">
-                  <div className="flex items-center gap-2 text-white/70">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                    <span>Pas de questionnaire scolaire à remplir</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-white/70">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                    <span>Stockage cloud, IA & partage de fichiers</span>
-                  </div>
-                  <div className="flex items-center gap-2 text-white/70">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                    <span>Accès direct à la boutique & aux services</span>
-                  </div>
                 </div>
               </div>
             </div>
