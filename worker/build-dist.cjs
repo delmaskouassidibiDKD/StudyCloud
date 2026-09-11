@@ -1,10 +1,10 @@
 const fs = require('fs');
 const path = require('path');
 
-const distDir = path.join(__dirname, 'dist');
+const workerDir = __dirname;
+const distDir = path.join(workerDir, 'dist');
 const indexPath = path.join(distDir, 'index.js');
-const cleanPath = path.join(distDir, 'worker-clean.js');
-const swPath = path.join(distDir, 'service-worker.js');
+const cloudflarePath = path.join(workerDir, 'CODE_A_COLLER_DANS_CLOUDFLARE.js');
 
 if (!fs.existsSync(indexPath)) {
   console.error('dist/index.js introuvable');
@@ -13,7 +13,7 @@ if (!fs.existsSync(indexPath)) {
 
 let originalCode = fs.readFileSync(indexPath, 'utf8');
 
-// Supprimer les lignes de sourceMappingURL (provoquent des erreurs 404 dans l'éditeur en ligne de Cloudflare)
+// Supprimer les lignes de sourceMappingURL
 originalCode = originalCode.replace(/\/\/#\s*sourceMappingURL=.*$/gm, '').trim();
 
 // Ajouter les directives de suppression d'erreurs de linter/TypeScript en tête de fichier
@@ -24,24 +24,23 @@ if (!moduleCode.startsWith('// @ts-nocheck')) {
   moduleCode = header + moduleCode;
 }
 
-// Écrire à la fois dans index.js et dans un nouveau fichier worker-clean.js
+// Écrire la version finale propre dans dist/index.js et CODE_A_COLLER_DANS_CLOUDFLARE.js
 fs.writeFileSync(indexPath, moduleCode + '\n', 'utf8');
-fs.writeFileSync(cleanPath, moduleCode + '\n', 'utf8');
+fs.writeFileSync(cloudflarePath, moduleCode + '\n', 'utf8');
 
-// Version Service Worker (sans aucun mot-clé export, utilise addEventListener)
-let swCode = originalCode;
-swCode = swCode.replace(/export\s*\{[^}]*\};?/g, '');
-swCode = swCode.replace(/export\s+class\s+MyWorkflow/g, 'class MyWorkflow');
+// Nettoyer tous les fichiers temporaires ou inutilisés
+const filesToDelete = [
+  path.join(distDir, 'index.js.map'),
+  path.join(distDir, 'service-worker.js'),
+  path.join(distDir, 'worker-clean.js')
+];
 
-swCode += `\n\naddEventListener('fetch', (event) => {\n  event.respondWith(src_default.fetch(event.request, globalThis, event));\n});\n`;
-
-if (!swCode.startsWith('// @ts-nocheck')) {
-  swCode = header + swCode;
+for (const file of filesToDelete) {
+  if (fs.existsSync(file)) {
+    fs.unlinkSync(file);
+  }
 }
 
-fs.writeFileSync(swPath, swCode, 'utf8');
-
 console.log('Build terminé avec succès :');
-console.log(' - worker/dist/index.js (format ES Modules)');
-console.log(' - worker/dist/worker-clean.js (format ES Modules - nouveau fichier frais sans cache éditeur)');
-console.log(' - worker/dist/service-worker.js (format Service Worker)');
+console.log(' - worker/dist/index.js (fichier original)');
+console.log(' - worker/CODE_A_COLLER_DANS_CLOUDFLARE.js (fichier direct)');
