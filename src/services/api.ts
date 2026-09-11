@@ -138,7 +138,7 @@ export const StudyCloudAPI = {
   },
 
   async setupSecurity(token: string, data: {
-    name: string;
+    name?: string;
     password: string;
     securityQuestion1: string;
     securityAnswer1: string;

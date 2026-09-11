@@ -320,7 +320,7 @@ var src_default = {
 
               <div style="border-left:3px solid #f97316;padding-left:12px;margin:20px 0;">
                 <p style="margin:0;color:#64748b;font-size:12px;line-height:1.5;">
-                  \u23F3 <strong>Validit\xE9 :</strong> Ce lien est actif pendant 24 heures.<br>
+                  \u23F3 <strong>Validit\xE9 :</strong> Ce lien de confirmation est s\xE9curis\xE9 et actif pendant <strong>1 minute</strong>.<br>
                   \u{1F512} Si vous n'avez pas demand\xE9 cette action, vous pouvez ignorer cet email en toute s\xE9curit\xE9.
                 </p>
               </div>
@@ -650,7 +650,7 @@ var src_default = {
             WHERE id = ?
           `).bind(name.trim(), passwordHash2, q1, answer1Hash, q2, answer2Hash, existing.id).run();
           const verificationToken2 = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-          const expiresAt2 = new Date(Date.now() + 24 * 3600 * 1e3).toISOString();
+          const expiresAt2 = new Date(Date.now() + 60 * 1e3).toISOString();
           await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(existing.id).run();
           await env.DB.prepare(`
             INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
@@ -664,7 +664,7 @@ var src_default = {
             email: cleanEmail,
             resendCount: 1,
             maxCount: 4,
-            nextAllowedAt: new Date(Date.now() + 3e4).toISOString(),
+            nextAllowedAt: new Date(Date.now() + 6e4).toISOString(),
             message: "Un email de confirmation vous a \xE9t\xE9 envoy\xE9."
           }, 200, origin);
         }
@@ -680,7 +680,7 @@ var src_default = {
         `).bind(userId, name.trim(), cleanEmail, passwordHash, q1, answer1Hash, q2, answer2Hash).run();
         await env.DB.prepare("INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)").bind(userId).run();
         const verificationToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-        const expiresAt = new Date(Date.now() + 24 * 3600 * 1e3).toISOString();
+        const expiresAt = new Date(Date.now() + 60 * 1e3).toISOString();
         await env.DB.prepare(`
           INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
           VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
@@ -693,7 +693,7 @@ var src_default = {
           email: cleanEmail,
           resendCount: 1,
           maxCount: 4,
-          nextAllowedAt: new Date(Date.now() + 3e4).toISOString(),
+          nextAllowedAt: new Date(Date.now() + 6e4).toISOString(),
           message: "Un email de confirmation vous a \xE9t\xE9 envoy\xE9."
         }, 201, origin);
       }
@@ -712,7 +712,7 @@ var src_default = {
         const verif = await env.DB.prepare("SELECT * FROM email_verifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").bind(user.id).first();
         const now = Date.now();
         const THREE_HOURS_MS = 3 * 3600 * 1e3;
-        const THIRTY_SECONDS_MS = 30 * 1e3;
+        const ONE_MINUTE_MS = 60 * 1e3;
         if (verif) {
           if (verif.blocked_until) {
             const blockedTime = new Date(verif.blocked_until).getTime();
@@ -731,14 +731,14 @@ var src_default = {
           if (verif.last_sent_at) {
             const lastSentTime = new Date(verif.last_sent_at).getTime();
             const elapsed = now - lastSentTime;
-            if (elapsed < THIRTY_SECONDS_MS) {
-              const remainingSec = Math.ceil((THIRTY_SECONDS_MS - elapsed) / 1e3);
+            if (elapsed < ONE_MINUTE_MS) {
+              const remainingSec = Math.ceil((ONE_MINUTE_MS - elapsed) / 1e3);
               return jsonResponse({
                 success: false,
                 error: `Veuillez patienter ${remainingSec} seconde(s) avant de renvoyer l'email.`,
                 isCooldown: true,
-                nextAllowedAt: new Date(lastSentTime + THIRTY_SECONDS_MS).toISOString(),
-                remainingMs: THIRTY_SECONDS_MS - elapsed
+                nextAllowedAt: new Date(lastSentTime + ONE_MINUTE_MS).toISOString(),
+                remainingMs: ONE_MINUTE_MS - elapsed
               }, 429, origin);
             }
           }
@@ -752,8 +752,8 @@ var src_default = {
             blockedUntil = new Date(now + THREE_HOURS_MS).toISOString();
           }
           const newToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-          const newExpiresAt = new Date(now + 24 * 3600 * 1e3).toISOString();
-          const nextAllowedAt = new Date(now + THIRTY_SECONDS_MS).toISOString();
+          const newExpiresAt = new Date(now + ONE_MINUTE_MS).toISOString();
+          const nextAllowedAt = new Date(now + ONE_MINUTE_MS).toISOString();
           await env.DB.prepare(`
             UPDATE email_verifications SET
               token = ?,
@@ -776,7 +776,7 @@ var src_default = {
           }, 200, origin);
         } else {
           const newToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-          const newExpiresAt = new Date(now + 24 * 3600 * 1e3).toISOString();
+          const newExpiresAt = new Date(now + ONE_MINUTE_MS).toISOString();
           await env.DB.prepare(`
             INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
             VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
@@ -788,7 +788,7 @@ var src_default = {
             message: "Email de confirmation renvoy\xE9 !",
             resendCount: 1,
             maxCount: 4,
-            nextAllowedAt: new Date(now + THIRTY_SECONDS_MS).toISOString()
+            nextAllowedAt: new Date(now + ONE_MINUTE_MS).toISOString()
           }, 200, origin);
         }
       }
@@ -800,7 +800,12 @@ var src_default = {
           "SELECT * FROM email_verifications WHERE token = ? AND expires_at > CURRENT_TIMESTAMP"
         ).bind(tokenParam).first();
         if (!verif) {
-          return errorResponse("Lien de confirmation invalide ou expir\xE9. Veuillez demander un nouvel email.", 400, origin);
+          const accept2 = request.headers.get("Accept") || "";
+          if (accept2.includes("text/html")) {
+            const appUrl = (origin !== "*" ? origin : "https://studycloud.dkd-technologies.com").replace(/\/+$/, "");
+            return Response.redirect(`${appUrl}/?verify_error=expired`, 302);
+          }
+          return errorResponse("Lien de confirmation expir\xE9 (validit\xE9 1 minute d\xE9pass\xE9e). Veuillez r\xE9clamer un nouveau lien ci-dessous.", 400, origin);
         }
         const userBefore = await env.DB.prepare("SELECT email_verified FROM users WHERE id = ?").bind(verif.user_id).first();
         const isFirstVerification = userBefore?.email_verified === 0;
@@ -869,7 +874,7 @@ var src_default = {
         }
         const user = existingUser;
         const verificationToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-        const expiresAt = new Date(Date.now() + 24 * 3600 * 1e3).toISOString();
+        const expiresAt = new Date(Date.now() + 60 * 1e3).toISOString();
         await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(user.id).run();
         await env.DB.prepare(`
           INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
@@ -884,7 +889,7 @@ var src_default = {
           email: cleanEmail,
           resendCount: 1,
           maxCount: 4,
-          nextAllowedAt: new Date(Date.now() + 3e4).toISOString(),
+          nextAllowedAt: new Date(Date.now() + 6e4).toISOString(),
           message: "Un email de confirmation de connexion vous a \xE9t\xE9 envoy\xE9."
         }, 200, origin);
       }

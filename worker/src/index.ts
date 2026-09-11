@@ -371,7 +371,7 @@ export default {
 
               <div style="border-left:3px solid #f97316;padding-left:12px;margin:20px 0;">
                 <p style="margin:0;color:#64748b;font-size:12px;line-height:1.5;">
-                  ⏳ <strong>Validité :</strong> Ce lien est actif pendant 24 heures.<br>
+                  ⏳ <strong>Validité :</strong> Ce lien de confirmation est sécurisé et actif pendant <strong>1 minute</strong>.<br>
                   🔒 Si vous n'avez pas demandé cette action, vous pouvez ignorer cet email en toute sécurité.
                 </p>
               </div>
@@ -715,7 +715,7 @@ export default {
           `).bind(name.trim(), passwordHash, q1, answer1Hash, q2, answer2Hash, existing.id).run();
 
           const verificationToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
-          const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+          const expiresAt = new Date(Date.now() + 60 * 1000).toISOString();
 
           await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(existing.id).run();
           await env.DB.prepare(`
@@ -732,7 +732,7 @@ export default {
             email: cleanEmail,
             resendCount: 1,
             maxCount: 4,
-            nextAllowedAt: new Date(Date.now() + 30000).toISOString(),
+            nextAllowedAt: new Date(Date.now() + 60000).toISOString(),
             message: 'Un email de confirmation vous a été envoyé.',
           }, 200, origin);
         }
@@ -750,9 +750,9 @@ export default {
 
         await env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)').bind(userId).run();
 
-        // Création du token de confirmation
+        // Création du token de confirmation (valable 1 minute)
         const verificationToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
-        const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+        const expiresAt = new Date(Date.now() + 60 * 1000).toISOString();
         await env.DB.prepare(`
           INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
           VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
@@ -767,7 +767,7 @@ export default {
           email: cleanEmail,
           resendCount: 1,
           maxCount: 4,
-          nextAllowedAt: new Date(Date.now() + 30000).toISOString(),
+          nextAllowedAt: new Date(Date.now() + 60000).toISOString(),
           message: 'Un email de confirmation vous a été envoyé.',
         }, 201, origin);
       }
@@ -788,7 +788,7 @@ export default {
 
         const now = Date.now();
         const THREE_HOURS_MS = 3 * 3600 * 1000;
-        const THIRTY_SECONDS_MS = 30 * 1000;
+        const ONE_MINUTE_MS = 60 * 1000;
 
         if (verif) {
           // 1. Vérification si l'utilisateur est actuellement bloqué (blocage de 3 heures)
@@ -807,18 +807,18 @@ export default {
             }
           }
 
-          // 2. Vérification du décompte de 30 secondes
+          // 2. Vérification du décompte de 1 minute (60 secondes)
           if (verif.last_sent_at) {
             const lastSentTime = new Date(verif.last_sent_at).getTime();
             const elapsed = now - lastSentTime;
-            if (elapsed < THIRTY_SECONDS_MS) {
-              const remainingSec = Math.ceil((THIRTY_SECONDS_MS - elapsed) / 1000);
+            if (elapsed < ONE_MINUTE_MS) {
+              const remainingSec = Math.ceil((ONE_MINUTE_MS - elapsed) / 1000);
               return jsonResponse({
                 success: false,
                 error: `Veuillez patienter ${remainingSec} seconde(s) avant de renvoyer l'email.`,
                 isCooldown: true,
-                nextAllowedAt: new Date(lastSentTime + THIRTY_SECONDS_MS).toISOString(),
-                remainingMs: THIRTY_SECONDS_MS - elapsed,
+                nextAllowedAt: new Date(lastSentTime + ONE_MINUTE_MS).toISOString(),
+                remainingMs: ONE_MINUTE_MS - elapsed,
               }, 429, origin);
             }
           }
@@ -837,8 +837,8 @@ export default {
           }
 
           const newToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
-          const newExpiresAt = new Date(now + 24 * 3600 * 1000).toISOString();
-          const nextAllowedAt = new Date(now + THIRTY_SECONDS_MS).toISOString();
+          const newExpiresAt = new Date(now + ONE_MINUTE_MS).toISOString();
+          const nextAllowedAt = new Date(now + ONE_MINUTE_MS).toISOString();
 
           await env.DB.prepare(`
             UPDATE email_verifications SET
@@ -864,7 +864,7 @@ export default {
           }, 200, origin);
         } else {
           const newToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
-          const newExpiresAt = new Date(now + 24 * 3600 * 1000).toISOString();
+          const newExpiresAt = new Date(now + ONE_MINUTE_MS).toISOString();
           await env.DB.prepare(`
             INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
             VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
@@ -878,7 +878,7 @@ export default {
             message: 'Email de confirmation renvoyé !',
             resendCount: 1,
             maxCount: 4,
-            nextAllowedAt: new Date(now + THIRTY_SECONDS_MS).toISOString(),
+            nextAllowedAt: new Date(now + ONE_MINUTE_MS).toISOString(),
           }, 200, origin);
         }
       }
@@ -893,7 +893,12 @@ export default {
         ).bind(tokenParam).first();
 
         if (!verif) {
-          return errorResponse('Lien de confirmation invalide ou expiré. Veuillez demander un nouvel email.', 400, origin);
+          const accept = request.headers.get('Accept') || '';
+          if (accept.includes('text/html')) {
+            const appUrl = (origin !== '*' ? origin : 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
+            return Response.redirect(`${appUrl}/?verify_error=expired`, 302);
+          }
+          return errorResponse('Lien de confirmation expiré (validité 1 minute dépassée). Veuillez réclamer un nouveau lien ci-dessous.', 400, origin);
         }
 
         const userBefore: any = await env.DB.prepare('SELECT email_verified FROM users WHERE id = ?').bind(verif.user_id).first();
@@ -977,9 +982,9 @@ export default {
 
         const user = existingUser;
 
-        // Générer le token de confirmation de connexion (2FA / validation par email)
+        // Générer le token de confirmation de connexion (valable 1 minute)
         const verificationToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
-        const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+        const expiresAt = new Date(Date.now() + 60 * 1000).toISOString();
 
         await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(user.id).run();
         await env.DB.prepare(`
@@ -997,7 +1002,7 @@ export default {
           email: cleanEmail,
           resendCount: 1,
           maxCount: 4,
-          nextAllowedAt: new Date(Date.now() + 30000).toISOString(),
+          nextAllowedAt: new Date(Date.now() + 60000).toISOString(),
           message: 'Un email de confirmation de connexion vous a été envoyé.',
         }, 200, origin);
       }

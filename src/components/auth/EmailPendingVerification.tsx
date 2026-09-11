@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Clock, RefreshCw, ArrowLeft, CheckCircle2, AlertTriangle, ShieldAlert, Sparkles } from 'lucide-react';
+import { Mail, Clock, RefreshCw, ArrowLeft, CheckCircle2, AlertTriangle, ShieldAlert } from 'lucide-react';
 import { StudyCloudAPI } from '../../services/api';
 import { DnaLogo } from '../DnaLogo';
 
@@ -11,7 +11,7 @@ interface EmailPendingVerificationProps {
 }
 
 export function EmailPendingVerification({ email, isLogin = false, onBackToLogin }: EmailPendingVerificationProps) {
-  const [secondsLeft, setSecondsLeft] = useState(30);
+  const [secondsLeft, setSecondsLeft] = useState(60);
   const [blockedUntil, setBlockedUntil] = useState<string | null>(null);
   const [resendCount, setResendCount] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -21,9 +21,17 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
   const COOLDOWN_KEY = `sc_resend_target_${email.toLowerCase()}`;
   const BLOCKED_KEY = `sc_resend_blocked_${email.toLowerCase()}`;
   const COUNT_KEY = `sc_resend_count_${email.toLowerCase()}`;
+  const COOLDOWN_DURATION_MS = 60 * 1000; // 1 minute exacte (60 secondes)
 
   // Initialisation et restauration de l'état persistant
   useEffect(() => {
+    // Vérifier notice d'expiration éventuelle stockée lors d'un clic sur lien expiré
+    const expiredNotice = localStorage.getItem('sc_verification_expired_notice');
+    if (expiredNotice) {
+      setError(expiredNotice);
+      localStorage.removeItem('sc_verification_expired_notice');
+    }
+
     // 1. Restaurer le compteur de renvois
     const savedCount = localStorage.getItem(COUNT_KEY);
     if (savedCount) {
@@ -47,17 +55,17 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
       }
     }
 
-    // 3. Restaurer le décompteur de 30 secondes
+    // 3. Restaurer le décompteur de 1 minute (60 secondes)
     const savedTarget = localStorage.getItem(COOLDOWN_KEY);
     if (savedTarget) {
       const targetTime = parseInt(savedTarget, 10);
       const remaining = Math.max(0, Math.ceil((targetTime - Date.now()) / 1000));
       setSecondsLeft(remaining);
     } else {
-      // Premier affichage : lancer un décompte initial de 30s
-      const targetTime = Date.now() + 30000;
+      // Premier affichage : lancer un décompte initial de 60s (1 minute)
+      const targetTime = Date.now() + COOLDOWN_DURATION_MS;
       localStorage.setItem(COOLDOWN_KEY, targetTime.toString());
-      setSecondsLeft(30);
+      setSecondsLeft(60);
     }
   }, [email]);
 
@@ -79,7 +87,7 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
         }
       }
 
-      // Vérifier le décompteur de 30 secondes
+      // Vérifier le décompteur de 1 minute (60 secondes)
       const savedTarget = localStorage.getItem(COOLDOWN_KEY);
       if (savedTarget) {
         const targetTime = parseInt(savedTarget, 10);
@@ -114,13 +122,13 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
           const blockDate = res.blockedUntil || new Date(Date.now() + 3 * 3600 * 1000).toISOString();
           setBlockedUntil(blockDate);
           localStorage.setItem(BLOCKED_KEY, blockDate);
-          setError('Quota atteint (4/4 tentatives). Veuillez patienter 3 heures avant de pouvoir renvoyer un nouvel email.');
+          setError('Quota atteint (4/4 tentatives). Veuillez patienter 3 heures avant de pouvoir réclamer un nouvel email.');
         } else {
-          // Relancer le décompte persistant de 30 secondes
-          const targetTime = Date.now() + 30000;
+          // Relancer le décompte persistant de 1 minute (60 secondes)
+          const targetTime = Date.now() + COOLDOWN_DURATION_MS;
           localStorage.setItem(COOLDOWN_KEY, targetTime.toString());
-          setSecondsLeft(30);
-          setMessage('✨ Un nouvel email de confirmation vient de vous être envoyé !');
+          setSecondsLeft(60);
+          setMessage('✨ Un nouveau lien de confirmation sécurisé (valable 1 minute) vient de vous être envoyé !');
         }
       } else {
         if (res.isBlocked) {
@@ -152,7 +160,7 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
 
   return (
     <div
-      className="fixed inset-0 z-[99998] flex flex-col items-center justify-center overflow-auto py-8 px-4"
+      className="fixed inset-0 z-[99998] flex flex-col items-center justify-center overflow-auto py-10 px-4 sm:px-6"
       style={{
         background: 'linear-gradient(135deg, #0f0c29 0%, #1a1a3e 40%, #24243e 70%, #0f2027 100%)',
       }}
@@ -160,106 +168,116 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
       {/* Background orbs */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
         <div
-          className="absolute top-[-10%] right-[-5%] w-[400px] h-[400px] rounded-full opacity-15 blur-[80px] animate-pulse"
+          className="absolute top-[-10%] right-[-5%] w-[450px] h-[450px] rounded-full opacity-15 blur-[90px] animate-pulse"
           style={{ background: 'radial-gradient(circle, #EA580C 0%, transparent 70%)' }}
         />
         <div
-          className="absolute bottom-[-10%] left-[-5%] w-[350px] h-[350px] rounded-full opacity-15 blur-[80px] animate-pulse"
+          className="absolute bottom-[-10%] left-[-5%] w-[400px] h-[400px] rounded-full opacity-15 blur-[90px] animate-pulse"
           style={{ background: 'radial-gradient(circle, #2563EB 0%, transparent 70%)', animationDelay: '2s' }}
         />
       </div>
 
-      {/* Direct Content */}
-      <div className="relative z-10 w-full max-w-xl md:max-w-2xl py-6 my-auto">
+      {/* Direct Content Container - Agrandissement & espacement premium */}
+      <div className="relative z-10 w-full max-w-2xl md:max-w-3xl py-8 my-auto">
         {/* Top brand header with official DnaLogo */}
         <div className="flex items-center justify-between mb-8 pb-4 border-b border-white/10">
-          <div className="flex items-center gap-2.5 notranslate select-none">
-            <DnaLogo className="w-8 h-8 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
+          <div className="flex items-center gap-3 notranslate select-none">
+            <DnaLogo className="w-10 h-10 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
             <div className="flex flex-col leading-tight">
-              <h1 className="font-extrabold tracking-tight text-xl leading-none">
+              <h1 className="font-extrabold tracking-tight text-2xl leading-none">
                 <span className="text-orange-500">Study</span>
                 <span className="text-blue-500">Cloud</span>
               </h1>
-              <p className="text-[8px] text-amber-400 font-bold uppercase tracking-widest mt-0.5">
+              <p className="text-[10px] text-amber-400 font-bold uppercase tracking-widest mt-0.5">
                 DKD TECHNOLOGIES
               </p>
             </div>
           </div>
-          <span className="text-[11px] font-bold px-2.5 py-1 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">
+          <span className="text-xs font-bold px-3.5 py-1.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 shadow-sm">
             {isLogin ? 'Sécurité 2FA' : 'Confirmation'}
           </span>
         </div>
 
-        {/* Big animated icon */}
-        <div className="flex justify-center mb-6">
-          <div className="relative">
-            <div
-              className="w-20 h-20 rounded-3xl flex items-center justify-center shadow-2xl animate-pulse"
-              style={{
-                background: 'linear-gradient(135deg, #EA580C 0%, #F97316 50%, #2563EB 100%)',
-                boxShadow: '0 12px 36px rgba(234,88,12,0.4)',
-              }}
-            >
-              <Mail className="w-10 h-10 text-white" strokeWidth={2.2} />
-            </div>
-            <div className="absolute -bottom-1 -right-1 w-7 h-7 rounded-full bg-emerald-500 border-2 border-[#1a1a3e] flex items-center justify-center">
-              <Sparkles className="w-4 h-4 text-white" />
-            </div>
+        {/* Big animated mail icon - Logo épuré sans l'étoile/badge retiré */}
+        <div className="flex justify-center mb-8">
+          <div
+            className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl flex items-center justify-center shadow-2xl animate-pulse"
+            style={{
+              background: 'linear-gradient(135deg, #EA580C 0%, #F97316 50%, #2563EB 100%)',
+              boxShadow: '0 16px 45px rgba(234,88,12,0.45)',
+            }}
+          >
+            <Mail className="w-12 h-12 sm:w-14 sm:h-14 text-white" strokeWidth={2.2} />
           </div>
         </div>
 
-        {/* Heading */}
-        <h2 className="text-xl font-black text-white text-center mb-2 tracking-tight">
+        {/* Main Heading */}
+        <h2 className="text-2xl sm:text-3xl font-black text-white text-center mb-3 tracking-tight">
           {isLogin ? 'Confirmez votre connexion 🔐' : 'Vérifiez votre boîte email 🎓'}
         </h2>
-        <p className="text-xs text-white/60 text-center leading-relaxed mb-5">
+        <p className="text-sm sm:text-base text-white/70 text-center leading-relaxed mb-6 max-w-xl mx-auto">
           {isLogin
             ? "Pour confirmer qu'il s'agit bien de vous avant d'accéder à votre compte, un lien de confirmation a été envoyé à :"
             : 'Un lien de confirmation sécurisé a été envoyé à votre adresse pour valider votre compte :'}
         </p>
 
         {/* Highlighted Email Badge */}
-        <div className="bg-white/10 border border-white/15 rounded-xl px-4 py-2.5 text-center mb-6">
-          <span className="text-sm font-extrabold text-orange-400 break-all select-all font-mono">
+        <div className="bg-white/10 border border-white/20 rounded-2xl px-6 py-3.5 text-center mb-6 shadow-inner">
+          <span className="text-base sm:text-lg font-mono font-black text-orange-400 break-all select-all tracking-wide">
             {email}
           </span>
         </div>
 
         {/* Message / Error banners */}
         {message && (
-          <div className="mb-5 p-3.5 rounded-xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-300 text-xs font-semibold flex items-center gap-2.5">
-            <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-400" />
+          <div className="mb-6 p-4 rounded-2xl bg-emerald-500/20 border border-emerald-500/40 text-emerald-200 text-sm font-semibold flex items-center gap-3 shadow-lg">
+            <CheckCircle2 className="w-5 h-5 shrink-0 text-emerald-400" />
             <span>{message}</span>
           </div>
         )}
 
         {error && (
-          <div className="mb-5 p-3.5 rounded-xl bg-red-500/20 border border-red-500/40 text-red-300 text-xs font-semibold flex items-center gap-2.5">
-            <AlertTriangle className="w-4 h-4 shrink-0 text-red-400" />
+          <div className="mb-6 p-4 rounded-2xl bg-red-500/20 border border-red-500/40 text-red-200 text-sm font-semibold flex items-center gap-3 shadow-lg">
+            <AlertTriangle className="w-5 h-5 shrink-0 text-red-400" />
             <span>{error}</span>
+          </div>
+        )}
+
+        {/* Alerte Expiration lorsque le décompteur de 1 minute est terminé */}
+        {!isBlocked && secondsLeft === 0 && (
+          <div className="mb-6 p-4 sm:p-5 rounded-2xl bg-amber-500/15 border border-amber-500/35 text-amber-200 flex items-start gap-3.5 shadow-lg shadow-amber-500/5">
+            <AlertTriangle className="w-6 h-6 text-amber-400 shrink-0 mt-0.5" />
+            <div className="space-y-1">
+              <p className="font-black text-sm sm:text-base text-amber-300">
+                Le lien de confirmation précédent a expiré (validité 1 minute)
+              </p>
+              <p className="text-xs sm:text-sm text-amber-200/80 leading-relaxed">
+                Pour des raisons de sécurité, chaque lien expire après 1 minute. Veuillez cliquer sur le bouton ci-dessous pour réclamer un nouveau lien de confirmation.
+              </p>
+            </div>
           </div>
         )}
 
         {/* Blocked alert banner */}
         {isBlocked ? (
-          <div className="mb-6 p-4 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 space-y-2">
-            <div className="flex items-center gap-2 font-extrabold text-xs text-amber-300">
-              <ShieldAlert className="w-4 h-4 text-amber-400" />
+          <div className="mb-6 p-5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 space-y-2.5">
+            <div className="flex items-center gap-2 font-extrabold text-sm text-amber-300">
+              <ShieldAlert className="w-5 h-5 text-amber-400" />
               <span>Limite de renvois atteinte (4/4 tentatives)</span>
             </div>
-            <p className="text-[11px] leading-relaxed text-amber-200/80">
+            <p className="text-xs leading-relaxed text-amber-200/80">
               Vous avez demandé 4 renvois sans confirmation. Par mesure de sécurité anti-spam, le bouton est suspendu pendant 3 heures.
             </p>
-            <div className="flex items-center justify-between pt-1 border-t border-amber-500/20 text-xs">
+            <div className="flex items-center justify-between pt-2 border-t border-amber-500/20 text-xs sm:text-sm">
               <span className="font-bold text-amber-300">Temps d'attente restant :</span>
-              <span className="font-mono font-black text-white bg-amber-500/30 px-2 py-0.5 rounded-lg">
+              <span className="font-mono font-black text-white bg-amber-500/30 px-2.5 py-1 rounded-lg">
                 ⏳ {formatBlockedTime()}
               </span>
             </div>
           </div>
         ) : (
           /* Quota counter indicator */
-          <div className="flex items-center justify-between text-[11px] text-white/50 mb-4 px-1">
+          <div className="flex items-center justify-between text-xs sm:text-sm text-white/60 mb-4 px-2">
             <span>Tentatives effectuées aujourd'hui :</span>
             <span className={`font-bold ${resendCount >= 3 ? 'text-amber-400' : 'text-white/80'}`}>
               {resendCount} / 4
@@ -267,53 +285,53 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
           </div>
         )}
 
-        {/* Main Action Button (Resend with Countdown) */}
+        {/* Main Action Button (Resend with Countdown or Claim New) */}
         <button
           type="button"
           onClick={handleResend}
           disabled={secondsLeft > 0 || isBlocked || isLoading}
-          className={`w-full py-3.5 px-5 rounded-2xl font-extrabold text-sm flex items-center justify-center gap-2.5 transition-all cursor-pointer ${
+          className={`w-full py-4 sm:py-4.5 px-6 rounded-2xl font-black text-base sm:text-lg flex items-center justify-center gap-3 transition-all cursor-pointer shadow-xl ${
             secondsLeft > 0 || isBlocked || isLoading
               ? 'bg-white/10 text-white/40 cursor-not-allowed border border-white/10'
-              : 'bg-gradient-to-r from-orange-500 to-orange-600 hover:from-orange-600 hover:to-orange-700 text-white shadow-lg shadow-orange-500/30 hover:scale-[1.01] active:scale-[0.99]'
+              : 'bg-gradient-to-r from-orange-500 via-orange-600 to-orange-500 hover:from-orange-600 hover:to-orange-700 text-white shadow-orange-500/30 hover:scale-[1.01] active:scale-[0.99]'
           }`}
         >
           {isLoading ? (
             <>
-              <RefreshCw className="w-4 h-4 animate-spin" />
-              <span>Envoi en cours...</span>
+              <RefreshCw className="w-5 h-5 animate-spin" />
+              <span>Génération du lien en cours...</span>
             </>
           ) : isBlocked ? (
             <>
-              <Clock className="w-4 h-4 text-amber-400" />
+              <Clock className="w-5 h-5 text-amber-400" />
               <span>Bloqué pendant {formatBlockedTime()}</span>
             </>
           ) : secondsLeft > 0 ? (
             <>
-              <Clock className="w-4 h-4 text-orange-400 animate-spin" style={{ animationDuration: '4s' }} />
-              <span>Renvoyer l'email ({secondsLeft}s)</span>
+              <Clock className="w-5 h-5 text-orange-400 animate-spin" style={{ animationDuration: '4s' }} />
+              <span>Lien actif · Renvoyer disponible dans ({secondsLeft}s)</span>
             </>
           ) : (
             <>
-              <RefreshCw className="w-4 h-4" />
-              <span>Renvoyer l'email de confirmation</span>
+              <RefreshCw className="w-5 h-5" />
+              <span>Réclamer un nouveau lien de confirmation</span>
             </>
           )}
         </button>
 
         {/* Help text */}
-        <p className="text-[11px] text-white/40 text-center mt-5 leading-relaxed">
-          Pensez à vérifier votre dossier <strong>Spams / Courriers indésirables</strong> si l'email n'apparaît pas dans les 2 minutes.
+        <p className="text-xs sm:text-sm text-white/50 text-center mt-6 leading-relaxed">
+          Pensez à vérifier votre dossier <strong>Spams / Courriers indésirables</strong> si l'email n'apparaît pas dans la minute.
         </p>
 
         {/* Back / Change email */}
-        <div className="mt-6 pt-4 border-t border-white/10 flex justify-center">
+        <div className="mt-8 pt-5 border-t border-white/10 flex justify-center">
           <button
             type="button"
             onClick={onBackToLogin}
-            className="text-xs font-bold text-white/60 hover:text-white flex items-center gap-1.5 transition-colors cursor-pointer"
+            className="text-sm sm:text-base font-bold text-white/70 hover:text-white flex items-center gap-2 transition-colors cursor-pointer"
           >
-            <ArrowLeft className="w-3.5 h-3.5" />
+            <ArrowLeft className="w-4 h-4" />
             <span>Modifier l'email ou retourner à la connexion</span>
           </button>
         </div>
@@ -321,3 +339,4 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
     </div>
   );
 }
+
