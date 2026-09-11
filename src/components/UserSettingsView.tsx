@@ -1,16 +1,36 @@
 import React, { useState } from 'react';
-import { ArrowLeft, User, GraduationCap, Mail, BookOpen, ShieldCheck, LogOut, Check, Edit2, X, Home, Cloud, Database, RefreshCw, CheckCircle2, AlertCircle, Loader2, Server } from 'lucide-react';
+import { ArrowLeft, User, GraduationCap, Mail, BookOpen, ShieldCheck, LogOut, Check, Edit2, X, Home, Cloud, Database, RefreshCw, CheckCircle2, AlertCircle, Loader2, Server, Globe } from 'lucide-react';
 import { StudyCloudAPI, getWorkerApiUrl, setWorkerApiUrl } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 interface UserSettingsViewProps {
   onBack: () => void;
 }
 
 export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) => {
+  let logoutAction = () => {
+    localStorage.removeItem('studycloud_token');
+    localStorage.removeItem('unifolder_user_id');
+    localStorage.removeItem('unifolder_user_name');
+    localStorage.removeItem('unifolder_user_school');
+    localStorage.removeItem('unifolder_user_filiere');
+    localStorage.removeItem('unifolder_user_email');
+    window.location.reload();
+  };
+  try {
+    const auth = useAuth();
+    if (auth && auth.logout) {
+      logoutAction = auth.logout;
+    }
+  } catch {
+    // fallback
+  }
+
   const [name, setName] = useState(() => localStorage.getItem('unifolder_user_name') || 'Alexandre Kouassi');
   const [school, setSchool] = useState(() => localStorage.getItem('unifolder_user_school') || 'CME');
   const [filiere, setFiliere] = useState(() => localStorage.getItem('unifolder_user_filiere') || 'Électrotechniques');
   const [email, setEmail] = useState(() => localStorage.getItem('unifolder_user_email') || 'delmaskouassidibi@gmail.com');
+  const [country, setCountry] = useState(() => localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire");
 
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
@@ -23,7 +43,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
   const [lastSyncTime, setLastSyncTime] = useState(() => localStorage.getItem('studycloud_last_sync') || '');
 
   // Edit modal state
-  const [editingField, setEditingField] = useState<'name' | 'school' | 'filiere' | 'email' | null>(null);
+  const [editingField, setEditingField] = useState<'name' | 'school' | 'filiere' | 'email' | 'country' | null>(null);
   const [tempValue, setTempValue] = useState('');
 
   const triggerToast = (msg: string) => {
@@ -66,7 +86,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
 
       await StudyCloudAPI.backupCloud({
         userId,
-        userProfile: { name, email, school, filiere },
+        userProfile: { name, email, school, filiere, country },
         matieres,
         notes,
         scheduleSlots,
@@ -101,6 +121,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
           if (d.user.school) { setSchool(d.user.school); localStorage.setItem('unifolder_user_school', d.user.school); }
           if (d.user.filiere) { setFiliere(d.user.filiere); localStorage.setItem('unifolder_user_filiere', d.user.filiere); }
           if (d.user.email) { setEmail(d.user.email); localStorage.setItem('unifolder_user_email', d.user.email); }
+          if (d.user.country) { setCountry(d.user.country); localStorage.setItem('unifolder_user_country', d.user.country); }
         }
         if (d.matieres && d.matieres.length > 0) {
           localStorage.setItem('unifolder_saved_matieres', JSON.stringify(d.matieres));
@@ -129,14 +150,15 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
     }
   };
 
-  const getOriginalValue = (field: 'name' | 'school' | 'filiere' | 'email') => {
+  const getOriginalValue = (field: 'name' | 'school' | 'filiere' | 'email' | 'country') => {
     if (field === 'name') return name;
     if (field === 'school') return school;
     if (field === 'filiere') return filiere;
+    if (field === 'country') return country;
     return email;
   };
 
-  const openEditModal = (field: 'name' | 'school' | 'filiere' | 'email') => {
+  const openEditModal = (field: 'name' | 'school' | 'filiere' | 'email' | 'country') => {
     setEditingField(field);
     setTempValue(getOriginalValue(field));
   };
@@ -158,6 +180,9 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
     } else if (editingField === 'email') {
       setEmail(trimmed);
       localStorage.setItem('unifolder_user_email', trimmed);
+    } else if (editingField === 'country') {
+      setCountry(trimmed);
+      localStorage.setItem('unifolder_user_country', trimmed);
     }
 
     setEditingField(null);
@@ -166,12 +191,9 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
 
   const handleLogout = () => {
     if (window.confirm("Êtes-vous sûr de vouloir vous déconnecter ?")) {
-      localStorage.removeItem('unifolder_user_name');
-      localStorage.removeItem('unifolder_user_school');
-      localStorage.removeItem('unifolder_user_filiere');
-      localStorage.removeItem('unifolder_user_email');
-      alert("Vous avez été déconnecté avec succès.");
-      window.location.reload();
+      logoutAction();
+      triggerToast("Vous avez été déconnecté avec succès.");
+      onBack();
     }
   };
 
@@ -183,6 +205,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
       case 'school': return "École / Université";
       case 'filiere': return "Filière / Spécialité";
       case 'email': return "Adresse email";
+      case 'country': return "Pays de résidence / établissement";
       default: return "";
     }
   };
@@ -229,6 +252,10 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
             <p className="text-xs md:text-sm text-stone-600 font-medium flex items-center justify-center gap-1.5 md:gap-2">
               <GraduationCap className="w-3.5 h-3.5 md:w-4 md:h-4 text-orange-600" />
               <span>{filiere}</span>
+            </p>
+            <p className="text-xs md:text-sm text-stone-600 font-medium flex items-center justify-center gap-1.5 md:gap-2">
+              <Globe className="w-3.5 h-3.5 md:w-4 md:h-4 text-orange-600" />
+              <span>{country}</span>
             </p>
           </div>
         </div>
@@ -299,6 +326,23 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
                 <span>Adresse email</span>
               </span>
               <span className="text-xs md:text-sm font-semibold text-stone-900 block">{email}</span>
+            </div>
+            <div className="w-7 h-7 md:w-9 md:h-9 rounded-lg md:rounded-xl bg-white border border-stone-200 flex items-center justify-center text-stone-600 group-hover:bg-orange-600 group-hover:text-white group-hover:border-orange-600 transition-colors">
+              <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+            </div>
+          </div>
+
+          {/* Field 5: Country */}
+          <div
+            onClick={() => openEditModal('country')}
+            className="group p-3 md:p-4 bg-stone-50 hover:bg-orange-50/50 border border-stone-200 rounded-xl md:rounded-2xl cursor-pointer transition-all flex items-center justify-between text-left"
+          >
+            <div className="space-y-0.5 md:space-y-1">
+              <span className="text-[11px] md:text-xs font-bold text-stone-500 flex items-center gap-1.5">
+                <Globe className="w-3.5 h-3.5 md:w-4 md:h-4 text-orange-600" />
+                <span>Pays de résidence / établissement</span>
+              </span>
+              <span className="text-xs md:text-sm font-semibold text-stone-900 block">{country}</span>
             </div>
             <div className="w-7 h-7 md:w-9 md:h-9 rounded-lg md:rounded-xl bg-white border border-stone-200 flex items-center justify-center text-stone-600 group-hover:bg-orange-600 group-hover:text-white group-hover:border-orange-600 transition-colors">
               <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />

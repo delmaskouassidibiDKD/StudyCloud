@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Folder, Upload, Share2, BarChart3, Settings, BookOpen, Sparkles, LogOut, LayoutDashboard } from 'lucide-react';
+import { Folder, Upload, Share2, BarChart3, Settings, BookOpen, Sparkles, LogOut, LayoutDashboard, UserCircle } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { NavigationTab } from '../types';
 
@@ -16,7 +16,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
     { id: 'upload' as NavigationTab, label: 'Importer', icon: Upload, highlight: true },
     { id: 'shared' as NavigationTab, label: 'Liens Actifs', icon: Share2 },
     { id: 'library' as NavigationTab, label: 'Bibliothèque', icon: BookOpen },
-    { id: 'settings' as NavigationTab, label: 'Paramètres', icon: Settings },
+    { id: 'settings' as NavigationTab, label: 'Profil', icon: UserCircle },
   ];
 
   return (
