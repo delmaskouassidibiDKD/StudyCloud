@@ -1246,7 +1246,6 @@ export default {
           `).bind(userId, profile.name || cleanGoogleEmail, cleanGoogleEmail, profile.id, profile.picture || null).run();
           await env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)').bind(userId).run();
           user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
-          sendWelcomeEmail(cleanGoogleEmail, profile.name || 'Étudiant');
         } else if (!user.google_id) {
           // Lier le compte Google à un compte email existant et connecter immédiatement
           await env.DB.prepare('UPDATE users SET google_id = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1 WHERE id = ?').bind(profile.id, profile.picture || null, user.id).run();
@@ -1320,9 +1319,6 @@ export default {
         const body: any = await request.json();
         const { name, password, securityQuestion1, securityAnswer1, securityQuestion2, securityAnswer2 } = body;
 
-        if (!name || !name.trim()) {
-          return errorResponse('Le nom complet est obligatoire', 400, origin);
-        }
         const pwdCheck = validatePasswordFormat(password);
         if (!pwdCheck.valid) return errorResponse(pwdCheck.error || 'Mot de passe non conforme', 400, origin);
         if (!securityAnswer1 || !securityAnswer1.trim() || !securityAnswer2 || !securityAnswer2.trim()) {
@@ -1334,10 +1330,11 @@ export default {
         const ans2Hash = await hashToken(securityAnswer2.toLowerCase().trim());
         const q1 = securityQuestion1 || 'Quelle est votre ville de naissance ?';
         const q2 = securityQuestion2 || 'Quel est le prénom de votre mère ?';
+        const finalName = (name && typeof name === 'string' && name.trim()) ? name.trim() : null;
 
         await env.DB.prepare(`
           UPDATE users SET
-            name = ?,
+            name = COALESCE(?, name),
             password_hash = ?,
             security_question_1 = ?,
             security_answer_1_hash = ?,
@@ -1346,7 +1343,7 @@ export default {
             last_active_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
-        `).bind(name.trim(), passwordHash, q1, ans1Hash, q2, ans2Hash, payload.userId).run();
+        `).bind(finalName, passwordHash, q1, ans1Hash, q2, ans2Hash, payload.userId).run();
 
         const updatedUser: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.userId).first();
         const safeUser = sanitizeUser(updatedUser);

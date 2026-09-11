@@ -640,14 +640,14 @@ export default function App() {
     return <AuthPage />;
   }
 
-  // 3. Si connecté mais profil incomplet : afficher les questions d'onboarding (école, filière, niveau, pays, téléphone, photo/logo)
-  if (needsOnboarding) {
-    return <OnboardingPage />;
-  }
-
-  // 4. Si profil complété mais mot de passe ou questions de sécurité non définis : configuration de sécurité obligatoire
+  // 3. Si mot de passe ou questions de sécurité non définis (ex: premier accès via Google) : configuration de sécurité D'ABORD
   if (needsSecuritySetup) {
     return <GoogleSecuritySetupPage />;
+  }
+
+  // 4. Ensuite, questions personnelles d'onboarding (nom, école, filière, niveau, pays, téléphone, photo/logo)
+  if (needsOnboarding) {
+    return <OnboardingPage />;
   }
 
   // If viewing a share link (e.g. #share=folder-id)

@@ -181,14 +181,18 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   const isAuthenticated = !!user && !!token;
-  // 1. D'abord les questions d'onboarding (école, filière, niveau, pays, téléphone, photo/logo)
-  const needsOnboarding = Boolean(isAuthenticated && user && user.is_onboarded === 0);
-  // 2. Ensuite la configuration de sécurité (mot de passe pour reconnexion + questions secrètes de récupération)
+  // 1. D'abord la configuration de sécurité (mot de passe pour reconnexion + questions secrètes de récupération pour compte Google)
   const needsSecuritySetup = Boolean(
     isAuthenticated &&
-    !needsOnboarding &&
     user &&
     (user.has_password === false || user.has_security_questions === false)
+  );
+  // 2. Ensuite les questions personnelles d'onboarding (nom, école, filière, niveau, pays, téléphone, photo/logo)
+  const needsOnboarding = Boolean(
+    isAuthenticated &&
+    !needsSecuritySetup &&
+    user &&
+    user.is_onboarded === 0
   );
 
   return (
