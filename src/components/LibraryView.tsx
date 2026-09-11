@@ -3,6 +3,8 @@ import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2,
 import { SharedFolder, SharedFile } from '../types';
 import { FileIconBadge } from './FileIconBadge';
 import { StudyCloudAPI } from '../services/api';
+import { DownloadDestinationModal, DownloadDestinationChoice } from './DownloadDestinationModal';
+import { importFilesToMesFichiers } from '../services/userSync';
 
 interface ProductItem {
   id: string;
@@ -203,16 +205,47 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
   };
 
+  const [pendingDestinationFolder, setPendingDestinationFolder] = useState<SharedFolder | null>(null);
+
   const handleDownloadFolder = (folder: SharedFolder, e?: React.MouseEvent) => {
     if (e) e.stopPropagation();
     if (!folder.files || folder.files.length === 0) {
+      triggerToast("Ce dossier ne contient aucun fichier.");
       return;
     }
-    folder.files.forEach((file, index) => {
-      setTimeout(() => {
-        handleDownloadSingle(file, folder.title);
-      }, index * 250);
-    });
+    setPendingDestinationFolder(folder);
+  };
+
+  const handleConfirmDestination = (choice: DownloadDestinationChoice) => {
+    if (!pendingDestinationFolder) return;
+    const folder = pendingDestinationFolder;
+
+    if (choice === 'device' || choice === 'both') {
+      folder.files.forEach((file, index) => {
+        setTimeout(() => {
+          handleDownloadSingle(file, folder.title);
+        }, index * 250);
+      });
+    }
+
+    if (choice === 'studycloud' || choice === 'both') {
+      importFilesToMesFichiers(folder.files.map(f => ({
+        name: f.name,
+        size: f.size,
+        url: f.url,
+        type: f.type,
+      })));
+    }
+
+    if (choice === 'device') {
+      triggerToast(`Téléchargement de "${folder.title}" sur cet appareil lancé !`);
+    } else if (choice === 'studycloud') {
+      triggerToast(`${folder.files.length} fichiers enregistrés dans votre espace StudyCloud (Mes Fichiers) !`);
+    } else {
+      triggerToast(`Fichiers téléchargés sur l'appareil ET enregistrés dans StudyCloud (Mes Fichiers) !`);
+    }
+
+    setPendingDestinationFolder(null);
   };
 
   const handleCopyLink = (folder: SharedFolder) => {
@@ -1477,6 +1510,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           </div>
         </div>
       )}
+
+      {/* Modal de choix de destination de téléchargement */}
+      <DownloadDestinationModal
+        isOpen={Boolean(pendingDestinationFolder)}
+        onClose={() => setPendingDestinationFolder(null)}
+        title={pendingDestinationFolder?.title}
+        filesCount={pendingDestinationFolder?.files.length || 1}
+        onConfirm={handleConfirmDestination}
+      />
     </div>
   );
 };

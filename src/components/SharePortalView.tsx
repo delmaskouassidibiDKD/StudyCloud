@@ -1,7 +1,9 @@
 import React, { useState } from 'react';
 import { Folder, FileText, Download, Lock, Check, ShieldCheck, ArrowLeft, Package, Sparkles } from 'lucide-react';
-import { SharedFolder } from '../types';
+import { SharedFolder, SharedFile } from '../types';
 import JSZip from 'jszip';
+import { DownloadDestinationModal, DownloadDestinationChoice } from './DownloadDestinationModal';
+import { importFilesToMesFichiers } from '../services/userSync';
 
 interface SharePortalViewProps {
   folder: SharedFolder;
@@ -14,6 +16,18 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
   const [inputPassword, setInputPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [zipping, setZipping] = useState(false);
+  const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  // Modal de choix de destination
+  const [pendingDownload, setPendingDownload] = useState<{
+    type: 'all' | 'single';
+    file?: SharedFile;
+  } | null>(null);
+
+  const showToast = (msg: string) => {
+    setToastMsg(msg);
+    setTimeout(() => setToastMsg(null), 3000);
+  };
 
   const handleUnlock = (e: React.FormEvent) => {
     e.preventDefault();
@@ -25,13 +39,14 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
     }
   };
 
-  const handleDownloadAllZip = async () => {
+  // Exécution réelle du téléchargement sur l'appareil (ZIP complet)
+  const executeDeviceDownloadAll = async () => {
     setZipping(true);
     onIncrementDownload(folder.id);
     try {
       const zip = new JSZip();
       folder.files.forEach((file) => {
-        const content = `Contenu officiel du fichier ${file.name}\nDossier partagé: ${folder.title}\nPartagé via StudyCloud - Plateforme étudiante`;
+        const content = file.url || `Contenu officiel du fichier ${file.name}\nDossier partagé: ${folder.title}\nPartagé via StudyCloud - Plateforme étudiante`;
         zip.file(file.name, content);
       });
 
@@ -51,18 +66,63 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
     }
   };
 
-  const handleDownloadSingle = (fileName: string) => {
+  // Exécution réelle du téléchargement sur l'appareil (fichier unique)
+  const executeDeviceDownloadSingle = (file: SharedFile) => {
     onIncrementDownload(folder.id);
-    const content = `Ceci est le fichier ${fileName} téléchargé depuis le dossier partagé ${folder.title}.`;
-    const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement('a');
-    a.href = url;
-    a.download = fileName;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
+    const content = file.url || `Ceci est le fichier ${file.name} téléchargé depuis le dossier partagé ${folder.title}.`;
+    const blob = file.url && file.url.startsWith('data:') 
+      ? fetch(file.url).then(r => r.blob()).catch(() => new Blob([content], { type: 'text/plain;charset=utf-8' }))
+      : Promise.resolve(new Blob([content], { type: 'text/plain;charset=utf-8' }));
+    
+    blob.then((b) => {
+      const url = URL.createObjectURL(b);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.name;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    });
+  };
+
+  // Gestion du choix de l'utilisateur (Appareil, StudyCloud ou les deux)
+  const handleConfirmDestination = (choice: DownloadDestinationChoice) => {
+    if (!pendingDownload) return;
+
+    const isAll = pendingDownload.type === 'all';
+    const filesToImport = isAll ? folder.files : [pendingDownload.file!];
+
+    // 1. Si choix Appareil ou Les Deux
+    if (choice === 'device' || choice === 'both') {
+      if (isAll) {
+        executeDeviceDownloadAll();
+      } else if (pendingDownload.file) {
+        executeDeviceDownloadSingle(pendingDownload.file);
+      }
+    }
+
+    // 2. Si choix StudyCloud ou Les Deux
+    if (choice === 'studycloud' || choice === 'both') {
+      const count = importFilesToMesFichiers(filesToImport.map(f => ({
+        name: f.name,
+        size: f.size,
+        url: f.url,
+        type: f.type,
+      })));
+      onIncrementDownload(folder.id);
+    }
+
+    // Feedback Toast à l'utilisateur
+    if (choice === 'device') {
+      showToast(isAll ? "Téléchargement de l'archive ZIP sur cet appareil lancé !" : `Téléchargement de ${pendingDownload.file?.name} lancé sur cet appareil !`);
+    } else if (choice === 'studycloud') {
+      showToast(isAll ? `${filesToImport.length} fichiers enregistrés dans votre espace StudyCloud (Mes Fichiers) !` : `"${pendingDownload.file?.name}" enregistré dans votre espace StudyCloud (Mes Fichiers) !`);
+    } else {
+      showToast(isAll ? "Fichiers téléchargés sur l'appareil ET enregistrés dans StudyCloud (Mes Fichiers) !" : `"${pendingDownload.file?.name}" téléchargé et enregistré dans StudyCloud (Mes Fichiers) !`);
+    }
+
+    setPendingDownload(null);
   };
 
   const formatSize = (bytes: number) => {
@@ -74,7 +134,15 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
   };
 
   return (
-    <div className="min-h-screen bg-[#FDFBF7] text-stone-900 flex flex-col items-center justify-start p-4 md:p-8">
+    <div className="min-h-screen bg-[#FDFBF7] text-stone-900 flex flex-col items-center justify-start p-4 md:p-8 relative">
+      {/* Toast Notification */}
+      {toastMsg && (
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[99999] bg-stone-900 text-white text-xs font-bold px-4 py-3 rounded-2xl shadow-xl flex items-center gap-2.5 animate-fadeIn border-2 border-stone-800">
+          <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+          <span>{toastMsg}</span>
+        </div>
+      )}
+
       {/* Top Navbar */}
       <div className="w-full max-w-3xl flex items-center justify-between mb-8 pb-4 border-b-3 border-stone-800">
         <div className="flex items-center gap-3">
@@ -89,7 +157,7 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
 
         <button
           onClick={onBackToApp}
-          className="bg-white hover:bg-stone-100 text-stone-800 font-bold text-xs px-4 py-2.5 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center gap-2 transition-all"
+          className="bg-white hover:bg-stone-100 text-stone-800 font-bold text-xs px-4 py-2.5 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center gap-2 transition-all cursor-pointer"
         >
           <ArrowLeft className="w-4 h-4" />
           <span>Accéder à l'application</span>
@@ -122,7 +190,7 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
               {errorMsg && <p className="text-xs font-bold text-red-600">{errorMsg}</p>}
               <button
                 type="submit"
-                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-xl border-2 border-stone-800 shadow-[4px_4px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all"
+                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold py-3 px-6 rounded-xl border-2 border-stone-800 shadow-[4px_4px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
               >
                 Déverrouiller le dossier
               </button>
@@ -149,11 +217,11 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
                 </div>
               </div>
 
-              {/* Download all button */}
+              {/* Download all button - Ouvre le modal de destination */}
               <button
-                onClick={handleDownloadAllZip}
+                onClick={() => setPendingDownload({ type: 'all' })}
                 disabled={zipping}
-                className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm px-6 py-4 rounded-2xl border-3 border-stone-800 shadow-[4px_4px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all flex items-center justify-center gap-2 shrink-0 disabled:opacity-50"
+                className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-sm px-6 py-4 rounded-2xl border-3 border-stone-800 shadow-[4px_4px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all flex items-center justify-center gap-2 shrink-0 disabled:opacity-50 cursor-pointer"
               >
                 <Package className="w-5 h-5" />
                 <span>{zipping ? 'Création de l\'archive...' : 'Télécharger tout (.ZIP)'}</span>
@@ -184,8 +252,8 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
                     </div>
 
                     <button
-                      onClick={() => handleDownloadSingle(file.name)}
-                      className="bg-[#F5F1E9] hover:bg-orange-100 text-stone-900 font-bold text-xs px-4 py-2.5 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 transition-all shrink-0"
+                      onClick={() => setPendingDownload({ type: 'single', file })}
+                      className="bg-[#F5F1E9] hover:bg-orange-100 text-stone-900 font-bold text-xs px-4 py-2.5 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5 transition-all shrink-0 cursor-pointer"
                     >
                       <Download className="w-4 h-4 text-orange-600" />
                       <span>Télécharger</span>
@@ -203,6 +271,15 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
           </div>
         )}
       </div>
+
+      {/* Modal interactif : Choisir où enregistrer (Appareil, StudyCloud, ou les deux) */}
+      <DownloadDestinationModal
+        isOpen={Boolean(pendingDownload)}
+        onClose={() => setPendingDownload(null)}
+        title={pendingDownload?.type === 'all' ? folder.title : pendingDownload?.file?.name}
+        filesCount={pendingDownload?.type === 'all' ? folder.files.length : 1}
+        onConfirm={handleConfirmDestination}
+      />
     </div>
   );
 };

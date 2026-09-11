@@ -318,3 +318,40 @@ export async function syncFileMetadata(fileData: {
     console.warn('[UserSync] Enregistrement métadonnée fichier différé:', e);
   }
 }
+
+/**
+ * Importe directement des fichiers partagés dans l'espace personnel "Mes Fichiers" de l'utilisateur
+ */
+export function importFilesToMesFichiers(files: { name: string; size?: number; url?: string; type?: string }[]): number {
+  if (!files || files.length === 0) return 0;
+  try {
+    const raw = localStorage.getItem('unifolder_files_menu_items');
+    let existingList: any[] = raw ? JSON.parse(raw) : [];
+    const now = Date.now();
+
+    const newItems = files.map((f, i) => ({
+      id: `file-imported-${now}-${i}`,
+      name: f.name,
+      size: f.size || 0,
+      type: f.type || 'application/octet-stream',
+      url: f.url || '',
+      timestamp: now + i,
+      isImported: true,
+    }));
+
+    const updated = [...newItems, ...existingList];
+    localStorage.setItem('unifolder_files_menu_items', JSON.stringify(updated));
+    localStorage.setItem('unifolder_last_imported_id', newItems[0].id);
+
+    // Déclencher le rafraîchissement réactif dans toute l'application
+    window.dispatchEvent(new Event('unifolder_files_updated'));
+
+    // Sauvegarde en arrière-plan vers Cloudflare D1
+    triggerDebouncedCloudBackup();
+
+    return newItems.length;
+  } catch (e) {
+    console.error('Erreur import fichiers dans Mes Fichiers:', e);
+    return 0;
+  }
+}
