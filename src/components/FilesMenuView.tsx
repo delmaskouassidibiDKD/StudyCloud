@@ -204,6 +204,70 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   const [showFilesMenuDropdown, setShowFilesMenuDropdown] = useState(false);
   const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'size'>('recent');
 
+  // Progression d'enregistrement en arrière-plan (fileId -> pourcentage 0 à 100)
+  const [savingFileProgress, setSavingFileProgress] = useState<Record<string, number>>({});
+
+  const startSavingAnimation = (fileIds: string[]) => {
+    if (!fileIds || fileIds.length === 0) return;
+
+    // Initialisation
+    setSavingFileProgress(prev => {
+      const next = { ...prev };
+      fileIds.forEach(id => { next[id] = 10; });
+      return next;
+    });
+
+    let current = 10;
+    const interval = setInterval(() => {
+      current += Math.floor(Math.random() * 15) + 15;
+      if (current >= 100) {
+        current = 100;
+        clearInterval(interval);
+        setSavingFileProgress(prev => {
+          const next = { ...prev };
+          fileIds.forEach(id => { next[id] = 100; });
+          return next;
+        });
+
+        // Disparaît complètement dès que c'est fini
+        setTimeout(() => {
+          setSavingFileProgress(prev => {
+            const next = { ...prev };
+            fileIds.forEach(id => { delete next[id]; });
+            return next;
+          });
+        }, 400);
+      } else {
+        setSavingFileProgress(prev => {
+          const next = { ...prev };
+          fileIds.forEach(id => { next[id] = current; });
+          return next;
+        });
+      }
+    }, 400);
+  };
+
+  useEffect(() => {
+    const checkImportingIds = () => {
+      try {
+        const raw = localStorage.getItem('unifolder_importing_ids');
+        if (raw) {
+          const ids = JSON.parse(raw);
+          if (Array.isArray(ids) && ids.length > 0) {
+            localStorage.removeItem('unifolder_importing_ids');
+            startSavingAnimation(ids);
+          }
+        }
+      } catch (e) {
+        console.warn(e);
+      }
+    };
+
+    checkImportingIds();
+    window.addEventListener('unifolder_files_updated', checkImportingIds);
+    return () => window.removeEventListener('unifolder_files_updated', checkImportingIds);
+  }, []);
+
   useEffect(() => {
     if (!isSearchOpen) {
       setSearchQuery('');
@@ -608,6 +672,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
       // Placer en tête de liste pour affichage immédiat à l'en-tête même
       setImportedFiles(prev => [...newItems, ...prev]);
+      startSavingAnimation(newItems.map(item => item.id));
 
       if (newItems.length > 0) {
         localStorage.setItem('unifolder_last_imported_id', newItems[newItems.length - 1].id);
@@ -902,11 +967,18 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                   else if (isImg) bgColor = 'bg-purple-600';
 
                    const isSelected = selectedFileIds.includes(f.id);
+                   const isSaving = savingFileProgress[f.id] !== undefined;
+                   const progressVal = savingFileProgress[f.id] || 0;
 
-                  return (
+                   return (
                     <div 
                       key={idx} 
                       onClick={() => {
+                        if (isSaving) {
+                          setSuccessMessage("Enregistrement du fichier en cours dans la base... Veuillez patienter.");
+                          setTimeout(() => setSuccessMessage(null), 2500);
+                          return;
+                        }
                         if (isSelectionMode) {
                           setSelectedFileIds(prev => 
                             isSelected ? prev.filter(i => i !== f.id) : [...prev, f.id]
@@ -915,14 +987,16 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                           setActivePreviewItem && setActivePreviewItem({ ...f, folderName: f.matiere || 'Mes fichiers' });
                         }
                       }} 
-                      className={`group flex flex-col items-center w-full max-w-[90px] sm:max-w-[110px] cursor-pointer transition-all hover:scale-105 relative ${openMenuId === f.id ? 'z-50' : 'z-0'}`}
+                      className={`group flex flex-col items-center w-full max-w-[90px] sm:max-w-[110px] relative ${openMenuId === f.id ? 'z-50' : 'z-0'} ${
+                        isSaving ? 'cursor-wait select-none' : 'cursor-pointer hover:scale-105 transition-all'
+                      }`}
                     >
                       {/* Selection Checkbox or Three dots button */}
                       {isSelectionMode ? (
                         <div className={`absolute top-2 left-2 z-30 w-5 h-5 rounded border-2 border-stone-800 flex items-center justify-center ${isSelected ? 'bg-[#2D4A3E] text-white' : 'bg-white'}`}>
                           {isSelected && <Check className="w-3.5 h-3.5 stroke-[3]" />}
                         </div>
-                      ) : (
+                      ) : !isSaving && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
@@ -935,7 +1009,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                         </button>
                       )}
 
-                                             {openMenuId === f.id && !isSelectionMode && (
+                      {openMenuId === f.id && !isSelectionMode && !isSaving && (
                         <div 
                           className="absolute top-9 left-0 z-50 bg-white text-stone-800 rounded-xl shadow-2xl border-2 border-stone-800 py-1.5 w-48 text-xs font-semibold animate-fadeIn"
                           onClick={(e) => e.stopPropagation()}
@@ -1014,7 +1088,32 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                         </div>
                       )}
 
-                      <div className={`w-full aspect-[3/4] ${bgColor} rounded-xl shadow-[3px_3px_0px_0px_#1c1917] flex flex-col items-center justify-between p-3 text-white relative overflow-hidden group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all`}>
+                      <div className={`w-full aspect-[3/4] ${bgColor} rounded-xl shadow-[3px_3px_0px_0px_#1c1917] flex flex-col items-center justify-between p-3 text-white relative overflow-hidden transition-all ${
+                        isSaving ? '' : 'group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917]'
+                      }`}>
+                        {/* Petit trait en haut collé au fichier qui se remplit pendant l'enregistrement */}
+                        {isSaving && (
+                          <div className="absolute top-0 inset-x-0 h-1.5 bg-black/40 z-35 overflow-hidden pointer-events-none rounded-t-xl">
+                            <div 
+                              className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
+                              style={{ width: `${progressVal}%` }}
+                            />
+                          </div>
+                        )}
+
+                        {/* Overlay au milieu du fichier qui se remplit et empêche l'ouverture */}
+                        {isSaving && (
+                          <div className="absolute inset-0 z-30 bg-black/55 backdrop-blur-[1px] flex flex-col items-center justify-center p-2 text-white pointer-events-none animate-fadeIn rounded-xl">
+                            <div className="w-5 h-5 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-1.5" />
+                            <span className="text-[10px] font-black text-emerald-300 tracking-wider">
+                              {progressVal}%
+                            </span>
+                            <span className="text-[7.5px] font-bold text-white/90 text-center leading-tight">
+                              Enregistrement...
+                            </span>
+                          </div>
+                        )}
+
                         {isImg && f.url ? (
                           <div className="absolute inset-0 w-full h-full bg-white overflow-hidden flex items-center justify-center z-0">
                             <img src={f.url} alt={f.name} className="w-full h-full object-cover" />
