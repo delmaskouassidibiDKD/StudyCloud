@@ -178,7 +178,7 @@ export function OnboardingPage() {
 
   return (
     <div
-      className="fixed inset-0 z-[99997] flex flex-col items-center justify-center overflow-auto py-8 px-4"
+      className="fixed inset-0 z-[99997] flex flex-col items-center justify-start sm:justify-center overflow-y-auto py-8 sm:py-12 px-4"
       style={{ background: 'linear-gradient(135deg, #0b091e 0%, #151433 35%, #1e1b4b 70%, #0d1b2a 100%)' }}
     >
       {/* Background orbs */}
@@ -193,15 +193,7 @@ export function OnboardingPage() {
         />
       </div>
 
-      <div
-        className="relative z-10 w-full max-w-2xl md:max-w-3xl p-6 sm:p-8 md:p-10 rounded-3xl transition-all duration-300"
-        style={{
-          background: 'rgba(255, 255, 255, 0.05)',
-          backdropFilter: 'blur(28px)',
-          border: '1px solid rgba(255, 255, 255, 0.12)',
-          boxShadow: '0 32px 80px rgba(0,0,0,0.6)',
-        }}
-      >
+      <div className="relative z-10 w-full max-w-2xl md:max-w-3xl transition-all duration-300 my-auto">
         {/* Header */}
         <div className="flex items-center justify-between mb-5">
           <div className="flex items-center gap-3">
@@ -211,9 +203,6 @@ export function OnboardingPage() {
                 <span className="text-lg font-black tracking-tight">
                   <span className="text-orange-500">Study</span>
                   <span className="text-blue-400">Cloud</span>
-                </span>
-                <span className="text-[7px] text-amber-400 font-bold uppercase tracking-widest px-1.5 py-0.5 rounded bg-amber-400/10 border border-amber-400/20">
-                  DKD TECHNOLOGIES
                 </span>
               </div>
               <h2 className="text-sm font-black text-white leading-tight">
