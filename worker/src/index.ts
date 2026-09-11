@@ -1034,7 +1034,7 @@ export default {
       // POST /api/auth/google — Échange du code Google OAuth
       if (path === '/api/auth/google' && method === 'POST') {
         const body: any = await request.json();
-        const { code, redirectUri } = body;
+        const { code, redirectUri, action } = body;
         if (!code) return errorResponse('Code Google OAuth requis', 400, origin);
 
         // Échanger le code contre un access token Google
@@ -1060,18 +1060,33 @@ export default {
         if (!profile.id || !profile.email) return errorResponse('Impossible de récupérer le profil Google', 400, origin);
 
         // Trouver ou créer l'utilisateur
-        let user: any = await env.DB.prepare('SELECT * FROM users WHERE google_id = ? OR email = ?').bind(profile.id, profile.email.toLowerCase()).first();
+        const cleanGoogleEmail = profile.email.toLowerCase().trim();
+        let user: any = await env.DB.prepare('SELECT * FROM users WHERE google_id = ? OR email = ?').bind(profile.id, cleanGoogleEmail).first();
         if (!user) {
+          // Si l'utilisateur souhaitait se connecter à un compte existant mais qu'aucun compte n'existe
+          if (action === 'login') {
+            return jsonResponse({
+              success: false,
+              userNotFound: true,
+              code: 'USER_NOT_FOUND',
+              googleEmail: cleanGoogleEmail,
+              googleName: profile.name || '',
+              googleAvatar: profile.picture || null,
+              error: `Aucun compte StudyCloud n'est actuellement associé à l'adresse Google (${cleanGoogleEmail}). Nous vous avons orienté vers la création de compte : complétez vos informations ci-dessous pour créer votre compte en quelques secondes !`,
+            }, 404, origin);
+          }
+
+          // En mode inscription (ou premier accès) : création du compte
           const userId = generateId();
           await env.DB.prepare(`
             INSERT INTO users (id, name, email, provider, google_id, email_verified, avatar_url, is_onboarded, created_at, updated_at)
             VALUES (?, ?, ?, 'google', ?, 1, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-          `).bind(userId, profile.name || profile.email, profile.email.toLowerCase(), profile.id, profile.picture || null).run();
+          `).bind(userId, profile.name || cleanGoogleEmail, cleanGoogleEmail, profile.id, profile.picture || null).run();
           await env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)').bind(userId).run();
           user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
-          sendWelcomeEmail(profile.email.toLowerCase(), profile.name || 'Étudiant');
+          sendWelcomeEmail(cleanGoogleEmail, profile.name || 'Étudiant');
         } else if (!user.google_id) {
-          // Lier le compte Google à un compte email existant
+          // Lier le compte Google à un compte email existant et connecter immédiatement
           await env.DB.prepare('UPDATE users SET google_id = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1 WHERE id = ?').bind(profile.id, profile.picture || null, user.id).run();
           user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(user.id).first();
         }

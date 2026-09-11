@@ -113,7 +113,7 @@ export const StudyCloudAPI = {
     return requestAuth('/api/auth/reset-password', { method: 'POST', body: JSON.stringify(data) });
   },
 
-  async googleAuth(data: { code: string; redirectUri: string }) {
+  async googleAuth(data: { code: string; redirectUri: string; action?: 'login' | 'register' | string }) {
     return requestAuth('/api/auth/google', { method: 'POST', body: JSON.stringify(data) });
   },
 

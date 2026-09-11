@@ -63,18 +63,60 @@ export function validatePasswordRules(pwd: string): {
 export function AuthPage({ onBack }: AuthPageProps) {
   const { loginWithToken } = useAuth();
 
-  // Mode direct : 'login' par défaut pour afficher la connexion immédiatement
-  const [mode, setMode] = useState<AuthMode>('login');
-  const [email, setEmail] = useState('');
+  // Mode direct : 'login' par défaut pour afficher la connexion immédiatement, ou 'register' si redirection
+  const [mode, setMode] = useState<AuthMode>(() => {
+    const saved = localStorage.getItem('sc_auth_redirect_mode');
+    if (saved === 'register' || saved === 'login') return saved;
+    return 'login';
+  });
+  const [email, setEmail] = useState(() => {
+    return localStorage.getItem('sc_auth_prefill_email') || '';
+  });
   const [emailTouched, setEmailTouched] = useState(false);
   const [password, setPassword] = useState('');
-  const [name, setName] = useState('');
+  const [name, setName] = useState(() => {
+    return localStorage.getItem('sc_auth_prefill_name') || '';
+  });
   const [showPassword, setShowPassword] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [success, setSuccess] = useState<string | null>(null);
-  // Message informatif professionnel si compte non trouvé lors d'une tentative de connexion
-  const [accountNotFoundNotice, setAccountNotFoundNotice] = useState<string | null>(null);
+  // Message informatif professionnel si compte non trouvé lors d'une tentative de connexion (Email ou Google)
+  const [accountNotFoundNotice, setAccountNotFoundNotice] = useState<string | null>(() => {
+    return localStorage.getItem('sc_auth_redirect_notice') || null;
+  });
+
+  // Écouter les redirections automatiques d'authentification (ex: tentative de connexion Google sans compte existant)
+  React.useEffect(() => {
+    const handleRedirectEvent = () => {
+      const savedMode = localStorage.getItem('sc_auth_redirect_mode');
+      const savedNotice = localStorage.getItem('sc_auth_redirect_notice');
+      const savedEmail = localStorage.getItem('sc_auth_prefill_email');
+      const savedName = localStorage.getItem('sc_auth_prefill_name');
+      if (savedMode === 'register' || savedMode === 'login') {
+        setMode(savedMode);
+      }
+      if (savedNotice) {
+        setAccountNotFoundNotice(savedNotice);
+      }
+      if (savedEmail) {
+        setEmail(savedEmail);
+      }
+      if (savedName) {
+        setName(savedName);
+      }
+      localStorage.removeItem('sc_auth_redirect_mode');
+      localStorage.removeItem('sc_auth_redirect_notice');
+      localStorage.removeItem('sc_auth_prefill_email');
+      localStorage.removeItem('sc_auth_prefill_name');
+    };
+
+    handleRedirectEvent();
+    window.addEventListener('studycloud_auth_redirect', handleRedirectEvent);
+    return () => {
+      window.removeEventListener('studycloud_auth_redirect', handleRedirectEvent);
+    };
+  }, []);
 
   // Questions de sécurité personnelles pour récupération de mot de passe
   const [securityQuestion1, setSecurityQuestion1] = useState('Quelle est votre ville de naissance ?');
@@ -112,6 +154,10 @@ export function AuthPage({ onBack }: AuthPageProps) {
     setError(null);
     setAccountNotFoundNotice(null);
     setSuccess(null);
+    localStorage.removeItem('sc_auth_redirect_mode');
+    localStorage.removeItem('sc_auth_redirect_notice');
+    localStorage.removeItem('sc_auth_prefill_email');
+    localStorage.removeItem('sc_auth_prefill_name');
   };
 
   // ─── Email Auth ─────────────────────────────────────────────────────────────
@@ -223,7 +269,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
 
   // ─── Google Auth ─────────────────────────────────────────────────────────────
 
-  const handleGoogleSignIn = () => {
+  const handleGoogleSignIn = (targetAction?: 'login' | 'register') => {
     if (!GOOGLE_CLIENT_ID) {
       setError(
         'Google OAuth n\'est pas encore configuré. Veuillez ajouter votre Client ID Google dans la variable VITE_GOOGLE_CLIENT_ID, ou utilisez Email/Mot de passe.'
@@ -231,10 +277,14 @@ export function AuthPage({ onBack }: AuthPageProps) {
       return;
     }
 
+    const action = targetAction || (mode === 'register' ? 'register' : 'login');
+    localStorage.setItem('sc_google_auth_mode', action);
+
     const redirectUri = `${window.location.origin}${window.location.pathname}`;
     const scope = 'openid email profile';
     const responseType = 'code';
-    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=${responseType}&scope=${encodeURIComponent(scope)}&prompt=select_account`;
+    const state = action;
+    const authUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=${GOOGLE_CLIENT_ID}&redirect_uri=${encodeURIComponent(redirectUri)}&response_type=${responseType}&scope=${encodeURIComponent(scope)}&state=${encodeURIComponent(state)}&prompt=select_account`;
 
     window.location.href = authUrl;
   };
@@ -437,7 +487,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
             <button
               id="auth-google-btn"
               type="button"
-              onClick={handleGoogleSignIn}
+              onClick={() => handleGoogleSignIn('login')}
               className="w-full py-3.5 px-5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-3 mb-4 transition-all hover:opacity-95 hover:scale-[1.01] active:scale-[0.99] shadow-lg shadow-blue-600/30 cursor-pointer"
               style={{
                 background: 'linear-gradient(135deg, #1a73e8 0%, #1557b0 100%)',
@@ -923,7 +973,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
 
             <button
               type="button"
-              onClick={handleGoogleSignIn}
+              onClick={() => handleGoogleSignIn(mode === 'register' ? 'register' : 'login')}
               className="w-full py-3.5 px-5 rounded-2xl font-bold text-sm text-white flex items-center justify-center gap-3 transition-all hover:opacity-95 hover:scale-[1.01] active:scale-[0.99] shadow-lg shadow-blue-600/30 cursor-pointer"
               style={{
                 background: 'linear-gradient(135deg, #1a73e8 0%, #1557b0 100%)',
@@ -939,7 +989,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
                   <path d="M9 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.463.891 11.426 0 9 0A8.997 8.997 0 00.957 4.958L3.964 7.29C4.672 5.163 6.656 3.58 9 3.58z" fill="#EA4335"/>
                 </svg>
               </div>
-              <span>Continuer avec Google</span>
+              <span>{mode === 'register' ? "S'inscrire avec Google" : 'Continuer avec Google'}</span>
             </button>
 
             {/* Switch mode */}

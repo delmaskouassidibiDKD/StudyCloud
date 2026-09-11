@@ -41,14 +41,33 @@ export default function App() {
 
     if (googleCode && !isAuthenticated) {
       const redirectUri = `${window.location.origin}${window.location.pathname}`;
+      const action = urlParams.get('state') || localStorage.getItem('sc_google_auth_mode') || 'login';
+      localStorage.removeItem('sc_google_auth_mode');
       window.history.replaceState({}, '', window.location.pathname);
-      StudyCloudAPI.googleAuth({ code: googleCode, redirectUri })
+      StudyCloudAPI.googleAuth({ code: googleCode, redirectUri, action })
         .then((res: any) => {
           if (res.success && res.token && res.user) {
             loginWithToken(res.token, res.user);
+          } else if (res.userNotFound || res.code === 'USER_NOT_FOUND') {
+            localStorage.setItem('sc_auth_redirect_mode', 'register');
+            localStorage.setItem('sc_auth_redirect_notice', res.error || "Aucun compte associé à cette adresse Google n'a été trouvé. Nous vous avons orienté vers l'inscription : complétez vos informations ci-dessous pour créer votre compte en quelques secondes !");
+            if (res.googleEmail) localStorage.setItem('sc_auth_prefill_email', res.googleEmail);
+            if (res.googleName) localStorage.setItem('sc_auth_prefill_name', res.googleName);
+            window.dispatchEvent(new Event('studycloud_auth_redirect'));
           }
         })
-        .catch(console.error);
+        .catch((err: any) => {
+          if (err.userNotFound || err.status === 404 || err.data?.userNotFound) {
+            const data = err.data || {};
+            localStorage.setItem('sc_auth_redirect_mode', 'register');
+            localStorage.setItem('sc_auth_redirect_notice', data.error || err.message || "Aucun compte associé à cette adresse Google n'a été trouvé. Nous vous avons orienté vers l'inscription : complétez vos informations ci-dessous pour créer votre compte en quelques secondes !");
+            if (data.googleEmail) localStorage.setItem('sc_auth_prefill_email', data.googleEmail);
+            if (data.googleName) localStorage.setItem('sc_auth_prefill_name', data.googleName);
+            window.dispatchEvent(new Event('studycloud_auth_redirect'));
+          } else {
+            console.error(err);
+          }
+        });
     } else if (verifyToken) {
       // Confirmation directe par token dans l'URL (depuis le bouton de l'email)
       localStorage.removeItem('sc_pending_verification_email');
