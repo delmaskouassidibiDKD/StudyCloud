@@ -1,0 +1,18 @@
+<svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="scDnaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#EA580C"/>
+      <stop offset="50%" stop-color="#F38020"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <path d="M8 3C8 3 8 10 12 12C16 14 16 21 16 21" stroke="url(#scDnaGrad)" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M16 3C16 3 16 10 12 12C8 14 8 21 8 21" stroke="url(#scDnaGrad)" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="10" y1="6" x2="14" y2="6" stroke="#2563EB" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+    <line x1="10.5" y1="9" x2="13.5" y2="9" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
+    <line x1="11" y1="12" x2="13" y2="12" stroke="#F38020" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="10.5" y1="15" x2="13.5" y2="15" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
+    <line x1="10" y1="18" x2="14" y2="18" stroke="#2563EB" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+  </g>
+</svg>

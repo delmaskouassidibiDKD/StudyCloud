@@ -19,6 +19,40 @@ export interface Env {
 }
 
 // ============================================================================
+// Brand Assets (DNA Logo SVG & PNG pour emails et web)
+// ============================================================================
+const DNA_LOGO_PNG_B64 = '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';
+
+const DNA_LOGO_SVG = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="scDnaGrad" x1="0%" y1="0%" x2="0%" y2="100%">
+      <stop offset="0%" stop-color="#EA580C"/>
+      <stop offset="50%" stop-color="#F38020"/>
+      <stop offset="100%" stop-color="#2563EB"/>
+    </linearGradient>
+  </defs>
+  <g>
+    <path d="M8 3C8 3 8 10 12 12C16 14 16 21 16 21" stroke="url(#scDnaGrad)" stroke-width="2.5" stroke-linecap="round"/>
+    <path d="M16 3C16 3 16 10 12 12C8 14 8 21 8 21" stroke="url(#scDnaGrad)" stroke-width="2.5" stroke-linecap="round"/>
+    <line x1="10" y1="6" x2="14" y2="6" stroke="#2563EB" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+    <line x1="10.5" y1="9" x2="13.5" y2="9" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
+    <line x1="11" y1="12" x2="13" y2="12" stroke="#F38020" stroke-width="2.8" stroke-linecap="round"/>
+    <line x1="10.5" y1="15" x2="13.5" y2="15" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
+    <line x1="10" y1="18" x2="14" y2="18" stroke="#2563EB" stroke-width="1.5" stroke-linecap="round" opacity="0.85"/>
+  </g>
+</svg>`;
+
+function base64ToUint8Array(b64: string): Uint8Array {
+  const bin = atob(b64);
+  const len = bin.length;
+  const bytes = new Uint8Array(len);
+  for (let i = 0; i < len; i++) {
+    bytes[i] = bin.charCodeAt(i);
+  }
+  return bytes;
+}
+
+// ============================================================================
 // Utilitaires HTTP & CORS
 // ============================================================================
 function corsHeaders(origin = '*') {
@@ -71,6 +105,31 @@ export default {
     }
 
     try {
+      // ----------------------------------------------------------------------
+      // Assets publics (Logo ADN pour emails et applications)
+      // ----------------------------------------------------------------------
+      if (path === '/api/assets/dna-logo.png' || path === '/assets/dna-logo.png') {
+        return new Response(base64ToUint8Array(DNA_LOGO_PNG_B64), {
+          status: 200,
+          headers: {
+            'Content-Type': 'image/png',
+            'Cache-Control': 'public, max-age=31536000, immutable',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      }
+
+      if (path === '/api/assets/dna-logo.svg' || path === '/assets/dna-logo.svg') {
+        return new Response(DNA_LOGO_SVG, {
+          status: 200,
+          headers: {
+            'Content-Type': 'image/svg+xml; charset=utf-8',
+            'Cache-Control': 'public, max-age=31536000, immutable',
+            'Access-Control-Allow-Origin': '*',
+          },
+        });
+      }
+
       // ----------------------------------------------------------------------
       // Health Check & Diagnostic des liaisons Cloudflare
       // ----------------------------------------------------------------------
@@ -221,7 +280,10 @@ export default {
 
       async function sendConfirmationEmail(toEmail: string, name: string, token: string, appOrigin = 'https://studycloud.dkd-technologies.com', isLogin = false): Promise<void> {
         try {
-          const cleanOrigin = appOrigin.replace(/\/+$/, '');
+          const cleanOrigin = (appOrigin || 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
+          const publicAssetOrigin = (!cleanOrigin || cleanOrigin.includes('localhost') || !cleanOrigin.startsWith('https://'))
+            ? 'https://studycloud.dkd-technologies.com'
+            : cleanOrigin;
           const confirmUrl = `${cleanOrigin}/?verify_token=${encodeURIComponent(token)}`;
           const subject = isLogin
             ? '🔐 Confirmez votre connexion - StudyCloud'
@@ -265,10 +327,8 @@ export default {
                   <td>
                     <table border="0" cellspacing="0" cellpadding="0">
                       <tr>
-                        <td style="vertical-align:middle;padding-right:12px;">
-                          <div style="width:44px;height:44px;border-radius:12px;background:#fff7ed;border:1.5px solid #fed7aa;text-align:center;line-height:44px;font-size:22px;">
-                            🧬
-                          </div>
+                        <td style="vertical-align:middle;padding-right:12px;width:38px;">
+                          <img src="${publicAssetOrigin}/api/assets/dna-logo.png" width="38" height="38" alt="Logo StudyCloud" style="display:block;border:0;width:38px;height:38px;margin:0;" />
                         </td>
                         <td style="vertical-align:middle;">
                           <div style="line-height:1;">
@@ -355,10 +415,10 @@ export default {
       ): Promise<void> {
         try {
           const cleanOrigin = (appOrigin || 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
+          const publicAssetOrigin = (!cleanOrigin || cleanOrigin.includes('localhost') || !cleanOrigin.startsWith('https://'))
+            ? 'https://studycloud.dkd-technologies.com'
+            : cleanOrigin;
           const title = '🎉 Bienvenue sur StudyCloud !';
-          const profileSubtitle = isStudent
-            ? (filiere ? `Étudiant(e) · ${filiere}${school ? ' (' + school + ')' : ''}` : 'Espace Étudiant')
-            : (filiere ? `Profil Professionnel · ${filiere}` : 'Espace Professionnel');
 
           await fetch('https://api.resend.com/emails', {
             method: 'POST',
@@ -384,22 +444,20 @@ export default {
           </tr>
           <tr>
             <td style="padding:40px 36px 32px 36px;">
-              <!-- Header with Official StudyCloud & DKD Technologies Brand -->
+              <!-- Header with Official StudyCloud Brand -->
               <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom:24px;">
                 <tr>
                   <td>
                     <table border="0" cellspacing="0" cellpadding="0">
                       <tr>
-                        <td style="vertical-align:middle;padding-right:12px;">
-                          <div style="width:48px;height:48px;border-radius:14px;background:#fff7ed;border:1.5px solid #fed7aa;text-align:center;line-height:48px;font-size:24px;">
-                            🧬
-                          </div>
+                        <td style="vertical-align:middle;padding-right:12px;width:38px;">
+                          <img src="${publicAssetOrigin}/api/assets/dna-logo.png" width="38" height="38" alt="Logo StudyCloud" style="display:block;border:0;width:38px;height:38px;margin:0;" />
                         </td>
                         <td style="vertical-align:middle;">
                           <div style="line-height:1;">
                             <span style="font-size:26px;font-weight:900;color:#EA580C;letter-spacing:-0.5px;">Study</span><span style="font-size:26px;font-weight:900;color:#2563EB;letter-spacing:-0.5px;">Cloud</span>
                           </div>
-                          <div style="font-size:9.5px;font-weight:800;color:#D97706;letter-spacing:2px;text-transform:uppercase;margin-top:5px;">
+                          <div style="font-size:9.5px;font-weight:800;color:#D97706;letter-spacing:2px;text-transform:uppercase;margin-top:4px;">
                             DKD TECHNOLOGIES
                           </div>
                         </td>
@@ -411,45 +469,35 @@ export default {
 
               <div style="height:1px;background:#f1f5f9;margin-bottom:26px;"></div>
 
-              <div style="display:inline-block;padding:6px 14px;background:#eff6ff;border:1px solid #bfdbfe;border-radius:20px;font-size:12px;font-weight:700;color:#1d4ed8;margin-bottom:14px;">
-                ✨ Compte configuré avec succès · ${profileSubtitle}
-              </div>
-
               <h1 style="margin:0 0 16px 0;color:#0f172a;font-size:22px;font-weight:800;line-height:1.3;">
                 Bienvenue sur StudyCloud, ${name} ! 🎓
               </h1>
 
-              <p style="margin:0 0 16px 0;color:#334155;font-size:15px;line-height:1.6;">
-                Toute l'équipe de <strong>StudyCloud</strong> et de <strong>DKD Technologies</strong> a le plaisir de vous accueillir ! Votre profil a été configuré avec succès et votre espace de travail numérique personnel est immédiatement opérationnel.
+              <p style="margin:0 0 20px 0;color:#334155;font-size:15px;line-height:1.6;">
+                Toute l'équipe de <strong>StudyCloud</strong> a le plaisir de vous accueillir ! Votre profil a été configuré avec succès et votre espace de travail numérique personnel est immédiatement opérationnel.
               </p>
 
-              <!-- Highlights Box -->
-              <div style="background:#f8fafc;border-radius:16px;padding:20px;border:1px solid #e2e8f0;margin:24px 0;">
-                <p style="margin:0 0 12px 0;font-size:13px;font-weight:800;color:#0f172a;text-transform:uppercase;letter-spacing:0.5px;">
+              <!-- Contenu fluide directement sur le fond de la page (comme un livre, sans bloc ni cadre) -->
+              <div style="margin:26px 0 28px 0;">
+                <p style="margin:0 0 16px 0;font-size:14px;font-weight:800;color:#0f172a;text-transform:uppercase;letter-spacing:0.5px;">
                   🚀 Ce que vous pouvez faire dès maintenant :
                 </p>
-                <table width="100%" border="0" cellspacing="0" cellpadding="0">
-                  <tr>
-                    <td style="padding-bottom:10px;font-size:14px;color:#334155;line-height:1.5;">
-                      📚 <strong>Gestion & Stockage de cours :</strong> Centralisez vos documents, fiches et polycopiés en lieu sûr.
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding-bottom:10px;font-size:14px;color:#334155;line-height:1.5;">
-                      🤖 <strong>Assistant IA Delmas :</strong> Posez des questions sur vos cours, générez des résumés et préparez vos examens plus vite.
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="padding-bottom:10px;font-size:14px;color:#334155;line-height:1.5;">
-                      👥 <strong>Partage & Collaboration :</strong> Échangez des dossiers de révision avec d'autres étudiants ou collègues.
-                    </td>
-                  </tr>
-                  <tr>
-                    <td style="font-size:14px;color:#334155;line-height:1.5;">
-                      🔒 <strong>Sécurité DKD :</strong> Vos fichiers et données sont protégés et sauvegardés de manière isolée.
-                    </td>
-                  </tr>
-                </table>
+
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  📚 <strong>Gestion & Stockage de cours :</strong> Centralisez vos documents, fiches et polycopiés en lieu sûr.
+                </p>
+
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  🤖 <strong>Assistant IA Delmas :</strong> Posez des questions sur vos cours, générez des résumés et préparez vos examens plus vite.
+                </p>
+
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  👥 <strong>Partage & Collaboration :</strong> Échangez des dossiers de révision avec d'autres étudiants ou collègues.
+                </p>
+
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  🔒 <strong>Sécurité DKD :</strong> Vos fichiers et données sont protégés et sauvegardés de manière isolée.
+                </p>
               </div>
 
               <!-- CTA Button -->
@@ -491,6 +539,10 @@ export default {
 
       async function sendPasswordResetEmail(toEmail: string, name: string, code: string, appOrigin = 'https://studycloud.dkd-technologies.com'): Promise<void> {
         try {
+          const cleanOrigin = (appOrigin || 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
+          const publicAssetOrigin = (!cleanOrigin || cleanOrigin.includes('localhost') || !cleanOrigin.startsWith('https://'))
+            ? 'https://studycloud.dkd-technologies.com'
+            : cleanOrigin;
           const subject = '🔑 Récupération de votre mot de passe - StudyCloud';
           const title = 'Code de réinitialisation 🔑';
           await fetch('https://api.resend.com/emails', {
@@ -523,10 +575,8 @@ export default {
                   <td>
                     <table border="0" cellspacing="0" cellpadding="0">
                       <tr>
-                        <td style="vertical-align:middle;padding-right:12px;">
-                          <div style="width:44px;height:44px;border-radius:12px;background:#fff7ed;border:1.5px solid #fed7aa;text-align:center;line-height:44px;font-size:22px;">
-                            🧬
-                          </div>
+                        <td style="vertical-align:middle;padding-right:12px;width:38px;">
+                          <img src="${publicAssetOrigin}/api/assets/dna-logo.png" width="38" height="38" alt="Logo StudyCloud" style="display:block;border:0;width:38px;height:38px;margin:0;" />
                         </td>
                         <td style="vertical-align:middle;">
                           <div style="line-height:1;">
