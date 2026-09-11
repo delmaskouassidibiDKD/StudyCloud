@@ -29,6 +29,7 @@ export function clearUserDataOnLogout(): void {
     'unifolder_user_email',
     'unifolder_user_country',
     'unifolder_user_phone',
+    'unifolder_user_avatar',
     'unifolder_is_student',
     'unifolder_user_profession',
     'unifolder_saved_matieres',
@@ -82,6 +83,7 @@ export async function restoreUserDataFromCloud(userId: string): Promise<boolean>
         if (d.user.filiere) localStorage.setItem('unifolder_user_filiere', d.user.filiere);
         if (d.user.email) localStorage.setItem('unifolder_user_email', d.user.email);
         if (d.user.country) localStorage.setItem('unifolder_user_country', d.user.country);
+        if (d.user.avatar_url) localStorage.setItem('unifolder_user_avatar', d.user.avatar_url);
       }
 
       // 2. Matières

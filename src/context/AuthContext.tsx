@@ -90,11 +90,17 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           setUser(res.data);
           setToken(storedToken);
           localStorage.setItem('sc_last_active_at', Date.now().toString());
-          // Sync user id in localStorage for the rest of the app
+          // Sync user info in localStorage for the rest of the app
           localStorage.setItem('unifolder_user_id', res.data.id);
           localStorage.setItem('unifolder_user_name', res.data.name);
           localStorage.setItem('unifolder_user_school', res.data.school || '');
           localStorage.setItem('unifolder_user_country', res.data.country || "Côte d'Ivoire");
+          if (res.data.filiere) localStorage.setItem('unifolder_user_filiere', res.data.filiere);
+          if (res.data.email) localStorage.setItem('unifolder_user_email', res.data.email);
+          if (res.data.phone) localStorage.setItem('unifolder_user_phone', res.data.phone);
+          if (res.data.avatar_url) {
+            localStorage.setItem('unifolder_user_avatar', res.data.avatar_url);
+          }
           // Hydrater automatiquement les données Cloudflare D1 de l'utilisateur
           restoreUserDataFromCloud(res.data.id).catch(() => {});
         } else {
@@ -112,6 +118,9 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             setToken(storedToken);
             localStorage.setItem('unifolder_user_id', payload.user.id);
             localStorage.setItem('unifolder_user_name', payload.user.name || 'Étudiant');
+            if (payload.user.avatar_url) {
+              localStorage.setItem('unifolder_user_avatar', payload.user.avatar_url);
+            }
           } else {
             clearUserDataOnLogout();
           }
@@ -131,6 +140,12 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.setItem('unifolder_user_name', newUser.name);
     localStorage.setItem('unifolder_user_school', newUser.school || '');
     localStorage.setItem('unifolder_user_country', newUser.country || "Côte d'Ivoire");
+    if (newUser.filiere) localStorage.setItem('unifolder_user_filiere', newUser.filiere);
+    if (newUser.email) localStorage.setItem('unifolder_user_email', newUser.email);
+    if (newUser.phone) localStorage.setItem('unifolder_user_phone', newUser.phone);
+    if (newUser.avatar_url) {
+      localStorage.setItem('unifolder_user_avatar', newUser.avatar_url);
+    }
     setToken(newToken);
     setUser(newUser);
     // Restaurer immédiatement toutes les matières, fichiers, notes et plannings du compte connecté
@@ -139,6 +154,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
 
   const updateProfile = useCallback((data: Partial<AuthUser>) => {
     setUser((prev) => (prev ? { ...prev, ...data } : prev));
+    if (data.avatar_url !== undefined) {
+      if (data.avatar_url) {
+        localStorage.setItem('unifolder_user_avatar', data.avatar_url);
+      } else {
+        localStorage.removeItem('unifolder_user_avatar');
+      }
+    }
+    if (data.name) localStorage.setItem('unifolder_user_name', data.name);
+    if (data.school) localStorage.setItem('unifolder_user_school', data.school);
+    if (data.filiere) localStorage.setItem('unifolder_user_filiere', data.filiere);
+    if (data.country) localStorage.setItem('unifolder_user_country', data.country);
+    if (data.email) localStorage.setItem('unifolder_user_email', data.email);
+    if (data.phone) localStorage.setItem('unifolder_user_phone', data.phone);
   }, []);
 
   const logout = useCallback(() => {

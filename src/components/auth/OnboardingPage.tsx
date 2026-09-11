@@ -234,12 +234,17 @@ export function OnboardingPage() {
       });
 
       if (res.success && res.data) {
+        const finalAvatar = res.data.avatar_url || avatarUrl.trim();
+
         // Enregistrement dans le stockage local
         localStorage.setItem('unifolder_is_student', studentStatus ? 'true' : 'false');
         localStorage.setItem('unifolder_user_name', res.data.name || name.trim());
         localStorage.setItem('unifolder_user_country', res.data.country || country);
         localStorage.setItem('unifolder_user_school', res.data.school || finalSchool);
         localStorage.setItem('unifolder_user_filiere', res.data.filiere || finalFiliere);
+        if (finalAvatar) {
+          localStorage.setItem('unifolder_user_avatar', finalAvatar);
+        }
         if (finalPhone) localStorage.setItem('unifolder_user_phone', finalPhone);
         if (!studentStatus && profession.trim()) {
           localStorage.setItem('unifolder_user_profession', profession.trim());
@@ -250,6 +255,7 @@ export function OnboardingPage() {
 
         updateProfile({
           ...res.data,
+          avatar_url: finalAvatar || null,
           is_student: studentStatus ? 1 : 0,
         });
       } else {

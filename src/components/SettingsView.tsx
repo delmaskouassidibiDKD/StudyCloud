@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { User, Share2, Crown, Settings as SettingsIcon, GraduationCap, Mail, Bell, Headphones, MessageCircle, PlusCircle, Users, AlertTriangle, X, Check, BookOpen, Home, Youtube } from 'lucide-react';
+import { User, Share2, Crown, Settings as SettingsIcon, GraduationCap, Mail, Bell, Headphones, MessageCircle, PlusCircle, Users, AlertTriangle, X, Check, BookOpen, Home, Youtube, LogOut, Camera } from 'lucide-react';
+import { useAuth } from '../context/AuthContext';
 import { PromotionView } from './PromotionView';
 import { SettingsPricingView } from './SettingsPricingView';
 import { NotificationsView } from './NotificationsView';
@@ -7,6 +8,7 @@ import { UserSettingsView } from './UserSettingsView';
 import { ServiceProposalView } from './ServiceProposalView';
 
 export const SettingsView: React.FC = () => {
+  const { user, logout } = useAuth();
   const [activeSubView, setActiveSubView] = useState<'none' | 'promotion' | 'pricing' | 'notifications' | 'user-settings' | 'service'>('none');
   const [showContactMenu, setShowContactMenu] = useState(false);
   const [showReportModal, setShowReportModal] = useState(false);
@@ -57,16 +59,35 @@ export const SettingsView: React.FC = () => {
     }, 1500);
   };
 
-  const userName = localStorage.getItem('unifolder_user_name') || 'Alexandre Kouassi';
-  const userSchool = localStorage.getItem('unifolder_user_school') || 'CME';
-  const userFiliere = localStorage.getItem('unifolder_user_filiere') || 'Électrotechniques';
-  const userEmail = localStorage.getItem('unifolder_user_email') || 'delmaskouassidibi@gmail.com';
+  const handleLogout = () => {
+    if (window.confirm("Êtes-vous sûr de vouloir vous déconnecter de votre compte StudyCloud ?")) {
+      logout();
+    }
+  };
+
+  const userName = user?.name || localStorage.getItem('unifolder_user_name') || 'Alexandre Kouassi';
+  const userSchool = user?.school || localStorage.getItem('unifolder_user_school') || 'CME';
+  const userFiliere = user?.filiere || localStorage.getItem('unifolder_user_filiere') || 'Électrotechniques';
+  const userEmail = user?.email || localStorage.getItem('unifolder_user_email') || 'delmaskouassidibi@gmail.com';
+  const userAvatar = user?.avatar_url || localStorage.getItem('unifolder_user_avatar') || '';
 
   return (
     <div className="max-w-2xl lg:max-w-3xl mx-auto px-4 sm:px-8 py-6 md:py-10 flex flex-col items-center text-center space-y-6 md:space-y-8 relative">
       {/* Profile Photo Circle */}
-      <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-orange-100 border-3 border-stone-800 flex items-center justify-center text-orange-600 shadow-[4px_4px_0px_0px_#1c1917] overflow-hidden my-2 md:my-4 transition-all">
-        <User className="w-12 h-12 md:w-16 md:h-16" />
+      <div 
+        onClick={() => setActiveSubView('user-settings')}
+        title="Cliquer pour changer le logo ou modifier le profil"
+        className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-orange-100 border-3 border-stone-800 flex items-center justify-center text-orange-600 shadow-[4px_4px_0px_0px_#1c1917] overflow-hidden my-2 md:my-4 transition-all hover:scale-105 cursor-pointer relative group"
+      >
+        {userAvatar ? (
+          <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
+        ) : (
+          <User className="w-12 h-12 md:w-16 md:h-16" />
+        )}
+        <div className="absolute inset-0 bg-black/35 opacity-0 group-hover:opacity-100 transition-opacity flex flex-col items-center justify-center text-white">
+          <Camera className="w-6 h-6 drop-shadow" />
+          <span className="text-[10px] font-extrabold mt-0.5">Modifier</span>
+        </div>
       </div>
 
       {/* User Name */}
@@ -154,6 +175,15 @@ export const SettingsView: React.FC = () => {
         >
           <SettingsIcon className="w-5 h-5 md:w-6 md:h-6 text-stone-700" />
           <span>Paramètres</span>
+        </button>
+
+        {/* Bouton de déconnexion direct */}
+        <button 
+          onClick={handleLogout}
+          className="w-full flex items-center justify-center gap-3 bg-red-50 hover:bg-red-100 border-2 border-stone-800 rounded-xl md:rounded-2xl py-3 md:py-4 px-4 md:px-6 text-red-700 font-bold text-sm md:text-base shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917] cursor-pointer"
+        >
+          <LogOut className="w-5 h-5 md:w-6 md:h-6 text-red-600" />
+          <span>Se déconnecter</span>
         </button>
       </div>
 
