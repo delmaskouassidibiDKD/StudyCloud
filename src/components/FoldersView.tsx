@@ -15,6 +15,7 @@ import { LevelMenuView } from './LevelMenuView';
 import { CalculatorMenuView } from './CalculatorMenuView';
 import { MatiereMenuView } from './MatiereMenuView';
 import { NavigationTab } from '../types';
+import { triggerDebouncedCloudBackup } from '../services/userSync';
 
 interface FoldersViewProps {
   onOpenUpload: () => void;
@@ -115,7 +116,21 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
   useEffect(() => {
     localStorage.setItem('unifolder_saved_matieres', JSON.stringify(savedMatieres));
+    triggerDebouncedCloudBackup();
   }, [savedMatieres]);
+
+  useEffect(() => {
+    const handleDataRestored = () => {
+      const saved = localStorage.getItem('unifolder_saved_matieres');
+      if (saved) {
+        try { setSavedMatieres(JSON.parse(saved)); } catch (e) {}
+      } else {
+        setSavedMatieres([]);
+      }
+    };
+    window.addEventListener('unifolder_data_restored', handleDataRestored);
+    return () => window.removeEventListener('unifolder_data_restored', handleDataRestored);
+  }, []);
 
   const notify = (msg: string) => {
     setActiveNotification(msg);

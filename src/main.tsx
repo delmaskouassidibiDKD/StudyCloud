@@ -2,6 +2,7 @@ import React, { Component, ReactNode } from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import { AuthProvider } from './context/AuthContext';
 
 class ErrorBoundary extends React.Component {
   props!: { children?: React.ReactNode };
@@ -58,7 +59,9 @@ document.documentElement.style.setProperty('--app-height', `${initialHeight}px`)
 createRoot(document.getElementById('root')!).render(
   <React.StrictMode>
     <ErrorBoundary>
-      <App />
+      <AuthProvider>
+        <App />
+      </AuthProvider>
     </ErrorBoundary>
   </React.StrictMode>,
 );

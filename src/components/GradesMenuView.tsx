@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Trash2, Edit2, Award, BookOpen, Check, X, Calculator, Sparkles } from 'lucide-react';
+import { triggerDebouncedCloudBackup } from '../services/userSync';
 
 interface GradeItem {
   id: string;
@@ -97,14 +98,30 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
   useEffect(() => {
     try {
       localStorage.setItem('user_grades_trimesters_data', JSON.stringify(trimestersData));
+      triggerDebouncedCloudBackup();
     } catch (e) {}
   }, [trimestersData]);
 
   useEffect(() => {
     try {
       localStorage.setItem('user_grades_standard_scale', standardScale.toString());
+      triggerDebouncedCloudBackup();
     } catch (e) {}
   }, [standardScale]);
+
+  useEffect(() => {
+    const handleRestore = () => {
+      try {
+        const saved = localStorage.getItem('user_grades_trimesters_data');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (parsed && typeof parsed === 'object') setTrimestersData(parsed);
+        }
+      } catch (e) {}
+    };
+    window.addEventListener('unifolder_data_restored', handleRestore);
+    return () => window.removeEventListener('unifolder_data_restored', handleRestore);
+  }, []);
 
   const currentItems = trimestersData[activeTrimestre] || [];
 

@@ -22,8 +22,61 @@ import { LeftMenu } from './components/LeftMenu';
 import { CenterMenu } from './components/CenterMenu';
 import { RightMenu } from './components/RightMenu';
 import { StudyTimerModal, formatTimerDisplay } from './components/StudyTimerModal';
+import { StudyCloudAPI } from './services/api';
+import { useAuth } from './context/AuthContext';
+import { AuthPage } from './components/auth/AuthPage';
+import { OnboardingPage } from './components/auth/OnboardingPage';
+import { GoogleSecuritySetupPage } from './components/auth/GoogleSecuritySetupPage';
 
 export default function App() {
+  const { isAuthenticated, isLoading: authLoading, needsOnboarding, needsSecuritySetup, loginWithToken } = useAuth();
+
+  // Gérer le callback Google OAuth et la confirmation email (verify_token ou redirect)
+  useEffect(() => {
+    const urlParams = new URLSearchParams(window.location.search);
+    const googleCode = urlParams.get('code');
+    const verifyToken = urlParams.get('verify_token');
+    const verified = urlParams.get('verified');
+    const authToken = urlParams.get('token');
+
+    if (googleCode && !isAuthenticated) {
+      const redirectUri = `${window.location.origin}${window.location.pathname}`;
+      window.history.replaceState({}, '', window.location.pathname);
+      StudyCloudAPI.googleAuth({ code: googleCode, redirectUri })
+        .then((res: any) => {
+          if (res.success && res.token && res.user) {
+            loginWithToken(res.token, res.user);
+          }
+        })
+        .catch(console.error);
+    } else if (verifyToken) {
+      // Confirmation directe par token dans l'URL (depuis le bouton de l'email)
+      localStorage.removeItem('sc_pending_verification_email');
+      localStorage.removeItem('sc_pending_verification_is_login');
+      window.history.replaceState({}, '', window.location.pathname);
+      StudyCloudAPI.verifyEmail(verifyToken)
+        .then((res: any) => {
+          if (res.success && res.token && res.user) {
+            loginWithToken(res.token, res.user);
+          }
+        })
+        .catch(console.error);
+    } else if (verified === '1' && authToken) {
+      // Redirection après validation depuis le Worker
+      localStorage.removeItem('sc_pending_verification_email');
+      localStorage.removeItem('sc_pending_verification_is_login');
+      window.history.replaceState({}, '', window.location.pathname);
+      StudyCloudAPI.getMe(authToken)
+        .then((res: any) => {
+          if (res.success && res.data) {
+            loginWithToken(authToken, res.data);
+          }
+        })
+        .catch(console.error);
+    }
+  }, [isAuthenticated, loginWithToken]);
+
+  // Tous les useState ci-dessous (nécessaires avant tout return conditionnel)
   const [folders, setFolders] = useState<SharedFolder[]>(() => {
     return INITIAL_FOLDERS.map((f) => ({ ...f, isPasswordProtected: true }));
   });
@@ -36,6 +89,10 @@ export default function App() {
     return 'folders';
   });
 
+  const [searchQuery, setSearchQuery] = useState('');
+  const [selectedCategory, setSelectedCategory] = useState('Tous');
+  const [toastMessage, setToastMessage] = useState<string | null>(null);
+
   const handleSetTab = (tab: NavigationTab) => {
     if (tab !== 'publish-file') {
       localStorage.removeItem('published_selected_files');
@@ -47,9 +104,6 @@ export default function App() {
     localStorage.setItem('unifolder_current_tab', currentTab);
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [currentTab]);
-  const [searchQuery, setSearchQuery] = useState('');
-  const [selectedCategory, setSelectedCategory] = useState('Tous');
-  const [toastMessage, setToastMessage] = useState<string | null>(null);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -58,8 +112,14 @@ export default function App() {
     }, 8000);
   };
 
-  const handleStartBackgroundCreation = (linkName: string, comment: string, items: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[], onComplete?: (folder: SharedFolder) => void) => {
-    setTimeout(() => {
+  const handleStartBackgroundCreation = (
+    linkName: string,
+    comment: string,
+    items: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[],
+    onComplete?: (folder: SharedFolder) => void,
+    isPublic: boolean = true
+  ) => {
+    setTimeout(async () => {
       const files = items.map((item) => ({
         id: item.id,
         name: item.name,
@@ -68,28 +128,67 @@ export default function App() {
         url: item.url,
       }));
       const totalSize = files.reduce((acc, f) => acc + f.size, 0);
+      const folderId = 'folder-' + Math.random().toString(36).substring(2, 9);
+      const shareCode = 'DKD-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const userCountry = localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire";
+      const userName = localStorage.getItem('unifolder_user_name') || 'Alexandre K.';
+      const userSchool = localStorage.getItem('unifolder_user_school') || 'CME';
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      const shareUrl = `${window.location.origin}/#share=${folderId}`;
+      const qrCodeData = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(shareUrl)}`;
 
       const newFolder: SharedFolder = {
-        id: 'folder-' + Math.random().toString(36).substring(2, 9),
+        id: folderId,
         title: linkName.trim(),
         description: comment.trim() ? `${comment.trim()} • Contient ${items.length} élément(s).` : `Dossier partagé contenant ${items.length} élément(s).`,
         category: 'Cours',
-        author: 'Alexandre K.',
+        author: userName,
+        school: userSchool,
+        country: userCountry,
         createdAt: new Date().toISOString(),
         files,
         totalSize,
         downloadsCount: 0,
-        isPasswordProtected: true,
+        isPasswordProtected: !isPublic,
         viewsCount: 0,
+        shareCode,
+        shareUrl,
+        qrCodeData,
+        isPublic,
+        allowDownload: true,
       };
 
       setFolders((prev) => [newFolder, ...prev]);
       setUploadedItems([]);
-      showToast(`✨ Votre lien "${linkName.trim()}" a été créé avec succès ! Retrouvez-le dans le menu Partagés.`);
+      showToast(`✨ Votre lien "${linkName.trim()}" a été créé ! Code : ${shareCode} (${userCountry}). Retrouvez-le dans Partagés.`);
+
+      try {
+        await StudyCloudAPI.createShare({
+          id: folderId,
+          userId,
+          title: newFolder.title,
+          description: newFolder.description,
+          category: newFolder.category,
+          authorName: userName,
+          school: userSchool,
+          country: userCountry,
+          isPublic,
+          isPasswordProtected: !isPublic,
+          allowDownload: true,
+          shareCode,
+          shareUrl,
+          qrCodeData,
+          totalSize,
+          files,
+        });
+      } catch (err) {
+        console.warn('Sync share with Worker:', err);
+      }
+
       if (onComplete) {
         onComplete(newFolder);
       }
-    }, 3000);
+    }, 2000);
   };
 
   // Modals state
@@ -452,9 +551,36 @@ export default function App() {
     localStorage.setItem('unifolder_shares', JSON.stringify(folders));
   }, [folders]);
 
+  useEffect(() => {
+    const handleRestore = () => {
+      const saved = localStorage.getItem('unifolder_shares');
+      if (saved) {
+        try { setFolders(JSON.parse(saved)); } catch (e) {}
+      } else {
+        setFolders([]);
+      }
+    };
+    window.addEventListener('unifolder_data_restored', handleRestore);
+    return () => window.removeEventListener('unifolder_data_restored', handleRestore);
+  }, []);
+
   const handleAddFolder = (newFolder: SharedFolder) => {
     setFolders((prev) => [newFolder, ...prev]);
     setCurrentTab('folders');
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.createShare({
+      id: newFolder.id,
+      userId,
+      title: newFolder.title,
+      description: newFolder.description,
+      category: newFolder.category,
+      authorName: newFolder.author,
+      school: newFolder.school,
+      isPublic: true,
+      isPasswordProtected: newFolder.isPasswordProtected,
+      totalSize: newFolder.totalSize,
+      files: newFolder.files,
+    }).catch((e) => console.warn('Sync share to cloud:', e));
   };
 
   const handleDeleteFolder = (folderId: string) => {
@@ -462,6 +588,7 @@ export default function App() {
     if (activeFolderDetail?.id === folderId) {
       setActiveFolderDetail(null);
     }
+    StudyCloudAPI.deleteShare(folderId).catch(() => {});
   };
 
   const handleIncrementDownload = (folderId: string) => {
@@ -469,6 +596,40 @@ export default function App() {
       prev.map((f) => (f.id === folderId ? { ...f, downloadsCount: f.downloadsCount + 1 } : f))
     );
   };
+
+  // ─── AUTH GUARDS ─────────────────────────────────────────────────────────────
+  // 1. Écran de chargement lors de la vérification du token JWT
+  if (authLoading) {
+    return (
+      <div className="min-h-dvh flex flex-col items-center justify-center bg-[#0f0c29]">
+        <div className="flex flex-col items-center gap-4">
+          <div
+            className="w-16 h-16 rounded-2xl flex items-center justify-center shadow-2xl"
+            style={{ background: 'linear-gradient(135deg, #1e1b4b, #0f172a)', border: '1px solid rgba(255,255,255,0.1)' }}
+          >
+            <DnaLogo className="w-10 h-10 drop-shadow-[0_0_8px_rgba(234,88,12,0.5)]" glow={true} />
+          </div>
+          <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin" />
+          <p className="text-white/60 text-xs font-semibold tracking-wide">Initialisation de StudyCloud...</p>
+        </div>
+      </div>
+    );
+  }
+
+  // 2. Si non connecté : afficher directement la page de connexion (Google ou Email)
+  if (!isAuthenticated) {
+    return <AuthPage />;
+  }
+
+  // 2.5 Si connecté avec Google mais sans mot de passe ni questions de sécurité : configuration obligatoire
+  if (needsSecuritySetup) {
+    return <GoogleSecuritySetupPage />;
+  }
+
+  // 3. Si connecté mais profil incomplet : afficher le formulaire d'onboarding obligatoire
+  if (needsOnboarding) {
+    return <OnboardingPage />;
+  }
 
   // If viewing a share link (e.g. #share=folder-id)
   if (shareId) {
@@ -774,7 +935,10 @@ export default function App() {
       {activeQRCodeFolder && (
         <QRCodeModal
           folderTitle={activeQRCodeFolder.title}
-          shareUrl={`${window.location.origin}/#share=${activeQRCodeFolder.id}`}
+          shareUrl={activeQRCodeFolder.shareUrl || `${window.location.origin}/#share=${activeQRCodeFolder.id}`}
+          shareCode={activeQRCodeFolder.shareCode}
+          country={activeQRCodeFolder.country}
+          isPublic={activeQRCodeFolder.isPublic}
           onClose={() => setActiveQRCodeFolder(null)}
         />
       )}

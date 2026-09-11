@@ -1,14 +1,25 @@
 import React from 'react';
-import { X, Copy, Check, Download, Share2, Smartphone } from 'lucide-react';
+import { X, Copy, Check, Download, Smartphone, Globe, Lock, QrCode } from 'lucide-react';
 
 interface QRCodeModalProps {
   folderTitle: string;
   shareUrl: string;
+  shareCode?: string;
+  country?: string;
+  isPublic?: boolean;
   onClose: () => void;
 }
 
-export const QRCodeModal: React.FC<QRCodeModalProps> = ({ folderTitle, shareUrl, onClose }) => {
+export const QRCodeModal: React.FC<QRCodeModalProps> = ({
+  folderTitle,
+  shareUrl,
+  shareCode,
+  country = "Côte d'Ivoire",
+  isPublic = true,
+  onClose,
+}) => {
   const [copied, setCopied] = React.useState(false);
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(shareUrl)}&margin=8`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(shareUrl);
@@ -16,57 +27,97 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({ folderTitle, shareUrl,
     setTimeout(() => setCopied(false), 2000);
   };
 
+  const handleDownloadQR = () => {
+    const link = document.createElement('a');
+    link.href = qrImageUrl;
+    link.download = `QRCode-${shareCode || 'Share'}.png`;
+    link.target = '_blank';
+    document.body.appendChild(link);
+    link.click();
+    document.body.removeChild(link);
+  };
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-xs p-4 animate-fadeIn">
-      <div className="bg-[#FDFBF7] border-3 border-stone-800 rounded-2xl shadow-[6px_6px_0px_0px_#1c1917] max-w-md w-full p-6 relative">
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-xs p-4 animate-fadeIn">
+      <div className="bg-[#FDFBF7] border-3 border-stone-800 rounded-3xl shadow-[8px_8px_0px_0px_#1c1917] max-w-md w-full p-6 relative">
         <button
           onClick={onClose}
-          className="absolute top-4 right-4 p-2 hover:bg-stone-200 rounded-xl transition-colors text-stone-700"
+          className="absolute top-4 right-4 p-1.5 hover:bg-stone-200 rounded-xl transition-colors text-stone-700 border-2 border-stone-800 bg-[#F5F1E9] shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
         >
-          <X className="w-5 h-5" />
+          <X className="w-4 h-4" />
         </button>
 
-        <div className="text-center mb-6">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-orange-100 border-2 border-stone-800 rounded-xl text-orange-600 mb-3 shadow-[2px_2px_0px_0px_#1c1917]">
-            <Smartphone className="w-6 h-6" />
+        <div className="text-center mb-5">
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-orange-100 border-2 border-stone-800 rounded-2xl text-orange-600 mb-3 shadow-[3px_3px_0px_0px_#1c1917]">
+            <QrCode className="w-6 h-6" />
           </div>
-          <h3 className="text-xl font-bold text-stone-900">Scanner pour télécharger</h3>
-          <p className="text-sm text-stone-600 mt-1 line-clamp-1 px-2">{folderTitle}</p>
+          <h3 className="text-lg font-extrabold text-stone-900">Scanner pour accéder & télécharger</h3>
+          <p className="text-xs text-stone-600 mt-1 line-clamp-1 px-2 font-medium">{folderTitle}</p>
+
+          <div className="flex items-center justify-center gap-2 mt-2.5">
+            {shareCode && (
+              <span className="text-[10px] font-mono font-black bg-stone-900 text-amber-400 px-2 py-0.5 rounded-lg border border-stone-800">
+                Code : {shareCode}
+              </span>
+            )}
+            <span className="text-[10px] font-bold bg-white text-stone-700 px-2 py-0.5 rounded-lg border border-stone-400 flex items-center gap-1">
+              <span>📍</span> {country}
+            </span>
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+              isPublic
+                ? 'bg-emerald-100 text-emerald-800 border-emerald-400'
+                : 'bg-amber-100 text-amber-800 border-amber-400'
+            }`}>
+              {isPublic ? '🌐 Public' : '🔒 Privé'}
+            </span>
+          </div>
         </div>
 
-        {/* QR Code visual representation using CSS grid / SVG or reliable pattern */}
-        <div className="bg-white border-3 border-stone-800 rounded-xl p-6 flex flex-col items-center justify-center shadow-[inset_2px_2px_0px_0px_rgba(0,0,0,0.05)] mb-6">
-          <div className="w-48 h-48 bg-stone-900 rounded-lg p-3 flex items-center justify-center relative group">
-            {/* Simulated QR Code matrix pattern with SVG */}
-            <svg viewBox="0 0 24 24" className="w-full h-full text-white fill-current">
-              <path d="M2,2H10V10H2V2M4,4V8H8V4H4M14,2H22V10H14V2M16,4V8H20V4H16M2,14H10V22H2V14M4,16V20H8V16H4M18,14V18H22V14H18M14,18H16V22H14V18M18,20H22V22H18V20M12,2H14V6H12V2M12,8H14V12H12V8M6,12H8V14H6V12M10,12H12V14H10V12M16,12H20V14H16V12M12,14H14V18H12V14M12,20H14V22H12V20Z" />
-            </svg>
-            <div className="absolute inset-0 bg-stone-900/10 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-lg">
-              <span className="bg-stone-900 text-white text-xs px-2 py-1 rounded font-medium">Prêt pour mobile</span>
-            </div>
+        {/* Real QR Code Generator View */}
+        <div className="bg-white border-3 border-stone-800 rounded-2xl p-5 flex flex-col items-center justify-center shadow-[4px_4px_0px_0px_#1c1917] mb-5">
+          <div className="w-52 h-52 bg-white rounded-xl p-2 flex items-center justify-center border-2 border-stone-200">
+            <img
+              src={qrImageUrl}
+              alt="Code QR de partage"
+              className="w-full h-full object-contain"
+              loading="lazy"
+            />
           </div>
-          <span className="text-xs text-stone-500 mt-3 font-mono">Lien sécurisé chiffré</span>
+          <div className="flex items-center gap-2 mt-3 text-xs font-mono font-bold text-stone-700">
+            <Smartphone className="w-3.5 h-3.5 text-orange-600" />
+            <span>Scan instantané via appareil photo</span>
+          </div>
         </div>
 
         <div className="space-y-3">
-          <div className="flex items-center gap-2 bg-stone-100 border-2 border-stone-800 rounded-xl p-2.5">
+          <div className="flex items-center gap-2 bg-stone-100 border-2 border-stone-800 rounded-xl p-2.5 shadow-[2px_2px_0px_0px_#1c1917]">
             <input
               type="text"
               readOnly
               value={shareUrl}
-              className="bg-transparent text-xs text-stone-700 flex-1 px-1 outline-none font-mono truncate"
+              className="bg-transparent text-xs text-stone-800 flex-1 px-1 outline-none font-mono truncate font-medium"
             />
             <button
               onClick={handleCopy}
-              className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center gap-1.5 transition-all active:translate-x-0.5 active:translate-y-0.5"
+              className="bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-3 py-1.5 rounded-lg border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center gap-1.5 transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer shrink-0"
             >
               {copied ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-              {copied ? 'Copié !' : 'Copier'}
+              <span>{copied ? 'Copié !' : 'Copier'}</span>
             </button>
           </div>
 
-          <p className="text-xs text-stone-500 text-center">
-            Les camarades peuvent scanner ce code avec l'appareil photo de leur téléphone pour accéder instantanément au dossier.
+          <div className="flex items-center gap-2 pt-1">
+            <button
+              onClick={handleDownloadQR}
+              className="w-full bg-white hover:bg-stone-50 text-stone-900 font-bold text-xs py-2.5 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center gap-2 transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            >
+              <Download className="w-4 h-4 text-orange-600" />
+              <span>Télécharger l'image QR</span>
+            </button>
+          </div>
+
+          <p className="text-[11px] text-stone-500 text-center font-medium">
+            Scannable par n'importe quel smartphone avec appareil photo ou application de QR code.
           </p>
         </div>
       </div>

@@ -2,6 +2,7 @@ import React, { useState } from 'react';
 import { Folder, FileText, Download, Share2, QrCode, Copy, Check, Lock, Unlock, Globe, Eye, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 import { SharedFolder } from '../types';
 import { FileIconBadge } from './FileIconBadge';
+import { StudyCloudAPI } from '../services/api';
 
 interface FolderCardProps {
   folder: SharedFolder;
@@ -60,17 +61,19 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
           ...folder,
           description: commentInput.trim(),
           isPasswordProtected: false,
+          isPublic: true,
         };
         if (onUpdateFolder) {
           onUpdateFolder(updated);
         }
+        StudyCloudAPI.toggleSharePublic(folder.id, true).catch(() => {});
         setPublishingState('idle');
         setShowPublishModal(false);
       }, 1000);
-    }, 3000);
+    }, 1500);
   };
 
-  const isPublic = !folder.isPasswordProtected;
+  const isPublic = folder.isPublic !== undefined ? folder.isPublic : !folder.isPasswordProtected;
 
   return (
     <div
@@ -184,10 +187,12 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
                       const updated: SharedFolder = {
                         ...folder,
                         isPasswordProtected: true,
+                        isPublic: false,
                       };
                       if (onUpdateFolder) {
                         onUpdateFolder(updated);
                       }
+                      StudyCloudAPI.toggleSharePublic(folder.id, false).catch(() => {});
                       setShowPublishModal(false);
                     }}
                     className="w-full bg-amber-100 hover:bg-amber-200 text-amber-900 text-xs font-bold py-2 px-3 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
@@ -206,7 +211,7 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
                     onClick={handlePublish}
                     className="flex-1 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold py-2 px-3 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
                   >
-                    {isPublic ? 'Mettre à jour' : 'Publier'}
+                    {isPublic ? 'Mettre à jour' : 'Rendre public'}
                   </button>
                 </div>
               </div>
@@ -219,9 +224,21 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
         {/* Top badges */}
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex flex-col gap-1">
-            <span className="text-xs font-bold px-3 py-1 bg-orange-100 border-2 border-stone-800 rounded-lg text-orange-700 shadow-[2px_2px_0px_0px_#1c1917] truncate max-w-[200px]" title={folder.title}>
-              {folder.title}
-            </span>
+            <div className="flex items-center gap-1.5 flex-wrap">
+              <span className="text-xs font-bold px-3 py-1 bg-orange-100 border-2 border-stone-800 rounded-lg text-orange-700 shadow-[2px_2px_0px_0px_#1c1917] truncate max-w-[180px]" title={folder.title}>
+                {folder.title}
+              </span>
+              {folder.shareCode && (
+                <span className="text-[10px] font-mono font-black px-2 py-0.5 bg-stone-900 text-amber-400 border border-stone-800 rounded-lg shadow-xs" title={`Code unique : ${folder.shareCode}`}>
+                  {folder.shareCode}
+                </span>
+              )}
+            </div>
+            {folder.country && (
+              <span className="text-[10px] text-stone-500 font-medium flex items-center gap-1">
+                <span>📍</span> {folder.country}
+              </span>
+            )}
           </div>
           <div className="flex items-start gap-3">
             <span className="text-xs font-mono text-stone-600 font-bold mt-1">
@@ -241,7 +258,7 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
                       ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
                       : 'bg-[#FFF3D6] hover:bg-[#ffe8b3] text-amber-800'
                   }`}
-                  title={isPublic ? 'Lien public (Cliquer pour modifier)' : 'Rendre ce lien public'}
+                  title={isPublic ? 'Lien public (Cliquer pour modifier ou repasser en privé)' : 'Rendre ce lien public'}
                 >
                   {isPublic ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                 </button>

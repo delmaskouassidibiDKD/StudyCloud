@@ -43,6 +43,20 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   return response.json();
 }
 
+// Helper spécialement pour les routes d'auth (utilise Authorization Bearer)
+async function requestAuth<T = any>(endpoint: string, options: RequestInit = {}, token?: string): Promise<T> {
+  const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+  const url = `${baseUrl}${endpoint}`;
+  const headers: Record<string, string> = { 'Content-Type': 'application/json' };
+  if (token) headers['Authorization'] = `Bearer ${token}`;
+  const response = await fetch(url, { ...options, headers: { ...headers, ...(options.headers as any || {}) } });
+  const data = await response.json().catch(() => ({ error: response.statusText }));
+  if (!response.ok && response.status !== 409) {
+    throw new Error((data as any).error || `Erreur ${response.status}`);
+  }
+  return data as T;
+}
+
 export const StudyCloudAPI = {
   // --------------------------------------------------------------------------
   // Santé & Connexion
@@ -52,9 +66,82 @@ export const StudyCloudAPI = {
   },
 
   // --------------------------------------------------------------------------
+  // Authentification (routes /api/auth/*)
+  // --------------------------------------------------------------------------
+  async register(data: {
+    name: string;
+    email: string;
+    password: string;
+    securityQuestion1?: string;
+    securityAnswer1?: string;
+    securityQuestion2?: string;
+    securityAnswer2?: string;
+  }) {
+    return requestAuth('/api/auth/register', { method: 'POST', body: JSON.stringify(data) });
+  },
+
+  async resendVerification(email: string) {
+    return requestAuth('/api/auth/resend-verification', { method: 'POST', body: JSON.stringify({ email }) });
+  },
+
+  async verifyEmail(token: string) {
+    return requestAuth(`/api/auth/verify-email?token=${encodeURIComponent(token)}`, { method: 'GET' });
+  },
+
+  async login(data: { email: string; password: string }) {
+    return requestAuth('/api/auth/login', { method: 'POST', body: JSON.stringify(data) });
+  },
+
+  async initForgotPassword(email: string) {
+    return requestAuth('/api/auth/forgot-password/init', { method: 'POST', body: JSON.stringify({ email }) });
+  },
+
+  async verifySecurityAnswers(data: { email: string; answer1: string; answer2?: string }) {
+    return requestAuth('/api/auth/forgot-password/verify-answers', { method: 'POST', body: JSON.stringify(data) });
+  },
+
+  async sendPasswordResetCode(data: { email: string; targetEmail: string; resetSessionToken: string }) {
+    return requestAuth('/api/auth/forgot-password/send-code', { method: 'POST', body: JSON.stringify(data) });
+  },
+
+  async resetPassword(data: { email: string; code: string; newPassword: string }) {
+    return requestAuth('/api/auth/reset-password', { method: 'POST', body: JSON.stringify(data) });
+  },
+
+  async googleAuth(data: { code: string; redirectUri: string }) {
+    return requestAuth('/api/auth/google', { method: 'POST', body: JSON.stringify(data) });
+  },
+
+  async logout(token: string) {
+    return requestAuth('/api/auth/logout', { method: 'POST' }, token);
+  },
+
+  async getMe(token: string) {
+    return requestAuth('/api/auth/me', { method: 'GET' }, token);
+  },
+
+  async completeOnboarding(token: string, data: {
+    name?: string; school: string; filiere: string; level?: string;
+    country: string; phone?: string; bio?: string; avatarUrl?: string;
+  }) {
+    return requestAuth('/api/auth/onboarding', { method: 'PUT', body: JSON.stringify(data) }, token);
+  },
+
+  async setupSecurity(token: string, data: {
+    name: string;
+    password: string;
+    securityQuestion1: string;
+    securityAnswer1: string;
+    securityQuestion2: string;
+    securityAnswer2: string;
+  }) {
+    return requestAuth('/api/auth/setup-security', { method: 'POST', body: JSON.stringify(data) }, token);
+  },
+
+  // --------------------------------------------------------------------------
   // Utilisateurs & Profil
   // --------------------------------------------------------------------------
-  async syncUser(user: { id: string; name: string; email: string; school?: string; filiere?: string; avatarUrl?: string }) {
+  async syncUser(user: { id: string; name: string; email: string; school?: string; filiere?: string; country?: string; avatarUrl?: string }) {
     return request('/api/users/sync', { method: 'POST', body: JSON.stringify(user) });
   },
 
@@ -134,22 +221,65 @@ export const StudyCloudAPI = {
   },
 
   // --------------------------------------------------------------------------
-  // Partages
+  // Partages (Stock de liens & QR Codes)
   // --------------------------------------------------------------------------
-  async getShares(userId: string) {
-    return request<{ success: boolean; data: any[] }>(`/api/shares?userId=${encodeURIComponent(userId)}`);
+  async getShares(userId?: string, publicOnly?: boolean) {
+    let endpoint = '/api/shares';
+    const params: string[] = [];
+    if (userId) params.push(`userId=${encodeURIComponent(userId)}`);
+    if (publicOnly) params.push('publicOnly=true');
+    if (params.length > 0) endpoint += `?${params.join('&')}`;
+    return request<{ success: boolean; data: any[] }>(endpoint);
   },
 
-  async createShare(share: any) {
+  async createShare(share: {
+    id: string;
+    userId: string;
+    title: string;
+    description?: string;
+    category?: string;
+    authorName?: string;
+    school?: string;
+    country?: string;
+    isPublic?: boolean;
+    isPasswordProtected?: boolean;
+    passwordHash?: string | null;
+    allowDownload?: boolean;
+    shareCode?: string;
+    shareUrl?: string;
+    qrCodeData?: string;
+    totalSize?: number;
+    files?: any[];
+  }) {
     return request('/api/shares', { method: 'POST', body: JSON.stringify(share) });
   },
 
   async getShareDetail(id: string) {
-    return request<{ success: boolean; data: any }>(`/api/shares/${id}`);
+    return request<{ success: boolean; data: any }>(`/api/shares/${encodeURIComponent(id)}`);
+  },
+
+  async getShareByCode(shareCode: string) {
+    return request<{ success: boolean; data: any }>(`/api/shares/code/${encodeURIComponent(shareCode)}`);
+  },
+
+  async toggleSharePublic(shareId: string, isPublic: boolean, allowDownload = true) {
+    return request<{ success: boolean; message: string; isPublic: boolean; allowDownload: boolean }>(
+      `/api/shares/${encodeURIComponent(shareId)}/public`,
+      {
+        method: 'PUT',
+        body: JSON.stringify({ isPublic, allowDownload }),
+      }
+    );
+  },
+
+  async deleteShare(shareId: string) {
+    return request<{ success: boolean; message: string }>(`/api/shares/${encodeURIComponent(shareId)}`, {
+      method: 'DELETE',
+    });
   },
 
   async verifySharePin(id: string, pin: string) {
-    return request<{ success: boolean; data: any }>(`/api/shares/${id}/verify-pin`, {
+    return request<{ success: boolean; data: any }>(`/api/shares/${encodeURIComponent(id)}/verify-pin`, {
       method: 'POST',
       body: JSON.stringify({ pin }),
     });
@@ -259,19 +389,66 @@ export const StudyCloudAPI = {
   },
 
   // --------------------------------------------------------------------------
-  // Publications Universitaires
+  // Publications Universitaires (Bibliothèque & Ressources)
   // --------------------------------------------------------------------------
-  async getPublishedDocuments(school?: string, filiere?: string) {
+  async getPublishedDocuments(filters?: {
+    school?: string;
+    filiere?: string;
+    country?: string;
+    category?: string;
+    matiereName?: string;
+    level?: string;
+    search?: string;
+    isPublic?: boolean;
+  }) {
     let endpoint = '/api/published-documents';
     const params: string[] = [];
-    if (school) params.push(`school=${encodeURIComponent(school)}`);
-    if (filiere) params.push(`filiere=${encodeURIComponent(filiere)}`);
+    if (filters?.school) params.push(`school=${encodeURIComponent(filters.school)}`);
+    if (filters?.filiere) params.push(`filiere=${encodeURIComponent(filters.filiere)}`);
+    if (filters?.country) params.push(`country=${encodeURIComponent(filters.country)}`);
+    if (filters?.category) params.push(`category=${encodeURIComponent(filters.category)}`);
+    if (filters?.matiereName) params.push(`matiereName=${encodeURIComponent(filters.matiereName)}`);
+    if (filters?.level) params.push(`level=${encodeURIComponent(filters.level)}`);
+    if (filters?.search) params.push(`search=${encodeURIComponent(filters.search)}`);
+    if (filters?.isPublic !== undefined) params.push(`isPublic=${filters.isPublic ? '1' : '0'}`);
     if (params.length > 0) endpoint += `?${params.join('&')}`;
     return request<{ success: boolean; data: any[] }>(endpoint);
   },
 
-  async publishDocument(doc: any) {
+  async publishDocument(doc: {
+    id?: string;
+    userId: string;
+    title: string;
+    description?: string;
+    school?: string;
+    filiere?: string;
+    matiereName?: string;
+    level?: string;
+    category?: string;
+    authorName?: string;
+    country?: string;
+    infoMode?: string;
+    fileName: string;
+    fileSize?: number;
+    fileType?: string;
+    r2Key?: string | null;
+    fileUrl?: string;
+    isPublic?: boolean;
+    tagsJson?: string;
+  }) {
     return request('/api/published-documents', { method: 'POST', body: JSON.stringify(doc) });
+  },
+
+  async incrementDocumentView(id: string) {
+    return request(`/api/published-documents/${encodeURIComponent(id)}/view`, { method: 'POST' });
+  },
+
+  async incrementDocumentDownload(id: string) {
+    return request(`/api/published-documents/${encodeURIComponent(id)}/download`, { method: 'POST' });
+  },
+
+  async deletePublishedDocument(id: string) {
+    return request(`/api/published-documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 
   // --------------------------------------------------------------------------

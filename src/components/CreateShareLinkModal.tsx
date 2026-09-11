@@ -1,11 +1,17 @@
 import React, { useState } from 'react';
-import { X, Loader2, Share2, FileText, Image as ImageIcon, Music, File as FileIcon, Copy, Check } from 'lucide-react';
+import { X, Loader2, Share2, FileText, Image as ImageIcon, Music, File as FileIcon, Copy, Check, Globe, QrCode } from 'lucide-react';
 import { SharedFolder } from '../types';
 
 interface CreateShareLinkModalProps {
   uploadedItems: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[];
   onClose: () => void;
-  onStartBackgroundCreation: (linkName: string, comment: string, items: any[], onComplete?: (folder: SharedFolder) => void) => void;
+  onStartBackgroundCreation: (
+    linkName: string,
+    comment: string,
+    items: any[],
+    onComplete?: (folder: SharedFolder) => void,
+    isPublic?: boolean
+  ) => void;
 }
 
 export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
@@ -15,10 +21,13 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
 }) => {
   const [linkName, setLinkName] = useState('');
   const [comment, setComment] = useState('');
+  const [isPublic, setIsPublic] = useState(true);
   const [isCreating, setIsCreating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [createdFolder, setCreatedFolder] = useState<SharedFolder | null>(null);
   const [copied, setCopied] = useState(false);
+
+  const country = localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire";
 
   // Calculate stats by type and extension
   const typeCounts: { [key: string]: { count: number; icon: React.ReactNode; label: string } } = {
@@ -57,10 +66,10 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
     onStartBackgroundCreation(linkName, comment, uploadedItems, (folder) => {
       setIsCreating(false);
       setCreatedFolder(folder);
-    });
+    }, isPublic);
   };
 
-  const shareableUrl = createdFolder ? `${window.location.origin}/share/${createdFolder.id}` : '';
+  const shareableUrl = createdFolder?.shareUrl || (createdFolder ? `${window.location.origin}/#share=${createdFolder.id}` : '');
 
   const handleCopy = () => {
     if (shareableUrl) {
@@ -71,7 +80,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] overflow-y-auto p-4 flex items-start sm:items-center justify-center bg-black/50 backdrop-blur-xs">
+    <div className="fixed inset-0 z-[9999] overflow-y-auto p-4 flex items-start sm:items-center justify-center bg-black/50 backdrop-blur-xs animate-fadeIn">
       <div className="bg-[#FDFBF7] border-3 border-stone-800 rounded-3xl p-6 md:p-8 w-full max-w-md shadow-[8px_8px_0px_0px_#1c1917] relative my-auto">
         <button
           onClick={onClose}
@@ -89,26 +98,43 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
             </div>
             <div className="space-y-2">
               <h3 className="text-lg font-extrabold text-stone-900">Lien en cours de création</h3>
-              <p className="text-xs text-stone-600">Veuillez patienter pendant la génération de votre lien de partage sécurisé...</p>
+              <p className="text-xs text-stone-600">Génération du lien unique, code QR et configuration de l'accès...</p>
             </div>
             <div className="bg-orange-50 border-2 border-stone-800 rounded-2xl p-3 text-xs text-orange-900 font-medium shadow-[2px_2px_0px_0px_#1c1917]">
-              💡 Vous pouvez sortir, un message vous sera envoyé quand ça sera créé.
+              💡 Vous pouvez continuer vos activités, un message vous notifiera une fois terminé.
             </div>
           </div>
         ) : createdFolder ? (
-          <div className="space-y-5">
+          <div className="space-y-4">
             <div className="flex items-center gap-3 pb-3 border-b-2 border-stone-300">
               <div className="w-10 h-10 bg-emerald-500 border-2 border-stone-800 rounded-xl flex items-center justify-center text-white shadow-[2px_2px_0px_0px_#1c1917]">
                 <Check className="w-5 h-5" />
               </div>
               <div>
                 <h3 className="font-extrabold text-base text-stone-900">Lien créé avec succès !</h3>
-                <p className="text-xs text-stone-600">Votre partage est maintenant actif</p>
+                <p className="text-xs text-stone-600">Votre partage est rattaché à votre compte</p>
               </div>
             </div>
 
+            {/* Badges: Unique code + Country + Public */}
+            <div className="flex flex-wrap items-center gap-2">
+              <span className="text-xs font-mono font-black bg-stone-900 text-amber-400 px-2.5 py-1 rounded-xl border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917]">
+                Code : {createdFolder.shareCode || 'DKD-SHARE'}
+              </span>
+              <span className="text-xs font-bold bg-white text-stone-800 px-2.5 py-1 rounded-xl border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1">
+                <span>📍</span> {createdFolder.country || country}
+              </span>
+              <span className={`text-xs font-bold px-2.5 py-1 rounded-xl border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] ${
+                createdFolder.isPublic !== false
+                  ? 'bg-emerald-100 text-emerald-900'
+                  : 'bg-amber-100 text-amber-900'
+              }`}>
+                {createdFolder.isPublic !== false ? '🌐 Public à tous' : '🔒 Privé'}
+              </span>
+            </div>
+
             {/* Non-editable link name */}
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <label className="block text-xs font-bold uppercase tracking-wider text-stone-800">
                 Nom du lien
               </label>
@@ -116,12 +142,12 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
                 type="text"
                 value={createdFolder.title}
                 readOnly
-                className="w-full bg-stone-100 border-2 border-stone-800 rounded-xl px-3.5 py-2.5 text-sm font-bold text-stone-800 outline-none select-all"
+                className="w-full bg-stone-100 border-2 border-stone-800 rounded-xl px-3.5 py-2 text-sm font-bold text-stone-800 outline-none select-all"
               />
             </div>
 
             {/* Link URL with copy */}
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <label className="block text-xs font-bold uppercase tracking-wider text-stone-800">
                 Lien de partage unique
               </label>
@@ -130,11 +156,11 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
                   type="text"
                   value={shareableUrl}
                   readOnly
-                  className="w-full bg-white border-2 border-stone-800 rounded-xl px-3.5 py-2.5 text-xs font-medium text-stone-700 outline-none"
+                  className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-2 text-xs font-medium text-stone-700 outline-none select-all"
                 />
                 <button
                   onClick={handleCopy}
-                  className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer shrink-0 flex items-center gap-1.5"
+                  className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-3.5 py-2 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer shrink-0 flex items-center gap-1.5"
                 >
                   {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
                   <span>{copied ? 'Copié' : 'Copier'}</span>
@@ -143,15 +169,16 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
             </div>
 
             {/* Footer Information */}
-            <div className="bg-[#F5F1E9] border-2 border-stone-800 rounded-2xl p-3.5 text-xs text-stone-700 shadow-[2px_2px_0px_0px_#1c1917]">
-              📌 Vous retrouverez votre lien dans le menu Partagés (stockage de liens).
+            <div className="bg-[#F5F1E9] border-2 border-stone-800 rounded-2xl p-3 text-xs text-stone-700 shadow-[2px_2px_0px_0px_#1c1917] flex items-center gap-2">
+              <QrCode className="w-5 h-5 text-orange-600 shrink-0" />
+              <span>Retrouvez ce lien et son <strong>Code QR</strong> dans le menu <strong>Partagés (stock de liens)</strong>.</span>
             </div>
 
             <button
               onClick={onClose}
               className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs py-3 rounded-xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
             >
-              Fermer
+              Terminer
             </button>
           </div>
         ) : (
@@ -161,13 +188,13 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
                 <Share2 className="w-5 h-5" />
               </div>
               <div>
-                <h3 className="font-extrabold text-base text-stone-900">Créer le lien de partage</h3>
+                <h3 className="font-extrabold text-base text-stone-900">Créer un lien de partage unique</h3>
                 <p className="text-xs text-stone-600">Total : {totalItems} élément{totalItems > 1 ? 's' : ''} lié{totalItems > 1 ? 's' : ''}</p>
               </div>
             </div>
 
             {/* Link Name Input */}
-            <div className="space-y-1.5">
+            <div className="space-y-1">
               <label className="block text-xs font-bold uppercase tracking-wider text-stone-800">
                 Nom du lien <span className="text-red-600">*</span>
               </label>
@@ -178,31 +205,48 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
                   setLinkName(e.target.value);
                   if (e.target.value.trim()) setErrorMsg('');
                 }}
-                placeholder="Ex: TP1 Algorithmique & Structures..."
+                placeholder="Ex: TD Électrotechnique & Schémas..."
                 className="w-full bg-white border-2 border-stone-800 rounded-xl px-3.5 py-2.5 text-sm font-medium outline-none shadow-[2px_2px_0px_0px_#1c1917]"
               />
               {errorMsg && <p className="text-xs text-red-600 font-bold">{errorMsg}</p>}
             </div>
 
-            {/* Comment Input (max 20 characters) */}
-            <div className="space-y-1.5">
+            {/* Comment Input (max 30 characters) */}
+            <div className="space-y-1">
               <div className="flex justify-between items-center">
                 <label className="block text-xs font-bold uppercase tracking-wider text-stone-800">
                   Commentaire <span className="text-stone-500 font-normal normal-case">(facultatif)</span>
                 </label>
-                <span className={`text-[10px] font-bold ${comment.length === 20 ? 'text-red-600' : 'text-stone-500'}`}>
-                  {comment.length}/20 car.
+                <span className={`text-[10px] font-bold ${comment.length === 30 ? 'text-red-600' : 'text-stone-500'}`}>
+                  {comment.length}/30 car.
                 </span>
               </div>
               <input
                 type="text"
-                maxLength={20}
+                maxLength={30}
                 value={comment}
                 onChange={(e) => setComment(e.target.value)}
                 placeholder="Ex: Important, à lire..."
                 className="w-full bg-white border-2 border-stone-800 rounded-xl px-3.5 py-2.5 text-sm font-medium outline-none shadow-[2px_2px_0px_0px_#1c1917]"
               />
             </div>
+
+            {/* Public Toggle Checkbox */}
+            <label className="flex items-center justify-between p-3 bg-white hover:bg-stone-50 border-2 border-stone-800 rounded-xl shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer transition-colors">
+              <div className="flex items-center gap-2.5">
+                <Globe className="w-4 h-4 text-emerald-600 shrink-0" />
+                <div>
+                  <span className="block text-xs font-extrabold text-stone-900">Rendre ce lien public à tous</span>
+                  <span className="block text-[10px] text-stone-500 font-medium">Visible par tous les étudiants ({country})</span>
+                </div>
+              </div>
+              <input
+                type="checkbox"
+                checked={isPublic}
+                onChange={(e) => setIsPublic(e.target.checked)}
+                className="w-4 h-4 accent-orange-600 rounded cursor-pointer"
+              />
+            </label>
 
             {/* Bottom Summary */}
             <div className="bg-stone-100 border-2 border-stone-800 rounded-2xl p-3 space-y-1 shadow-[2px_2px_0px_0px_#1c1917]">
@@ -214,7 +258,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
 
             {/* Top Summary */}
             <div className="bg-[#F5F1E9] border-2 border-stone-800 rounded-2xl p-3 shadow-[2px_2px_0px_0px_#1c1917] space-y-1.5">
-              <p className="text-xs font-bold text-stone-800 uppercase tracking-wider">Résumé supérieur</p>
+              <p className="text-xs font-bold text-stone-800 uppercase tracking-wider">Résumé des types</p>
               <div className="grid grid-cols-2 gap-2 text-xs text-stone-700 font-medium">
                 <div className="flex items-center gap-1.5">
                   {typeCounts.PDF.icon}

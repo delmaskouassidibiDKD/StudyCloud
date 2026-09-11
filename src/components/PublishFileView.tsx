@@ -1,9 +1,10 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Upload, CheckCircle2, X, FileText, Table, Presentation, Plus, RefreshCw } from 'lucide-react';
+import { ArrowLeft, Upload, CheckCircle2, X, FileText, Table, Presentation, Plus, RefreshCw, Globe, Tag, GraduationCap, BookOpen } from 'lucide-react';
 import { FileIconBadge } from './FileIconBadge';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
+import { StudyCloudAPI } from '../services/api';
 
 // Configure worker for PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
@@ -30,8 +31,17 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   const [infoMode, setInfoMode] = useState<'all' | 'individual' | 'none'>(() => {
     return (localStorage.getItem('published_info_mode') as any) || 'all';
   });
+  // Nouveaux champs de publication
+  const [docTitle, setDocTitle] = useState(() => localStorage.getItem('published_doc_title') || '');
+  const [docDescription, setDocDescription] = useState(() => localStorage.getItem('published_doc_description') || '');
+  const [docCategory, setDocCategory] = useState(() => localStorage.getItem('published_doc_category') || 'Cours');
+  const [docMatiere, setDocMatiere] = useState(() => localStorage.getItem('published_doc_matiere') || '');
+  const [docLevel, setDocLevel] = useState(() => localStorage.getItem('published_doc_level') || '');
+  const [docCountry, setDocCountry] = useState(() => localStorage.getItem('published_doc_country') || localStorage.getItem('user_country') || "Côte d'Ivoire");
+  const [docTags, setDocTags] = useState(() => localStorage.getItem('published_doc_tags') || '');
   const [isPublishing, setIsPublishing] = useState(false);
   const [success, setSuccess] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
 
   useEffect(() => {
     try {
@@ -55,10 +65,17 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       localStorage.setItem('published_school', school);
       localStorage.setItem('published_filiere', filiere);
       localStorage.setItem('published_info_mode', infoMode);
+      localStorage.setItem('published_doc_title', docTitle);
+      localStorage.setItem('published_doc_description', docDescription);
+      localStorage.setItem('published_doc_category', docCategory);
+      localStorage.setItem('published_doc_matiere', docMatiere);
+      localStorage.setItem('published_doc_level', docLevel);
+      localStorage.setItem('published_doc_country', docCountry);
+      localStorage.setItem('published_doc_tags', docTags);
     } catch (e) {
       console.error(e);
     }
-  }, [school, filiere, infoMode]);
+  }, [school, filiere, infoMode, docTitle, docDescription, docCategory, docMatiere, docLevel, docCountry, docTags]);
 
   useEffect(() => {
     if (selectedFiles.length > 0 && containerRef.current) {
@@ -70,6 +87,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       }, 150);
     }
   }, [selectedFiles.length]);
+
+  // Map pour stocker les fichiers bruts (non sérialisables) par ID
+  const rawFileMap = useRef<Map<string, File>>(new Map());
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
@@ -84,13 +104,17 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         const isText = file.type.startsWith('text/') || fileNameLower.endsWith('.txt') || fileNameLower.endsWith('.md') || fileNameLower.endsWith('.json');
 
         const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[_-_]/g, ' ');
+        // Générer un ID unique par fichier dès le départ pour l'upload R2
+        const fileId = Math.random().toString(36).substring(2, 9);
+        rawFileMap.current.set(fileId, file);
+
 
         if (isImage) {
           const reader = new FileReader();
           reader.onload = (uploadEvent) => {
             const resultUrl = uploadEvent.target?.result as string || '';
             const newFileObj = {
-              id: Math.random().toString(36).substring(2, 9),
+              id: fileId,
               name: file.name,
               size: file.size,
               type: file.type || 'image/png',
@@ -123,7 +147,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   const imageUrl = canvas.toDataURL('image/png');
 
                   const newFileObj = {
-                    id: Math.random().toString(36).substring(2, 9),
+                    id: fileId,
                     name: file.name,
                     size: file.size,
                     type: file.type || 'application/pdf',
@@ -142,7 +166,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
             }
 
             const newFileObj = {
-              id: Math.random().toString(36).substring(2, 9),
+              id: fileId,
               name: file.name,
               size: file.size,
               type: file.type || 'application/pdf',
@@ -164,7 +188,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 const result = await mammoth.extractRawText({ arrayBuffer });
                 const text = result.value || '';
                 const newFileObj = {
-                  id: Math.random().toString(36).substring(2, 9),
+                  id: fileId,
                   name: file.name,
                   size: file.size,
                   type: file.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
@@ -182,7 +206,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
             }
 
             const newFileObj = {
-              id: Math.random().toString(36).substring(2, 9),
+              id: fileId,
               name: file.name,
               size: file.size,
               type: file.type || 'application/msword',
@@ -208,7 +232,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 const rows = jsonData.slice(0, 6).map((r) => r.slice(0, 4));
 
                 const newFileObj = {
-                  id: Math.random().toString(36).substring(2, 9),
+                  id: fileId,
                   name: file.name,
                   size: file.size,
                   type: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
@@ -226,7 +250,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
             }
 
             const newFileObj = {
-              id: Math.random().toString(36).substring(2, 9),
+              id: fileId,
               name: file.name,
               size: file.size,
               type: file.type || 'application/vnd.ms-excel',
@@ -247,7 +271,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           const reader = new FileReader();
           reader.onload = () => {
             const newFileObj = {
-              id: Math.random().toString(36).substring(2, 9),
+              id: fileId,
               name: file.name,
               size: file.size,
               type: file.type || 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
@@ -265,7 +289,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           reader.onload = (uploadEvent) => {
             const text = uploadEvent.target?.result as string || '';
             const newFileObj = {
-              id: Math.random().toString(36).substring(2, 9),
+              id: fileId,
               name: file.name,
               size: file.size,
               type: file.type || 'text/plain',
@@ -282,7 +306,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           const reader = new FileReader();
           reader.onload = () => {
             const newFileObj = {
-              id: Math.random().toString(36).substring(2, 9),
+              id: fileId,
               name: file.name,
               size: file.size,
               type: file.type || 'application/octet-stream',
@@ -308,50 +332,92 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     localStorage.removeItem('published_selected_files');
     localStorage.removeItem('published_school');
     localStorage.removeItem('published_filiere');
+    localStorage.removeItem('published_doc_title');
+    localStorage.removeItem('published_doc_description');
+    localStorage.removeItem('published_doc_category');
+    localStorage.removeItem('published_doc_matiere');
+    localStorage.removeItem('published_doc_level');
+    localStorage.removeItem('published_doc_country');
+    localStorage.removeItem('published_doc_tags');
     onBack();
   };
 
-  const handlePublishAll = () => {
+  const handlePublishAll = async () => {
     if (selectedFiles.length === 0) return;
     setIsPublishing(true);
-    localStorage.removeItem('published_selected_files');
-    localStorage.removeItem('published_school');
-    localStorage.removeItem('published_filiere');
-    localStorage.removeItem('published_info_mode');
-    setTimeout(() => {
+    setPublishError(null);
+
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userName = localStorage.getItem('unifolder_user_name') || 'Étudiant';
+
+    try {
+      for (const file of selectedFiles) {
+        const fileSchool = infoMode === 'individual' ? (file.fileSchool || school) : (infoMode === 'all' ? school : '');
+        const fileFiliere = infoMode === 'individual' ? (file.fileFiliere || filiere) : (infoMode === 'all' ? filiere : '');
+        const title = docTitle || file.name.replace(/\.[^/.]+$/, '') || 'Document partagé';
+        const tagsArray = docTags ? docTags.split(',').map((t: string) => t.trim()).filter(Boolean) : [];
+
+        // Tenter d'uploader vers R2 si le fichier brut est disponible
+        let r2Key: string | null = null;
+        let fileUrl: string = '';
+        try {
+          const rawFile = rawFileMap.current.get(file.id);
+          if (rawFile) {
+            const key = `published/${userId}/${Date.now()}-${file.name}`;
+            const uploadResult = await StudyCloudAPI.uploadFileToR2(rawFile, key);
+            r2Key = uploadResult.key;
+            fileUrl = uploadResult.url;
+          }
+        } catch (uploadErr) {
+          console.warn('Upload R2 échoué (mode local):', uploadErr);
+        }
+
+        await StudyCloudAPI.publishDocument({
+          userId,
+          title,
+          description: docDescription || '',
+          school: fileSchool,
+          filiere: fileFiliere,
+          matiereName: docMatiere,
+          level: docLevel,
+          category: docCategory || 'Cours',
+          authorName: userName,
+          country: docCountry || "Côte d'Ivoire",
+          infoMode,
+          fileName: file.name,
+          fileSize: file.size,
+          fileType: file.type,
+          r2Key,
+          fileUrl,
+          isPublic: true,
+          tagsJson: JSON.stringify(tagsArray),
+        });
+      }
+
+      // Nettoyer le localStorage
+      ['published_selected_files','published_school','published_filiere','published_info_mode',
+       'published_doc_title','published_doc_description','published_doc_category',
+       'published_doc_matiere','published_doc_level','published_doc_country','published_doc_tags'
+      ].forEach(k => localStorage.removeItem(k));
+
       setIsPublishing(false);
       setSuccess(true);
+
       if (onPublish) {
-        let finalDesc = 'Fichiers importés depuis la vue de publication';
-        if (infoMode === 'all') {
-          const descParts = [];
-          if (school) descParts.push(`École : ${school}`);
-          if (filiere) descParts.push(`Filière : ${filiere}`);
-          if (descParts.length > 0) finalDesc = descParts.join(' | ');
-        } else if (infoMode === 'individual') {
-          const descParts = selectedFiles
-            .map(f => {
-              const parts = [];
-              if (f.fileSchool) parts.push(`École: ${f.fileSchool}`);
-              if (f.fileFiliere) parts.push(`Filière: ${f.fileFiliere}`);
-              return parts.length > 0 ? `${f.name} (${parts.join(' - ')})` : null;
-            })
-            .filter(Boolean);
-          if (descParts.length > 0) finalDesc = descParts.join(' | ');
-        } else {
-          finalDesc = 'Fichiers partagés (sans information d\'école)';
-        }
         onPublish(
-          selectedFiles[0]?.name || 'Document partagé',
-          finalDesc,
-          'Documents',
+          docTitle || selectedFiles[0]?.name || 'Document partagé',
+          docDescription || '',
+          docCategory || 'Cours',
           selectedFiles
         );
       }
-      setTimeout(() => {
-        onBack();
-      }, 500);
-    }, 3000);
+
+      setTimeout(() => { onBack(); }, 1500);
+    } catch (err: any) {
+      console.error('Erreur lors de la publication:', err);
+      setPublishError(err.message || 'Erreur lors de la publication. Vérifiez la connexion au Worker.');
+      setIsPublishing(false);
+    }
   };
 
   const formatSize = (bytes: number) => {
@@ -584,37 +650,109 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   </label>
                 </div>
 
-                {/* Conditional fields based on infoMode */}
-                {infoMode === 'all' && (
-                  <div className="mt-4 pt-3 border-t border-stone-300 flex flex-col sm:flex-row gap-3 max-w-lg">
+                {/* Champs de publication globaux */}
+                <div className="mt-4 pt-3 border-t border-stone-300 space-y-3">
+                  {/* Titre et description */}
+                  <div className="flex flex-col sm:flex-row gap-3">
                     <div className="flex-1">
-                      <label className="block text-[10px] font-bold text-stone-700 mb-1">École</label>
+                      <label className="block text-[10px] font-bold text-stone-700 mb-1 flex items-center gap-1"><BookOpen className="w-3 h-3" /> Titre du document</label>
                       <input
                         type="text"
-                        value={school}
-                        onChange={(e) => setSchool(e.target.value)}
-                        placeholder="Provenance de l'école..."
+                        value={docTitle}
+                        onChange={(e) => setDocTitle(e.target.value)}
+                        placeholder="Ex: Cours d'Électrotechnique S1..."
                         className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none"
                       />
                     </div>
                     <div className="flex-1">
-                      <label className="block text-[10px] font-bold text-stone-700 mb-1">Filière</label>
+                      <label className="block text-[10px] font-bold text-stone-700 mb-1">Description</label>
                       <input
                         type="text"
-                        value={filiere}
-                        onChange={(e) => setFiliere(e.target.value)}
-                        placeholder="Nom de la filière..."
+                        value={docDescription}
+                        onChange={(e) => setDocDescription(e.target.value)}
+                        placeholder="Courte description du document..."
                         className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none"
                       />
                     </div>
                   </div>
-                )}
 
-                {infoMode === 'none' && (
-                  <div className="mt-4 pt-3 border-t border-stone-300 text-xs text-stone-500 font-medium italic">
-                    Aucune information d'école ou de filière ne sera associée à ces fichiers.
+                  {/* Catégorie, Matière, Niveau */}
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-bold text-stone-700 mb-1">Catégorie</label>
+                      <select
+                        value={docCategory}
+                        onChange={(e) => setDocCategory(e.target.value)}
+                        className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none cursor-pointer"
+                      >
+                        {['Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet'].map(c => <option key={c} value={c}>{c}</option>)}
+                      </select>
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-bold text-stone-700 mb-1 flex items-center gap-1"><GraduationCap className="w-3 h-3" /> Matière</label>
+                      <input
+                        type="text"
+                        value={docMatiere}
+                        onChange={(e) => setDocMatiere(e.target.value)}
+                        placeholder="Ex: Mathématiques, Physique..."
+                        className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none"
+                      />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-bold text-stone-700 mb-1">Niveau</label>
+                      <input
+                        type="text"
+                        value={docLevel}
+                        onChange={(e) => setDocLevel(e.target.value)}
+                        placeholder="Ex: BTS 1, Licence 2..."
+                        className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none"
+                      />
+                    </div>
                   </div>
-                )}
+
+                  {/* Informations conditionnelles (École/Filière) */}
+                  {infoMode === 'all' && (
+                    <div className="flex flex-col sm:flex-row gap-3">
+                      <div className="flex-1">
+                        <label className="block text-[10px] font-bold text-stone-700 mb-1">École</label>
+                        <input type="text" value={school} onChange={(e) => setSchool(e.target.value)} placeholder="Provenance de l'école..."
+                          className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none" />
+                      </div>
+                      <div className="flex-1">
+                        <label className="block text-[10px] font-bold text-stone-700 mb-1">Filière</label>
+                        <input type="text" value={filiere} onChange={(e) => setFiliere(e.target.value)} placeholder="Nom de la filière..."
+                          className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none" />
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Pays et Tags */}
+                  <div className="flex flex-col sm:flex-row gap-3">
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-bold text-stone-700 mb-1 flex items-center gap-1"><Globe className="w-3 h-3" /> Pays</label>
+                      <input type="text" value={docCountry} onChange={(e) => setDocCountry(e.target.value)} placeholder="Côte d'Ivoire..."
+                        className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none" />
+                    </div>
+                    <div className="flex-1">
+                      <label className="block text-[10px] font-bold text-stone-700 mb-1 flex items-center gap-1"><Tag className="w-3 h-3" /> Tags (séparés par virgules)</label>
+                      <input type="text" value={docTags} onChange={(e) => setDocTags(e.target.value)} placeholder="révision, annales, circuit..."
+                        className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none" />
+                    </div>
+                  </div>
+
+                  {/* Message d'erreur */}
+                  {publishError && (
+                    <div className="bg-red-50 border-2 border-red-600 rounded-xl p-3 text-xs text-red-700 font-bold">
+                      ⚠️ {publishError}
+                    </div>
+                  )}
+
+                  {infoMode === 'none' && (
+                    <div className="pt-1 text-xs text-stone-500 font-medium italic">
+                      Aucune information d'école ou de filière ne sera associée à ces fichiers.
+                    </div>
+                  )}
+                </div>
 
                 {/* 3 Option buttons */}
                 <div className="mt-6 pt-4 border-t-2 border-stone-300 flex flex-wrap items-center gap-2">

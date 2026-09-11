@@ -1,6 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Edit3, ArrowLeft, Upload, File, MoreVertical, X, Search, Check, Copy, Plus } from 'lucide-react';
 import { getFileTimestamp } from './FilesMenuView';
+import { triggerDebouncedCloudBackup } from '../services/userSync';
 
 interface MatiereMenuViewProps {
   matiereName: string;
@@ -104,7 +105,29 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
   useEffect(() => {
     localStorage.setItem('unifolder_saved_matieres', JSON.stringify(savedMatieres));
+    triggerDebouncedCloudBackup();
   }, [savedMatieres]);
+
+  useEffect(() => {
+    const handleDataRestored = () => {
+      const saved = localStorage.getItem('unifolder_saved_matieres');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          setSavedMatieres(parsed.map((m: any, idx: number) => ({
+            id: m.id || ('mat-' + Math.random().toString(36).substring(2, 9) + '-' + idx),
+            name: m.name,
+            coefficient: m.coefficient,
+            color: m.color
+          })));
+        } catch (e) { }
+      } else {
+        setSavedMatieres([]);
+      }
+    };
+    window.addEventListener('unifolder_data_restored', handleDataRestored);
+    return () => window.removeEventListener('unifolder_data_restored', handleDataRestored);
+  }, []);
 
   const [selectedMatiereIds, setSelectedMatiereIds] = useState<string[]>([]);
 

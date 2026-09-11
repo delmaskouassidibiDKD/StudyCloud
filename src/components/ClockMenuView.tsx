@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Clock as ClockIcon, Bell, Timer as TimerIcon, Watch, Plus, Trash2, Play, Pause, RotateCcw, Flag, Volume2, X } from 'lucide-react';
+import { triggerDebouncedCloudBackup } from '../services/userSync';
 
 interface ClockMenuViewProps {
   onBack: () => void;
@@ -75,7 +76,22 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
 
   useEffect(() => {
     localStorage.setItem('unifolder_clock_alarms', JSON.stringify(alarms));
+    localStorage.setItem('unifolder_alarms', JSON.stringify(alarms));
+    triggerDebouncedCloudBackup();
   }, [alarms]);
+
+  useEffect(() => {
+    const handleRestore = () => {
+      const saved = localStorage.getItem('unifolder_clock_alarms') || localStorage.getItem('unifolder_alarms');
+      if (saved) {
+        try { setAlarms(JSON.parse(saved)); } catch (e) {}
+      } else {
+        setAlarms(defaultAlarms);
+      }
+    };
+    window.addEventListener('unifolder_data_restored', handleRestore);
+    return () => window.removeEventListener('unifolder_data_restored', handleRestore);
+  }, []);
 
   const [isAddAlarmOpen, setIsAddAlarmOpen] = useState(false);
   const [newAlarmTime, setNewAlarmTime] = useState('08:00');

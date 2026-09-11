@@ -90,13 +90,14 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onClose, onAddFolder }
         clearInterval(interval);
         setTimeout(() => {
           const totalSize = files.reduce((acc, f) => acc + f.size, 0);
+          const authorName = localStorage.getItem('unifolder_user_name') || 'Étudiant';
           const newFolder: SharedFolder = {
             id: 'folder-' + Math.random().toString(36).substring(2, 9),
             title: title.trim(),
             description: description.trim() || 'Dossier partagé par un étudiant.',
             category,
             school: school.trim() || undefined,
-            author: 'Alexandre K.',
+            author: authorName,
             createdAt: new Date().toISOString(),
             files,
             totalSize,
@@ -325,7 +326,7 @@ export const UploadModal: React.FC<UploadModalProps> = ({ onClose, onAddFolder }
                     type="text"
                     value={password}
                     onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Entrez un mot de passe (ex: etudiant2026)"
+                    placeholder="Entrez votre mot de passe"
                     className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-2 text-xs text-stone-900 outline-none font-mono"
                   />
                 </div>

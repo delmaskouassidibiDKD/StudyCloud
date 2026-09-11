@@ -1,7 +1,8 @@
-import React, { useState, useEffect } from 'react';
-import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart } from 'lucide-react';
+import React, { useState, useEffect, useCallback } from 'react';
+import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart, RefreshCw, Globe, Hash } from 'lucide-react';
 import { SharedFolder, SharedFile } from '../types';
 import { FileIconBadge } from './FileIconBadge';
+import { StudyCloudAPI } from '../services/api';
 
 interface ProductItem {
   id: string;
@@ -86,6 +87,37 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     document.addEventListener('click', handleDocumentClick);
     return () => document.removeEventListener('click', handleDocumentClick);
   }, []);
+
+  // ---- Published Documents (onglet Ressources) ----
+  const [publishedDocs, setPublishedDocs] = useState<any[]>([]);
+  const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [docsError, setDocsError] = useState<string | null>(null);
+
+  const loadPublishedDocs = useCallback(async () => {
+    setIsLoadingDocs(true);
+    setDocsError(null);
+    try {
+      const filters: any = {};
+      if (selectedSchoolFilter) filters.school = selectedSchoolFilter;
+      if (selectedFiliereFilter) filters.filiere = selectedFiliereFilter;
+      if (selectedCategory !== 'Tous') filters.category = selectedCategory;
+      if (searchQuery.trim()) filters.search = searchQuery.trim();
+      filters.isPublic = true;
+      const res = await StudyCloudAPI.getPublishedDocuments(filters);
+      setPublishedDocs(res.data || []);
+    } catch (err: any) {
+      setDocsError(err.message || 'Erreur de chargement');
+      setPublishedDocs([]);
+    } finally {
+      setIsLoadingDocs(false);
+    }
+  }, [selectedSchoolFilter, selectedFiliereFilter, selectedCategory, searchQuery]);
+
+  useEffect(() => {
+    if (activeSubTab === 'ressources') {
+      loadPublishedDocs();
+    }
+  }, [activeSubTab, loadPublishedDocs]);
 
   // Products state for Librairie tab
   const [productsList, setProductsList] = useState<ProductItem[]>(() => {
@@ -837,7 +869,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <div className="w-[88px] sm:w-[98px] shrink-0 pointer-events-none" aria-hidden="true" />
               </div>
             ) : (
-              /* Standard category chips filter when no specific school or filiere is selected */
+              /* Filtre de recherche rapide par catégorie */
               <div className="flex items-center gap-1.5 overflow-x-auto pb-1 no-scrollbar">
                 {categories.map((cat) => (
                   <button
@@ -855,63 +887,82 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </div>
             )}
 
-            {filteredItems.length === 0 ? (
+            {/* Bouton Actualiser */}
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] text-stone-500 font-medium">
+                {isLoadingDocs ? 'Chargement...' : `${publishedDocs.length} document${publishedDocs.length > 1 ? 's' : ''} publié${publishedDocs.length > 1 ? 's' : ''}`}
+              </span>
+              <button
+                onClick={loadPublishedDocs}
+                disabled={isLoadingDocs}
+                className="flex items-center gap-1 px-2 py-1 bg-white border border-stone-300 rounded-lg text-[10px] font-bold text-stone-700 hover:bg-stone-100 transition-all cursor-pointer disabled:opacity-50"
+              >
+                <RefreshCw className={`w-3 h-3 ${isLoadingDocs ? 'animate-spin' : ''}`} />
+                Actualiser
+              </button>
+            </div>
+
+            {/* Contenu : Documents Publiés */}
+            {isLoadingDocs ? (
+              <div className="flex flex-col items-center justify-center py-16 gap-3">
+                <RefreshCw className="w-8 h-8 text-orange-500 animate-spin" />
+                <p className="text-xs text-stone-500 font-medium">Chargement des ressources...</p>
+              </div>
+            ) : docsError ? (
+              <div className="bg-red-50 border-2 border-red-400 rounded-2xl p-6 text-center">
+                <p className="text-xs font-bold text-red-700">⚠️ {docsError}</p>
+                <button onClick={loadPublishedDocs} className="mt-3 px-4 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-red-700">Réessayer</button>
+              </div>
+            ) : publishedDocs.length === 0 ? (
               <div className="bg-[#FDFBF7] border-3 border-stone-800 rounded-2xl p-12 text-center shadow-[4px_4px_0px_0px_#1c1917]">
                 <div className="w-12 h-12 bg-orange-100 border-2 border-stone-800 rounded-2xl flex items-center justify-center text-orange-600 mx-auto mb-3 shadow-[2px_2px_0px_0px_#1c1917]">
                   <FileText className="w-6 h-6" />
                 </div>
-                <h3 className="text-base font-extrabold text-stone-900">Aucun fichier trouvé</h3>
-                <p className="text-xs text-stone-600 mt-1">Essayez de modifier vos termes de recherche ou filtre.</p>
+                <h3 className="text-base font-extrabold text-stone-900">Aucun document trouvé</h3>
+                <p className="text-xs text-stone-600 mt-1">Essayez de modifier vos filtres ou publiez un document depuis vos fichiers.</p>
               </div>
             ) : (
               <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-2.5 lg:gap-3 w-full">
-                {filteredItems.map(({ file, folder }) => {
-                  const formatSize = (bytes: number) => {
-                    if (!bytes) return '0 o';
+                {publishedDocs.map((doc) => {
+                  const docSizeStr = (() => {
+                    const bytes = doc.file_size || 0;
+                    if (!bytes) return '—';
                     const k = 1024;
                     const sizes = ['o', 'Ko', 'Mo', 'Go'];
                     const i = Math.floor(Math.log(bytes) / Math.log(k));
                     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-                  };
+                  })();
 
                   return (
                     <div
-                      key={file.id}
+                      key={doc.id}
                       className="bg-[#FDFBF7] border-2 border-stone-800 rounded-xl p-2 sm:p-2.5 md:p-3 shadow-[2px_2px_0px_0px_#1c1917] hover:shadow-[3.5px_3.5px_0px_0px_#1c1917] transition-all flex flex-col justify-between group h-full relative"
                     >
                       <div>
+                        {/* Header: icône + badge catégorie */}
                         <div className="flex items-start justify-between gap-1.5 mb-1.5">
-                          <FileIconBadge fileName={file.name} size={28} />
+                          <FileIconBadge fileName={doc.file_name || doc.title} size={28} />
                           <div className="relative">
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                setActiveCategoryTooltipId(prev => prev === file.id ? null : file.id);
+                                setActiveCategoryTooltipId(prev => prev === doc.id ? null : doc.id);
                               }}
-                              className="text-[8.5px] sm:text-[10px] font-extrabold bg-orange-100 hover:bg-orange-200 active:bg-orange-300 text-orange-800 px-1.5 py-0.5 rounded-md border border-stone-800 truncate max-w-[55px] sm:max-w-[70px] transition-all cursor-pointer block text-left active:scale-95"
-                              title={folder.category}
+                              className="text-[8.5px] sm:text-[10px] font-extrabold bg-orange-100 hover:bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-md border border-stone-800 truncate max-w-[55px] sm:max-w-[70px] transition-all cursor-pointer block text-left active:scale-95"
+                              title={doc.category}
                             >
-                              {folder.category}
+                              {doc.category || 'Cours'}
                             </button>
-
-                            {/* Full name popup next to the badge */}
-                            {activeCategoryTooltipId === file.id && (
-                              <div 
+                            {activeCategoryTooltipId === doc.id && (
+                              <div
                                 onClick={(e) => e.stopPropagation()}
                                 className="absolute right-0 top-full mt-1.5 z-50 bg-stone-900 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl shadow-2xl border-2 border-stone-700 whitespace-nowrap animate-fadeIn flex items-center gap-2"
                               >
                                 <span className="text-orange-400 text-xs">🎓</span>
-                                <span>{folder.category}</span>
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setActiveCategoryTooltipId(null);
-                                  }}
-                                  className="p-0.5 hover:bg-stone-800 rounded text-stone-400 hover:text-white transition-colors cursor-pointer"
-                                  title="Fermer"
-                                >
+                                <span>{doc.category}</span>
+                                <button type="button" onClick={(e) => { e.stopPropagation(); setActiveCategoryTooltipId(null); }}
+                                  className="p-0.5 hover:bg-stone-800 rounded text-stone-400 hover:text-white transition-colors cursor-pointer">
                                   <X className="w-3 h-3" />
                                 </button>
                               </div>
@@ -919,44 +970,87 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           </div>
                         </div>
 
-                        <h3 className="text-[11px] sm:text-xs font-extrabold text-stone-900 truncate mb-1 group-hover:text-orange-600 transition-colors" title={file.name}>
-                          {file.name}
+                        {/* Titre */}
+                        <h3 className="text-[11px] sm:text-xs font-extrabold text-stone-900 truncate mb-0.5 group-hover:text-orange-600 transition-colors" title={doc.title}>
+                          {doc.title || doc.file_name}
                         </h3>
 
-                        <div className="min-h-[18px] mb-2 sm:mb-2.5 flex items-center">
-                          <div className="flex items-center gap-1 text-[8.5px] sm:text-[11px] text-stone-600 truncate w-full">
+                        {/* Matière */}
+                        {doc.matiere_name && (
+                          <p className="text-[9px] text-stone-500 font-semibold truncate mb-0.5" title={doc.matiere_name}>
+                            📚 {doc.matiere_name}{doc.level ? ` · ${doc.level}` : ''}
+                          </p>
+                        )}
+
+                        {/* École */}
+                        <div className="min-h-[16px] mb-1.5 flex items-center">
+                          <div className="flex items-center gap-1 text-[8.5px] sm:text-[10px] text-stone-600 truncate w-full">
                             <Building2 className="w-2.5 h-2.5 sm:w-3 sm:h-3 text-stone-500 shrink-0" />
-                            {folder.school && folder.school.trim() ? (
-                              <span className="font-bold truncate text-stone-800" title={folder.school}>
-                                {folder.school}
-                              </span>
+                            {doc.school && doc.school.trim() ? (
+                              <span className="font-bold truncate text-stone-800" title={doc.school}>{doc.school}</span>
                             ) : (
-                              <span className="font-normal italic text-stone-400 truncate">
-                                Non trouvé
-                              </span>
+                              <span className="font-normal italic text-stone-400 truncate">Non renseigné</span>
                             )}
                           </div>
                         </div>
+
+                        {/* Pays + Auteur */}
+                        <div className="flex items-center gap-1 text-[8px] text-stone-400 font-medium truncate mb-1">
+                          {doc.country && <span className="flex items-center gap-0.5"><Globe className="w-2.5 h-2.5" />{doc.country}</span>}
+                          {doc.author_name && <span className="truncate">· {doc.author_name}</span>}
+                        </div>
                       </div>
 
-                      <div className="flex items-center justify-between pt-1.5 sm:pt-2 border-t border-stone-200 gap-1">
-                        <span className="text-[8.5px] sm:text-[10px] font-bold text-stone-500 truncate">{formatSize(file.size)}</span>
+                      {/* Bas de carte */}
+                      <div className="flex items-center justify-between pt-1.5 border-t border-stone-200 gap-1">
+                        <div className="flex flex-col gap-0.5">
+                          <span className="text-[8.5px] sm:text-[10px] font-bold text-stone-500 truncate">{docSizeStr}</span>
+                          <span className="text-[8px] text-stone-400 font-medium">
+                            {doc.views_count || 0} vues · {doc.downloads_count || 0} DL
+                          </span>
+                        </div>
                         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-                          <button
-                            onClick={() => setActivePreviewItem({ ...file, folderName: folder.title, lockFullscreen: true })}
-                            className="p-1 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1 transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
-                            title="Visualiser"
-                          >
-                            <Eye className="w-3 h-3" />
-                            <span className="hidden sm:inline">Voir</span>
-                          </button>
-                          <button
-                            onClick={(e) => handleDownloadSingle(file, folder.title, e)}
-                            className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5"
-                            title="Télécharger"
-                          >
-                            <Download className="w-3 h-3" />
-                          </button>
+                          {doc.file_url ? (
+                            <a
+                              href={doc.file_url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              onClick={() => StudyCloudAPI.incrementDocumentView(doc.id).catch(() => {})}
+                              className="p-1 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1 transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                              title="Visualiser"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span className="hidden sm:inline">Voir</span>
+                            </a>
+                          ) : (
+                            <button
+                              onClick={() => setActivePreviewItem({ name: doc.file_name || doc.title, url: doc.file_url || '', folderName: doc.school || '', lockFullscreen: true })}
+                              className="p-1 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1 transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                              title="Visualiser"
+                            >
+                              <Eye className="w-3 h-3" />
+                              <span className="hidden sm:inline">Voir</span>
+                            </button>
+                          )}
+                          {doc.file_url ? (
+                            <a
+                              href={doc.file_url}
+                              download={doc.file_name || doc.title}
+                              onClick={() => StudyCloudAPI.incrementDocumentDownload(doc.id).catch(() => {})}
+                              className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5"
+                              title="Télécharger"
+                            >
+                              <Download className="w-3 h-3" />
+                            </a>
+                          ) : (
+                            <button
+                              className="p-1 sm:p-1.5 bg-stone-300 text-stone-400 rounded-lg border border-stone-300 cursor-not-allowed flex items-center justify-center"
+                              title="Fichier non disponible"
+                              disabled
+                            >
+                              <Download className="w-3 h-3" />
+                            </button>
+                          )}
                         </div>
                       </div>
                     </div>

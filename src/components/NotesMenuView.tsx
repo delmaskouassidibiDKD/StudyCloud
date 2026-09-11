@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Plus, X, Trash2, Image as ImageIcon, Pin, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { triggerDebouncedCloudBackup } from '../services/userSync';
 
 interface NotesMenuViewProps {
   onBack: () => void;
@@ -121,7 +122,24 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
 
   useEffect(() => {
     localStorage.setItem('unifolder_keep_notes', JSON.stringify(notes));
+    triggerDebouncedCloudBackup();
   }, [notes]);
+
+  useEffect(() => {
+    const handleRestore = () => {
+      const saved = localStorage.getItem('unifolder_keep_notes');
+      if (saved) {
+        try {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed)) setNotes(parsed);
+        } catch (e) {}
+      } else {
+        setNotes([]);
+      }
+    };
+    window.addEventListener('unifolder_data_restored', handleRestore);
+    return () => window.removeEventListener('unifolder_data_restored', handleRestore);
+  }, []);
 
   const listContainerRef = useRef<HTMLDivElement>(null);
 

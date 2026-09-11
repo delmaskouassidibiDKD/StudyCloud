@@ -10,6 +10,11 @@ export interface Env {
   'MON_R2-STUDYCLOUD'?: R2Bucket;
   MON_D1_STUDYCLOUD?: D1Database;
   MON_R2_STUDYCLOUD?: R2Bucket;
+  // Secrets (wrangler secret put)
+  JWT_SECRET?: string;
+  GOOGLE_CLIENT_ID?: string;
+  GOOGLE_CLIENT_SECRET?: string;
+  RESEND_API_KEY?: string;
   [key: string]: any;
 }
 
@@ -104,24 +109,1107 @@ export default {
       }
 
       // ----------------------------------------------------------------------
+      // AUTH HELPERS — JWT & Crypto (Web Crypto API, native Workers)
+      // ----------------------------------------------------------------------
+
+      const JWT_SECRET = rawEnv.JWT_SECRET || 'studycloud-jwt-secret-key';
+      const GOOGLE_CLIENT_ID = rawEnv.GOOGLE_CLIENT_ID || '';
+      const GOOGLE_CLIENT_SECRET = rawEnv.GOOGLE_CLIENT_SECRET || '';
+      const RESEND_API_KEY = rawEnv.RESEND_API_KEY || '';
+
+      async function hashPassword(password: string): Promise<string> {
+        const encoder = new TextEncoder();
+        const salt = crypto.getRandomValues(new Uint8Array(16));
+        const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
+        const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, keyMaterial, 256);
+        const hashArray = Array.from(new Uint8Array(bits));
+        const saltArray = Array.from(salt);
+        return btoa(JSON.stringify({ salt: saltArray, hash: hashArray }));
+      }
+
+      async function verifyPassword(password: string, stored: string): Promise<boolean> {
+        try {
+          const encoder = new TextEncoder();
+          const { salt: saltArray, hash: hashArray } = JSON.parse(atob(stored));
+          const salt = new Uint8Array(saltArray);
+          const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
+          const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, keyMaterial, 256);
+          const newHash = Array.from(new Uint8Array(bits));
+          return JSON.stringify(newHash) === JSON.stringify(hashArray);
+        } catch { return false; }
+      }
+
+      async function createJWT(payload: object, expiresInHours = 168): Promise<string> {
+        const encoder = new TextEncoder();
+        const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
+        const exp = Math.floor(Date.now() / 1000) + expiresInHours * 3600;
+        const body = btoa(JSON.stringify({ ...payload, exp, iat: Math.floor(Date.now() / 1000) }));
+        const key = await crypto.subtle.importKey('raw', encoder.encode(JWT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['sign']);
+        const signature = await crypto.subtle.sign('HMAC', key, encoder.encode(`${header}.${body}`));
+        const sig = btoa(String.fromCharCode(...new Uint8Array(signature))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=/g, '');
+        return `${header}.${body}.${sig}`;
+      }
+
+      async function verifyJWT(token: string): Promise<any | null> {
+        try {
+          const encoder = new TextEncoder();
+          const [header, body, sig] = token.split('.');
+          const key = await crypto.subtle.importKey('raw', encoder.encode(JWT_SECRET), { name: 'HMAC', hash: 'SHA-256' }, false, ['verify']);
+          const sigBytes = Uint8Array.from(atob(sig.replace(/-/g, '+').replace(/_/g, '/')), c => c.charCodeAt(0));
+          const valid = await crypto.subtle.verify('HMAC', key, sigBytes, encoder.encode(`${header}.${body}`));
+          if (!valid) return null;
+          const payload = JSON.parse(atob(body));
+          if (payload.exp < Math.floor(Date.now() / 1000)) return null;
+          return payload;
+        } catch { return null; }
+      }
+
+      async function hashToken(token: string): Promise<string> {
+        const encoder = new TextEncoder();
+        const buffer = await crypto.subtle.digest('SHA-256', encoder.encode(token));
+        return Array.from(new Uint8Array(buffer)).map(b => b.toString(16).padStart(2, '0')).join('');
+      }
+
+      function sanitizeUser(user: any) {
+        if (!user) return null;
+        const { password_hash: _ph, security_answer_1_hash: _s1, security_answer_2_hash: _s2, ...rest } = user;
+        return {
+          ...rest,
+          has_password: Boolean(user.password_hash && typeof user.password_hash === 'string' && user.password_hash.trim().length > 0),
+          has_security_questions: Boolean(
+            user.security_answer_1_hash &&
+            typeof user.security_answer_1_hash === 'string' &&
+            user.security_answer_1_hash.trim().length > 0 &&
+            user.security_answer_2_hash &&
+            typeof user.security_answer_2_hash === 'string' &&
+            user.security_answer_2_hash.trim().length > 0
+          ),
+        };
+      }
+
+      async function getAuthUser(req: Request): Promise<any | null> {
+        const authHeader = req.headers.get('Authorization') || '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (!token) return null;
+        const payload = await verifyJWT(token);
+        if (!payload?.userId) return null;
+        // Check session still valid in DB
+        const tokenHash = await hashToken(token);
+        const session = await env.DB.prepare('SELECT id FROM auth_sessions WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP').bind(tokenHash).first();
+        if (!session) return null;
+        return payload;
+      }
+
+      function generateId(): string {
+        return crypto.randomUUID();
+      }
+
+      function isValidEmail(email: string): boolean {
+        if (!email || typeof email !== 'string') return false;
+        const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
+        return emailRegex.test(email.trim());
+      }
+
+      function validatePasswordFormat(pwd: string): { valid: boolean; error?: string } {
+        if (!pwd || typeof pwd !== 'string') return { valid: false, error: 'Mot de passe requis' };
+        if (pwd.length < 6) return { valid: false, error: 'Le mot de passe doit comporter au moins 6 caractères' };
+        if (!/[a-zA-Z]/.test(pwd)) return { valid: false, error: 'Le mot de passe doit contenir des lettres' };
+        if (!/[0-9]/.test(pwd)) return { valid: false, error: 'Le mot de passe doit contenir des chiffres' };
+        if (!/[^a-zA-Z0-9]/.test(pwd)) return { valid: false, error: 'Le mot de passe doit contenir au moins un caractère spécial (ex: @, #, $, !, etc.)' };
+        return { valid: true };
+      }
+
+      async function sendConfirmationEmail(toEmail: string, name: string, token: string, appOrigin = 'https://studycloud.dkd-technologies.com', isLogin = false): Promise<void> {
+        try {
+          const cleanOrigin = appOrigin.replace(/\/+$/, '');
+          const confirmUrl = `${cleanOrigin}/?verify_token=${encodeURIComponent(token)}`;
+          const subject = isLogin
+            ? '🔐 Confirmez votre connexion - StudyCloud'
+            : '✉️ Confirmez votre adresse email - StudyCloud';
+          const title = isLogin
+            ? 'Confirmez votre connexion 🔐'
+            : 'Confirmez votre adresse email 🎓';
+          const description = isLogin
+            ? 'Une tentative de connexion à votre compte StudyCloud a été effectuée. Pour confirmer qu\'il s\'agit bien de vous et accéder directement à votre espace d\'études, veuillez cliquer sur le bouton ci-dessous :'
+            : 'Bienvenue sur <strong>StudyCloud</strong> ! Pour sécuriser votre compte, isoler vos documents et commencer vos révisions avec l\'assistant IA Delmas, veuillez confirmer votre adresse email en cliquant sur le bouton ci-dessous :';
+          const buttonText = isLogin
+            ? 'Confirmer ma connexion &rarr;'
+            : 'Confirmer mon adresse email &rarr;';
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              from: 'StudyCloud <noreply@dkd-technologies.com>',
+              to: [toEmail],
+              subject,
+              html: `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0f0c29;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#0f0c29;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.35);">
+          <tr>
+            <td height="6" style="background:linear-gradient(90deg, #EA580C, #F97316, #2563EB);"></td>
+          </tr>
+          <tr>
+            <td style="padding:40px 36px 32px 36px;">
+              <!-- Header with Official StudyCloud DKD Technologies Brand -->
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom:28px;">
+                <tr>
+                  <td>
+                    <table border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="vertical-align:middle;padding-right:12px;">
+                          <div style="width:44px;height:44px;border-radius:12px;background:#fff7ed;border:1.5px solid #fed7aa;text-align:center;line-height:44px;font-size:22px;">
+                            🧬
+                          </div>
+                        </td>
+                        <td style="vertical-align:middle;">
+                          <div style="line-height:1;">
+                            <span style="font-size:24px;font-weight:900;color:#EA580C;letter-spacing:-0.5px;">Study</span><span style="font-size:24px;font-weight:900;color:#2563EB;letter-spacing:-0.5px;">Cloud</span>
+                          </div>
+                          <div style="font-size:9px;font-weight:800;color:#D97706;letter-spacing:2px;text-transform:uppercase;margin-top:4px;">
+                            DKD TECHNOLOGIES
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <div style="height:1px;background:#f1f5f9;margin-bottom:28px;"></div>
+
+              <h1 style="margin:0 0 16px 0;color:#0f172a;font-size:22px;font-weight:800;line-height:1.3;">
+                ${title}
+              </h1>
+
+              <p style="margin:0 0 16px 0;color:#334155;font-size:15px;line-height:1.6;">
+                Bonjour <strong>${name}</strong>,
+              </p>
+
+              <p style="margin:0 0 24px 0;color:#475569;font-size:14px;line-height:1.6;">
+                ${description}
+              </p>
+
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin:30px 0;">
+                <tr>
+                  <td align="center">
+                    <a href="${confirmUrl}" target="_blank" style="display:inline-block;padding:16px 36px;background:linear-gradient(135deg, #EA580C 0%, #F97316 100%);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;border-radius:14px;box-shadow:0 8px 24px rgba(234,88,12,0.35);">
+                      ${buttonText}
+                    </a>
+                  </td>
+                </tr>
+              </table>
+
+              <div style="background:#f8fafc;border-radius:12px;padding:16px;border:1px solid #e2e8f0;margin-bottom:24px;">
+                <p style="margin:0 0 8px 0;color:#64748b;font-size:12px;font-weight:600;">
+                  Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur :
+                </p>
+                <a href="${confirmUrl}" style="color:#2563EB;font-size:12px;word-break:break-all;text-decoration:underline;">
+                  ${confirmUrl}
+                </a>
+              </div>
+
+              <div style="border-left:3px solid #f97316;padding-left:12px;margin:20px 0;">
+                <p style="margin:0;color:#64748b;font-size:12px;line-height:1.5;">
+                  ⏳ <strong>Validité :</strong> Ce lien est actif pendant 24 heures.<br>
+                  🔒 Si vous n'avez pas demandé cette action, vous pouvez ignorer cet email en toute sécurité.
+                </p>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#f8fafc;padding:20px 36px;border-top:1px solid #e2e8f0;text-align:center;">
+              <p style="margin:0;color:#94a3b8;font-size:12px;">
+                StudyCloud par <strong>DKD Technologies</strong> · Abidjan, Côte d'Ivoire
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+            }),
+          });
+        } catch (e) {
+          console.error('Failed to send confirmation email via Resend:', e);
+        }
+      }
+
+      async function sendWelcomeEmail(toEmail: string, name: string): Promise<void> {
+        try {
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              from: 'StudyCloud <noreply@dkd-technologies.com>',
+              to: [toEmail],
+              subject: '🎉 Bienvenue sur StudyCloud !',
+              html: `<div style="font-family:sans-serif;max-width:500px;margin:auto;padding:32px;background:#fafafa;border-radius:16px;border:1px solid #eee">
+                <div style="text-align:center;margin-bottom:24px">
+                  <div style="width:56px;height:56px;background:linear-gradient(135deg,#EA580C,#F97316);border-radius:14px;margin:auto;display:flex;align-items:center;justify-content:center;font-size:28px">🧬</div>
+                  <h1 style="color:#1f1f1f;margin:12px 0 4px;font-size:22px">Bienvenue, ${name} !</h1>
+                  <p style="color:#666;font-size:14px;margin:0">Votre compte StudyCloud est prêt.</p>
+                </div>
+                <div style="background:#fff;border-radius:12px;padding:24px;border:1px solid #eee;margin-bottom:20px">
+                  <p style="color:#333;font-size:14px;line-height:1.6;margin:0">
+                    Vous pouvez maintenant organiser vos cours, partager des ressources avec vos camarades et profiter de l'assistant IA Delmas pour booster vos révisions.
+                  </p>
+                </div>
+                <div style="text-align:center">
+                  <a href="https://studycloud.dkd-technologies.com" style="display:inline-block;padding:12px 28px;background:linear-gradient(135deg,#EA580C,#F97316);color:#fff;text-decoration:none;border-radius:12px;font-weight:700;font-size:14px">
+                    Accéder à StudyCloud →
+                  </a>
+                </div>
+                <p style="text-align:center;color:#999;font-size:12px;margin-top:24px">DKD Technologies · Abidjan, Côte d'Ivoire</p>
+              </div>`,
+            }),
+          });
+        } catch (e) { /* Non bloquant */ }
+      }
+
+      async function sendPasswordResetEmail(toEmail: string, name: string, code: string, appOrigin = 'https://studycloud.dkd-technologies.com'): Promise<void> {
+        try {
+          const subject = '🔑 Récupération de votre mot de passe - StudyCloud';
+          const title = 'Code de réinitialisation 🔑';
+          await fetch('https://api.resend.com/emails', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${RESEND_API_KEY}`, 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              from: 'StudyCloud <noreply@dkd-technologies.com>',
+              to: [toEmail],
+              subject,
+              html: `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title}</title>
+</head>
+<body style="margin:0;padding:0;background-color:#0f0c29;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#0f0c29;padding:40px 16px;">
+    <tr>
+      <td align="center">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.35);">
+          <tr>
+            <td height="6" style="background:linear-gradient(90deg, #EA580C, #F97316, #2563EB);"></td>
+          </tr>
+          <tr>
+            <td style="padding:40px 36px 32px 36px;">
+              <!-- Header with Official StudyCloud DKD Technologies Brand -->
+              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom:28px;">
+                <tr>
+                  <td>
+                    <table border="0" cellspacing="0" cellpadding="0">
+                      <tr>
+                        <td style="vertical-align:middle;padding-right:12px;">
+                          <div style="width:44px;height:44px;border-radius:12px;background:#fff7ed;border:1.5px solid #fed7aa;text-align:center;line-height:44px;font-size:22px;">
+                            🧬
+                          </div>
+                        </td>
+                        <td style="vertical-align:middle;">
+                          <div style="line-height:1;">
+                            <span style="font-size:24px;font-weight:900;color:#EA580C;letter-spacing:-0.5px;">Study</span><span style="font-size:24px;font-weight:900;color:#2563EB;letter-spacing:-0.5px;">Cloud</span>
+                          </div>
+                          <div style="font-size:9px;font-weight:800;color:#D97706;letter-spacing:2px;text-transform:uppercase;margin-top:4px;">
+                            DKD TECHNOLOGIES
+                          </div>
+                        </td>
+                      </tr>
+                    </table>
+                  </td>
+                </tr>
+              </table>
+
+              <div style="height:1px;background:#f1f5f9;margin-bottom:28px;"></div>
+
+              <h1 style="margin:0 0 16px 0;color:#0f172a;font-size:22px;font-weight:800;line-height:1.3;">
+                ${title}
+              </h1>
+
+              <p style="margin:0 0 16px 0;color:#334155;font-size:15px;line-height:1.6;">
+                Bonjour <strong>${name || 'Étudiant'}</strong>,
+              </p>
+
+              <p style="margin:0 0 24px 0;color:#475569;font-size:14px;line-height:1.6;">
+                Vous avez demandé la réinitialisation de votre mot de passe StudyCloud après avoir validé vos questions de sécurité. Utilisez le code secret ci-dessous pour définir votre nouveau mot de passe :
+              </p>
+
+              <div style="text-align:center;margin:32px 0;">
+                <div style="display:inline-block;padding:18px 36px;background:#fff7ed;border:2px dashed #EA580C;border-radius:18px;">
+                  <span style="font-family:monospace;font-size:34px;font-weight:900;color:#EA580C;letter-spacing:8px;">${code}</span>
+                </div>
+              </div>
+
+              <div style="border-left:3px solid #f97316;padding-left:12px;margin:24px 0;">
+                <p style="margin:0;color:#64748b;font-size:12px;line-height:1.5;">
+                  ⏳ <strong>Validité :</strong> Ce code expire dans 1 heure.<br>
+                  🔒 <strong>Sécurité :</strong> Ne communiquez jamais ce code à un tiers. Si vous n'êtes pas à l'origine de cette demande, vous pouvez ignorer cet email en toute sécurité.
+                </p>
+              </div>
+            </td>
+          </tr>
+          <tr>
+            <td style="background:#f8fafc;padding:20px 36px;border-top:1px solid #e2e8f0;text-align:center;">
+              <p style="margin:0;color:#94a3b8;font-size:12px;">
+                StudyCloud par <strong>DKD Technologies</strong> · Abidjan, Côte d'Ivoire
+              </p>
+            </td>
+          </tr>
+        </table>
+      </td>
+    </tr>
+  </table>
+</body>
+</html>`
+            }),
+          });
+        } catch (e) {
+          console.error('Failed to send password reset email via Resend:', e);
+        }
+      }
+
+      async function ensurePasswordResetsTable(db: any) {
+        try {
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS password_resets (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              target_email TEXT NOT NULL,
+              reset_code TEXT NOT NULL,
+              attempts_today INTEGER DEFAULT 1,
+              last_requested_at TEXT NOT NULL,
+              blocked_until TEXT,
+              expires_at TEXT NOT NULL,
+              used INTEGER DEFAULT 0,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+        } catch (e) {}
+        try {
+          await db.prepare(`ALTER TABLE users ADD COLUMN security_question_1 TEXT DEFAULT 'Quelle est votre ville de naissance ?'`).run();
+        } catch (e) {}
+        try {
+          await db.prepare(`ALTER TABLE users ADD COLUMN security_answer_1_hash TEXT DEFAULT ''`).run();
+        } catch (e) {}
+        try {
+          await db.prepare(`ALTER TABLE users ADD COLUMN security_question_2 TEXT DEFAULT 'Quel est le prénom de votre mère ?'`).run();
+        } catch (e) {}
+        try {
+          await db.prepare(`ALTER TABLE users ADD COLUMN security_answer_2_hash TEXT DEFAULT ''`).run();
+        } catch (e) {}
+      }
+
+      // ----------------------------------------------------------------------
+      // 0. AUTH — /api/auth/*
+      // ----------------------------------------------------------------------
+
+      // POST /api/auth/register — Inscription email/password avec confirmation obligatoire & questions de sécurité
+      if (path === '/api/auth/register' && method === 'POST') {
+        await ensurePasswordResetsTable(env.DB);
+        const body: any = await request.json();
+        const {
+          name,
+          email,
+          password,
+          securityQuestion1,
+          securityAnswer1,
+          securityQuestion2,
+          securityAnswer2,
+        } = body;
+        if (!name || !email || !password) return errorResponse('Nom, email et mot de passe requis', 400, origin);
+        if (!isValidEmail(email)) return errorResponse('Format d\'adresse email invalide (ex: exemple@gmail.com)', 400, origin);
+        const pwdCheck = validatePasswordFormat(password);
+        if (!pwdCheck.valid) return errorResponse(pwdCheck.error || 'Mot de passe non conforme', 400, origin);
+
+        const cleanEmail = email.toLowerCase().trim();
+        const existing: any = await env.DB.prepare('SELECT id, email_verified FROM users WHERE email = ?').bind(cleanEmail).first();
+
+        const q1 = securityQuestion1 || 'Quelle est votre ville de naissance ?';
+        const q2 = securityQuestion2 || 'Quel est le prénom de votre mère ?';
+        const answer1Hash = securityAnswer1 ? await hashToken(securityAnswer1.toLowerCase().trim()) : '';
+        const answer2Hash = securityAnswer2 ? await hashToken(securityAnswer2.toLowerCase().trim()) : '';
+
+        if (existing) {
+          if (existing.email_verified === 1) {
+            return errorResponse('Un compte vérifié existe déjà avec cet email', 409, origin);
+          }
+          // Si le compte existe mais n'a pas encore été confirmé, on met à jour les identifiants et les questions
+          const passwordHash = await hashPassword(password);
+          await env.DB.prepare(`
+            UPDATE users SET
+              name = ?,
+              password_hash = ?,
+              security_question_1 = ?,
+              security_answer_1_hash = ?,
+              security_question_2 = ?,
+              security_answer_2_hash = ?,
+              last_active_at = CURRENT_TIMESTAMP,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind(name.trim(), passwordHash, q1, answer1Hash, q2, answer2Hash, existing.id).run();
+
+          const verificationToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+          const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+
+          await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(existing.id).run();
+          await env.DB.prepare(`
+            INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
+            VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+          `).bind(generateId(), existing.id, cleanEmail, verificationToken, expiresAt).run();
+
+          const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
+          await sendConfirmationEmail(cleanEmail, name.trim(), verificationToken, clientOrigin);
+
+          return jsonResponse({
+            success: true,
+            requiresVerification: true,
+            email: cleanEmail,
+            resendCount: 1,
+            maxCount: 4,
+            nextAllowedAt: new Date(Date.now() + 30000).toISOString(),
+            message: 'Un email de confirmation vous a été envoyé.',
+          }, 200, origin);
+        }
+
+        const userId = generateId();
+        const passwordHash = await hashPassword(password);
+        await env.DB.prepare(`
+          INSERT INTO users (
+            id, name, email, password_hash, provider, email_verified, is_onboarded,
+            security_question_1, security_answer_1_hash, security_question_2, security_answer_2_hash,
+            last_active_at, created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, 'email', 0, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `).bind(userId, name.trim(), cleanEmail, passwordHash, q1, answer1Hash, q2, answer2Hash).run();
+
+        await env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)').bind(userId).run();
+
+        // Création du token de confirmation
+        const verificationToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+        const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+        await env.DB.prepare(`
+          INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
+          VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+        `).bind(generateId(), userId, cleanEmail, verificationToken, expiresAt).run();
+
+        const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
+        await sendConfirmationEmail(cleanEmail, name.trim(), verificationToken, clientOrigin);
+
+        return jsonResponse({
+          success: true,
+          requiresVerification: true,
+          email: cleanEmail,
+          resendCount: 1,
+          maxCount: 4,
+          nextAllowedAt: new Date(Date.now() + 30000).toISOString(),
+          message: 'Un email de confirmation vous a été envoyé.',
+        }, 201, origin);
+      }
+
+      // POST /api/auth/resend-verification — Renvoi avec rate-limit 30s & blocage 3h après 4 tentatives
+      if (path === '/api/auth/resend-verification' && method === 'POST') {
+        const body: any = await request.json();
+        const { email } = body;
+        if (!email) return errorResponse('Email requis', 400, origin);
+        if (!isValidEmail(email)) return errorResponse('Format d\'adresse email invalide (ex: exemple@gmail.com)', 400, origin);
+
+        const cleanEmail = email.toLowerCase().trim();
+        const user: any = await env.DB.prepare('SELECT id, name, email_verified FROM users WHERE email = ?').bind(cleanEmail).first();
+        if (!user) return errorResponse('Aucun compte trouvé avec cet email', 404, origin);
+        const isLoginFlow = user.email_verified === 1;
+
+        const verif: any = await env.DB.prepare('SELECT * FROM email_verifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').bind(user.id).first();
+
+        const now = Date.now();
+        const THREE_HOURS_MS = 3 * 3600 * 1000;
+        const THIRTY_SECONDS_MS = 30 * 1000;
+
+        if (verif) {
+          // 1. Vérification si l'utilisateur est actuellement bloqué (blocage de 3 heures)
+          if (verif.blocked_until) {
+            const blockedTime = new Date(verif.blocked_until).getTime();
+            if (blockedTime > now) {
+              const remainingMs = blockedTime - now;
+              const remainingMin = Math.ceil(remainingMs / 60000);
+              return jsonResponse({
+                success: false,
+                error: `Quota atteint (4 tentatives). Veuillez patienter ${remainingMin} minute(s) avant de recommencer.`,
+                isBlocked: true,
+                blockedUntil: verif.blocked_until,
+                remainingMs,
+              }, 429, origin);
+            }
+          }
+
+          // 2. Vérification du décompte de 30 secondes
+          if (verif.last_sent_at) {
+            const lastSentTime = new Date(verif.last_sent_at).getTime();
+            const elapsed = now - lastSentTime;
+            if (elapsed < THIRTY_SECONDS_MS) {
+              const remainingSec = Math.ceil((THIRTY_SECONDS_MS - elapsed) / 1000);
+              return jsonResponse({
+                success: false,
+                error: `Veuillez patienter ${remainingSec} seconde(s) avant de renvoyer l'email.`,
+                isCooldown: true,
+                nextAllowedAt: new Date(lastSentTime + THIRTY_SECONDS_MS).toISOString(),
+                remainingMs: THIRTY_SECONDS_MS - elapsed,
+              }, 429, origin);
+            }
+          }
+
+          // 3. Calcul du nouveau compteur
+          let currentCount = verif.resend_count || 1;
+          if (verif.blocked_until && new Date(verif.blocked_until).getTime() <= now) {
+            currentCount = 0;
+          }
+
+          const newCount = currentCount + 1;
+          let blockedUntil: string | null = null;
+          if (newCount >= 4) {
+            // 4 tentatives sans confirmation -> bloqué pendant 3 heures
+            blockedUntil = new Date(now + THREE_HOURS_MS).toISOString();
+          }
+
+          const newToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+          const newExpiresAt = new Date(now + 24 * 3600 * 1000).toISOString();
+          const nextAllowedAt = new Date(now + THIRTY_SECONDS_MS).toISOString();
+
+          await env.DB.prepare(`
+            UPDATE email_verifications SET
+              token = ?,
+              resend_count = ?,
+              last_sent_at = CURRENT_TIMESTAMP,
+              blocked_until = ?,
+              expires_at = ?
+            WHERE id = ?
+          `).bind(newToken, newCount, blockedUntil, newExpiresAt, verif.id).run();
+
+          const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
+          await sendConfirmationEmail(cleanEmail, user.name, newToken, clientOrigin, isLoginFlow);
+
+          return jsonResponse({
+            success: true,
+            message: 'Email de confirmation renvoyé !',
+            resendCount: newCount,
+            maxCount: 4,
+            isBlocked: newCount >= 4,
+            blockedUntil,
+            nextAllowedAt,
+          }, 200, origin);
+        } else {
+          const newToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+          const newExpiresAt = new Date(now + 24 * 3600 * 1000).toISOString();
+          await env.DB.prepare(`
+            INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
+            VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+          `).bind(generateId(), user.id, cleanEmail, newToken, newExpiresAt).run();
+
+          const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
+          await sendConfirmationEmail(cleanEmail, user.name, newToken, clientOrigin, isLoginFlow);
+
+          return jsonResponse({
+            success: true,
+            message: 'Email de confirmation renvoyé !',
+            resendCount: 1,
+            maxCount: 4,
+            nextAllowedAt: new Date(now + THIRTY_SECONDS_MS).toISOString(),
+          }, 200, origin);
+        }
+      }
+
+      // GET /api/auth/verify-email — Validation du token de confirmation
+      if (path === '/api/auth/verify-email' && method === 'GET') {
+        const tokenParam = url.searchParams.get('token');
+        if (!tokenParam) return errorResponse('Token de confirmation requis', 400, origin);
+
+        const verif: any = await env.DB.prepare(
+          'SELECT * FROM email_verifications WHERE token = ? AND expires_at > CURRENT_TIMESTAMP'
+        ).bind(tokenParam).first();
+
+        if (!verif) {
+          return errorResponse('Lien de confirmation invalide ou expiré. Veuillez demander un nouvel email.', 400, origin);
+        }
+
+        const userBefore: any = await env.DB.prepare('SELECT email_verified FROM users WHERE id = ?').bind(verif.user_id).first();
+        const isFirstVerification = userBefore?.email_verified === 0;
+
+        // Marquer l'email vérifié
+        await env.DB.prepare(`
+          UPDATE users SET
+            email_verified = 1,
+            last_active_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).bind(verif.user_id).run();
+
+        // Supprimer la demande de vérification
+        await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(verif.user_id).run();
+
+        const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(verif.user_id).first();
+        if (!user) return errorResponse('Utilisateur introuvable', 404, origin);
+
+        // Créer la session JWT
+        const jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
+        const tokenHash = await hashToken(jwtToken);
+        const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+        await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, expiresAt).run();
+
+        if (isFirstVerification) {
+          sendWelcomeEmail(user.email, user.name);
+        }
+
+        const accept = request.headers.get('Accept') || '';
+        if (accept.includes('text/html')) {
+          const appUrl = (origin !== '*' ? origin : 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
+          return Response.redirect(`${appUrl}/?verified=1&token=${encodeURIComponent(jwtToken)}`, 302);
+        }
+
+        const safeUser = sanitizeUser(user);
+        return jsonResponse({
+          success: true,
+          message: 'Adresse email confirmée avec succès !',
+          token: jwtToken,
+          user: safeUser,
+        }, 200, origin);
+      }
+
+      // POST /api/auth/login — Connexion email/password
+      if (path === '/api/auth/login' && method === 'POST') {
+        const body: any = await request.json();
+        const { email, password } = body;
+        if (!email || !password) return errorResponse('Email et mot de passe requis', 400, origin);
+        if (!isValidEmail(email)) return errorResponse('Format d\'adresse email invalide (ex: exemple@gmail.com)', 400, origin);
+
+        const cleanEmail = email.toLowerCase().trim();
+        const user: any = await env.DB.prepare('SELECT * FROM users WHERE email = ? AND provider = \'email\'').bind(cleanEmail).first();
+        if (!user || !user.password_hash) return errorResponse('Email ou mot de passe incorrect', 401, origin);
+
+        const valid = await verifyPassword(password, user.password_hash);
+        if (!valid) return errorResponse('Email ou mot de passe incorrect', 401, origin);
+
+        // Générer le token de confirmation de connexion (2FA / validation par email)
+        const verificationToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+        const expiresAt = new Date(Date.now() + 24 * 3600 * 1000).toISOString();
+
+        await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(user.id).run();
+        await env.DB.prepare(`
+          INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
+          VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+        `).bind(generateId(), user.id, cleanEmail, verificationToken, expiresAt).run();
+
+        const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
+        await sendConfirmationEmail(cleanEmail, user.name, verificationToken, clientOrigin, true);
+
+        return jsonResponse({
+          success: true,
+          requiresVerification: true,
+          isLogin: true,
+          email: cleanEmail,
+          resendCount: 1,
+          maxCount: 4,
+          nextAllowedAt: new Date(Date.now() + 30000).toISOString(),
+          message: 'Un email de confirmation de connexion vous a été envoyé.',
+        }, 200, origin);
+      }
+
+      // POST /api/auth/forgot-password/init — Demande de questions de sécurité avec quota 4/jour
+      if (path === '/api/auth/forgot-password/init' && method === 'POST') {
+        await ensurePasswordResetsTable(env.DB);
+        const body: any = await request.json();
+        const { email } = body;
+        if (!email) return errorResponse('Email requis', 400, origin);
+        if (!isValidEmail(email)) return errorResponse('Format d\'adresse email invalide (ex: exemple@gmail.com)', 400, origin);
+
+        const cleanEmail = email.toLowerCase().trim();
+        const user: any = await env.DB.prepare('SELECT id, name, email, security_question_1, security_question_2, security_answer_1_hash FROM users WHERE email = ?').bind(cleanEmail).first();
+        if (!user) return errorResponse('Aucun compte trouvé avec cet email', 404, origin);
+
+        // Vérification de quota : max 4 réclamations par 24h
+        const now = Date.now();
+        const TWENTY_FOUR_HOURS_MS = 24 * 3600 * 1000;
+        const sinceDate = new Date(now - TWENTY_FOUR_HOURS_MS).toISOString();
+
+        const recentAttempts: any = await env.DB.prepare(`
+          SELECT * FROM password_resets 
+          WHERE user_id = ? AND created_at > ?
+          ORDER BY created_at ASC
+        `).bind(user.id, sinceDate).all();
+
+        const count = recentAttempts.results ? recentAttempts.results.length : 0;
+        if (count >= 4) {
+          const oldest = new Date(recentAttempts.results[0].created_at).getTime();
+          const unblockTime = oldest + TWENTY_FOUR_HOURS_MS;
+          const remainingMs = Math.max(0, unblockTime - now);
+          const remainingHours = Math.ceil(remainingMs / (3600 * 1000));
+          return jsonResponse({
+            success: false,
+            error: `Quota journalier atteint (4 réclamations max). Veuillez patienter ${remainingHours} heure(s) avant de recommencer.`,
+            isBlocked: true,
+            blockedUntil: new Date(unblockTime).toISOString(),
+            remainingMs,
+            remainingHours,
+          }, 429, origin);
+        }
+
+        const q1 = user.security_question_1 || 'Quelle est votre ville de naissance ?';
+        const q2 = user.security_question_2 || 'Quel est le prénom de votre mère ?';
+
+        return jsonResponse({
+          success: true,
+          email: user.email,
+          name: user.name,
+          question1: q1,
+          question2: q2,
+          hasCustomQuestions: !!user.security_answer_1_hash,
+          attemptsToday: count,
+          maxAttempts: 4,
+        }, 200, origin);
+      }
+
+      // POST /api/auth/forgot-password/verify-answers — Validation des questions de sécurité
+      if (path === '/api/auth/forgot-password/verify-answers' && method === 'POST') {
+        await ensurePasswordResetsTable(env.DB);
+        const body: any = await request.json();
+        const { email, answer1, answer2 } = body;
+        if (!email || !answer1) return errorResponse('Email et réponse(s) de sécurité requis', 400, origin);
+
+        const cleanEmail = email.toLowerCase().trim();
+        const user: any = await env.DB.prepare('SELECT id, name, email, security_answer_1_hash, security_answer_2_hash FROM users WHERE email = ?').bind(cleanEmail).first();
+        if (!user) return errorResponse('Utilisateur introuvable', 404, origin);
+
+        if (user.security_answer_1_hash) {
+          const hash1 = await hashToken(answer1.toLowerCase().trim());
+          const match1 = hash1 === user.security_answer_1_hash;
+          let match2 = true;
+          if (user.security_answer_2_hash && answer2) {
+            const hash2 = await hashToken(answer2.toLowerCase().trim());
+            match2 = hash2 === user.security_answer_2_hash;
+          }
+          if (!match1 || !match2) {
+            return errorResponse('Réponse(s) de sécurité incorrecte(s). Veuillez vérifier vos informations.', 400, origin);
+          }
+        }
+
+        const resetSessionToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
+        return jsonResponse({
+          success: true,
+          verified: true,
+          resetSessionToken,
+          email: user.email,
+          message: 'Informations personnelles vérifiées avec succès !',
+        }, 200, origin);
+      }
+
+      // POST /api/auth/forgot-password/send-code — Envoi du code à l'adresse email choisie
+      if (path === '/api/auth/forgot-password/send-code' && method === 'POST') {
+        await ensurePasswordResetsTable(env.DB);
+        const body: any = await request.json();
+        const { email, targetEmail, resetSessionToken } = body;
+        if (!email || !targetEmail || !resetSessionToken) {
+          return errorResponse('Email, email de destination et token requis', 400, origin);
+        }
+        if (!isValidEmail(email)) return errorResponse('Format d\'adresse email du compte invalide (ex: exemple@gmail.com)', 400, origin);
+        if (!isValidEmail(targetEmail)) return errorResponse('Format d\'adresse email de réception invalide (ex: exemple@gmail.com)', 400, origin);
+
+        const cleanAccountEmail = email.toLowerCase().trim();
+        const cleanTargetEmail = targetEmail.toLowerCase().trim();
+        const user: any = await env.DB.prepare('SELECT id, name, email FROM users WHERE email = ?').bind(cleanAccountEmail).first();
+        if (!user) return errorResponse('Utilisateur introuvable', 404, origin);
+
+        // Vérification du quota de 4 par tranche de 24h
+        const now = Date.now();
+        const TWENTY_FOUR_HOURS_MS = 24 * 3600 * 1000;
+        const sinceDate = new Date(now - TWENTY_FOUR_HOURS_MS).toISOString();
+        const recentAttempts: any = await env.DB.prepare(`
+          SELECT * FROM password_resets 
+          WHERE user_id = ? AND created_at > ?
+          ORDER BY created_at ASC
+        `).bind(user.id, sinceDate).all();
+
+        const count = recentAttempts.results ? recentAttempts.results.length : 0;
+        if (count >= 4) {
+          const oldest = new Date(recentAttempts.results[0].created_at).getTime();
+          const unblockTime = oldest + TWENTY_FOUR_HOURS_MS;
+          const remainingMs = Math.max(0, unblockTime - now);
+          const remainingHours = Math.ceil(remainingMs / (3600 * 1000));
+          return jsonResponse({
+            success: false,
+            error: `Quota journalier atteint (4 réclamations par jour). Veuillez patienter ${remainingHours} heure(s).`,
+            isBlocked: true,
+            blockedUntil: new Date(unblockTime).toISOString(),
+            remainingMs,
+            remainingHours,
+          }, 429, origin);
+        }
+
+        const resetCode = Math.floor(100000 + Math.random() * 900000).toString();
+        const expiresAt = new Date(now + 3600 * 1000).toISOString();
+
+        await env.DB.prepare(`
+          INSERT INTO password_resets (id, user_id, target_email, reset_code, attempts_today, last_requested_at, expires_at, used)
+          VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 0)
+        `).bind(generateId(), user.id, cleanTargetEmail, resetCode, count + 1, expiresAt).run();
+
+        const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
+        await sendPasswordResetEmail(cleanTargetEmail, user.name, resetCode, clientOrigin);
+
+        return jsonResponse({
+          success: true,
+          message: 'Le code de réinitialisation a été envoyé à votre adresse email !',
+          targetEmail: cleanTargetEmail,
+          attemptsToday: count + 1,
+          maxAttempts: 4,
+        }, 200, origin);
+      }
+
+      // POST /api/auth/reset-password — Réinitialisation effective avec le code à 6 chiffres
+      if (path === '/api/auth/reset-password' && method === 'POST') {
+        const body: any = await request.json();
+        const { email, code, newPassword } = body;
+        if (!email || !code || !newPassword) {
+          return errorResponse('Email, code et nouveau mot de passe requis', 400, origin);
+        }
+        const pwdCheck = validatePasswordFormat(newPassword);
+        if (!pwdCheck.valid) return errorResponse(pwdCheck.error || 'Nouveau mot de passe non conforme', 400, origin);
+
+        const cleanEmail = email.toLowerCase().trim();
+        const user: any = await env.DB.prepare('SELECT id, name FROM users WHERE email = ?').bind(cleanEmail).first();
+        if (!user) return errorResponse('Utilisateur introuvable', 404, origin);
+
+        const resetRecord: any = await env.DB.prepare(`
+          SELECT * FROM password_resets
+          WHERE user_id = ? AND reset_code = ? AND used = 0 AND expires_at > CURRENT_TIMESTAMP
+          ORDER BY created_at DESC LIMIT 1
+        `).bind(user.id, code.trim()).first();
+
+        if (!resetRecord) {
+          return errorResponse('Code de réinitialisation invalide ou expiré', 400, origin);
+        }
+
+        const newHash = await hashPassword(newPassword);
+        await env.DB.prepare('UPDATE users SET password_hash = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(newHash, user.id).run();
+        await env.DB.prepare('UPDATE password_resets SET used = 1 WHERE id = ?').bind(resetRecord.id).run();
+        await env.DB.prepare('DELETE FROM auth_sessions WHERE user_id = ?').bind(user.id).run();
+
+        return jsonResponse({
+          success: true,
+          message: 'Votre mot de passe a été modifié avec succès ! Vous pouvez maintenant vous connecter.',
+        }, 200, origin);
+      }
+
+      // POST /api/auth/google — Échange du code Google OAuth
+      if (path === '/api/auth/google' && method === 'POST') {
+        const body: any = await request.json();
+        const { code, redirectUri } = body;
+        if (!code) return errorResponse('Code Google OAuth requis', 400, origin);
+
+        // Échanger le code contre un access token Google
+        const tokenRes = await fetch('https://oauth2.googleapis.com/token', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+          body: new URLSearchParams({
+            code,
+            client_id: GOOGLE_CLIENT_ID,
+            client_secret: GOOGLE_CLIENT_SECRET,
+            redirect_uri: redirectUri || `${new URL(request.url).origin}/auth/google/callback`,
+            grant_type: 'authorization_code',
+          }),
+        });
+        const tokenData: any = await tokenRes.json();
+        if (!tokenData.access_token) return errorResponse('Échange Google OAuth échoué : ' + (tokenData.error_description || tokenData.error || 'inconnu'), 400, origin);
+
+        // Récupérer le profil Google
+        const profileRes = await fetch('https://www.googleapis.com/oauth2/v2/userinfo', {
+          headers: { Authorization: `Bearer ${tokenData.access_token}` },
+        });
+        const profile: any = await profileRes.json();
+        if (!profile.id || !profile.email) return errorResponse('Impossible de récupérer le profil Google', 400, origin);
+
+        // Trouver ou créer l'utilisateur
+        let user: any = await env.DB.prepare('SELECT * FROM users WHERE google_id = ? OR email = ?').bind(profile.id, profile.email.toLowerCase()).first();
+        if (!user) {
+          const userId = generateId();
+          await env.DB.prepare(`
+            INSERT INTO users (id, name, email, provider, google_id, email_verified, avatar_url, is_onboarded, created_at, updated_at)
+            VALUES (?, ?, ?, 'google', ?, 1, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `).bind(userId, profile.name || profile.email, profile.email.toLowerCase(), profile.id, profile.picture || null).run();
+          await env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)').bind(userId).run();
+          user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userId).first();
+          sendWelcomeEmail(profile.email.toLowerCase(), profile.name || 'Étudiant');
+        } else if (!user.google_id) {
+          // Lier le compte Google à un compte email existant
+          await env.DB.prepare('UPDATE users SET google_id = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1 WHERE id = ?').bind(profile.id, profile.picture || null, user.id).run();
+          user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(user.id).first();
+        }
+
+        const token = await createJWT({ userId: user.id, email: user.email, name: user.name });
+        const tokenHash = await hashToken(token);
+        const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+        await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, expiresAt).run();
+
+        const safeUser = sanitizeUser(user);
+        return jsonResponse({ success: true, token, user: safeUser }, 200, origin);
+      }
+
+      // POST /api/auth/logout — Invalidation du token
+      if (path === '/api/auth/logout' && method === 'POST') {
+        const authHeader = request.headers.get('Authorization') || '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (token) {
+          const tokenHash = await hashToken(token);
+          await env.DB.prepare('DELETE FROM auth_sessions WHERE token_hash = ?').bind(tokenHash).run();
+        }
+        return jsonResponse({ success: true, message: 'Déconnecté' }, 200, origin);
+      }
+
+      // GET /api/auth/me — Profil de l'utilisateur connecté
+      if (path === '/api/auth/me' && method === 'GET') {
+        const authHeader = request.headers.get('Authorization') || '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (!token) return errorResponse('Token requis', 401, origin);
+
+        const payload = await verifyJWT(token);
+        if (!payload?.userId) return errorResponse('Token invalide ou expiré', 401, origin);
+
+        const tokenHash = await hashToken(token);
+        const session = await env.DB.prepare('SELECT id FROM auth_sessions WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP').bind(tokenHash).first();
+        if (!session) return errorResponse('Session expirée, veuillez vous reconnecter', 401, origin);
+
+        const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.userId).first();
+        if (!user) return errorResponse('Utilisateur introuvable', 404, origin);
+
+        // Règle d'inactivité de 30 jours (1 mois)
+        if (user.last_active_at) {
+          const inactiveMs = Date.now() - new Date(user.last_active_at).getTime();
+          const THIRTY_DAYS_MS = 30 * 24 * 3600 * 1000;
+          if (inactiveMs > THIRTY_DAYS_MS) {
+            await env.DB.prepare('DELETE FROM auth_sessions WHERE user_id = ?').bind(user.id).run();
+            return jsonResponse({
+              success: false,
+              error: 'Session expirée après 1 mois d\'inactivité. Veuillez vous reconnecter.',
+              code: 'SESSION_EXPIRED_INACTIVE',
+            }, 401, origin);
+          }
+        }
+        await env.DB.prepare('UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?').bind(user.id).run();
+
+        const safeUser = sanitizeUser(user);
+        return jsonResponse({ success: true, data: safeUser }, 200, origin);
+      }
+
+      // PUT ou POST /api/auth/setup-security — Configuration obligatoire (Nom, Mot de passe, Questions de sécurité) après connexion Google
+      if ((path === '/api/auth/setup-security' || path === '/api/auth/google/complete-security') && (method === 'PUT' || method === 'POST')) {
+        const authHeader = request.headers.get('Authorization') || '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (!token) return errorResponse('Token requis', 401, origin);
+
+        const payload = await verifyJWT(token);
+        if (!payload?.userId) return errorResponse('Token invalide ou expiré', 401, origin);
+
+        const body: any = await request.json();
+        const { name, password, securityQuestion1, securityAnswer1, securityQuestion2, securityAnswer2 } = body;
+
+        if (!name || !name.trim()) {
+          return errorResponse('Le nom complet est obligatoire', 400, origin);
+        }
+        const pwdCheck = validatePasswordFormat(password);
+        if (!pwdCheck.valid) return errorResponse(pwdCheck.error || 'Mot de passe non conforme', 400, origin);
+        if (!securityAnswer1 || !securityAnswer1.trim() || !securityAnswer2 || !securityAnswer2.trim()) {
+          return errorResponse('Veuillez renseigner les réponses à vos deux questions de sécurité', 400, origin);
+        }
+
+        const passwordHash = await hashPassword(password);
+        const ans1Hash = await hashToken(securityAnswer1.toLowerCase().trim());
+        const ans2Hash = await hashToken(securityAnswer2.toLowerCase().trim());
+        const q1 = securityQuestion1 || 'Quelle est votre ville de naissance ?';
+        const q2 = securityQuestion2 || 'Quel est le prénom de votre mère ?';
+
+        await env.DB.prepare(`
+          UPDATE users SET
+            name = ?,
+            password_hash = ?,
+            security_question_1 = ?,
+            security_answer_1_hash = ?,
+            security_question_2 = ?,
+            security_answer_2_hash = ?,
+            last_active_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).bind(name.trim(), passwordHash, q1, ans1Hash, q2, ans2Hash, payload.userId).run();
+
+        const updatedUser: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.userId).first();
+        const safeUser = sanitizeUser(updatedUser);
+
+        return jsonResponse({
+          success: true,
+          message: 'Sécurité de votre compte configurée avec succès !',
+          user: safeUser,
+        }, 200, origin);
+      }
+
+      // PUT /api/auth/onboarding — Complétion du profil (obligatoire après 1ère connexion)
+      if (path === '/api/auth/onboarding' && method === 'PUT') {
+        const authHeader = request.headers.get('Authorization') || '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (!token) return errorResponse('Token requis', 401, origin);
+
+        const payload = await verifyJWT(token);
+        if (!payload?.userId) return errorResponse('Token invalide', 401, origin);
+
+        const body: any = await request.json();
+        const { name, school, filiere, level, country, phone, bio, avatarUrl } = body;
+        if (!school || !filiere || !country) return errorResponse('École, filière et pays sont obligatoires', 400, origin);
+
+        await env.DB.prepare(`
+          UPDATE users SET
+            name = COALESCE(?, name),
+            school = ?,
+            filiere = ?,
+            level = ?,
+            country = ?,
+            phone = COALESCE(?, phone),
+            bio = COALESCE(?, bio),
+            avatar_url = COALESCE(?, avatar_url),
+            is_onboarded = 1,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).bind(name || null, school, filiere, level || '', country, phone || null, bio || null, avatarUrl || null, payload.userId).run();
+
+        const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.userId).first();
+        const safeUser = sanitizeUser(user);
+        return jsonResponse({ success: true, data: safeUser }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
       // 1. UTILISATEURS & PROFIL
       // ----------------------------------------------------------------------
       if (path === '/api/users/sync' && method === 'POST') {
         const body: any = await request.json();
-        const { id, name, email, school, filiere, avatarUrl } = body;
+        const { id, name, email, school, filiere, country, avatarUrl } = body;
         if (!id || !email) return errorResponse('ID et email requis', 400, origin);
 
         await env.DB.prepare(`
-          INSERT INTO users (id, name, email, school, filiere, avatar_url, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          INSERT INTO users (id, name, email, school, filiere, country, avatar_url, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
           ON CONFLICT(id) DO UPDATE SET
             name = excluded.name,
             email = excluded.email,
             school = excluded.school,
             filiere = excluded.filiere,
+            country = excluded.country,
             avatar_url = excluded.avatar_url,
             updated_at = CURRENT_TIMESTAMP
-        `).bind(id, name || 'Étudiant', email, school || 'CME', filiere || 'Général', avatarUrl || null).run();
+        `).bind(id, name || 'Étudiant', email, school || 'CME', filiere || 'Général', country || "Côte d'Ivoire", avatarUrl || null).run();
 
         // Initialiser les préférences utilisateur si inexistantes
         await env.DB.prepare(`
@@ -166,7 +1254,14 @@ export default {
         if (method === 'GET') {
           const userId = url.searchParams.get('userId');
           if (!userId) return errorResponse('userId requis', 400, origin);
-          const { results } = await env.DB.prepare('SELECT * FROM matieres WHERE user_id = ? ORDER BY display_order ASC, name ASC').bind(userId).all();
+          const { results } = await env.DB.prepare(`
+            SELECT m.*, 
+              (SELECT COUNT(*) FROM files f WHERE f.matiere_id = m.id) AS files_count,
+              (SELECT COALESCE(SUM(f.size), 0) FROM files f WHERE f.matiere_id = m.id) AS total_size
+            FROM matieres m
+            WHERE m.user_id = ?
+            ORDER BY m.display_order ASC, m.name ASC
+          `).bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
 
@@ -178,6 +1273,12 @@ export default {
           await env.DB.prepare(`
             INSERT INTO matieres (id, user_id, name, coefficient, color, category, display_order)
             VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              coefficient = excluded.coefficient,
+              color = excluded.color,
+              category = excluded.category,
+              display_order = excluded.display_order
           `).bind(id, userId, name, coefficient ?? 1.0, color || '#EA580C', category || 'Général', displayOrder ?? 0).run();
 
           return jsonResponse({ success: true, data: { id, name } }, 201, origin);
@@ -303,27 +1404,103 @@ export default {
       }
 
       // ----------------------------------------------------------------------
-      // 5. PARTAGES & LIENS PUBLICS
+      // 5. PARTAGES & LIENS PUBLICS (Stock de liens & Code QR)
       // ----------------------------------------------------------------------
       if (path === '/api/shares') {
         if (method === 'GET') {
           const userId = url.searchParams.get('userId');
-          if (!userId) return errorResponse('userId requis', 400, origin);
-          const { results } = await env.DB.prepare('SELECT * FROM shared_folders WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all();
+          const isPublicOnly = url.searchParams.get('publicOnly') === 'true' || url.searchParams.get('isPublic') === '1';
+
+          let query = 'SELECT * FROM shared_folders WHERE 1=1';
+          const params: any[] = [];
+
+          if (userId) {
+            query += ' AND user_id = ?';
+            params.push(userId);
+          }
+          if (isPublicOnly) {
+            query += ' AND is_public = 1';
+          }
+
+          query += ' ORDER BY created_at DESC';
+          const { results } = await env.DB.prepare(query).bind(...params).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
 
         if (method === 'POST') {
           const body: any = await request.json();
-          const { id, userId, title, description, category, authorName, school, isPasswordProtected, passwordHash, totalSize, files } = body;
-          if (!id || !userId || !title) return errorResponse('Champs obligatoires manquants', 400, origin);
+          const {
+            id,
+            userId,
+            title,
+            description,
+            category,
+            authorName,
+            school,
+            country,
+            isPublic,
+            isPasswordProtected,
+            passwordHash,
+            allowDownload,
+            shareCode,
+            shareUrl,
+            qrCodeData,
+            totalSize,
+            files
+          } = body;
+          if (!id || !userId || !title) return errorResponse('id, userId et title requis', 400, origin);
+
+          const finalShareCode = shareCode || `DKD-${crypto.randomUUID().substring(0, 6).toUpperCase()}`;
+          const finalShareUrl = shareUrl || `${url.origin}/share/${finalShareCode}`;
+          const finalQrCodeData = qrCodeData || finalShareUrl;
+          const finalCountry = country || "Côte d'Ivoire";
+          const finalIsPublic = isPublic !== undefined ? (isPublic ? 1 : 0) : 1;
+          const finalAllowDownload = allowDownload !== undefined ? (allowDownload ? 1 : 0) : 1;
 
           await env.DB.prepare(`
-            INSERT INTO shared_folders (id, user_id, title, description, category, author_name, school, is_password_protected, password_hash, total_size)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).bind(id, userId, title, description || '', category || 'Cours', authorName || 'Étudiant', school || '', isPasswordProtected ? 1 : 0, passwordHash || null, totalSize || 0).run();
+            INSERT INTO shared_folders (
+              id, user_id, share_code, share_url, qr_code_data, title, description, category,
+              author_name, school, country, is_public, is_password_protected, password_hash,
+              allow_download, total_size, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              share_code = COALESCE(excluded.share_code, shared_folders.share_code),
+              share_url = COALESCE(excluded.share_url, shared_folders.share_url),
+              qr_code_data = COALESCE(excluded.qr_code_data, shared_folders.qr_code_data),
+              title = excluded.title,
+              description = excluded.description,
+              category = excluded.category,
+              author_name = excluded.author_name,
+              school = excluded.school,
+              country = excluded.country,
+              is_public = excluded.is_public,
+              is_password_protected = excluded.is_password_protected,
+              password_hash = excluded.password_hash,
+              allow_download = excluded.allow_download,
+              total_size = excluded.total_size,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id,
+            userId,
+            finalShareCode,
+            finalShareUrl,
+            finalQrCodeData,
+            title,
+            description || '',
+            category || 'Cours',
+            authorName || 'Étudiant',
+            school || '',
+            finalCountry,
+            finalIsPublic,
+            isPasswordProtected ? 1 : 0,
+            passwordHash || null,
+            finalAllowDownload,
+            totalSize || 0
+          ).run();
 
           if (Array.isArray(files)) {
+            await env.DB.prepare('DELETE FROM shared_folder_files WHERE shared_folder_id = ?').bind(id).run();
             for (const f of files) {
               await env.DB.prepare(`
                 INSERT INTO shared_folder_files (id, shared_folder_id, file_id, name, size, type, r2_key, file_url)
@@ -332,8 +1509,64 @@ export default {
             }
           }
 
-          return jsonResponse({ success: true, id }, 201, origin);
+          return jsonResponse({
+            success: true,
+            id,
+            shareCode: finalShareCode,
+            shareUrl: finalShareUrl,
+            qrCodeData: finalQrCodeData,
+            country: finalCountry,
+            isPublic: finalIsPublic === 1,
+            allowDownload: finalAllowDownload === 1
+          }, 201, origin);
         }
+      }
+
+      // Recherche de partage par Code Unique (pour scan QR code ou lien direct)
+      if (path.startsWith('/api/shares/code/') && method === 'GET') {
+        const code = decodeURIComponent(path.split('/')[4]);
+        const folder = await env.DB.prepare('SELECT * FROM shared_folders WHERE share_code = ?').bind(code).first<any>();
+        if (!folder) return errorResponse('Code de partage introuvable', 404, origin);
+
+        await env.DB.prepare('UPDATE shared_folders SET views_count = views_count + 1 WHERE id = ?').bind(folder.id).run();
+        const { results: files } = await env.DB.prepare('SELECT * FROM shared_folder_files WHERE shared_folder_id = ?').bind(folder.id).all();
+
+        return jsonResponse({
+          success: true,
+          data: {
+            ...folder,
+            files: folder.is_password_protected ? [] : files,
+            requiresPassword: !!folder.is_password_protected,
+          },
+        }, 200, origin);
+      }
+
+      // Basculer la visibilité publique d'un partage
+      if (path.startsWith('/api/shares/') && path.endsWith('/public') && method === 'PUT') {
+        const shareId = path.split('/')[3];
+        const body: any = await request.json();
+        const isPublic = body.isPublic !== undefined ? (body.isPublic ? 1 : 0) : 1;
+        const allowDownload = body.allowDownload !== undefined ? (body.allowDownload ? 1 : 0) : 1;
+
+        await env.DB.prepare(`
+          UPDATE shared_folders 
+          SET is_public = ?, allow_download = ?, updated_at = CURRENT_TIMESTAMP 
+          WHERE id = ?
+        `).bind(isPublic, allowDownload, shareId).run();
+
+        return jsonResponse({
+          success: true,
+          message: 'Visibilité mise à jour',
+          isPublic: isPublic === 1,
+          allowDownload: allowDownload === 1
+        }, 200, origin);
+      }
+
+      if (path.startsWith('/api/shares/') && method === 'DELETE') {
+        const shareId = path.split('/')[3];
+        await env.DB.prepare('DELETE FROM shared_folder_files WHERE shared_folder_id = ?').bind(shareId).run();
+        await env.DB.prepare('DELETE FROM shared_folders WHERE id = ?').bind(shareId).run();
+        return jsonResponse({ success: true, message: 'Dossier partagé supprimé' }, 200, origin);
       }
 
       if (path.startsWith('/api/shares/') && method === 'GET') {
@@ -608,29 +1841,157 @@ export default {
       }
 
       // ----------------------------------------------------------------------
-      // 12. PUBLICATION UNIVERSITAIRE (Bibliothèque Publique)
+      // 12. PUBLICATION UNIVERSITAIRE (Bibliothèque Publique & Ressources)
       // ----------------------------------------------------------------------
       if (path === '/api/published-documents') {
         if (method === 'GET') {
           const school = url.searchParams.get('school');
           const filiere = url.searchParams.get('filiere');
+          const country = url.searchParams.get('country');
+          const category = url.searchParams.get('category');
+          const matiereName = url.searchParams.get('matiereName') || url.searchParams.get('matiere_name');
+          const level = url.searchParams.get('level');
+          const search = url.searchParams.get('search');
+          const isPublicParam = url.searchParams.get('isPublic');
+
           let query = 'SELECT * FROM published_documents WHERE 1=1';
           const params: any[] = [];
+
           if (school) { query += ' AND school = ?'; params.push(school); }
           if (filiere) { query += ' AND filiere = ?'; params.push(filiere); }
+          if (country) { query += ' AND country = ?'; params.push(country); }
+          if (category && category !== 'Tous') { query += ' AND category = ?'; params.push(category); }
+          if (matiereName) { query += ' AND matiere_name = ?'; params.push(matiereName); }
+          if (level) { query += ' AND level = ?'; params.push(level); }
+
+          if (isPublicParam !== null && isPublicParam !== undefined) {
+            query += ' AND is_public = ?';
+            params.push(isPublicParam === 'true' || isPublicParam === '1' ? 1 : 0);
+          } else {
+            query += ' AND is_public = 1';
+          }
+
+          if (search) {
+            query += ' AND (title LIKE ? OR description LIKE ? OR matiere_name LIKE ? OR author_name LIKE ? OR tags_json LIKE ?)';
+            const s = `%${search}%`;
+            params.push(s, s, s, s, s);
+          }
+
           query += ' ORDER BY created_at DESC';
           const { results } = await env.DB.prepare(query).bind(...params).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
+
         if (method === 'POST') {
           const body: any = await request.json();
-          const { id, userId, title, description, school, filiere, category, infoMode, fileName, fileSize, fileType, r2Key } = body;
+          const {
+            id,
+            userId,
+            title,
+            description,
+            school,
+            filiere,
+            matiereName,
+            level,
+            category,
+            authorName,
+            country,
+            infoMode,
+            fileName,
+            fileSize,
+            fileType,
+            r2Key,
+            fileUrl,
+            isPublic,
+            tagsJson
+          } = body;
+
+          if (!userId || !title || !fileName) {
+            return errorResponse('userId, title et fileName sont obligatoires', 400, origin);
+          }
+
+          const docId = id || crypto.randomUUID();
+          const finalCountry = country || "Côte d'Ivoire";
+          const finalIsPublic = isPublic !== undefined ? (isPublic ? 1 : 0) : 1;
+
           await env.DB.prepare(`
-            INSERT INTO published_documents (id, user_id, title, description, school, filiere, category, info_mode, file_name, file_size, file_type, r2_key)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).bind(id || crypto.randomUUID(), userId, title, description || '', school || '', filiere || '', category || 'Cours', infoMode || 'all', fileName, fileSize || 0, fileType || '', r2Key).run();
-          return jsonResponse({ success: true }, 201, origin);
+            INSERT INTO published_documents (
+              id, user_id, title, description, school, filiere, matiere_name, level, category,
+              author_name, country, info_mode, file_name, file_size, file_type, r2_key, file_url,
+              is_public, tags_json, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              title = excluded.title,
+              description = excluded.description,
+              school = excluded.school,
+              filiere = excluded.filiere,
+              matiere_name = excluded.matiere_name,
+              level = excluded.level,
+              category = excluded.category,
+              author_name = excluded.author_name,
+              country = excluded.country,
+              info_mode = excluded.info_mode,
+              file_name = excluded.file_name,
+              file_size = excluded.file_size,
+              file_type = excluded.file_type,
+              r2_key = COALESCE(excluded.r2_key, published_documents.r2_key),
+              file_url = COALESCE(excluded.file_url, published_documents.file_url),
+              is_public = excluded.is_public,
+              tags_json = excluded.tags_json,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            docId,
+            userId,
+            title,
+            description || '',
+            school || '',
+            filiere || '',
+            matiereName || '',
+            level || '',
+            category || 'Cours',
+            authorName || 'Étudiant',
+            finalCountry,
+            infoMode || 'all',
+            fileName,
+            fileSize || 0,
+            fileType || '',
+            r2Key || null,
+            fileUrl || '',
+            finalIsPublic,
+            tagsJson || '[]'
+          ).run();
+
+          return jsonResponse({
+            success: true,
+            id: docId,
+            title,
+            country: finalCountry,
+            isPublic: finalIsPublic === 1
+          }, 201, origin);
         }
+      }
+
+      if (path.startsWith('/api/published-documents/') && path.endsWith('/view') && method === 'POST') {
+        const id = path.split('/')[3];
+        await env.DB.prepare('UPDATE published_documents SET views_count = views_count + 1 WHERE id = ?').bind(id).run();
+        return jsonResponse({ success: true }, 200, origin);
+      }
+
+      if (path.startsWith('/api/published-documents/') && path.endsWith('/download') && method === 'POST') {
+        const id = path.split('/')[3];
+        await env.DB.prepare('UPDATE published_documents SET downloads_count = downloads_count + 1 WHERE id = ?').bind(id).run();
+        return jsonResponse({ success: true }, 200, origin);
+      }
+
+      if (path.startsWith('/api/published-documents/') && method === 'DELETE') {
+        const id = path.split('/')[3];
+        const doc = await env.DB.prepare('SELECT r2_key FROM published_documents WHERE id = ?').bind(id).first<any>();
+        if (doc && doc.r2_key && env.BUCKET) {
+          try { await env.BUCKET.delete(doc.r2_key); } catch (e) {}
+        }
+        await env.DB.prepare('DELETE FROM published_documents WHERE id = ?').bind(id).run();
+        return jsonResponse({ success: true, message: 'Document supprimé' }, 200, origin);
       }
 
       // ----------------------------------------------------------------------
@@ -779,13 +2140,14 @@ export default {
         // 1. Profil
         if (userProfile) {
           await env.DB.prepare(`
-            INSERT INTO users (id, name, email, school, filiere, avatar_url, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO users (id, name, email, school, filiere, country, avatar_url, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               email = excluded.email,
               school = excluded.school,
               filiere = excluded.filiere,
+              country = excluded.country,
               avatar_url = excluded.avatar_url,
               updated_at = CURRENT_TIMESTAMP
           `).bind(
@@ -794,6 +2156,7 @@ export default {
             userProfile.email || `${userId}@studycloud.app`,
             userProfile.school || 'CME',
             userProfile.filiere || 'Général',
+            userProfile.country || "Côte d'Ivoire",
             userProfile.avatarUrl || null
           ).run();
         }

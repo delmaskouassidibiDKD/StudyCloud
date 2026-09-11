@@ -13,13 +13,76 @@ CREATE TABLE IF NOT EXISTS users (
     id TEXT PRIMARY KEY,
     name TEXT NOT NULL,
     email TEXT NOT NULL UNIQUE,
-    password_hash TEXT,
-    school TEXT DEFAULT 'CME',
-    filiere TEXT DEFAULT 'Électrotechniques',
+    password_hash TEXT,                          -- NULL si connexion Google
+    provider TEXT DEFAULT 'email',               -- 'email' | 'google'
+    google_id TEXT UNIQUE,                       -- ID Google OAuth
+    email_verified INTEGER DEFAULT 0,            -- 1 = email vérifié
+    school TEXT DEFAULT '',
+    filiere TEXT DEFAULT '',
+    country TEXT DEFAULT 'Côte d''Ivoire',
+    level TEXT DEFAULT '',                       -- Niveau d'études (BTS 1, Licence 2...)
+    bio TEXT DEFAULT '',
+    phone TEXT DEFAULT '',
     avatar_url TEXT,
+    is_onboarded INTEGER DEFAULT 0,              -- 1 = a complété l'onboarding
+    last_active_at TEXT DEFAULT CURRENT_TIMESTAMP, -- Dernière activité (expiration après 1 mois)
+    security_question_1 TEXT DEFAULT 'Quelle est votre ville de naissance ?',
+    security_answer_1_hash TEXT DEFAULT '',      -- Hash SHA-256 réponse secrète 1
+    security_question_2 TEXT DEFAULT 'Quel est le prénom de votre mère ?',
+    security_answer_2_hash TEXT DEFAULT '',      -- Hash SHA-256 réponse secrète 2
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+-- Vérifications d'email & Limitation de renvoi (anti-spam 30s & blocage 3h après 4 tentatives)
+CREATE TABLE IF NOT EXISTS email_verifications (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    email TEXT NOT NULL,
+    token TEXT NOT NULL UNIQUE,
+    resend_count INTEGER DEFAULT 1,
+    last_sent_at TEXT NOT NULL,
+    blocked_until TEXT,
+    expires_at TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_email_verif_token ON email_verifications(token);
+CREATE INDEX IF NOT EXISTS idx_email_verif_user ON email_verifications(user_id);
+CREATE INDEX IF NOT EXISTS idx_email_verif_email ON email_verifications(email);
+
+-- Réclamations de mot de passe & Quota (max 4 par jour, blocage 24h)
+CREATE TABLE IF NOT EXISTS password_resets (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    target_email TEXT NOT NULL,
+    reset_code TEXT NOT NULL,
+    attempts_today INTEGER DEFAULT 1,
+    last_requested_at TEXT NOT NULL,
+    blocked_until TEXT,
+    expires_at TEXT NOT NULL,
+    used INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_pw_resets_user ON password_resets(user_id);
+CREATE INDEX IF NOT EXISTS idx_pw_resets_code ON password_resets(reset_code);
+CREATE INDEX IF NOT EXISTS idx_pw_resets_email ON password_resets(target_email);
+
+-- Sessions d'authentification (JWT invalidation list)
+CREATE TABLE IF NOT EXISTS auth_sessions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    token_hash TEXT NOT NULL UNIQUE,             -- Hash SHA-256 du token JWT
+    expires_at TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_sessions_user ON auth_sessions(user_id);
+CREATE INDEX IF NOT EXISTS idx_sessions_token ON auth_sessions(token_hash);
 
 CREATE TABLE IF NOT EXISTS user_preferences (
     user_id TEXT PRIMARY KEY,
@@ -80,22 +143,32 @@ CREATE INDEX IF NOT EXISTS idx_files_study ON files(user_id, is_study_session);
 CREATE TABLE IF NOT EXISTS shared_folders (
     id TEXT PRIMARY KEY, -- 'folder-xyz' ou UUID
     user_id TEXT NOT NULL,
+    share_code TEXT UNIQUE, -- Code unique de partage rattaché au compte utilisateur (ex: 'DKD-7A9B')
+    share_url TEXT, -- URL complète de consultation / téléchargement
+    qr_code_data TEXT, -- Données ou SVG du code QR pour scan mobile
     title TEXT NOT NULL,
     description TEXT,
     category TEXT DEFAULT 'Cours',
     author_name TEXT,
     school TEXT,
-    is_password_protected INTEGER DEFAULT 0,
+    country TEXT DEFAULT 'Côte d''Ivoire',
+    is_public INTEGER DEFAULT 1, -- 1 = Public à tous, 0 = Privé
+    is_password_protected INTEGER DEFAULT 0, -- 1 = Verrouillé par PIN
     password_hash TEXT,
+    allow_download INTEGER DEFAULT 1, -- 1 = Téléchargement autorisé pour tous
     total_size INTEGER DEFAULT 0,
     downloads_count INTEGER DEFAULT 0,
     views_count INTEGER DEFAULT 0,
     expires_at TEXT, -- NULL si permanent, ou date ISO
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_shared_user ON shared_folders(user_id);
+CREATE INDEX IF NOT EXISTS idx_shared_code ON shared_folders(share_code);
+CREATE INDEX IF NOT EXISTS idx_shared_public ON shared_folders(is_public);
+CREATE INDEX IF NOT EXISTS idx_shared_country ON shared_folders(country);
 
 CREATE TABLE IF NOT EXISTS shared_folder_files (
     id TEXT PRIMARY KEY,
@@ -287,19 +360,30 @@ CREATE TABLE IF NOT EXISTS published_documents (
     description TEXT,
     school TEXT,
     filiere TEXT,
-    category TEXT DEFAULT 'Cours',
+    matiere_name TEXT, -- Matière associée (ex: 'Électrotechnique', 'Mathématiques')
+    level TEXT, -- Niveau / Classe (ex: 'BTS 1', 'Licence 2', 'Master 1')
+    category TEXT DEFAULT 'Cours', -- 'Cours' | 'TD' | 'TP' | 'Examen' | 'Résumé'
+    author_name TEXT, -- Auteur ou nom de l'étudiant
+    country TEXT DEFAULT 'Côte d''Ivoire', -- Pays de l'établissement
     info_mode TEXT DEFAULT 'all', -- 'all' | 'individual' | 'none'
     file_name TEXT NOT NULL,
     file_size INTEGER DEFAULT 0,
     file_type TEXT,
-    r2_key TEXT NOT NULL,
+    r2_key TEXT, -- Clé unique dans Cloudflare R2
+    file_url TEXT, -- URL de téléchargement / consultation
+    is_public INTEGER DEFAULT 1, -- 1 = Public pour tous les étudiants
+    tags_json TEXT DEFAULT '[]', -- Mots-clés pour le moteur de recherche
     downloads_count INTEGER DEFAULT 0,
     views_count INTEGER DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
     FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
 );
 
 CREATE INDEX IF NOT EXISTS idx_published_school ON published_documents(school, filiere);
+CREATE INDEX IF NOT EXISTS idx_published_country ON published_documents(country);
+CREATE INDEX IF NOT EXISTS idx_published_matiere ON published_documents(matiere_name);
+CREATE INDEX IF NOT EXISTS idx_published_public ON published_documents(is_public);
 
 -- ============================================================================
 -- 12. NOTIFICATIONS & ALERTES

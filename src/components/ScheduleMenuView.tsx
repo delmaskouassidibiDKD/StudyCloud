@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Trash2, Edit2, Clock, Calendar, Check, X, ZoomIn, ZoomOut, MapPin, User } from 'lucide-react';
+import { triggerDebouncedCloudBackup } from '../services/userSync';
 
 interface ScheduleMenuViewProps {
   onBack: () => void;
@@ -73,26 +74,47 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
   useEffect(() => {
     try {
       localStorage.setItem('user_schedule_data', JSON.stringify(scheduleData));
+      triggerDebouncedCloudBackup();
     } catch (e) {}
   }, [scheduleData]);
 
   useEffect(() => {
     try {
       localStorage.setItem('user_schedule_days', JSON.stringify(days));
+      triggerDebouncedCloudBackup();
     } catch (e) {}
   }, [days]);
 
   useEffect(() => {
     try {
       localStorage.setItem('user_schedule_hours', JSON.stringify(hours));
+      triggerDebouncedCloudBackup();
     } catch (e) {}
   }, [hours]);
 
   useEffect(() => {
     try {
       localStorage.setItem('user_schedule_zoom', zoomLevel.toString());
+      triggerDebouncedCloudBackup();
     } catch (e) {}
   }, [zoomLevel]);
+
+  useEffect(() => {
+    const handleRestore = () => {
+      try {
+        const savedData = localStorage.getItem('user_schedule_data');
+        if (savedData) setScheduleData(JSON.parse(savedData));
+        const savedDays = localStorage.getItem('user_schedule_days');
+        if (savedDays) setDays(JSON.parse(savedDays));
+        const savedHours = localStorage.getItem('user_schedule_hours');
+        if (savedHours) setHours(JSON.parse(savedHours));
+        const savedZoom = localStorage.getItem('user_schedule_zoom');
+        if (savedZoom) setZoomLevel(Number(savedZoom));
+      } catch (e) {}
+    };
+    window.addEventListener('unifolder_data_restored', handleRestore);
+    return () => window.removeEventListener('unifolder_data_restored', handleRestore);
+  }, []);
 
   const changeZoom = (delta: number) => {
     setZoomLevel((prev) => {
