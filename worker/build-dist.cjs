@@ -10,15 +10,34 @@ if (!fs.existsSync(indexPath)) {
   process.exit(1);
 }
 
-const originalCode = fs.readFileSync(indexPath, 'utf8');
+let originalCode = fs.readFileSync(indexPath, 'utf8');
 
-// Version Service Worker (sans mot-clé export, utilise addEventListener)
-const swCode = originalCode.replace(
-  /export\s*\{\s*src_default\s+as\s+default\s*\};?/,
-  `addEventListener('fetch', (event) => {\n  event.respondWith(src_default.fetch(event.request, globalThis, event));\n});`
-);
+// Supprimer les lignes de sourceMappingURL (provoquent des erreurs 404 dans l'éditeur en ligne de Cloudflare)
+originalCode = originalCode.replace(/\/\/#\s*sourceMappingURL=.*$/gm, '').trim();
+
+// Ajouter les directives de suppression d'erreurs de linter/TypeScript en tête de fichier
+const header = '// @ts-nocheck\n/* eslint-disable */\n';
+
+let moduleCode = originalCode;
+if (!moduleCode.startsWith('// @ts-nocheck')) {
+  moduleCode = header + moduleCode;
+}
+
+fs.writeFileSync(indexPath, moduleCode + '\n', 'utf8');
+
+// Version Service Worker (sans aucun mot-clé export, utilise addEventListener)
+let swCode = originalCode;
+swCode = swCode.replace(/export\s*\{[^}]*\};?/g, '');
+swCode = swCode.replace(/export\s+class\s+MyWorkflow/g, 'class MyWorkflow');
+
+swCode += `\n\naddEventListener('fetch', (event) => {\n  event.respondWith(src_default.fetch(event.request, globalThis, event));\n});\n`;
+
+if (!swCode.startsWith('// @ts-nocheck')) {
+  swCode = header + swCode;
+}
 
 fs.writeFileSync(swPath, swCode, 'utf8');
+
 console.log('Build terminé avec succès :');
-console.log(' - worker/dist/index.js (format ES Modules)');
-console.log(' - worker/dist/service-worker.js (format Service Worker)');
+console.log(' - worker/dist/index.js (format ES Modules - propre, sans sourceMap cassée, ts-nocheck inclus)');
+console.log(' - worker/dist/service-worker.js (format Service Worker - propre, addEventListener inclus)');

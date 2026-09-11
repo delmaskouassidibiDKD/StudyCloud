@@ -2568,3 +2568,11 @@ export default {
     }
   },
 };
+
+// Classe MyWorkflow pour satisfaire la liaison Cloudflare Workflows si configurée dans le Dashboard Cloudflare
+export class MyWorkflow {
+  async run(event: any, step: any) {
+    return;
+  }
+}
+

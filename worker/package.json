@@ -3,6 +3,7 @@
   "version": "1.0.0",
   "description": "Cloudflare Worker backend pour StudyCloud (D1 SQL + R2 Storage)",
   "main": "src/index.ts",
+  "type": "module",
   "scripts": {
     "build": "wrangler deploy --dry-run --outdir=dist && node build-dist.cjs",
     "dev": "wrangler dev",
