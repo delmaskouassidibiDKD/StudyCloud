@@ -139,9 +139,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
   const handleDeleteMatiere = (index: number) => {
     const mat = savedMatieres[index];
-    if (mat) {
-      localStorage.removeItem(`unifolder_matiere_files_${mat.name}`);
-    }
+    if (!mat) return;
+    if (!window.confirm(`Voulez-vous vraiment supprimer le dossier de la matière "${mat.name}" ainsi que ses fichiers ?`)) return;
+    localStorage.removeItem(`unifolder_matiere_files_${mat.name}`);
     setSavedMatieres(prev => prev.filter((_, i) => i !== index));
     notify("Matière supprimée avec succès !");
   };

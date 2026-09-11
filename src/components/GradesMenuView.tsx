@@ -38,9 +38,8 @@ const getInitialTrimestersData = (): Record<string, GradeItem[]> => {
 
   if (initialSubjects.length === 0) {
     initialSubjects = [
-      { id: '1', name: 'Mathématiques', coefficient: '3' },
-      { id: '2', name: 'Physique', coefficient: '1' },
-      { id: '3', name: 'Anglais', coefficient: '3' },
+      { id: '1', name: 'Mathématiques', coefficient: '2' },
+      { id: '2', name: 'Anglais', coefficient: '2' },
     ];
   }
 
