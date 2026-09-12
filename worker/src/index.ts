@@ -787,10 +787,64 @@ export default {
       ): Promise<void> {
         try {
           const cleanOrigin = (appOrigin || 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
-          const publicAssetOrigin = (!cleanOrigin || cleanOrigin.includes('localhost') || !cleanOrigin.startsWith('https://'))
-            ? 'https://studycloud.dkd-technologies.com'
-            : cleanOrigin;
-          const title = '🎉 Bienvenue sur StudyCloud !';
+          const subject = isStudent
+            ? '🎉 Bienvenue sur StudyCloud - Votre espace est prêt !'
+            : 'Bienvenue sur StudyCloud - Votre espace professionnel est prêt';
+          const title = isStudent
+            ? '🎉 Bienvenue sur StudyCloud !'
+            : 'Bienvenue sur StudyCloud';
+
+          const heading = isStudent
+            ? `Bienvenue sur StudyCloud, ${name} ! 🎓`
+            : `Bienvenue sur StudyCloud, ${name}`;
+
+          const introText = isStudent
+            ? `Toute l'équipe de <strong>StudyCloud</strong> a le plaisir de vous accueillir ! Votre profil a été configuré avec succès et votre espace de travail numérique personnel est immédiatement opérationnel.`
+            : `Toute l'équipe de <strong>StudyCloud</strong> et de <strong>DKD Technologies</strong> a le plaisir de vous accueillir. Votre profil professionnel est configuré avec succès et votre environnement de travail numérique sécurisé est prêt à l'emploi.`;
+
+          const featuresHeader = isStudent
+            ? '🚀 Ce que vous pouvez faire dès maintenant :'
+            : 'Vos fonctionnalités professionnelles dès aujourd\'hui :';
+
+          const featuresList = isStudent
+            ? `
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  📚 <strong>Gestion & Stockage de cours :</strong> Centralisez vos documents, fiches et polycopiés en lieu sûr.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  🤖 <strong>Assistant IA Delmas :</strong> Posez des questions sur vos cours, générez des résumés et préparez vos examens plus vite.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  👥 <strong>Partage & Collaboration :</strong> Échangez des dossiers de révision avec d'autres étudiants ou collègues.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  🔒 <strong>Sécurité DKD :</strong> Vos fichiers et données sont protégés et sauvegardés de manière isolée.
+                </p>
+            `
+            : `
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  <strong style="color:#0f172a;">Gestion documentaire & archivage sécurisé :</strong> Classez, organisez et retrouvez instantanément l'ensemble de vos dossiers, contrats, fiches de travail et présentations professionnelles.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  <strong style="color:#0f172a;">Assistant d'Analyse IA Delmas :</strong> Analysez des rapports volumineux, synthétisez vos documents de travail, préparez vos réunions et rédigez des synthèses précises en un instant.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  <strong style="color:#0f172a;">Partage & collaboration maîtrisée :</strong> Transmettez facilement des dossiers et documents à vos collaborateurs, partenaires et clients avec des accès fiables et protégés.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  <strong style="color:#0f172a;">Productivité continue & mode hors-ligne :</strong> Consultez vos fichiers essentiels même en déplacement sans accès Internet, avec synchronisation automatique dès votre reconnexion.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  <strong style="color:#0f172a;">Organisation & suivi d'activités :</strong> Structurez vos projets, planifiez vos sessions de travail et gérez vos priorités au quotidien grâce aux outils intégrés.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  <strong style="color:#0f172a;">Confidentialité & sécurité DKD Technologies :</strong> Vos actifs professionnels et données sensibles sont strictement isolés, chiffrés et sauvegardés selon les standards de sécurité DKD.
+                </p>
+            `;
+
+          const ctaText = isStudent
+            ? 'Accéder à mon tableau de bord StudyCloud &rarr;'
+            : 'Accéder à mon espace professionnel StudyCloud &rarr;';
 
           await fetch('https://api.resend.com/emails', {
             method: 'POST',
@@ -799,7 +853,7 @@ export default {
               from: 'StudyCloud <noreply@dkd-technologies.com>',
               to: [toEmail],
               reply_to: 'StudyClouddkd@gmail.com',
-              subject: '🎉 Bienvenue sur StudyCloud - Votre espace est prêt !',
+              subject,
               html: `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -843,34 +897,20 @@ export default {
               <div style="height:1px;background:#f1f5f9;margin-bottom:26px;"></div>
 
               <h1 style="margin:0 0 16px 0;color:#0f172a;font-size:22px;font-weight:800;line-height:1.3;">
-                Bienvenue sur StudyCloud, ${name} ! 🎓
+                ${heading}
               </h1>
 
               <p style="margin:0 0 20px 0;color:#334155;font-size:15px;line-height:1.6;">
-                Toute l'équipe de <strong>StudyCloud</strong> a le plaisir de vous accueillir ! Votre profil a été configuré avec succès et votre espace de travail numérique personnel est immédiatement opérationnel.
+                ${introText}
               </p>
 
-              <!-- Contenu fluide directement sur le fond de la page (comme un livre, sans bloc ni cadre) -->
+              <!-- Contenu fluide directement sur le fond de la page (sans bloc ni cadre) -->
               <div style="margin:26px 0 28px 0;">
                 <p style="margin:0 0 16px 0;font-size:14px;font-weight:800;color:#0f172a;text-transform:uppercase;letter-spacing:0.5px;">
-                  🚀 Ce que vous pouvez faire dès maintenant :
+                  ${featuresHeader}
                 </p>
 
-                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  📚 <strong>Gestion & Stockage de cours :</strong> Centralisez vos documents, fiches et polycopiés en lieu sûr.
-                </p>
-
-                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  🤖 <strong>Assistant IA Delmas :</strong> Posez des questions sur vos cours, générez des résumés et préparez vos examens plus vite.
-                </p>
-
-                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  👥 <strong>Partage & Collaboration :</strong> Échangez des dossiers de révision avec d'autres étudiants ou collègues.
-                </p>
-
-                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  🔒 <strong>Sécurité DKD :</strong> Vos fichiers et données sont protégés et sauvegardés de manière isolée.
-                </p>
+                ${featuresList}
               </div>
 
               <!-- CTA Button -->
@@ -878,7 +918,7 @@ export default {
                 <tr>
                   <td align="center">
                     <a href="${cleanOrigin}" target="_blank" style="display:inline-block;padding:16px 36px;background:linear-gradient(135deg, #EA580C 0%, #F97316 100%);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;border-radius:14px;box-shadow:0 8px 24px rgba(234,88,12,0.35);">
-                      Accéder à mon tableau de bord StudyCloud &rarr;
+                      ${ctaText}
                     </a>
                   </td>
                 </tr>
@@ -1832,7 +1872,15 @@ export default {
         `).bind(jwtToken, verif.id).run();
 
         if (isFirstVerification) {
-          sendWelcomeEmail(userBefore.email, userBefore.name);
+          const isUserStudent = userBefore.is_student === 1 || (userBefore.is_student === null && userBefore.school && userBefore.school !== 'Particulier / Professionnel' && userBefore.school !== 'Professionnel / Particulier');
+          sendWelcomeEmail(
+            userBefore.email,
+            userBefore.name || (isUserStudent ? 'Étudiant' : 'Membre'),
+            Boolean(isUserStudent),
+            userBefore.school || '',
+            userBefore.filiere || '',
+            appUrl
+          );
         }
 
         const accept = request.headers.get('Accept') || '';
@@ -2468,8 +2516,8 @@ export default {
           const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
           sendWelcomeEmail(
             user.email,
-            user.name || name || 'Étudiant',
-            isStudent,
+            user.name || name || (isStudent ? 'Étudiant' : 'Membre'),
+            Boolean(isStudent),
             finalSchool,
             finalFiliere,
             clientOrigin
@@ -2578,10 +2626,11 @@ export default {
         if (!user || !user.email) return errorResponse('Utilisateur ou email introuvable', 404, origin);
 
         const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
+        const isUserStudent = user.is_student === 1 || (user.is_student === null && user.school && user.school !== 'Particulier / Professionnel' && user.school !== 'Professionnel / Particulier');
         await sendWelcomeEmail(
           user.email,
-          user.name || 'Étudiant',
-          user.school && user.school !== 'Particulier / Professionnel',
+          user.name || (isUserStudent ? 'Étudiant' : 'Membre'),
+          Boolean(isUserStudent),
           user.school || '',
           user.filiere || '',
           clientOrigin

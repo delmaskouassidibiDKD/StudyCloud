@@ -731,8 +731,65 @@ var src_default = {
       async function sendWelcomeEmail(toEmail, name, isStudent = true, school = "", filiere = "", appOrigin = "https://studycloud.dkd-technologies.com") {
         try {
           const cleanOrigin = (appOrigin || "https://studycloud.dkd-technologies.com").replace(/\/+$/, "");
-          const publicAssetOrigin = !cleanOrigin || cleanOrigin.includes("localhost") || !cleanOrigin.startsWith("https://") ? "https://studycloud.dkd-technologies.com" : cleanOrigin;
-          const title = "\u{1F389} Bienvenue sur StudyCloud !";
+          const subject = isStudent
+            ? "\u{1F389} Bienvenue sur StudyCloud - Votre espace est pr\xEAt !"
+            : "Bienvenue sur StudyCloud - Votre espace professionnel est prêt";
+          const title = isStudent
+            ? "\u{1F389} Bienvenue sur StudyCloud !"
+            : "Bienvenue sur StudyCloud";
+
+          const heading = isStudent
+            ? `Bienvenue sur StudyCloud, ${name} ! \u{1F393}`
+            : `Bienvenue sur StudyCloud, ${name}`;
+
+          const introText = isStudent
+            ? `Toute l'\xE9quipe de <strong>StudyCloud</strong> a le plaisir de vous accueillir ! Votre profil a \xE9t\xE9 configur\xE9 avec succ\xE8s et votre espace de travail num\xE9rique personnel est imm\xE9diatement op\xE9rationnel.`
+            : `Toute l'équipe de <strong>StudyCloud</strong> et de <strong>DKD Technologies</strong> a le plaisir de vous accueillir. Votre profil professionnel est configuré avec succès et votre environnement de travail numérique sécurisé est prêt à l'emploi.`;
+
+          const featuresHeader = isStudent
+            ? "\u{1F680} Ce que vous pouvez faire d\xE8s maintenant :"
+            : "Vos fonctionnalités professionnelles dès aujourd'hui :";
+
+          const featuresList = isStudent
+            ? `
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  \u{1F4DA} <strong>Gestion & Stockage de cours :</strong> Centralisez vos documents, fiches et polycopi\xE9s en lieu s\xFBr.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  \u{1F916} <strong>Assistant IA Delmas :</strong> Posez des questions sur vos cours, g\xE9n\xE9rez des r\xE9sum\xE9s et pr\xE9parez vos examens plus vite.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  \u{1F465} <strong>Partage & Collaboration :</strong> \xC9changez des dossiers de r\xE9vision avec d'autres \xE9tudiants ou coll\xE8gues.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  \u{1F512} <strong>S\xE9curit\xE9 DKD :</strong> Vos fichiers et donn\xE9es sont prot\xE9g\xE9s et sauvegard\xE9s de mani\xE8re isol\xE9e.
+                </p>
+            `
+            : `
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  <strong style="color:#0f172a;">Gestion documentaire & archivage sécurisé :</strong> Classez, organisez et retrouvez instantanément l'ensemble de vos dossiers, contrats, fiches de travail et présentations professionnelles.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  <strong style="color:#0f172a;">Assistant d'Analyse IA Delmas :</strong> Analysez des rapports volumineux, synthétisez vos documents de travail, préparez vos réunions et rédigez des synthèses précises en un instant.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  <strong style="color:#0f172a;">Partage & collaboration maîtrisée :</strong> Transmettez facilement des dossiers et documents à vos collaborateurs, partenaires et clients avec des accès fiables et protégés.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  <strong style="color:#0f172a;">Productivité continue & mode hors-ligne :</strong> Consultez vos fichiers essentiels même en déplacement sans accès Internet, avec synchronisation automatique dès votre reconnexion.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  <strong style="color:#0f172a;">Organisation & suivi d'activités :</strong> Structurez vos projets, planifiez vos sessions de travail et gérez vos priorités au quotidien grâce aux outils intégrés.
+                </p>
+                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
+                  <strong style="color:#0f172a;">Confidentialité & sécurité DKD Technologies :</strong> Vos actifs professionnels et données sensibles sont strictement isolés, chiffrés et sauvegardés selon les standards de sécurité DKD.
+                </p>
+            `;
+
+          const ctaText = isStudent
+            ? "Acc\xE9der \xE0 mon tableau de bord StudyCloud &rarr;"
+            : "Accéder à mon espace professionnel StudyCloud &rarr;";
+
           await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
@@ -740,7 +797,7 @@ var src_default = {
               from: "StudyCloud <noreply@dkd-technologies.com>",
               to: [toEmail],
               reply_to: "StudyClouddkd@gmail.com",
-              subject: "\u{1F389} Bienvenue sur StudyCloud - Votre espace est pr\xEAt !",
+              subject,
               html: `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -784,34 +841,20 @@ var src_default = {
               <div style="height:1px;background:#f1f5f9;margin-bottom:26px;"></div>
 
               <h1 style="margin:0 0 16px 0;color:#0f172a;font-size:22px;font-weight:800;line-height:1.3;">
-                Bienvenue sur StudyCloud, ${name} ! \u{1F393}
+                ${heading}
               </h1>
 
               <p style="margin:0 0 20px 0;color:#334155;font-size:15px;line-height:1.6;">
-                Toute l'\xE9quipe de <strong>StudyCloud</strong> a le plaisir de vous accueillir ! Votre profil a \xE9t\xE9 configur\xE9 avec succ\xE8s et votre espace de travail num\xE9rique personnel est imm\xE9diatement op\xE9rationnel.
+                ${introText}
               </p>
 
-              <!-- Contenu fluide directement sur le fond de la page (comme un livre, sans bloc ni cadre) -->
+              <!-- Contenu fluide directement sur le fond de la page (sans bloc ni cadre) -->
               <div style="margin:26px 0 28px 0;">
                 <p style="margin:0 0 16px 0;font-size:14px;font-weight:800;color:#0f172a;text-transform:uppercase;letter-spacing:0.5px;">
-                  \u{1F680} Ce que vous pouvez faire d\xE8s maintenant :
+                  ${featuresHeader}
                 </p>
 
-                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  \u{1F4DA} <strong>Gestion & Stockage de cours :</strong> Centralisez vos documents, fiches et polycopi\xE9s en lieu s\xFBr.
-                </p>
-
-                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  \u{1F916} <strong>Assistant IA Delmas :</strong> Posez des questions sur vos cours, g\xE9n\xE9rez des r\xE9sum\xE9s et pr\xE9parez vos examens plus vite.
-                </p>
-
-                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  \u{1F465} <strong>Partage & Collaboration :</strong> \xC9changez des dossiers de r\xE9vision avec d'autres \xE9tudiants ou coll\xE8gues.
-                </p>
-
-                <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  \u{1F512} <strong>S\xE9curit\xE9 DKD :</strong> Vos fichiers et donn\xE9es sont prot\xE9g\xE9s et sauvegard\xE9s de mani\xE8re isol\xE9e.
-                </p>
+                ${featuresList}
               </div>
 
               <!-- CTA Button -->
@@ -819,7 +862,7 @@ var src_default = {
                 <tr>
                   <td align="center">
                     <a href="${cleanOrigin}" target="_blank" style="display:inline-block;padding:16px 36px;background:linear-gradient(135deg, #EA580C 0%, #F97316 100%);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;border-radius:14px;box-shadow:0 8px 24px rgba(234,88,12,0.35);">
-                      Acc\xE9der \xE0 mon tableau de bord StudyCloud &rarr;
+                      ${ctaText}
                     </a>
                   </td>
                 </tr>
@@ -1371,8 +1414,8 @@ var src_default = {
           `).all();
           if (unfinalized && unfinalized.results && unfinalized.results.length > 0) {
             const now = Date.now();
-            const TWENTY_MIN_MS = 20 * 60 * 1e3;
-            const FIFTEEN_MIN_MS = 15 * 60 * 1e3;
+            const SEVEN_MIN_MS = 7 * 60 * 1e3;
+            const FIVE_MIN_MS = 5 * 60 * 1e3;
             const parseUtcDate = /* @__PURE__ */ __name((dStr) => {
               if (!dStr)
                 return 0;
@@ -1384,8 +1427,8 @@ var src_default = {
             for (const u of unfinalized.results) {
               const createdMs = parseUtcDate(u.created_at);
               const activeMs = parseUtcDate(u.last_active_at) || createdMs;
-              const isTimeout = createdMs > 0 && now - createdMs >= TWENTY_MIN_MS;
-              const isInactive = activeMs > 0 && now - activeMs >= FIFTEEN_MIN_MS;
+              const isTimeout = createdMs > 0 && now - createdMs >= SEVEN_MIN_MS;
+              const isInactive = activeMs > 0 && now - activeMs >= FIVE_MIN_MS;
               if (isTimeout || isInactive) {
                 await deleteUserCompletely(db, u.id);
                 console.log(`[StudyCloud Cleanup] Compte non finalis\xE9 expir\xE9 supprim\xE9 : ${u.email} (${u.id})`);
@@ -1698,7 +1741,15 @@ var src_default = {
           WHERE id = ?
         `).bind(jwtToken, verif.id).run();
         if (isFirstVerification) {
-          sendWelcomeEmail(userBefore.email, userBefore.name);
+          const isUserStudent = userBefore.is_student === 1 || (userBefore.is_student === null && userBefore.school && userBefore.school !== "Particulier / Professionnel" && userBefore.school !== "Professionnel / Particulier");
+          sendWelcomeEmail(
+            userBefore.email,
+            userBefore.name || (isUserStudent ? "\xC9tudiant" : "Membre"),
+            Boolean(isUserStudent),
+            userBefore.school || "",
+            userBefore.filiere || "",
+            appUrl
+          );
         }
         const accept = request.headers.get("Accept") || "";
         if (accept.includes("application/json") && !accept.includes("text/html")) {
@@ -2079,14 +2130,14 @@ var src_default = {
           }, "parseUtcDate");
           const createdMs = parseUtcDate(user.created_at);
           const activeMs = parseUtcDate(user.last_active_at) || createdMs;
-          const isTimeout = createdMs > 0 && Date.now() - createdMs >= 20 * 60 * 1e3;
-          const isInactive = activeMs > 0 && Date.now() - activeMs >= 15 * 60 * 1e3;
+          const isTimeout = createdMs > 0 && Date.now() - createdMs >= 7 * 60 * 1e3;
+          const isInactive = activeMs > 0 && Date.now() - activeMs >= 5 * 60 * 1e3;
           if (isTimeout || isInactive) {
             await deleteUserCompletely(env.DB, user.id);
             return jsonResponse({
               success: false,
               code: "SESSION_EXPIRED_UNFINALIZED",
-              error: "Votre session d'inscription a expir\xE9 (d\xE9lai de 20 minutes ou 15 minutes d'inactivit\xE9 d\xE9pass\xE9). Vos donn\xE9es temporaires ont \xE9t\xE9 effac\xE9es. Veuillez recommencer."
+              error: "Votre session d'inscription a expir\xE9 (d\xE9lai de 7 minutes ou 5 minutes d'inactivit\xE9 d\xE9pass\xE9). Vos donn\xE9es temporaires ont \xE9t\xE9 effac\xE9es. Veuillez recommencer."
             }, 410, origin);
           }
         }
@@ -2252,8 +2303,8 @@ var src_default = {
           const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
           sendWelcomeEmail(
             user.email,
-            user.name || name || "\xC9tudiant",
-            isStudent,
+            user.name || name || (isStudent ? "\xC9tudiant" : "Membre"),
+            Boolean(isStudent),
             finalSchool,
             finalFiliere,
             clientOrigin
@@ -2351,10 +2402,11 @@ var src_default = {
         if (!user || !user.email)
           return errorResponse("Utilisateur ou email introuvable", 404, origin);
         const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
+        const isUserStudent = user.is_student === 1 || (user.is_student === null && user.school && user.school !== "Particulier / Professionnel" && user.school !== "Professionnel / Particulier");
         await sendWelcomeEmail(
           user.email,
-          user.name || "\xC9tudiant",
-          user.school && user.school !== "Particulier / Professionnel",
+          user.name || (isUserStudent ? "\xC9tudiant" : "Membre"),
+          Boolean(isUserStudent),
           user.school || "",
           user.filiere || "",
           clientOrigin
