@@ -3,6 +3,7 @@ import React from 'react';
 interface DnaLogoProps extends React.SVGProps<SVGSVGElement> {
   className?: string;
   glow?: boolean;
+  style?: React.CSSProperties;
 }
 
 export function DnaLogo({ className, glow = false, style, ...props }: DnaLogoProps) {

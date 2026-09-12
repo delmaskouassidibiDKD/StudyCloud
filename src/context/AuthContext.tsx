@@ -16,6 +16,7 @@ export interface AuthUser {
   bio: string;
   phone: string;
   avatar_url: string | null;
+  profession?: string;
   is_onboarded: number;
   is_student?: number;
   email_verified: number;

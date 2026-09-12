@@ -673,6 +673,7 @@ var src_default = {
         }
         const cols = [
           "ALTER TABLE email_verifications ADD COLUMN confirmed INTEGER DEFAULT 0",
+          "ALTER TABLE email_verifications ADD COLUMN clicked INTEGER DEFAULT 0",
           "ALTER TABLE email_verifications ADD COLUMN confirmed_jwt TEXT",
           "ALTER TABLE email_verifications ADD COLUMN confirmed_at TEXT",
           "ALTER TABLE email_verifications ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP",
@@ -1078,6 +1079,23 @@ var src_default = {
           } catch (e) {
           }
         }
+        const emailVerifCols = [
+          "ALTER TABLE email_verifications ADD COLUMN confirmed INTEGER DEFAULT 0",
+          "ALTER TABLE email_verifications ADD COLUMN clicked INTEGER DEFAULT 0",
+          "ALTER TABLE email_verifications ADD COLUMN confirmed_jwt TEXT",
+          "ALTER TABLE email_verifications ADD COLUMN confirmed_at TEXT",
+          "ALTER TABLE email_verifications ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP",
+          "ALTER TABLE email_verifications ADD COLUMN expires_at TEXT",
+          "ALTER TABLE email_verifications ADD COLUMN blocked_until TEXT",
+          "ALTER TABLE email_verifications ADD COLUMN resend_count INTEGER DEFAULT 1",
+          "ALTER TABLE email_verifications ADD COLUMN last_sent_at TEXT"
+        ];
+        for (const colSql of emailVerifCols) {
+          try {
+            await db.prepare(colSql).run();
+          } catch (e) {
+          }
+        }
         const tableQueries = [
           `CREATE TABLE IF NOT EXISTS email_verifications (
             id TEXT PRIMARY KEY,
@@ -1432,40 +1450,7 @@ var src_default = {
       }
       __name(deleteUserCompletely, "deleteUserCompletely");
       async function cleanupExpiredUnfinishedAccounts(db) {
-        if (!db)
-          return;
-        try {
-          const unfinalized = await db.prepare(`
-            SELECT id, email, created_at, last_active_at, is_onboarded
-            FROM users
-            WHERE is_onboarded = 0 OR is_onboarded IS NULL OR is_onboarded = '0'
-          `).all();
-          if (unfinalized && unfinalized.results && unfinalized.results.length > 0) {
-            const now = Date.now();
-            const SEVEN_MIN_MS = 7 * 60 * 1e3;
-            const FIVE_MIN_MS = 5 * 60 * 1e3;
-            const parseUtcDate = /* @__PURE__ */ __name((dStr) => {
-              if (!dStr)
-                return 0;
-              const s = String(dStr).trim();
-              const iso = s.includes("T") ? s : s.replace(" ", "T") + "Z";
-              const ms = new Date(iso).getTime();
-              return isNaN(ms) ? 0 : ms;
-            }, "parseUtcDate");
-            for (const u of unfinalized.results) {
-              const createdMs = parseUtcDate(u.created_at);
-              const activeMs = parseUtcDate(u.last_active_at) || createdMs;
-              const isTimeout = createdMs > 0 && now - createdMs >= SEVEN_MIN_MS;
-              const isInactive = activeMs > 0 && now - activeMs >= FIVE_MIN_MS;
-              if (isTimeout || isInactive) {
-                await deleteUserCompletely(db, u.id);
-                console.log(`[StudyCloud Cleanup] Compte non finalis\xE9 expir\xE9 supprim\xE9 : ${u.email} (${u.id})`);
-              }
-            }
-          }
-        } catch (e) {
-          console.warn("[StudyCloud Cleanup] Notice:", e);
-        }
+        return;
       }
       __name(cleanupExpiredUnfinishedAccounts, "cleanupExpiredUnfinishedAccounts");
       if (path.startsWith("/api/auth/")) {
@@ -1698,11 +1683,23 @@ var src_default = {
         if (!emailParam)
           return errorResponse("Email requis", 400, origin);
         const cleanEmail = emailParam.toLowerCase().trim();
-        const verif = await env.DB.prepare(`
-          SELECT * FROM email_verifications
-          WHERE LOWER(TRIM(email)) = ? AND confirmed = 1
-          ORDER BY rowid DESC LIMIT 1
-        `).bind(cleanEmail).first();
+        let verif = null;
+        try {
+          verif = await env.DB.prepare(`
+            SELECT * FROM email_verifications
+            WHERE LOWER(TRIM(email)) = ? AND (confirmed = 1 OR clicked = 1)
+            ORDER BY created_at DESC LIMIT 1
+          `).bind(cleanEmail).first();
+        } catch (e) {
+          try {
+            verif = await env.DB.prepare(`
+              SELECT * FROM email_verifications
+              WHERE LOWER(TRIM(email)) = ? AND confirmed = 1
+              ORDER BY rowid DESC LIMIT 1
+            `).bind(cleanEmail).first();
+          } catch (e2) {
+          }
+        }
         if (verif) {
           const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(verif.user_id).first();
           if (user) {
@@ -1800,13 +1797,27 @@ var src_default = {
         const tokenHash = await hashToken(jwtToken);
         const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1e3).toISOString();
         await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), userBefore.id, tokenHash, expiresAt).run();
-        await env.DB.prepare(`
-          UPDATE email_verifications SET
-            confirmed = 1,
-            confirmed_jwt = ?,
-            confirmed_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(jwtToken, verif.id).run();
+        try {
+          await env.DB.prepare(`
+            UPDATE email_verifications SET
+              confirmed = 1,
+              clicked = 1,
+              confirmed_jwt = ?,
+              confirmed_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind(jwtToken, verif.id).run();
+        } catch (e) {
+          try {
+            await env.DB.prepare(`
+              UPDATE email_verifications SET
+                confirmed = 1,
+                confirmed_jwt = ?,
+                confirmed_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `).bind(jwtToken, verif.id).run();
+          } catch (e2) {
+          }
+        }
         if (isFirstVerification) {
           const isUserStudent = userBefore.is_student === 1 || userBefore.is_student === null && userBefore.school && userBefore.school !== "Particulier / Professionnel" && userBefore.school !== "Professionnel / Particulier";
           sendWelcomeEmail(

@@ -132,7 +132,7 @@ export function EmailPendingVerification({
     let isChecking = false;
 
     const checkStatus = async () => {
-      if (isChecking || !email || isBlocked || isAutoDetected) return;
+      if (isChecking || !email || isAutoDetected) return;
       isChecking = true;
 
       try {
