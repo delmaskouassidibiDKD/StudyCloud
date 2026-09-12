@@ -107,7 +107,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             if (isTimeout || isInactive) {
               // Compte non finalisé expiré : suppression et retour à l'accueil
               StudyCloudAPI.cancelUnfinalizedAccount({ userId: res.data.id, email: res.data.email }, storedToken).catch(() => {});
-              localStorage.setItem('sc_onboarding_expired_notice', "Votre session d'inscription a expiré (délai de 7 minutes ou 5 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.");
+              localStorage.setItem('sc_onboarding_expired_notice', "Votre session est terminée. Veuillez reprendre.");
               clearUserDataOnLogout();
               setIsLoading(false);
               return;
@@ -133,7 +133,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           // Token invalide ou expiré
           if (res?.code === 'SESSION_EXPIRED_UNFINALIZED' || (res?.error && typeof res.error === 'string' && res.error.includes('expiré'))) {
-            localStorage.setItem('sc_onboarding_expired_notice', res.error || "Votre session d'inscription a expiré (délai de 7 minutes ou 5 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.");
+            localStorage.setItem('sc_onboarding_expired_notice', "Votre session est terminée. Veuillez reprendre.");
           }
           clearUserDataOnLogout();
         }
@@ -141,7 +141,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .catch((err: any) => {
         // Si le serveur nous dit que la session d'inscription a expiré (HTTP 410) ou token invalide (HTTP 401/403)
         if (err?.status === 410 || err?.data?.code === 'SESSION_EXPIRED_UNFINALIZED' || (err?.message && err.message.includes('expiré'))) {
-          localStorage.setItem('sc_onboarding_expired_notice', err?.data?.error || err?.message || "Votre session d'inscription a expiré (délai de 7 minutes ou 5 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.");
+          localStorage.setItem('sc_onboarding_expired_notice', "Votre session est terminée. Veuillez reprendre.");
           clearUserDataOnLogout();
           return;
         }

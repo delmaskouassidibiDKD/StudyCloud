@@ -69,9 +69,7 @@ export function GoogleSecuritySetupPage() {
     }
     localStorage.removeItem(startKey);
     localStorage.removeItem(lastActiveKey);
-    const message = reason === 'timeout'
-      ? "Votre session d'inscription a expiré (délai de 7 minutes dépassé sans finalisation). Vos données temporaires ont été effacées. Veuillez recommencer."
-      : "Session d'inscription interrompue : vous avez quitté ou été inactif pendant plus de 5 minutes. Vos données temporaires ont été effacées. Veuillez recommencer.";
+    const message = "Votre session est terminée. Veuillez reprendre.";
     localStorage.setItem('sc_onboarding_expired_notice', message);
     logout();
   }, [user, token, logout, startKey, lastActiveKey]);

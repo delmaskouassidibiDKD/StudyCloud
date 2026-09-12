@@ -2130,7 +2130,7 @@ export default {
             return jsonResponse({
               success: false,
               code: 'SESSION_EXPIRED_UNFINALIZED',
-              error: "Votre session d'inscription a expiré (délai de 7 minutes ou 5 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.",
+              error: 'Votre session est terminée. Veuillez reprendre.',
             }, 410, origin);
           }
         }
@@ -2213,7 +2213,7 @@ export default {
 
         const existingUser: any = await env.DB.prepare('SELECT id, email, is_onboarded FROM users WHERE id = ?').bind(payload.userId).first();
         if (!existingUser) {
-          return errorResponse("Session d'inscription expirée (délai dépassé). Vos données temporaires ont été effacées. Veuillez recommencer l'inscription.", 410, origin);
+          return errorResponse("Votre session est terminée. Veuillez reprendre.", 410, origin);
         }
 
         const body: any = await request.json();

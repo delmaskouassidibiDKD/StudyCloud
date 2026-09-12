@@ -1939,7 +1939,7 @@ var src_default = {
             return jsonResponse({
               success: false,
               code: "SESSION_EXPIRED_UNFINALIZED",
-              error: "Votre session d'inscription a expir\xE9 (d\xE9lai de 7 minutes ou 5 minutes d'inactivit\xE9 d\xE9pass\xE9). Vos donn\xE9es temporaires ont \xE9t\xE9 effac\xE9es. Veuillez recommencer."
+              error: "Votre session est termin\xE9e. Veuillez reprendre."
             }, 410, origin);
           }
         }
@@ -2011,7 +2011,7 @@ var src_default = {
           return errorResponse("Token invalide", 401, origin);
         const existingUser = await env.DB.prepare("SELECT id, email, is_onboarded FROM users WHERE id = ?").bind(payload.userId).first();
         if (!existingUser) {
-          return errorResponse("Session d'inscription expir\xE9e (d\xE9lai d\xE9pass\xE9). Vos donn\xE9es temporaires ont \xE9t\xE9 effac\xE9es. Veuillez recommencer l'inscription.", 410, origin);
+          return errorResponse("Votre session est termin\xE9e. Veuillez reprendre.", 410, origin);
         }
         const body = await request.json();
         const { name, school, filiere, level, country, phone, bio, avatarUrl } = body;
