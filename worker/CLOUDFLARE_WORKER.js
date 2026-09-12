@@ -65,7 +65,7 @@ var src_default = {
       });
     }
     try {
-      let sanitizeUser2 = function (user) {
+      let sanitizeUser2 = function(user) {
         if (!user)
           return null;
         const { password_hash: _ph, security_answer_1_hash: _s1, security_answer_2_hash: _s2, ...rest } = user;
@@ -76,14 +76,14 @@ var src_default = {
             user.security_answer_1_hash && typeof user.security_answer_1_hash === "string" && user.security_answer_1_hash.trim().length > 0 && user.security_answer_2_hash && typeof user.security_answer_2_hash === "string" && user.security_answer_2_hash.trim().length > 0
           )
         };
-      }, generateId2 = function () {
+      }, generateId2 = function() {
         return crypto.randomUUID();
-      }, isValidEmail2 = function (email) {
+      }, isValidEmail2 = function(email) {
         if (!email || typeof email !== "string")
           return false;
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
         return emailRegex.test(email.trim());
-      }, validatePasswordFormat2 = function (pwd) {
+      }, validatePasswordFormat2 = function(pwd) {
         if (!pwd || typeof pwd !== "string")
           return { valid: false, error: "Mot de passe requis" };
         if (pwd.length < 6)
@@ -95,7 +95,7 @@ var src_default = {
         if (!/[^a-zA-Z0-9]/.test(pwd))
           return { valid: false, error: "Le mot de passe doit contenir au moins un caract\xE8re sp\xE9cial (ex: @, #, $, !, etc.)" };
         return { valid: true };
-      }, generateEmailAvatar2 = function (email, name) {
+      }, generateEmailAvatar2 = function(email, name) {
         const cleanEmail = (email || "").trim().toLowerCase();
         const cleanName = (name || "").trim();
         let initials = "SC";
@@ -114,13 +114,13 @@ var src_default = {
         const color = colors[Math.abs(hash) % colors.length];
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"><rect width="128" height="128" rx="28" fill="${color}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="${initials.length > 1 ? "48" : "58"}" font-weight="700">${initials}</text></svg>`;
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-      }, getSuccessConfirmationHtml2 = function (name, email, appUrl) {
+      }, getSuccessConfirmationHtml2 = function(name, email, appUrl) {
         return `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Adresse email confirmée - StudyCloud</title>
+  <title>Adresse email confirm\xE9e - StudyCloud</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
@@ -270,28 +270,28 @@ var src_default = {
       </div>
     </div>
 
-    <div class="status-icon">✅</div>
+    <div class="status-icon">\u2705</div>
 
-    <h1>Email confirmé avec succès !</h1>
+    <h1>Email confirm\xE9 avec succ\xE8s !</h1>
     <p class="user-email">
-      L'adresse <strong>${email}</strong> a été validée avec succès.
+      L'adresse <strong>${email}</strong> a \xE9t\xE9 valid\xE9e avec succ\xE8s.
     </p>
 
     <div class="instruction-card">
       <div class="instruction-title">
-        <span>📱 Retournez à l'application</span>
+        <span>\u{1F4F1} Retournez \xE0 l'application</span>
       </div>
       <div class="instruction-body">
-        Votre appareil d'origine a automatiquement détecté la validation. Vous pouvez maintenant fermer cette fenêtre et <strong>continuer sur votre application StudyCloud</strong>.
+        Votre appareil d'origine a automatiquement d\xE9tect\xE9 la validation. Vous pouvez maintenant fermer cette fen\xEAtre et <strong>continuer sur votre application StudyCloud</strong>.
       </div>
     </div>
 
     <button type="button" class="btn-close" onclick="closeWindow()">
-      Fermer cette fenêtre
+      Fermer cette fen\xEAtre
     </button>
 
     <p class="hint-text" id="hint">
-      Si la fenêtre ne se ferme pas automatiquement, basculez simplement sur l'onglet ou l'application StudyCloud déjà ouverte.
+      Si la fen\xEAtre ne se ferme pas automatiquement, basculez simplement sur l'onglet ou l'application StudyCloud d\xE9j\xE0 ouverte.
     </p>
   </div>
 
@@ -317,16 +317,16 @@ var src_default = {
         }
       }, 200);
     }
-  </script>
+  <\/script>
 </body>
 </html>`;
-      }, getExpiredEmailHtml2 = function (appUrl, customMessage) {
+      }, getExpiredEmailHtml2 = function(appUrl, customMessage) {
         return `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lien expiré - StudyCloud</title>
+  <title>Lien expir\xE9 - StudyCloud</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
@@ -473,24 +473,24 @@ var src_default = {
       </div>
     </div>
 
-    <div class="status-icon">⏳</div>
+    <div class="status-icon">\u23F3</div>
 
-    <h1>Lien de confirmation expiré</h1>
+    <h1>Lien de confirmation expir\xE9</h1>
     <p class="user-email">
-      ${customMessage || 'Ce lien de confirmation (valable 1 minute) a expiré ou a déjà été utilisé.'}
+      ${customMessage || "Ce lien de confirmation (valable 1 min 30 s) a expir\xE9 ou a d\xE9j\xE0 \xE9t\xE9 utilis\xE9."}
     </p>
 
     <div class="instruction-card">
       <div class="instruction-title">
-        <span>⚠️ Action requise</span>
+        <span>\u26A0\uFE0F Action requise</span>
       </div>
       <div class="instruction-body">
-        Veuillez retourner sur votre application StudyCloud pour réclamer l'envoi d'un nouveau lien de confirmation sécurisé.
+        Veuillez retourner sur votre application StudyCloud pour r\xE9clamer l'envoi d'un nouveau lien de confirmation s\xE9curis\xE9.
       </div>
     </div>
 
     <button type="button" class="btn-close" onclick="closeWindow()">
-      Fermer cette fenêtre
+      Fermer cette fen\xEAtre
     </button>
 
     <p class="hint-text" id="hint">
@@ -512,7 +512,7 @@ var src_default = {
         }
       }, 200);
     }
-  </script>
+  <\/script>
 </body>
 </html>`;
       };
@@ -690,10 +690,10 @@ var src_default = {
           const cleanOrigin = (appOrigin || "https://studycloud.dkd-technologies.com").replace(/\/+$/, "");
           const publicAssetOrigin = !cleanOrigin || cleanOrigin.includes("localhost") || !cleanOrigin.startsWith("https://") ? "https://studycloud.dkd-technologies.com" : cleanOrigin;
           const confirmUrl = `${cleanOrigin}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
-          const subject = isLogin ? "\u{1F510} Confirmez votre connexion - StudyCloud" : "\u2709\uFE0F Confirmez votre adresse email - StudyCloud";
-          const title = isLogin ? "Confirmez votre connexion \u{1F510}" : "Confirmez votre adresse email \u{1F393}";
-          const description = isLogin ? "Une tentative de connexion \xE0 votre compte StudyCloud a \xE9t\xE9 effectu\xE9e. Pour confirmer qu'il s'agit bien de vous et acc\xE9der directement \xE0 votre espace d'\xE9tudes, veuillez cliquer sur le bouton ci-dessous :" : "Bienvenue sur <strong>StudyCloud</strong> ! Pour s\xE9curiser votre compte, isoler vos documents et commencer vos r\xE9visions avec l'assistant IA Delmas, veuillez confirmer votre adresse email en cliquant sur le bouton ci-dessous :";
-          const buttonText = isLogin ? "Confirmer ma connexion &rarr;" : "Confirmer mon adresse email &rarr;";
+          const subject = isLogin ? "\u{1F510} Confirmez votre connexion - StudyCloud" : "\u{1F393} Confirmez votre adresse email - StudyCloud";
+          const title = isLogin ? "Autorisation de connexion" : "Bienvenue sur StudyCloud !";
+          const description = isLogin ? "Une tentative de connexion a \xE9t\xE9 initi\xE9e pour votre compte. Cliquez sur le bouton ci-dessous pour autoriser cette connexion en toute s\xE9curit\xE9 :" : "Votre inscription est presque termin\xE9e ! Veuillez confirmer votre adresse email en cliquant sur le bouton ci-dessous :";
+          const buttonText = isLogin ? "Autoriser la connexion" : "Confirmer mon adresse email";
           await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
@@ -703,63 +703,45 @@ var src_default = {
               reply_to: "StudyClouddkd@gmail.com",
               subject,
               html: `<!DOCTYPE html>
-<html lang="fr">
+<html>
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>${title}</title>
+  <meta charset="utf-8">
+  <title>${subject}</title>
 </head>
-<body style="margin:0;padding:0;background-color:#0f0c29;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;color:#1e293b;">
-  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#0f0c29;padding:40px 16px;">
+<body style="margin:0;padding:0;background-color:#f1f5f9;font-family:-apple-system,BlinkMacSystemFont,'Segoe UI',Roboto,Helvetica,Arial,sans-serif;">
+  <table width="100%" border="0" cellspacing="0" cellpadding="0" style="background-color:#f1f5f9;padding:40px 20px;">
     <tr>
       <td align="center">
-        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:520px;background:#ffffff;border-radius:24px;overflow:hidden;box-shadow:0 24px 60px rgba(0,0,0,0.35);">
+        <table width="100%" border="0" cellspacing="0" cellpadding="0" style="max-width:560px;background:#ffffff;border-radius:20px;overflow:hidden;box-shadow:0 10px 30px rgba(0,0,0,0.06);">
           <tr>
-            <td height="6" style="background:linear-gradient(90deg, #EA580C, #F97316, #2563EB);"></td>
+            <td style="background:linear-gradient(135deg, #1E1B4B 0%, #0F172A 100%);padding:36px;text-align:center;">
+              <img src="${publicAssetOrigin}/assets/dna-logo.png" alt="StudyCloud" width="56" height="56" style="display:inline-block;margin-bottom:12px;border-radius:12px;" />
+              <h1 style="margin:0;color:#ffffff;font-size:24px;font-weight:800;letter-spacing:-0.5px;">
+                <span style="color:#EA580C;">Study</span><span style="color:#3B82F6;">Cloud</span>
+              </h1>
+              <p style="margin:4px 0 0 0;color:#94a3b8;font-size:11px;font-weight:700;letter-spacing:1.5px;text-transform:uppercase;">
+                DKD TECHNOLOGIES
+              </p>
+            </td>
           </tr>
           <tr>
-            <td style="padding:40px 36px 32px 36px;">
-              <!-- Header with Official StudyCloud DKD Technologies Brand -->
-              <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin-bottom:28px;">
-                <tr>
-                  <td>
-                    <table border="0" cellspacing="0" cellpadding="0">
-                      <tr>
-                        <td style="vertical-align:middle;padding-right:12px;width:38px;">
-                          <img src="https://studycloud.dkd-technologies.com/assets/dna-logo.png" width="38" height="38" alt="Logo StudyCloud" style="display:block;border:0;width:38px;height:38px;margin:0;" />
-                        </td>
-                        <td style="vertical-align:middle;">
-                          <div style="line-height:1;">
-                            <span style="font-size:24px;font-weight:900;color:#EA580C;letter-spacing:-0.5px;">Study</span><span style="font-size:24px;font-weight:900;color:#2563EB;letter-spacing:-0.5px;">Cloud</span>
-                          </div>
-                          <div style="font-size:9px;font-weight:800;color:#D97706;letter-spacing:2px;text-transform:uppercase;margin-top:4px;">
-                            DKD TECHNOLOGIES
-                          </div>
-                        </td>
-                      </tr>
-                    </table>
-                  </td>
-                </tr>
-              </table>
-
-              <div style="height:1px;background:#f1f5f9;margin-bottom:28px;"></div>
-
-              <h1 style="margin:0 0 16px 0;color:#0f172a;font-size:22px;font-weight:800;line-height:1.3;">
+            <td style="padding:40px 36px;">
+              <h2 style="margin:0 0 16px 0;color:#0f172a;font-size:20px;font-weight:700;">
                 ${title}
-              </h1>
+              </h2>
 
               <p style="margin:0 0 16px 0;color:#334155;font-size:15px;line-height:1.6;">
                 Bonjour <strong>${name}</strong>,
               </p>
 
-              <p style="margin:0 0 24px 0;color:#475569;font-size:14px;line-height:1.6;">
+              <p style="margin:0 0 24px 0;color:#475569;font-size:15px;line-height:1.6;">
                 ${description}
               </p>
 
               <table width="100%" border="0" cellspacing="0" cellpadding="0" style="margin:30px 0;">
                 <tr>
                   <td align="center">
-                    <a href="${confirmUrl}" target="_blank" style="display:inline-block;padding:16px 36px;background:linear-gradient(135deg, #EA580C 0%, #F97316 100%);color:#ffffff;text-decoration:none;font-size:15px;font-weight:800;border-radius:14px;box-shadow:0 8px 24px rgba(234,88,12,0.35);">
+                    <a href="${confirmUrl}" target="_blank" style="display:inline-block;padding:16px 32px;background:linear-gradient(135deg, #EA580C 0%, #F97316 100%);color:#ffffff;text-decoration:none;font-size:15px;font-weight:700;border-radius:12px;box-shadow:0 4px 14px rgba(234,88,12,0.35);">
                       ${buttonText}
                     </a>
                   </td>
@@ -768,7 +750,7 @@ var src_default = {
 
               <div style="border-left:3px solid #f97316;padding-left:12px;margin:20px 0;">
                 <p style="margin:0;color:#64748b;font-size:12px;line-height:1.5;">
-                  \u23F3 <strong>Validit\xE9 :</strong> Ce lien de confirmation est s\xE9curis\xE9 et actif pendant <strong>1 minute</strong>.<br>
+                  \u23F3 <strong>Validit\xE9 :</strong> Ce lien de confirmation est s\xE9curis\xE9 et actif pendant <strong>1 min 30 s</strong>.<br>
                   \u{1F512} Si vous n'avez pas demand\xE9 cette action, vous pouvez ignorer cet email en toute s\xE9curit\xE9.
                 </p>
               </div>
@@ -797,27 +779,12 @@ var src_default = {
       async function sendWelcomeEmail(toEmail, name, isStudent = true, school = "", filiere = "", appOrigin = "https://studycloud.dkd-technologies.com") {
         try {
           const cleanOrigin = (appOrigin || "https://studycloud.dkd-technologies.com").replace(/\/+$/, "");
-          const subject = isStudent
-            ? "\u{1F389} Bienvenue sur StudyCloud - Votre espace est pr\xEAt !"
-            : "Bienvenue sur StudyCloud - Votre espace professionnel est prêt";
-          const title = isStudent
-            ? "\u{1F389} Bienvenue sur StudyCloud !"
-            : "Bienvenue sur StudyCloud";
-
-          const heading = isStudent
-            ? `Bienvenue sur StudyCloud, ${name} ! \u{1F393}`
-            : `Bienvenue sur StudyCloud, ${name}`;
-
-          const introText = isStudent
-            ? `Toute l'\xE9quipe de <strong>StudyCloud</strong> a le plaisir de vous accueillir ! Votre profil a \xE9t\xE9 configur\xE9 avec succ\xE8s et votre espace de travail num\xE9rique personnel est imm\xE9diatement op\xE9rationnel.`
-            : `Toute l'équipe de <strong>StudyCloud</strong> et de <strong>DKD Technologies</strong> a le plaisir de vous accueillir. Votre profil professionnel est configuré avec succès et votre environnement de travail numérique sécurisé est prêt à l'emploi.`;
-
-          const featuresHeader = isStudent
-            ? "\u{1F680} Ce que vous pouvez faire d\xE8s maintenant :"
-            : "Vos fonctionnalités professionnelles dès aujourd'hui :";
-
-          const featuresList = isStudent
-            ? `
+          const subject = isStudent ? "\u{1F389} Bienvenue sur StudyCloud - Votre espace est pr\xEAt !" : "Bienvenue sur StudyCloud - Votre espace professionnel est pr\xEAt";
+          const title = isStudent ? "\u{1F389} Bienvenue sur StudyCloud !" : "Bienvenue sur StudyCloud";
+          const heading = isStudent ? `Bienvenue sur StudyCloud, ${name} ! \u{1F393}` : `Bienvenue sur StudyCloud, ${name}`;
+          const introText = isStudent ? `Toute l'\xE9quipe de <strong>StudyCloud</strong> a le plaisir de vous accueillir ! Votre profil a \xE9t\xE9 configur\xE9 avec succ\xE8s et votre espace de travail num\xE9rique personnel est imm\xE9diatement op\xE9rationnel.` : `Toute l'\xE9quipe de <strong>StudyCloud</strong> et de <strong>DKD Technologies</strong> a le plaisir de vous accueillir. Votre profil professionnel est configur\xE9 avec succ\xE8s et votre environnement de travail num\xE9rique s\xE9curis\xE9 est pr\xEAt \xE0 l'emploi.`;
+          const featuresHeader = isStudent ? "\u{1F680} Ce que vous pouvez faire d\xE8s maintenant :" : "Vos fonctionnalit\xE9s professionnelles d\xE8s aujourd'hui :";
+          const featuresList = isStudent ? `
                 <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
                   \u{1F4DA} <strong>Gestion & Stockage de cours :</strong> Centralisez vos documents, fiches et polycopi\xE9s en lieu s\xFBr.
                 </p>
@@ -830,32 +797,27 @@ var src_default = {
                 <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
                   \u{1F512} <strong>S\xE9curit\xE9 DKD :</strong> Vos fichiers et donn\xE9es sont prot\xE9g\xE9s et sauvegard\xE9s de mani\xE8re isol\xE9e.
                 </p>
-            `
-            : `
+            ` : `
                 <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  <strong style="color:#0f172a;">Gestion documentaire & archivage sécurisé :</strong> Classez, organisez et retrouvez instantanément l'ensemble de vos dossiers, contrats, fiches de travail et présentations professionnelles.
+                  <strong style="color:#0f172a;">Gestion documentaire & archivage s\xE9curis\xE9 :</strong> Classez, organisez et retrouvez instantan\xE9ment l'ensemble de vos dossiers, contrats, fiches de travail et pr\xE9sentations professionnelles.
                 </p>
                 <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  <strong style="color:#0f172a;">Assistant d'Analyse IA Delmas :</strong> Analysez des rapports volumineux, synthétisez vos documents de travail, préparez vos réunions et rédigez des synthèses précises en un instant.
+                  <strong style="color:#0f172a;">Assistant d'Analyse IA Delmas :</strong> Analysez des rapports volumineux, synth\xE9tisez vos documents de travail, pr\xE9parez vos r\xE9unions et r\xE9digez des synth\xE8ses pr\xE9cises en un instant.
                 </p>
                 <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  <strong style="color:#0f172a;">Partage & collaboration maîtrisée :</strong> Transmettez facilement des dossiers et documents à vos collaborateurs, partenaires et clients avec des accès fiables et protégés.
+                  <strong style="color:#0f172a;">Partage & collaboration ma\xEEtris\xE9e :</strong> Transmettez facilement des dossiers et documents \xE0 vos collaborateurs, partenaires et clients avec des acc\xE8s fiables et prot\xE9g\xE9s.
                 </p>
                 <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  <strong style="color:#0f172a;">Productivité continue & mode hors-ligne :</strong> Consultez vos fichiers essentiels même en déplacement sans accès Internet, avec synchronisation automatique dès votre reconnexion.
+                  <strong style="color:#0f172a;">Productivit\xE9 continue & mode hors-ligne :</strong> Consultez vos fichiers essentiels m\xEAme en d\xE9placement sans acc\xE8s Internet, avec synchronisation automatique d\xE8s votre reconnexion.
                 </p>
                 <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  <strong style="color:#0f172a;">Organisation & suivi d'activités :</strong> Structurez vos projets, planifiez vos sessions de travail et gérez vos priorités au quotidien grâce aux outils intégrés.
+                  <strong style="color:#0f172a;">Organisation & suivi d'activit\xE9s :</strong> Structurez vos projets, planifiez vos sessions de travail et g\xE9rez vos priorit\xE9s au quotidien gr\xE2ce aux outils int\xE9gr\xE9s.
                 </p>
                 <p style="margin:0 0 14px 0;font-size:15px;color:#334155;line-height:1.6;">
-                  <strong style="color:#0f172a;">Confidentialité & sécurité DKD Technologies :</strong> Vos actifs professionnels et données sensibles sont strictement isolés, chiffrés et sauvegardés selon les standards de sécurité DKD.
+                  <strong style="color:#0f172a;">Confidentialit\xE9 & s\xE9curit\xE9 DKD Technologies :</strong> Vos actifs professionnels et donn\xE9es sensibles sont strictement isol\xE9s, chiffr\xE9s et sauvegard\xE9s selon les standards de s\xE9curit\xE9 DKD.
                 </p>
             `;
-
-          const ctaText = isStudent
-            ? "Acc\xE9der \xE0 mon tableau de bord StudyCloud &rarr;"
-            : "Accéder à mon espace professionnel StudyCloud &rarr;";
-
+          const ctaText = isStudent ? "Acc\xE9der \xE0 mon tableau de bord StudyCloud &rarr;" : "Acc\xE9der \xE0 mon espace professionnel StudyCloud &rarr;";
           await fetch("https://api.resend.com/emails", {
             method: "POST",
             headers: { "Authorization": `Bearer ${RESEND_API_KEY}`, "Content-Type": "application/json" },
@@ -1561,7 +1523,7 @@ var src_default = {
               WHERE id = ?
             `).bind(name.trim(), passwordHash3, q1, answer1Hash, q2, answer2Hash, existing.id).run();
             const verificationToken2 = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-            const expiresAt3 = new Date(Date.now() + 60 * 1e3).toISOString();
+            const expiresAt3 = new Date(Date.now() + 90 * 1e3).toISOString();
             await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(existing.id).run();
             await env.DB.prepare(`
               INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
@@ -1575,7 +1537,7 @@ var src_default = {
               email: cleanEmail,
               resendCount: 1,
               maxCount: 4,
-              nextAllowedAt: new Date(Date.now() + 6e4).toISOString(),
+              nextAllowedAt: new Date(Date.now() + 9e4).toISOString(),
               message: "Un email de confirmation vous a \xE9t\xE9 envoy\xE9."
             }, 200, origin);
           }
@@ -1617,7 +1579,7 @@ var src_default = {
         `).bind(userId, name.trim(), cleanEmail, passwordHash, q1, answer1Hash, q2, answer2Hash).run();
         await env.DB.prepare("INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)").bind(userId).run();
         const verificationToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-        const expiresAt = new Date(Date.now() + 60 * 1e3).toISOString();
+        const expiresAt = new Date(Date.now() + 90 * 1e3).toISOString();
         await env.DB.prepare(`
           INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
           VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
@@ -1630,7 +1592,7 @@ var src_default = {
           email: cleanEmail,
           resendCount: 1,
           maxCount: 4,
-          nextAllowedAt: new Date(Date.now() + 6e4).toISOString(),
+          nextAllowedAt: new Date(Date.now() + 9e4).toISOString(),
           message: "Un email de confirmation vous a \xE9t\xE9 envoy\xE9."
         }, 201, origin);
       }
@@ -1649,7 +1611,7 @@ var src_default = {
         const verif = await env.DB.prepare("SELECT * FROM email_verifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").bind(user.id).first();
         const now = Date.now();
         const THREE_HOURS_MS = 3 * 3600 * 1e3;
-        const ONE_MINUTE_MS = 60 * 1e3;
+        const NINETY_SECONDS_MS = 90 * 1e3;
         if (verif) {
           if (verif.blocked_until) {
             const blockedTime = new Date(verif.blocked_until).getTime();
@@ -1668,14 +1630,14 @@ var src_default = {
           if (verif.last_sent_at) {
             const lastSentTime = new Date(verif.last_sent_at).getTime();
             const elapsed = now - lastSentTime;
-            if (elapsed < ONE_MINUTE_MS) {
-              const remainingSec = Math.ceil((ONE_MINUTE_MS - elapsed) / 1e3);
+            if (elapsed < NINETY_SECONDS_MS) {
+              const remainingSec = Math.ceil((NINETY_SECONDS_MS - elapsed) / 1e3);
               return jsonResponse({
                 success: false,
                 error: `Veuillez patienter ${remainingSec} seconde(s) avant de renvoyer l'email.`,
                 isCooldown: true,
-                nextAllowedAt: new Date(lastSentTime + ONE_MINUTE_MS).toISOString(),
-                remainingMs: ONE_MINUTE_MS - elapsed
+                nextAllowedAt: new Date(lastSentTime + NINETY_SECONDS_MS).toISOString(),
+                remainingMs: NINETY_SECONDS_MS - elapsed
               }, 429, origin);
             }
           }
@@ -1689,8 +1651,8 @@ var src_default = {
             blockedUntil = new Date(now + THREE_HOURS_MS).toISOString();
           }
           const newToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-          const newExpiresAt = new Date(now + ONE_MINUTE_MS).toISOString();
-          const nextAllowedAt = new Date(now + ONE_MINUTE_MS).toISOString();
+          const newExpiresAt = new Date(now + NINETY_SECONDS_MS).toISOString();
+          const nextAllowedAt = new Date(now + NINETY_SECONDS_MS).toISOString();
           await env.DB.prepare(`
             UPDATE email_verifications SET
               token = ?,
@@ -1713,7 +1675,7 @@ var src_default = {
           }, 200, origin);
         } else {
           const newToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-          const newExpiresAt = new Date(now + ONE_MINUTE_MS).toISOString();
+          const newExpiresAt = new Date(now + NINETY_SECONDS_MS).toISOString();
           await env.DB.prepare(`
             INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
             VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
@@ -1725,7 +1687,7 @@ var src_default = {
             message: "Email de confirmation renvoy\xE9 !",
             resendCount: 1,
             maxCount: 4,
-            nextAllowedAt: new Date(now + ONE_MINUTE_MS).toISOString()
+            nextAllowedAt: new Date(now + NINETY_SECONDS_MS).toISOString()
           }, 200, origin);
         }
       }
@@ -1797,7 +1759,7 @@ var src_default = {
           }
           const accept2 = request.headers.get("Accept") || "";
           if (accept2.includes("application/json") && !accept2.includes("text/html")) {
-            return errorResponse("Lien de confirmation expir\xE9 (validit\xE9 1 minute d\xE9pass\xE9e). Veuillez r\xE9clamer un nouveau lien.", 400, origin);
+            return errorResponse("Lien de confirmation expir\xE9 (validit\xE9 1 min 30 s d\xE9pass\xE9e). Veuillez r\xE9clamer un nouveau lien.", 400, origin);
           }
           return new Response(getExpiredEmailHtml2(appUrl), {
             status: 400,
@@ -1831,7 +1793,7 @@ var src_default = {
           WHERE id = ?
         `).bind(jwtToken, verif.id).run();
         if (isFirstVerification) {
-          const isUserStudent = userBefore.is_student === 1 || (userBefore.is_student === null && userBefore.school && userBefore.school !== "Particulier / Professionnel" && userBefore.school !== "Professionnel / Particulier");
+          const isUserStudent = userBefore.is_student === 1 || userBefore.is_student === null && userBefore.school && userBefore.school !== "Particulier / Professionnel" && userBefore.school !== "Professionnel / Particulier";
           sendWelcomeEmail(
             userBefore.email,
             userBefore.name || (isUserStudent ? "\xC9tudiant" : "Membre"),
@@ -1940,7 +1902,7 @@ var src_default = {
         }
         const user = existingUser;
         const verificationToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-        const expiresAt = new Date(Date.now() + 60 * 1e3).toISOString();
+        const expiresAt = new Date(Date.now() + 90 * 1e3).toISOString();
         await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(user.id).run();
         await env.DB.prepare(`
           INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
@@ -1955,7 +1917,7 @@ var src_default = {
           email: cleanEmail,
           resendCount: 1,
           maxCount: 4,
-          nextAllowedAt: new Date(Date.now() + 6e4).toISOString(),
+          nextAllowedAt: new Date(Date.now() + 9e4).toISOString(),
           message: "Un email de confirmation de connexion vous a \xE9t\xE9 envoy\xE9."
         }, 200, origin);
       }
@@ -2312,25 +2274,24 @@ var src_default = {
           return errorResponse("Le pays est obligatoire", 400, origin);
         if (!phone || !String(phone).trim())
           return errorResponse("Le num\xE9ro de t\xE9l\xE9phone est obligatoire", 400, origin);
-
         const COUNTRY_PHONE_CONFIG = {
-          "Côte d'Ivoire": { dial: "225", lengths: [10], hint: "10 chiffres" },
-          "Sénégal": { dial: "221", lengths: [9], hint: "9 chiffres" },
+          "C\xF4te d'Ivoire": { dial: "225", lengths: [10], hint: "10 chiffres" },
+          "S\xE9n\xE9gal": { dial: "221", lengths: [9], hint: "9 chiffres" },
           "Mali": { dial: "223", lengths: [8], hint: "8 chiffres" },
           "Burkina Faso": { dial: "226", lengths: [8], hint: "8 chiffres" },
-          "Guinée": { dial: "224", lengths: [9], hint: "9 chiffres" },
+          "Guin\xE9e": { dial: "224", lengths: [9], hint: "9 chiffres" },
           "Cameroun": { dial: "237", lengths: [9], hint: "9 chiffres" },
           "Gabon": { dial: "241", lengths: [7, 8], hint: "7 ou 8 chiffres" },
           "Congo": { dial: "242", lengths: [9], hint: "9 chiffres" },
-          "République démocratique du Congo": { dial: "243", lengths: [9, 10], hint: "9 ou 10 chiffres" },
+          "R\xE9publique d\xE9mocratique du Congo": { dial: "243", lengths: [9, 10], hint: "9 ou 10 chiffres" },
           "Madagascar": { dial: "261", lengths: [9, 10], hint: "9 ou 10 chiffres" },
-          "Bénin": { dial: "229", lengths: [8, 10], hint: "8 ou 10 chiffres" },
+          "B\xE9nin": { dial: "229", lengths: [8, 10], hint: "8 ou 10 chiffres" },
           "Togo": { dial: "228", lengths: [8], hint: "8 chiffres" },
           "Niger": { dial: "227", lengths: [8], hint: "8 chiffres" },
           "Tchad": { dial: "235", lengths: [8], hint: "8 chiffres" },
           "Mauritanie": { dial: "222", lengths: [8], hint: "8 chiffres" },
           "Maroc": { dial: "212", lengths: [9, 10], hint: "9 ou 10 chiffres" },
-          "Algérie": { dial: "213", lengths: [9, 10], hint: "9 ou 10 chiffres" },
+          "Alg\xE9rie": { dial: "213", lengths: [9, 10], hint: "9 ou 10 chiffres" },
           "Tunisie": { dial: "216", lengths: [8], hint: "8 chiffres" },
           "France": { dial: "33", lengths: [9, 10], hint: "9 ou 10 chiffres" },
           "Belgique": { dial: "32", lengths: [9, 10], hint: "9 ou 10 chiffres" },
@@ -2492,7 +2453,7 @@ var src_default = {
         if (!user || !user.email)
           return errorResponse("Utilisateur ou email introuvable", 404, origin);
         const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
-        const isUserStudent = user.is_student === 1 || (user.is_student === null && user.school && user.school !== "Particulier / Professionnel" && user.school !== "Professionnel / Particulier");
+        const isUserStudent = user.is_student === 1 || user.is_student === null && user.school && user.school !== "Particulier / Professionnel" && user.school !== "Professionnel / Particulier";
         await sendWelcomeEmail(
           user.email,
           user.name || (isUserStudent ? "\xC9tudiant" : "Membre"),
