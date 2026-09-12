@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Clock, RefreshCw, ArrowLeft, CheckCircle2, AlertTriangle, ShieldAlert } from 'lucide-react';
+import { Mail, Clock, RefreshCw, ArrowLeft, CheckCircle2, AlertTriangle, ShieldAlert, ShieldCheck, Smartphone } from 'lucide-react';
 import { StudyCloudAPI } from '../../services/api';
 import { DnaLogo } from '../DnaLogo';
 
@@ -7,16 +7,24 @@ interface EmailPendingVerificationProps {
   email: string;
   isLogin?: boolean;
   onBackToLogin: () => void;
-  onEmailVerified?: () => void;
+  onEmailVerified?: (token: string, user: any) => void;
 }
 
-export function EmailPendingVerification({ email, isLogin = false, onBackToLogin }: EmailPendingVerificationProps) {
+export function EmailPendingVerification({
+  email,
+  isLogin = false,
+  onBackToLogin,
+  onEmailVerified,
+}: EmailPendingVerificationProps) {
   const [secondsLeft, setSecondsLeft] = useState(60);
   const [blockedUntil, setBlockedUntil] = useState<string | null>(null);
   const [resendCount, setResendCount] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
+  const [isAutoDetected, setIsAutoDetected] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  const isBlocked = !!blockedUntil && new Date(blockedUntil).getTime() > Date.now();
 
   const COOLDOWN_KEY = `sc_resend_target_${email.toLowerCase()}`;
   const BLOCKED_KEY = `sc_resend_blocked_${email.toLowerCase()}`;
@@ -60,7 +68,11 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
     if (savedTarget) {
       const targetTime = parseInt(savedTarget, 10);
       const remaining = Math.max(0, Math.ceil((targetTime - Date.now()) / 1000));
-      setSecondsLeft(remaining);
+      if (remaining > 0) {
+        setSecondsLeft(remaining);
+      } else {
+        setSecondsLeft(0);
+      }
     } else {
       // Premier affichage : lancer un décompte initial de 60s (1 minute)
       const targetTime = Date.now() + COOLDOWN_DURATION_MS;
@@ -100,6 +112,47 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
 
     return () => clearInterval(interval);
   }, [email]);
+
+  // Polling automatique pour détection cross-device en temps réel (si l'email est confirmé sur smartphone ou autre onglet)
+  useEffect(() => {
+    let isMounted = true;
+    let isChecking = false;
+
+    const pollInterval = setInterval(async () => {
+      if (isChecking || !email || isBlocked || isAutoDetected) return;
+      isChecking = true;
+
+      try {
+        const res: any = await StudyCloudAPI.checkVerificationStatus(email);
+        if (res && res.confirmed && res.token && res.user && isMounted) {
+          clearInterval(pollInterval);
+          setIsAutoDetected(true);
+          setMessage('🎉 Confirmation validée avec succès ! Connexion instantanée à votre espace...');
+
+          setTimeout(() => {
+            if (onEmailVerified) {
+              onEmailVerified(res.token, res.user);
+            } else {
+              localStorage.setItem('sc_auth_token', res.token);
+              localStorage.setItem('sc_user', JSON.stringify(res.user));
+              localStorage.removeItem('sc_pending_verification_email');
+              localStorage.removeItem('sc_pending_verification_is_login');
+              window.location.href = '/';
+            }
+          }, 900);
+        }
+      } catch (e) {
+        // Ignorer silencieusement les erreurs réseaux temporaires de polling
+      } finally {
+        isChecking = false;
+      }
+    }, 1800);
+
+    return () => {
+      isMounted = false;
+      clearInterval(pollInterval);
+    };
+  }, [email, isBlocked, isAutoDetected, onEmailVerified]);
 
   // Renvoyer l'email
   const handleResend = async () => {
@@ -156,25 +209,40 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
     return `${minutes} minute(s)`;
   };
 
-  const isBlocked = !!blockedUntil && new Date(blockedUntil).getTime() > Date.now();
-
   return (
     <div
       className="fixed inset-0 z-[99998] flex flex-col items-center justify-center overflow-auto py-10 px-4 sm:px-6"
       style={{
-        background: 'linear-gradient(135deg, #0f0c29 0%, #1a1a3e 40%, #24243e 70%, #0f2027 100%)',
+        background: isLogin
+          ? 'linear-gradient(135deg, #09091d 0%, #0d1230 40%, #111a42 70%, #08111e 100%)'
+          : 'linear-gradient(135deg, #0f0c29 0%, #1a1a3e 40%, #24243e 70%, #0f2027 100%)',
       }}
     >
-      {/* Background orbs */}
+      {/* Background orbs (Différenciés selon le mode Login 2FA ou Inscription) */}
       <div className="absolute inset-0 overflow-hidden pointer-events-none">
-        <div
-          className="absolute top-[-10%] right-[-5%] w-[450px] h-[450px] rounded-full opacity-15 blur-[90px] animate-pulse"
-          style={{ background: 'radial-gradient(circle, #EA580C 0%, transparent 70%)' }}
-        />
-        <div
-          className="absolute bottom-[-10%] left-[-5%] w-[400px] h-[400px] rounded-full opacity-15 blur-[90px] animate-pulse"
-          style={{ background: 'radial-gradient(circle, #2563EB 0%, transparent 70%)', animationDelay: '2s' }}
-        />
+        {isLogin ? (
+          <>
+            <div
+              className="absolute top-[-10%] right-[-5%] w-[500px] h-[500px] rounded-full opacity-20 blur-[100px] animate-pulse"
+              style={{ background: 'radial-gradient(circle, #06B6D4 0%, transparent 70%)' }}
+            />
+            <div
+              className="absolute bottom-[-10%] left-[-5%] w-[450px] h-[450px] rounded-full opacity-20 blur-[100px] animate-pulse"
+              style={{ background: 'radial-gradient(circle, #4F46E5 0%, transparent 70%)', animationDelay: '2s' }}
+            />
+          </>
+        ) : (
+          <>
+            <div
+              className="absolute top-[-10%] right-[-5%] w-[450px] h-[450px] rounded-full opacity-15 blur-[90px] animate-pulse"
+              style={{ background: 'radial-gradient(circle, #EA580C 0%, transparent 70%)' }}
+            />
+            <div
+              className="absolute bottom-[-10%] left-[-5%] w-[400px] h-[400px] rounded-full opacity-15 blur-[90px] animate-pulse"
+              style={{ background: 'radial-gradient(circle, #2563EB 0%, transparent 70%)', animationDelay: '2s' }}
+            />
+          </>
+        )}
       </div>
 
       {/* Direct Content Container - Agrandissement & espacement premium */}
@@ -193,39 +261,97 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
               </p>
             </div>
           </div>
-          <span className="text-xs font-bold px-3.5 py-1.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 shadow-sm">
-            {isLogin ? 'Sécurité 2FA' : 'Confirmation'}
-          </span>
+          {isLogin ? (
+            <span className="text-xs font-bold px-3.5 py-1.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/35 flex items-center gap-1.5 shadow-sm">
+              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
+              <span>Double Authentification (2FA)</span>
+            </span>
+          ) : (
+            <span className="text-xs font-bold px-3.5 py-1.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 shadow-sm">
+              Confirmation d'inscription
+            </span>
+          )}
         </div>
 
-        {/* Big animated mail icon - Logo épuré sans l'étoile/badge retiré */}
-        <div className="flex justify-center mb-8">
-          <div
-            className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl flex items-center justify-center shadow-2xl animate-pulse"
-            style={{
-              background: 'linear-gradient(135deg, #EA580C 0%, #F97316 50%, #2563EB 100%)',
-              boxShadow: '0 16px 45px rgba(234,88,12,0.45)',
-            }}
-          >
-            <Mail className="w-12 h-12 sm:w-14 sm:h-14 text-white" strokeWidth={2.2} />
-          </div>
+        {/* Big animated icon - Design distinct pour Connexion 2FA vs Inscription */}
+        <div className="flex justify-center mb-7">
+          {isLogin ? (
+            <div className="relative">
+              <div
+                className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl flex items-center justify-center shadow-2xl animate-pulse"
+                style={{
+                  background: 'linear-gradient(135deg, #1E1B4B 0%, #2563EB 50%, #06B6D4 100%)',
+                  boxShadow: '0 16px 45px rgba(6,182,212,0.35)',
+                }}
+              >
+                <ShieldCheck className="w-12 h-12 sm:w-14 sm:h-14 text-white" strokeWidth={2.2} />
+              </div>
+            </div>
+          ) : (
+            <div
+              className="w-24 h-24 sm:w-28 sm:h-28 rounded-3xl flex items-center justify-center shadow-2xl animate-pulse"
+              style={{
+                background: 'linear-gradient(135deg, #EA580C 0%, #F97316 50%, #2563EB 100%)',
+                boxShadow: '0 16px 45px rgba(234,88,12,0.45)',
+              }}
+            >
+              <Mail className="w-12 h-12 sm:w-14 sm:h-14 text-white" strokeWidth={2.2} />
+            </div>
+          )}
         </div>
 
         {/* Main Heading */}
         <h2 className="text-2xl sm:text-3xl font-black text-white text-center mb-3 tracking-tight">
-          {isLogin ? 'Confirmez votre connexion 🔐' : 'Vérifiez votre boîte email 🎓'}
+          {isLogin ? 'Autorisation de connexion requise 🛡️' : 'Vérifiez votre boîte email 🎓'}
         </h2>
         <p className="text-sm sm:text-base text-white/70 text-center leading-relaxed mb-6 max-w-xl mx-auto">
           {isLogin
-            ? "Pour confirmer qu'il s'agit bien de vous avant d'accéder à votre compte, un lien de confirmation a été envoyé à :"
+            ? "Pour sécuriser l'accès à vos cours et protéger vos données, un lien d'autorisation à usage unique a été envoyé à :"
             : 'Un lien de confirmation sécurisé a été envoyé à votre adresse pour valider votre compte :'}
         </p>
 
         {/* Highlighted Email Badge */}
-        <div className="bg-white/10 border border-white/20 rounded-2xl px-6 py-3.5 text-center mb-6 shadow-inner">
-          <span className="text-base sm:text-lg font-mono font-black text-orange-400 break-all select-all tracking-wide">
+        <div
+          className={`border rounded-2xl px-6 py-3.5 text-center mb-6 shadow-inner ${
+            isLogin ? 'bg-cyan-950/30 border-cyan-500/30' : 'bg-white/10 border-white/20'
+          }`}
+        >
+          <span
+            className={`text-base sm:text-lg font-mono font-black break-all select-all tracking-wide ${
+              isLogin ? 'text-cyan-300' : 'text-orange-400'
+            }`}
+          >
             {email}
           </span>
+        </div>
+
+        {/* Détection en direct cross-device (téléphone portable / ordinateur) */}
+        <div
+          className={`mb-6 p-4 rounded-2xl border flex items-center gap-3.5 shadow-md ${
+            isLogin ? 'bg-cyan-500/10 border-cyan-500/25 text-cyan-200' : 'bg-blue-500/10 border-blue-500/25 text-blue-200'
+          }`}
+        >
+          <span className="relative flex h-3.5 w-3.5 shrink-0">
+            <span
+              className={`animate-ping absolute inline-flex h-full w-full rounded-full opacity-75 ${
+                isLogin ? 'bg-cyan-400' : 'bg-blue-400'
+              }`}
+            ></span>
+            <span
+              className={`relative inline-flex rounded-full h-3.5 w-3.5 ${
+                isLogin ? 'bg-cyan-500' : 'bg-blue-500'
+              }`}
+            ></span>
+          </span>
+          <div className="flex-1 text-xs sm:text-sm leading-relaxed">
+            <div className="flex items-center gap-1.5 font-bold mb-0.5">
+              <Smartphone className="w-4 h-4 shrink-0" />
+              <span>Détection automatique en direct</span>
+            </div>
+            <p className="opacity-80">
+              Si vous confirmez le lien depuis votre téléphone ou un autre onglet, cet écran se connectera automatiquement sans rechargement.
+            </p>
+          </div>
         </div>
 
         {/* Message / Error banners */}
@@ -252,7 +378,7 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
                 Le lien de confirmation précédent a expiré (validité 1 minute)
               </p>
               <p className="text-xs sm:text-sm text-amber-200/80 leading-relaxed">
-                Pour des raisons de sécurité, chaque lien expire après 1 minute. Veuillez cliquer sur le bouton ci-dessous pour réclamer un nouveau lien de confirmation.
+                Le temps imparti est passé : ce lien ne peut plus être utilisé. Veuillez cliquer sur le bouton ci-dessous pour réclamer un nouveau lien valide.
               </p>
             </div>
           </div>
@@ -289,14 +415,21 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
         <button
           type="button"
           onClick={handleResend}
-          disabled={secondsLeft > 0 || isBlocked || isLoading}
+          disabled={secondsLeft > 0 || isBlocked || isLoading || isAutoDetected}
           className={`w-full py-4 sm:py-4.5 px-6 rounded-2xl font-black text-base sm:text-lg flex items-center justify-center gap-3 transition-all cursor-pointer shadow-xl ${
-            secondsLeft > 0 || isBlocked || isLoading
+            secondsLeft > 0 || isBlocked || isLoading || isAutoDetected
               ? 'bg-white/10 text-white/40 cursor-not-allowed border border-white/10'
+              : isLogin
+              ? 'bg-gradient-to-r from-blue-600 via-indigo-600 to-cyan-600 hover:from-blue-500 hover:to-cyan-500 text-white shadow-cyan-500/30 hover:scale-[1.01] active:scale-[0.99]'
               : 'bg-gradient-to-r from-orange-500 via-orange-600 to-orange-500 hover:from-orange-600 hover:to-orange-700 text-white shadow-orange-500/30 hover:scale-[1.01] active:scale-[0.99]'
           }`}
         >
-          {isLoading ? (
+          {isAutoDetected ? (
+            <>
+              <CheckCircle2 className="w-5 h-5 text-emerald-400 animate-bounce" />
+              <span>Connexion validée ! Accès en cours...</span>
+            </>
+          ) : isLoading ? (
             <>
               <RefreshCw className="w-5 h-5 animate-spin" />
               <span>Génération du lien en cours...</span>
@@ -308,7 +441,10 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
             </>
           ) : secondsLeft > 0 ? (
             <>
-              <Clock className="w-5 h-5 text-orange-400 animate-spin" style={{ animationDuration: '4s' }} />
+              <Clock
+                className={`w-5 h-5 animate-spin ${isLogin ? 'text-cyan-300' : 'text-orange-400'}`}
+                style={{ animationDuration: '4s' }}
+              />
               <span>Lien actif · Renvoyer disponible dans ({secondsLeft}s)</span>
             </>
           ) : (
@@ -339,4 +475,3 @@ export function EmailPendingVerification({ email, isLogin = false, onBackToLogin
     </div>
   );
 }
-

@@ -93,6 +93,10 @@ export const StudyCloudAPI = {
     return requestAuth(`/api/auth/verify-email?token=${encodeURIComponent(token)}`, { method: 'GET' });
   },
 
+  async checkVerificationStatus(email: string) {
+    return requestAuth(`/api/auth/check-verification-status?email=${encodeURIComponent(email)}`, { method: 'GET' });
+  },
+
   async login(data: { email: string; password: string }) {
     return requestAuth('/api/auth/login', { method: 'POST', body: JSON.stringify(data) });
   },

@@ -236,6 +236,8 @@ export function AuthPage({ onBack }: AuthPageProps) {
         const isLogin = mode === 'login' || !!res.isLogin;
         localStorage.setItem('sc_pending_verification_email', targetEmail);
         localStorage.setItem('sc_pending_verification_is_login', isLogin ? '1' : '0');
+        // Initialiser ou réinitialiser le décompteur de 60 secondes (1 minute)
+        localStorage.setItem(`sc_resend_target_${targetEmail}`, (Date.now() + 60000).toString());
         setPendingVerificationEmail(targetEmail);
         setIsLoginVerification(isLogin);
         return;
@@ -329,6 +331,11 @@ export function AuthPage({ onBack }: AuthPageProps) {
           localStorage.removeItem('sc_pending_verification_is_login');
           setPendingVerificationEmail(null);
           setMode('login');
+        }}
+        onEmailVerified={(token, user) => {
+          localStorage.removeItem('sc_pending_verification_email');
+          localStorage.removeItem('sc_pending_verification_is_login');
+          loginWithToken(token, user);
         }}
       />
     );

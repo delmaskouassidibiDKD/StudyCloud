@@ -269,13 +269,374 @@ export default {
         return { valid: true };
       }
 
+      
+      function getSuccessConfirmationHtml(name: string, email: string, appUrl: string): string {
+        return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Confirmation réussie - StudyCloud</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; font-family:'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #09091d 0%, #0f1230 45%, #18194a 75%, #08111e 100%);
+      color: #ffffff;
+      padding: 24px 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 520px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 28px;
+      padding: 44px 32px 36px;
+      text-align: center;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(16, 185, 129, 0.15);
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 6px;
+      background: linear-gradient(90deg, #10B981, #06B6D4, #3B82F6, #EA580C);
+    }
+    .logo-box {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .logo-img {
+      width: 36px;
+      height: 36px;
+      display: block;
+    }
+    .logo-text-study { color: #EA580C; font-weight: 900; font-size: 24px; letter-spacing: -0.5px; }
+    .logo-text-cloud { color: #2563EB; font-weight: 900; font-size: 24px; letter-spacing: -0.5px; }
+    .logo-sub { color: #F59E0B; font-size: 8.5px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; text-align: left; }
+    
+    .icon-badge {
+      width: 88px;
+      height: 88px;
+      border-radius: 26px;
+      margin: 0 auto 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #059669 0%, #10B981 50%, #06B6D4 100%);
+      box-shadow: 0 12px 36px rgba(16, 185, 129, 0.4);
+      font-size: 42px;
+      animation: pulseAura 2s infinite ease-in-out;
+    }
+    @keyframes pulseAura {
+      0%, 100% { transform: scale(1); }
+      50% { transform: scale(1.04); }
+    }
+    h1 {
+      font-size: 26px;
+      font-weight: 900;
+      color: #ffffff;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+    p.desc {
+      font-size: 15px;
+      color: rgba(255, 255, 255, 0.75);
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .highlight-card {
+      background: rgba(16, 185, 129, 0.12);
+      border: 1px solid rgba(16, 185, 129, 0.3);
+      border-radius: 18px;
+      padding: 16px 20px;
+      margin-bottom: 28px;
+      text-align: left;
+    }
+    .highlight-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #34D399;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      margin-bottom: 6px;
+    }
+    .highlight-text {
+      font-size: 12.5px;
+      color: rgba(255, 255, 255, 0.8);
+      line-height: 1.5;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 16px 24px;
+      background: linear-gradient(135deg, #EA580C 0%, #F97316 50%, #2563EB 100%);
+      color: #ffffff;
+      font-size: 16px;
+      font-weight: 800;
+      text-decoration: none;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(234, 88, 12, 0.35);
+      transition: all 0.2s ease;
+    }
+    .btn:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 14px 36px rgba(234, 88, 12, 0.5);
+    }
+    .footer-note {
+      margin-top: 24px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.45);
+      line-height: 1.5;
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo-box">
+      <img src="${appUrl}/assets/dna-logo.png" onerror="this.src='https://studycloud.dkd-technologies.com/assets/dna-logo.png'" class="logo-img" alt="Logo" />
+      <div>
+        <div style="line-height:1;"><span class="logo-text-study">Study</span><span class="logo-text-cloud">Cloud</span></div>
+        <div class="logo-sub">DKD TECHNOLOGIES</div>
+      </div>
+    </div>
+
+    <div class="icon-badge">✅</div>
+
+    <h1>Confirmation validée avec succès !</h1>
+    <p class="desc">
+      Bonjour <strong>${name || 'Étudiant'}</strong>, votre autorisation a été confirmée pour l'adresse <strong>${email}</strong>.
+    </p>
+
+    <div class="highlight-card">
+      <div class="highlight-title">
+        <span>⚡ Synchronisation automatique</span>
+      </div>
+      <div class="highlight-text">
+        Si votre navigateur est ouvert sur votre ordinateur, <strong>votre session s'active automatiquement</strong> en ce moment même.<br>
+        Vous pouvez fermer cet onglet en toute sécurité ou continuer sur cet appareil ci-dessous.
+      </div>
+    </div>
+
+    <a href="${appUrl}" class="btn">
+      Accéder à StudyCloud &rarr;
+    </a>
+
+    <div class="footer-note">
+      StudyCloud propulsé par <strong>DKD Technologies</strong> · Abidjan, Côte d'Ivoire
+    </div>
+  </div>
+</body>
+</html>`;
+      }
+
+      function getExpiredEmailHtml(appUrl: string, customMessage?: string): string {
+        return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Lien de confirmation expiré - StudyCloud</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    * { margin:0; padding:0; box-sizing:border-box; font-family:'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0f0c29 0%, #1a1a3e 40%, #24243e 70%, #0f2027 100%);
+      color: #ffffff;
+      padding: 24px 16px;
+    }
+    .card {
+      width: 100%;
+      max-width: 500px;
+      background: rgba(255, 255, 255, 0.05);
+      backdrop-filter: blur(20px);
+      -webkit-backdrop-filter: blur(20px);
+      border: 1px solid rgba(255, 255, 255, 0.12);
+      border-radius: 28px;
+      padding: 44px 32px 36px;
+      text-align: center;
+      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(245, 158, 11, 0.12);
+      position: relative;
+      overflow: hidden;
+    }
+    .card::before {
+      content: '';
+      position: absolute;
+      top: 0; left: 0; right: 0;
+      height: 6px;
+      background: linear-gradient(90deg, #F59E0B, #EF4444, #EA580C);
+    }
+    .logo-box {
+      display: inline-flex;
+      align-items: center;
+      gap: 10px;
+      margin-bottom: 28px;
+    }
+    .logo-img {
+      width: 36px;
+      height: 36px;
+      display: block;
+    }
+    .logo-text-study { color: #EA580C; font-weight: 900; font-size: 24px; letter-spacing: -0.5px; }
+    .logo-text-cloud { color: #2563EB; font-weight: 900; font-size: 24px; letter-spacing: -0.5px; }
+    .logo-sub { color: #F59E0B; font-size: 8.5px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; text-align: left; }
+    
+    .icon-badge {
+      width: 88px;
+      height: 88px;
+      border-radius: 26px;
+      margin: 0 auto 24px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #B45309 0%, #F59E0B 50%, #DC2626 100%);
+      box-shadow: 0 12px 36px rgba(245, 158, 11, 0.35);
+      font-size: 42px;
+    }
+    h1 {
+      font-size: 25px;
+      font-weight: 900;
+      color: #ffffff;
+      margin-bottom: 12px;
+      letter-spacing: -0.5px;
+    }
+    p.desc {
+      font-size: 14.5px;
+      color: rgba(255, 255, 255, 0.75);
+      line-height: 1.6;
+      margin-bottom: 24px;
+    }
+    .highlight-card {
+      background: rgba(245, 158, 11, 0.12);
+      border: 1px solid rgba(245, 158, 11, 0.3);
+      border-radius: 18px;
+      padding: 16px 20px;
+      margin-bottom: 28px;
+      text-align: left;
+    }
+    .highlight-title {
+      font-size: 13px;
+      font-weight: 800;
+      color: #FBBF24;
+      margin-bottom: 6px;
+    }
+    .highlight-text {
+      font-size: 12.5px;
+      color: rgba(255, 255, 255, 0.8);
+      line-height: 1.5;
+    }
+    .btn {
+      display: block;
+      width: 100%;
+      padding: 16px 24px;
+      background: linear-gradient(135deg, #EA580C 0%, #F97316 100%);
+      color: #ffffff;
+      font-size: 16px;
+      font-weight: 800;
+      text-decoration: none;
+      border-radius: 16px;
+      box-shadow: 0 10px 30px rgba(234, 88, 12, 0.35);
+      transition: all 0.2s ease;
+    }
+    .footer-note {
+      margin-top: 24px;
+      font-size: 12px;
+      color: rgba(255, 255, 255, 0.45);
+    }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="logo-box">
+      <img src="${appUrl}/assets/dna-logo.png" onerror="this.src='https://studycloud.dkd-technologies.com/assets/dna-logo.png'" class="logo-img" alt="Logo" />
+      <div>
+        <div style="line-height:1;"><span class="logo-text-study">Study</span><span class="logo-text-cloud">Cloud</span></div>
+        <div class="logo-sub">DKD TECHNOLOGIES</div>
+      </div>
+    </div>
+
+    <div class="icon-badge">⏳</div>
+
+    <h1>Lien de confirmation expiré</h1>
+    <p class="desc">
+      ${customMessage || 'Pour des raisons strictes de sécurité, chaque lien de confirmation est valable pendant exactement 1 minute. Le temps imparti est dépassé ou ce lien a déjà été validé.'}
+    </p>
+
+    <div class="highlight-card">
+      <div class="highlight-title">⚠️ Action requise</div>
+      <div class="highlight-text">
+        Veuillez retourner sur la page StudyCloud pour réclamer un nouveau lien de confirmation sécurisé.
+      </div>
+    </div>
+
+    <a href="${appUrl}" class="btn">
+      Retourner sur StudyCloud &rarr;
+    </a>
+
+    <div class="footer-note">
+      StudyCloud · Sécurité DKD Technologies
+    </div>
+  </div>
+</body>
+</html>`;
+      }
+
+      async function ensureEmailVerificationsTable(db: any) {
+        try {
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS email_verifications (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              email TEXT NOT NULL,
+              token TEXT NOT NULL,
+              resend_count INTEGER DEFAULT 1,
+              last_sent_at TEXT NOT NULL,
+              blocked_until TEXT,
+              expires_at TEXT NOT NULL,
+              confirmed INTEGER DEFAULT 0,
+              confirmed_jwt TEXT,
+              confirmed_at TEXT,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+        } catch (e) {}
+        try {
+          await db.prepare(`ALTER TABLE email_verifications ADD COLUMN confirmed INTEGER DEFAULT 0`).run();
+        } catch (e) {}
+        try {
+          await db.prepare(`ALTER TABLE email_verifications ADD COLUMN confirmed_jwt TEXT`).run();
+        } catch (e) {}
+        try {
+          await db.prepare(`ALTER TABLE email_verifications ADD COLUMN confirmed_at TEXT`).run();
+        } catch (e) {}
+      }
+
       async function sendConfirmationEmail(toEmail: string, name: string, token: string, appOrigin = 'https://studycloud.dkd-technologies.com', isLogin = false): Promise<void> {
         try {
           const cleanOrigin = (appOrigin || 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
           const publicAssetOrigin = (!cleanOrigin || cleanOrigin.includes('localhost') || !cleanOrigin.startsWith('https://'))
             ? 'https://studycloud.dkd-technologies.com'
             : cleanOrigin;
-          const confirmUrl = `${cleanOrigin}/?verify_token=${encodeURIComponent(token)}`;
+          const confirmUrl = `${cleanOrigin}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
           const subject = isLogin
             ? '🔐 Confirmez votre connexion - StudyCloud'
             : '✉️ Confirmez votre adresse email - StudyCloud';
@@ -883,8 +1244,125 @@ export default {
         }
       }
 
-      // GET /api/auth/verify-email — Validation du token de confirmation
+      // GET /api/auth/check-verification-status — Polling cross-device pour détecter la confirmation en direct (smartphone -> ordinateur)
+      if (path === '/api/auth/check-verification-status' && method === 'GET') {
+        await ensureEmailVerificationsTable(env.DB);
+        const emailParam = url.searchParams.get('email');
+        if (!emailParam) return errorResponse('Email requis', 400, origin);
+        const cleanEmail = emailParam.toLowerCase().trim();
+
+        // Chercher une confirmation récente (moins de 5 minutes)
+        const verif: any = await env.DB.prepare(`
+          SELECT * FROM email_verifications
+          WHERE email = ? AND confirmed = 1 AND confirmed_at > datetime('now', '-5 minutes')
+          ORDER BY confirmed_at DESC LIMIT 1
+        `).bind(cleanEmail).first();
+
+        if (verif && verif.confirmed_jwt) {
+          const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(verif.user_id).first();
+          if (user) {
+            // Nettoyer après détection réussie
+            await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(user.id).run();
+            return jsonResponse({
+              success: true,
+              confirmed: true,
+              token: verif.confirmed_jwt,
+              user: sanitizeUser(user),
+            }, 200, origin);
+          }
+        }
+
+        return jsonResponse({
+          success: true,
+          confirmed: false,
+        }, 200, origin);
+      }
+
+      // GET /api/auth/verify-email — Validation du token de confirmation avec page visuelle et persistance JWT
       if (path === '/api/auth/verify-email' && method === 'GET') {
+        await ensureEmailVerificationsTable(env.DB);
+        const tokenParam = url.searchParams.get('token');
+        const appUrl = (origin !== '*' ? origin : 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
+
+        if (!tokenParam) {
+          return new Response(getExpiredEmailHtml(appUrl, 'Token de confirmation requis.'), {
+            status: 400,
+            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+          });
+        }
+
+        const verif: any = await env.DB.prepare(
+          'SELECT * FROM email_verifications WHERE token = ? AND expires_at > CURRENT_TIMESTAMP'
+        ).bind(tokenParam).first();
+
+        if (!verif) {
+          const accept = request.headers.get('Accept') || '';
+          if (accept.includes('application/json') && !accept.includes('text/html')) {
+            return errorResponse('Lien de confirmation expiré (validité 1 minute dépassée). Veuillez réclamer un nouveau lien.', 400, origin);
+          }
+          return new Response(getExpiredEmailHtml(appUrl), {
+            status: 400,
+            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+          });
+        }
+
+        const userBefore: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(verif.user_id).first();
+        if (!userBefore) {
+          return new Response(getExpiredEmailHtml(appUrl, 'Utilisateur introuvable.'), {
+            status: 404,
+            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+          });
+        }
+        const isFirstVerification = userBefore.email_verified === 0;
+
+        // Marquer l'email vérifié
+        await env.DB.prepare(`
+          UPDATE users SET
+            email_verified = 1,
+            last_active_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).bind(verif.user_id).run();
+
+        // Créer la session JWT
+        const jwtToken = await createJWT({ userId: userBefore.id, email: userBefore.email, name: userBefore.name });
+        const tokenHash = await hashToken(jwtToken);
+        const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+        await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), userBefore.id, tokenHash, expiresAt).run();
+
+        // Marquer dans email_verifications avec le token JWT pour que l'ordinateur détecte automatiquement la validation
+        await env.DB.prepare(`
+          UPDATE email_verifications SET
+            confirmed = 1,
+            confirmed_jwt = ?,
+            confirmed_at = CURRENT_TIMESTAMP
+          WHERE id = ?
+        `).bind(jwtToken, verif.id).run();
+
+        if (isFirstVerification) {
+          sendWelcomeEmail(userBefore.email, userBefore.name);
+        }
+
+        const accept = request.headers.get('Accept') || '';
+        if (accept.includes('application/json') && !accept.includes('text/html')) {
+          const safeUser = sanitizeUser(userBefore);
+          return jsonResponse({
+            success: true,
+            message: 'Adresse email confirmée avec succès !',
+            token: jwtToken,
+            user: safeUser,
+          }, 200, origin);
+        }
+
+        // Afficher la page standalone de confirmation au lieu de rediriger brutalement
+        return new Response(getSuccessConfirmationHtml(userBefore.name, userBefore.email, appUrl), {
+          status: 200,
+          headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+        });
+      }
+
+      // Ancien handler skip:
+      if (false && path === '/api/auth/verify-email-old') {
         const tokenParam = url.searchParams.get('token');
         if (!tokenParam) return errorResponse('Token de confirmation requis', 400, origin);
 
