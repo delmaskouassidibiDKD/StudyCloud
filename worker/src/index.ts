@@ -1561,35 +1561,54 @@ export default {
         if (!emailParam && !userIdParam) return errorResponse('Email ou userId requis', 400, origin);
         const cleanEmail = (emailParam || '').toLowerCase().trim();
 
-        // 1. Chercher dans email_verifications si une confirmation a été validée
-        let verif: any = null;
+        // 1. Récupérer TOUJOURS la demande de vérification la plus RÉCENTE pour cet email
+        // IMPORTANT : Ne JAMAIS filtrer sur confirmed=1, afin d'inspecter la tentative en cours !
+        let latestVerif: any = null;
         try {
-          verif = await env.DB.prepare(`
+          latestVerif = await env.DB.prepare(`
             SELECT * FROM email_verifications
-            WHERE (LOWER(TRIM(email)) = ? OR user_id = ?) AND (used = 1 OR confirmed = 1 OR clicked = 1)
-            ORDER BY created_at DESC LIMIT 1
+            WHERE LOWER(TRIM(email)) = ? OR user_id = ?
+            ORDER BY created_at DESC, rowid DESC LIMIT 1
           `).bind(cleanEmail, userIdParam || '').first();
         } catch (e) {
           try {
-            verif = await env.DB.prepare(`
+            latestVerif = await env.DB.prepare(`
               SELECT * FROM email_verifications
-              WHERE LOWER(TRIM(email)) = ? AND (used = 1 OR confirmed = 1 OR clicked = 1)
+              WHERE LOWER(TRIM(email)) = ?
               ORDER BY rowid DESC LIMIT 1
             `).bind(cleanEmail).first();
           } catch (e2) {}
         }
 
-        if (verif) {
-          const user = await env.DB.prepare('SELECT * FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?').bind(verif.user_id, cleanEmail).first();
+        // 2. Si aucune demande trouvée, aucune vérification en attente
+        if (!latestVerif) {
+          return jsonResponse({
+            success: true,
+            confirmed: false,
+            clicked: false,
+            resendCount: 0,
+            maxCount: 5,
+            isBlocked: false,
+            blockedUntil: null,
+            blockStage: 0,
+          }, 200, origin);
+        }
+
+        // 3. Vérifier si CETTE tentative précise a été validée par clic sur le lien de l'email
+        const isConfirmed = Number(latestVerif.confirmed) === 1 || Number(latestVerif.used) === 1 || Number(latestVerif.clicked) === 1;
+
+        if (isConfirmed) {
+          // L'utilisateur a bien cliqué sur le lien de confirmation envoyé pour cette tentative
+          const user = await env.DB.prepare('SELECT * FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?').bind(latestVerif.user_id, cleanEmail).first();
           if (user) {
-            let jwtToken = verif?.confirmed_jwt;
+            let jwtToken = latestVerif?.confirmed_jwt;
             if (!jwtToken) {
               jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
               const tokenHash = await hashToken(jwtToken);
               const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
               await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, expiresAt).run();
               try {
-                await env.DB.prepare('UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?').bind(jwtToken, verif.id).run();
+                await env.DB.prepare('UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?').bind(jwtToken, latestVerif.id).run();
               } catch (e3) {}
             }
             return jsonResponse({
@@ -1602,43 +1621,13 @@ export default {
           }
         }
 
-        // 2. Si l'utilisateur est déjà dans users avec email_verified = 1
-        let userDirect: any = null;
-        if (cleanEmail) {
-          userDirect = await env.DB.prepare('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
-        } else if (userIdParam) {
-          userDirect = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userIdParam).first();
-        }
-        if (userDirect && Number(userDirect.email_verified) === 1) {
-          const jwtToken = await createJWT({ userId: userDirect.id, email: userDirect.email, name: userDirect.name });
-          const tokenHash = await hashToken(jwtToken);
-          const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-          await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), userDirect.id, tokenHash, expiresAt).run();
-          return jsonResponse({
-            success: true,
-            confirmed: true,
-            clicked: true,
-            token: jwtToken,
-            user: sanitizeUser(userDirect),
-          }, 200, origin);
-        }
-
-        // 3. Si non confirmé : renvoyer l'état en temps réel (compteur de renvois, blocage progressif)
-        let currentVerif: any = null;
-        try {
-          currentVerif = await env.DB.prepare(`
-            SELECT resend_count, block_stage, blocked_until, last_sent_at, expires_at
-            FROM email_verifications
-            WHERE LOWER(TRIM(email)) = ? OR user_id = ?
-            ORDER BY created_at DESC LIMIT 1
-          `).bind(cleanEmail, userIdParam || '').first();
-        } catch (e) {}
-
+        // 4. Si NON CONFIRMÉ pour cette tentative : JAMAIS de bypass automatique, même si users.email_verified == 1 !
+        // L'utilisateur DOIT impérativement cliquer sur l'email envoyé avant de passer.
         const now = Date.now();
         let isBlocked = false;
-        let blockedUntil = currentVerif?.blocked_until || null;
-        let resendCount = typeof currentVerif?.resend_count === 'number' ? currentVerif.resend_count : 0;
-        let blockStage = currentVerif?.block_stage ?? 0;
+        let blockedUntil = latestVerif?.blocked_until || null;
+        let resendCount = typeof latestVerif?.resend_count === 'number' ? latestVerif.resend_count : 0;
+        let blockStage = latestVerif?.block_stage ?? 0;
 
         if (blockedUntil) {
           if (new Date(blockedUntil).getTime() > now) {
@@ -1874,7 +1863,7 @@ export default {
         const verificationToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
         const expiresAt = new Date(Date.now() + 70 * 1000).toISOString();
 
-        await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(user.id).run();
+        await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ? OR LOWER(TRIM(email)) = ?').bind(user.id, cleanEmail).run();
         await env.DB.prepare(`
           INSERT INTO email_verifications (id, user_id, email, token, resend_count, block_stage, last_sent_at, expires_at)
           VALUES (?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, ?)
