@@ -253,10 +253,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
 
       // Cas 1 : Inscription déjà en cours (onboarding non finalisé sur cet appareil ou un autre)
       if (res.requiresOnboarding && res.token && res.user) {
-        setSuccess("Une inscription avec cette adresse email est déjà en cours. Reprise de vos questionnaires d'onboarding...");
-        setTimeout(() => {
-          loginWithToken(res.token, res.user);
-        }, 600);
+        loginWithToken(res.token, res.user);
         return;
       }
 
@@ -272,10 +269,8 @@ export function AuthPage({ onBack }: AuthPageProps) {
       }
 
       if (res.success && res.token && res.user) {
-        setSuccess(mode === 'register' ? 'Compte créé ! Bienvenue 🎉' : 'Connexion réussie !');
-        setTimeout(() => {
-          loginWithToken(res.token, res.user);
-        }, 800);
+        loginWithToken(res.token, res.user);
+        return;
       } else {
         setError(res.error || 'Une erreur est survenue.');
       }
@@ -314,6 +309,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
       return;
     }
 
+    setIsLoading(true);
     const action = targetAction || (mode === 'register' ? 'register' : 'login');
     localStorage.setItem('sc_google_auth_mode', action);
 

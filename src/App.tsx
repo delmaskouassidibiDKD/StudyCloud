@@ -31,6 +31,16 @@ import { GoogleSecuritySetupPage } from './components/auth/GoogleSecuritySetupPa
 export default function App() {
   const { isAuthenticated, isLoading: authLoading, needsOnboarding, needsSecuritySetup, loginWithToken } = useAuth();
 
+  // Détecter immédiatement à l'initialisation si l'URL contient un retour Google OAuth ou une confirmation email
+  const [isProcessingAuth, setIsProcessingAuth] = useState<string | null>(() => {
+    try {
+      const p = new URLSearchParams(window.location.search);
+      if (p.get('code')) return 'Connexion sécurisée avec votre compte Google en cours...';
+      if (p.get('verify_token') || (p.get('verified') === '1' && p.get('token'))) return 'Validation de votre adresse email en cours...';
+    } catch {}
+    return null;
+  });
+
   // Gérer le callback Google OAuth et la confirmation email (verify_token ou redirect)
   useEffect(() => {
     const urlParams = new URLSearchParams(window.location.search);
@@ -67,10 +77,14 @@ export default function App() {
           } else {
             console.error(err);
           }
+        })
+        .finally(() => {
+          setIsProcessingAuth(null);
         });
     } else if (urlParams.get('verify_error') === 'expired') {
       window.history.replaceState({}, '', window.location.pathname);
       localStorage.setItem('sc_verification_expired_notice', 'Votre lien de confirmation a expiré (validité 1 minute). Veuillez réclamer un nouveau lien ci-dessous.');
+      setIsProcessingAuth(null);
       window.dispatchEvent(new Event('studycloud_auth_redirect'));
     } else if (verifyToken) {
       // Confirmation directe par token dans l'URL (depuis le bouton de l'email)
@@ -90,6 +104,9 @@ export default function App() {
           console.error(err);
           localStorage.setItem('sc_verification_expired_notice', err.message || 'Votre lien de confirmation a expiré (validité 1 minute). Veuillez réclamer un nouveau lien ci-dessous.');
           window.dispatchEvent(new Event('studycloud_auth_redirect'));
+        })
+        .finally(() => {
+          setIsProcessingAuth(null);
         });
     } else if (verified === '1' && authToken) {
       // Redirection après validation depuis le Worker
@@ -102,7 +119,14 @@ export default function App() {
             loginWithToken(authToken, res.data);
           }
         })
-        .catch(console.error);
+        .catch(console.error)
+        .finally(() => {
+          setIsProcessingAuth(null);
+        });
+    } else {
+      if (isProcessingAuth) {
+        setIsProcessingAuth(null);
+      }
     }
   }, [isAuthenticated, loginWithToken]);
 
@@ -628,8 +652,8 @@ export default function App() {
   };
 
   // ─── AUTH GUARDS ─────────────────────────────────────────────────────────────
-  // 1. Écran de chargement lors de la vérification du token JWT
-  if (authLoading) {
+  // 1. Écran de chargement lors de la vérification du token JWT ou du retour Google / Email
+  if (authLoading || isProcessingAuth) {
     return (
       <div className="min-h-dvh flex flex-col items-center justify-center bg-[#0f0c29]">
         <div className="flex flex-col items-center gap-4">
@@ -640,7 +664,9 @@ export default function App() {
             <DnaLogo className="w-10 h-10 drop-shadow-[0_0_8px_rgba(234,88,12,0.5)]" glow={true} />
           </div>
           <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin" />
-          <p className="text-white/60 text-xs font-semibold tracking-wide">Initialisation de StudyCloud...</p>
+          <p className="text-white/80 text-sm font-semibold tracking-wide">
+            {isProcessingAuth || 'Initialisation de StudyCloud...'}
+          </p>
         </div>
       </div>
     );
