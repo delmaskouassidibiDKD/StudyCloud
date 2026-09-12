@@ -29,7 +29,7 @@ export function EmailPendingVerification({
   const COOLDOWN_KEY = `sc_resend_target_${email.toLowerCase()}`;
   const BLOCKED_KEY = `sc_resend_blocked_${email.toLowerCase()}`;
   const COUNT_KEY = `sc_resend_count_${email.toLowerCase()}`;
-  const COOLDOWN_DURATION_MS = 90 * 1000; // 1 minute 30 secondes (90 secondes)
+  const COOLDOWN_DURATION_MS = 60 * 1000; // 60 secondes entre deux demandes de renvoi
 
   // Initialisation et restauration de l'état persistant
   useEffect(() => {
@@ -63,7 +63,7 @@ export function EmailPendingVerification({
       }
     }
 
-    // 3. Restaurer le décompteur de 1 min 30 s (90 secondes)
+    // 3. Restaurer le décompteur de 60 secondes
     const savedTarget = localStorage.getItem(COOLDOWN_KEY);
     if (savedTarget) {
       const targetTime = parseInt(savedTarget, 10);
@@ -74,10 +74,10 @@ export function EmailPendingVerification({
         setSecondsLeft(0);
       }
     } else {
-      // Premier affichage : lancer un décompte initial de 90s (1 min 30 s)
+      // Premier affichage : décompte initial de 60s
       const targetTime = Date.now() + COOLDOWN_DURATION_MS;
       localStorage.setItem(COOLDOWN_KEY, targetTime.toString());
-      setSecondsLeft(90);
+      setSecondsLeft(60);
     }
   }, [email]);
 
@@ -99,7 +99,7 @@ export function EmailPendingVerification({
         }
       }
 
-      // Vérifier le décompteur de 1 minute (60 secondes)
+      // Vérifier le décompteur de 60 secondes
       const savedTarget = localStorage.getItem(COOLDOWN_KEY);
       if (savedTarget) {
         const targetTime = parseInt(savedTarget, 10);
@@ -139,7 +139,10 @@ export function EmailPendingVerification({
         const res: any = await StudyCloudAPI.checkVerificationStatus(email);
         if (res && res.confirmed && res.token && res.user && isMounted) {
           setIsAutoDetected(true);
-          setMessage('🎉 Confirmation validée avec succès ! Connexion instantanée à votre espace...');
+          setMessage("🎉 Confirmation validée avec succès ! Passage automatique à l'étape suivante...");
+
+          localStorage.removeItem('sc_pending_verification_email');
+          localStorage.removeItem('sc_pending_verification_is_login');
 
           setTimeout(() => {
             if (onEmailVerified) {
@@ -147,11 +150,9 @@ export function EmailPendingVerification({
             } else {
               localStorage.setItem('sc_auth_token', res.token);
               localStorage.setItem('sc_user', JSON.stringify(res.user));
-              localStorage.removeItem('sc_pending_verification_email');
-              localStorage.removeItem('sc_pending_verification_is_login');
-              window.location.href = '/';
+              window.location.reload();
             }
-          }, 600);
+          }, 400);
         }
       } catch (e) {
         // Ignorer silencieusement les erreurs réseaux temporaires de polling
@@ -160,8 +161,8 @@ export function EmailPendingVerification({
       }
     };
 
-    // 1. Polling régulier rapide (1.2s)
-    const pollInterval = setInterval(checkStatus, 1200);
+    // 1. Polling régulier rapide (1 seconde)
+    const pollInterval = setInterval(checkStatus, 1000);
 
     // 2. Détection immédiate dès que l'utilisateur revient sur l'application (quitte l'app mail et revient)
     const handleImmediateWakeUp = () => {
@@ -228,12 +229,11 @@ export function EmailPendingVerification({
           setBlockedUntil(blockDate);
           localStorage.setItem(BLOCKED_KEY, blockDate);
           setError('Quota atteint (4/4 tentatives). Veuillez patienter 3 heures avant de pouvoir réclamer un nouvel email.');
-        } else {
-          // Relancer le décompte persistant de 1 min 30 s (90 secondes)
+          // Relancer le décompte persistant de 60 secondes
           const targetTime = Date.now() + COOLDOWN_DURATION_MS;
           localStorage.setItem(COOLDOWN_KEY, targetTime.toString());
-          setSecondsLeft(90);
-          setMessage('✨ Un nouveau lien de confirmation sécurisé (valable 1 min 30 s) vient de vous être envoyé !');
+          setSecondsLeft(60);
+          setMessage('✨ Un nouveau lien de confirmation vient de vous être envoyé par email !');
         }
       } else {
         if (res.isBlocked) {
@@ -402,16 +402,16 @@ export function EmailPendingVerification({
           </div>
         )}
 
-        {/* Alerte Expiration lorsque le décompteur de 1 min 30 s est terminé */}
+        {/* Indication disponible lorsque le décompteur de 60s est terminé */}
         {!isBlocked && secondsLeft === 0 && (
-          <div className="mb-5 p-4 sm:p-5 rounded-2xl bg-amber-500/15 border border-amber-500/35 text-amber-200 flex items-start gap-3.5 shadow-lg shadow-amber-500/5">
-            <AlertTriangle className="w-5 h-5 text-amber-400 shrink-0 mt-0.5" />
+          <div className="mb-5 p-4 rounded-2xl bg-blue-500/15 border border-blue-500/30 text-blue-200 flex items-start gap-3 shadow-lg shadow-blue-500/5">
+            <Mail className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />
             <div className="space-y-1">
-              <p className="font-black text-sm sm:text-base text-amber-300">
-                Le lien de confirmation précédent a expiré (validité 1 min 30 s)
+              <p className="font-bold text-sm sm:text-base text-blue-300">
+                Vous n'avez pas encore reçu l'email de confirmation ?
               </p>
-              <p className="text-xs sm:text-sm text-amber-200/80 leading-relaxed">
-                Le temps imparti est passé : ce lien ne peut plus être utilisé. Veuillez cliquer sur le bouton ci-dessous pour réclamer un nouveau lien valide.
+              <p className="text-xs sm:text-sm text-blue-200/80 leading-relaxed">
+                Vérifiez vos courriers indésirables (spams) ou cliquez sur le bouton ci-dessous pour renvoyer un nouvel email sécurisé.
               </p>
             </div>
           </div>
@@ -483,7 +483,7 @@ export function EmailPendingVerification({
           ) : (
             <>
               <RefreshCw className="w-5 h-5" />
-              <span>Réclamer un nouveau lien de confirmation</span>
+              <span>Renvoyer l'email de confirmation</span>
             </>
           )}
         </button>

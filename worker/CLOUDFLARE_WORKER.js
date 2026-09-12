@@ -1,4 +1,9 @@
-// worker/src/index.ts
+// @ts-nocheck
+/* eslint-disable */
+var __defProp = Object.defineProperty;
+var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
+
+// src/index.ts
 var DNA_LOGO_PNG_B64 = "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";
 var DNA_LOGO_SVG = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -25,6 +30,7 @@ function corsHeaders(origin = "*") {
     "Access-Control-Allow-Headers": "Content-Type, Authorization, x-user-id"
   };
 }
+__name(corsHeaders, "corsHeaders");
 function jsonResponse(data, status = 200, origin = "*") {
   return new Response(JSON.stringify(data), {
     status,
@@ -34,10 +40,12 @@ function jsonResponse(data, status = 200, origin = "*") {
     }
   });
 }
+__name(jsonResponse, "jsonResponse");
 function errorResponse(error, status = 400, origin = "*") {
   return jsonResponse({ success: false, error }, status, origin);
 }
-var index_default = {
+__name(errorResponse, "errorResponse");
+var src_default = {
   async fetch(request, rawEnv) {
     const url = new URL(request.url);
     const path = url.pathname;
@@ -58,7 +66,8 @@ var index_default = {
     }
     try {
       let sanitizeUser2 = function(user) {
-        if (!user) return null;
+        if (!user)
+          return null;
         const { password_hash: _ph, security_answer_1_hash: _s1, security_answer_2_hash: _s2, ...rest } = user;
         return {
           ...rest,
@@ -70,15 +79,21 @@ var index_default = {
       }, generateId2 = function() {
         return crypto.randomUUID();
       }, isValidEmail2 = function(email) {
-        if (!email || typeof email !== "string") return false;
+        if (!email || typeof email !== "string")
+          return false;
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
         return emailRegex.test(email.trim());
       }, validatePasswordFormat2 = function(pwd) {
-        if (!pwd || typeof pwd !== "string") return { valid: false, error: "Mot de passe requis" };
-        if (pwd.length < 6) return { valid: false, error: "Le mot de passe doit comporter au moins 6 caract\xE8res" };
-        if (!/[a-zA-Z]/.test(pwd)) return { valid: false, error: "Le mot de passe doit contenir des lettres" };
-        if (!/[0-9]/.test(pwd)) return { valid: false, error: "Le mot de passe doit contenir des chiffres" };
-        if (!/[^a-zA-Z0-9]/.test(pwd)) return { valid: false, error: "Le mot de passe doit contenir au moins un caract\xE8re sp\xE9cial (ex: @, #, $, !, etc.)" };
+        if (!pwd || typeof pwd !== "string")
+          return { valid: false, error: "Mot de passe requis" };
+        if (pwd.length < 6)
+          return { valid: false, error: "Le mot de passe doit comporter au moins 6 caract\xE8res" };
+        if (!/[a-zA-Z]/.test(pwd))
+          return { valid: false, error: "Le mot de passe doit contenir des lettres" };
+        if (!/[0-9]/.test(pwd))
+          return { valid: false, error: "Le mot de passe doit contenir des chiffres" };
+        if (!/[^a-zA-Z0-9]/.test(pwd))
+          return { valid: false, error: "Le mot de passe doit contenir au moins un caract\xE8re sp\xE9cial (ex: @, #, $, !, etc.)" };
         return { valid: true };
       }, generateEmailAvatar2 = function(email, name) {
         const cleanEmail = (email || "").trim().toLowerCase();
@@ -94,7 +109,8 @@ var index_default = {
         const colors = ["#EA580C", "#0284C7", "#059669", "#7C3AED", "#D97706", "#0D9488", "#DC2626", "#4F46E5"];
         let hash = 0;
         const seed = cleanEmail || cleanName || "studycloud";
-        for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+        for (let i = 0; i < seed.length; i++)
+          hash = seed.charCodeAt(i) + ((hash << 5) - hash);
         const color = colors[Math.abs(hash) % colors.length];
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"><rect width="128" height="128" rx="28" fill="${color}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="${initials.length > 1 ? "48" : "58"}" font-weight="700">${initials}</text></svg>`;
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
@@ -461,7 +477,7 @@ var index_default = {
 
     <h1>Lien de confirmation expir\xE9</h1>
     <p class="user-email">
-      ${customMessage || "Ce lien de confirmation (valable 1 min 30 s) a expir\xE9 ou a d\xE9j\xE0 \xE9t\xE9 utilis\xE9."}
+      ${customMessage || "Ce lien de confirmation a expir\xE9 ou a d\xE9j\xE0 \xE9t\xE9 utilis\xE9."}
     </p>
 
     <div class="instruction-card">
@@ -501,6 +517,13 @@ var index_default = {
 </html>`;
       };
       var sanitizeUser = sanitizeUser2, generateId = generateId2, isValidEmail = isValidEmail2, validatePasswordFormat = validatePasswordFormat2, generateEmailAvatar = generateEmailAvatar2, getSuccessConfirmationHtml = getSuccessConfirmationHtml2, getExpiredEmailHtml = getExpiredEmailHtml2;
+      __name(sanitizeUser2, "sanitizeUser");
+      __name(generateId2, "generateId");
+      __name(isValidEmail2, "isValidEmail");
+      __name(validatePasswordFormat2, "validatePasswordFormat");
+      __name(generateEmailAvatar2, "generateEmailAvatar");
+      __name(getSuccessConfirmationHtml2, "getSuccessConfirmationHtml");
+      __name(getExpiredEmailHtml2, "getExpiredEmailHtml");
       if (path === "/api/assets/dna-logo.png" || path === "/assets/dna-logo.png") {
         const pngBytes = Uint8Array.from(atob(DNA_LOGO_PNG_B64), (c) => c.charCodeAt(0));
         return new Response(pngBytes, {
@@ -563,6 +586,7 @@ var index_default = {
         const saltArray = Array.from(salt);
         return btoa(JSON.stringify({ salt: saltArray, hash: hashArray }));
       }
+      __name(hashPassword, "hashPassword");
       async function verifyPassword(password, stored) {
         try {
           const encoder = new TextEncoder();
@@ -576,6 +600,7 @@ var index_default = {
           return false;
         }
       }
+      __name(verifyPassword, "verifyPassword");
       async function createJWT(payload, expiresInHours = 168) {
         const encoder = new TextEncoder();
         const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -586,6 +611,7 @@ var index_default = {
         const sig = btoa(String.fromCharCode(...new Uint8Array(signature))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
         return `${header}.${body}.${sig}`;
       }
+      __name(createJWT, "createJWT");
       async function verifyJWT(token) {
         try {
           const encoder = new TextEncoder();
@@ -593,30 +619,38 @@ var index_default = {
           const key = await crypto.subtle.importKey("raw", encoder.encode(JWT_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
           const sigBytes = Uint8Array.from(atob(sig.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
           const valid = await crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(`${header}.${body}`));
-          if (!valid) return null;
+          if (!valid)
+            return null;
           const payload = JSON.parse(atob(body));
-          if (payload.exp < Math.floor(Date.now() / 1e3)) return null;
+          if (payload.exp < Math.floor(Date.now() / 1e3))
+            return null;
           return payload;
         } catch {
           return null;
         }
       }
+      __name(verifyJWT, "verifyJWT");
       async function hashToken(token) {
         const encoder = new TextEncoder();
         const buffer = await crypto.subtle.digest("SHA-256", encoder.encode(token));
         return Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
       }
+      __name(hashToken, "hashToken");
       async function getAuthUser(req) {
         const authHeader = req.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token) return null;
+        if (!token)
+          return null;
         const payload = await verifyJWT(token);
-        if (!payload?.userId) return null;
+        if (!payload?.userId)
+          return null;
         const tokenHash = await hashToken(token);
         const session = await env.DB.prepare("SELECT id FROM auth_sessions WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP").bind(tokenHash).first();
-        if (!session) return null;
+        if (!session)
+          return null;
         return payload;
       }
+      __name(getAuthUser, "getAuthUser");
       async function ensureEmailVerificationsTable(db) {
         try {
           await db.prepare(`
@@ -637,19 +671,24 @@ var index_default = {
           `).run();
         } catch (e) {
         }
-        try {
-          await db.prepare(`ALTER TABLE email_verifications ADD COLUMN confirmed INTEGER DEFAULT 0`).run();
-        } catch (e) {
-        }
-        try {
-          await db.prepare(`ALTER TABLE email_verifications ADD COLUMN confirmed_jwt TEXT`).run();
-        } catch (e) {
-        }
-        try {
-          await db.prepare(`ALTER TABLE email_verifications ADD COLUMN confirmed_at TEXT`).run();
-        } catch (e) {
+        const cols = [
+          "ALTER TABLE email_verifications ADD COLUMN confirmed INTEGER DEFAULT 0",
+          "ALTER TABLE email_verifications ADD COLUMN confirmed_jwt TEXT",
+          "ALTER TABLE email_verifications ADD COLUMN confirmed_at TEXT",
+          "ALTER TABLE email_verifications ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP",
+          "ALTER TABLE email_verifications ADD COLUMN expires_at TEXT",
+          "ALTER TABLE email_verifications ADD COLUMN blocked_until TEXT",
+          "ALTER TABLE email_verifications ADD COLUMN resend_count INTEGER DEFAULT 1",
+          "ALTER TABLE email_verifications ADD COLUMN last_sent_at TEXT"
+        ];
+        for (const sql of cols) {
+          try {
+            await db.prepare(sql).run();
+          } catch (e) {
+          }
         }
       }
+      __name(ensureEmailVerificationsTable, "ensureEmailVerificationsTable");
       async function sendConfirmationEmail(toEmail, name, token, appOrigin = "https://studycloud.dkd-technologies.com", isLogin = false) {
         try {
           const workerBaseUrl = "https://api-worker.dkd-technologies.com";
@@ -733,6 +772,7 @@ var index_default = {
           console.error("Failed to send confirmation email via Resend:", e);
         }
       }
+      __name(sendConfirmationEmail, "sendConfirmationEmail");
       async function sendWelcomeEmail(toEmail, name, isStudent = true, school = "", filiere = "", appOrigin = "https://studycloud.dkd-technologies.com") {
         try {
           const cleanOrigin = (appOrigin || "https://studycloud.dkd-technologies.com").replace(/\/+$/, "");
@@ -878,6 +918,7 @@ var index_default = {
           console.error("Failed to send welcome email via Resend:", e);
         }
       }
+      __name(sendWelcomeEmail, "sendWelcomeEmail");
       async function sendPasswordResetEmail(toEmail, name, code, appOrigin = "https://studycloud.dkd-technologies.com") {
         try {
           const cleanOrigin = (appOrigin || "https://studycloud.dkd-technologies.com").replace(/\/+$/, "");
@@ -979,8 +1020,10 @@ var index_default = {
           console.error("Failed to send password reset email via Resend:", e);
         }
       }
+      __name(sendPasswordResetEmail, "sendPasswordResetEmail");
       async function ensureDatabaseSchema(db) {
-        if (!db) return;
+        if (!db)
+          return;
         try {
           await db.prepare(`
             CREATE TABLE IF NOT EXISTS users (
@@ -1314,23 +1357,13 @@ var index_default = {
           } catch (e) {
           }
         }
-        try {
-          await db.prepare(`ALTER TABLE email_verifications ADD COLUMN confirmed INTEGER DEFAULT 0`).run();
-        } catch (e) {
-        }
-        try {
-          await db.prepare(`ALTER TABLE email_verifications ADD COLUMN confirmed_jwt TEXT`).run();
-        } catch (e) {
-        }
-        try {
-          await db.prepare(`ALTER TABLE email_verifications ADD COLUMN confirmed_at TEXT`).run();
-        } catch (e) {
-        }
         await ensureUsersTableUniqueIndex(db);
       }
+      __name(ensureDatabaseSchema, "ensureDatabaseSchema");
       const ensurePasswordResetsTable = ensureDatabaseSchema;
       async function ensureUsersTableUniqueIndex(db) {
-        if (!db) return;
+        if (!db)
+          return;
         try {
           await db.prepare(`
             DELETE FROM users
@@ -1364,8 +1397,10 @@ var index_default = {
         } catch (e) {
         }
       }
+      __name(ensureUsersTableUniqueIndex, "ensureUsersTableUniqueIndex");
       async function deleteUserCompletely(db, userId) {
-        if (!db || !userId) return;
+        if (!db || !userId)
+          return;
         const tables = [
           "email_verifications",
           "auth_sessions",
@@ -1395,8 +1430,10 @@ var index_default = {
           console.error(`[StudyCloud Expiration] Erreur suppression users ${userId}:`, e);
         }
       }
+      __name(deleteUserCompletely, "deleteUserCompletely");
       async function cleanupExpiredUnfinishedAccounts(db) {
-        if (!db) return;
+        if (!db)
+          return;
         try {
           const unfinalized = await db.prepare(`
             SELECT id, email, created_at, last_active_at, is_onboarded
@@ -1407,13 +1444,14 @@ var index_default = {
             const now = Date.now();
             const SEVEN_MIN_MS = 7 * 60 * 1e3;
             const FIVE_MIN_MS = 5 * 60 * 1e3;
-            const parseUtcDate = (dStr) => {
-              if (!dStr) return 0;
+            const parseUtcDate = /* @__PURE__ */ __name((dStr) => {
+              if (!dStr)
+                return 0;
               const s = String(dStr).trim();
               const iso = s.includes("T") ? s : s.replace(" ", "T") + "Z";
               const ms = new Date(iso).getTime();
               return isNaN(ms) ? 0 : ms;
-            };
+            }, "parseUtcDate");
             for (const u of unfinalized.results) {
               const createdMs = parseUtcDate(u.created_at);
               const activeMs = parseUtcDate(u.last_active_at) || createdMs;
@@ -1429,6 +1467,7 @@ var index_default = {
           console.warn("[StudyCloud Cleanup] Notice:", e);
         }
       }
+      __name(cleanupExpiredUnfinishedAccounts, "cleanupExpiredUnfinishedAccounts");
       if (path.startsWith("/api/auth/")) {
         await ensureDatabaseSchema(env.DB);
         await cleanupExpiredUnfinishedAccounts(env.DB);
@@ -1447,10 +1486,13 @@ var index_default = {
           securityQuestion2,
           securityAnswer2
         } = body;
-        if (!name || !email || !password) return errorResponse("Nom, email et mot de passe requis", 400, origin);
-        if (!isValidEmail2(email)) return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
+        if (!name || !email || !password)
+          return errorResponse("Nom, email et mot de passe requis", 400, origin);
+        if (!isValidEmail2(email))
+          return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
         const pwdCheck = validatePasswordFormat2(password);
-        if (!pwdCheck.valid) return errorResponse(pwdCheck.error || "Mot de passe non conforme", 400, origin);
+        if (!pwdCheck.valid)
+          return errorResponse(pwdCheck.error || "Mot de passe non conforme", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const existing = await env.DB.prepare("SELECT * FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
         const q1 = securityQuestion1 || "Quelle est votre ville de naissance ?";
@@ -1481,7 +1523,7 @@ var index_default = {
               WHERE id = ?
             `).bind(name.trim(), passwordHash3, q1, answer1Hash, q2, answer2Hash, existing.id).run();
             const verificationToken2 = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-            const expiresAt3 = new Date(Date.now() + 90 * 1e3).toISOString();
+            const expiresAt3 = new Date(Date.now() + 15 * 60 * 1e3).toISOString();
             await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(existing.id).run();
             await env.DB.prepare(`
               INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
@@ -1495,7 +1537,7 @@ var index_default = {
               email: cleanEmail,
               resendCount: 1,
               maxCount: 4,
-              nextAllowedAt: new Date(Date.now() + 9e4).toISOString(),
+              nextAllowedAt: new Date(Date.now() + 60 * 1e3).toISOString(),
               message: "Un email de confirmation vous a \xE9t\xE9 envoy\xE9."
             }, 200, origin);
           }
@@ -1537,7 +1579,7 @@ var index_default = {
         `).bind(userId, name.trim(), cleanEmail, passwordHash, q1, answer1Hash, q2, answer2Hash).run();
         await env.DB.prepare("INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)").bind(userId).run();
         const verificationToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-        const expiresAt = new Date(Date.now() + 90 * 1e3).toISOString();
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1e3).toISOString();
         await env.DB.prepare(`
           INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
           VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
@@ -1550,23 +1592,27 @@ var index_default = {
           email: cleanEmail,
           resendCount: 1,
           maxCount: 4,
-          nextAllowedAt: new Date(Date.now() + 9e4).toISOString(),
+          nextAllowedAt: new Date(Date.now() + 60 * 1e3).toISOString(),
           message: "Un email de confirmation vous a \xE9t\xE9 envoy\xE9."
         }, 201, origin);
       }
       if (path === "/api/auth/resend-verification" && method === "POST") {
         const body = await request.json();
         const { email } = body;
-        if (!email) return errorResponse("Email requis", 400, origin);
-        if (!isValidEmail2(email)) return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
+        if (!email)
+          return errorResponse("Email requis", 400, origin);
+        if (!isValidEmail2(email))
+          return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const user = await env.DB.prepare("SELECT id, name, email_verified FROM users WHERE email = ?").bind(cleanEmail).first();
-        if (!user) return errorResponse("Aucun compte trouv\xE9 avec cet email", 404, origin);
+        if (!user)
+          return errorResponse("Aucun compte trouv\xE9 avec cet email", 404, origin);
         const isLoginFlow = user.email_verified === 1;
         const verif = await env.DB.prepare("SELECT * FROM email_verifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").bind(user.id).first();
         const now = Date.now();
         const THREE_HOURS_MS = 3 * 3600 * 1e3;
-        const NINETY_SECONDS_MS = 90 * 1e3;
+        const RESEND_COOLDOWN_MS = 60 * 1e3;
+        const TOKEN_EXPIRY_MS = 15 * 60 * 1e3;
         if (verif) {
           if (verif.blocked_until) {
             const blockedTime = new Date(verif.blocked_until).getTime();
@@ -1585,14 +1631,14 @@ var index_default = {
           if (verif.last_sent_at) {
             const lastSentTime = new Date(verif.last_sent_at).getTime();
             const elapsed = now - lastSentTime;
-            if (elapsed < NINETY_SECONDS_MS) {
-              const remainingSec = Math.ceil((NINETY_SECONDS_MS - elapsed) / 1e3);
+            if (elapsed < RESEND_COOLDOWN_MS) {
+              const remainingSec = Math.ceil((RESEND_COOLDOWN_MS - elapsed) / 1e3);
               return jsonResponse({
                 success: false,
                 error: `Veuillez patienter ${remainingSec} seconde(s) avant de renvoyer l'email.`,
                 isCooldown: true,
-                nextAllowedAt: new Date(lastSentTime + NINETY_SECONDS_MS).toISOString(),
-                remainingMs: NINETY_SECONDS_MS - elapsed
+                nextAllowedAt: new Date(lastSentTime + RESEND_COOLDOWN_MS).toISOString(),
+                remainingMs: RESEND_COOLDOWN_MS - elapsed
               }, 429, origin);
             }
           }
@@ -1606,8 +1652,8 @@ var index_default = {
             blockedUntil = new Date(now + THREE_HOURS_MS).toISOString();
           }
           const newToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-          const newExpiresAt = new Date(now + NINETY_SECONDS_MS).toISOString();
-          const nextAllowedAt = new Date(now + NINETY_SECONDS_MS).toISOString();
+          const newExpiresAt = new Date(now + TOKEN_EXPIRY_MS).toISOString();
+          const nextAllowedAt = new Date(now + RESEND_COOLDOWN_MS).toISOString();
           await env.DB.prepare(`
             UPDATE email_verifications SET
               token = ?,
@@ -1630,7 +1676,7 @@ var index_default = {
           }, 200, origin);
         } else {
           const newToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-          const newExpiresAt = new Date(now + NINETY_SECONDS_MS).toISOString();
+          const newExpiresAt = new Date(now + TOKEN_EXPIRY_MS).toISOString();
           await env.DB.prepare(`
             INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
             VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
@@ -1642,40 +1688,40 @@ var index_default = {
             message: "Email de confirmation renvoy\xE9 !",
             resendCount: 1,
             maxCount: 4,
-            nextAllowedAt: new Date(now + NINETY_SECONDS_MS).toISOString()
+            nextAllowedAt: new Date(now + RESEND_COOLDOWN_MS).toISOString()
           }, 200, origin);
         }
       }
       if (path === "/api/auth/check-verification-status" && method === "GET") {
-        await ensureDatabaseSchema(env.DB);
+        await ensureEmailVerificationsTable(env.DB);
         const emailParam = url.searchParams.get("email");
-        if (!emailParam) return errorResponse("Email requis", 400, origin);
+        if (!emailParam)
+          return errorResponse("Email requis", 400, origin);
         const cleanEmail = emailParam.toLowerCase().trim();
         const verif = await env.DB.prepare(`
           SELECT * FROM email_verifications
-          WHERE LOWER(TRIM(email)) = ?
-          ORDER BY created_at DESC, id DESC LIMIT 1
+          WHERE LOWER(TRIM(email)) = ? AND confirmed = 1
+          ORDER BY id DESC LIMIT 1
         `).bind(cleanEmail).first();
-        if (verif) {
-          if (Number(verif.confirmed) === 1 && verif.confirmed_jwt) {
-            const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(verif.user_id).first();
-            if (user) {
-              return jsonResponse({
-                success: true,
-                confirmed: true,
-                token: verif.confirmed_jwt,
-                user: sanitizeUser2(user)
-              }, 200, origin);
-            }
+        if (verif && verif.confirmed_jwt) {
+          const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(verif.user_id).first();
+          if (user) {
+            await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(user.id).run();
+            return jsonResponse({
+              success: true,
+              confirmed: true,
+              token: verif.confirmed_jwt,
+              user: sanitizeUser2(user)
+            }, 200, origin);
           }
-          return jsonResponse({
-            success: true,
-            confirmed: false
-          }, 200, origin);
         }
         const userDirect = await env.DB.prepare("SELECT * FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
-        if (userDirect && Number(userDirect.email_verified) === 1) {
+        if (userDirect && userDirect.email_verified === 1) {
           const jwtToken = await createJWT({ userId: userDirect.id, email: userDirect.email, name: userDirect.name });
+          const tokenHash = await hashToken(jwtToken);
+          const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1e3).toISOString();
+          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), userDirect.id, tokenHash, expiresAt).run();
+          await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(userDirect.id).run();
           return jsonResponse({
             success: true,
             confirmed: true,
@@ -1689,13 +1735,13 @@ var index_default = {
         }, 200, origin);
       }
       if (path === "/api/auth/verify-email" && method === "GET") {
-        await ensureDatabaseSchema(env.DB);
+        await ensureEmailVerificationsTable(env.DB);
         const tokenParam = url.searchParams.get("token");
-        const workerUrl = "https://api-worker.dkd-technologies.com";
+        const appUrl = (origin !== "*" ? origin : "https://studycloud.dkd-technologies.com").replace(/\/+$/, "");
         if (!tokenParam) {
-          return new Response(getExpiredEmailHtml2(workerUrl, "Token de confirmation manquant."), {
+          return new Response(getExpiredEmailHtml2(appUrl, "Token de confirmation requis."), {
             status: 400,
-            headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders(origin) }
+            headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders }
           });
         }
         const verif = await env.DB.prepare(
@@ -1707,25 +1753,25 @@ var index_default = {
           ).bind(tokenParam).first();
           if (alreadyConfirmed) {
             const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(alreadyConfirmed.user_id).first();
-            return new Response(getSuccessConfirmationHtml2(user?.name || "Membre", alreadyConfirmed.email, workerUrl), {
+            return new Response(getSuccessConfirmationHtml2(user?.name || "Membre", alreadyConfirmed.email, appUrl), {
               status: 200,
-              headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders(origin) }
+              headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders }
             });
           }
           const accept2 = request.headers.get("Accept") || "";
           if (accept2.includes("application/json") && !accept2.includes("text/html")) {
-            return errorResponse("Lien de confirmation expir\xE9 (validit\xE9 1 min 30 s d\xE9pass\xE9e). Veuillez r\xE9clamer un nouveau lien.", 400, origin);
+            return errorResponse("Lien de confirmation expir\xE9 (validit\xE9 de 15 minutes d\xE9pass\xE9e). Veuillez r\xE9clamer un nouveau lien.", 400, origin);
           }
-          return new Response(getExpiredEmailHtml2(workerUrl, "Ce lien de confirmation a expir\xE9 ou a d\xE9j\xE0 \xE9t\xE9 utilis\xE9."), {
+          return new Response(getExpiredEmailHtml2(appUrl), {
             status: 400,
-            headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders(origin) }
+            headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders }
           });
         }
         const userBefore = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(verif.user_id).first();
         if (!userBefore) {
-          return new Response(getExpiredEmailHtml2(workerUrl, "Utilisateur introuvable."), {
+          return new Response(getExpiredEmailHtml2(appUrl, "Utilisateur introuvable."), {
             status: 404,
-            headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders(origin) }
+            headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders }
           });
         }
         const isFirstVerification = userBefore.email_verified === 0;
@@ -1755,7 +1801,7 @@ var index_default = {
             Boolean(isUserStudent),
             userBefore.school || "",
             userBefore.filiere || "",
-            "https://studycloud.dkd-technologies.com"
+            appUrl
           );
         }
         const accept = request.headers.get("Accept") || "";
@@ -1768,14 +1814,15 @@ var index_default = {
             user: safeUser
           }, 200, origin);
         }
-        return new Response(getSuccessConfirmationHtml2(userBefore.name, userBefore.email, workerUrl), {
+        return new Response(getSuccessConfirmationHtml2(userBefore.name, userBefore.email, appUrl), {
           status: 200,
-          headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders(origin) }
+          headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders }
         });
       }
       if (false) {
         const tokenParam = url.searchParams.get("token");
-        if (!tokenParam) return errorResponse("Token de confirmation requis", 400, origin);
+        if (!tokenParam)
+          return errorResponse("Token de confirmation requis", 400, origin);
         const verif = await env.DB.prepare(
           "SELECT * FROM email_verifications WHERE token = ? AND expires_at > CURRENT_TIMESTAMP"
         ).bind(tokenParam).first();
@@ -1798,7 +1845,8 @@ var index_default = {
         `).bind(verif.user_id).run();
         await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(verif.user_id).run();
         const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(verif.user_id).first();
-        if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
+        if (!user)
+          return errorResponse("Utilisateur introuvable", 404, origin);
         const jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
         const tokenHash = await hashToken(jwtToken);
         const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1e3).toISOString();
@@ -1824,8 +1872,10 @@ var index_default = {
         await cleanupExpiredUnfinishedAccounts(env.DB);
         const body = await request.json();
         const { email, password } = body;
-        if (!email || !password) return errorResponse("Email et mot de passe requis", 400, origin);
-        if (!isValidEmail2(email)) return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
+        if (!email || !password)
+          return errorResponse("Email et mot de passe requis", 400, origin);
+        if (!isValidEmail2(email))
+          return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const existingUser = await env.DB.prepare("SELECT * FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
         if (!existingUser) {
@@ -1853,7 +1903,7 @@ var index_default = {
         }
         const user = existingUser;
         const verificationToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-        const expiresAt = new Date(Date.now() + 90 * 1e3).toISOString();
+        const expiresAt = new Date(Date.now() + 15 * 60 * 1e3).toISOString();
         await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(user.id).run();
         await env.DB.prepare(`
           INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
@@ -1868,7 +1918,7 @@ var index_default = {
           email: cleanEmail,
           resendCount: 1,
           maxCount: 4,
-          nextAllowedAt: new Date(Date.now() + 9e4).toISOString(),
+          nextAllowedAt: new Date(Date.now() + 60 * 1e3).toISOString(),
           message: "Un email de confirmation de connexion vous a \xE9t\xE9 envoy\xE9."
         }, 200, origin);
       }
@@ -1876,11 +1926,14 @@ var index_default = {
         await ensurePasswordResetsTable(env.DB);
         const body = await request.json();
         const { email } = body;
-        if (!email) return errorResponse("Email requis", 400, origin);
-        if (!isValidEmail2(email)) return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
+        if (!email)
+          return errorResponse("Email requis", 400, origin);
+        if (!isValidEmail2(email))
+          return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const user = await env.DB.prepare("SELECT id, name, email, security_question_1, security_question_2, security_answer_1_hash FROM users WHERE email = ?").bind(cleanEmail).first();
-        if (!user) return errorResponse("Aucun compte trouv\xE9 avec cet email", 404, origin);
+        if (!user)
+          return errorResponse("Aucun compte trouv\xE9 avec cet email", 404, origin);
         const now = Date.now();
         const TWENTY_FOUR_HOURS_MS = 24 * 3600 * 1e3;
         const sinceDate = new Date(now - TWENTY_FOUR_HOURS_MS).toISOString();
@@ -1921,10 +1974,12 @@ var index_default = {
         await ensurePasswordResetsTable(env.DB);
         const body = await request.json();
         const { email, answer1, answer2 } = body;
-        if (!email || !answer1) return errorResponse("Email et r\xE9ponse(s) de s\xE9curit\xE9 requis", 400, origin);
+        if (!email || !answer1)
+          return errorResponse("Email et r\xE9ponse(s) de s\xE9curit\xE9 requis", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const user = await env.DB.prepare("SELECT id, name, email, security_answer_1_hash, security_answer_2_hash FROM users WHERE email = ?").bind(cleanEmail).first();
-        if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
+        if (!user)
+          return errorResponse("Utilisateur introuvable", 404, origin);
         if (user.security_answer_1_hash) {
           const hash1 = await hashToken(answer1.slice(0, 30).toLowerCase().trim());
           const match1 = hash1 === user.security_answer_1_hash;
@@ -1953,12 +2008,15 @@ var index_default = {
         if (!email || !targetEmail || !resetSessionToken) {
           return errorResponse("Email, email de destination et token requis", 400, origin);
         }
-        if (!isValidEmail2(email)) return errorResponse("Format d'adresse email du compte invalide (ex: exemple@gmail.com)", 400, origin);
-        if (!isValidEmail2(targetEmail)) return errorResponse("Format d'adresse email de r\xE9ception invalide (ex: exemple@gmail.com)", 400, origin);
+        if (!isValidEmail2(email))
+          return errorResponse("Format d'adresse email du compte invalide (ex: exemple@gmail.com)", 400, origin);
+        if (!isValidEmail2(targetEmail))
+          return errorResponse("Format d'adresse email de r\xE9ception invalide (ex: exemple@gmail.com)", 400, origin);
         const cleanAccountEmail = email.toLowerCase().trim();
         const cleanTargetEmail = targetEmail.toLowerCase().trim();
         const user = await env.DB.prepare("SELECT id, name, email FROM users WHERE email = ?").bind(cleanAccountEmail).first();
-        if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
+        if (!user)
+          return errorResponse("Utilisateur introuvable", 404, origin);
         const now = Date.now();
         const TWENTY_FOUR_HOURS_MS = 24 * 3600 * 1e3;
         const sinceDate = new Date(now - TWENTY_FOUR_HOURS_MS).toISOString();
@@ -2005,10 +2063,12 @@ var index_default = {
           return errorResponse("Email, code et nouveau mot de passe requis", 400, origin);
         }
         const pwdCheck = validatePasswordFormat2(newPassword);
-        if (!pwdCheck.valid) return errorResponse(pwdCheck.error || "Nouveau mot de passe non conforme", 400, origin);
+        if (!pwdCheck.valid)
+          return errorResponse(pwdCheck.error || "Nouveau mot de passe non conforme", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const user = await env.DB.prepare("SELECT id, name FROM users WHERE email = ?").bind(cleanEmail).first();
-        if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
+        if (!user)
+          return errorResponse("Utilisateur introuvable", 404, origin);
         const resetRecord = await env.DB.prepare(`
           SELECT * FROM password_resets
           WHERE user_id = ? AND reset_code = ? AND used = 0 AND expires_at > CURRENT_TIMESTAMP
@@ -2029,7 +2089,8 @@ var index_default = {
       if (path === "/api/auth/google" && method === "POST") {
         const body = await request.json();
         const { code, redirectUri, action } = body;
-        if (!code) return errorResponse("Code Google OAuth requis", 400, origin);
+        if (!code)
+          return errorResponse("Code Google OAuth requis", 400, origin);
         const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -2042,12 +2103,14 @@ var index_default = {
           })
         });
         const tokenData = await tokenRes.json();
-        if (!tokenData.access_token) return errorResponse("\xC9change Google OAuth \xE9chou\xE9 : " + (tokenData.error_description || tokenData.error || "inconnu"), 400, origin);
+        if (!tokenData.access_token)
+          return errorResponse("\xC9change Google OAuth \xE9chou\xE9 : " + (tokenData.error_description || tokenData.error || "inconnu"), 400, origin);
         const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
           headers: { Authorization: `Bearer ${tokenData.access_token}` }
         });
         const profile = await profileRes.json();
-        if (!profile.id || !profile.email) return errorResponse("Impossible de r\xE9cup\xE9rer le profil Google", 400, origin);
+        if (!profile.id || !profile.email)
+          return errorResponse("Impossible de r\xE9cup\xE9rer le profil Google", 400, origin);
         const cleanGoogleEmail = profile.email.toLowerCase().trim();
         await ensureUsersTableUniqueIndex(env.DB);
         await cleanupExpiredUnfinishedAccounts(env.DB);
@@ -2096,23 +2159,28 @@ var index_default = {
       if (path === "/api/auth/me" && method === "GET") {
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token) return errorResponse("Token requis", 401, origin);
+        if (!token)
+          return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
-        if (!payload?.userId) return errorResponse("Token invalide ou expir\xE9", 401, origin);
+        if (!payload?.userId)
+          return errorResponse("Token invalide ou expir\xE9", 401, origin);
         const tokenHash = await hashToken(token);
         const session = await env.DB.prepare("SELECT id FROM auth_sessions WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP").bind(tokenHash).first();
-        if (!session) return errorResponse("Session expir\xE9e, veuillez vous reconnecter", 401, origin);
+        if (!session)
+          return errorResponse("Session expir\xE9e, veuillez vous reconnecter", 401, origin);
         const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();
-        if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
+        if (!user)
+          return errorResponse("Utilisateur introuvable", 404, origin);
         const isOnboarded = Number(user.is_onboarded) === 1;
         if (!isOnboarded) {
-          const parseUtcDate = (dStr) => {
-            if (!dStr) return 0;
+          const parseUtcDate = /* @__PURE__ */ __name((dStr) => {
+            if (!dStr)
+              return 0;
             const s = String(dStr).trim();
             const iso = s.includes("T") ? s : s.replace(" ", "T") + "Z";
             const ms = new Date(iso).getTime();
             return isNaN(ms) ? 0 : ms;
-          };
+          }, "parseUtcDate");
           const createdMs = parseUtcDate(user.created_at);
           const activeMs = parseUtcDate(user.last_active_at) || createdMs;
           const isTimeout = createdMs > 0 && Date.now() - createdMs >= 7 * 60 * 1e3;
@@ -2145,13 +2213,16 @@ var index_default = {
       if ((path === "/api/auth/setup-security" || path === "/api/auth/google/complete-security") && (method === "PUT" || method === "POST")) {
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token) return errorResponse("Token requis", 401, origin);
+        if (!token)
+          return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
-        if (!payload?.userId) return errorResponse("Token invalide ou expir\xE9", 401, origin);
+        if (!payload?.userId)
+          return errorResponse("Token invalide ou expir\xE9", 401, origin);
         const body = await request.json();
         const { name, password, securityQuestion1, securityAnswer1, securityQuestion2, securityAnswer2 } = body;
         const pwdCheck = validatePasswordFormat2(password);
-        if (!pwdCheck.valid) return errorResponse(pwdCheck.error || "Mot de passe non conforme", 400, origin);
+        if (!pwdCheck.valid)
+          return errorResponse(pwdCheck.error || "Mot de passe non conforme", 400, origin);
         if (!securityAnswer1 || !securityAnswer1.trim() || !securityAnswer2 || !securityAnswer2.trim()) {
           return errorResponse("Veuillez renseigner les r\xE9ponses \xE0 vos deux questions de s\xE9curit\xE9", 400, origin);
         }
@@ -2184,9 +2255,11 @@ var index_default = {
       if (path === "/api/auth/onboarding" && method === "PUT") {
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token) return errorResponse("Token requis", 401, origin);
+        if (!token)
+          return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
-        if (!payload?.userId) return errorResponse("Token invalide", 401, origin);
+        if (!payload?.userId)
+          return errorResponse("Token invalide", 401, origin);
         const existingUser = await env.DB.prepare("SELECT id, email, is_onboarded FROM users WHERE id = ?").bind(payload.userId).first();
         if (!existingUser) {
           return errorResponse("Session d'inscription expir\xE9e (d\xE9lai d\xE9pass\xE9). Vos donn\xE9es temporaires ont \xE9t\xE9 effac\xE9es. Veuillez recommencer l'inscription.", 410, origin);
@@ -2198,8 +2271,10 @@ var index_default = {
         const finalSchool = !isStudent ? "Professionnel / Particulier" : school;
         const finalFiliere = !isStudent ? profession || filiere || "G\xE9n\xE9ral" : filiere;
         const finalLevel = !isStudent ? "Professionnel" : level || "";
-        if (!country) return errorResponse("Le pays est obligatoire", 400, origin);
-        if (!phone || !String(phone).trim()) return errorResponse("Le num\xE9ro de t\xE9l\xE9phone est obligatoire", 400, origin);
+        if (!country)
+          return errorResponse("Le pays est obligatoire", 400, origin);
+        if (!phone || !String(phone).trim())
+          return errorResponse("Le num\xE9ro de t\xE9l\xE9phone est obligatoire", 400, origin);
         const COUNTRY_PHONE_CONFIG = {
           "C\xF4te d'Ivoire": { dial: "225", lengths: [10], hint: "10 chiffres" },
           "S\xE9n\xE9gal": { dial: "221", lengths: [9], hint: "9 chiffres" },
@@ -2240,7 +2315,8 @@ var index_default = {
             );
           }
         }
-        if (!isStudent && !profession) return errorResponse("La profession ou domaine d'activit\xE9 est obligatoire", 400, origin);
+        if (!isStudent && !profession)
+          return errorResponse("La profession ou domaine d'activit\xE9 est obligatoire", 400, origin);
         if (isStudent && (!finalSchool || !finalFiliere)) {
           return errorResponse("L'\xE9cole et la fili\xE8re sont obligatoires pour les \xE9tudiants", 400, origin);
         }
@@ -2292,9 +2368,11 @@ var index_default = {
       if (path === "/api/auth/onboarding/draft" && method === "PUT") {
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token) return errorResponse("Token requis", 401, origin);
+        if (!token)
+          return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
-        if (!payload?.userId) return errorResponse("Token invalide", 401, origin);
+        if (!payload?.userId)
+          return errorResponse("Token invalide", 401, origin);
         const body = await request.json().catch(() => ({}));
         const { name, school, filiere, level, country, phone, bio, avatarUrl } = body;
         await env.DB.prepare(`
@@ -2332,8 +2410,10 @@ var index_default = {
         if (token) {
           try {
             const payload = await verifyJWT(token);
-            if (payload?.userId) targetUserId = payload.userId;
-            if (payload?.email && !targetEmail) targetEmail = String(payload.email).toLowerCase().trim();
+            if (payload?.userId)
+              targetUserId = payload.userId;
+            if (payload?.email && !targetEmail)
+              targetEmail = String(payload.email).toLowerCase().trim();
           } catch (e) {
           }
         }
@@ -2365,11 +2445,14 @@ var index_default = {
       if (path === "/api/auth/welcome-email" && method === "POST") {
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token) return errorResponse("Token requis", 401, origin);
+        if (!token)
+          return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
-        if (!payload?.userId) return errorResponse("Token invalide", 401, origin);
+        if (!payload?.userId)
+          return errorResponse("Token invalide", 401, origin);
         const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();
-        if (!user || !user.email) return errorResponse("Utilisateur ou email introuvable", 404, origin);
+        if (!user || !user.email)
+          return errorResponse("Utilisateur ou email introuvable", 404, origin);
         const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
         const isUserStudent = user.is_student === 1 || user.is_student === null && user.school && user.school !== "Particulier / Professionnel" && user.school !== "Professionnel / Particulier";
         await sendWelcomeEmail(
@@ -2385,7 +2468,8 @@ var index_default = {
       if (path === "/api/users/sync" && method === "POST") {
         const body = await request.json();
         const { id, name, email, school, filiere, country, avatarUrl } = body;
-        if (!id || !email) return errorResponse("ID et email requis", 400, origin);
+        if (!id || !email)
+          return errorResponse("ID et email requis", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const hasAvatar = avatarUrl !== void 0;
         const avatarVal = avatarUrl ? String(avatarUrl) : null;
@@ -2435,7 +2519,8 @@ var index_default = {
       if (path.startsWith("/api/users/") && !path.includes("/preferences") && method === "GET") {
         const userId = path.split("/")[3];
         const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
-        if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
+        if (!user)
+          return errorResponse("Utilisateur introuvable", 404, origin);
         return jsonResponse({ success: true, data: user }, 200, origin);
       }
       if (path.startsWith("/api/users/") && path.endsWith("/preferences")) {
@@ -2461,7 +2546,8 @@ var index_default = {
       if (path === "/api/matieres") {
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare(`
             SELECT m.*, 
               (SELECT COUNT(*) FROM files f WHERE f.matiere_id = m.id) AS files_count,
@@ -2475,7 +2561,8 @@ var index_default = {
         if (method === "POST") {
           const body = await request.json();
           const { id, userId, name, coefficient, color, category, displayOrder } = body;
-          if (!id || !userId || !name) return errorResponse("id, userId et name requis", 400, origin);
+          if (!id || !userId || !name)
+            return errorResponse("id, userId et name requis", 400, origin);
           await env.DB.prepare(`
             INSERT INTO matieres (id, user_id, name, coefficient, color, category, display_order)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -2499,7 +2586,8 @@ var index_default = {
           const userId = url.searchParams.get("userId");
           const matiereId = url.searchParams.get("matiereId");
           const isStudySession = url.searchParams.get("isStudySession");
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           let query = "SELECT * FROM files WHERE user_id = ?";
           const params = [userId];
           if (matiereId === "root" || matiereId === "none") {
@@ -2520,7 +2608,8 @@ var index_default = {
         if (method === "POST") {
           const body = await request.json();
           const { id, userId, matiereId, name, size, type, extension, r2Key, fileUrl, isFavorite, isImported, isStudySession, lastImported } = body;
-          if (!id || !userId || !name) return errorResponse("id, userId et name requis", 400, origin);
+          if (!id || !userId || !name)
+            return errorResponse("id, userId et name requis", 400, origin);
           await env.DB.prepare(`
             INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -2568,7 +2657,8 @@ var index_default = {
       }
       if (path === "/api/storage/upload" && method === "PUT") {
         const key = url.searchParams.get("key");
-        if (!key) return errorResponse("Cl\xE9 de stockage manquante", 400, origin);
+        if (!key)
+          return errorResponse("Cl\xE9 de stockage manquante", 400, origin);
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
         const fileBlob = await request.arrayBuffer();
         await env.BUCKET.put(key, fileBlob, {
@@ -2580,7 +2670,8 @@ var index_default = {
       if (path.startsWith("/api/storage/file/") && method === "GET") {
         const key = decodeURIComponent(path.replace("/api/storage/file/", ""));
         const object = await env.BUCKET.get(key);
-        if (!object) return errorResponse("Fichier introuvable dans R2", 404, origin);
+        if (!object)
+          return errorResponse("Fichier introuvable dans R2", 404, origin);
         const headers = new Headers();
         object.writeHttpMetadata(headers);
         headers.set("etag", object.httpEtag);
@@ -2625,7 +2716,8 @@ var index_default = {
             totalSize,
             files
           } = body;
-          if (!id || !userId || !title) return errorResponse("id, userId et title requis", 400, origin);
+          if (!id || !userId || !title)
+            return errorResponse("id, userId et title requis", 400, origin);
           const finalShareCode = shareCode || `DKD-${crypto.randomUUID().substring(0, 6).toUpperCase()}`;
           const finalShareUrl = shareUrl || `${url.origin}/share/${finalShareCode}`;
           const finalQrCodeData = qrCodeData || finalShareUrl;
@@ -2697,7 +2789,8 @@ var index_default = {
       if (path.startsWith("/api/shares/code/") && method === "GET") {
         const code = decodeURIComponent(path.split("/")[4]);
         const folder = await env.DB.prepare("SELECT * FROM shared_folders WHERE share_code = ?").bind(code).first();
-        if (!folder) return errorResponse("Code de partage introuvable", 404, origin);
+        if (!folder)
+          return errorResponse("Code de partage introuvable", 404, origin);
         await env.DB.prepare("UPDATE shared_folders SET views_count = views_count + 1 WHERE id = ?").bind(folder.id).run();
         const { results: files } = await env.DB.prepare("SELECT * FROM shared_folder_files WHERE shared_folder_id = ?").bind(folder.id).all();
         return jsonResponse({
@@ -2735,7 +2828,8 @@ var index_default = {
       if (path.startsWith("/api/shares/") && method === "GET") {
         const shareId = path.split("/")[3];
         const folder = await env.DB.prepare("SELECT * FROM shared_folders WHERE id = ?").bind(shareId).first();
-        if (!folder) return errorResponse("Partage introuvable", 404, origin);
+        if (!folder)
+          return errorResponse("Partage introuvable", 404, origin);
         await env.DB.prepare("UPDATE shared_folders SET views_count = views_count + 1 WHERE id = ?").bind(shareId).run();
         const { results: files } = await env.DB.prepare("SELECT * FROM shared_folder_files WHERE shared_folder_id = ?").bind(shareId).all();
         return jsonResponse({
@@ -2752,7 +2846,8 @@ var index_default = {
         const shareId = path.split("/")[3];
         const { pin } = await request.json();
         const folder = await env.DB.prepare("SELECT * FROM shared_folders WHERE id = ?").bind(shareId).first();
-        if (!folder) return errorResponse("Dossier partag\xE9 introuvable", 404, origin);
+        if (!folder)
+          return errorResponse("Dossier partag\xE9 introuvable", 404, origin);
         if (folder.password_hash !== pin) {
           return errorResponse("Code PIN incorrect", 401, origin);
         }
@@ -2762,7 +2857,8 @@ var index_default = {
       if (path === "/api/schedule/config") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           const config = await env.DB.prepare("SELECT * FROM schedule_config WHERE user_id = ?").bind(userId).first();
           return jsonResponse({ success: true, data: config }, 200, origin);
         }
@@ -2783,7 +2879,8 @@ var index_default = {
       if (path === "/api/schedule/slots") {
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM schedule_slots WHERE user_id = ?").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -2800,7 +2897,8 @@ var index_default = {
       if (path === "/api/grades") {
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM grades WHERE user_id = ?").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -2821,7 +2919,8 @@ var index_default = {
       if (path === "/api/notes") {
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM notes WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -2850,7 +2949,8 @@ var index_default = {
       if (path === "/api/calendar") {
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM calendar_events WHERE user_id = ? ORDER BY start_date ASC").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -2867,7 +2967,8 @@ var index_default = {
       if (path === "/api/alarms") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM alarms WHERE user_id = ? ORDER BY time ASC").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -2884,7 +2985,8 @@ var index_default = {
       if (path === "/api/study-sessions") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM study_sessions WHERE user_id = ? ORDER BY completed_at DESC").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -2901,7 +3003,8 @@ var index_default = {
       if (path === "/api/shop/profile") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           const profile = await env.DB.prepare("SELECT * FROM shop_profiles WHERE user_id = ?").bind(userId).first();
           return jsonResponse({ success: true, data: profile || { shop_name: "DKD Technologies", shop_phone: "+225 07 00 00 00 00", shop_whatsapp: "+225 07 00 00 00 00" } }, 200, origin);
         }
@@ -2946,7 +3049,8 @@ var index_default = {
       if (path === "/api/cart") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare(`
             SELECT c.id as cart_item_id, c.quantity, p.*
             FROM cart_items c
@@ -3127,7 +3231,8 @@ var index_default = {
       if (path === "/api/notifications") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -3145,7 +3250,8 @@ var index_default = {
         const userId = url.searchParams.get("userId");
         const sessionId = url.searchParams.get("sessionId");
         if (method === "GET") {
-          if (!userId || !sessionId) return errorResponse("userId et sessionId requis", 400, origin);
+          if (!userId || !sessionId)
+            return errorResponse("userId et sessionId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM chat_messages WHERE user_id = ? AND session_id = ? ORDER BY created_at ASC").bind(userId, sessionId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -3162,7 +3268,8 @@ var index_default = {
       if (path === "/api/subscriptions") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           const sub = await env.DB.prepare('SELECT * FROM user_subscriptions WHERE user_id = ? AND status = "active"').bind(userId).first();
           return jsonResponse({ success: true, data: sub || { plan_name: "free", status: "active" } }, 200, origin);
         }
@@ -3181,7 +3288,8 @@ var index_default = {
         const toolType = url.searchParams.get("toolType");
         const fileId = url.searchParams.get("fileId");
         if (method === "GET") {
-          if (!userId) return errorResponse("userId requis", 400, origin);
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
           let query = "SELECT * FROM ai_generated_contents WHERE user_id = ?";
           const params = [userId];
           if (toolType && toolType !== "all") {
@@ -3199,7 +3307,8 @@ var index_default = {
         if (method === "POST") {
           const body = await request.json();
           const { id, userId: userId2, fileId: fileId2, toolType: toolType2, title, contentJson, sourceFileName, isPinned } = body;
-          if (!userId2 || !toolType2 || !title) return errorResponse("userId, toolType et title requis", 400, origin);
+          if (!userId2 || !toolType2 || !title)
+            return errorResponse("userId, toolType et title requis", 400, origin);
           const contentId = id || crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO ai_generated_contents (id, user_id, file_id, tool_type, title, content_json, source_file_name, is_pinned, updated_at)
@@ -3237,7 +3346,8 @@ var index_default = {
       if (path === "/api/sync/backup" && method === "POST") {
         const body = await request.json();
         const { userId, userProfile, matieres, notes, scheduleSlots, scheduleConfig, alarms, shopProfile } = body;
-        if (!userId) return errorResponse("userId requis", 400, origin);
+        if (!userId)
+          return errorResponse("userId requis", 400, origin);
         if (userProfile) {
           const cleanEmail = (userProfile.email || `${userId}@studycloud.app`).toLowerCase().trim();
           const existing = await env.DB.prepare(
@@ -3354,7 +3464,8 @@ var index_default = {
       }
       if (path === "/api/sync/restore" && method === "GET") {
         const userId = url.searchParams.get("userId");
-        if (!userId) return errorResponse("userId requis", 400, origin);
+        if (!userId)
+          return errorResponse("userId requis", 400, origin);
         const [
           user,
           { results: matieres },
@@ -3403,7 +3514,8 @@ var MyWorkflow = class {
     return;
   }
 };
+__name(MyWorkflow, "MyWorkflow");
 export {
   MyWorkflow,
-  index_default as default
+  src_default as default
 };

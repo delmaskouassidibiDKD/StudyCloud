@@ -366,6 +366,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
         onEmailVerified={(token, user) => {
           localStorage.removeItem('sc_pending_verification_email');
           localStorage.removeItem('sc_pending_verification_is_login');
+          setPendingVerificationEmail(null);
           loginWithToken(token, user);
         }}
       />
