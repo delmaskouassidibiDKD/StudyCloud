@@ -371,13 +371,12 @@ export function OnboardingPage() {
   const [filiere, setFiliere] = useState(user?.filiere || '');
   const [level, setLevel] = useState(user?.level || '');
 
-  // ─── Gestion de l'expiration 7 minutes et inactivité 5 minutes (Horloge réelle continue) ───
-  const TOTAL_DURATION_SEC = 7 * 60; // 7 minutes maximum
-  const INACTIVITY_LIMIT_MS = 5 * 60 * 1000; // 5 minutes d'inactivité
+  // ─── Gestion de l'horloge et de la persistance continue d'onboarding ───
+  const TOTAL_DURATION_SEC = 7 * 60; // 7 minutes indicatif
   const startKey = `sc_onb_start_${user?.id || 'default'}`;
   const lastActiveKey = `sc_onb_last_active_${user?.id || 'default'}`;
 
-  // Calcul dynamique et continu du temps restant basé sur l'horloge réelle Date.now()
+  // Calcul dynamique et continu du temps restant
   const calculateRemainingSeconds = React.useCallback(() => {
     let start = localStorage.getItem(startKey);
     if (!start) {
@@ -385,31 +384,22 @@ export function OnboardingPage() {
       localStorage.setItem(startKey, start);
     }
     const elapsed = Math.floor((Date.now() - parseInt(start, 10)) / 1000);
+    // Si le temps indicatif est écoulé, réinitialiser pour permettre à l'utilisateur de terminer en toute sérénité
+    if (elapsed >= TOTAL_DURATION_SEC) {
+      localStorage.setItem(startKey, Date.now().toString());
+      return TOTAL_DURATION_SEC;
+    }
     return Math.max(0, TOTAL_DURATION_SEC - elapsed);
   }, [startKey]);
 
   const [timeLeft, setTimeLeft] = useState<number>(calculateRemainingSeconds);
 
-  const handleSessionExpired = React.useCallback(async (reason: 'timeout' | 'inactivity') => {
-    try {
-      const storedId = user?.id || localStorage.getItem('unifolder_user_id') || undefined;
-      const storedEmail = user?.email || localStorage.getItem('unifolder_user_email') || undefined;
-      const storedToken = token || localStorage.getItem('sc_auth_token') || undefined;
-      if (storedId || storedEmail || storedToken) {
-        await StudyCloudAPI.cancelUnfinalizedAccount(
-          { userId: storedId, email: storedEmail },
-          storedToken
-        );
-      }
-    } catch (e) {
-      console.warn('Erreur annulation compte expiré:', e);
-    }
+  const handleSessionExpired = React.useCallback(async (_reason: 'timeout' | 'inactivity') => {
+    // Ne JAMAIS supprimer ni annuler un compte dont l'email est déjà vérifié !
     localStorage.removeItem(startKey);
     localStorage.removeItem(lastActiveKey);
-    const message = "Votre session est terminée. Veuillez reprendre.";
-    localStorage.setItem('sc_onboarding_expired_notice', message);
-    logout();
-  }, [user, token, logout, startKey, lastActiveKey]);
+    localStorage.removeItem('sc_onboarding_expired_notice');
+  }, [startKey, lastActiveKey]);
 
   // Écoute des interactions pour rafraîchir l'activité en continu (même après sortie d'écran)
   React.useEffect(() => {
@@ -442,20 +432,6 @@ export function OnboardingPage() {
     const syncContinuousTimer = () => {
       const remaining = calculateRemainingSeconds();
       setTimeLeft(remaining);
-
-      // 1. Délais global 7 minutes dépassé
-      if (remaining <= 0) {
-        handleSessionExpired('timeout');
-        return;
-      }
-
-      // 2. Inactivité > 5 minutes
-      const lastActiveStr = localStorage.getItem(lastActiveKey) || localStorage.getItem(startKey);
-      const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : Date.now();
-      if (Date.now() - lastActive >= INACTIVITY_LIMIT_MS) {
-        handleSessionExpired('inactivity');
-        return;
-      }
     };
 
     // Synchronisation immédiate
@@ -688,10 +664,6 @@ export function OnboardingPage() {
         setError(res.error || "Une erreur est survenue lors de l'enregistrement de votre profil.");
       }
     } catch (err: any) {
-      if (err.message?.includes('expirée') || err.message?.includes('410')) {
-        handleSessionExpired('timeout');
-        return;
-      }
       setError(err.message || 'Impossible de contacter le serveur StudyCloud.');
     } finally {
       setIsLoading(false);

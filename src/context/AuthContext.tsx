@@ -88,32 +88,8 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     StudyCloudAPI.getMe(storedToken)
       .then((res: any) => {
         if (res.success && res.data) {
-          // Si l'utilisateur n'a pas encore finalisé son onboarding, vérifier la limite de 7 min ou 5 min d'inactivité
-          if (Number(res.data.is_onboarded) !== 1) {
-            const SEVEN_MIN_MS = 7 * 60 * 1000;
-            const FIVE_MIN_MS = 5 * 60 * 1000;
-            const parseUtc = (d: any) => {
-              if (!d) return 0;
-              const s = String(d).trim();
-              const iso = s.includes('T') ? s : s.replace(' ', 'T') + 'Z';
-              const ms = new Date(iso).getTime();
-              return isNaN(ms) ? 0 : ms;
-            };
-            const createdAtTime = parseUtc(res.data.created_at);
-            const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : createdAtTime;
-            const isTimeout = createdAtTime > 0 && (Date.now() - createdAtTime > SEVEN_MIN_MS);
-            const isInactive = lastActive > 0 && (Date.now() - lastActive > FIVE_MIN_MS);
-
-            if (isTimeout || isInactive) {
-              // Compte non finalisé expiré : suppression et retour à l'accueil
-              StudyCloudAPI.cancelUnfinalizedAccount({ userId: res.data.id, email: res.data.email }, storedToken).catch(() => {});
-              localStorage.setItem('sc_onboarding_expired_notice', "Votre session est terminée. Veuillez reprendre.");
-              clearUserDataOnLogout();
-              setIsLoading(false);
-              return;
-            }
-          }
-
+          localStorage.removeItem('sc_onboarding_expired_notice');
+          localStorage.removeItem('sc_verification_expired_notice');
           setUser(res.data);
           setToken(storedToken);
           localStorage.setItem('sc_last_active_at', Date.now().toString());
@@ -131,22 +107,11 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           // Hydrater automatiquement les données Cloudflare D1 de l'utilisateur
           restoreUserDataFromCloud(res.data.id).catch(() => {});
         } else {
-          // Token invalide ou expiré
-          if (res?.code === 'SESSION_EXPIRED_UNFINALIZED' || (res?.error && typeof res.error === 'string' && res.error.includes('expiré'))) {
-            localStorage.setItem('sc_onboarding_expired_notice', "Votre session est terminée. Veuillez reprendre.");
-          }
           clearUserDataOnLogout();
         }
       })
       .catch((err: any) => {
-        // Si le serveur nous dit que la session d'inscription a expiré (HTTP 410) ou token invalide (HTTP 401/403)
-        if (err?.status === 410 || err?.data?.code === 'SESSION_EXPIRED_UNFINALIZED' || (err?.message && err.message.includes('expiré'))) {
-          localStorage.setItem('sc_onboarding_expired_notice', "Votre session est terminée. Veuillez reprendre.");
-          clearUserDataOnLogout();
-          return;
-        }
-
-        if (err?.status === 401 || err?.status === 403) {
+        if (err?.status === 401 || err?.status === 403 || err?.status === 410) {
           clearUserDataOnLogout();
           return;
         }
@@ -181,6 +146,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const loginWithToken = useCallback((newToken: string, newUser: AuthUser) => {
+    localStorage.removeItem('sc_onboarding_expired_notice');
+    localStorage.removeItem('sc_verification_expired_notice');
+    localStorage.removeItem(`sc_onb_start_${newUser.id}`);
+    localStorage.removeItem('sc_onb_start_default');
+    localStorage.removeItem(`sc_onb_last_active_${newUser.id}`);
+    localStorage.removeItem('sc_onb_last_active_default');
+    localStorage.removeItem('dkd_verification_status');
+    localStorage.removeItem('sc_email_verified_signal');
     localStorage.setItem('sc_auth_token', newToken);
     localStorage.setItem('sc_last_active_at', Date.now().toString());
     localStorage.setItem('unifolder_user_id', newUser.id);

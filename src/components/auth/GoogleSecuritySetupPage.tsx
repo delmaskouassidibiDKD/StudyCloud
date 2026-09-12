@@ -40,7 +40,7 @@ export function GoogleSecuritySetupPage() {
   const startKey = `sc_onb_start_${user?.id || 'default'}`;
   const lastActiveKey = `sc_onb_last_active_${user?.id || 'default'}`;
 
-  // Calcul dynamique et continu du temps restant basé sur l'horloge réelle Date.now()
+  // Calcul dynamique et continu du temps restant
   const calculateRemainingSeconds = useCallback(() => {
     let start = localStorage.getItem(startKey);
     if (!start) {
@@ -48,31 +48,21 @@ export function GoogleSecuritySetupPage() {
       localStorage.setItem(startKey, start);
     }
     const elapsed = Math.floor((Date.now() - parseInt(start, 10)) / 1000);
+    if (elapsed >= TOTAL_DURATION_SEC) {
+      localStorage.setItem(startKey, Date.now().toString());
+      return TOTAL_DURATION_SEC;
+    }
     return Math.max(0, TOTAL_DURATION_SEC - elapsed);
   }, [startKey]);
 
   const [timeLeft, setTimeLeft] = useState<number>(calculateRemainingSeconds);
 
-  const handleSessionExpired = useCallback(async (reason: 'timeout' | 'inactivity') => {
-    try {
-      const storedId = user?.id || localStorage.getItem('unifolder_user_id') || undefined;
-      const storedEmail = user?.email || localStorage.getItem('unifolder_user_email') || undefined;
-      const storedToken = token || localStorage.getItem('sc_auth_token') || undefined;
-      if (storedId || storedEmail || storedToken) {
-        await StudyCloudAPI.cancelUnfinalizedAccount(
-          { userId: storedId, email: storedEmail },
-          storedToken
-        );
-      }
-    } catch (e) {
-      console.warn('Erreur annulation compte expiré:', e);
-    }
+  const handleSessionExpired = useCallback(async (_reason: 'timeout' | 'inactivity') => {
+    // Ne jamais supprimer ni annuler un compte dont la session Google est active
     localStorage.removeItem(startKey);
     localStorage.removeItem(lastActiveKey);
-    const message = "Votre session est terminée. Veuillez reprendre.";
-    localStorage.setItem('sc_onboarding_expired_notice', message);
-    logout();
-  }, [user, token, logout, startKey, lastActiveKey]);
+    localStorage.removeItem('sc_onboarding_expired_notice');
+  }, [startKey, lastActiveKey]);
 
   // Écoute des interactions pour rafraîchir l'activité en continu (même après sortie d'écran)
   useEffect(() => {
@@ -105,20 +95,6 @@ export function GoogleSecuritySetupPage() {
     const syncContinuousTimer = () => {
       const remaining = calculateRemainingSeconds();
       setTimeLeft(remaining);
-
-      // 1. Délais global 7 minutes dépassé
-      if (remaining <= 0) {
-        handleSessionExpired('timeout');
-        return;
-      }
-
-      // 2. Inactivité > 5 minutes
-      const lastActiveStr = localStorage.getItem(lastActiveKey) || localStorage.getItem(startKey);
-      const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : Date.now();
-      if (Date.now() - lastActive >= INACTIVITY_LIMIT_MS) {
-        handleSessionExpired('inactivity');
-        return;
-      }
     };
 
     // Synchronisation immédiate

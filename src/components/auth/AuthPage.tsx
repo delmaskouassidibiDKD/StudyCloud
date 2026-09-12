@@ -143,11 +143,8 @@ export function AuthPage({ onBack }: AuthPageProps) {
   });
 
   useEffect(() => {
-    const expiredNotice = localStorage.getItem('sc_onboarding_expired_notice');
-    if (expiredNotice) {
-      localStorage.removeItem('sc_onboarding_expired_notice');
-      setError(expiredNotice);
-    }
+    localStorage.removeItem('sc_onboarding_expired_notice');
+    localStorage.removeItem('sc_verification_expired_notice');
   }, []);
 
   // ─── Helpers ────────────────────────────────────────────────────────────────
@@ -162,6 +159,8 @@ export function AuthPage({ onBack }: AuthPageProps) {
     setError(null);
     setAccountNotFoundNotice(null);
     setSuccess(null);
+    localStorage.removeItem('sc_onboarding_expired_notice');
+    localStorage.removeItem('sc_verification_expired_notice');
     localStorage.removeItem('sc_auth_redirect_mode');
     localStorage.removeItem('sc_auth_redirect_notice');
     localStorage.removeItem('sc_auth_prefill_email');
@@ -174,6 +173,8 @@ export function AuthPage({ onBack }: AuthPageProps) {
     e.preventDefault();
     setError(null);
     setSuccess(null);
+    localStorage.removeItem('sc_onboarding_expired_notice');
+    localStorage.removeItem('sc_verification_expired_notice');
 
     if (!email.trim() || !password.trim()) {
       setError('Email et mot de passe sont requis.');
@@ -363,12 +364,18 @@ export function AuthPage({ onBack }: AuthPageProps) {
         onBackToLogin={() => {
           localStorage.removeItem('sc_pending_verification_email');
           localStorage.removeItem('sc_pending_verification_is_login');
+          localStorage.removeItem('sc_onboarding_expired_notice');
+          localStorage.removeItem('sc_verification_expired_notice');
+          setError(null);
           setPendingVerificationEmail(null);
           setMode('login');
         }}
         onEmailVerified={(token, user) => {
           localStorage.removeItem('sc_pending_verification_email');
           localStorage.removeItem('sc_pending_verification_is_login');
+          localStorage.removeItem('sc_onboarding_expired_notice');
+          localStorage.removeItem('sc_verification_expired_notice');
+          setError(null);
           setPendingVerificationEmail(null);
           loginWithToken(token, user);
         }}

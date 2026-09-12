@@ -143,6 +143,10 @@ export function EmailPendingVerification({
 
           localStorage.removeItem('sc_pending_verification_email');
           localStorage.removeItem('sc_pending_verification_is_login');
+          localStorage.removeItem('sc_onboarding_expired_notice');
+          localStorage.removeItem('sc_verification_expired_notice');
+          localStorage.removeItem('dkd_verification_status');
+          localStorage.removeItem('sc_email_verified_signal');
 
           setTimeout(() => {
             if (onEmailVerified) {

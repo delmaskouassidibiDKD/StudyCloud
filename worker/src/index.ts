@@ -1693,11 +1693,12 @@ export default {
             );
           }
 
-          // 2. Vérifier l'expiration
+          // 2. Vérifier l'expiration (avec 15s de marge de tolérance pour latence réseau / horloge)
           const now = Date.now();
           const expiresAt = record.expires_at ? new Date(record.expires_at).getTime() : 0;
+          const GRACE_PERIOD_MS = 15 * 1000;
 
-          if (expiresAt > 0 && now > expiresAt) {
+          if (expiresAt > 0 && now > (expiresAt + GRACE_PERIOD_MS)) {
             return htmlResponse("Lien expiré", "Ce lien ne peut plus être utilisé car son délai de validité (70 secondes) a expiré. Veuillez réclamer un nouveau lien depuis l'application.", false);
           }
 
@@ -2173,31 +2174,6 @@ export default {
         const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.userId).first();
         if (!user) return errorResponse('Utilisateur introuvable', 404, origin);
 
-        // Si l'utilisateur n'a pas encore finalisé l'onboarding, vérifier immédiatement s'il a dépassé 7 min ou 5 min d'inactivité
-        const isOnboarded = Number(user.is_onboarded) === 1;
-        if (!isOnboarded) {
-          const parseUtcDate = (dStr: any) => {
-            if (!dStr) return 0;
-            const s = String(dStr).trim();
-            const iso = s.includes('T') ? s : s.replace(' ', 'T') + 'Z';
-            const ms = new Date(iso).getTime();
-            return isNaN(ms) ? 0 : ms;
-          };
-          const createdMs = parseUtcDate(user.created_at);
-          const activeMs = parseUtcDate(user.last_active_at) || createdMs;
-          const isTimeout = createdMs > 0 && (Date.now() - createdMs >= 7 * 60 * 1000);
-          const isInactive = activeMs > 0 && (Date.now() - activeMs >= 5 * 60 * 1000);
-
-          if (isTimeout || isInactive) {
-            await deleteUserCompletely(env.DB, user.id);
-            return jsonResponse({
-              success: false,
-              code: 'SESSION_EXPIRED_UNFINALIZED',
-              error: 'Votre session est terminée. Veuillez reprendre.',
-            }, 410, origin);
-          }
-        }
-
         // Règle d'inactivité de 30 jours (1 mois) pour les comptes confirmés
         if (user.last_active_at) {
           const inactiveMs = Date.now() - new Date(user.last_active_at).getTime();
@@ -2276,7 +2252,7 @@ export default {
 
         const existingUser: any = await env.DB.prepare('SELECT id, email, is_onboarded FROM users WHERE id = ?').bind(payload.userId).first();
         if (!existingUser) {
-          return errorResponse("Votre session est terminée. Veuillez reprendre.", 410, origin);
+          return errorResponse("Session introuvable ou expirée. Veuillez vous reconnecter.", 401, origin);
         }
 
         const body: any = await request.json();
@@ -2454,22 +2430,23 @@ export default {
         }
 
         if (user) {
-          // Uniquement si le compte n'a PAS encore terminé l'onboarding
+          // Ne JAMAIS supprimer un compte dont l'email est déjà vérifié !
+          const isEmailVerified = Number(user.email_verified) === 1;
           const isOnboarded = Number(user.is_onboarded) === 1;
-          if (!isOnboarded) {
-            await deleteUserCompletely(env.DB, user.id);
-            console.log(`[StudyCloud Expiration] Compte annulé à la demande : ${user.email} (${user.id})`);
-
+          if (isEmailVerified || isOnboarded) {
             return jsonResponse({
               success: true,
-              message: 'Compte non finalisé annulé et données supprimées avec succès.',
+              message: 'Compte actif et vérifié conservé.',
             }, 200, origin);
-          } else {
-            return jsonResponse({
-              success: false,
-              message: 'Le compte est déjà finalisé, suppression refusée.',
-            }, 403, origin);
           }
+
+          await deleteUserCompletely(env.DB, user.id);
+          console.log(`[StudyCloud Expiration] Compte non vérifié annulé : ${user.email} (${user.id})`);
+
+          return jsonResponse({
+            success: true,
+            message: 'Compte non finalisé annulé et données supprimées avec succès.',
+          }, 200, origin);
         }
 
         return jsonResponse({ success: true, message: 'Aucun compte non finalisé à supprimer.' }, 200, origin);

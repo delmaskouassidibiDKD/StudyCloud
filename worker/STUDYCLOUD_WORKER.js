@@ -1561,7 +1561,8 @@ var src_default = {
           }
           const now = Date.now();
           const expiresAt = record.expires_at ? new Date(record.expires_at).getTime() : 0;
-          if (expiresAt > 0 && now > expiresAt) {
+          const GRACE_PERIOD_MS = 15 * 1e3;
+          if (expiresAt > 0 && now > expiresAt + GRACE_PERIOD_MS) {
             return htmlResponse2("Lien expir\xE9", "Ce lien ne peut plus \xEAtre utilis\xE9 car son d\xE9lai de validit\xE9 (70 secondes) a expir\xE9. Veuillez r\xE9clamer un nouveau lien depuis l'application.", false);
           }
           let user = null;
@@ -1975,29 +1976,6 @@ var src_default = {
         const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();
         if (!user)
           return errorResponse("Utilisateur introuvable", 404, origin);
-        const isOnboarded = Number(user.is_onboarded) === 1;
-        if (!isOnboarded) {
-          const parseUtcDate = /* @__PURE__ */ __name((dStr) => {
-            if (!dStr)
-              return 0;
-            const s = String(dStr).trim();
-            const iso = s.includes("T") ? s : s.replace(" ", "T") + "Z";
-            const ms = new Date(iso).getTime();
-            return isNaN(ms) ? 0 : ms;
-          }, "parseUtcDate");
-          const createdMs = parseUtcDate(user.created_at);
-          const activeMs = parseUtcDate(user.last_active_at) || createdMs;
-          const isTimeout = createdMs > 0 && Date.now() - createdMs >= 7 * 60 * 1e3;
-          const isInactive = activeMs > 0 && Date.now() - activeMs >= 5 * 60 * 1e3;
-          if (isTimeout || isInactive) {
-            await deleteUserCompletely(env.DB, user.id);
-            return jsonResponse({
-              success: false,
-              code: "SESSION_EXPIRED_UNFINALIZED",
-              error: "Votre session est termin\xE9e. Veuillez reprendre."
-            }, 410, origin);
-          }
-        }
         if (user.last_active_at) {
           const inactiveMs = Date.now() - new Date(user.last_active_at).getTime();
           const THIRTY_DAYS_MS = 30 * 24 * 3600 * 1e3;
@@ -2066,7 +2044,7 @@ var src_default = {
           return errorResponse("Token invalide", 401, origin);
         const existingUser = await env.DB.prepare("SELECT id, email, is_onboarded FROM users WHERE id = ?").bind(payload.userId).first();
         if (!existingUser) {
-          return errorResponse("Votre session est termin\xE9e. Veuillez reprendre.", 410, origin);
+          return errorResponse("Session introuvable ou expir\xE9e. Veuillez vous reconnecter.", 401, origin);
         }
         const body = await request.json();
         const { name, school, filiere, level, country, phone, bio, avatarUrl } = body;
@@ -2229,20 +2207,20 @@ var src_default = {
           user = await env.DB.prepare("SELECT id, email, is_onboarded FROM users WHERE LOWER(TRIM(email)) = ?").bind(targetEmail).first();
         }
         if (user) {
+          const isEmailVerified = Number(user.email_verified) === 1;
           const isOnboarded = Number(user.is_onboarded) === 1;
-          if (!isOnboarded) {
-            await deleteUserCompletely(env.DB, user.id);
-            console.log(`[StudyCloud Expiration] Compte annul\xE9 \xE0 la demande : ${user.email} (${user.id})`);
+          if (isEmailVerified || isOnboarded) {
             return jsonResponse({
               success: true,
-              message: "Compte non finalis\xE9 annul\xE9 et donn\xE9es supprim\xE9es avec succ\xE8s."
+              message: "Compte actif et v\xE9rifi\xE9 conserv\xE9."
             }, 200, origin);
-          } else {
-            return jsonResponse({
-              success: false,
-              message: "Le compte est d\xE9j\xE0 finalis\xE9, suppression refus\xE9e."
-            }, 403, origin);
           }
+          await deleteUserCompletely(env.DB, user.id);
+          console.log(`[StudyCloud Expiration] Compte non v\xE9rifi\xE9 annul\xE9 : ${user.email} (${user.id})`);
+          return jsonResponse({
+            success: true,
+            message: "Compte non finalis\xE9 annul\xE9 et donn\xE9es supprim\xE9es avec succ\xE8s."
+          }, 200, origin);
         }
         return jsonResponse({ success: true, message: "Aucun compte non finalis\xE9 \xE0 supprimer." }, 200, origin);
       }
