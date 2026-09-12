@@ -1300,13 +1300,13 @@ export default {
         const answer2Hash = securityAnswer2 ? await hashToken(securityAnswer2.slice(0, 30).toLowerCase().trim()) : '';
 
         if (existing) {
-          // 1. Si le compte est déjà actif et finalisé (is_onboarded = 1) : avertir de se connecter
-          if (existing.is_onboarded === 1) {
+          // 1. Si le compte est déjà actif, vérifié ou finalisé : avertir immédiatement
+          if (existing.is_onboarded === 1 || existing.email_verified === 1) {
             return jsonResponse({
               success: false,
               alreadyRegistered: true,
               code: 'ACCOUNT_ALREADY_EXISTS',
-              error: 'Un compte vérifié existe déjà avec cette adresse email. Veuillez vous connecter avec votre mot de passe.',
+              error: 'Cet e-mail est déjà associé à un compte. Veuillez vous connecter ou utiliser une autre adresse',
             }, 409, origin);
           }
 
@@ -1612,7 +1612,7 @@ export default {
           ).bind(token).first();
 
           if (!record) {
-            return htmlResponse("Lien expiré ou déjà utilisé", "Ce lien de confirmation n'est plus valide ou a déjà été consommé.", false);
+            return htmlResponse("Lien expiré ou déjà utilisé", "Ce lien ne peut plus être utilisé ou n'est plus valide. Veuillez vous connecter.", false);
           }
 
           // Si déjà validé
@@ -1625,8 +1625,8 @@ export default {
               }
             }
             return htmlResponse(
-              "Confirmation réussie !",
-              "Votre compte a été confirmé avec succès. Vous pouvez maintenant retourner dans l'application pour continuer.",
+              "Confirmation déjà effectuée !",
+              "Ce lien ne peut plus être réutilisé car la confirmation a déjà été validée. Cet e-mail est déjà associé à un compte. Vous pouvez retourner dans l'application pour vous connecter.",
               true,
               record.user_id,
               jwtToken
@@ -1638,7 +1638,7 @@ export default {
           const expiresAt = record.expires_at ? new Date(record.expires_at).getTime() : 0;
 
           if (expiresAt > 0 && now > expiresAt) {
-            return htmlResponse("Lien expiré", "Le délai de validation de ce lien a expiré. Veuillez réclamer un nouveau lien depuis l'application.", false);
+            return htmlResponse("Lien expiré", "Ce lien ne peut plus être utilisé car son délai de validité (70 secondes) a expiré. Veuillez réclamer un nouveau lien depuis l'application.", false);
           }
 
           const userBefore: any = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(record.user_id).first();

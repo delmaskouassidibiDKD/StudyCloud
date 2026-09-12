@@ -1220,12 +1220,12 @@ var src_default = {
         const answer1Hash = securityAnswer1 ? await hashToken(securityAnswer1.slice(0, 30).toLowerCase().trim()) : "";
         const answer2Hash = securityAnswer2 ? await hashToken(securityAnswer2.slice(0, 30).toLowerCase().trim()) : "";
         if (existing) {
-          if (existing.is_onboarded === 1) {
+          if (existing.is_onboarded === 1 || existing.email_verified === 1) {
             return jsonResponse({
               success: false,
               alreadyRegistered: true,
               code: "ACCOUNT_ALREADY_EXISTS",
-              error: "Un compte v\xE9rifi\xE9 existe d\xE9j\xE0 avec cette adresse email. Veuillez vous connecter avec votre mot de passe."
+              error: "Cet e-mail est d\xE9j\xE0 associ\xE9 \xE0 un compte. Veuillez vous connecter ou utiliser une autre adresse"
             }, 409, origin);
           }
           if (existing.email_verified === 0) {
@@ -1484,7 +1484,7 @@ var src_default = {
             "SELECT * FROM email_verifications WHERE token = ?"
           ).bind(token).first();
           if (!record) {
-            return htmlResponse2("Lien expir\xE9 ou d\xE9j\xE0 utilis\xE9", "Ce lien de confirmation n'est plus valide ou a d\xE9j\xE0 \xE9t\xE9 consomm\xE9.", false);
+            return htmlResponse2("Lien expir\xE9 ou d\xE9j\xE0 utilis\xE9", "Ce lien ne peut plus \xEAtre utilis\xE9 ou n'est plus valide. Veuillez vous connecter.", false);
           }
           if (Number(record.used) === 1 || Number(record.confirmed) === 1) {
             let jwtToken2 = record.confirmed_jwt;
@@ -1495,8 +1495,8 @@ var src_default = {
               }
             }
             return htmlResponse2(
-              "Confirmation r\xE9ussie !",
-              "Votre compte a \xE9t\xE9 confirm\xE9 avec succ\xE8s. Vous pouvez maintenant retourner dans l'application pour continuer.",
+              "Confirmation d\xE9j\xE0 effectu\xE9e !",
+              "Ce lien ne peut plus \xEAtre r\xE9utilis\xE9 car la confirmation a d\xE9j\xE0 \xE9t\xE9 valid\xE9e. Cet e-mail est d\xE9j\xE0 associ\xE9 \xE0 un compte. Vous pouvez retourner dans l'application pour vous connecter.",
               true,
               record.user_id,
               jwtToken2
@@ -1505,7 +1505,7 @@ var src_default = {
           const now = Date.now();
           const expiresAt = record.expires_at ? new Date(record.expires_at).getTime() : 0;
           if (expiresAt > 0 && now > expiresAt) {
-            return htmlResponse2("Lien expir\xE9", "Le d\xE9lai de validation de ce lien a expir\xE9. Veuillez r\xE9clamer un nouveau lien depuis l'application.", false);
+            return htmlResponse2("Lien expir\xE9", "Ce lien ne peut plus \xEAtre utilis\xE9 car son d\xE9lai de validit\xE9 (70 secondes) a expir\xE9. Veuillez r\xE9clamer un nouveau lien depuis l'application.", false);
           }
           const userBefore = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(record.user_id).first();
           if (!userBefore) {

@@ -262,9 +262,8 @@ export function AuthPage({ onBack }: AuthPageProps) {
       if (res.alreadyRegistered || (res as any).code === 'ACCOUNT_ALREADY_EXISTS') {
         setMode('login');
         setPassword('');
-        setError(null);
-        setAccountNotFoundNotice(
-          `Un compte actif existe déjà avec l'adresse email ${email.trim()}. Veuillez saisir votre mot de passe pour vous connecter ou utilisez le bouton Google.`
+        setError(
+          res.error || "Cet e-mail est déjà associé à un compte. Veuillez vous connecter ou utiliser une autre adresse."
         );
         return;
       }
@@ -276,12 +275,11 @@ export function AuthPage({ onBack }: AuthPageProps) {
         setError(res.error || 'Une erreur est survenue.');
       }
     } catch (err: any) {
-      if (err.alreadyRegistered || err.code === 'ACCOUNT_ALREADY_EXISTS' || err.message?.includes('existe déjà')) {
+      if (err.alreadyRegistered || err.code === 'ACCOUNT_ALREADY_EXISTS' || err.status === 409 || err.message?.includes('existe déjà') || err.message?.includes('associé à un compte')) {
         setMode('login');
         setPassword('');
-        setError(null);
-        setAccountNotFoundNotice(
-          `Un compte actif existe déjà avec l'adresse email ${email.trim()}. Veuillez saisir votre mot de passe pour vous connecter ou utilisez le bouton Google.`
+        setError(
+          err.data?.error || err.message || "Cet e-mail est déjà associé à un compte. Veuillez vous connecter ou utiliser une autre adresse."
         );
       } else if (err.userNotFound || err.status === 404 || err.message?.includes('Aucun compte') || err.message?.includes('non trouvé')) {
         setMode('register');
