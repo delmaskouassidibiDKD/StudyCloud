@@ -30,34 +30,262 @@ export interface CountryMeta {
   dialCode: string;
   flag: string;
   placeholder: string;
+  expectedLengths: number[];
+  digitHint: string;
 }
 
 export const COUNTRY_DATA: Record<string, CountryMeta> = {
-  "Côte d'Ivoire": { name: "Côte d'Ivoire", dialCode: '+225', flag: '🇨🇮', placeholder: '07 00 00 00 00' },
-  'Sénégal': { name: 'Sénégal', dialCode: '+221', flag: '🇸🇳', placeholder: '77 000 00 00' },
-  'Mali': { name: 'Mali', dialCode: '+223', flag: '🇲🇱', placeholder: '70 00 00 00' },
-  'Burkina Faso': { name: 'Burkina Faso', dialCode: '+226', flag: '🇧🇫', placeholder: '70 00 00 00' },
-  'Guinée': { name: 'Guinée', dialCode: '+224', flag: '🇬🇳', placeholder: '620 00 00 00' },
-  'Cameroun': { name: 'Cameroun', dialCode: '+237', flag: '🇨🇲', placeholder: '6 00 00 00 00' },
-  'Gabon': { name: 'Gabon', dialCode: '+241', flag: '🇬🇦', placeholder: '06 00 00 00' },
-  'Congo': { name: 'Congo', dialCode: '+242', flag: '🇨🇬', placeholder: '06 000 00 00' },
-  "République démocratique du Congo": { name: "République démocratique du Congo", dialCode: '+243', flag: '🇨🇩', placeholder: '81 000 0000' },
-  'Madagascar': { name: 'Madagascar', dialCode: '+261', flag: '🇲🇬', placeholder: '32 00 000 00' },
-  'Bénin': { name: 'Bénin', dialCode: '+229', flag: '🇧🇯', placeholder: '97 00 00 00' },
-  'Togo': { name: 'Togo', dialCode: '+228', flag: '🇹🇬', placeholder: '90 00 00 00' },
-  'Niger': { name: 'Niger', dialCode: '+227', flag: '🇳🇪', placeholder: '90 00 00 00' },
-  'Tchad': { name: 'Tchad', dialCode: '+235', flag: '🇹🇩', placeholder: '66 00 00 00' },
-  'Mauritanie': { name: 'Mauritanie', dialCode: '+222', flag: '🇲🇷', placeholder: '45 00 00 00' },
-  'Maroc': { name: 'Maroc', dialCode: '+212', flag: '🇲🇦', placeholder: '6 00 00 00 00' },
-  'Algérie': { name: 'Algérie', dialCode: '+213', flag: '🇩🇿', placeholder: '5 00 00 00 00' },
-  'Tunisie': { name: 'Tunisie', dialCode: '+216', flag: '🇹🇳', placeholder: '20 000 000' },
-  'France': { name: 'France', dialCode: '+33', flag: '🇫🇷', placeholder: '6 12 34 56 78' },
-  'Belgique': { name: 'Belgique', dialCode: '+32', flag: '🇧🇪', placeholder: '470 12 34 56' },
-  'Canada': { name: 'Canada', dialCode: '+1', flag: '🇨🇦', placeholder: '514 123 4567' },
-  'Autre': { name: 'Autre', dialCode: '+', flag: '🌍', placeholder: 'Numéro avec indicatif' },
+  "Côte d'Ivoire": {
+    name: "Côte d'Ivoire",
+    dialCode: '+225',
+    flag: '🇨🇮',
+    placeholder: '01 02 03 04 05',
+    expectedLengths: [10],
+    digitHint: '10 chiffres',
+  },
+  'Sénégal': {
+    name: 'Sénégal',
+    dialCode: '+221',
+    flag: '🇸🇳',
+    placeholder: '77 000 00 00',
+    expectedLengths: [9],
+    digitHint: '9 chiffres',
+  },
+  'Mali': {
+    name: 'Mali',
+    dialCode: '+223',
+    flag: '🇲🇱',
+    placeholder: '70 00 00 00',
+    expectedLengths: [8],
+    digitHint: '8 chiffres',
+  },
+  'Burkina Faso': {
+    name: 'Burkina Faso',
+    dialCode: '+226',
+    flag: '🇧🇫',
+    placeholder: '70 00 00 00',
+    expectedLengths: [8],
+    digitHint: '8 chiffres',
+  },
+  'Guinée': {
+    name: 'Guinée',
+    dialCode: '+224',
+    flag: '🇬🇳',
+    placeholder: '620 00 00 00',
+    expectedLengths: [9],
+    digitHint: '9 chiffres',
+  },
+  'Cameroun': {
+    name: 'Cameroun',
+    dialCode: '+237',
+    flag: '🇨🇲',
+    placeholder: '6 00 00 00 00',
+    expectedLengths: [9],
+    digitHint: '9 chiffres',
+  },
+  'Gabon': {
+    name: 'Gabon',
+    dialCode: '+241',
+    flag: '🇬🇦',
+    placeholder: '06 00 00 00',
+    expectedLengths: [7, 8],
+    digitHint: '7 ou 8 chiffres',
+  },
+  'Congo': {
+    name: 'Congo',
+    dialCode: '+242',
+    flag: '🇨🇬',
+    placeholder: '06 000 00 00',
+    expectedLengths: [9],
+    digitHint: '9 chiffres',
+  },
+  "République démocratique du Congo": {
+    name: "République démocratique du Congo",
+    dialCode: '+243',
+    flag: '🇨🇩',
+    placeholder: '81 000 0000',
+    expectedLengths: [9, 10],
+    digitHint: '9 ou 10 chiffres',
+  },
+  'Madagascar': {
+    name: 'Madagascar',
+    dialCode: '+261',
+    flag: '🇲🇬',
+    placeholder: '32 00 000 00',
+    expectedLengths: [9, 10],
+    digitHint: '9 ou 10 chiffres',
+  },
+  'Bénin': {
+    name: 'Bénin',
+    dialCode: '+229',
+    flag: '🇧🇯',
+    placeholder: '01 97 00 00 00',
+    expectedLengths: [8, 10],
+    digitHint: '8 ou 10 chiffres',
+  },
+  'Togo': {
+    name: 'Togo',
+    dialCode: '+228',
+    flag: '🇹🇬',
+    placeholder: '90 00 00 00',
+    expectedLengths: [8],
+    digitHint: '8 chiffres',
+  },
+  'Niger': {
+    name: 'Niger',
+    dialCode: '+227',
+    flag: '🇳🇪',
+    placeholder: '90 00 00 00',
+    expectedLengths: [8],
+    digitHint: '8 chiffres',
+  },
+  'Tchad': {
+    name: 'Tchad',
+    dialCode: '+235',
+    flag: '🇹🇩',
+    placeholder: '66 00 00 00',
+    expectedLengths: [8],
+    digitHint: '8 chiffres',
+  },
+  'Mauritanie': {
+    name: 'Mauritanie',
+    dialCode: '+222',
+    flag: '🇲🇷',
+    placeholder: '45 00 00 00',
+    expectedLengths: [8],
+    digitHint: '8 chiffres',
+  },
+  'Maroc': {
+    name: 'Maroc',
+    dialCode: '+212',
+    flag: '🇲🇦',
+    placeholder: '06 00 00 00 00',
+    expectedLengths: [9, 10],
+    digitHint: '9 ou 10 chiffres',
+  },
+  'Algérie': {
+    name: 'Algérie',
+    dialCode: '+213',
+    flag: '🇩🇿',
+    placeholder: '05 00 00 00 00',
+    expectedLengths: [9, 10],
+    digitHint: '9 ou 10 chiffres',
+  },
+  'Tunisie': {
+    name: 'Tunisie',
+    dialCode: '+216',
+    flag: '🇹🇳',
+    placeholder: '20 000 000',
+    expectedLengths: [8],
+    digitHint: '8 chiffres',
+  },
+  'France': {
+    name: 'France',
+    dialCode: '+33',
+    flag: '🇫🇷',
+    placeholder: '06 12 34 56 78',
+    expectedLengths: [9, 10],
+    digitHint: '9 ou 10 chiffres',
+  },
+  'Belgique': {
+    name: 'Belgique',
+    dialCode: '+32',
+    flag: '🇧🇪',
+    placeholder: '0470 12 34 56',
+    expectedLengths: [9, 10],
+    digitHint: '9 ou 10 chiffres',
+  },
+  'Canada': {
+    name: 'Canada',
+    dialCode: '+1',
+    flag: '🇨🇦',
+    placeholder: '514 123 4567',
+    expectedLengths: [10],
+    digitHint: '10 chiffres',
+  },
+  'Autre': {
+    name: 'Autre',
+    dialCode: '+',
+    flag: '🌍',
+    placeholder: 'Numéro avec indicatif',
+    expectedLengths: [6, 7, 8, 9, 10, 11, 12, 13, 14, 15],
+    digitHint: '6 à 15 chiffres',
+  },
 };
 
 export const COUNTRIES = Object.keys(COUNTRY_DATA);
+
+/**
+ * Nettoie et extrait les chiffres utiles du numéro de téléphone
+ * (enlève espaces, tirets, et l'indicatif s'il a été collé dans le champ)
+ */
+export function getCleanDigits(rawPhone: string, dialCode?: string): string {
+  let digits = (rawPhone || '').replace(/\D/g, '');
+  if (dialCode) {
+    const dialDigits = dialCode.replace(/\D/g, '');
+    if (dialDigits && digits.startsWith(dialDigits) && digits.length > dialDigits.length) {
+      digits = digits.slice(dialDigits.length);
+    }
+  }
+  return digits;
+}
+
+/**
+ * Valide le numéro de téléphone en fonction du pays choisi et de la norme de chiffres requise
+ */
+export function validatePhoneNumber(rawPhone: string, countryName: string): {
+  isValid: boolean;
+  cleanDigits: string;
+  count: number;
+  expectedHint: string;
+  error?: string;
+} {
+  const meta = COUNTRY_DATA[countryName] || COUNTRY_DATA['Autre'];
+  const cleanDigits = getCleanDigits(rawPhone, meta.dialCode);
+  const count = cleanDigits.length;
+
+  if (!rawPhone || !rawPhone.trim() || count === 0) {
+    return {
+      isValid: false,
+      cleanDigits: '',
+      count: 0,
+      expectedHint: meta.digitHint,
+      error: 'Le numéro de téléphone est obligatoire.',
+    };
+  }
+
+  const isMatch = meta.expectedLengths.includes(count);
+  if (!isMatch) {
+    let errorMsg = '';
+    if (meta.expectedLengths.length === 1) {
+      const exp = meta.expectedLengths[0];
+      if (count < exp) {
+        const missing = exp - count;
+        errorMsg = `Le numéro pour ${meta.name} doit comporter exactement ${exp} chiffres (${count} saisi${count > 1 ? 's' : ''}, il manque ${missing} chiffre${missing > 1 ? 's' : ''}).`;
+      } else {
+        const excess = count - exp;
+        errorMsg = `Le numéro pour ${meta.name} doit comporter exactement ${exp} chiffres (${count} saisi${count > 1 ? 's' : ''}, ${excess} chiffre${excess > 1 ? 's' : ''} en trop).`;
+      }
+    } else {
+      errorMsg = `Le numéro pour ${meta.name} doit comporter ${meta.digitHint} (${count} chiffre${count > 1 ? 's' : ''} saisi${count > 1 ? 's' : ''}).`;
+    }
+
+    return {
+      isValid: false,
+      cleanDigits,
+      count,
+      expectedHint: meta.digitHint,
+      error: errorMsg,
+    };
+  }
+
+  return {
+    isValid: true,
+    cleanDigits,
+    count,
+    expectedHint: meta.digitHint,
+  };
+}
 
 export const LEVELS = [
   'Lycée / Terminale', 'BTS 1', 'BTS 2', 'Licence 1', 'Licence 2', 'Licence 3',
@@ -113,8 +341,20 @@ export function OnboardingPage() {
   const [showAllDomains, setShowAllDomains] = useState(false);
   const [bio, setBio] = useState(user?.bio || '');
 
-  // Métadonnées du pays actif (indicatif, drapeau, format)
-  const currentCountry = COUNTRY_DATA[country] || { name: country, dialCode: '+225', flag: '🇨🇮', placeholder: '07 00 00 00 00' };
+  // Métadonnées du pays actif (indicatif, drapeau, format, nombre de chiffres)
+  const currentCountry = COUNTRY_DATA[country] || {
+    name: country,
+    dialCode: '+225',
+    flag: '🇨🇮',
+    placeholder: '01 02 03 04 05',
+    expectedLengths: [10],
+    digitHint: '10 chiffres',
+  };
+
+  // Validation en direct du numéro de téléphone selon les normes du pays
+  const phoneValidation = React.useMemo(() => {
+    return validatePhoneNumber(phone, country);
+  }, [phone, country]);
 
   // Champ spécifique non-étudiant
   const [profession, setProfession] = useState(() => localStorage.getItem('unifolder_user_profession') || '');
@@ -329,6 +569,14 @@ export function OnboardingPage() {
       setError('Le numéro de téléphone est obligatoire.');
       return;
     }
+
+    // Validation stricte du nombre de chiffres exigé par le pays
+    const phoneCheck = validatePhoneNumber(phone, country);
+    if (!phoneCheck.isValid) {
+      setError(phoneCheck.error || 'Numéro de téléphone invalide pour ce pays.');
+      return;
+    }
+
     if (!isStudent && !profession.trim()) {
       setError("La profession ou domaine d'activité est obligatoire.");
       return;
@@ -375,16 +623,14 @@ export function OnboardingPage() {
       ? (level || 'Non spécifié')
       : 'Professionnel';
 
-    // Normalisation du téléphone avec l'indicatif correspondant au pays choisi
-    const cleanPhone = phone.trim();
-    let finalPhone = '';
-    if (cleanPhone) {
-      if (cleanPhone.startsWith('+')) {
-        finalPhone = cleanPhone;
-      } else {
-        finalPhone = `${currentCountry.dialCode} ${cleanPhone}`;
-      }
+    // Validation et normalisation du téléphone avec l'indicatif correspondant au pays choisi
+    const phoneCheck = validatePhoneNumber(phone, country);
+    if (!phoneCheck.isValid) {
+      setError(phoneCheck.error || 'Numéro de téléphone invalide pour ce pays.');
+      setIsLoading(false);
+      return;
     }
+    const finalPhone = `${currentCountry.dialCode} ${phoneCheck.cleanDigits}`;
 
     const finalAvatar = avatarUrl.trim() || user?.avatar_url || getAvatarFromEmail(user?.email, name);
 
@@ -753,10 +999,19 @@ export function OnboardingPage() {
                       <label className="text-xs font-bold text-white/80 mb-2 flex items-center justify-between">
                         <span>Numéro de téléphone *</span>
                         <span className="text-[11px] font-semibold text-orange-400">
-                          Indicatif {currentCountry.dialCode}
+                          Indicatif {currentCountry.dialCode} • {currentCountry.digitHint}
                         </span>
                       </label>
-                      <div className="flex rounded-xl overflow-hidden" style={inputStyle}>
+                      <div
+                        className={`flex rounded-xl overflow-hidden transition-all ${
+                          phone.trim() && !phoneValidation.isValid && phoneValidation.count > 0
+                            ? 'ring-2 ring-red-500/50'
+                            : phone.trim() && phoneValidation.isValid
+                            ? 'ring-2 ring-emerald-500/50'
+                            : ''
+                        }`}
+                        style={inputStyle}
+                      >
                         {/* Badge indicatif pays */}
                         <div
                           className="flex items-center gap-1.5 px-3.5 py-3.5 bg-white/10 border-r border-white/10 text-orange-400 font-extrabold text-sm select-none shrink-0"
@@ -769,11 +1024,35 @@ export function OnboardingPage() {
                           id="onboard-phone"
                           type="tel"
                           value={phone}
-                          onChange={(e) => setPhone(e.target.value)}
+                          onChange={(e) => {
+                            // Autoriser les chiffres, espaces et tirets
+                            const cleaned = e.target.value.replace(/[^\d\s\-\.]/g, '');
+                            setPhone(cleaned);
+                            if (error) setError(null);
+                          }}
                           placeholder={currentCountry.placeholder}
                           required
                           className="w-full px-4 py-3.5 text-sm font-medium text-white placeholder-white/30 outline-none bg-transparent"
                         />
+                      </div>
+
+                      {/* Indicateur de validation en temps réel du nombre de chiffres */}
+                      <div className="mt-1.5 min-h-[18px] text-[11px] flex items-center gap-1.5">
+                        {!phone.trim() ? (
+                          <span className="text-white/40">
+                            Exigé pour {country} : <strong className="text-white/70">{currentCountry.digitHint}</strong> (ex : {currentCountry.placeholder})
+                          </span>
+                        ) : phoneValidation.isValid ? (
+                          <span className="text-emerald-400 flex items-center gap-1 font-semibold">
+                            <CheckCircle2 className="w-3.5 h-3.5 shrink-0" />
+                            Numéro valide ({phoneValidation.count} chiffres)
+                          </span>
+                        ) : (
+                          <span className="text-amber-400 flex items-center gap-1 font-medium">
+                            <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+                            {phoneValidation.error}
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>

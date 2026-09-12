@@ -2379,6 +2379,49 @@ export default {
 
         if (!country) return errorResponse('Le pays est obligatoire', 400, origin);
         if (!phone || !String(phone).trim()) return errorResponse('Le numéro de téléphone est obligatoire', 400, origin);
+
+        // Validation du format téléphonique selon le pays
+        const COUNTRY_PHONE_CONFIG: Record<string, { dial: string; lengths: number[]; hint: string }> = {
+          "Côte d'Ivoire": { dial: '225', lengths: [10], hint: '10 chiffres' },
+          'Sénégal': { dial: '221', lengths: [9], hint: '9 chiffres' },
+          'Mali': { dial: '223', lengths: [8], hint: '8 chiffres' },
+          'Burkina Faso': { dial: '226', lengths: [8], hint: '8 chiffres' },
+          'Guinée': { dial: '224', lengths: [9], hint: '9 chiffres' },
+          'Cameroun': { dial: '237', lengths: [9], hint: '9 chiffres' },
+          'Gabon': { dial: '241', lengths: [7, 8], hint: '7 ou 8 chiffres' },
+          'Congo': { dial: '242', lengths: [9], hint: '9 chiffres' },
+          "République démocratique du Congo": { dial: '243', lengths: [9, 10], hint: '9 ou 10 chiffres' },
+          'Madagascar': { dial: '261', lengths: [9, 10], hint: '9 ou 10 chiffres' },
+          'Bénin': { dial: '229', lengths: [8, 10], hint: '8 ou 10 chiffres' },
+          'Togo': { dial: '228', lengths: [8], hint: '8 chiffres' },
+          'Niger': { dial: '227', lengths: [8], hint: '8 chiffres' },
+          'Tchad': { dial: '235', lengths: [8], hint: '8 chiffres' },
+          'Mauritanie': { dial: '222', lengths: [8], hint: '8 chiffres' },
+          'Maroc': { dial: '212', lengths: [9, 10], hint: '9 ou 10 chiffres' },
+          'Algérie': { dial: '213', lengths: [9, 10], hint: '9 ou 10 chiffres' },
+          'Tunisie': { dial: '216', lengths: [8], hint: '8 chiffres' },
+          'France': { dial: '33', lengths: [9, 10], hint: '9 ou 10 chiffres' },
+          'Belgique': { dial: '32', lengths: [9, 10], hint: '9 ou 10 chiffres' },
+          'Canada': { dial: '1', lengths: [10], hint: '10 chiffres' },
+        };
+
+        const countryCfg = COUNTRY_PHONE_CONFIG[country];
+        if (countryCfg) {
+          let pDigits = String(phone).replace(/\D/g, '');
+          if (countryCfg.dial && pDigits.startsWith(countryCfg.dial) && !countryCfg.lengths.includes(pDigits.length)) {
+            const withoutDial = pDigits.slice(countryCfg.dial.length);
+            if (countryCfg.lengths.includes(withoutDial.length)) {
+              pDigits = withoutDial;
+            }
+          }
+          if (!countryCfg.lengths.includes(pDigits.length)) {
+            return errorResponse(
+              `Le numéro de téléphone pour ${country} doit comporter ${countryCfg.hint} (${pDigits.length} saisi${pDigits.length > 1 ? 's' : ''})`,
+              400,
+              origin
+            );
+          }
+        }
         if (!isStudent && !profession) return errorResponse("La profession ou domaine d'activité est obligatoire", 400, origin);
         if (isStudent && (!finalSchool || !finalFiliere)) {
           return errorResponse("L'école et la filière sont obligatoires pour les étudiants", 400, origin);
