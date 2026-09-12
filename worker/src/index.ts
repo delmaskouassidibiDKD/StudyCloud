@@ -726,11 +726,12 @@ export default {
 
       async function sendConfirmationEmail(toEmail: string, name: string, token: string, appOrigin = 'https://studycloud.dkd-technologies.com', isLogin = false): Promise<void> {
         try {
-          const cleanOrigin = (appOrigin || 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
-          const publicAssetOrigin = (!cleanOrigin || cleanOrigin.includes('localhost') || !cleanOrigin.startsWith('https://'))
-            ? 'https://studycloud.dkd-technologies.com'
-            : cleanOrigin;
-          const confirmUrl = `${cleanOrigin}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
+          // L'URL de confirmation pointe DIRECTEMENT sur le Worker Cloudflare pour afficher la page intermédiaire
+          // et ne jamais rediriger sur le domaine d'accueil de l'application
+          const workerBaseUrl = 'https://api-worker.dkd-technologies.com';
+          const confirmUrl = `${workerBaseUrl}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
+          const publicAssetOrigin = 'https://studycloud.dkd-technologies.com';
+
           const subject = isLogin
             ? '🔐 Confirmez votre connexion - StudyCloud'
             : '🎓 Confirmez votre adresse email - StudyCloud';
@@ -796,13 +797,6 @@ export default {
                   </td>
                 </tr>
               </table>
-
-              <div style="border-left:3px solid #f97316;padding-left:12px;margin:20px 0;">
-                <p style="margin:0;color:#64748b;font-size:12px;line-height:1.5;">
-                  ⏳ <strong>Validité :</strong> Ce lien de confirmation est sécurisé et actif pendant <strong>1 min 30 s</strong>.<br>
-                  🔒 Si vous n'avez pas demandé cette action, vous pouvez ignorer cet email en toute sécurité.
-                </p>
-              </div>
             </td>
           </tr>
           <tr>
@@ -1171,6 +1165,9 @@ export default {
             last_sent_at TEXT NOT NULL,
             blocked_until TEXT,
             expires_at TEXT NOT NULL,
+            confirmed INTEGER DEFAULT 0,
+            confirmed_jwt TEXT,
+            confirmed_at TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
           )`,
           `CREATE TABLE IF NOT EXISTS password_resets (
@@ -1437,6 +1434,11 @@ export default {
             await db.prepare(query).run();
           } catch (e) {}
         }
+
+        // Migration colonnes pour email_verifications
+        try { await db.prepare(`ALTER TABLE email_verifications ADD COLUMN confirmed INTEGER DEFAULT 0`).run(); } catch (e) {}
+        try { await db.prepare(`ALTER TABLE email_verifications ADD COLUMN confirmed_jwt TEXT`).run(); } catch (e) {}
+        try { await db.prepare(`ALTER TABLE email_verifications ADD COLUMN confirmed_at TEXT`).run(); } catch (e) {}
 
         // 3. Index d'unicité sur l'email
         await ensureUsersTableUniqueIndex(db);
@@ -1826,40 +1828,41 @@ export default {
 
       // GET /api/auth/check-verification-status — Polling cross-device pour détecter la confirmation en direct (smartphone -> ordinateur)
       if (path === '/api/auth/check-verification-status' && method === 'GET') {
-        await ensureEmailVerificationsTable(env.DB);
+        await ensureDatabaseSchema(env.DB);
         const emailParam = url.searchParams.get('email');
         if (!emailParam) return errorResponse('Email requis', 400, origin);
         const cleanEmail = emailParam.toLowerCase().trim();
 
-        // 1. Chercher si la confirmation a été enregistrée dans email_verifications
+        // 1. Chercher la vérification la plus récente pour cet email
         const verif: any = await env.DB.prepare(`
           SELECT * FROM email_verifications
-          WHERE LOWER(TRIM(email)) = ? AND confirmed = 1
-          ORDER BY id DESC LIMIT 1
+          WHERE LOWER(TRIM(email)) = ?
+          ORDER BY created_at DESC, id DESC LIMIT 1
         `).bind(cleanEmail).first();
 
-        if (verif && verif.confirmed_jwt) {
-          const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(verif.user_id).first();
-          if (user) {
-            // Nettoyer après détection réussie
-            await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(user.id).run();
-            return jsonResponse({
-              success: true,
-              confirmed: true,
-              token: verif.confirmed_jwt,
-              user: sanitizeUser(user),
-            }, 200, origin);
+        if (verif) {
+          if (Number(verif.confirmed) === 1 && verif.confirmed_jwt) {
+            const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(verif.user_id).first();
+            if (user) {
+              return jsonResponse({
+                success: true,
+                confirmed: true,
+                token: verif.confirmed_jwt,
+                user: sanitizeUser(user),
+              }, 200, origin);
+            }
           }
+          // En attente de confirmation
+          return jsonResponse({
+            success: true,
+            confirmed: false,
+          }, 200, origin);
         }
 
-        // 2. Fallback direct sur la table users : si l'utilisateur a été marqué email_verified = 1
+        // Si aucune ligne dans email_verifications (ex: compte Google direct ou déjà nettoyé)
         const userDirect: any = await env.DB.prepare('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
-        if (userDirect && userDirect.email_verified === 1) {
+        if (userDirect && Number(userDirect.email_verified) === 1) {
           const jwtToken = await createJWT({ userId: userDirect.id, email: userDirect.email, name: userDirect.name });
-          const tokenHash = await hashToken(jwtToken);
-          const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-          await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), userDirect.id, tokenHash, expiresAt).run();
-          await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(userDirect.id).run();
           return jsonResponse({
             success: true,
             confirmed: true,
@@ -1874,19 +1877,20 @@ export default {
         }, 200, origin);
       }
 
-      // GET /api/auth/verify-email — Validation du token de confirmation avec page visuelle et persistance JWT
+      // GET /api/auth/verify-email — Validation du token de confirmation avec page visuelle intermédiaire
       if (path === '/api/auth/verify-email' && method === 'GET') {
-        await ensureEmailVerificationsTable(env.DB);
+        await ensureDatabaseSchema(env.DB);
         const tokenParam = url.searchParams.get('token');
-        const appUrl = (origin !== '*' ? origin : 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
+        const workerUrl = 'https://api-worker.dkd-technologies.com';
 
         if (!tokenParam) {
-          return new Response(getExpiredEmailHtml(appUrl, 'Token de confirmation requis.'), {
+          return new Response(getExpiredEmailHtml(workerUrl, 'Token de confirmation manquant.'), {
             status: 400,
-            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
           });
         }
 
+        // Vérifier si le token est valide et non expiré
         const verif: any = await env.DB.prepare(
           'SELECT * FROM email_verifications WHERE token = ? AND expires_at > CURRENT_TIMESTAMP'
         ).bind(tokenParam).first();
@@ -1899,9 +1903,9 @@ export default {
 
           if (alreadyConfirmed) {
             const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(alreadyConfirmed.user_id).first();
-            return new Response(getSuccessConfirmationHtml(user?.name || 'Membre', alreadyConfirmed.email, appUrl), {
+            return new Response(getSuccessConfirmationHtml(user?.name || 'Membre', alreadyConfirmed.email, workerUrl), {
               status: 200,
-              headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+              headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
             });
           }
 
@@ -1909,22 +1913,22 @@ export default {
           if (accept.includes('application/json') && !accept.includes('text/html')) {
             return errorResponse('Lien de confirmation expiré (validité 1 min 30 s dépassée). Veuillez réclamer un nouveau lien.', 400, origin);
           }
-          return new Response(getExpiredEmailHtml(appUrl), {
+          return new Response(getExpiredEmailHtml(workerUrl, 'Ce lien de confirmation a expiré ou a déjà été utilisé.'), {
             status: 400,
-            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
           });
         }
 
         const userBefore: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(verif.user_id).first();
         if (!userBefore) {
-          return new Response(getExpiredEmailHtml(appUrl, 'Utilisateur introuvable.'), {
+          return new Response(getExpiredEmailHtml(workerUrl, 'Utilisateur introuvable.'), {
             status: 404,
-            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
           });
         }
         const isFirstVerification = userBefore.email_verified === 0;
 
-        // Marquer l'email vérifié
+        // 1. Marquer l'email comme vérifié dans la table users
         await env.DB.prepare(`
           UPDATE users SET
             email_verified = 1,
@@ -1933,13 +1937,13 @@ export default {
           WHERE id = ?
         `).bind(verif.user_id).run();
 
-        // Créer la session JWT
+        // 2. Créer la session JWT
         const jwtToken = await createJWT({ userId: userBefore.id, email: userBefore.email, name: userBefore.name });
         const tokenHash = await hashToken(jwtToken);
         const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
         await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), userBefore.id, tokenHash, expiresAt).run();
 
-        // Marquer dans email_verifications avec le token JWT pour que l'ordinateur détecte automatiquement la validation
+        // 3. Marquer dans email_verifications avec confirmed = 1 et le JWT pour que l'appareil d'origine le détecte immédiatement
         await env.DB.prepare(`
           UPDATE email_verifications SET
             confirmed = 1,
@@ -1956,7 +1960,7 @@ export default {
             Boolean(isUserStudent),
             userBefore.school || '',
             userBefore.filiere || '',
-            appUrl
+            'https://studycloud.dkd-technologies.com'
           );
         }
 
@@ -1971,10 +1975,10 @@ export default {
           }, 200, origin);
         }
 
-        // Afficher la page standalone de confirmation au lieu de rediriger brutalement
-        return new Response(getSuccessConfirmationHtml(userBefore.name, userBefore.email, appUrl), {
+        // Afficher la page intermédiaire officielle sans redirection automatique vers l'accueil
+        return new Response(getSuccessConfirmationHtml(userBefore.name, userBefore.email, workerUrl), {
           status: 200,
-          headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+          headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
         });
       }
 
