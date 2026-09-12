@@ -577,17 +577,28 @@ export function ForgotPasswordFlow({
 
             <form onSubmit={handleFinalReset} className="space-y-3.5">
               <div>
-                <label className="text-xs font-bold text-white/60 mb-1.5 block">
-                  Adresse email du compte
-                </label>
-                <input
-                  type="email"
-                  value={accountEmail}
-                  onChange={(e) => setAccountEmail(e.target.value)}
-                  placeholder="votre@email.com"
-                  required
-                  className="w-full px-4 py-2.5 rounded-xl text-sm font-medium text-white placeholder-white/30 outline-none focus:ring-2 focus:ring-orange-500/50 bg-white/10 border border-white/15"
-                />
+                <div className="flex items-center justify-between mb-1.5">
+                  <label className="text-xs font-bold text-white/60 block">
+                    Adresse email du compte
+                  </label>
+                  <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Compte certifié (non modifiable)
+                  </span>
+                </div>
+                <div className="relative">
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-400" />
+                  <input
+                    type="email"
+                    value={accountEmail}
+                    readOnly
+                    disabled
+                    placeholder="votre@email.com"
+                    required
+                    className="w-full pl-10 pr-10 py-2.5 rounded-xl text-sm font-semibold text-white/90 bg-white/5 border border-emerald-500/40 cursor-not-allowed select-none"
+                  />
+                  <CheckCircle2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-400" />
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
