@@ -16,7 +16,7 @@ export function EmailPendingVerification({
   onBackToLogin,
   onEmailVerified,
 }: EmailPendingVerificationProps) {
-  const [secondsLeft, setSecondsLeft] = useState(90);
+  const [secondsLeft, setSecondsLeft] = useState(70);
   const [blockedUntil, setBlockedUntil] = useState<string | null>(null);
   const [resendCount, setResendCount] = useState(1);
   const [isLoading, setIsLoading] = useState(false);
@@ -99,7 +99,7 @@ export function EmailPendingVerification({
         }
       }
 
-      // Vérifier le décompteur de 60 secondes
+      // Vérifier le décompteur de 70 secondes
       const savedTarget = localStorage.getItem(COOLDOWN_KEY);
       if (savedTarget) {
         const targetTime = parseInt(savedTarget, 10);
@@ -233,9 +233,10 @@ export function EmailPendingVerification({
         localStorage.setItem(COUNT_KEY, newCount.toString());
 
         // Relancer le décompte persistant de 70 secondes
-        const targetTime = Date.now() + COOLDOWN_DURATION_MS;
+        const targetTime = res.nextAllowedAt ? new Date(res.nextAllowedAt).getTime() : (Date.now() + COOLDOWN_DURATION_MS);
         localStorage.setItem(COOLDOWN_KEY, targetTime.toString());
-        setSecondsLeft(70);
+        const remaining = Math.max(0, Math.ceil((targetTime - Date.now()) / 1000));
+        setSecondsLeft(remaining || 70);
 
         // Si bloqué (après 4 tentatives)
         if (res.isBlocked || res.blockedUntil || newCount >= 4) {
