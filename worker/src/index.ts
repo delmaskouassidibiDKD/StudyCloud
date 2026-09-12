@@ -383,19 +383,25 @@ export default {
             }));
         } catch(e) {}
 
-        // 2. Gestion du bouton Retourner à l'application / Fermer
-        document.getElementById('returnApp')?.addEventListener('click', () => {
+        // 2. Tentative de déclenchement d'un deep link si l'app mobile est installée et fermeture
+        document.getElementById('returnApp')?.addEventListener('click', (e) => {
+            e.preventDefault();
+            try {
+                window.location.href = "dkdapp://verified?userId=" + userId;
+            } catch (err) {}
+
             try {
                 window.open('', '_self', '');
                 window.close();
-            } catch (e) {}
+            } catch (err) {}
+
             setTimeout(() => {
                 const hint = document.getElementById('hintText');
                 if (hint) {
                     hint.innerText = "Vous pouvez fermer cet onglet et retourner dans votre application StudyCloud.";
                     hint.style.color = '#38bdf8';
                 }
-            }, 200);
+            }, 500);
         });
     </script>
 </body>
@@ -867,7 +873,8 @@ export default {
           `ALTER TABLE users ADD COLUMN filiere TEXT DEFAULT ''`,
           `ALTER TABLE users ADD COLUMN country TEXT DEFAULT 'Côte d''Ivoire'`,
           `ALTER TABLE users ADD COLUMN level TEXT DEFAULT ''`,
-          `ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''`
+          `ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''`,
+          `ALTER TABLE users ADD COLUMN status TEXT DEFAULT 'pending'`
         ];
         for (const colSql of userColumns) {
           try { await db.prepare(colSql).run(); } catch (e) {}
@@ -1526,39 +1533,51 @@ export default {
       if (path === '/api/auth/check-verification-status' && method === 'GET') {
         await ensureEmailVerificationsTable(env.DB);
         const emailParam = url.searchParams.get('email');
-        if (!emailParam) return errorResponse('Email requis', 400, origin);
-        const cleanEmail = emailParam.toLowerCase().trim();
+        const userIdParam = url.searchParams.get('userId');
+        if (!emailParam && !userIdParam) return errorResponse('Email ou userId requis', 400, origin);
+        const cleanEmail = (emailParam || '').toLowerCase().trim();
 
-        // 1. Chercher si la confirmation a été enregistrée dans email_verifications
-        let verif: any = null;
-        try {
-          verif = await env.DB.prepare(`
-            SELECT * FROM email_verifications
-            WHERE LOWER(TRIM(email)) = ? AND (used = 1 OR confirmed = 1 OR clicked = 1)
-            ORDER BY created_at DESC LIMIT 1
-          `).bind(cleanEmail).first();
-        } catch (e) {
+        // 1. Chercher si l'utilisateur existe dans users
+        let user: any = null;
+        if (cleanEmail) {
+          user = await env.DB.prepare('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
+        } else if (userIdParam) {
+          user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userIdParam).first();
+        }
+
+        if (user) {
+          const isVerified = Number(user.email_verified) === 1 || user.status === 'verified';
+
+          // Vérifier aussi dans email_verifications
+          let verif: any = null;
           try {
             verif = await env.DB.prepare(`
               SELECT * FROM email_verifications
-              WHERE LOWER(TRIM(email)) = ? AND confirmed = 1
-              ORDER BY rowid DESC LIMIT 1
-            `).bind(cleanEmail).first();
-          } catch (e2) {}
-        }
+              WHERE (user_id = ? OR LOWER(TRIM(email)) = ?) AND (used = 1 OR confirmed = 1 OR clicked = 1)
+              ORDER BY created_at DESC LIMIT 1
+            `).bind(user.id, cleanEmail).first();
+          } catch (e) {
+            try {
+              verif = await env.DB.prepare(`
+                SELECT * FROM email_verifications
+                WHERE user_id = ? AND (used = 1 OR confirmed = 1 OR clicked = 1)
+                ORDER BY rowid DESC LIMIT 1
+              `).bind(user.id).first();
+            } catch (e2) {}
+          }
 
-        if (verif) {
-          const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(verif.user_id).first();
-          if (user) {
-            let jwtToken = verif.confirmed_jwt;
+          if (isVerified || verif) {
+            let jwtToken = verif?.confirmed_jwt;
             if (!jwtToken) {
               jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
               const tokenHash = await hashToken(jwtToken);
               const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
               await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, expiresAt).run();
-              try {
-                await env.DB.prepare('UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?').bind(jwtToken, verif.id).run();
-              } catch (e3) {}
+              if (verif) {
+                try {
+                  await env.DB.prepare('UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?').bind(jwtToken, verif.id).run();
+                } catch (e3) {}
+              }
             }
             return jsonResponse({
               success: true,
@@ -1568,22 +1587,6 @@ export default {
               user: sanitizeUser(user),
             }, 200, origin);
           }
-        }
-
-        // 2. Fallback direct sur la table users : si l'utilisateur a été marqué email_verified = 1
-        const userDirect: any = await env.DB.prepare('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
-        if (userDirect && Number(userDirect.email_verified) === 1) {
-          const jwtToken = await createJWT({ userId: userDirect.id, email: userDirect.email, name: userDirect.name });
-          const tokenHash = await hashToken(jwtToken);
-          const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-          await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), userDirect.id, tokenHash, expiresAt).run();
-          return jsonResponse({
-            success: true,
-            confirmed: true,
-            clicked: true,
-            token: jwtToken,
-            user: sanitizeUser(userDirect),
-          }, 200, origin);
         }
 
         return jsonResponse({
@@ -1671,13 +1674,24 @@ export default {
             } catch (e2) {}
           }
 
-          await env.DB.prepare(`
-            UPDATE users SET
-              email_verified = 1,
-              last_active_at = CURRENT_TIMESTAMP,
-              updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).bind(record.user_id).run();
+          try {
+            await env.DB.prepare(`
+              UPDATE users SET
+                email_verified = 1,
+                status = 'verified',
+                last_active_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `).bind(record.user_id).run();
+          } catch (e) {
+            await env.DB.prepare(`
+              UPDATE users SET
+                email_verified = 1,
+                last_active_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `).bind(record.user_id).run();
+          }
 
           const isFirstVerification = userBefore.email_verified === 0;
           if (isFirstVerification) {
