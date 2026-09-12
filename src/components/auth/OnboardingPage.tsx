@@ -445,220 +445,181 @@ export function OnboardingPage() {
         />
       </div>
 
-      <div className="min-h-full w-full flex flex-col items-center justify-start py-8 sm:py-12 px-4 sm:px-6 relative z-10">
-        <div className="w-full max-w-2xl md:max-w-3xl">
-          <div
-            className="w-full rounded-3xl p-6 sm:p-9 shadow-2xl border border-white/10"
-            style={{
-              background: 'rgba(21, 20, 48, 0.88)',
-              backdropFilter: 'blur(24px)',
-              boxShadow: '0 25px 60px -15px rgba(0, 0, 0, 0.7), 0 0 40px rgba(234, 88, 12, 0.08)',
-            }}
-          >
-            {/* Header */}
-            <div className="flex items-center justify-between mb-6">
-              <div className="flex items-center gap-3.5">
-                <DnaLogo className="w-10 h-10 drop-shadow-[0_0_10px_rgba(234,88,12,0.6)] shrink-0" glow={true} />
-                <div>
-                  <div className="flex items-center gap-1.5 notranslate leading-none mb-1">
-                    <span className="text-xl font-black tracking-tight">
-                      <span className="text-orange-500">Study</span>
-                      <span className="text-blue-400">Cloud</span>
-                    </span>
-                    <span className="text-[10px] uppercase font-bold tracking-widest px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30">
-                      DKD Technologies
-                    </span>
-                  </div>
-                  <h2 className="text-base font-black text-white leading-tight">
-                    {step === 1 && 'Configuration de votre profil'}
-                    {step === 2 && (isStudent ? 'Votre identité & coordonnées' : 'Informations importantes de votre compte')}
-                    {step === 3 && 'Votre établissement & études'}
-                  </h2>
-                  <p className="text-xs text-white/50 font-medium">
-                    {step === 1 && 'Étape 1 sur ' + (isStudent === false ? '2' : '3') + ' · Identification du profil'}
-                    {step === 2 && (isStudent ? 'Étape 2 sur 3 · Coordonnées personnelles' : 'Étape 2 sur 2 · Finalisation du compte')}
-                    {step === 3 && 'Étape 3 sur 3 · Cursus académique'}
-                  </p>
+      <div className="min-h-full w-full flex flex-col items-center justify-start py-8 sm:py-14 px-4 sm:px-8 lg:px-12 relative z-10">
+        <div className="w-full max-w-4xl lg:max-w-5xl">
+          {/* Header */}
+          <div className="flex items-center justify-between mb-6">
+            <div className="flex items-center gap-3.5">
+              <DnaLogo className="w-10 h-10 drop-shadow-[0_0_10px_rgba(234,88,12,0.6)] shrink-0" glow={true} />
+              <div>
+                <div className="flex items-center gap-1.5 notranslate leading-none mb-1">
+                  <span className="text-xl font-black tracking-tight">
+                    <span className="text-orange-500">Study</span>
+                    <span className="text-blue-400">Cloud</span>
+                  </span>
+                  <span className="text-[10px] uppercase font-bold tracking-widest px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-400 border border-orange-500/30">
+                    DKD Technologies
+                  </span>
                 </div>
-              </div>
-
-              <div className="flex items-center gap-2.5">
-                {/* Décompteur de 20 minutes */}
-                <div
-                  className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-xs font-bold transition-all shadow-sm ${
-                    timeLeft < 180
-                      ? 'bg-red-500/20 border-red-500/50 text-red-300 animate-pulse'
-                      : 'bg-orange-500/10 border-orange-500/30 text-orange-300'
-                  }`}
-                  title="Délai restant pour finaliser votre inscription"
-                >
-                  <Clock className="w-3.5 h-3.5" />
-                  <span>{formatTime(timeLeft)}</span>
-                </div>
-
-                <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[11px] font-semibold text-white/70">
-                  <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-                  <span>Compte sécurisé</span>
-                </div>
+                <h2 className="text-base font-black text-white leading-tight">
+                  {step === 1 && 'Configuration de votre profil'}
+                  {step === 2 && (isStudent ? 'Votre identité & coordonnées' : 'Informations importantes de votre compte')}
+                  {step === 3 && 'Votre établissement & études'}
+                </h2>
+                <p className="text-xs text-white/50 font-medium">
+                  {step === 1 && 'Étape 1 sur ' + (isStudent === false ? '2' : '3') + ' · Identification du profil'}
+                  {step === 2 && (isStudent ? 'Étape 2 sur 3 · Coordonnées personnelles' : 'Étape 2 sur 2 · Finalisation du compte')}
+                  {step === 3 && 'Étape 3 sur 3 · Cursus académique'}
+                </p>
               </div>
             </div>
 
-            {/* Progress bar */}
-            <div className="w-full h-2 rounded-full mb-8" style={{ background: 'rgba(255,255,255,0.08)' }}>
+            <div className="flex items-center gap-2.5">
+              {/* Décompteur de 20 minutes */}
               <div
-                className="h-2 rounded-full transition-all duration-500"
-                style={{
-                  width: `${getProgressPercentage()}%`,
-                  background: 'linear-gradient(90deg, #EA580C, #10B981)',
-                  boxShadow: '0 0 14px rgba(234,88,12,0.6)',
-                }}
-              />
-            </div>
-
-            {/* Message d'erreur global */}
-            {error && (
-              <div
-                className="mb-6 p-4 rounded-2xl flex items-start gap-3 animate-shake"
-                style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)' }}
+                className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-xs font-bold transition-all shadow-sm ${
+                  timeLeft < 180
+                    ? 'bg-red-500/20 border-red-500/50 text-red-300 animate-pulse'
+                    : 'bg-orange-500/10 border-orange-500/30 text-orange-300'
+                }`}
+                title="Délai restant pour finaliser votre inscription"
               >
-                <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
-                <p className="text-xs sm:text-sm text-red-300 font-medium leading-relaxed">{error}</p>
+                <Clock className="w-3.5 h-3.5" />
+                <span>{formatTime(timeLeft)}</span>
               </div>
-            )}
 
-            {/* ════════════════════════════════════════════════════════════════════════
-                ÉTAPE 1 : QUESTION ESSENTIELLE : "Êtes-vous étudiant ?"
-                ════════════════════════════════════════════════════════════════════════ */}
-            {step === 1 && (
-              <div className="space-y-6 sm:space-y-7">
-                <div className="text-center sm:text-left">
-                  <div className="inline-flex items-center px-3.5 py-1 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-400 text-xs font-bold uppercase tracking-wider mb-3">
-                    Question essentielle
-                  </div>
-                  <h3 className="text-xl sm:text-2xl font-black text-white tracking-tight">
-                    Êtes-vous actuellement étudiant ?
-                  </h3>
-                  <p className="text-xs sm:text-sm text-white/60 mt-2 font-medium leading-relaxed max-w-xl">
-                    Afin de vous proposer des services et une expérience parfaitement adaptés à vos besoins.
-                  </p>
+              <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[11px] font-semibold text-white/70">
+                <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+                <span>Compte sécurisé</span>
+              </div>
+            </div>
+          </div>
+
+          {/* Progress bar */}
+          <div className="w-full h-2.5 rounded-full mb-8 sm:mb-10" style={{ background: 'rgba(255,255,255,0.08)' }}>
+            <div
+              className="h-2.5 rounded-full transition-all duration-500"
+              style={{
+                width: `${getProgressPercentage()}%`,
+                background: 'linear-gradient(90deg, #EA580C, #10B981)',
+                boxShadow: '0 0 14px rgba(234,88,12,0.6)',
+              }}
+            />
+          </div>
+
+          {/* Message d'erreur global */}
+          {error && (
+            <div
+              className="mb-6 p-4 rounded-2xl flex items-start gap-3 animate-shake"
+              style={{ background: 'rgba(239, 68, 68, 0.15)', border: '1px solid rgba(239, 68, 68, 0.35)' }}
+            >
+              <AlertCircle className="w-5 h-5 text-red-400 shrink-0 mt-0.5" />
+              <p className="text-xs sm:text-sm text-red-300 font-medium leading-relaxed">{error}</p>
+            </div>
+          )}
+
+          {/* ════════════════════════════════════════════════════════════════════════
+              ÉTAPE 1 : QUESTION ESSENTIELLE : "Êtes-vous étudiant ?"
+              ════════════════════════════════════════════════════════════════════════ */}
+          {step === 1 && (
+            <div className="space-y-8 sm:space-y-10">
+              <div className="text-center">
+                <div className="inline-flex items-center px-4 py-1.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-orange-400 text-xs font-bold uppercase tracking-wider mb-3">
+                  Question essentielle
                 </div>
+                <h3 className="text-2xl sm:text-3xl lg:text-4xl font-black text-white tracking-tight">
+                  Êtes-vous actuellement étudiant ?
+                </h3>
+                <p className="text-sm sm:text-base text-white/60 mt-2 font-medium leading-relaxed max-w-xl mx-auto">
+                  Afin de vous proposer des services et une expérience parfaitement adaptés à vos besoins.
+                </p>
+              </div>
 
-                {/* 2 Grandes Cartes de Choix Interactives avec détails complets */}
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-5 pt-1">
-                  {/* Option 1 : OUI, JE SUIS ÉTUDIANT */}
-                  <div
-                    id="onboard-choice-student"
-                    onClick={() => {
-                      setIsStudent(true);
-                      setError(null);
-                    }}
-                    className={`relative p-6 sm:p-7 rounded-2xl cursor-pointer transition-all duration-300 flex flex-col justify-between ${
-                      isStudent === true
-                        ? 'ring-2 ring-emerald-400 bg-emerald-500/15 scale-[1.02] shadow-[0_0_30px_rgba(16,185,129,0.3)]'
-                        : 'bg-white/[0.04] hover:bg-white/[0.08] hover:scale-[1.01] border border-white/10'
-                    }`}
-                    style={{ backdropFilter: 'blur(16px)' }}
-                  >
-                    {isStudent === true && (
-                      <div className="absolute top-5 right-5 w-6 h-6 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-lg">
-                        <Check className="w-4 h-4 stroke-[3]" />
-                      </div>
-                    )}
-
-                    <div>
-                      <div className="w-14 h-14 rounded-2xl bg-white border-2 border-emerald-400/80 flex items-center justify-center mb-5 p-1.5 shadow-[0_0_20px_rgba(16,185,129,0.35)] overflow-hidden">
-                        <img src={studentLogo} alt="Profil étudiant" className="w-full h-full object-contain" />
-                      </div>
-
-                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-emerald-400 block mb-1">
-                        Profil académique
-                      </span>
-                      <h4 className="text-lg font-bold text-white mb-2">
-                        Oui, je suis étudiant
-                      </h4>
-                      <p className="text-xs text-white/60 font-medium leading-relaxed mb-4">
-                        Vous êtes au lycée, à l'université, en BTS, en école supérieure ou en préparation de concours.
-                      </p>
-
-                      {/* Points clés */}
-                      <ul className="space-y-2 border-t border-white/10 pt-4 text-xs text-white/70">
-                        <li className="flex items-center gap-2">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                          <span>Calculateur de moyennes & coefficients</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                          <span>Emploi du temps & gestion des matières</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-emerald-400 shrink-0" />
-                          <span>Dossiers de révision & cours partagés</span>
-                        </li>
-                      </ul>
+              {/* 2 Grandes Cartes de Choix Interactives sans les points d'informations */}
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-6 lg:gap-8 pt-1">
+                {/* Option 1 : OUI, JE SUIS ÉTUDIANT */}
+                <div
+                  id="onboard-choice-student"
+                  onClick={() => {
+                    setIsStudent(true);
+                    setError(null);
+                  }}
+                  className={`relative p-8 sm:p-10 rounded-3xl cursor-pointer transition-all duration-300 flex flex-col justify-between ${
+                    isStudent === true
+                      ? 'ring-2 ring-emerald-400 bg-emerald-500/15 scale-[1.02] shadow-[0_0_35px_rgba(16,185,129,0.3)]'
+                      : 'bg-white/[0.04] hover:bg-white/[0.08] hover:scale-[1.01] border border-white/10'
+                  }`}
+                  style={{ backdropFilter: 'blur(16px)' }}
+                >
+                  {isStudent === true && (
+                    <div className="absolute top-6 right-6 w-7 h-7 rounded-full bg-emerald-500 flex items-center justify-center text-white shadow-lg">
+                      <Check className="w-4 h-4 stroke-[3]" />
                     </div>
-                  </div>
+                  )}
 
-                  {/* Option 2 : NON, JE NE SUIS PAS ÉTUDIANT */}
-                  <div
-                    id="onboard-choice-non-student"
-                    onClick={() => {
-                      setIsStudent(false);
-                      setError(null);
-                    }}
-                    className={`relative p-6 sm:p-7 rounded-2xl cursor-pointer transition-all duration-300 flex flex-col justify-between ${
-                      isStudent === false
-                        ? 'ring-2 ring-orange-500 bg-orange-500/15 scale-[1.02] shadow-[0_0_30px_rgba(234,88,12,0.3)]'
-                        : 'bg-white/[0.04] hover:bg-white/[0.08] hover:scale-[1.01] border border-white/10'
-                    }`}
-                    style={{ backdropFilter: 'blur(16px)' }}
-                  >
-                    {isStudent === false && (
-                      <div className="absolute top-5 right-5 w-6 h-6 rounded-full bg-orange-500 flex items-center justify-center text-white shadow-lg">
-                        <Check className="w-4 h-4 stroke-[3]" />
-                      </div>
-                    )}
-
-                    <div>
-                      <div className="w-14 h-14 rounded-2xl bg-white border-2 border-orange-400/80 flex items-center justify-center mb-5 p-1.5 shadow-[0_0_20px_rgba(234,88,12,0.35)] overflow-hidden">
-                        <img src={proLogo} alt="Profil standard / pro" className="w-full h-full object-contain" />
-                      </div>
-
-                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-orange-400 block mb-1">
-                        Profil standard / Pro
-                      </span>
-                      <h4 className="text-lg font-bold text-white mb-2">
-                        Non, je ne suis pas étudiant
-                      </h4>
-                      <p className="text-xs text-white/60 font-medium leading-relaxed mb-4">
-                        Vous êtes un professionnel, un enseignant, un particulier, un commerçant ou un indépendant.
-                      </p>
-
-                      {/* Points clés */}
-                      <ul className="space-y-2 border-t border-white/10 pt-4 text-xs text-white/70">
-                        <li className="flex items-center gap-2">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                          <span>Pas de questionnaire scolaire à remplir</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                          <span>Stockage cloud, IA & partage de fichiers</span>
-                        </li>
-                        <li className="flex items-center gap-2">
-                          <CheckCircle2 className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-                          <span>Accès direct à la boutique & aux services</span>
-                        </li>
-                      </ul>
+                  <div>
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white border-2 border-emerald-400/80 flex items-center justify-center mb-6 p-2 shadow-[0_0_20px_rgba(16,185,129,0.35)] overflow-hidden">
+                      <img src={studentLogo} alt="Profil étudiant" className="w-full h-full object-contain" />
                     </div>
+
+                    <span className="text-xs font-extrabold uppercase tracking-widest text-emerald-400 block mb-2">
+                      Profil académique
+                    </span>
+                    <h4 className="text-xl sm:text-2xl font-black text-white mb-3">
+                      Oui, je suis étudiant
+                    </h4>
+                    <p className="text-sm text-white/70 font-medium leading-relaxed">
+                      Vous êtes au lycée, à l'université, en BTS, en école supérieure ou en préparation de concours.
+                    </p>
                   </div>
                 </div>
 
+                {/* Option 2 : NON, JE NE SUIS PAS ÉTUDIANT */}
+                <div
+                  id="onboard-choice-non-student"
+                  onClick={() => {
+                    setIsStudent(false);
+                    setError(null);
+                  }}
+                  className={`relative p-8 sm:p-10 rounded-3xl cursor-pointer transition-all duration-300 flex flex-col justify-between ${
+                    isStudent === false
+                      ? 'ring-2 ring-orange-500 bg-orange-500/15 scale-[1.02] shadow-[0_0_35px_rgba(234,88,12,0.3)]'
+                      : 'bg-white/[0.04] hover:bg-white/[0.08] hover:scale-[1.01] border border-white/10'
+                  }`}
+                  style={{ backdropFilter: 'blur(16px)' }}
+                >
+                  {isStudent === false && (
+                    <div className="absolute top-6 right-6 w-7 h-7 rounded-full bg-orange-500 flex items-center justify-center text-white shadow-lg">
+                      <Check className="w-4 h-4 stroke-[3]" />
+                    </div>
+                  )}
+
+                  <div>
+                    <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-white border-2 border-orange-400/80 flex items-center justify-center mb-6 p-2 shadow-[0_0_20px_rgba(234,88,12,0.35)] overflow-hidden">
+                      <img src={proLogo} alt="Profil standard / pro" className="w-full h-full object-contain" />
+                    </div>
+
+                    <span className="text-xs font-extrabold uppercase tracking-widest text-orange-400 block mb-2">
+                      Profil standard / Pro
+                    </span>
+                    <h4 className="text-xl sm:text-2xl font-black text-white mb-3">
+                      Non, je ne suis pas étudiant
+                    </h4>
+                    <p className="text-sm text-white/70 font-medium leading-relaxed">
+                      Vous êtes un professionnel, un enseignant, un particulier, un commerçant ou un indépendant.
+                    </p>
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 flex justify-center">
                 <button
                   id="onboard-continue-btn"
                   type="button"
                   onClick={handleProceedFromStep1}
-                  className={`w-full py-4 px-6 rounded-2xl font-black text-white text-base flex items-center justify-center gap-2 transition-all cursor-pointer shadow-xl mt-4 ${
+                  className={`w-full sm:max-w-md py-4 sm:py-5 px-8 rounded-2xl font-black text-white text-base sm:text-lg flex items-center justify-center gap-2.5 transition-all cursor-pointer shadow-xl ${
                     isStudent !== null
-                      ? 'hover:scale-[1.01] active:scale-[0.99] opacity-100'
+                      ? 'hover:scale-[1.02] active:scale-[0.99] opacity-100'
                       : 'opacity-70 hover:opacity-90'
                   }`}
                   style={{
@@ -668,15 +629,16 @@ export function OnboardingPage() {
                         : 'linear-gradient(135deg, #EA580C, #F97316)',
                     boxShadow:
                       isStudent === true
-                        ? '0 8px 25px rgba(16,185,129,0.45)'
-                        : '0 8px 25px rgba(234,88,12,0.45)',
+                        ? '0 8px 30px rgba(16,185,129,0.45)'
+                        : '0 8px 30px rgba(234,88,12,0.45)',
                   }}
                 >
                   Continuer
-                  <ChevronRight className="w-5 h-5" />
+                  <ChevronRight className="w-5 h-5 sm:w-6 sm:h-6" />
                 </button>
               </div>
-            )}
+            </div>
+          )}
 
             {/* ════════════════════════════════════════════════════════════════════════
                 ÉTAPE 2 :
@@ -684,7 +646,7 @@ export function OnboardingPage() {
                 - Si ÉTUDIANT : Coordonnées (Nom, Pays, Tel, Avatar)
                 ════════════════════════════════════════════════════════════════════════ */}
             {step === 2 && (
-              <form onSubmit={handleStep2Submit} className="space-y-6 sm:space-y-7">
+              <form onSubmit={handleStep2Submit} className="space-y-6 sm:space-y-8 bg-white/[0.03] border border-white/10 rounded-3xl p-6 sm:p-10 backdrop-blur-xl shadow-2xl">
                 {/* Bannière explicative pour non-étudiant */}
                 {!isStudent && (
                   <div
@@ -1016,7 +978,7 @@ export function OnboardingPage() {
                 ÉTAPE 3 : PARCOURS ACADÉMIQUE (UNIQUEMENT POUR LES ÉTUDIANTS)
                 ════════════════════════════════════════════════════════════════════════ */}
             {step === 3 && isStudent && (
-              <form onSubmit={handleStep3Submit} className="space-y-6 sm:space-y-7">
+              <form onSubmit={handleStep3Submit} className="space-y-6 sm:space-y-8 bg-white/[0.03] border border-white/10 rounded-3xl p-6 sm:p-10 backdrop-blur-xl shadow-2xl">
                 <div className="space-y-5">
                   <div className="border-b border-white/10 pb-2">
                     <p className="text-xs font-bold text-emerald-400 uppercase tracking-widest">
@@ -1153,11 +1115,10 @@ export function OnboardingPage() {
               </form>
             )}
 
-            {/* Footnote */}
-            <p className="text-xs text-white/30 font-medium text-center mt-8 leading-relaxed">
-              Ces informations permettent de configurer votre profil et de vous proposer les outils adaptés.
-            </p>
-          </div>
+          {/* Footnote */}
+          <p className="text-xs sm:text-sm text-white/30 font-medium text-center mt-8 sm:mt-10 leading-relaxed">
+            Ces informations permettent de configurer votre profil et de vous proposer les outils adaptés.
+          </p>
         </div>
       </div>
     </div>
