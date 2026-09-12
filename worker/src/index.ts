@@ -418,9 +418,10 @@ export default {
           await db.prepare(`
             CREATE TABLE IF NOT EXISTS email_verifications (
               id TEXT PRIMARY KEY,
-              user_id TEXT NOT NULL,
+              user_id TEXT,
               email TEXT NOT NULL,
               token TEXT NOT NULL,
+              payload TEXT,
               resend_count INTEGER DEFAULT 1,
               last_sent_at TEXT NOT NULL,
               blocked_until TEXT,
@@ -433,6 +434,7 @@ export default {
           `).run();
         } catch (e) {}
         const cols = [
+          'ALTER TABLE email_verifications ADD COLUMN payload TEXT',
           'ALTER TABLE email_verifications ADD COLUMN used INTEGER DEFAULT 0',
           'ALTER TABLE email_verifications ADD COLUMN confirmed INTEGER DEFAULT 0',
           'ALTER TABLE email_verifications ADD COLUMN clicked INTEGER DEFAULT 0',
@@ -881,6 +883,7 @@ export default {
         }
 
         const emailVerifCols = [
+          'ALTER TABLE email_verifications ADD COLUMN payload TEXT',
           'ALTER TABLE email_verifications ADD COLUMN used INTEGER DEFAULT 0',
           'ALTER TABLE email_verifications ADD COLUMN confirmed INTEGER DEFAULT 0',
           'ALTER TABLE email_verifications ADD COLUMN clicked INTEGER DEFAULT 0',
@@ -900,9 +903,10 @@ export default {
         const tableQueries = [
           `CREATE TABLE IF NOT EXISTS email_verifications (
             id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
+            user_id TEXT,
             email TEXT NOT NULL,
             token TEXT NOT NULL UNIQUE,
+            payload TEXT,
             resend_count INTEGER DEFAULT 1,
             last_sent_at TEXT NOT NULL,
             blocked_until TEXT,
@@ -1300,8 +1304,8 @@ export default {
         const answer2Hash = securityAnswer2 ? await hashToken(securityAnswer2.slice(0, 30).toLowerCase().trim()) : '';
 
         if (existing) {
-          // 1. Si le compte est déjà actif, vérifié ou finalisé : avertir immédiatement
-          if (existing.is_onboarded === 1 || existing.email_verified === 1) {
+          // Si le compte est déjà actif, vérifié ou avec mot de passe : avertir immédiatement
+          if (existing.is_onboarded === 1 || existing.email_verified === 1 || existing.password_hash) {
             return jsonResponse({
               success: false,
               alreadyRegistered: true,
@@ -1310,100 +1314,41 @@ export default {
             }, 409, origin);
           }
 
-          // 2. Si le compte existe mais que l'email n'est pas encore vérifié : renvoyer le lien et mettre à jour les identifiants
-          if (existing.email_verified === 0) {
-            const passwordHash = await hashPassword(password);
-            await env.DB.prepare(`
-              UPDATE users SET
-                name = ?,
-                password_hash = ?,
-                security_question_1 = ?,
-                security_answer_1_hash = ?,
-                security_question_2 = ?,
-                security_answer_2_hash = ?,
-                last_active_at = CURRENT_TIMESTAMP,
-                updated_at = CURRENT_TIMESTAMP
-              WHERE id = ?
-            `).bind(name.trim(), passwordHash, q1, answer1Hash, q2, answer2Hash, existing.id).run();
-
-            const verificationToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
-            const expiresAt = new Date(Date.now() + 70 * 1000).toISOString();
-
-            await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(existing.id).run();
-            await env.DB.prepare(`
-              INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
-              VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
-            `).bind(generateId(), existing.id, cleanEmail, verificationToken, expiresAt).run();
-
-            const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
-            await sendConfirmationEmail(cleanEmail, name.trim(), verificationToken, clientOrigin);
-
-            return jsonResponse({
-              success: true,
-              requiresVerification: true,
-              email: cleanEmail,
-              resendCount: 1,
-              maxCount: 4,
-              nextAllowedAt: new Date(Date.now() + 70 * 1000).toISOString(),
-              message: 'Un email de confirmation vous a été envoyé.',
-            }, 200, origin);
-          }
-
-          // 3. Si l'email est déjà vérifié mais que les questionnaires d'onboarding ne sont pas encore finalisés (is_onboarded = 0)
-          // L'utilisateur tente de recréer son compte ou change d'appareil : AUCUN nouveau compte n'est créé,
-          // on reconnecte directement l'utilisateur et on le renvoie sur ses questionnaires !
-          const passwordHash = await hashPassword(password);
-          await env.DB.prepare(`
-            UPDATE users SET
-              name = COALESCE(?, name),
-              password_hash = ?,
-              security_question_1 = COALESCE(?, security_question_1),
-              security_answer_1_hash = CASE WHEN ? != '' THEN ? ELSE security_answer_1_hash END,
-              security_question_2 = COALESCE(?, security_question_2),
-              security_answer_2_hash = CASE WHEN ? != '' THEN ? ELSE security_answer_2_hash END,
-              last_active_at = CURRENT_TIMESTAMP,
-              updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).bind(name.trim() || null, passwordHash, q1, answer1Hash, answer1Hash, q2, answer2Hash, answer2Hash, existing.id).run();
-
-          const token = await createJWT({ userId: existing.id, email: existing.email, name: existing.name });
-          const tokenHash = await hashToken(token);
-          const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-          await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), existing.id, tokenHash, expiresAt).run();
-
-          const safeUser = sanitizeUser(existing);
-          return jsonResponse({
-            success: true,
-            requiresOnboarding: true,
-            token,
-            user: safeUser,
-            message: "Inscription déjà en cours détectée : reprise immédiate de vos questionnaires d'onboarding...",
-          }, 200, origin);
+          // Nettoyage si ancien compte fantôme non vérifié
+          try {
+            await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(existing.id).run();
+          } catch (e) {}
         }
 
         const userId = generateId();
         const passwordHash = await hashPassword(password);
-        await env.DB.prepare(`
-          INSERT INTO users (
-            id, name, email, password_hash, provider, email_verified, is_onboarded,
-            security_question_1, security_answer_1_hash, security_question_2, security_answer_2_hash,
-            last_active_at, created_at, updated_at
-          )
-          VALUES (?, ?, ?, ?, 'email', 0, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        `).bind(userId, name.trim(), cleanEmail, passwordHash, q1, answer1Hash, q2, answer2Hash).run();
-
-        await env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)').bind(userId).run();
+        const registrationPayload = JSON.stringify({
+          userId,
+          name: name.trim(),
+          email: cleanEmail,
+          passwordHash,
+          securityQuestion1: q1,
+          securityAnswer1Hash: answer1Hash,
+          securityQuestion2: q2,
+          securityAnswer2Hash: answer2Hash,
+        });
 
         // Création du token de confirmation (valable 70 secondes, calé exactement sur le décompteur)
         const verificationToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
         const expiresAt = new Date(Date.now() + 70 * 1000).toISOString();
+
+        // Nettoyer les anciennes demandes pour cet email
+        await env.DB.prepare('DELETE FROM email_verifications WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).run();
+
+        // Stocker TOUTES les données temporairement dans email_verifications.payload
+        // AUCUNE insertion dans la table users tant que l'email n'est pas confirmé !
         await env.DB.prepare(`
-          INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
-          VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
-        `).bind(generateId(), userId, cleanEmail, verificationToken, expiresAt).run();
+          INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, last_sent_at, expires_at)
+          VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+        `).bind(generateId(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
 
         const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
-        await sendConfirmationEmail(cleanEmail, name.trim(), verificationToken, clientOrigin);
+        await sendConfirmationEmail(cleanEmail, name.trim(), verificationToken, clientOrigin, false);
 
         return jsonResponse({
           success: true,
@@ -1424,11 +1369,20 @@ export default {
         if (!isValidEmail(email)) return errorResponse('Format d\'adresse email invalide (ex: exemple@gmail.com)', 400, origin);
 
         const cleanEmail = email.toLowerCase().trim();
-        const user: any = await env.DB.prepare('SELECT id, name, email_verified FROM users WHERE email = ?').bind(cleanEmail).first();
-        if (!user) return errorResponse('Aucun compte trouvé avec cet email', 404, origin);
-        const isLoginFlow = user.email_verified === 1;
+        const user: any = await env.DB.prepare('SELECT id, name, email_verified FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
+        const verif: any = await env.DB.prepare('SELECT * FROM email_verifications WHERE LOWER(TRIM(email)) = ? ORDER BY created_at DESC LIMIT 1').bind(cleanEmail).first();
 
-        const verif: any = await env.DB.prepare('SELECT * FROM email_verifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1').bind(user.id).first();
+        if (!user && !verif) return errorResponse('Aucune demande en attente pour cet email', 404, origin);
+
+        let userName = user?.name || 'Étudiant';
+        const isLoginFlow = user ? user.email_verified === 1 : false;
+
+        if (verif?.payload) {
+          try {
+            const p = JSON.parse(verif.payload);
+            if (p.name) userName = p.name;
+          } catch (e) {}
+        }
 
         const now = Date.now();
         const THREE_HOURS_MS = 3 * 3600 * 1000;
@@ -1452,7 +1406,7 @@ export default {
             }
           }
 
-          // 2. Vérification du décompte de 60 secondes entre deux renvois
+          // 2. Vérification du décompte de 70 secondes entre deux renvois
           if (verif.last_sent_at) {
             const lastSentTime = new Date(verif.last_sent_at).getTime();
             const elapsed = now - lastSentTime;
@@ -1496,7 +1450,7 @@ export default {
           `).bind(newToken, newCount, blockedUntil, newExpiresAt, verif.id).run();
 
           const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
-          await sendConfirmationEmail(cleanEmail, user.name, newToken, clientOrigin, isLoginFlow);
+          await sendConfirmationEmail(cleanEmail, userName, newToken, clientOrigin, isLoginFlow);
 
           return jsonResponse({
             success: true,
@@ -1513,10 +1467,10 @@ export default {
           await env.DB.prepare(`
             INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
             VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
-          `).bind(generateId(), user.id, cleanEmail, newToken, newExpiresAt).run();
+          `).bind(generateId(), user?.id || generateId(), cleanEmail, newToken, newExpiresAt).run();
 
           const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
-          await sendConfirmationEmail(cleanEmail, user.name, newToken, clientOrigin, isLoginFlow);
+          await sendConfirmationEmail(cleanEmail, userName, newToken, clientOrigin, isLoginFlow);
 
           return jsonResponse({
             success: true,
@@ -1537,47 +1491,36 @@ export default {
         if (!emailParam && !userIdParam) return errorResponse('Email ou userId requis', 400, origin);
         const cleanEmail = (emailParam || '').toLowerCase().trim();
 
-        // 1. Chercher si l'utilisateur existe dans users
-        let user: any = null;
-        if (cleanEmail) {
-          user = await env.DB.prepare('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
-        } else if (userIdParam) {
-          user = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userIdParam).first();
-        }
-
-        if (user) {
-          const isVerified = Number(user.email_verified) === 1 || user.status === 'verified';
-
-          // Vérifier aussi dans email_verifications
-          let verif: any = null;
+        // 1. Chercher dans email_verifications si une confirmation a été validée
+        let verif: any = null;
+        try {
+          verif = await env.DB.prepare(`
+            SELECT * FROM email_verifications
+            WHERE (LOWER(TRIM(email)) = ? OR user_id = ?) AND (used = 1 OR confirmed = 1 OR clicked = 1)
+            ORDER BY created_at DESC LIMIT 1
+          `).bind(cleanEmail, userIdParam || '').first();
+        } catch (e) {
           try {
             verif = await env.DB.prepare(`
               SELECT * FROM email_verifications
-              WHERE (user_id = ? OR LOWER(TRIM(email)) = ?) AND (used = 1 OR confirmed = 1 OR clicked = 1)
-              ORDER BY created_at DESC LIMIT 1
-            `).bind(user.id, cleanEmail).first();
-          } catch (e) {
-            try {
-              verif = await env.DB.prepare(`
-                SELECT * FROM email_verifications
-                WHERE user_id = ? AND (used = 1 OR confirmed = 1 OR clicked = 1)
-                ORDER BY rowid DESC LIMIT 1
-              `).bind(user.id).first();
-            } catch (e2) {}
-          }
+              WHERE LOWER(TRIM(email)) = ? AND (used = 1 OR confirmed = 1 OR clicked = 1)
+              ORDER BY rowid DESC LIMIT 1
+            `).bind(cleanEmail).first();
+          } catch (e2) {}
+        }
 
-          if (isVerified || verif) {
+        if (verif) {
+          const user = await env.DB.prepare('SELECT * FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?').bind(verif.user_id, cleanEmail).first();
+          if (user) {
             let jwtToken = verif?.confirmed_jwt;
             if (!jwtToken) {
               jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
               const tokenHash = await hashToken(jwtToken);
               const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
               await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, expiresAt).run();
-              if (verif) {
-                try {
-                  await env.DB.prepare('UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?').bind(jwtToken, verif.id).run();
-                } catch (e3) {}
-              }
+              try {
+                await env.DB.prepare('UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?').bind(jwtToken, verif.id).run();
+              } catch (e3) {}
             }
             return jsonResponse({
               success: true,
@@ -1587,6 +1530,27 @@ export default {
               user: sanitizeUser(user),
             }, 200, origin);
           }
+        }
+
+        // 2. Si l'utilisateur est déjà dans users avec email_verified = 1
+        let userDirect: any = null;
+        if (cleanEmail) {
+          userDirect = await env.DB.prepare('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
+        } else if (userIdParam) {
+          userDirect = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(userIdParam).first();
+        }
+        if (userDirect && Number(userDirect.email_verified) === 1) {
+          const jwtToken = await createJWT({ userId: userDirect.id, email: userDirect.email, name: userDirect.name });
+          const tokenHash = await hashToken(jwtToken);
+          const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+          await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), userDirect.id, tokenHash, expiresAt).run();
+          return jsonResponse({
+            success: true,
+            confirmed: true,
+            clicked: true,
+            token: jwtToken,
+            user: sanitizeUser(userDirect),
+          }, 200, origin);
         }
 
         return jsonResponse({
@@ -1641,16 +1605,69 @@ export default {
             return htmlResponse("Lien expiré", "Ce lien ne peut plus être utilisé car son délai de validité (70 secondes) a expiré. Veuillez réclamer un nouveau lien depuis l'application.", false);
           }
 
-          const userBefore: any = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(record.user_id).first();
-          if (!userBefore) {
+          let user: any = null;
+          let isNewUser = false;
+
+          // Si payload présent : CRÉATION DE L'UTILISATEUR DANS LA VRAIE TABLE USERS UNIQUEMENT MAINTENANT
+          if (record.payload) {
+            try {
+              const userData = JSON.parse(record.payload);
+              const userId = userData.userId || record.user_id || generateId();
+
+              await env.DB.prepare(`
+                INSERT INTO users (
+                  id, name, email, password_hash, provider, email_verified, is_onboarded,
+                  security_question_1, security_answer_1_hash, security_question_2, security_answer_2_hash,
+                  last_active_at, created_at, updated_at
+                )
+                VALUES (?, ?, ?, ?, 'email', 1, 0, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET
+                  email_verified = 1,
+                  last_active_at = CURRENT_TIMESTAMP,
+                  updated_at = CURRENT_TIMESTAMP
+              `).bind(
+                userId,
+                userData.name || 'Étudiant',
+                userData.email,
+                userData.passwordHash || '',
+                userData.securityQuestion1 || 'Quelle est votre ville de naissance ?',
+                userData.securityAnswer1Hash || '',
+                userData.securityQuestion2 || 'Quel est le prénom de votre mère ?',
+                userData.securityAnswer2Hash || ''
+              ).run();
+
+              await env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)').bind(userId).run();
+
+              user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
+              isNewUser = true;
+            } catch (e) {
+              console.error("Erreur création utilisateur depuis payload:", e);
+            }
+          }
+
+          if (!user && record.user_id) {
+            user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(record.user_id).first();
+          }
+
+          if (!user) {
             return htmlResponse("Compte introuvable", "Le compte associé à ce lien de confirmation est introuvable.", false);
           }
 
-          // 3. Marquer le token comme utilisé et valider le compte
-          const jwtToken = await createJWT({ userId: userBefore.id, email: userBefore.email, name: userBefore.name });
+          // Marquer l'utilisateur comme vérifié
+          await env.DB.prepare(`
+            UPDATE users SET
+              email_verified = 1,
+              status = 'verified',
+              last_active_at = CURRENT_TIMESTAMP,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind(user.id).run();
+
+          // 3. Marquer le token comme utilisé et créer la session
+          const jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
           const tokenHash = await hashToken(jwtToken);
           const sessionExpiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-          await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), userBefore.id, tokenHash, sessionExpiresAt).run();
+          await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, sessionExpiresAt).run();
 
           try {
             await env.DB.prepare(`
@@ -1674,41 +1691,21 @@ export default {
             } catch (e2) {}
           }
 
-          try {
-            await env.DB.prepare(`
-              UPDATE users SET
-                email_verified = 1,
-                status = 'verified',
-                last_active_at = CURRENT_TIMESTAMP,
-                updated_at = CURRENT_TIMESTAMP
-              WHERE id = ?
-            `).bind(record.user_id).run();
-          } catch (e) {
-            await env.DB.prepare(`
-              UPDATE users SET
-                email_verified = 1,
-                last_active_at = CURRENT_TIMESTAMP,
-                updated_at = CURRENT_TIMESTAMP
-              WHERE id = ?
-            `).bind(record.user_id).run();
-          }
-
-          const isFirstVerification = userBefore.email_verified === 0;
-          if (isFirstVerification) {
-            const isUserStudent = userBefore.is_student === 1 || (userBefore.is_student === null && userBefore.school && userBefore.school !== 'Particulier / Professionnel' && userBefore.school !== 'Professionnel / Particulier');
+          if (isNewUser) {
+            const isUserStudent = user.is_student === 1 || (user.is_student === null && user.school && user.school !== 'Particulier / Professionnel' && user.school !== 'Professionnel / Particulier');
             sendWelcomeEmail(
-              userBefore.email,
-              userBefore.name || (isUserStudent ? 'Étudiant' : 'Membre'),
+              user.email,
+              user.name || (isUserStudent ? 'Étudiant' : 'Membre'),
               Boolean(isUserStudent),
-              userBefore.school || '',
-              userBefore.filiere || '',
+              user.school || '',
+              user.filiere || '',
               origin !== '*' ? origin : 'https://studycloud.dkd-technologies.com'
             );
           }
 
           const accept = request.headers.get('Accept') || '';
           if (accept.includes('application/json') && !accept.includes('text/html')) {
-            const safeUser = sanitizeUser(userBefore);
+            const safeUser = sanitizeUser(user);
             return jsonResponse({
               success: true,
               message: 'Adresse email confirmée avec succès !',
@@ -1722,7 +1719,7 @@ export default {
             "Confirmation réussie !",
             "Votre compte a été confirmé avec succès. Vous pouvez maintenant retourner dans l'application pour continuer.",
             true,
-            record.user_id,
+            user.id,
             jwtToken
           );
         } catch (err) {
