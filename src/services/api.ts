@@ -137,6 +137,18 @@ export const StudyCloudAPI = {
     return requestAuth('/api/auth/onboarding', { method: 'PUT', body: JSON.stringify(data) }, token);
   },
 
+  async saveOnboardingDraft(token: string, data: any) {
+    return requestAuth('/api/auth/onboarding/draft', { method: 'PUT', body: JSON.stringify(data) }, token);
+  },
+
+  async cancelUnfinalizedAccount(data: { userId?: string; email?: string }, token?: string) {
+    return request('/api/auth/cancel-unfinalized-account', {
+      method: 'POST',
+      headers: token ? { Authorization: `Bearer ${token}` } : undefined,
+      body: JSON.stringify(data),
+    });
+  },
+
   async sendWelcomeEmail(token: string) {
     return requestAuth('/api/auth/welcome-email', { method: 'POST' }, token);
   },

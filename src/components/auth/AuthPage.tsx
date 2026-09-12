@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Mail, Lock, Eye, EyeOff, ArrowLeft, AlertCircle, CheckCircle2, User, ShieldCheck, KeyRound, UserPlus, X, Sparkles } from 'lucide-react';
 import { StudyCloudAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -142,6 +142,14 @@ export function AuthPage({ onBack }: AuthPageProps) {
     return localStorage.getItem('sc_pending_verification_is_login') === '1';
   });
 
+  useEffect(() => {
+    const expiredNotice = localStorage.getItem('sc_onboarding_expired_notice');
+    if (expiredNotice) {
+      localStorage.removeItem('sc_onboarding_expired_notice');
+      setError(expiredNotice);
+    }
+  }, []);
+
   // ─── Helpers ────────────────────────────────────────────────────────────────
 
   const resetForm = () => {
@@ -243,6 +251,26 @@ export function AuthPage({ onBack }: AuthPageProps) {
         return;
       }
 
+      // Cas 1 : Inscription déjà en cours (onboarding non finalisé sur cet appareil ou un autre)
+      if (res.requiresOnboarding && res.token && res.user) {
+        setSuccess("Une inscription avec cette adresse email est déjà en cours. Reprise de vos questionnaires d'onboarding...");
+        setTimeout(() => {
+          loginWithToken(res.token, res.user);
+        }, 600);
+        return;
+      }
+
+      // Cas 2 : Compte déjà vérifié et actif
+      if (res.alreadyRegistered || (res as any).code === 'ACCOUNT_ALREADY_EXISTS') {
+        setMode('login');
+        setPassword('');
+        setError(null);
+        setAccountNotFoundNotice(
+          `Un compte actif existe déjà avec l'adresse email ${email.trim()}. Veuillez saisir votre mot de passe pour vous connecter ou utilisez le bouton Google.`
+        );
+        return;
+      }
+
       if (res.success && res.token && res.user) {
         setSuccess(mode === 'register' ? 'Compte créé ! Bienvenue 🎉' : 'Connexion réussie !');
         setTimeout(() => {
@@ -252,7 +280,14 @@ export function AuthPage({ onBack }: AuthPageProps) {
         setError(res.error || 'Une erreur est survenue.');
       }
     } catch (err: any) {
-      if (err.userNotFound || err.status === 404 || err.message?.includes('Aucun compte') || err.message?.includes('non trouvé')) {
+      if (err.alreadyRegistered || err.code === 'ACCOUNT_ALREADY_EXISTS' || err.message?.includes('existe déjà')) {
+        setMode('login');
+        setPassword('');
+        setError(null);
+        setAccountNotFoundNotice(
+          `Un compte actif existe déjà avec l'adresse email ${email.trim()}. Veuillez saisir votre mot de passe pour vous connecter ou utilisez le bouton Google.`
+        );
+      } else if (err.userNotFound || err.status === 404 || err.message?.includes('Aucun compte') || err.message?.includes('non trouvé')) {
         setMode('register');
         setPassword('');
         setError(null);

@@ -16,6 +16,7 @@ import {
   Check,
   ShieldCheck,
   Upload,
+  Clock,
   X,
 } from 'lucide-react';
 import { StudyCloudAPI } from '../../services/api';
@@ -65,13 +66,21 @@ const LEVELS = [
 ];
 
 export function OnboardingPage() {
-  const { user, token, updateProfile } = useAuth();
+  const { user, token, updateProfile, logout } = useAuth();
 
-  // Étape 1 : Question "Êtes-vous étudiant ?" (profiling)
-  // Étape 2 : Coordonnées principales (Nom, Pays, Téléphone, etc.)
-  // Étape 3 : Parcours académique (UNIQUEMENT si étudiant)
-  const [step, setStep] = useState<1 | 2 | 3>(1);
-  const [isStudent, setIsStudent] = useState<boolean | null>(null);
+  // Étape 1 : Profiling ("Êtes-vous étudiant ?")
+  // Étape 2 : Identité & coordonnées
+  // Étape 3 : Cursus académique (si étudiant)
+  const [step, setStep] = useState<1 | 2 | 3>(() => {
+    if (user?.school || user?.filiere) return 3;
+    if (user?.phone || user?.country) return 2;
+    return 1;
+  });
+  const [isStudent, setIsStudent] = useState<boolean | null>(() => {
+    if (user?.school && user.school !== 'Particulier / Professionnel') return true;
+    if (user?.school === 'Particulier / Professionnel') return false;
+    return null;
+  });
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
@@ -79,7 +88,7 @@ export function OnboardingPage() {
 
   const fileInputRef = React.useRef<HTMLInputElement | null>(null);
 
-  // Champs généraux (communs à tous)
+  // Champs généraux (communs à tous) - restauration du brouillon si présent
   const [name, setName] = useState(user?.name || '');
   const [country, setCountry] = useState(user?.country || "Côte d'Ivoire");
   const [phone, setPhone] = useState(user?.phone || '');
@@ -96,6 +105,112 @@ export function OnboardingPage() {
   const [school, setSchool] = useState(user?.school || '');
   const [filiere, setFiliere] = useState(user?.filiere || '');
   const [level, setLevel] = useState(user?.level || '');
+
+  // ─── Gestion de l'expiration 20 minutes et inactivité 15 minutes ─────────────
+  const TOTAL_DURATION_SEC = 20 * 60; // 20 minutes maximum
+  const INACTIVITY_LIMIT_MS = 15 * 60 * 1000; // 15 minutes d'inactivité
+
+  const [timeLeft, setTimeLeft] = useState<number>(() => {
+    const key = `sc_onb_start_${user?.id || 'default'}`;
+    let start = localStorage.getItem(key);
+    if (!start) {
+      start = Date.now().toString();
+      localStorage.setItem(key, start);
+    }
+    const elapsed = Math.floor((Date.now() - parseInt(start, 10)) / 1000);
+    return Math.max(0, TOTAL_DURATION_SEC - elapsed);
+  });
+
+  const lastActivityRef = React.useRef<number>(Date.now());
+
+  const handleSessionExpired = React.useCallback(async (reason: 'timeout' | 'inactivity') => {
+    try {
+      if (user?.id || user?.email) {
+        await StudyCloudAPI.cancelUnfinalizedAccount(
+          { userId: user?.id, email: user?.email },
+          token || undefined
+        );
+      }
+    } catch (e) {}
+    localStorage.removeItem(`sc_onb_start_${user?.id || 'default'}`);
+    const message = reason === 'timeout'
+      ? "Votre session d'inscription a expiré (délai de 20 minutes dépassé sans finalisation). Vos données temporaires ont été effacées. Veuillez recommencer."
+      : "Session d'inscription interrompue : vous avez quitté ou été inactif pendant plus de 15 minutes. Vos données temporaires ont été effacées. Veuillez recommencer.";
+    localStorage.setItem('sc_onboarding_expired_notice', message);
+    logout();
+  }, [user, token, logout]);
+
+  // Écoute des interactions pour détecter l'inactivité
+  React.useEffect(() => {
+    const updateActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    window.addEventListener('mousemove', updateActivity, { passive: true });
+    window.addEventListener('keydown', updateActivity, { passive: true });
+    window.addEventListener('touchstart', updateActivity, { passive: true });
+    window.addEventListener('scroll', updateActivity, { passive: true });
+    document.addEventListener('visibilitychange', updateActivity);
+
+    return () => {
+      window.removeEventListener('mousemove', updateActivity);
+      window.removeEventListener('keydown', updateActivity);
+      window.removeEventListener('touchstart', updateActivity);
+      window.removeEventListener('scroll', updateActivity);
+      document.removeEventListener('visibilitychange', updateActivity);
+    };
+  }, []);
+
+  // Décompteur chaque seconde et surveillance de l'inactivité (15 minutes)
+  React.useEffect(() => {
+    const timer = setInterval(() => {
+      const now = Date.now();
+      // 1. Inactivité > 15 minutes
+      if (now - lastActivityRef.current >= INACTIVITY_LIMIT_MS) {
+        clearInterval(timer);
+        handleSessionExpired('inactivity');
+        return;
+      }
+
+      // 2. Décompte global des 20 minutes
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          handleSessionExpired('timeout');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+
+    return () => clearInterval(timer);
+  }, [handleSessionExpired]);
+
+  // Sauvegarde automatique du brouillon pour reprise fluide sur tout appareil
+  React.useEffect(() => {
+    if (!token) return;
+    const save = () => {
+      StudyCloudAPI.saveOnboardingDraft(token, {
+        name,
+        school,
+        filiere,
+        level,
+        country,
+        phone,
+        bio,
+        avatarUrl,
+      }).catch(() => {});
+    };
+    save();
+    const interval = setInterval(save, 30000);
+    return () => clearInterval(interval);
+  }, [token, step, name, school, filiere, level, country, phone, bio, avatarUrl]);
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
 
   // Gestion de l'import direct de l'image (logo ou photo) depuis l'appareil
   const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -247,6 +362,8 @@ export function OnboardingPage() {
           localStorage.setItem('unifolder_user_profession', profession.trim());
         }
 
+        localStorage.removeItem(`sc_onb_start_${user?.id || 'default'}`);
+
         // Déclencher l'envoi de l'email de bienvenue professionnel à son arrivée à l'accueil
         StudyCloudAPI.sendWelcomeEmail(token!).catch(() => {});
 
@@ -259,6 +376,10 @@ export function OnboardingPage() {
         setError(res.error || "Une erreur est survenue lors de l'enregistrement de votre profil.");
       }
     } catch (err: any) {
+      if (err.message?.includes('expirée') || err.message?.includes('410')) {
+        handleSessionExpired('timeout');
+        return;
+      }
       setError(err.message || 'Impossible de contacter le serveur StudyCloud.');
     } finally {
       setIsLoading(false);
@@ -320,9 +441,24 @@ export function OnboardingPage() {
             </div>
           </div>
 
-          <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[11px] font-semibold text-white/70">
-            <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
-            <span>Compte sécurisé</span>
+          <div className="flex items-center gap-2">
+            {/* Décompteur de 20 minutes */}
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-full border text-xs font-bold transition-all shadow-sm ${
+                timeLeft < 180
+                  ? 'bg-red-500/20 border-red-500/50 text-red-300 animate-pulse'
+                  : 'bg-orange-500/10 border-orange-500/30 text-orange-300'
+              }`}
+              title="Délai restant pour finaliser votre inscription (suppression automatique après 20 min ou 15 min d'inactivité)"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>{formatTime(timeLeft)}</span>
+            </div>
+
+            <div className="hidden sm:flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/5 border border-white/10 text-[11px] font-semibold text-white/70">
+              <ShieldCheck className="w-3.5 h-3.5 text-emerald-400" />
+              <span>Compte sécurisé</span>
+            </div>
           </div>
         </div>
 

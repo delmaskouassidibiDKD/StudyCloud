@@ -87,6 +87,25 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     StudyCloudAPI.getMe(storedToken)
       .then((res: any) => {
         if (res.success && res.data) {
+          // Si l'utilisateur n'a pas encore finalisé son onboarding (is_onboarded = 0), vérifier la limite de 20 min ou 15 min d'inactivité
+          if (res.data.is_onboarded === 0) {
+            const TWENTY_MIN_MS = 20 * 60 * 1000;
+            const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+            const createdAtTime = res.data.created_at ? new Date(res.data.created_at).getTime() : 0;
+            const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : 0;
+            const isTimeout = createdAtTime > 0 && (Date.now() - createdAtTime > TWENTY_MIN_MS);
+            const isInactive = lastActive > 0 && (Date.now() - lastActive > FIFTEEN_MIN_MS);
+
+            if (isTimeout || isInactive) {
+              // Compte non finalisé expiré : suppression et retour à l'accueil
+              StudyCloudAPI.cancelUnfinalizedAccount({ userId: res.data.id, email: res.data.email }, storedToken).catch(() => {});
+              localStorage.setItem('sc_onboarding_expired_notice', "Votre session d'inscription a expiré (délai de 20 minutes ou 15 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.");
+              clearUserDataOnLogout();
+              setIsLoading(false);
+              return;
+            }
+          }
+
           setUser(res.data);
           setToken(storedToken);
           localStorage.setItem('sc_last_active_at', Date.now().toString());

@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { useAuth } from '../../context/AuthContext';
 import { StudyCloudAPI } from '../../services/api';
 import { DnaLogo } from '../DnaLogo';
@@ -9,12 +9,13 @@ import {
   HelpCircle,
   KeyRound,
   ArrowRight,
-  AlertCircle
+  AlertCircle,
+  Clock,
 } from 'lucide-react';
 import { validatePasswordRules } from './AuthPage';
 
 export function GoogleSecuritySetupPage() {
-  const { user, token, updateProfile } = useAuth();
+  const { user, token, updateProfile, logout } = useAuth();
 
   const [password, setPassword] = useState('');
   const [showPassword, setShowPassword] = useState(false);
@@ -32,6 +33,86 @@ export function GoogleSecuritySetupPage() {
 
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // ─── Gestion de l'expiration 20 minutes et inactivité 15 minutes ─────────────
+  const TOTAL_DURATION_SEC = 20 * 60;
+  const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
+
+  const [timeLeft, setTimeLeft] = useState<number>(() => {
+    const key = `sc_onb_start_${user?.id || 'default'}`;
+    let start = localStorage.getItem(key);
+    if (!start) {
+      start = Date.now().toString();
+      localStorage.setItem(key, start);
+    }
+    const elapsed = Math.floor((Date.now() - parseInt(start, 10)) / 1000);
+    return Math.max(0, TOTAL_DURATION_SEC - elapsed);
+  });
+
+  const lastActivityRef = useRef<number>(Date.now());
+
+  const handleSessionExpired = useCallback(async (reason: 'timeout' | 'inactivity') => {
+    try {
+      if (user?.id || user?.email) {
+        await StudyCloudAPI.cancelUnfinalizedAccount(
+          { userId: user?.id, email: user?.email },
+          token || undefined
+        );
+      }
+    } catch (e) {}
+    localStorage.removeItem(`sc_onb_start_${user?.id || 'default'}`);
+    const message = reason === 'timeout'
+      ? "Votre session d'inscription a expiré (délai de 20 minutes dépassé sans finalisation). Vos données temporaires ont été effacées. Veuillez recommencer."
+      : "Session d'inscription interrompue : vous avez quitté ou été inactif pendant plus de 15 minutes. Vos données temporaires ont été effacées. Veuillez recommencer.";
+    localStorage.setItem('sc_onboarding_expired_notice', message);
+    logout();
+  }, [user, token, logout]);
+
+  useEffect(() => {
+    const updateActivity = () => {
+      lastActivityRef.current = Date.now();
+    };
+
+    window.addEventListener('mousemove', updateActivity, { passive: true });
+    window.addEventListener('keydown', updateActivity, { passive: true });
+    window.addEventListener('touchstart', updateActivity, { passive: true });
+    window.addEventListener('scroll', updateActivity, { passive: true });
+    document.addEventListener('visibilitychange', updateActivity);
+
+    return () => {
+      window.removeEventListener('mousemove', updateActivity);
+      window.removeEventListener('keydown', updateActivity);
+      window.removeEventListener('touchstart', updateActivity);
+      window.removeEventListener('scroll', updateActivity);
+      document.removeEventListener('visibilitychange', updateActivity);
+    };
+  }, []);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      const now = Date.now();
+      if (now - lastActivityRef.current >= INACTIVITY_LIMIT_MS) {
+        clearInterval(timer);
+        handleSessionExpired('inactivity');
+        return;
+      }
+      setTimeLeft((prev) => {
+        if (prev <= 1) {
+          clearInterval(timer);
+          handleSessionExpired('timeout');
+          return 0;
+        }
+        return prev - 1;
+      });
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [handleSessionExpired]);
+
+  const formatTime = (seconds: number) => {
+    const m = Math.floor(seconds / 60);
+    const s = seconds % 60;
+    return `${m}:${s.toString().padStart(2, '0')}`;
+  };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -83,11 +164,16 @@ export function GoogleSecuritySetupPage() {
       });
 
       if (res.success && res.user) {
+        localStorage.removeItem(`sc_onb_start_${user?.id || 'default'}`);
         updateProfile(res.user);
       } else {
         setError(res.message || 'Une erreur est survenue lors de la configuration.');
       }
     } catch (err: any) {
+      if (err.message?.includes('expirée') || err.message?.includes('410')) {
+        handleSessionExpired('timeout');
+        return;
+      }
       setError(err.message || 'Erreur réseau. Veuillez réessayer.');
     } finally {
       setIsLoading(false);
@@ -98,7 +184,7 @@ export function GoogleSecuritySetupPage() {
     <div
       className="min-h-dvh h-dvh w-full flex flex-col justify-center items-center px-6 sm:px-12 md:px-16 py-6 text-white relative overflow-hidden select-none"
       style={{
-        background: 'linear-gradient(135deg, #0b091f 0%, #151030 50%, #0d1326 100%)',
+        background: 'linear-gradient(135deg, #090a16 0%, #101228 35%, #18173d 70%, #0d1222 100%)',
       }}
     >
       {/* Halos lumineux subtils en arrière-plan */}
@@ -118,6 +204,17 @@ export function GoogleSecuritySetupPage() {
             <span className="text-xs sm:text-sm px-3.5 py-1 rounded-full font-bold bg-orange-500/20 text-orange-300 border border-orange-500/30">
               Sécurité obligatoire
             </span>
+            <div
+              className={`flex items-center gap-1.5 px-3 py-1 rounded-full border text-xs font-bold transition-all shadow-sm ${
+                timeLeft < 180
+                  ? 'bg-red-500/20 border-red-500/50 text-red-300 animate-pulse'
+                  : 'bg-orange-500/10 border-orange-500/30 text-orange-300'
+              }`}
+              title="Temps restant pour finaliser votre compte"
+            >
+              <Clock className="w-3.5 h-3.5" />
+              <span>{formatTime(timeLeft)}</span>
+            </div>
             {user?.email && (
               <span className="text-sm sm:text-base text-white/60 ml-auto truncate max-w-[360px] hidden sm:inline font-medium">
                 {user.email}

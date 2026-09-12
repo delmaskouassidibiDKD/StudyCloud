@@ -969,8 +969,74 @@ var src_default = {
         }
       }
       __name(ensurePasswordResetsTable, "ensurePasswordResetsTable");
+      async function ensureUsersTableUniqueIndex(db) {
+        if (!db)
+          return;
+        try {
+          await db.prepare(`
+            DELETE FROM users
+            WHERE rowid NOT IN (
+              SELECT rowid FROM (
+                SELECT rowid,
+                       ROW_NUMBER() OVER (
+                         PARTITION BY LOWER(TRIM(email))
+                         ORDER BY is_onboarded DESC, email_verified DESC, rowid DESC
+                       ) as rn
+                FROM users
+              )
+              WHERE rn = 1
+            )
+          `).run();
+        } catch (e) {
+          try {
+            await db.prepare(`
+              DELETE FROM users
+              WHERE rowid NOT IN (
+                SELECT MAX(rowid) FROM users GROUP BY LOWER(TRIM(email))
+              )
+            `).run();
+          } catch (e2) {
+          }
+        }
+        try {
+          await db.prepare(`
+            CREATE UNIQUE INDEX IF NOT EXISTS idx_users_email_unique ON users(LOWER(TRIM(email)))
+          `).run();
+        } catch (e) {
+        }
+      }
+      __name(ensureUsersTableUniqueIndex, "ensureUsersTableUniqueIndex");
+      async function cleanupExpiredUnfinishedAccounts(db) {
+        if (!db)
+          return;
+        try {
+          const expired = await db.prepare(`
+            SELECT id, email FROM users
+            WHERE is_onboarded = 0
+              AND (
+                created_at < datetime('now', '-20 minutes')
+                OR (last_active_at IS NOT NULL AND last_active_at < datetime('now', '-15 minutes'))
+              )
+          `).all();
+          if (expired && expired.results && expired.results.length > 0) {
+            for (const u of expired.results) {
+              await db.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(u.id).run();
+              await db.prepare("DELETE FROM auth_sessions WHERE user_id = ?").bind(u.id).run();
+              await db.prepare("DELETE FROM user_preferences WHERE user_id = ?").bind(u.id).run();
+              await db.prepare("DELETE FROM password_resets WHERE user_id = ?").bind(u.id).run();
+              await db.prepare("DELETE FROM users WHERE id = ?").bind(u.id).run();
+              console.log(`[StudyCloud Expiration] Compte non finalis\xE9 expir\xE9 supprim\xE9 : ${u.email} (${u.id})`);
+            }
+          }
+        } catch (e) {
+          console.warn("[StudyCloud Cleanup] Notice:", e);
+        }
+      }
+      __name(cleanupExpiredUnfinishedAccounts, "cleanupExpiredUnfinishedAccounts");
       if (path === "/api/auth/register" && method === "POST") {
         await ensurePasswordResetsTable(env.DB);
+        await ensureUsersTableUniqueIndex(env.DB);
+        await cleanupExpiredUnfinishedAccounts(env.DB);
         const body = await request.json();
         const {
           name,
@@ -989,45 +1055,77 @@ var src_default = {
         if (!pwdCheck.valid)
           return errorResponse(pwdCheck.error || "Mot de passe non conforme", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
-        const existing = await env.DB.prepare("SELECT id, email_verified FROM users WHERE email = ?").bind(cleanEmail).first();
+        const existing = await env.DB.prepare("SELECT * FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
         const q1 = securityQuestion1 || "Quelle est votre ville de naissance ?";
         const q2 = securityQuestion2 || "Quel est le pr\xE9nom de votre m\xE8re ?";
         const answer1Hash = securityAnswer1 ? await hashToken(securityAnswer1.slice(0, 30).toLowerCase().trim()) : "";
         const answer2Hash = securityAnswer2 ? await hashToken(securityAnswer2.slice(0, 30).toLowerCase().trim()) : "";
         if (existing) {
-          if (existing.email_verified === 1) {
-            return errorResponse("Un compte v\xE9rifi\xE9 existe d\xE9j\xE0 avec cet email", 409, origin);
+          if (existing.is_onboarded === 1) {
+            return jsonResponse({
+              success: false,
+              alreadyRegistered: true,
+              code: "ACCOUNT_ALREADY_EXISTS",
+              error: "Un compte v\xE9rifi\xE9 existe d\xE9j\xE0 avec cette adresse email. Veuillez vous connecter avec votre mot de passe."
+            }, 409, origin);
+          }
+          if (existing.email_verified === 0) {
+            const passwordHash3 = await hashPassword(password);
+            await env.DB.prepare(`
+              UPDATE users SET
+                name = ?,
+                password_hash = ?,
+                security_question_1 = ?,
+                security_answer_1_hash = ?,
+                security_question_2 = ?,
+                security_answer_2_hash = ?,
+                last_active_at = CURRENT_TIMESTAMP,
+                updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `).bind(name.trim(), passwordHash3, q1, answer1Hash, q2, answer2Hash, existing.id).run();
+            const verificationToken2 = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
+            const expiresAt3 = new Date(Date.now() + 60 * 1e3).toISOString();
+            await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(existing.id).run();
+            await env.DB.prepare(`
+              INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
+              VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+            `).bind(generateId2(), existing.id, cleanEmail, verificationToken2, expiresAt3).run();
+            const clientOrigin2 = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
+            await sendConfirmationEmail(cleanEmail, name.trim(), verificationToken2, clientOrigin2);
+            return jsonResponse({
+              success: true,
+              requiresVerification: true,
+              email: cleanEmail,
+              resendCount: 1,
+              maxCount: 4,
+              nextAllowedAt: new Date(Date.now() + 6e4).toISOString(),
+              message: "Un email de confirmation vous a \xE9t\xE9 envoy\xE9."
+            }, 200, origin);
           }
           const passwordHash2 = await hashPassword(password);
           await env.DB.prepare(`
             UPDATE users SET
-              name = ?,
+              name = COALESCE(?, name),
               password_hash = ?,
-              security_question_1 = ?,
-              security_answer_1_hash = ?,
-              security_question_2 = ?,
-              security_answer_2_hash = ?,
+              security_question_1 = COALESCE(?, security_question_1),
+              security_answer_1_hash = CASE WHEN ? != '' THEN ? ELSE security_answer_1_hash END,
+              security_question_2 = COALESCE(?, security_question_2),
+              security_answer_2_hash = CASE WHEN ? != '' THEN ? ELSE security_answer_2_hash END,
               last_active_at = CURRENT_TIMESTAMP,
               updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
-          `).bind(name.trim(), passwordHash2, q1, answer1Hash, q2, answer2Hash, existing.id).run();
-          const verificationToken2 = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-          const expiresAt2 = new Date(Date.now() + 60 * 1e3).toISOString();
-          await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(existing.id).run();
-          await env.DB.prepare(`
-            INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
-            VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
-          `).bind(generateId2(), existing.id, cleanEmail, verificationToken2, expiresAt2).run();
-          const clientOrigin2 = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
-          await sendConfirmationEmail(cleanEmail, name.trim(), verificationToken2, clientOrigin2);
+          `).bind(name.trim() || null, passwordHash2, q1, answer1Hash, answer1Hash, q2, answer2Hash, answer2Hash, existing.id).run();
+          const token = await createJWT({ userId: existing.id, email: existing.email, name: existing.name });
+          const tokenHash = await hashToken(token);
+          const expiresAt2 = new Date(Date.now() + 7 * 24 * 3600 * 1e3).toISOString();
+          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), existing.id, tokenHash, expiresAt2).run();
+          const safeUser = sanitizeUser2(existing);
           return jsonResponse({
             success: true,
-            requiresVerification: true,
-            email: cleanEmail,
-            resendCount: 1,
-            maxCount: 4,
-            nextAllowedAt: new Date(Date.now() + 6e4).toISOString(),
-            message: "Un email de confirmation vous a \xE9t\xE9 envoy\xE9."
+            requiresOnboarding: true,
+            token,
+            user: safeUser,
+            message: "Inscription d\xE9j\xE0 en cours d\xE9tect\xE9e : reprise imm\xE9diate de vos questionnaires d'onboarding..."
           }, 200, origin);
         }
         const userId = generateId2();
@@ -1298,6 +1396,8 @@ var src_default = {
         }, 200, origin);
       }
       if (path === "/api/auth/login" && method === "POST") {
+        await ensureUsersTableUniqueIndex(env.DB);
+        await cleanupExpiredUnfinishedAccounts(env.DB);
         const body = await request.json();
         const { email, password } = body;
         if (!email || !password)
@@ -1305,7 +1405,7 @@ var src_default = {
         if (!isValidEmail2(email))
           return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
-        const existingUser = await env.DB.prepare("SELECT * FROM users WHERE email = ?").bind(cleanEmail).first();
+        const existingUser = await env.DB.prepare("SELECT * FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
         if (!existingUser) {
           return jsonResponse({
             success: false,
@@ -1540,28 +1640,27 @@ var src_default = {
         if (!profile.id || !profile.email)
           return errorResponse("Impossible de r\xE9cup\xE9rer le profil Google", 400, origin);
         const cleanGoogleEmail = profile.email.toLowerCase().trim();
-        let user = await env.DB.prepare("SELECT * FROM users WHERE google_id = ? OR email = ?").bind(profile.id, cleanGoogleEmail).first();
+        await ensureUsersTableUniqueIndex(env.DB);
+        await cleanupExpiredUnfinishedAccounts(env.DB);
+        let user = await env.DB.prepare("SELECT * FROM users WHERE google_id = ? OR LOWER(TRIM(email)) = ?").bind(profile.id, cleanGoogleEmail).first();
         if (!user) {
-          if (action === "login") {
-            return jsonResponse({
-              success: false,
-              userNotFound: true,
-              code: "USER_NOT_FOUND",
-              googleEmail: cleanGoogleEmail,
-              googleName: profile.name || "",
-              googleAvatar: profile.picture || null,
-              error: `Aucun compte StudyCloud n'est actuellement associ\xE9 \xE0 l'adresse Google (${cleanGoogleEmail}). Nous vous avons orient\xE9 vers la cr\xE9ation de compte : compl\xE9tez vos informations ci-dessous pour cr\xE9er votre compte en quelques secondes !`
-            }, 404, origin);
-          }
           const userId = generateId2();
           await env.DB.prepare(`
-            INSERT INTO users (id, name, email, provider, google_id, email_verified, avatar_url, is_onboarded, created_at, updated_at)
-            VALUES (?, ?, ?, 'google', ?, 1, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            INSERT INTO users (id, name, email, provider, google_id, email_verified, avatar_url, is_onboarded, last_active_at, created_at, updated_at)
+            VALUES (?, ?, ?, 'google', ?, 1, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
           `).bind(userId, profile.name || cleanGoogleEmail, cleanGoogleEmail, profile.id, profile.picture || null).run();
           await env.DB.prepare("INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)").bind(userId).run();
           user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
-        } else if (!user.google_id) {
-          await env.DB.prepare("UPDATE users SET google_id = ?, avatar_url = COALESCE(avatar_url, ?), email_verified = 1 WHERE id = ?").bind(profile.id, profile.picture || null, user.id).run();
+        } else {
+          await env.DB.prepare(`
+            UPDATE users SET
+              google_id = COALESCE(google_id, ?),
+              avatar_url = COALESCE(avatar_url, ?),
+              email_verified = 1,
+              last_active_at = CURRENT_TIMESTAMP,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind(profile.id, profile.picture || null, user.id).run();
           user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(user.id).first();
         }
         const token = await createJWT({ userId: user.id, email: user.email, name: user.name });
@@ -1569,7 +1668,12 @@ var src_default = {
         const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1e3).toISOString();
         await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), user.id, tokenHash, expiresAt).run();
         const safeUser = sanitizeUser2(user);
-        return jsonResponse({ success: true, token, user: safeUser }, 200, origin);
+        return jsonResponse({
+          success: true,
+          token,
+          user: safeUser,
+          requiresOnboarding: user.is_onboarded === 0
+        }, 200, origin);
       }
       if (path === "/api/auth/logout" && method === "POST") {
         const authHeader = request.headers.get("Authorization") || "";
@@ -1661,6 +1765,10 @@ var src_default = {
         const payload = await verifyJWT(token);
         if (!payload?.userId)
           return errorResponse("Token invalide", 401, origin);
+        const existingUser = await env.DB.prepare("SELECT id, email, is_onboarded FROM users WHERE id = ?").bind(payload.userId).first();
+        if (!existingUser) {
+          return errorResponse("Session d'inscription expir\xE9e (d\xE9lai d\xE9pass\xE9). Vos donn\xE9es temporaires ont \xE9t\xE9 effac\xE9es. Veuillez recommencer l'inscription.", 410, origin);
+        }
         const body = await request.json();
         const { name, school, filiere, level, country, phone, bio, avatarUrl } = body;
         const isStudent = body.is_student === 0 || body.isStudent === false ? false : true;
@@ -1685,6 +1793,7 @@ var src_default = {
             bio = COALESCE(?, bio),
             avatar_url = CASE WHEN ? = 1 THEN ? ELSE avatar_url END,
             is_onboarded = 1,
+            last_active_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
           WHERE id = ?
         `).bind(
@@ -1714,6 +1823,72 @@ var src_default = {
         const safeUser = sanitizeUser2(user);
         return jsonResponse({ success: true, data: safeUser }, 200, origin);
       }
+      if (path === "/api/auth/onboarding/draft" && method === "PUT") {
+        const authHeader = request.headers.get("Authorization") || "";
+        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        if (!token)
+          return errorResponse("Token requis", 401, origin);
+        const payload = await verifyJWT(token);
+        if (!payload?.userId)
+          return errorResponse("Token invalide", 401, origin);
+        const body = await request.json().catch(() => ({}));
+        const { name, school, filiere, level, country, phone, bio, avatarUrl } = body;
+        await env.DB.prepare(`
+          UPDATE users SET
+            name = COALESCE(?, name),
+            school = COALESCE(?, school),
+            filiere = COALESCE(?, filiere),
+            level = COALESCE(?, level),
+            country = COALESCE(?, country),
+            phone = COALESCE(?, phone),
+            bio = COALESCE(?, bio),
+            avatar_url = COALESCE(?, avatar_url),
+            last_active_at = CURRENT_TIMESTAMP,
+            updated_at = CURRENT_TIMESTAMP
+          WHERE id = ? AND is_onboarded = 0
+        `).bind(
+          name || null,
+          school || null,
+          filiere || null,
+          level || null,
+          country || null,
+          phone || null,
+          bio || null,
+          avatarUrl || null,
+          payload.userId
+        ).run();
+        return jsonResponse({ success: true, message: "Brouillon sauvegard\xE9." }, 200, origin);
+      }
+      if (path === "/api/auth/cancel-unfinalized-account" && method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const authHeader = request.headers.get("Authorization") || "";
+        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        let targetUserId = body.userId;
+        let targetEmail = body.email ? String(body.email).toLowerCase().trim() : null;
+        if (token) {
+          const payload = await verifyJWT(token);
+          if (payload?.userId)
+            targetUserId = payload.userId;
+        }
+        if (targetUserId || targetEmail) {
+          const user = await env.DB.prepare(
+            "SELECT id, email, is_onboarded FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?"
+          ).bind(targetUserId || "", targetEmail || "").first();
+          if (user && user.is_onboarded === 0) {
+            await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(user.id).run();
+            await env.DB.prepare("DELETE FROM auth_sessions WHERE user_id = ?").bind(user.id).run();
+            await env.DB.prepare("DELETE FROM user_preferences WHERE user_id = ?").bind(user.id).run();
+            await env.DB.prepare("DELETE FROM password_resets WHERE user_id = ?").bind(user.id).run();
+            await env.DB.prepare("DELETE FROM users WHERE id = ?").bind(user.id).run();
+            console.log(`[StudyCloud Expiration] Compte annul\xE9 \xE0 la demande : ${user.email} (${user.id})`);
+            return jsonResponse({
+              success: true,
+              message: "Compte non finalis\xE9 annul\xE9 et donn\xE9es supprim\xE9es avec succ\xE8s."
+            }, 200, origin);
+          }
+        }
+        return jsonResponse({ success: true, message: "Aucun compte non finalis\xE9 \xE0 supprimer." }, 200, origin);
+      }
       if (path === "/api/auth/welcome-email" && method === "POST") {
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
@@ -1741,33 +1916,50 @@ var src_default = {
         const { id, name, email, school, filiere, country, avatarUrl } = body;
         if (!id || !email)
           return errorResponse("ID et email requis", 400, origin);
+        const cleanEmail = email.toLowerCase().trim();
         const hasAvatar = avatarUrl !== void 0;
         const avatarVal = avatarUrl ? String(avatarUrl) : null;
-        await env.DB.prepare(`
-          INSERT INTO users (id, name, email, school, filiere, country, avatar_url, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          ON CONFLICT(id) DO UPDATE SET
-            name = excluded.name,
-            email = excluded.email,
-            school = excluded.school,
-            filiere = excluded.filiere,
-            country = excluded.country,
-            avatar_url = CASE WHEN ? = 1 THEN ? ELSE users.avatar_url END,
-            updated_at = CURRENT_TIMESTAMP
-        `).bind(
-          id,
-          name || "\xC9tudiant",
-          email,
-          school || "CME",
-          filiere || "G\xE9n\xE9ral",
-          country || "C\xF4te d'Ivoire",
-          avatarVal,
-          hasAvatar ? 1 : 0,
-          avatarVal
-        ).run();
+        const existing = await env.DB.prepare(
+          "SELECT id FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?"
+        ).bind(id, cleanEmail).first();
+        if (existing) {
+          await env.DB.prepare(`
+            UPDATE users SET
+              name = COALESCE(?, name),
+              email = ?,
+              school = COALESCE(?, school),
+              filiere = COALESCE(?, filiere),
+              country = COALESCE(?, country),
+              avatar_url = CASE WHEN ? = 1 THEN ? ELSE users.avatar_url END,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind(
+            name || null,
+            cleanEmail,
+            school || null,
+            filiere || null,
+            country || null,
+            hasAvatar ? 1 : 0,
+            avatarVal,
+            existing.id
+          ).run();
+        } else {
+          await env.DB.prepare(`
+            INSERT INTO users (id, name, email, school, filiere, country, avatar_url, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          `).bind(
+            id,
+            name || "\xC9tudiant",
+            cleanEmail,
+            school || "CME",
+            filiere || "G\xE9n\xE9ral",
+            country || "C\xF4te d'Ivoire",
+            avatarVal
+          ).run();
+        }
         await env.DB.prepare(`
           INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)
-        `).bind(id).run();
+        `).bind(existing ? existing.id : id).run();
         return jsonResponse({ success: true, message: "Utilisateur synchronis\xE9" }, 200, origin);
       }
       if (path.startsWith("/api/users/") && !path.includes("/preferences") && method === "GET") {
@@ -2603,26 +2795,44 @@ var src_default = {
         if (!userId)
           return errorResponse("userId requis", 400, origin);
         if (userProfile) {
-          await env.DB.prepare(`
-            INSERT INTO users (id, name, email, school, filiere, country, avatar_url, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(id) DO UPDATE SET
-              name = excluded.name,
-              email = excluded.email,
-              school = excluded.school,
-              filiere = excluded.filiere,
-              country = excluded.country,
-              avatar_url = excluded.avatar_url,
-              updated_at = CURRENT_TIMESTAMP
-          `).bind(
-            userId,
-            userProfile.name || "\xC9tudiant",
-            userProfile.email || `${userId}@studycloud.app`,
-            userProfile.school || "CME",
-            userProfile.filiere || "G\xE9n\xE9ral",
-            userProfile.country || "C\xF4te d'Ivoire",
-            userProfile.avatarUrl || null
-          ).run();
+          const cleanEmail = (userProfile.email || `${userId}@studycloud.app`).toLowerCase().trim();
+          const existing = await env.DB.prepare(
+            "SELECT id FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?"
+          ).bind(userId, cleanEmail).first();
+          if (existing) {
+            await env.DB.prepare(`
+              UPDATE users SET
+                name = COALESCE(?, name),
+                email = ?,
+                school = COALESCE(?, school),
+                filiere = COALESCE(?, filiere),
+                country = COALESCE(?, country),
+                avatar_url = COALESCE(?, avatar_url),
+                updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `).bind(
+              userProfile.name || null,
+              cleanEmail,
+              userProfile.school || null,
+              userProfile.filiere || null,
+              userProfile.country || null,
+              userProfile.avatarUrl || null,
+              existing.id
+            ).run();
+          } else {
+            await env.DB.prepare(`
+              INSERT INTO users (id, name, email, school, filiere, country, avatar_url, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              userId,
+              userProfile.name || "\xC9tudiant",
+              cleanEmail,
+              userProfile.school || "CME",
+              userProfile.filiere || "G\xE9n\xE9ral",
+              userProfile.country || "C\xF4te d'Ivoire",
+              userProfile.avatarUrl || null
+            ).run();
+          }
         }
         if (Array.isArray(matieres)) {
           for (const m of matieres) {
