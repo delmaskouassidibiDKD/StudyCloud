@@ -289,409 +289,122 @@ export default {
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
       }
       
-      function getSuccessConfirmationHtml(name: string, email: string, appUrl: string): string {
-        return `<!DOCTYPE html>
+      function htmlResponse(title: string, message: string, success: boolean, userId?: string, token?: string): Response {
+        const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Adresse email confirmée - StudyCloud</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; font-family:'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    body {
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background-color: #0b0f19;
-      background-image: 
-        radial-gradient(at 0% 0%, rgba(37, 99, 235, 0.15) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, rgba(234, 88, 12, 0.12) 0px, transparent 50%);
-      color: #ffffff;
-      padding: 20px 16px;
-    }
-    .modal-menu {
-      width: 100%;
-      max-width: 440px;
-      background: rgba(17, 24, 39, 0.95);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 26px;
-      padding: 36px 28px 32px;
-      text-align: center;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 35px rgba(16, 185, 129, 0.15);
-      position: relative;
-      overflow: hidden;
-      animation: popIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    @keyframes popIn {
-      0% { opacity: 0; transform: scale(0.92) translateY(10px); }
-      100% { opacity: 1; transform: scale(1) translateY(0); }
-    }
-    .modal-menu::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 5px;
-      background: linear-gradient(90deg, #10B981, #059669, #3B82F6);
-    }
-    .logo-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 24px;
-    }
-    .logo-img {
-      width: 32px;
-      height: 32px;
-      display: block;
-    }
-    .logo-study { color: #EA580C; font-weight: 900; font-size: 21px; letter-spacing: -0.5px; }
-    .logo-cloud { color: #2563EB; font-weight: 900; font-size: 21px; letter-spacing: -0.5px; }
-    .logo-sub { color: #F59E0B; font-size: 8px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
-
-    .status-icon {
-      width: 76px;
-      height: 76px;
-      border-radius: 22px;
-      margin: 0 auto 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.3) 100%);
-      border: 1px solid rgba(16, 185, 129, 0.4);
-      box-shadow: 0 10px 25px rgba(16, 185, 129, 0.25);
-      font-size: 36px;
-    }
-
-    h1 {
-      font-size: 22px;
-      font-weight: 800;
-      color: #ffffff;
-      margin-bottom: 8px;
-      letter-spacing: -0.3px;
-    }
-    p.user-email {
-      font-size: 14px;
-      color: #94a3b8;
-      margin-bottom: 22px;
-      line-height: 1.5;
-    }
-    p.user-email strong {
-      color: #e2e8f0;
-    }
-
-    .instruction-card {
-      background: rgba(16, 185, 129, 0.08);
-      border: 1px solid rgba(16, 185, 129, 0.25);
-      border-radius: 16px;
-      padding: 16px 18px;
-      margin-bottom: 24px;
-      text-align: left;
-    }
-    .instruction-title {
-      font-size: 13px;
-      font-weight: 800;
-      color: #34D399;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-    .instruction-body {
-      font-size: 12.5px;
-      color: #cbd5e1;
-      line-height: 1.5;
-    }
-
-    .btn-close {
-      display: inline-block;
-      width: 100%;
-      padding: 14px 20px;
-      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
-      color: #ffffff;
-      font-size: 15px;
-      font-weight: 700;
-      border: none;
-      border-radius: 14px;
-      cursor: pointer;
-      box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
-      transition: all 0.2s ease;
-    }
-    .btn-close:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 10px 24px rgba(16, 185, 129, 0.4);
-    }
-    .btn-close:active {
-      transform: translateY(0);
-    }
-    .hint-text {
-      font-size: 12px;
-      color: #64748b;
-      margin-top: 14px;
-      line-height: 1.4;
-    }
-  </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>${title} - DKD</title>
+    <style>
+        body {
+            font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            background-color: #0f172a;
+            color: #f8fafc;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            min-height: 100vh;
+            margin: 0;
+            padding: 1rem;
+            box-sizing: border-box;
+        }
+        .card {
+            background: #1e293b;
+            padding: 2.2rem 1.8rem;
+            border-radius: 1.25rem;
+            box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
+            text-align: center;
+            max-width: 420px;
+            width: 100%;
+            border: 1px solid #334155;
+            box-sizing: border-box;
+        }
+        .icon {
+            font-size: 3.2rem;
+            margin-bottom: 1rem;
+        }
+        h1 { font-size: 1.5rem; margin-bottom: 0.5rem; color: ${success ? '#4ade80' : '#f87171'}; font-weight: 800; }
+        p { color: #94a3b8; font-size: 0.95rem; line-height: 1.5; margin-bottom: 1.5rem; }
+        .btn {
+            display: inline-block;
+            width: 100%;
+            box-sizing: border-box;
+            background: ${success ? '#EA580C' : '#475569'};
+            color: white;
+            padding: 0.8rem 1.5rem;
+            border-radius: 0.75rem;
+            text-decoration: none;
+            font-weight: 700;
+            font-size: 0.95rem;
+            border: none;
+            cursor: pointer;
+            transition: all 0.2s;
+        }
+        .btn:hover { background: ${success ? '#c2410c' : '#334155'}; }
+        .hint { margin-top: 1rem; font-size: 0.8rem; color: #64748b; }
+    </style>
 </head>
 <body>
-  <div class="modal-menu">
-    <div class="logo-badge">
-      <img src="https://studycloud.dkd-technologies.com/assets/dna-logo.png" class="logo-img" alt="Logo" />
-      <div>
-        <div style="line-height:1;"><span class="logo-study">Study</span><span class="logo-cloud">Cloud</span></div>
-        <div class="logo-sub">DKD TECHNOLOGIES</div>
-      </div>
+    <div class="card">
+        <div class="icon">${success ? '✅' : '❌'}</div>
+        <h1>${title}</h1>
+        <p>${message}</p>
+        <button type="button" id="returnApp" class="btn">${success ? 'Retourner à l\'application' : 'Fermer cette fenêtre'}</button>
+        <p class="hint" id="hintText">${success ? 'Votre appareil a validé votre confirmation. Vous pouvez fermer cet onglet.' : 'Vous pouvez fermer cet onglet et demander un nouveau lien.'}</p>
     </div>
 
-    <div class="status-icon">✅</div>
+    <script>
+        const isSuccess = ${success};
+        const userId = "${userId || ''}";
+        const authToken = "${token || ''}";
 
-    <h1>Email confirmé avec succès !</h1>
-    <p class="user-email">
-      L'adresse <strong>${email}</strong> a été validée avec succès.
-    </p>
+        // 1. Stockage local standardisé pour synchroniser l'application sur le même appareil
+        try {
+            localStorage.setItem('dkd_verification_status', JSON.stringify({
+                status: isSuccess ? 'confirmed' : 'expired',
+                userId: userId,
+                token: authToken,
+                timestamp: Date.now()
+            }));
+        } catch(e) {}
 
-    <div class="instruction-card">
-      <div class="instruction-title">
-        <span>📱 Retournez à l'application</span>
-      </div>
-      <div class="instruction-body">
-        Votre appareil d'origine a automatiquement détecté la validation. Vous pouvez maintenant fermer cette fenêtre et <strong>continuer sur votre application StudyCloud</strong>.
-      </div>
-    </div>
+        try {
+            const bc = new BroadcastChannel('studycloud_email_verification');
+            bc.postMessage({ success: isSuccess, userId: userId, token: authToken });
+        } catch(e) {}
 
-    <button type="button" class="btn-close" onclick="closeWindow()">
-      Fermer cette fenêtre
-    </button>
+        try {
+            localStorage.setItem('sc_email_verified_signal', JSON.stringify({
+                success: isSuccess,
+                userId: userId,
+                token: authToken,
+                time: Date.now()
+            }));
+        } catch(e) {}
 
-    <p class="hint-text" id="hint">
-      Si la fenêtre ne se ferme pas automatiquement, basculez simplement sur l'onglet ou l'application StudyCloud déjà ouverte.
-    </p>
-  </div>
-
-  <script>
-    try {
-      const bc = new BroadcastChannel('studycloud_email_verification');
-      bc.postMessage({ email: "${email}", success: true });
-    } catch (e) {}
-    try {
-      localStorage.setItem('sc_email_verified_signal', JSON.stringify({ email: "${email}", time: Date.now() }));
-    } catch (e) {}
-
-    function closeWindow() {
-      try {
-        window.open('', '_self', '');
-        window.close();
-      } catch (e) {}
-      setTimeout(function() {
-        var h = document.getElementById('hint');
-        if (h) {
-          h.innerText = "Vous pouvez fermer cet onglet et revenir sur votre application StudyCloud.";
-          h.style.color = '#38bdf8';
-        }
-      }, 200);
-    }
-  </script>
+        // 2. Gestion du bouton Retourner à l'application / Fermer
+        document.getElementById('returnApp')?.addEventListener('click', () => {
+            try {
+                window.open('', '_self', '');
+                window.close();
+            } catch (e) {}
+            setTimeout(() => {
+                const hint = document.getElementById('hintText');
+                if (hint) {
+                    hint.innerText = "Vous pouvez fermer cet onglet et retourner dans votre application StudyCloud.";
+                    hint.style.color = '#38bdf8';
+                }
+            }, 200);
+        });
+    </script>
 </body>
 </html>`;
-      }
 
-      function getExpiredEmailHtml(appUrl: string, customMessage?: string): string {
-        return `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lien expiré - StudyCloud</title>
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
-  <style>
-    * { margin:0; padding:0; box-sizing:border-box; font-family:'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
-    body {
-      min-height: 100vh;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background-color: #0b0f19;
-      background-image: 
-        radial-gradient(at 0% 0%, rgba(234, 88, 12, 0.15) 0px, transparent 50%),
-        radial-gradient(at 100% 100%, rgba(220, 38, 38, 0.12) 0px, transparent 50%);
-      color: #ffffff;
-      padding: 20px 16px;
-    }
-    .modal-menu {
-      width: 100%;
-      max-width: 440px;
-      background: rgba(17, 24, 39, 0.95);
-      border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 26px;
-      padding: 36px 28px 32px;
-      text-align: center;
-      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 35px rgba(245, 158, 11, 0.15);
-      position: relative;
-      overflow: hidden;
-      animation: popIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
-    }
-    @keyframes popIn {
-      0% { opacity: 0; transform: scale(0.92) translateY(10px); }
-      100% { opacity: 1; transform: scale(1) translateY(0); }
-    }
-    .modal-menu::before {
-      content: '';
-      position: absolute;
-      top: 0; left: 0; right: 0;
-      height: 5px;
-      background: linear-gradient(90deg, #F59E0B, #EF4444, #EA580C);
-    }
-    .logo-badge {
-      display: inline-flex;
-      align-items: center;
-      gap: 10px;
-      margin-bottom: 24px;
-    }
-    .logo-img {
-      width: 32px;
-      height: 32px;
-      display: block;
-    }
-    .logo-study { color: #EA580C; font-weight: 900; font-size: 21px; letter-spacing: -0.5px; }
-    .logo-cloud { color: #2563EB; font-weight: 900; font-size: 21px; letter-spacing: -0.5px; }
-    .logo-sub { color: #F59E0B; font-size: 8px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
-
-    .status-icon {
-      width: 76px;
-      height: 76px;
-      border-radius: 22px;
-      margin: 0 auto 20px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(220, 38, 38, 0.25) 100%);
-      border: 1px solid rgba(245, 158, 11, 0.4);
-      box-shadow: 0 10px 25px rgba(245, 158, 11, 0.25);
-      font-size: 36px;
-    }
-
-    h1 {
-      font-size: 22px;
-      font-weight: 800;
-      color: #ffffff;
-      margin-bottom: 8px;
-      letter-spacing: -0.3px;
-    }
-    p.user-email {
-      font-size: 14px;
-      color: #94a3b8;
-      margin-bottom: 22px;
-      line-height: 1.5;
-    }
-
-    .instruction-card {
-      background: rgba(245, 158, 11, 0.08);
-      border: 1px solid rgba(245, 158, 11, 0.25);
-      border-radius: 16px;
-      padding: 16px 18px;
-      margin-bottom: 24px;
-      text-align: left;
-    }
-    .instruction-title {
-      font-size: 13px;
-      font-weight: 800;
-      color: #FBBF24;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      margin-bottom: 6px;
-    }
-    .instruction-body {
-      font-size: 12.5px;
-      color: #cbd5e1;
-      line-height: 1.5;
-    }
-
-    .btn-close {
-      display: inline-block;
-      width: 100%;
-      padding: 14px 20px;
-      background: linear-gradient(135deg, #EA580C 0%, #F97316 100%);
-      color: #ffffff;
-      font-size: 15px;
-      font-weight: 700;
-      border: none;
-      border-radius: 14px;
-      cursor: pointer;
-      box-shadow: 0 8px 20px rgba(234, 88, 12, 0.3);
-      transition: all 0.2s ease;
-    }
-    .btn-close:hover {
-      transform: translateY(-1px);
-      box-shadow: 0 10px 24px rgba(234, 88, 12, 0.4);
-    }
-    .btn-close:active {
-      transform: translateY(0);
-    }
-    .hint-text {
-      font-size: 12px;
-      color: #64748b;
-      margin-top: 14px;
-      line-height: 1.4;
-    }
-  </style>
-</head>
-<body>
-  <div class="modal-menu">
-    <div class="logo-badge">
-      <img src="https://studycloud.dkd-technologies.com/assets/dna-logo.png" class="logo-img" alt="Logo" />
-      <div>
-        <div style="line-height:1;"><span class="logo-study">Study</span><span class="logo-cloud">Cloud</span></div>
-        <div class="logo-sub">DKD TECHNOLOGIES</div>
-      </div>
-    </div>
-
-    <div class="status-icon">⏳</div>
-
-    <h1>Lien de confirmation expiré</h1>
-    <p class="user-email">
-      ${customMessage || 'Ce lien de confirmation a expiré ou a déjà été utilisé.'}
-    </p>
-
-    <div class="instruction-card">
-      <div class="instruction-title">
-        <span>⚠️ Action requise</span>
-      </div>
-      <div class="instruction-body">
-        Veuillez retourner sur votre application StudyCloud pour réclamer l'envoi d'un nouveau lien de confirmation sécurisé.
-      </div>
-    </div>
-
-    <button type="button" class="btn-close" onclick="closeWindow()">
-      Fermer cette fenêtre
-    </button>
-
-    <p class="hint-text" id="hint">
-      Revenez sur votre application StudyCloud pour continuer.
-    </p>
-  </div>
-
-  <script>
-    function closeWindow() {
-      try {
-        window.open('', '_self', '');
-        window.close();
-      } catch (e) {}
-      setTimeout(function() {
-        var h = document.getElementById('hint');
-        if (h) {
-          h.innerText = "Vous pouvez fermer cet onglet et revenir sur votre application StudyCloud.";
-          h.style.color = '#fbbf24';
-        }
-      }, 200);
-    }
-  </script>
-</body>
-</html>`;
+        return new Response(html, {
+          headers: { "Content-Type": "text/html;charset=UTF-8", ...corsHeaders('*') },
+          status: success ? 200 : 400
+        });
       }
 
       async function ensureEmailVerificationsTable(db: any) {
@@ -714,6 +427,7 @@ export default {
           `).run();
         } catch (e) {}
         const cols = [
+          'ALTER TABLE email_verifications ADD COLUMN used INTEGER DEFAULT 0',
           'ALTER TABLE email_verifications ADD COLUMN confirmed INTEGER DEFAULT 0',
           'ALTER TABLE email_verifications ADD COLUMN clicked INTEGER DEFAULT 0',
           'ALTER TABLE email_verifications ADD COLUMN confirmed_jwt TEXT',
@@ -731,10 +445,10 @@ export default {
 
       async function sendConfirmationEmail(toEmail: string, name: string, token: string, appOrigin = 'https://studycloud.dkd-technologies.com', isLogin = false): Promise<void> {
         try {
-          // L'URL de confirmation pointe DIRECTEMENT sur le Worker Cloudflare pour afficher la page intermédiaire
+          // L'URL de confirmation pointe DIRECTEMENT sur le Worker Cloudflare /verify pour afficher la page intermédiaire
           // et ne jamais rediriger sur le domaine d'accueil de l'application
           const workerBaseUrl = 'https://api-worker.dkd-technologies.com';
-          const confirmUrl = `${workerBaseUrl}/api/auth/verify-email?token=${encodeURIComponent(token)}`;
+          const confirmUrl = `${workerBaseUrl}/verify?token=${encodeURIComponent(token)}`;
           const publicAssetOrigin = 'https://studycloud.dkd-technologies.com';
 
           const subject = isLogin
@@ -1160,6 +874,7 @@ export default {
         }
 
         const emailVerifCols = [
+          'ALTER TABLE email_verifications ADD COLUMN used INTEGER DEFAULT 0',
           'ALTER TABLE email_verifications ADD COLUMN confirmed INTEGER DEFAULT 0',
           'ALTER TABLE email_verifications ADD COLUMN clicked INTEGER DEFAULT 0',
           'ALTER TABLE email_verifications ADD COLUMN confirmed_jwt TEXT',
@@ -1819,7 +1534,7 @@ export default {
         try {
           verif = await env.DB.prepare(`
             SELECT * FROM email_verifications
-            WHERE LOWER(TRIM(email)) = ? AND (confirmed = 1 OR clicked = 1)
+            WHERE LOWER(TRIM(email)) = ? AND (used = 1 OR confirmed = 1 OR clicked = 1)
             ORDER BY created_at DESC LIMIT 1
           `).bind(cleanEmail).first();
         } catch (e) {
@@ -1841,11 +1556,14 @@ export default {
               const tokenHash = await hashToken(jwtToken);
               const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
               await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, expiresAt).run();
-              await env.DB.prepare('UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?').bind(jwtToken, verif.id).run();
+              try {
+                await env.DB.prepare('UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?').bind(jwtToken, verif.id).run();
+              } catch (e3) {}
             }
             return jsonResponse({
               success: true,
               confirmed: true,
+              clicked: true,
               token: jwtToken,
               user: sanitizeUser(user),
             }, 200, origin);
@@ -1862,6 +1580,7 @@ export default {
           return jsonResponse({
             success: true,
             confirmed: true,
+            clicked: true,
             token: jwtToken,
             user: sanitizeUser(userDirect),
           }, 200, origin);
@@ -1870,134 +1589,132 @@ export default {
         return jsonResponse({
           success: true,
           confirmed: false,
+          clicked: false,
         }, 200, origin);
       }
 
-      // GET /api/auth/verify-email — Validation du token de confirmation avec page intermédiaire dédiée
-      if (path === '/api/auth/verify-email' && method === 'GET') {
+      // GET /verify (et alias /api/auth/verify-email) — Page intermédiaire autonome
+      if ((path === '/verify' || path === '/api/auth/verify-email') && method === 'GET') {
         await ensureEmailVerificationsTable(env.DB);
-        const tokenParam = url.searchParams.get('token');
-        const appUrl = (origin !== '*' ? origin : 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
+        const token = url.searchParams.get('token');
 
-        if (!tokenParam) {
-          return new Response(getExpiredEmailHtml(appUrl, 'Token de confirmation requis.'), {
-            status: 400,
-            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
-          });
+        if (!token) {
+          return htmlResponse("Lien invalide", "Le lien de confirmation est incomplet.", false);
         }
 
-        const verif: any = await env.DB.prepare(
-          'SELECT * FROM email_verifications WHERE token = ?'
-        ).bind(tokenParam).first();
-
-        if (!verif) {
-          // Token introuvable ou expiré
-          const accept = request.headers.get('Accept') || '';
-          if (accept.includes('application/json') && !accept.includes('text/html')) {
-            return errorResponse('Lien de confirmation expiré ou déjà utilisé. Veuillez réclamer un nouveau lien.', 400, origin);
-          }
-          return new Response(getExpiredEmailHtml(appUrl, 'Ce lien de confirmation a expiré ou a déjà été utilisé.'), {
-            status: 400,
-            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
-          });
-        }
-
-        // 1. Si déjà confirmé auparavant (ex: double clic ou réouverture)
-        if (Number(verif.confirmed) === 1) {
-          const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(verif.user_id).first();
-          return new Response(getSuccessConfirmationHtml(user?.name || 'Membre', verif.email, appUrl), {
-            status: 200,
-            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
-          });
-        }
-
-        // 2. Vérifier si le token est expiré
-        const isExpired = verif.expires_at ? (new Date(verif.expires_at).getTime() < Date.now()) : false;
-        if (isExpired) {
-          const accept = request.headers.get('Accept') || '';
-          if (accept.includes('application/json') && !accept.includes('text/html')) {
-            return errorResponse('Lien de confirmation expiré. Veuillez réclamer un nouveau lien.', 400, origin);
-          }
-          return new Response(getExpiredEmailHtml(appUrl, 'Ce lien de confirmation a expiré. Veuillez réclamer un nouveau lien.'), {
-            status: 400,
-            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
-          });
-        }
-
-        const userBefore: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(verif.user_id).first();
-        if (!userBefore) {
-          return new Response(getExpiredEmailHtml(appUrl, 'Compte utilisateur introuvable.'), {
-            status: 404,
-            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
-          });
-        }
-        const isFirstVerification = userBefore.email_verified === 0;
-
-        // 3. Marquer l'email vérifié dans la table users
-        await env.DB.prepare(`
-          UPDATE users SET
-            email_verified = 1,
-            last_active_at = CURRENT_TIMESTAMP,
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(verif.user_id).run();
-
-        // 4. Créer la session JWT
-        const jwtToken = await createJWT({ userId: userBefore.id, email: userBefore.email, name: userBefore.name });
-        const tokenHash = await hashToken(jwtToken);
-        const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-        await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), userBefore.id, tokenHash, expiresAt).run();
-
-        // 5. Marquer dans email_verifications avec confirmed = 1 et le JWT pour détection automatique instantanée par l'appareil d'origine
         try {
-          await env.DB.prepare(`
-            UPDATE email_verifications SET
-              confirmed = 1,
-              clicked = 1,
-              confirmed_jwt = ?,
-              confirmed_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).bind(jwtToken, verif.id).run();
-        } catch (e) {
+          // 1. Rechercher le token dans la base D1
+          const record: any = await env.DB.prepare(
+            "SELECT * FROM email_verifications WHERE token = ?"
+          ).bind(token).first();
+
+          if (!record) {
+            return htmlResponse("Lien expiré ou déjà utilisé", "Ce lien de confirmation n'est plus valide ou a déjà été consommé.", false);
+          }
+
+          // Si déjà validé
+          if (Number(record.used) === 1 || Number(record.confirmed) === 1) {
+            let jwtToken = record.confirmed_jwt;
+            if (!jwtToken) {
+              const user: any = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(record.user_id).first();
+              if (user) {
+                jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
+              }
+            }
+            return htmlResponse(
+              "Confirmation réussie !",
+              "Votre compte a été confirmé avec succès. Vous pouvez maintenant retourner dans l'application pour continuer.",
+              true,
+              record.user_id,
+              jwtToken
+            );
+          }
+
+          // 2. Vérifier l'expiration
+          const now = Date.now();
+          const expiresAt = record.expires_at ? new Date(record.expires_at).getTime() : 0;
+
+          if (expiresAt > 0 && now > expiresAt) {
+            return htmlResponse("Lien expiré", "Le délai de validation de ce lien a expiré. Veuillez réclamer un nouveau lien depuis l'application.", false);
+          }
+
+          const userBefore: any = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(record.user_id).first();
+          if (!userBefore) {
+            return htmlResponse("Compte introuvable", "Le compte associé à ce lien de confirmation est introuvable.", false);
+          }
+
+          // 3. Marquer le token comme utilisé et valider le compte
+          const jwtToken = await createJWT({ userId: userBefore.id, email: userBefore.email, name: userBefore.name });
+          const tokenHash = await hashToken(jwtToken);
+          const sessionExpiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+          await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), userBefore.id, tokenHash, sessionExpiresAt).run();
+
           try {
             await env.DB.prepare(`
               UPDATE email_verifications SET
+                used = 1,
                 confirmed = 1,
+                clicked = 1,
                 confirmed_jwt = ?,
                 confirmed_at = CURRENT_TIMESTAMP
-              WHERE id = ?
-            `).bind(jwtToken, verif.id).run();
-          } catch (e2) {}
-        }
+              WHERE token = ?
+            `).bind(jwtToken, token).run();
+          } catch (e) {
+            try {
+              await env.DB.prepare(`
+                UPDATE email_verifications SET
+                  confirmed = 1,
+                  confirmed_jwt = ?,
+                  confirmed_at = CURRENT_TIMESTAMP
+                WHERE token = ?
+              `).bind(jwtToken, token).run();
+            } catch (e2) {}
+          }
 
-        if (isFirstVerification) {
-          const isUserStudent = userBefore.is_student === 1 || (userBefore.is_student === null && userBefore.school && userBefore.school !== 'Particulier / Professionnel' && userBefore.school !== 'Professionnel / Particulier');
-          sendWelcomeEmail(
-            userBefore.email,
-            userBefore.name || (isUserStudent ? 'Étudiant' : 'Membre'),
-            Boolean(isUserStudent),
-            userBefore.school || '',
-            userBefore.filiere || '',
-            appUrl
+          await env.DB.prepare(`
+            UPDATE users SET
+              email_verified = 1,
+              last_active_at = CURRENT_TIMESTAMP,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind(record.user_id).run();
+
+          const isFirstVerification = userBefore.email_verified === 0;
+          if (isFirstVerification) {
+            const isUserStudent = userBefore.is_student === 1 || (userBefore.is_student === null && userBefore.school && userBefore.school !== 'Particulier / Professionnel' && userBefore.school !== 'Professionnel / Particulier');
+            sendWelcomeEmail(
+              userBefore.email,
+              userBefore.name || (isUserStudent ? 'Étudiant' : 'Membre'),
+              Boolean(isUserStudent),
+              userBefore.school || '',
+              userBefore.filiere || '',
+              origin !== '*' ? origin : 'https://studycloud.dkd-technologies.com'
+            );
+          }
+
+          const accept = request.headers.get('Accept') || '';
+          if (accept.includes('application/json') && !accept.includes('text/html')) {
+            const safeUser = sanitizeUser(userBefore);
+            return jsonResponse({
+              success: true,
+              message: 'Adresse email confirmée avec succès !',
+              token: jwtToken,
+              user: safeUser,
+            }, 200, origin);
+          }
+
+          // 4. Renvoyer la page HTML de succès
+          return htmlResponse(
+            "Confirmation réussie !",
+            "Votre compte a été confirmé avec succès. Vous pouvez maintenant retourner dans l'application pour continuer.",
+            true,
+            record.user_id,
+            jwtToken
           );
+        } catch (err) {
+          console.error('Erreur verify:', err);
+          return htmlResponse("Erreur serveur", "Une erreur technique est survenue lors de la validation.", false);
         }
-
-        const accept = request.headers.get('Accept') || '';
-        if (accept.includes('application/json') && !accept.includes('text/html')) {
-          const safeUser = sanitizeUser(userBefore);
-          return jsonResponse({
-            success: true,
-            message: 'Adresse email confirmée avec succès !',
-            token: jwtToken,
-            user: safeUser,
-          }, 200, origin);
-        }
-
-        // Afficher la page intermédiaire officielle sans redirection vers l'accueil du site
-        return new Response(getSuccessConfirmationHtml(userBefore.name, userBefore.email, appUrl), {
-          status: 200,
-          headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
-        });
       }
 
       // POST /api/auth/login — Connexion email/password

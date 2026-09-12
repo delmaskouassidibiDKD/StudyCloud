@@ -166,6 +166,15 @@ export function EmailPendingVerification({
 
     // 2. Détection immédiate dès que l'utilisateur revient sur l'application (quitte l'app mail et revient)
     const handleImmediateWakeUp = () => {
+      try {
+        const stored = localStorage.getItem('dkd_verification_status');
+        if (stored) {
+          const data = JSON.parse(stored);
+          if (Date.now() - data.timestamp < 300000 && data.status === 'confirmed') {
+            localStorage.removeItem('dkd_verification_status');
+          }
+        }
+      } catch (e) {}
       checkStatus();
     };
 
@@ -184,9 +193,9 @@ export function EmailPendingVerification({
       };
     } catch (e) {}
 
-    // 4. Écoute des signaux de stockage
+    // 4. Écoute des signaux de stockage standardisés (dkd_verification_status et sc_email_verified_signal)
     const handleStorageEvent = (e: StorageEvent) => {
-      if (e.key === 'sc_email_verified_signal') {
+      if (e.key === 'dkd_verification_status' || e.key === 'sc_email_verified_signal') {
         checkStatus();
       }
     };
