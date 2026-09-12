@@ -414,13 +414,27 @@ export default {
       }
 
       async function ensureEmailVerificationsTable(db: any) {
+        if (!db) return;
+
+        try {
+          const tableInfo: any = await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'email_verifications'").first();
+          if (tableInfo && tableInfo.sql && (tableInfo.sql.includes('FOREIGN KEY') || tableInfo.sql.includes('REFERENCES users') || tableInfo.sql.includes('user_id TEXT NOT NULL'))) {
+            // L'ancienne table avait une contrainte de clé étrangère vers users(id)
+            // qui empêchait de stocker l'inscription temporaire avant validation de l'email.
+            // On supprime l'ancienne table pour la recréer sans cette contrainte.
+            try {
+              await db.prepare("DROP TABLE IF EXISTS email_verifications").run();
+            } catch (e) {}
+          }
+        } catch (e) {}
+
         try {
           await db.prepare(`
             CREATE TABLE IF NOT EXISTS email_verifications (
               id TEXT PRIMARY KEY,
               user_id TEXT,
               email TEXT NOT NULL,
-              token TEXT NOT NULL,
+              token TEXT NOT NULL UNIQUE,
               payload TEXT,
               resend_count INTEGER DEFAULT 1,
               last_sent_at TEXT NOT NULL,
@@ -433,6 +447,7 @@ export default {
             )
           `).run();
         } catch (e) {}
+
         const cols = [
           'ALTER TABLE email_verifications ADD COLUMN payload TEXT',
           'ALTER TABLE email_verifications ADD COLUMN used INTEGER DEFAULT 0',
@@ -1271,11 +1286,13 @@ export default {
       // Migration automatique de toutes les tables D1 et nettoyage systématique des comptes expirés
       if (path.startsWith('/api/auth/')) {
         await ensureDatabaseSchema(env.DB);
+        await ensureEmailVerificationsTable(env.DB);
         await cleanupExpiredUnfinishedAccounts(env.DB);
       }
 
       // POST /api/auth/register — Inscription email/password avec confirmation obligatoire & questions de sécurité
       if (path === '/api/auth/register' && method === 'POST') {
+        await ensureEmailVerificationsTable(env.DB);
         await ensurePasswordResetsTable(env.DB);
         await ensureUsersTableUniqueIndex(env.DB);
         await cleanupExpiredUnfinishedAccounts(env.DB);
@@ -1342,10 +1359,26 @@ export default {
 
         // Stocker TOUTES les données temporairement dans email_verifications.payload
         // AUCUNE insertion dans la table users tant que l'email n'est pas confirmé !
-        await env.DB.prepare(`
-          INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, last_sent_at, expires_at)
-          VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
-        `).bind(generateId(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
+        try {
+          await env.DB.prepare(`
+            INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, last_sent_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+          `).bind(generateId(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
+        } catch (insertErr: any) {
+          if (String(insertErr).includes('FOREIGN KEY') || String(insertErr).includes('SQLITE_CONSTRAINT')) {
+            // L'ancienne table D1 avait encore la contrainte FOREIGN KEY : suppression et recréation immédiate
+            try {
+              await env.DB.prepare("DROP TABLE IF EXISTS email_verifications").run();
+            } catch (e) {}
+            await ensureEmailVerificationsTable(env.DB);
+            await env.DB.prepare(`
+              INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, last_sent_at, expires_at)
+              VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+            `).bind(generateId(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
+          } else {
+            throw insertErr;
+          }
+        }
 
         const clientOrigin = request.headers.get('Origin') || 'https://studycloud.dkd-technologies.com';
         await sendConfirmationEmail(cleanEmail, name.trim(), verificationToken, clientOrigin, false);

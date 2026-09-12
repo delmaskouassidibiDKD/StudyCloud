@@ -384,13 +384,25 @@ var src_default = {
       }
       __name(getAuthUser, "getAuthUser");
       async function ensureEmailVerificationsTable(db) {
+        if (!db)
+          return;
+        try {
+          const tableInfo = await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'email_verifications'").first();
+          if (tableInfo && tableInfo.sql && (tableInfo.sql.includes("FOREIGN KEY") || tableInfo.sql.includes("REFERENCES users") || tableInfo.sql.includes("user_id TEXT NOT NULL"))) {
+            try {
+              await db.prepare("DROP TABLE IF EXISTS email_verifications").run();
+            } catch (e) {
+            }
+          }
+        } catch (e) {
+        }
         try {
           await db.prepare(`
             CREATE TABLE IF NOT EXISTS email_verifications (
               id TEXT PRIMARY KEY,
               user_id TEXT,
               email TEXT NOT NULL,
-              token TEXT NOT NULL,
+              token TEXT NOT NULL UNIQUE,
               payload TEXT,
               resend_count INTEGER DEFAULT 1,
               last_sent_at TEXT NOT NULL,
@@ -1194,9 +1206,11 @@ var src_default = {
       __name(cleanupExpiredUnfinishedAccounts, "cleanupExpiredUnfinishedAccounts");
       if (path.startsWith("/api/auth/")) {
         await ensureDatabaseSchema(env.DB);
+        await ensureEmailVerificationsTable(env.DB);
         await cleanupExpiredUnfinishedAccounts(env.DB);
       }
       if (path === "/api/auth/register" && method === "POST") {
+        await ensureEmailVerificationsTable(env.DB);
         await ensurePasswordResetsTable(env.DB);
         await ensureUsersTableUniqueIndex(env.DB);
         await cleanupExpiredUnfinishedAccounts(env.DB);
@@ -1252,10 +1266,26 @@ var src_default = {
         const verificationToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
         const expiresAt = new Date(Date.now() + 70 * 1e3).toISOString();
         await env.DB.prepare("DELETE FROM email_verifications WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).run();
-        await env.DB.prepare(`
-          INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, last_sent_at, expires_at)
-          VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
-        `).bind(generateId2(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
+        try {
+          await env.DB.prepare(`
+            INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, last_sent_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+          `).bind(generateId2(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
+        } catch (insertErr) {
+          if (String(insertErr).includes("FOREIGN KEY") || String(insertErr).includes("SQLITE_CONSTRAINT")) {
+            try {
+              await env.DB.prepare("DROP TABLE IF EXISTS email_verifications").run();
+            } catch (e) {
+            }
+            await ensureEmailVerificationsTable(env.DB);
+            await env.DB.prepare(`
+              INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, last_sent_at, expires_at)
+              VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+            `).bind(generateId2(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
+          } else {
+            throw insertErr;
+          }
+        }
         const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
         await sendConfirmationEmail(cleanEmail, name.trim(), verificationToken, clientOrigin, false);
         return jsonResponse({
