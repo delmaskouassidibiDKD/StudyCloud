@@ -23,12 +23,13 @@ if (!moduleCode.startsWith('// @ts-nocheck')) {
   moduleCode = header + moduleCode;
 }
 
-// 1. Écrire dans le SEUL et UNIQUE fichier worker officiel
+// 1. Écrire dans le fichier worker officiel et le fichier d'aide
 fs.writeFileSync(targetWorkerPath, moduleCode + '\n', 'utf8');
+const legacyHelperPath = path.join(workerDir, 'CODE_A_COLLER_DANS_CLOUDFLARE.js');
+fs.writeFileSync(legacyHelperPath, moduleCode + '\n', 'utf8');
 
-// 2. Supprimer TOUS les anciens fichiers ou doublons de worker sans exception
+// 2. Supprimer les fichiers temporaires résiduels
 const legacyFiles = [
-  path.join(workerDir, 'CODE_A_COLLER_DANS_CLOUDFLARE.js'),
   path.join(distDir, 'index.js.map'),
   path.join(distDir, 'service-worker.js'),
   path.join(distDir, 'worker-clean.js'),

@@ -1827,6 +1827,7 @@ export default {
       }
 
       // GET /api/auth/check-verification-status — Polling cross-device pour détecter la confirmation en direct (smartphone -> ordinateur)
+      // GET /api/auth/check-verification-status?email=... — Polling automatique de confirmation
       if (path === '/api/auth/check-verification-status' && method === 'GET') {
         await ensureEmailVerificationsTable(env.DB);
         const emailParam = url.searchParams.get('email');
@@ -1837,18 +1838,24 @@ export default {
         const verif: any = await env.DB.prepare(`
           SELECT * FROM email_verifications
           WHERE LOWER(TRIM(email)) = ? AND confirmed = 1
-          ORDER BY id DESC LIMIT 1
+          ORDER BY rowid DESC LIMIT 1
         `).bind(cleanEmail).first();
 
-        if (verif && verif.confirmed_jwt) {
+        if (verif) {
           const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(verif.user_id).first();
           if (user) {
-            // Nettoyer après détection réussie
-            await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(user.id).run();
+            let jwtToken = verif.confirmed_jwt;
+            if (!jwtToken) {
+              jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
+              const tokenHash = await hashToken(jwtToken);
+              const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+              await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, expiresAt).run();
+              await env.DB.prepare('UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?').bind(jwtToken, verif.id).run();
+            }
             return jsonResponse({
               success: true,
               confirmed: true,
-              token: verif.confirmed_jwt,
+              token: jwtToken,
               user: sanitizeUser(user),
             }, 200, origin);
           }
@@ -1856,12 +1863,11 @@ export default {
 
         // 2. Fallback direct sur la table users : si l'utilisateur a été marqué email_verified = 1
         const userDirect: any = await env.DB.prepare('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
-        if (userDirect && userDirect.email_verified === 1) {
+        if (userDirect && Number(userDirect.email_verified) === 1) {
           const jwtToken = await createJWT({ userId: userDirect.id, email: userDirect.email, name: userDirect.name });
           const tokenHash = await hashToken(jwtToken);
           const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
           await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), userDirect.id, tokenHash, expiresAt).run();
-          await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(userDirect.id).run();
           return jsonResponse({
             success: true,
             confirmed: true,
@@ -1876,7 +1882,7 @@ export default {
         }, 200, origin);
       }
 
-      // GET /api/auth/verify-email — Validation du token de confirmation avec page visuelle et persistance JWT
+      // GET /api/auth/verify-email — Validation du token de confirmation avec page intermédiaire dédiée
       if (path === '/api/auth/verify-email' && method === 'GET') {
         await ensureEmailVerificationsTable(env.DB);
         const tokenParam = url.searchParams.get('token');
@@ -1885,48 +1891,58 @@ export default {
         if (!tokenParam) {
           return new Response(getExpiredEmailHtml(appUrl, 'Token de confirmation requis.'), {
             status: 400,
-            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
           });
         }
 
         const verif: any = await env.DB.prepare(
-          'SELECT * FROM email_verifications WHERE token = ? AND expires_at > CURRENT_TIMESTAMP'
+          'SELECT * FROM email_verifications WHERE token = ?'
         ).bind(tokenParam).first();
 
         if (!verif) {
-          // Vérifier si le token a déjà été confirmé plus tôt
-          const alreadyConfirmed: any = await env.DB.prepare(
-            'SELECT * FROM email_verifications WHERE token = ? AND confirmed = 1'
-          ).bind(tokenParam).first();
-
-          if (alreadyConfirmed) {
-            const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(alreadyConfirmed.user_id).first();
-            return new Response(getSuccessConfirmationHtml(user?.name || 'Membre', alreadyConfirmed.email, appUrl), {
-              status: 200,
-              headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
-            });
-          }
-
+          // Token introuvable ou expiré
           const accept = request.headers.get('Accept') || '';
           if (accept.includes('application/json') && !accept.includes('text/html')) {
-            return errorResponse('Lien de confirmation expiré (validité de 15 minutes dépassée). Veuillez réclamer un nouveau lien.', 400, origin);
+            return errorResponse('Lien de confirmation expiré ou déjà utilisé. Veuillez réclamer un nouveau lien.', 400, origin);
           }
-          return new Response(getExpiredEmailHtml(appUrl), {
+          return new Response(getExpiredEmailHtml(appUrl, 'Ce lien de confirmation a expiré ou a déjà été utilisé.'), {
             status: 400,
-            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
+          });
+        }
+
+        // 1. Si déjà confirmé auparavant (ex: double clic ou réouverture)
+        if (Number(verif.confirmed) === 1) {
+          const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(verif.user_id).first();
+          return new Response(getSuccessConfirmationHtml(user?.name || 'Membre', verif.email, appUrl), {
+            status: 200,
+            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
+          });
+        }
+
+        // 2. Vérifier si le token est expiré
+        const isExpired = verif.expires_at ? (new Date(verif.expires_at).getTime() < Date.now()) : false;
+        if (isExpired) {
+          const accept = request.headers.get('Accept') || '';
+          if (accept.includes('application/json') && !accept.includes('text/html')) {
+            return errorResponse('Lien de confirmation expiré. Veuillez réclamer un nouveau lien.', 400, origin);
+          }
+          return new Response(getExpiredEmailHtml(appUrl, 'Ce lien de confirmation a expiré. Veuillez réclamer un nouveau lien.'), {
+            status: 400,
+            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
           });
         }
 
         const userBefore: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(verif.user_id).first();
         if (!userBefore) {
-          return new Response(getExpiredEmailHtml(appUrl, 'Utilisateur introuvable.'), {
+          return new Response(getExpiredEmailHtml(appUrl, 'Compte utilisateur introuvable.'), {
             status: 404,
-            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+            headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
           });
         }
         const isFirstVerification = userBefore.email_verified === 0;
 
-        // Marquer l'email vérifié
+        // 3. Marquer l'email vérifié dans la table users
         await env.DB.prepare(`
           UPDATE users SET
             email_verified = 1,
@@ -1935,13 +1951,13 @@ export default {
           WHERE id = ?
         `).bind(verif.user_id).run();
 
-        // Créer la session JWT
+        // 4. Créer la session JWT
         const jwtToken = await createJWT({ userId: userBefore.id, email: userBefore.email, name: userBefore.name });
         const tokenHash = await hashToken(jwtToken);
         const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
         await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), userBefore.id, tokenHash, expiresAt).run();
 
-        // Marquer dans email_verifications avec le token JWT pour que l'ordinateur détecte automatiquement la validation
+        // 5. Marquer dans email_verifications avec confirmed = 1 et le JWT pour détection automatique instantanée par l'appareil d'origine
         await env.DB.prepare(`
           UPDATE email_verifications SET
             confirmed = 1,
@@ -1973,72 +1989,11 @@ export default {
           }, 200, origin);
         }
 
-        // Afficher la page standalone de confirmation au lieu de rediriger brutalement
+        // Afficher la page intermédiaire officielle sans redirection vers l'accueil du site
         return new Response(getSuccessConfirmationHtml(userBefore.name, userBefore.email, appUrl), {
           status: 200,
-          headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+          headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders(origin) },
         });
-      }
-
-      // Ancien handler skip:
-      if (false && path === '/api/auth/verify-email-old') {
-        const tokenParam = url.searchParams.get('token');
-        if (!tokenParam) return errorResponse('Token de confirmation requis', 400, origin);
-
-        const verif: any = await env.DB.prepare(
-          'SELECT * FROM email_verifications WHERE token = ? AND expires_at > CURRENT_TIMESTAMP'
-        ).bind(tokenParam).first();
-
-        if (!verif) {
-          const accept = request.headers.get('Accept') || '';
-          if (accept.includes('text/html')) {
-            const appUrl = (origin !== '*' ? origin : 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
-            return Response.redirect(`${appUrl}/?verify_error=expired`, 302);
-          }
-          return errorResponse('Lien de confirmation expiré (validité 1 minute dépassée). Veuillez réclamer un nouveau lien ci-dessous.', 400, origin);
-        }
-
-        const userBefore: any = await env.DB.prepare('SELECT email_verified FROM users WHERE id = ?').bind(verif.user_id).first();
-        const isFirstVerification = userBefore?.email_verified === 0;
-
-        // Marquer l'email vérifié
-        await env.DB.prepare(`
-          UPDATE users SET
-            email_verified = 1,
-            last_active_at = CURRENT_TIMESTAMP,
-            updated_at = CURRENT_TIMESTAMP
-          WHERE id = ?
-        `).bind(verif.user_id).run();
-
-        // Supprimer la demande de vérification
-        await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(verif.user_id).run();
-
-        const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(verif.user_id).first();
-        if (!user) return errorResponse('Utilisateur introuvable', 404, origin);
-
-        // Créer la session JWT
-        const jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
-        const tokenHash = await hashToken(jwtToken);
-        const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
-        await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, expiresAt).run();
-
-        if (isFirstVerification) {
-          sendWelcomeEmail(user.email, user.name);
-        }
-
-        const accept = request.headers.get('Accept') || '';
-        if (accept.includes('text/html')) {
-          const appUrl = (origin !== '*' ? origin : 'https://studycloud.dkd-technologies.com').replace(/\/+$/, '');
-          return Response.redirect(`${appUrl}/?verified=1&token=${encodeURIComponent(jwtToken)}`, 302);
-        }
-
-        const safeUser = sanitizeUser(user);
-        return jsonResponse({
-          success: true,
-          message: 'Adresse email confirmée avec succès !',
-          token: jwtToken,
-          user: safeUser,
-        }, 200, origin);
       }
 
       // POST /api/auth/login — Connexion email/password
