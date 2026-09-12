@@ -146,13 +146,18 @@ export function OnboardingPage() {
 
   const handleSessionExpired = React.useCallback(async (reason: 'timeout' | 'inactivity') => {
     try {
-      if (user?.id || user?.email) {
+      const storedId = user?.id || localStorage.getItem('unifolder_user_id') || undefined;
+      const storedEmail = user?.email || localStorage.getItem('unifolder_user_email') || undefined;
+      const storedToken = token || localStorage.getItem('sc_auth_token') || undefined;
+      if (storedId || storedEmail || storedToken) {
         await StudyCloudAPI.cancelUnfinalizedAccount(
-          { userId: user?.id, email: user?.email },
-          token || undefined
+          { userId: storedId, email: storedEmail },
+          storedToken
         );
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('Erreur annulation compte expiré:', e);
+    }
     localStorage.removeItem(`sc_onb_start_${user?.id || 'default'}`);
     const message = reason === 'timeout'
       ? "Votre session d'inscription a expiré (délai de 20 minutes dépassé sans finalisation). Vos données temporaires ont été effacées. Veuillez recommencer."

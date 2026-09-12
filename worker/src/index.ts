@@ -1084,27 +1084,72 @@ export default {
         } catch (e) {}
       }
 
-      // Nettoyage automatique des comptes non finalisés après 20 minutes (ou 15 minutes d'inactivité)
+      // Suppression complète et sécurisée d'un utilisateur et de toutes ses tables associées
+      async function deleteUserCompletely(db: any, userId: string) {
+        if (!db || !userId) return;
+        const tables = [
+          'email_verifications',
+          'auth_sessions',
+          'user_preferences',
+          'password_resets',
+          'matieres',
+          'files',
+          'shared_folders',
+          'shared_links',
+          'schedule_config',
+          'schedules',
+          'notes',
+          'shop_profiles',
+          'shop_items',
+          'support_tickets',
+        ];
+        for (const table of tables) {
+          try {
+            await db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(userId).run();
+          } catch (e) {}
+        }
+        try {
+          await db.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
+          console.log(`[StudyCloud Expiration] Compte et données supprimés pour l'utilisateur : ${userId}`);
+        } catch (e) {
+          console.error(`[StudyCloud Expiration] Erreur suppression users ${userId}:`, e);
+        }
+      }
+
+      // Nettoyage automatique de TOUS les comptes non finalisés après 20 minutes (ou 15 minutes d'inactivité)
       async function cleanupExpiredUnfinishedAccounts(db: any) {
         if (!db) return;
         try {
-          const expired: any = await db.prepare(`
-            SELECT id, email FROM users
-            WHERE is_onboarded = 0
-              AND (
-                created_at < datetime('now', '-20 minutes')
-                OR (last_active_at IS NOT NULL AND last_active_at < datetime('now', '-15 minutes'))
-              )
+          const unfinalized: any = await db.prepare(`
+            SELECT id, email, created_at, last_active_at, is_onboarded
+            FROM users
+            WHERE is_onboarded = 0 OR is_onboarded IS NULL OR is_onboarded = '0'
           `).all();
 
-          if (expired && expired.results && expired.results.length > 0) {
-            for (const u of expired.results) {
-              await db.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(u.id).run();
-              await db.prepare('DELETE FROM auth_sessions WHERE user_id = ?').bind(u.id).run();
-              await db.prepare('DELETE FROM user_preferences WHERE user_id = ?').bind(u.id).run();
-              await db.prepare('DELETE FROM password_resets WHERE user_id = ?').bind(u.id).run();
-              await db.prepare('DELETE FROM users WHERE id = ?').bind(u.id).run();
-              console.log(`[StudyCloud Expiration] Compte non finalisé expiré supprimé : ${u.email} (${u.id})`);
+          if (unfinalized && unfinalized.results && unfinalized.results.length > 0) {
+            const now = Date.now();
+            const TWENTY_MIN_MS = 20 * 60 * 1000;
+            const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+
+            const parseUtcDate = (dStr: any) => {
+              if (!dStr) return 0;
+              const s = String(dStr).trim();
+              const iso = s.includes('T') ? s : s.replace(' ', 'T') + 'Z';
+              const ms = new Date(iso).getTime();
+              return isNaN(ms) ? 0 : ms;
+            };
+
+            for (const u of unfinalized.results) {
+              const createdMs = parseUtcDate(u.created_at);
+              const activeMs = parseUtcDate(u.last_active_at) || createdMs;
+
+              const isTimeout = createdMs > 0 && (now - createdMs >= TWENTY_MIN_MS);
+              const isInactive = activeMs > 0 && (now - activeMs >= FIFTEEN_MIN_MS);
+
+              if (isTimeout || isInactive) {
+                await deleteUserCompletely(db, u.id);
+                console.log(`[StudyCloud Cleanup] Compte non finalisé expiré supprimé : ${u.email} (${u.id})`);
+              }
             }
           }
         } catch (e) {
@@ -1115,6 +1160,11 @@ export default {
       // ----------------------------------------------------------------------
       // 0. AUTH — /api/auth/*
       // ----------------------------------------------------------------------
+
+      // Exécution systématique du nettoyage des comptes expirés sur toutes les requêtes d'authentification
+      if (path.startsWith('/api/auth/')) {
+        await cleanupExpiredUnfinishedAccounts(env.DB);
+      }
 
       // POST /api/auth/register — Inscription email/password avec confirmation obligatoire & questions de sécurité
       if (path === '/api/auth/register' && method === 'POST') {
@@ -1900,7 +1950,32 @@ export default {
         const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.userId).first();
         if (!user) return errorResponse('Utilisateur introuvable', 404, origin);
 
-        // Règle d'inactivité de 30 jours (1 mois)
+        // Si l'utilisateur n'a pas encore finalisé l'onboarding, vérifier immédiatement s'il a dépassé 20 min ou 15 min d'inactivité
+        const isOnboarded = Number(user.is_onboarded) === 1;
+        if (!isOnboarded) {
+          const parseUtcDate = (dStr: any) => {
+            if (!dStr) return 0;
+            const s = String(dStr).trim();
+            const iso = s.includes('T') ? s : s.replace(' ', 'T') + 'Z';
+            const ms = new Date(iso).getTime();
+            return isNaN(ms) ? 0 : ms;
+          };
+          const createdMs = parseUtcDate(user.created_at);
+          const activeMs = parseUtcDate(user.last_active_at) || createdMs;
+          const isTimeout = createdMs > 0 && (Date.now() - createdMs >= 20 * 60 * 1000);
+          const isInactive = activeMs > 0 && (Date.now() - activeMs >= 15 * 60 * 1000);
+
+          if (isTimeout || isInactive) {
+            await deleteUserCompletely(env.DB, user.id);
+            return jsonResponse({
+              success: false,
+              code: 'SESSION_EXPIRED_UNFINALIZED',
+              error: "Votre session d'inscription a expiré (délai de 20 minutes ou 15 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.",
+            }, 410, origin);
+          }
+        }
+
+        // Règle d'inactivité de 30 jours (1 mois) pour les comptes confirmés
         if (user.last_active_at) {
           const inactiveMs = Date.now() - new Date(user.last_active_at).getTime();
           const THIRTY_DAYS_MS = 30 * 24 * 3600 * 1000;
@@ -2084,7 +2159,7 @@ export default {
         return jsonResponse({ success: true, message: 'Brouillon sauvegardé.' }, 200, origin);
       }
 
-      // POST /api/auth/cancel-unfinalized-account — Annulation et suppression des comptes non finalisés après 20 min ou 15 min d'inactivité
+      // POST /api/auth/cancel-unfinalized-account — Annulation et suppression immédiate des comptes non finalisés
       if (path === '/api/auth/cancel-unfinalized-account' && method === 'POST') {
         const body: any = await request.json().catch(() => ({}));
         const authHeader = request.headers.get('Authorization') || '';
@@ -2093,28 +2168,37 @@ export default {
         let targetEmail = body.email ? String(body.email).toLowerCase().trim() : null;
 
         if (token) {
-          const payload = await verifyJWT(token);
-          if (payload?.userId) targetUserId = payload.userId;
+          try {
+            const payload = await verifyJWT(token);
+            if (payload?.userId) targetUserId = payload.userId;
+            if (payload?.email && !targetEmail) targetEmail = String(payload.email).toLowerCase().trim();
+          } catch (e) {}
         }
 
-        if (targetUserId || targetEmail) {
-          const user: any = await env.DB.prepare(
-            'SELECT id, email, is_onboarded FROM users WHERE id = ? OR LOWER(TRIM(email)) = ?'
-          ).bind(targetUserId || '', targetEmail || '').first();
+        let user: any = null;
+        if (targetUserId) {
+          user = await env.DB.prepare('SELECT id, email, is_onboarded FROM users WHERE id = ?').bind(targetUserId).first();
+        }
+        if (!user && targetEmail) {
+          user = await env.DB.prepare('SELECT id, email, is_onboarded FROM users WHERE LOWER(TRIM(email)) = ?').bind(targetEmail).first();
+        }
 
+        if (user) {
           // Uniquement si le compte n'a PAS encore terminé l'onboarding
-          if (user && user.is_onboarded === 0) {
-            await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(user.id).run();
-            await env.DB.prepare('DELETE FROM auth_sessions WHERE user_id = ?').bind(user.id).run();
-            await env.DB.prepare('DELETE FROM user_preferences WHERE user_id = ?').bind(user.id).run();
-            await env.DB.prepare('DELETE FROM password_resets WHERE user_id = ?').bind(user.id).run();
-            await env.DB.prepare('DELETE FROM users WHERE id = ?').bind(user.id).run();
+          const isOnboarded = Number(user.is_onboarded) === 1;
+          if (!isOnboarded) {
+            await deleteUserCompletely(env.DB, user.id);
             console.log(`[StudyCloud Expiration] Compte annulé à la demande : ${user.email} (${user.id})`);
 
             return jsonResponse({
               success: true,
               message: 'Compte non finalisé annulé et données supprimées avec succès.',
             }, 200, origin);
+          } else {
+            return jsonResponse({
+              success: false,
+              message: 'Le compte est déjà finalisé, suppression refusée.',
+            }, 403, origin);
           }
         }
 

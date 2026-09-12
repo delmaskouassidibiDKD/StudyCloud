@@ -87,12 +87,19 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     StudyCloudAPI.getMe(storedToken)
       .then((res: any) => {
         if (res.success && res.data) {
-          // Si l'utilisateur n'a pas encore finalisé son onboarding (is_onboarded = 0), vérifier la limite de 20 min ou 15 min d'inactivité
-          if (res.data.is_onboarded === 0) {
+          // Si l'utilisateur n'a pas encore finalisé son onboarding, vérifier la limite de 20 min ou 15 min d'inactivité
+          if (Number(res.data.is_onboarded) !== 1) {
             const TWENTY_MIN_MS = 20 * 60 * 1000;
             const FIFTEEN_MIN_MS = 15 * 60 * 1000;
-            const createdAtTime = res.data.created_at ? new Date(res.data.created_at).getTime() : 0;
-            const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : 0;
+            const parseUtc = (d: any) => {
+              if (!d) return 0;
+              const s = String(d).trim();
+              const iso = s.includes('T') ? s : s.replace(' ', 'T') + 'Z';
+              const ms = new Date(iso).getTime();
+              return isNaN(ms) ? 0 : ms;
+            };
+            const createdAtTime = parseUtc(res.data.created_at);
+            const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : createdAtTime;
             const isTimeout = createdAtTime > 0 && (Date.now() - createdAtTime > TWENTY_MIN_MS);
             const isInactive = lastActive > 0 && (Date.now() - lastActive > FIFTEEN_MIN_MS);
 
@@ -124,15 +131,35 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           restoreUserDataFromCloud(res.data.id).catch(() => {});
         } else {
           // Token invalide ou expiré
+          if (res?.code === 'SESSION_EXPIRED_UNFINALIZED' || (res?.error && typeof res.error === 'string' && res.error.includes('expiré'))) {
+            localStorage.setItem('sc_onboarding_expired_notice', res.error || "Votre session d'inscription a expiré (délai de 20 minutes ou 15 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.");
+          }
           clearUserDataOnLogout();
         }
       })
-      .catch(() => {
-        // Erreur réseau — on garde la session locale si le token existe
-        // (mode offline-first : pas de déconnexion forcée)
+      .catch((err: any) => {
+        // Si le serveur nous dit que la session d'inscription a expiré (HTTP 410) ou token invalide (HTTP 401/403)
+        if (err?.status === 410 || err?.data?.code === 'SESSION_EXPIRED_UNFINALIZED' || (err?.message && err.message.includes('expiré'))) {
+          localStorage.setItem('sc_onboarding_expired_notice', err?.data?.error || err?.message || "Votre session d'inscription a expiré (délai de 20 minutes ou 15 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.");
+          clearUserDataOnLogout();
+          return;
+        }
+
+        if (err?.status === 401 || err?.status === 403) {
+          clearUserDataOnLogout();
+          return;
+        }
+
+        // Erreur réseau pure — on garde la session locale si le token existe
+        // (mode offline-first : pas de déconnexion forcée pour les comptes actifs)
         try {
           const payload = parseJwtPayload(storedToken);
           if (payload && payload.exp * 1000 > Date.now()) {
+            // Ne pas restaurer en offline un compte non finalisé dont le délai est passé
+            if (payload.user && Number(payload.user.is_onboarded) !== 1) {
+              clearUserDataOnLogout();
+              return;
+            }
             setUser(payload.user as AuthUser);
             setToken(storedToken);
             localStorage.setItem('unifolder_user_id', payload.user.id);
