@@ -46,3 +46,55 @@ export function compressAvatarImage(file: File, size: number = 256, quality: num
     reader.readAsDataURL(file);
   });
 }
+
+/**
+ * Génère un avatar élégant et déterministe à partir de l'email ou du nom de l'utilisateur.
+ * Format SVG Data URL carré (128x128 px) au format officiel StudyCloud :
+ * - Fonctionne 100% hors-ligne (aucun appel réseau externe)
+ * - Léger (~250 octets) et directement stockable dans Cloudflare D1
+ * - Couleur agréable dérivée du hash de l'email
+ * - Initiales nettes et centrées
+ */
+export function getAvatarFromEmail(email?: string | null, name?: string | null): string {
+  const cleanEmail = (email || '').trim().toLowerCase();
+  const cleanName = (name || '').trim();
+
+  let initials = 'SC';
+  if (cleanName) {
+    const parts = cleanName.split(/\s+/).filter(Boolean);
+    if (parts.length >= 2) {
+      initials = (parts[0][0] + parts[1][0]).toUpperCase();
+    } else {
+      initials = cleanName.slice(0, 2).toUpperCase();
+    }
+  } else if (cleanEmail) {
+    const local = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
+    initials = local.slice(0, 2).toUpperCase() || 'SC';
+  }
+
+  // Palette de couleurs soignées et modernes (accordées avec la charte StudyCloud)
+  const colors = [
+    '#EA580C', // Orange StudyCloud
+    '#0284C7', // Sky Blue
+    '#059669', // Emerald Green
+    '#7C3AED', // Violet
+    '#D97706', // Amber
+    '#0D9488', // Teal
+    '#DC2626', // Red
+    '#4F46E5', // Indigo
+  ];
+
+  let hash = 0;
+  const seed = cleanEmail || cleanName || 'studycloud';
+  for (let i = 0; i < seed.length; i++) {
+    hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+  }
+  const color = colors[Math.abs(hash) % colors.length];
+
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128">
+  <rect width="128" height="128" rx="28" fill="${color}"/>
+  <text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-size="${initials.length > 1 ? '48' : '58'}" font-weight="700" letter-spacing="1">${initials}</text>
+</svg>`;
+
+  return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+}

@@ -13,11 +13,10 @@ import {
   Globe,
   Camera,
   Upload,
-  Trash2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { StudyCloudAPI } from '../services/api';
-import { compressAvatarImage } from '../services/imageUtils';
+import { compressAvatarImage, getAvatarFromEmail } from '../services/imageUtils';
 
 interface UserSettingsViewProps {
   onBack: () => void;
@@ -31,7 +30,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
   const [filiere, setFiliere] = useState(() => user?.filiere || localStorage.getItem('unifolder_user_filiere') || 'Électrotechniques');
   const [email, setEmail] = useState(() => user?.email || localStorage.getItem('unifolder_user_email') || 'delmaskouassidibi@gmail.com');
   const [country, setCountry] = useState(() => user?.country || localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire");
-  const [avatarUrl, setAvatarUrl] = useState(() => user?.avatar_url || localStorage.getItem('unifolder_user_avatar') || '');
+  const [avatarUrl, setAvatarUrl] = useState(() => user?.avatar_url || localStorage.getItem('unifolder_user_avatar') || getAvatarFromEmail(user?.email, user?.name));
 
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [showTermsModal, setShowTermsModal] = useState(false);
@@ -153,29 +152,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
       });
   };
 
-  const handleRemoveAvatar = () => {
-    if (window.confirm("Voulez-vous supprimer votre logo / photo de profil ?")) {
-      setAvatarUrl('');
-      localStorage.removeItem('unifolder_user_avatar');
-      updateProfile({ avatar_url: null });
-
-      const userId = user?.id || localStorage.getItem('unifolder_user_id');
-      if (userId) {
-        StudyCloudAPI.syncUser({
-          id: userId,
-          name,
-          email,
-          school,
-          filiere,
-          country,
-          avatarUrl: '',
-        }).catch((err) => console.warn('Erreur suppression avatar:', err));
-      }
-
-      triggerToast("Logo / Photo retiré avec succès.");
-    }
-  };
-
   const handleLogout = () => {
     if (window.confirm("Êtes-vous sûr de vouloir vous déconnecter de votre compte StudyCloud ?")) {
       logout();
@@ -254,18 +230,6 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
                 <Upload className="w-4 h-4 text-orange-400" />
                 <span>{avatarUrl ? "Changer le logo / photo" : "Ajouter un logo / photo"}</span>
               </button>
-
-              {avatarUrl && (
-                <button
-                  type="button"
-                  onClick={handleRemoveAvatar}
-                  className="flex items-center gap-1.5 px-3 py-2 bg-red-50 hover:bg-red-100 text-red-700 font-bold text-xs md:text-sm rounded-xl border border-red-200 transition-colors cursor-pointer"
-                  title="Supprimer la photo"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  <span>Supprimer</span>
-                </button>
-              )}
             </div>
 
             <p className="text-[11px] text-stone-500 font-medium text-center max-w-xs">

@@ -269,6 +269,25 @@ export default {
         return { valid: true };
       }
 
+      function generateEmailAvatar(email: string, name?: string): string {
+        const cleanEmail = (email || '').trim().toLowerCase();
+        const cleanName = (name || '').trim();
+        let initials = 'SC';
+        if (cleanName) {
+          const parts = cleanName.split(/\s+/).filter(Boolean);
+          initials = parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : cleanName.slice(0, 2).toUpperCase();
+        } else if (cleanEmail) {
+          const local = cleanEmail.split('@')[0].replace(/[^a-zA-Z0-9]/g, '');
+          initials = local.slice(0, 2).toUpperCase() || 'SC';
+        }
+        const colors = ['#EA580C', '#0284C7', '#059669', '#7C3AED', '#D97706', '#0D9488', '#DC2626', '#4F46E5'];
+        let hash = 0;
+        const seed = cleanEmail || cleanName || 'studycloud';
+        for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+        const color = colors[Math.abs(hash) % colors.length];
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"><rect width="128" height="128" rx="28" fill="${color}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="${initials.length > 1 ? '48' : '58'}" font-weight="700">${initials}</text></svg>`;
+        return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
+      }
       
       function getSuccessConfirmationHtml(name: string, email: string, appUrl: string): string {
         return `<!DOCTYPE html>
@@ -1965,17 +1984,21 @@ export default {
         const body: any = await request.json();
         const { name, school, filiere, level, country, phone, bio, avatarUrl } = body;
         const isStudent = body.is_student === 0 || body.isStudent === false ? false : true;
-        const finalSchool = !isStudent ? (school || body.profession || 'Particulier / Professionnel') : school;
-        const finalFiliere = !isStudent ? (filiere || body.profession || 'Général') : filiere;
+        const profession = body.profession ? String(body.profession).trim() : '';
+        const finalSchool = !isStudent ? (profession || school || 'Particulier / Professionnel') : school;
+        const finalFiliere = !isStudent ? (profession || filiere || 'Général') : filiere;
         const finalLevel = !isStudent ? (level || 'Professionnel') : (level || '');
 
         if (!country) return errorResponse('Le pays est obligatoire', 400, origin);
+        if (!phone || !String(phone).trim()) return errorResponse('Le numéro de téléphone est obligatoire', 400, origin);
+        if (!isStudent && !profession) return errorResponse("La profession ou domaine d'activité est obligatoire", 400, origin);
         if (isStudent && (!finalSchool || !finalFiliere)) {
           return errorResponse("L'école et la filière sont obligatoires pour les étudiants", 400, origin);
         }
 
-        const hasAvatarInBody = avatarUrl !== undefined;
-        const avatarVal = avatarUrl ? String(avatarUrl) : null;
+        const finalAvatar = avatarUrl
+          ? String(avatarUrl).trim()
+          : (existingUser.avatar_url || generateEmailAvatar(existingUser.email, name || ''));
 
         await env.DB.prepare(`
           UPDATE users SET
@@ -1986,7 +2009,7 @@ export default {
             country = ?,
             phone = COALESCE(?, phone),
             bio = COALESCE(?, bio),
-            avatar_url = CASE WHEN ? = 1 THEN ? ELSE avatar_url END,
+            avatar_url = COALESCE(?, avatar_url),
             is_onboarded = 1,
             last_active_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
@@ -1999,8 +2022,7 @@ export default {
           country,
           phone || null,
           bio || null,
-          hasAvatarInBody ? 1 : 0,
-          avatarVal,
+          finalAvatar,
           payload.userId
         ).run();
 

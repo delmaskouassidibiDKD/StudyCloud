@@ -95,6 +95,25 @@ var src_default = {
         if (!/[^a-zA-Z0-9]/.test(pwd))
           return { valid: false, error: "Le mot de passe doit contenir au moins un caract\xE8re sp\xE9cial (ex: @, #, $, !, etc.)" };
         return { valid: true };
+      }, generateEmailAvatar2 = function(email, name) {
+        const cleanEmail = (email || "").trim().toLowerCase();
+        const cleanName = (name || "").trim();
+        let initials = "SC";
+        if (cleanName) {
+          const parts = cleanName.split(/\s+/).filter(Boolean);
+          initials = parts.length >= 2 ? (parts[0][0] + parts[1][0]).toUpperCase() : cleanName.slice(0, 2).toUpperCase();
+        } else if (cleanEmail) {
+          const local = cleanEmail.split("@")[0].replace(/[^a-zA-Z0-9]/g, "");
+          initials = local.slice(0, 2).toUpperCase() || "SC";
+        }
+        const colors = ["#EA580C", "#0284C7", "#059669", "#7C3AED", "#D97706", "#0D9488", "#DC2626", "#4F46E5"];
+        let hash = 0;
+        const seed = cleanEmail || cleanName || "studycloud";
+        for (let i = 0; i < seed.length; i++)
+          hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+        const color = colors[Math.abs(hash) % colors.length];
+        const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"><rect width="128" height="128" rx="28" fill="${color}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="${initials.length > 1 ? "48" : "58"}" font-weight="700">${initials}</text></svg>`;
+        return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
       }, getSuccessConfirmationHtml2 = function(name, email, appUrl) {
         return `<!DOCTYPE html>
 <html lang="fr">
@@ -422,11 +441,12 @@ var src_default = {
 </body>
 </html>`;
       };
-      var sanitizeUser = sanitizeUser2, generateId = generateId2, isValidEmail = isValidEmail2, validatePasswordFormat = validatePasswordFormat2, getSuccessConfirmationHtml = getSuccessConfirmationHtml2, getExpiredEmailHtml = getExpiredEmailHtml2;
+      var sanitizeUser = sanitizeUser2, generateId = generateId2, isValidEmail = isValidEmail2, validatePasswordFormat = validatePasswordFormat2, generateEmailAvatar = generateEmailAvatar2, getSuccessConfirmationHtml = getSuccessConfirmationHtml2, getExpiredEmailHtml = getExpiredEmailHtml2;
       __name(sanitizeUser2, "sanitizeUser");
       __name(generateId2, "generateId");
       __name(isValidEmail2, "isValidEmail");
       __name(validatePasswordFormat2, "validatePasswordFormat");
+      __name(generateEmailAvatar2, "generateEmailAvatar");
       __name(getSuccessConfirmationHtml2, "getSuccessConfirmationHtml");
       __name(getExpiredEmailHtml2, "getExpiredEmailHtml");
       if (path === "/api/assets/dna-logo.png" || path === "/assets/dna-logo.png") {
@@ -1772,16 +1792,20 @@ var src_default = {
         const body = await request.json();
         const { name, school, filiere, level, country, phone, bio, avatarUrl } = body;
         const isStudent = body.is_student === 0 || body.isStudent === false ? false : true;
-        const finalSchool = !isStudent ? school || body.profession || "Particulier / Professionnel" : school;
-        const finalFiliere = !isStudent ? filiere || body.profession || "G\xE9n\xE9ral" : filiere;
+        const profession = body.profession ? String(body.profession).trim() : "";
+        const finalSchool = !isStudent ? profession || school || "Particulier / Professionnel" : school;
+        const finalFiliere = !isStudent ? profession || filiere || "G\xE9n\xE9ral" : filiere;
         const finalLevel = !isStudent ? level || "Professionnel" : level || "";
         if (!country)
           return errorResponse("Le pays est obligatoire", 400, origin);
+        if (!phone || !String(phone).trim())
+          return errorResponse("Le num\xE9ro de t\xE9l\xE9phone est obligatoire", 400, origin);
+        if (!isStudent && !profession)
+          return errorResponse("La profession ou domaine d'activit\xE9 est obligatoire", 400, origin);
         if (isStudent && (!finalSchool || !finalFiliere)) {
           return errorResponse("L'\xE9cole et la fili\xE8re sont obligatoires pour les \xE9tudiants", 400, origin);
         }
-        const hasAvatarInBody = avatarUrl !== void 0;
-        const avatarVal = avatarUrl ? String(avatarUrl) : null;
+        const finalAvatar = avatarUrl ? String(avatarUrl).trim() : existingUser.avatar_url || generateEmailAvatar2(existingUser.email, name || "");
         await env.DB.prepare(`
           UPDATE users SET
             name = COALESCE(?, name),
@@ -1791,7 +1815,7 @@ var src_default = {
             country = ?,
             phone = COALESCE(?, phone),
             bio = COALESCE(?, bio),
-            avatar_url = CASE WHEN ? = 1 THEN ? ELSE avatar_url END,
+            avatar_url = COALESCE(?, avatar_url),
             is_onboarded = 1,
             last_active_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
@@ -1804,8 +1828,7 @@ var src_default = {
           country,
           phone || null,
           bio || null,
-          hasAvatarInBody ? 1 : 0,
-          avatarVal,
+          finalAvatar,
           payload.userId
         ).run();
         const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();

@@ -21,7 +21,7 @@ import {
 } from 'lucide-react';
 import { StudyCloudAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
-import { compressAvatarImage } from '../../services/imageUtils';
+import { compressAvatarImage, getAvatarFromEmail } from '../../services/imageUtils';
 import { DnaLogo } from '../DnaLogo';
 import studentLogo from '../../assets/student-logo.jpg';
 import proLogo from '../../assets/pro-logo.jpg';
@@ -58,11 +58,30 @@ export const COUNTRY_DATA: Record<string, CountryMeta> = {
   'Autre': { name: 'Autre', dialCode: '+', flag: '🌍', placeholder: 'Numéro avec indicatif' },
 };
 
-const COUNTRIES = Object.keys(COUNTRY_DATA);
+export const COUNTRIES = Object.keys(COUNTRY_DATA);
 
-const LEVELS = [
+export const LEVELS = [
   'Lycée / Terminale', 'BTS 1', 'BTS 2', 'Licence 1', 'Licence 2', 'Licence 3',
   'Master 1', 'Master 2', 'Doctorat', 'Formation professionnelle', 'Autre',
+];
+
+export const SUGGESTED_DOMAINS = [
+  'Enseignement & Éducation',
+  'Informatique, Digital & Nouvelles Technologies',
+  'Commerce, Vente & E-commerce',
+  'Santé, Médecine & Pharmacie',
+  'Finance, Banque & Comptabilité',
+  'Droit, Justice & Juridique',
+  'Ingénierie, BTP & Industrie',
+  'Marketing, Communication & Médias',
+  'Art, Design & Graphisme',
+  'Administration, RH & Management',
+  'Agriculture, Élevage & Agroalimentaire',
+  'Transport, Logistique & Douane',
+  'Tourisme, Hôtellerie & Restauration',
+  'Artisanat & Services de proximité',
+  'Professionnel indépendant / Consultant',
+  'Autre secteur d\'activité',
 ];
 
 export function OnboardingPage() {
@@ -92,14 +111,16 @@ export function OnboardingPage() {
   const [name, setName] = useState(user?.name || '');
   const [country, setCountry] = useState(user?.country || "Côte d'Ivoire");
   const [phone, setPhone] = useState(user?.phone || '');
-  const [avatarUrl, setAvatarUrl] = useState(user?.avatar_url || '');
+  const [avatarUrl, setAvatarUrl] = useState(() => user?.avatar_url || getAvatarFromEmail(user?.email, user?.name));
+  const [isCustomAvatar, setIsCustomAvatar] = useState(Boolean(user?.avatar_url && !user.avatar_url.startsWith('data:image/svg+xml')));
+  const [showAllDomains, setShowAllDomains] = useState(false);
   const [bio, setBio] = useState(user?.bio || '');
 
   // Métadonnées du pays actif (indicatif, drapeau, format)
   const currentCountry = COUNTRY_DATA[country] || { name: country, dialCode: '+225', flag: '🇨🇮', placeholder: '07 00 00 00 00' };
 
   // Champ spécifique non-étudiant
-  const [profession, setProfession] = useState('');
+  const [profession, setProfession] = useState(() => localStorage.getItem('unifolder_user_profession') || '');
 
   // Champs spécifiques étudiant
   const [school, setSchool] = useState(user?.school || '');
@@ -244,16 +265,11 @@ export function OnboardingPage() {
     compressAvatarImage(file, 256, 0.85)
       .then((result) => {
         setAvatarUrl(result);
+        setIsCustomAvatar(true);
       })
       .catch(() => {
         setAvatarError("Impossible de traiter l'image sélectionnée. Veuillez réessayer.");
       });
-  };
-
-  const handleRemoveAvatar = () => {
-    setAvatarUrl('');
-    setAvatarError(null);
-    if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
   // Passage de l'Étape 1 (Choix du profil) vers l'Étape 2
@@ -266,7 +282,7 @@ export function OnboardingPage() {
     setStep(2);
   };
 
-  // Validation de l'Étape 2
+  // Validation de l'Étape 2 (Nom, Pays, Téléphone et Profession obligatoires)
   const handleStep2Submit = (e: React.FormEvent) => {
     e.preventDefault();
     setError(null);
@@ -276,6 +292,14 @@ export function OnboardingPage() {
     }
     if (!country) {
       setError('Le pays est obligatoire.');
+      return;
+    }
+    if (!phone.trim()) {
+      setError('Le numéro de téléphone est obligatoire.');
+      return;
+    }
+    if (!isStudent && !profession.trim()) {
+      setError("La profession ou domaine d'activité est obligatoire.");
       return;
     }
 
@@ -331,6 +355,8 @@ export function OnboardingPage() {
       }
     }
 
+    const finalAvatar = avatarUrl.trim() || user?.avatar_url || getAvatarFromEmail(user?.email, name);
+
     try {
       const res: any = await StudyCloudAPI.completeOnboarding(token!, {
         name: name.trim(),
@@ -340,13 +366,13 @@ export function OnboardingPage() {
         country,
         phone: finalPhone || undefined,
         bio: bio.trim(),
-        avatarUrl: avatarUrl.trim() || undefined,
+        avatarUrl: finalAvatar,
         is_student: studentStatus ? 1 : 0,
         profession: !studentStatus ? profession.trim() : undefined,
       });
 
       if (res.success && res.data) {
-        const finalAvatar = res.data.avatar_url || avatarUrl.trim();
+        const savedAvatar = res.data.avatar_url || finalAvatar;
 
         // Enregistrement dans le stockage local
         localStorage.setItem('unifolder_is_student', studentStatus ? 'true' : 'false');
@@ -354,8 +380,8 @@ export function OnboardingPage() {
         localStorage.setItem('unifolder_user_country', res.data.country || country);
         localStorage.setItem('unifolder_user_school', res.data.school || finalSchool);
         localStorage.setItem('unifolder_user_filiere', res.data.filiere || finalFiliere);
-        if (finalAvatar) {
-          localStorage.setItem('unifolder_user_avatar', finalAvatar);
+        if (savedAvatar) {
+          localStorage.setItem('unifolder_user_avatar', savedAvatar);
         }
         if (finalPhone) localStorage.setItem('unifolder_user_phone', finalPhone);
         if (!studentStatus && profession.trim()) {
@@ -681,7 +707,7 @@ export function OnboardingPage() {
 
                 <div>
                   <label className="text-xs font-bold text-white/70 mb-1.5 flex items-center justify-between">
-                    <span>Numéro de téléphone</span>
+                    <span>Numéro de téléphone *</span>
                     <span className="text-[11px] font-semibold text-orange-400/90">
                       Indicatif {currentCountry.dialCode}
                     </span>
@@ -701,6 +727,7 @@ export function OnboardingPage() {
                       value={phone}
                       onChange={(e) => setPhone(e.target.value)}
                       placeholder={currentCountry.placeholder}
+                      required
                       className="w-full px-3.5 py-3 text-sm font-medium text-white placeholder-white/30 outline-none bg-transparent"
                     />
                   </div>
@@ -710,20 +737,68 @@ export function OnboardingPage() {
               {/* Champ "Profession / Domaine d'activité" affiché UNIQUEMENT si NON-ÉTUDIANT */}
               {!isStudent && (
                 <div className="mb-3.5">
-                  <label className="text-xs font-bold text-white/70 mb-1.5 block">
-                    Profession ou domaine d'activité
-                  </label>
+                  <div className="flex items-center justify-between mb-1.5">
+                    <label className="text-xs font-bold text-white/70 block">
+                      Profession ou domaine d'activité *
+                    </label>
+                    <span className="text-[11px] font-semibold text-orange-400/90">
+                      Obligatoire
+                    </span>
+                  </div>
                   <div className="relative">
                     <Building2 className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-white/30" />
                     <input
                       id="onboard-profession"
                       type="text"
+                      list="domain-suggestions-list"
                       value={profession}
                       onChange={(e) => setProfession(e.target.value)}
-                      placeholder="Ex : Enseignant, Développeur, Commerçant, Indépendant..."
+                      placeholder="Sélectionnez un domaine ci-dessous ou saisissez le vôtre..."
+                      required
                       className={`${inputClass} pl-10`}
                       style={inputStyle}
                     />
+                    <datalist id="domain-suggestions-list">
+                      {SUGGESTED_DOMAINS.map((dom) => (
+                        <option key={dom} value={dom} />
+                      ))}
+                    </datalist>
+                  </div>
+
+                  {/* Suggestions interactives de domaines avec possibilité de saisie libre */}
+                  <div className="mt-2.5 space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="text-white/60 font-medium flex items-center gap-1">
+                        <span>✨ Suggestions (cliquez pour choisir ou écrivez librement) :</span>
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => setShowAllDomains((prev) => !prev)}
+                        className="text-orange-400 hover:text-orange-300 font-bold transition-colors cursor-pointer"
+                      >
+                        {showAllDomains ? 'Moins de choix' : `+ Voir plus (${SUGGESTED_DOMAINS.length})`}
+                      </button>
+                    </div>
+
+                    <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+                      {(showAllDomains ? SUGGESTED_DOMAINS : SUGGESTED_DOMAINS.slice(0, 8)).map((dom) => {
+                        const isSelected = profession.trim().toLowerCase() === dom.toLowerCase();
+                        return (
+                          <button
+                            key={dom}
+                            type="button"
+                            onClick={() => setProfession(dom)}
+                            className={`px-2.5 py-1 rounded-xl text-xs font-medium transition-all cursor-pointer border ${
+                              isSelected
+                                ? 'bg-orange-600 text-white border-orange-400 shadow-[0_0_12px_rgba(234,88,12,0.4)] scale-[1.02]'
+                                : 'bg-white/[0.06] hover:bg-white/[0.12] text-white/80 hover:text-white border-white/10'
+                            }`}
+                          >
+                            {isSelected ? '✓ ' : ''}{dom}
+                          </button>
+                        );
+                      })}
+                    </div>
                   </div>
                 </div>
               )}
@@ -735,7 +810,7 @@ export function OnboardingPage() {
                     {isStudent ? 'Photo de profil' : 'Photo de profil ou logo'}
                   </label>
                   <span className="text-[10.5px] font-semibold text-emerald-400/90 bg-emerald-500/10 px-2 py-0.5 rounded-md border border-emerald-500/20">
-                    Optionnel (non obligatoire)
+                    {isCustomAvatar ? 'Image personnalisée importée' : 'Associée à votre adresse email'}
                   </span>
                 </div>
 
@@ -748,81 +823,48 @@ export function OnboardingPage() {
                   className="hidden"
                 />
 
-                {avatarUrl ? (
-                  /* Affichage immédiat de l'image envoyée au format carré 120x120 */
-                  <div
-                    className="p-3.5 rounded-2xl flex flex-col sm:flex-row items-center gap-4 transition-all"
-                    style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)' }}
-                  >
-                    <div className="relative shrink-0 w-[120px] h-[120px] rounded-2xl overflow-hidden border-2 border-orange-500/50 shadow-[0_0_16px_rgba(234,88,12,0.25)] bg-black/40 flex items-center justify-center group">
-                      <img
-                        src={avatarUrl}
-                        alt="Aperçu importé"
-                        className="w-full h-full object-cover"
-                      />
-                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="text-[11px] font-bold text-white bg-orange-600 px-2.5 py-1 rounded-lg shadow-sm hover:bg-orange-500 cursor-pointer"
-                        >
-                          Changer
-                        </button>
-                      </div>
-                    </div>
-
-                    <div className="flex-1 text-center sm:text-left min-w-0">
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold mb-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        <span>Image importée avec succès (120×120 px)</span>
-                      </div>
-                      <p className="text-xs text-white/70 mb-3 leading-relaxed">
-                        Votre image s'affichera sur votre profil StudyCloud et vos documents partagés.
-                      </p>
-                      <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
-                        <button
-                          type="button"
-                          onClick={() => fileInputRef.current?.click()}
-                          className="px-3 py-1.5 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/15 border border-white/15 transition-all flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <Upload className="w-3.5 h-3.5 text-orange-400" />
-                          Changer l'image
-                        </button>
-                        <button
-                          type="button"
-                          onClick={handleRemoveAvatar}
-                          className="px-3 py-1.5 rounded-xl text-xs font-bold text-red-300 bg-red-500/10 hover:bg-red-500/20 border border-red-500/20 transition-all flex items-center gap-1.5 cursor-pointer"
-                        >
-                          <X className="w-3.5 h-3.5" />
-                          Supprimer
-                        </button>
-                      </div>
+                {/* Affichage immédiat de l'image (personnalisée ou issue de l'email) */}
+                <div
+                  className="p-3.5 rounded-2xl flex flex-col sm:flex-row items-center gap-4 transition-all"
+                  style={{ background: 'rgba(255,255,255,0.06)', border: '1px solid rgba(255,255,255,0.14)' }}
+                >
+                  <div className="relative shrink-0 w-[120px] h-[120px] rounded-2xl overflow-hidden border-2 border-orange-500/50 shadow-[0_0_16px_rgba(234,88,12,0.25)] bg-black/40 flex items-center justify-center group">
+                    <img
+                      src={avatarUrl || getAvatarFromEmail(user?.email, name || user?.name)}
+                      alt="Aperçu photo de profil"
+                      className="w-full h-full object-cover"
+                    />
+                    <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="text-[11px] font-bold text-white bg-orange-600 px-2.5 py-1 rounded-lg shadow-sm hover:bg-orange-500 cursor-pointer"
+                      >
+                        Changer
+                      </button>
                     </div>
                   </div>
-                ) : (
-                  /* Zone de sélection directe depuis l'appareil (sans lien URL) */
-                  <div
-                    onClick={() => fileInputRef.current?.click()}
-                    className="group p-4 sm:p-5 rounded-2xl border-2 border-dashed border-white/20 hover:border-orange-500/60 bg-white/[0.04] hover:bg-white/[0.07] transition-all cursor-pointer text-center flex flex-col items-center justify-center"
-                  >
-                    <div className="w-12 h-12 rounded-2xl bg-orange-500/15 border border-orange-500/30 flex items-center justify-center mb-2.5 group-hover:scale-105 group-hover:bg-orange-500/25 transition-all text-orange-400 shadow-sm">
-                      <Upload className="w-6 h-6" />
+
+                  <div className="flex-1 text-center sm:text-left min-w-0">
+                    <div className="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-full bg-emerald-500/15 border border-emerald-500/30 text-emerald-400 text-[11px] font-bold mb-1.5">
+                      <CheckCircle2 className="w-3.5 h-3.5" />
+                      <span>{isCustomAvatar ? "Image importée avec succès (120×120 px)" : "Photo de profil par défaut (120×120 px)"}</span>
                     </div>
-
-                    <p className="text-sm font-bold text-white group-hover:text-orange-300 transition-colors mb-1">
-                      Cliquez ici pour importer une image directe de votre appareil
+                    <p className="text-xs text-white/70 mb-3 leading-relaxed">
+                      Votre image s'affichera sur votre profil StudyCloud.
                     </p>
-
-                    {/* Consigne officielle exacte demandée par l'utilisateur */}
-                    <p className="text-[11.5px] text-white/70 max-w-lg leading-relaxed mt-1">
-                      importez une image ne dépassant pas 1 Mo Les formats d'image autorisés sont JPG, PNG et BMP. Pour des résultats optimaux, les logos doivent être au format carré et d'une dimension de 120 px par 120 px.
-                    </p>
-
-                    <span className="text-[11px] text-emerald-400/90 font-medium mt-2 bg-emerald-500/10 px-2.5 py-0.5 rounded-full border border-emerald-500/20">
-                      ✓ Cette étape n'est pas obligatoire, vous pouvez continuer sans image
-                    </span>
+                    <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2">
+                      <button
+                        type="button"
+                        onClick={() => fileInputRef.current?.click()}
+                        className="px-3.5 py-1.5 rounded-xl text-xs font-bold text-white bg-white/10 hover:bg-white/15 border border-white/15 transition-all flex items-center gap-1.5 cursor-pointer"
+                      >
+                        <Upload className="w-3.5 h-3.5 text-orange-400" />
+                        Changer l'image
+                      </button>
+                    </div>
                   </div>
-                )}
+                </div>
 
                 {/* Message d'erreur format ou taille */}
                 {avatarError && (
@@ -1042,7 +1084,7 @@ export function OnboardingPage() {
 
         {/* Footnote */}
         <p className="text-[11px] text-white/30 font-medium text-center mt-6 leading-relaxed">
-          Ces informations permettent d'identifier vos documents partagés et de vous proposer les outils adaptés.
+          Ces informations permettent de configurer votre profil et de vous proposer les outils adaptés.
         </p>
       </div>
     </div>
