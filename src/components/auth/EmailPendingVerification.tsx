@@ -374,16 +374,6 @@ export function EmailPendingVerification({
               </p>
             </div>
           </div>
-          {isLogin ? (
-            <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-cyan-500/15 text-cyan-300 border border-cyan-500/35 flex items-center gap-1.5 shadow-sm">
-              <ShieldCheck className="w-3.5 h-3.5 text-cyan-400" />
-              <span>Double Authentification (2FA)</span>
-            </span>
-          ) : (
-            <span className="text-xs font-bold px-3 py-1.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 shadow-sm">
-              Confirmation d'inscription
-            </span>
-          )}
         </div>
 
         {/* Big animated icon - Design distinct pour Connexion 2FA vs Inscription */}
