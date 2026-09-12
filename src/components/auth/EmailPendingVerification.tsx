@@ -18,7 +18,8 @@ export function EmailPendingVerification({
 }: EmailPendingVerificationProps) {
   const [secondsLeft, setSecondsLeft] = useState(70);
   const [blockedUntil, setBlockedUntil] = useState<string | null>(null);
-  const [resendCount, setResendCount] = useState(1);
+  const [blockStage, setBlockStage] = useState(1);
+  const [resendCount, setResendCount] = useState(0);
   const [isLoading, setIsLoading] = useState(false);
   const [isAutoDetected, setIsAutoDetected] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
@@ -42,14 +43,13 @@ export function EmailPendingVerification({
 
     // 1. Restaurer le compteur de renvois
     const savedCount = localStorage.getItem(COUNT_KEY);
-    if (savedCount) {
-      setResendCount(parseInt(savedCount, 10) || 1);
+    if (savedCount !== null) {
+      setResendCount(parseInt(savedCount, 10) || 0);
     } else {
-      localStorage.setItem(COUNT_KEY, '1');
-      setResendCount(1);
+      setResendCount(0);
     }
 
-    // 2. Restaurer le blocage de 3 heures
+    // 2. Restaurer le blocage progressif
     const savedBlockedUntil = localStorage.getItem(BLOCKED_KEY);
     if (savedBlockedUntil) {
       const blockedTime = new Date(savedBlockedUntil).getTime();
@@ -153,6 +153,24 @@ export function EmailPendingVerification({
               window.location.reload();
             }
           }, 400);
+        } else if (res && !res.confirmed && isMounted) {
+          // Synchronisation en direct des quotas et blocages depuis la base de données
+          if (typeof res.resendCount === 'number') {
+            setResendCount(res.resendCount);
+            localStorage.setItem(COUNT_KEY, res.resendCount.toString());
+          }
+          if (res.isBlocked && res.blockedUntil) {
+            setBlockedUntil(res.blockedUntil);
+            localStorage.setItem(BLOCKED_KEY, res.blockedUntil);
+          } else if (!res.isBlocked && !res.blockedUntil) {
+            if (blockedUntil) {
+              setBlockedUntil(null);
+              localStorage.removeItem(BLOCKED_KEY);
+            }
+          }
+          if (typeof res.blockStage === 'number' && res.blockStage > 0) {
+            setBlockStage(res.blockStage);
+          }
         }
       } catch (e) {
         // Ignorer silencieusement les erreurs réseaux temporaires de polling
@@ -228,9 +246,12 @@ export function EmailPendingVerification({
       const res: any = await StudyCloudAPI.resendVerification(email);
 
       if (res.success) {
-        const newCount = res.resendCount || (resendCount + 1);
+        const newCount = typeof res.resendCount === 'number' ? res.resendCount : (resendCount + 1);
         setResendCount(newCount);
         localStorage.setItem(COUNT_KEY, newCount.toString());
+
+        const stage = typeof res.blockStage === 'number' && res.blockStage > 0 ? res.blockStage : 1;
+        setBlockStage(stage);
 
         // Relancer le décompte persistant de 70 secondes
         const targetTime = res.nextAllowedAt ? new Date(res.nextAllowedAt).getTime() : (Date.now() + COOLDOWN_DURATION_MS);
@@ -238,23 +259,34 @@ export function EmailPendingVerification({
         const remaining = Math.max(0, Math.ceil((targetTime - Date.now()) / 1000));
         setSecondsLeft(remaining || 70);
 
-        // Si bloqué (après 4 tentatives)
-        if (res.isBlocked || res.blockedUntil || newCount >= 4) {
-          const blockDate = res.blockedUntil || new Date(Date.now() + 3 * 3600 * 1000).toISOString();
+        // Si bloqué (après 5 tentatives)
+        if (res.isBlocked || res.blockedUntil || newCount >= 5) {
+          const stageHours = stage === 1 ? 1 : stage === 2 ? 3 : 24;
+          const blockDate = res.blockedUntil || new Date(Date.now() + stageHours * 3600 * 1000).toISOString();
           setBlockedUntil(blockDate);
           localStorage.setItem(BLOCKED_KEY, blockDate);
-          setError('Quota atteint (4/4 tentatives). Veuillez patienter 3 heures avant de pouvoir réclamer un nouvel email.');
+          setError(`Quota de 5 renvois atteint. Votre compte est suspendu temporairement pendant ${stageHours} heure${stageHours > 1 ? 's' : ''}.`);
         } else {
           setMessage('✨ Un nouveau lien de confirmation vient de vous être envoyé par email !');
         }
       } else {
-        if (res.isBlocked) {
+        if (res.isBlocked && res.blockedUntil) {
           setBlockedUntil(res.blockedUntil);
           localStorage.setItem(BLOCKED_KEY, res.blockedUntil);
+          if (res.blockStage) setBlockStage(res.blockStage);
         }
         setError(res.error || "Impossible de renvoyer l'email.");
       }
     } catch (err: any) {
+      if (err.data?.isBlocked && err.data?.blockedUntil) {
+        setBlockedUntil(err.data.blockedUntil);
+        localStorage.setItem(BLOCKED_KEY, err.data.blockedUntil);
+        if (err.data.blockStage) setBlockStage(err.data.blockStage);
+        if (typeof err.data.resendCount === 'number') {
+          setResendCount(err.data.resendCount);
+          localStorage.setItem(COUNT_KEY, err.data.resendCount.toString());
+        }
+      }
       setError(err.message || "Erreur lors du renvoi de l'email.");
     } finally {
       setIsLoading(false);
@@ -266,16 +298,20 @@ export function EmailPendingVerification({
     return `${sec}s`;
   };
 
-  // Calcul du temps restant de blocage (heures et minutes)
+  // Calcul du temps restant de blocage (heures, minutes et secondes en direct)
   const formatBlockedTime = () => {
     if (!blockedUntil) return '';
     const remainingMs = Math.max(0, new Date(blockedUntil).getTime() - Date.now());
     const hours = Math.floor(remainingMs / (3600 * 1000));
-    const minutes = Math.ceil((remainingMs % (3600 * 1000)) / 60000);
+    const minutes = Math.floor((remainingMs % (3600 * 1000)) / 60000);
+    const seconds = Math.floor((remainingMs % 60000) / 1000);
     if (hours > 0) {
-      return `${hours}h ${minutes}min`;
+      return `${hours}h ${minutes.toString().padStart(2, '0')}m ${seconds.toString().padStart(2, '0')}s`;
     }
-    return `${minutes} minute(s)`;
+    if (minutes > 0) {
+      return `${minutes}m ${seconds.toString().padStart(2, '0')}s`;
+    }
+    return `${seconds}s`;
   };
 
   return (
@@ -426,28 +462,62 @@ export function EmailPendingVerification({
 
         {/* Blocked alert banner */}
         {isBlocked ? (
-          <div className="mb-5 p-5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 space-y-2.5">
+          <div className="mb-5 p-5 rounded-2xl bg-amber-500/15 border border-amber-500/30 text-amber-200 space-y-3">
             <div className="flex items-center gap-2 font-extrabold text-sm text-amber-300">
-              <ShieldAlert className="w-5 h-5 text-amber-400" />
-              <span>Limite de renvois atteinte (4/4 tentatives)</span>
+              <ShieldAlert className="w-5 h-5 text-amber-400 shrink-0" />
+              <span>
+                Limite de 5 renvois atteinte (Palier {blockStage} : {blockStage === 2 ? '3 heures' : blockStage === 3 ? '24 heures' : '1 heure'})
+              </span>
             </div>
             <p className="text-xs leading-relaxed text-amber-200/80">
-              Vous avez demandé 4 renvois sans confirmation. Par mesure de sécurité anti-spam, le bouton est suspendu pendant 3 heures.
+              Vous avez demandé 5 renvois d'email sans confirmation. Par mesure de sécurité anti-spam, le système est temporairement suspendu pendant {blockStage === 2 ? '3 heures' : blockStage === 3 ? '24 heures' : '1 heure'}.
             </p>
             <div className="flex items-center justify-between pt-2 border-t border-amber-500/20 text-xs sm:text-sm">
               <span className="font-bold text-amber-300">Temps d'attente restant :</span>
-              <span className="font-mono font-black text-white bg-amber-500/30 px-2.5 py-1 rounded-lg">
+              <span className="font-mono font-black text-white bg-amber-500/30 px-3 py-1 rounded-lg border border-amber-500/40">
                 ⏳ {formatBlockedTime()}
               </span>
             </div>
           </div>
         ) : (
-          /* Quota counter indicator */
-          <div className="flex items-center justify-between text-xs sm:text-sm text-white/60 mb-4 px-2">
-            <span>Tentatives effectuées aujourd'hui :</span>
-            <span className={`font-bold ${resendCount >= 3 ? 'text-amber-400' : 'text-white/80'}`}>
-              {resendCount} / 4
-            </span>
+          /* Quota counter indicator with animated steps */
+          <div className="mb-4 px-3.5 py-3 rounded-2xl bg-white/5 border border-white/10 flex flex-col gap-2">
+            <div className="flex items-center justify-between text-xs sm:text-sm">
+              <div className="flex items-center gap-2">
+                <span className="text-white/70">Renvois effectués :</span>
+                <span className={`font-mono font-black text-sm px-2.5 py-0.5 rounded-lg ${
+                  resendCount >= 4 ? 'bg-amber-500/25 text-amber-300 border border-amber-500/40' : 'bg-white/10 text-white'
+                }`}>
+                  {resendCount} / 5
+                </span>
+              </div>
+              <span className="text-xs font-semibold text-white/50">
+                {resendCount >= 5 ? (
+                  <span className="text-amber-400 font-bold">Quota atteint</span>
+                ) : (
+                  <span>{Math.max(0, 5 - resendCount)} disponible{Math.max(0, 5 - resendCount) > 1 ? 's' : ''}</span>
+                )}
+              </span>
+            </div>
+
+            {/* 5-step visual dots bar */}
+            <div className="grid grid-cols-5 gap-1.5 pt-0.5">
+              {[1, 2, 3, 4, 5].map((step) => {
+                const isFilled = step <= resendCount;
+                return (
+                  <div
+                    key={step}
+                    className={`h-2 rounded-full transition-all duration-300 ${
+                      isFilled
+                        ? isLogin
+                          ? 'bg-cyan-400 shadow-[0_0_8px_rgba(6,182,212,0.7)]'
+                          : 'bg-orange-500 shadow-[0_0_8px_rgba(249,115,22,0.7)]'
+                        : 'bg-white/15'
+                    }`}
+                  />
+                );
+              })}
+            </div>
           </div>
         )}
 

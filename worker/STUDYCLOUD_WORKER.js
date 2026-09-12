@@ -404,7 +404,8 @@ var src_default = {
               email TEXT NOT NULL,
               token TEXT NOT NULL UNIQUE,
               payload TEXT,
-              resend_count INTEGER DEFAULT 1,
+              resend_count INTEGER DEFAULT 0,
+              block_stage INTEGER DEFAULT 0,
               last_sent_at TEXT NOT NULL,
               blocked_until TEXT,
               expires_at TEXT NOT NULL,
@@ -426,7 +427,8 @@ var src_default = {
           "ALTER TABLE email_verifications ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP",
           "ALTER TABLE email_verifications ADD COLUMN expires_at TEXT",
           "ALTER TABLE email_verifications ADD COLUMN blocked_until TEXT",
-          "ALTER TABLE email_verifications ADD COLUMN resend_count INTEGER DEFAULT 1",
+          "ALTER TABLE email_verifications ADD COLUMN block_stage INTEGER DEFAULT 0",
+          "ALTER TABLE email_verifications ADD COLUMN resend_count INTEGER DEFAULT 0",
           "ALTER TABLE email_verifications ADD COLUMN last_sent_at TEXT"
         ];
         for (const sql of cols) {
@@ -837,7 +839,8 @@ var src_default = {
           "ALTER TABLE email_verifications ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP",
           "ALTER TABLE email_verifications ADD COLUMN expires_at TEXT",
           "ALTER TABLE email_verifications ADD COLUMN blocked_until TEXT",
-          "ALTER TABLE email_verifications ADD COLUMN resend_count INTEGER DEFAULT 1",
+          "ALTER TABLE email_verifications ADD COLUMN block_stage INTEGER DEFAULT 0",
+          "ALTER TABLE email_verifications ADD COLUMN resend_count INTEGER DEFAULT 0",
           "ALTER TABLE email_verifications ADD COLUMN last_sent_at TEXT"
         ];
         for (const colSql of emailVerifCols) {
@@ -853,7 +856,8 @@ var src_default = {
             email TEXT NOT NULL,
             token TEXT NOT NULL UNIQUE,
             payload TEXT,
-            resend_count INTEGER DEFAULT 1,
+            resend_count INTEGER DEFAULT 0,
+            block_stage INTEGER DEFAULT 0,
             last_sent_at TEXT NOT NULL,
             blocked_until TEXT,
             expires_at TEXT NOT NULL,
@@ -1268,8 +1272,8 @@ var src_default = {
         await env.DB.prepare("DELETE FROM email_verifications WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).run();
         try {
           await env.DB.prepare(`
-            INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, last_sent_at, expires_at)
-            VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+            INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, block_stage, last_sent_at, expires_at)
+            VALUES (?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, ?)
           `).bind(generateId2(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
         } catch (insertErr) {
           if (String(insertErr).includes("FOREIGN KEY") || String(insertErr).includes("SQLITE_CONSTRAINT")) {
@@ -1279,8 +1283,8 @@ var src_default = {
             }
             await ensureEmailVerificationsTable(env.DB);
             await env.DB.prepare(`
-              INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, last_sent_at, expires_at)
-              VALUES (?, ?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+              INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, block_stage, last_sent_at, expires_at)
+              VALUES (?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, ?)
             `).bind(generateId2(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
           } else {
             throw insertErr;
@@ -1292,8 +1296,8 @@ var src_default = {
           success: true,
           requiresVerification: true,
           email: cleanEmail,
-          resendCount: 1,
-          maxCount: 4,
+          resendCount: 0,
+          maxCount: 5,
           nextAllowedAt: new Date(Date.now() + 70 * 1e3).toISOString(),
           message: "Un email de confirmation vous a \xE9t\xE9 envoy\xE9."
         }, 201, origin);
@@ -1321,7 +1325,6 @@ var src_default = {
           }
         }
         const now = Date.now();
-        const THREE_HOURS_MS = 3 * 3600 * 1e3;
         const RESEND_COOLDOWN_MS = 70 * 1e3;
         const TOKEN_EXPIRY_MS = 70 * 1e3;
         if (verif) {
@@ -1330,11 +1333,16 @@ var src_default = {
             if (blockedTime > now) {
               const remainingMs = blockedTime - now;
               const remainingMin = Math.ceil(remainingMs / 6e4);
+              const stage = verif.block_stage || 1;
+              const stageHours2 = stage === 1 ? 1 : stage === 2 ? 3 : 24;
               return jsonResponse({
                 success: false,
-                error: `Quota atteint (4 tentatives). Veuillez patienter ${remainingMin} minute(s) avant de recommencer.`,
+                error: `Quota de 5 renvois atteint. Votre compte est suspendu (${stageHours2}h). Veuillez patienter ${remainingMin} minute(s).`,
                 isBlocked: true,
                 blockedUntil: verif.blocked_until,
+                blockStage: stage,
+                resendCount: verif.resend_count || 5,
+                maxCount: 5,
                 remainingMs
               }, 429, origin);
             }
@@ -1349,18 +1357,31 @@ var src_default = {
                 error: `Veuillez patienter ${remainingSec} seconde(s) avant de renvoyer l'email.`,
                 isCooldown: true,
                 nextAllowedAt: new Date(lastSentTime + RESEND_COOLDOWN_MS).toISOString(),
-                remainingMs: RESEND_COOLDOWN_MS - elapsed
+                remainingMs: RESEND_COOLDOWN_MS - elapsed,
+                resendCount: verif.resend_count ?? 0,
+                maxCount: 5
               }, 429, origin);
             }
           }
-          let currentCount = verif.resend_count || 1;
+          let currentCount = verif.resend_count ?? 0;
+          let currentStage = verif.block_stage || 0;
           if (verif.blocked_until && new Date(verif.blocked_until).getTime() <= now) {
             currentCount = 0;
           }
           const newCount = currentCount + 1;
           let blockedUntil = null;
-          if (newCount >= 4) {
-            blockedUntil = new Date(now + THREE_HOURS_MS).toISOString();
+          let isNowBlocked = false;
+          let nextStage = currentStage;
+          if (newCount >= 5) {
+            isNowBlocked = true;
+            nextStage = currentStage % 3 + 1;
+            let blockDurationMs = 1 * 3600 * 1e3;
+            if (nextStage === 2) {
+              blockDurationMs = 3 * 3600 * 1e3;
+            } else if (nextStage === 3) {
+              blockDurationMs = 24 * 3600 * 1e3;
+            }
+            blockedUntil = new Date(now + blockDurationMs).toISOString();
           }
           const newToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
           const newExpiresAt = new Date(now + TOKEN_EXPIRY_MS).toISOString();
@@ -1369,28 +1390,31 @@ var src_default = {
             UPDATE email_verifications SET
               token = ?,
               resend_count = ?,
+              block_stage = ?,
               last_sent_at = CURRENT_TIMESTAMP,
               blocked_until = ?,
               expires_at = ?
             WHERE id = ?
-          `).bind(newToken, newCount, blockedUntil, newExpiresAt, verif.id).run();
+          `).bind(newToken, newCount, nextStage, blockedUntil, newExpiresAt, verif.id).run();
           const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
           await sendConfirmationEmail(cleanEmail, userName, newToken, clientOrigin, isLoginFlow);
+          const stageHours = nextStage === 1 ? 1 : nextStage === 2 ? 3 : 24;
           return jsonResponse({
             success: true,
-            message: "Email de confirmation renvoy\xE9 !",
+            message: isNowBlocked ? `Email envoy\xE9. Quota de 5 renvois atteint. Prochain renvoi bloqu\xE9 pendant ${stageHours} heure${stageHours > 1 ? "s" : ""}.` : "Email de confirmation renvoy\xE9 !",
             resendCount: newCount,
-            maxCount: 4,
-            isBlocked: newCount >= 4,
+            maxCount: 5,
+            isBlocked: isNowBlocked,
             blockedUntil,
+            blockStage: nextStage,
             nextAllowedAt
           }, 200, origin);
         } else {
           const newToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
           const newExpiresAt = new Date(now + TOKEN_EXPIRY_MS).toISOString();
           await env.DB.prepare(`
-            INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
-            VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+            INSERT INTO email_verifications (id, user_id, email, token, resend_count, block_stage, last_sent_at, expires_at)
+            VALUES (?, ?, ?, ?, 1, 0, CURRENT_TIMESTAMP, ?)
           `).bind(generateId2(), user?.id || generateId2(), cleanEmail, newToken, newExpiresAt).run();
           const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
           await sendConfirmationEmail(cleanEmail, userName, newToken, clientOrigin, isLoginFlow);
@@ -1398,7 +1422,10 @@ var src_default = {
             success: true,
             message: "Email de confirmation renvoy\xE9 !",
             resendCount: 1,
-            maxCount: 4,
+            maxCount: 5,
+            isBlocked: false,
+            blockedUntil: null,
+            blockStage: 0,
             nextAllowedAt: new Date(now + RESEND_COOLDOWN_MS).toISOString()
           }, 200, origin);
         }
@@ -1469,10 +1496,38 @@ var src_default = {
             user: sanitizeUser2(userDirect)
           }, 200, origin);
         }
+        let currentVerif = null;
+        try {
+          currentVerif = await env.DB.prepare(`
+            SELECT resend_count, block_stage, blocked_until, last_sent_at, expires_at
+            FROM email_verifications
+            WHERE LOWER(TRIM(email)) = ? OR user_id = ?
+            ORDER BY created_at DESC LIMIT 1
+          `).bind(cleanEmail, userIdParam || "").first();
+        } catch (e) {
+        }
+        const now = Date.now();
+        let isBlocked = false;
+        let blockedUntil = currentVerif?.blocked_until || null;
+        let resendCount = typeof currentVerif?.resend_count === "number" ? currentVerif.resend_count : 0;
+        let blockStage = currentVerif?.block_stage ?? 0;
+        if (blockedUntil) {
+          if (new Date(blockedUntil).getTime() > now) {
+            isBlocked = true;
+          } else {
+            blockedUntil = null;
+            resendCount = 0;
+          }
+        }
         return jsonResponse({
           success: true,
           confirmed: false,
-          clicked: false
+          clicked: false,
+          resendCount,
+          maxCount: 5,
+          isBlocked,
+          blockedUntil,
+          blockStage
         }, 200, origin);
       }
       if ((path === "/verify" || path === "/api/auth/verify-email") && method === "GET") {
@@ -1655,8 +1710,8 @@ var src_default = {
         const expiresAt = new Date(Date.now() + 70 * 1e3).toISOString();
         await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(user.id).run();
         await env.DB.prepare(`
-          INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
-          VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
+          INSERT INTO email_verifications (id, user_id, email, token, resend_count, block_stage, last_sent_at, expires_at)
+          VALUES (?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, ?)
         `).bind(generateId2(), user.id, cleanEmail, verificationToken, expiresAt).run();
         const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
         await sendConfirmationEmail(cleanEmail, user.name, verificationToken, clientOrigin, true);
@@ -1665,8 +1720,8 @@ var src_default = {
           requiresVerification: true,
           isLogin: true,
           email: cleanEmail,
-          resendCount: 1,
-          maxCount: 4,
+          resendCount: 0,
+          maxCount: 5,
           nextAllowedAt: new Date(Date.now() + 70 * 1e3).toISOString(),
           message: "Un email de confirmation de connexion vous a \xE9t\xE9 envoy\xE9."
         }, 200, origin);

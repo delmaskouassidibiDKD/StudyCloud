@@ -244,6 +244,10 @@ export function AuthPage({ onBack }: AuthPageProps) {
         const isLogin = mode === 'login' || !!res.isLogin;
         localStorage.setItem('sc_pending_verification_email', targetEmail);
         localStorage.setItem('sc_pending_verification_is_login', isLogin ? '1' : '0');
+        // Initialiser ou réinitialiser le compteur de renvois
+        const initialCount = (res.resendCount !== undefined ? res.resendCount : 0).toString();
+        localStorage.setItem(`sc_resend_count_${targetEmail}`, initialCount);
+        localStorage.removeItem(`sc_resend_blocked_${targetEmail}`);
         // Initialiser ou réinitialiser le décompteur de 70 secondes
         const targetTime = res.nextAllowedAt ? new Date(res.nextAllowedAt).getTime() : (Date.now() + 70 * 1000);
         localStorage.setItem(`sc_resend_target_${targetEmail}`, targetTime.toString());
