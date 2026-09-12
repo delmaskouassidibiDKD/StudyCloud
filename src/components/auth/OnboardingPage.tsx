@@ -17,7 +17,6 @@ import {
   ShieldCheck,
   Upload,
   Clock,
-  X,
 } from 'lucide-react';
 import { StudyCloudAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
@@ -875,21 +874,6 @@ export function OnboardingPage() {
                             <Upload className="w-3.5 h-3.5 text-orange-400" />
                             {isCustomAvatar ? "Changer l'image" : "Importer une image"}
                           </button>
-                          {isCustomAvatar && (
-                            <button
-                              type="button"
-                              onClick={() => {
-                                const defaultEmailAvatar = getAvatarFromEmail(user?.email, name || user?.name);
-                                setAvatarUrl(defaultEmailAvatar);
-                                setIsCustomAvatar(false);
-                                if (fileInputRef.current) fileInputRef.current.value = '';
-                              }}
-                              className="px-3.5 py-2 rounded-xl text-xs font-semibold text-white/60 hover:text-red-400 bg-white/5 hover:bg-red-500/10 border border-white/10 hover:border-red-500/30 transition-all flex items-center gap-1.5 cursor-pointer"
-                            >
-                              <X className="w-3.5 h-3.5" />
-                              Réinitialiser à l'email
-                            </button>
-                          )}
                         </div>
                       </div>
                     </div>
