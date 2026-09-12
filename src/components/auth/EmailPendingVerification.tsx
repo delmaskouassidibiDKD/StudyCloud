@@ -29,7 +29,7 @@ export function EmailPendingVerification({
   const COOLDOWN_KEY = `sc_resend_target_${email.toLowerCase()}`;
   const BLOCKED_KEY = `sc_resend_blocked_${email.toLowerCase()}`;
   const COUNT_KEY = `sc_resend_count_${email.toLowerCase()}`;
-  const COOLDOWN_DURATION_MS = 60 * 1000; // 60 secondes entre deux demandes de renvoi
+  const COOLDOWN_DURATION_MS = 70 * 1000; // 70 secondes entre deux demandes de renvoi
 
   // Initialisation et restauration de l'état persistant
   useEffect(() => {
@@ -63,7 +63,7 @@ export function EmailPendingVerification({
       }
     }
 
-    // 3. Restaurer le décompteur de 60 secondes
+    // 3. Restaurer le décompteur de 70 secondes
     const savedTarget = localStorage.getItem(COOLDOWN_KEY);
     if (savedTarget) {
       const targetTime = parseInt(savedTarget, 10);
@@ -74,10 +74,10 @@ export function EmailPendingVerification({
         setSecondsLeft(0);
       }
     } else {
-      // Premier affichage : décompte initial de 60s
+      // Premier affichage : décompte initial de 70s
       const targetTime = Date.now() + COOLDOWN_DURATION_MS;
       localStorage.setItem(COOLDOWN_KEY, targetTime.toString());
-      setSecondsLeft(60);
+      setSecondsLeft(70);
     }
   }, [email]);
 
@@ -232,16 +232,18 @@ export function EmailPendingVerification({
         setResendCount(newCount);
         localStorage.setItem(COUNT_KEY, newCount.toString());
 
+        // Relancer le décompte persistant de 70 secondes
+        const targetTime = Date.now() + COOLDOWN_DURATION_MS;
+        localStorage.setItem(COOLDOWN_KEY, targetTime.toString());
+        setSecondsLeft(70);
+
         // Si bloqué (après 4 tentatives)
         if (res.isBlocked || res.blockedUntil || newCount >= 4) {
           const blockDate = res.blockedUntil || new Date(Date.now() + 3 * 3600 * 1000).toISOString();
           setBlockedUntil(blockDate);
           localStorage.setItem(BLOCKED_KEY, blockDate);
           setError('Quota atteint (4/4 tentatives). Veuillez patienter 3 heures avant de pouvoir réclamer un nouvel email.');
-          // Relancer le décompte persistant de 60 secondes
-          const targetTime = Date.now() + COOLDOWN_DURATION_MS;
-          localStorage.setItem(COOLDOWN_KEY, targetTime.toString());
-          setSecondsLeft(60);
+        } else {
           setMessage('✨ Un nouveau lien de confirmation vient de vous être envoyé par email !');
         }
       } else {
@@ -258,14 +260,9 @@ export function EmailPendingVerification({
     }
   };
 
-  // Formatage du décompte en minutes et secondes (ex: 1 min 30 s)
+  // Formatage du décompte en secondes (ex: 70s)
   const formatSeconds = (sec: number) => {
-    const m = Math.floor(sec / 60);
-    const s = sec % 60;
-    if (m > 0) {
-      return `${m} min ${s.toString().padStart(2, '0')} s`;
-    }
-    return `${s}s`;
+    return `${sec}s`;
   };
 
   // Calcul du temps restant de blocage (heures et minutes)
@@ -411,7 +408,7 @@ export function EmailPendingVerification({
           </div>
         )}
 
-        {/* Indication disponible lorsque le décompteur de 60s est terminé */}
+        {/* Indication disponible lorsque le décompteur de 70s est terminé */}
         {!isBlocked && secondsLeft === 0 && (
           <div className="mb-5 p-4 rounded-2xl bg-blue-500/15 border border-blue-500/30 text-blue-200 flex items-start gap-3 shadow-lg shadow-blue-500/5">
             <Mail className="w-5 h-5 text-blue-400 shrink-0 mt-0.5" />

@@ -1257,7 +1257,7 @@ var src_default = {
               email: cleanEmail,
               resendCount: 1,
               maxCount: 4,
-              nextAllowedAt: new Date(Date.now() + 60 * 1e3).toISOString(),
+              nextAllowedAt: new Date(Date.now() + 70 * 1e3).toISOString(),
               message: "Un email de confirmation vous a \xE9t\xE9 envoy\xE9."
             }, 200, origin);
           }
@@ -1312,7 +1312,7 @@ var src_default = {
           email: cleanEmail,
           resendCount: 1,
           maxCount: 4,
-          nextAllowedAt: new Date(Date.now() + 60 * 1e3).toISOString(),
+          nextAllowedAt: new Date(Date.now() + 70 * 1e3).toISOString(),
           message: "Un email de confirmation vous a \xE9t\xE9 envoy\xE9."
         }, 201, origin);
       }
@@ -1331,7 +1331,7 @@ var src_default = {
         const verif = await env.DB.prepare("SELECT * FROM email_verifications WHERE user_id = ? ORDER BY created_at DESC LIMIT 1").bind(user.id).first();
         const now = Date.now();
         const THREE_HOURS_MS = 3 * 3600 * 1e3;
-        const RESEND_COOLDOWN_MS = 60 * 1e3;
+        const RESEND_COOLDOWN_MS = 70 * 1e3;
         const TOKEN_EXPIRY_MS = 15 * 60 * 1e3;
         if (verif) {
           if (verif.blocked_until) {
@@ -1640,7 +1640,7 @@ var src_default = {
           email: cleanEmail,
           resendCount: 1,
           maxCount: 4,
-          nextAllowedAt: new Date(Date.now() + 60 * 1e3).toISOString(),
+          nextAllowedAt: new Date(Date.now() + 70 * 1e3).toISOString(),
           message: "Un email de confirmation de connexion vous a \xE9t\xE9 envoy\xE9."
         }, 200, origin);
       }

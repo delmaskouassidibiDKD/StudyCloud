@@ -1344,7 +1344,7 @@ export default {
               email: cleanEmail,
               resendCount: 1,
               maxCount: 4,
-              nextAllowedAt: new Date(Date.now() + 60 * 1000).toISOString(),
+              nextAllowedAt: new Date(Date.now() + 70 * 1000).toISOString(),
               message: 'Un email de confirmation vous a été envoyé.',
             }, 200, origin);
           }
@@ -1411,12 +1411,12 @@ export default {
           email: cleanEmail,
           resendCount: 1,
           maxCount: 4,
-          nextAllowedAt: new Date(Date.now() + 60 * 1000).toISOString(),
+          nextAllowedAt: new Date(Date.now() + 70 * 1000).toISOString(),
           message: 'Un email de confirmation vous a été envoyé.',
         }, 201, origin);
       }
 
-      // POST /api/auth/resend-verification — Renvoi avec rate-limit 90s & blocage 3h après 4 tentatives
+      // POST /api/auth/resend-verification — Renvoi avec rate-limit 70s & blocage 3h après 4 tentatives
       if (path === '/api/auth/resend-verification' && method === 'POST') {
         const body: any = await request.json();
         const { email } = body;
@@ -1432,7 +1432,7 @@ export default {
 
         const now = Date.now();
         const THREE_HOURS_MS = 3 * 3600 * 1000;
-        const RESEND_COOLDOWN_MS = 60 * 1000;
+        const RESEND_COOLDOWN_MS = 70 * 1000;
         const TOKEN_EXPIRY_MS = 15 * 60 * 1000;
 
         if (verif) {
@@ -1792,7 +1792,7 @@ export default {
           email: cleanEmail,
           resendCount: 1,
           maxCount: 4,
-          nextAllowedAt: new Date(Date.now() + 60 * 1000).toISOString(),
+          nextAllowedAt: new Date(Date.now() + 70 * 1000).toISOString(),
           message: 'Un email de confirmation de connexion vous a été envoyé.',
         }, 200, origin);
       }
