@@ -1976,16 +1976,16 @@ export default {
       if (path === '/api/auth/forgot-password/send-code' && method === 'POST') {
         await ensurePasswordResetsTable(env.DB);
         const body: any = await request.json();
-        const { email, targetEmail, resetSessionToken } = body;
-        if (!email || !targetEmail || !resetSessionToken) {
-          return errorResponse('Email, email de destination et token requis', 400, origin);
+        const { email, resetSessionToken } = body;
+        if (!email || !resetSessionToken) {
+          return errorResponse('Email et token requis', 400, origin);
         }
         if (!isValidEmail(email)) return errorResponse('Format d\'adresse email du compte invalide (ex: exemple@gmail.com)', 400, origin);
-        if (!isValidEmail(targetEmail)) return errorResponse('Format d\'adresse email de réception invalide (ex: exemple@gmail.com)', 400, origin);
 
         const cleanAccountEmail = email.toLowerCase().trim();
-        const cleanTargetEmail = targetEmail.toLowerCase().trim();
-        const user: any = await env.DB.prepare('SELECT id, name, email FROM users WHERE email = ?').bind(cleanAccountEmail).first();
+        // Sécurité stricte : le code est TOUJOURS envoyé à l'email qui a servi à créer le compte
+        const cleanTargetEmail = cleanAccountEmail;
+        const user: any = await env.DB.prepare('SELECT id, name, email FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanAccountEmail).first();
         if (!user) return errorResponse('Utilisateur introuvable', 404, origin);
 
         // Vérification du quota de 4 par tranche de 24h

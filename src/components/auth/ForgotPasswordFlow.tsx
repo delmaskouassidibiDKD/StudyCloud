@@ -141,14 +141,11 @@ export function ForgotPasswordFlow({
     }
   };
 
-  // Étape 3 : Envoyer le code à l'adresse email choisie
+  // Étape 3 : Envoyer le code à l'adresse email du compte
   const handleSendCode = async () => {
-    if (!targetEmail.trim()) {
-      setError("Veuillez indiquer l'adresse email de réception.");
-      return;
-    }
-    if (!isValidEmail(targetEmail)) {
-      setError("Le format de l'adresse email de réception est invalide (ex: exemple@gmail.com).");
+    const finalEmail = accountEmail.trim();
+    if (!finalEmail) {
+      setError("Adresse email du compte manquante.");
       return;
     }
 
@@ -157,13 +154,13 @@ export function ForgotPasswordFlow({
 
     try {
       const res: any = await StudyCloudAPI.sendPasswordResetCode({
-        email: accountEmail.trim(),
-        targetEmail: targetEmail.trim(),
+        email: finalEmail,
+        targetEmail: finalEmail,
         resetSessionToken,
       });
 
       if (res.success) {
-        onCodeSent(targetEmail.trim());
+        onCodeSent(finalEmail);
       } else {
         if (res.isBlocked && res.blockedUntil) {
           setBlockedUntil(res.blockedUntil);
@@ -484,16 +481,13 @@ export function ForgotPasswordFlow({
           </div>
         )}
 
-        {/* ── STEP 3 : CHOIX DE L'EMAIL DE RÉCEPTION + ENVOYER / ANNULER ── */}
+        {/* ── STEP 3 : CONFIRMATION ET ENVOI DU CODE SUR L'EMAIL DU COMPTE ── */}
         {step === 'target-email' && (
           <div>
             <div className="text-center mb-5">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500/20 border border-emerald-500/30 flex items-center justify-center mx-auto mb-2.5 text-emerald-400">
-                <Sparkles className="w-6 h-6" />
-              </div>
               <h2 className="text-lg font-black text-white">Identité confirmée !</h2>
               <p className="text-xs text-white/50 mt-1">
-                Vos réponses sont correctes. Indiquez l'adresse email où recevoir votre code de réinitialisation :
+                Vos réponses sont correctes. Le code de réinitialisation sera envoyé à l'adresse email de votre compte :
               </p>
             </div>
 
@@ -501,51 +495,24 @@ export function ForgotPasswordFlow({
               <div>
                 <div className="flex items-center justify-between mb-1.5">
                   <label className="text-xs font-bold text-white/60 block">
-                    Email qui recevra le mot de passe oublié *
+                    Email de votre compte
                   </label>
-                  {targetEmail.trim().length > 0 && isValidEmail(targetEmail) && (
-                    <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
-                      <CheckCircle2 className="w-3.5 h-3.5" />
-                      Format valide
-                    </span>
-                  )}
+                  <span className="text-[11px] font-bold text-emerald-400 flex items-center gap-1">
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Format valide
+                  </span>
                 </div>
                 <div className="relative">
-                  <Mail className={`absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 transition-colors ${
-                    targetEmail.trim().length > 0 && !isValidEmail(targetEmail) && (targetEmail.includes('@') || targetEmailTouched)
-                      ? 'text-red-400'
-                      : targetEmail.trim().length > 0 && isValidEmail(targetEmail)
-                      ? 'text-emerald-400'
-                      : 'text-white/30'
-                  }`} />
+                  <Mail className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-400" />
                   <input
                     type="email"
-                    value={targetEmail}
-                    onChange={(e) => setTargetEmail(e.target.value)}
-                    onBlur={() => setTargetEmailTouched(true)}
-                    placeholder="exemple@gmail.com"
-                    required
-                    autoFocus
-                    className={`w-full pl-10 pr-10 py-3 rounded-xl text-sm font-medium text-white placeholder-white/30 outline-none transition-all bg-white/10 ${
-                      targetEmail.trim().length > 0 && !isValidEmail(targetEmail) && (targetEmail.includes('@') || targetEmailTouched)
-                        ? 'border-2 border-red-500/70 focus:ring-2 focus:ring-red-500/50'
-                        : targetEmail.trim().length > 0 && isValidEmail(targetEmail)
-                        ? 'border-2 border-emerald-500/70 focus:ring-2 focus:ring-emerald-500/50'
-                        : 'border border-white/15 focus:ring-2 focus:ring-orange-500/50'
-                    }`}
+                    value={accountEmail}
+                    readOnly
+                    disabled
+                    className="w-full pl-10 pr-10 py-3 rounded-xl text-sm font-semibold text-white/90 bg-white/5 border border-emerald-500/40 cursor-not-allowed select-none"
                   />
-                  {targetEmail.trim().length > 0 && isValidEmail(targetEmail) && (
-                    <CheckCircle2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-400" />
-                  )}
-                  {targetEmail.trim().length > 0 && !isValidEmail(targetEmail) && (targetEmail.includes('@') || targetEmailTouched) && (
-                    <AlertTriangle className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-red-400" />
-                  )}
+                  <CheckCircle2 className="absolute right-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-emerald-400" />
                 </div>
-                {targetEmail.trim().length > 0 && !isValidEmail(targetEmail) && (targetEmail.includes('@') || targetEmailTouched) && (
-                  <p className="text-[11px] text-red-400 font-medium mt-1.5 flex items-center gap-1">
-                    <span>Format invalide (doit respecter ex: nom@gmail.com)</span>
-                  </p>
-                )}
               </div>
 
               {/* Indicateur de quota (4 réclamations / jour) */}
