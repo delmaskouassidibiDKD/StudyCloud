@@ -126,19 +126,18 @@ export function EmailPendingVerification({
     };
   }, [email]);
 
-  // Polling automatique pour détection cross-device en temps réel (si l'email est confirmé sur smartphone ou autre onglet)
+  // Polling automatique et détection instantanée (cross-device et même appareil)
   useEffect(() => {
     let isMounted = true;
     let isChecking = false;
 
-    const pollInterval = setInterval(async () => {
+    const checkStatus = async () => {
       if (isChecking || !email || isBlocked || isAutoDetected) return;
       isChecking = true;
 
       try {
         const res: any = await StudyCloudAPI.checkVerificationStatus(email);
         if (res && res.confirmed && res.token && res.user && isMounted) {
-          clearInterval(pollInterval);
           setIsAutoDetected(true);
           setMessage('🎉 Confirmation validée avec succès ! Connexion instantanée à votre espace...');
 
@@ -152,18 +151,58 @@ export function EmailPendingVerification({
               localStorage.removeItem('sc_pending_verification_is_login');
               window.location.href = '/';
             }
-          }, 900);
+          }, 600);
         }
       } catch (e) {
         // Ignorer silencieusement les erreurs réseaux temporaires de polling
       } finally {
         isChecking = false;
       }
-    }, 1800);
+    };
+
+    // 1. Polling régulier rapide (1.2s)
+    const pollInterval = setInterval(checkStatus, 1200);
+
+    // 2. Détection immédiate dès que l'utilisateur revient sur l'application (quitte l'app mail et revient)
+    const handleImmediateWakeUp = () => {
+      checkStatus();
+    };
+
+    document.addEventListener('visibilitychange', handleImmediateWakeUp);
+    window.addEventListener('focus', handleImmediateWakeUp);
+    window.addEventListener('pageshow', handleImmediateWakeUp);
+
+    // 3. Écoute instantanée sur le même appareil/navigateur via BroadcastChannel
+    let broadcastChannel: BroadcastChannel | null = null;
+    try {
+      broadcastChannel = new BroadcastChannel('studycloud_email_verification');
+      broadcastChannel.onmessage = (ev) => {
+        if (ev.data && (ev.data.email === email || ev.data.success)) {
+          checkStatus();
+        }
+      };
+    } catch (e) {}
+
+    // 4. Écoute des signaux de stockage
+    const handleStorageEvent = (e: StorageEvent) => {
+      if (e.key === 'sc_email_verified_signal') {
+        checkStatus();
+      }
+    };
+    window.addEventListener('storage', handleStorageEvent);
 
     return () => {
       isMounted = false;
       clearInterval(pollInterval);
+      document.removeEventListener('visibilitychange', handleImmediateWakeUp);
+      window.removeEventListener('focus', handleImmediateWakeUp);
+      window.removeEventListener('pageshow', handleImmediateWakeUp);
+      window.removeEventListener('storage', handleStorageEvent);
+      if (broadcastChannel) {
+        try {
+          broadcastChannel.close();
+        } catch (e) {}
+      }
     };
   }, [email, isBlocked, isAutoDetected, onEmailVerified]);
 

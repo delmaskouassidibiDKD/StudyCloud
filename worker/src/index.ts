@@ -295,10 +295,10 @@ export default {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Confirmation réussie - StudyCloud</title>
+  <title>Adresse email confirmée - StudyCloud</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     * { margin:0; padding:0; box-sizing:border-box; font-family:'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
     body {
@@ -306,85 +306,92 @@ export default {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, #09091d 0%, #0f1230 45%, #18194a 75%, #08111e 100%);
+      background-color: #0b0f19;
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(37, 99, 235, 0.15) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(234, 88, 12, 0.12) 0px, transparent 50%);
       color: #ffffff;
-      padding: 24px 16px;
+      padding: 20px 16px;
     }
-    .card {
+    .modal-menu {
       width: 100%;
-      max-width: 520px;
-      background: rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
+      max-width: 440px;
+      background: rgba(17, 24, 39, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 28px;
-      padding: 44px 32px 36px;
+      border-radius: 26px;
+      padding: 36px 28px 32px;
       text-align: center;
-      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(16, 185, 129, 0.15);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 35px rgba(16, 185, 129, 0.15);
       position: relative;
       overflow: hidden;
+      animation: popIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .card::before {
+    @keyframes popIn {
+      0% { opacity: 0; transform: scale(0.92) translateY(10px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .modal-menu::before {
       content: '';
       position: absolute;
       top: 0; left: 0; right: 0;
-      height: 6px;
-      background: linear-gradient(90deg, #10B981, #06B6D4, #3B82F6, #EA580C);
+      height: 5px;
+      background: linear-gradient(90deg, #10B981, #059669, #3B82F6);
     }
-    .logo-box {
+    .logo-badge {
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      margin-bottom: 28px;
+      margin-bottom: 24px;
     }
     .logo-img {
-      width: 36px;
-      height: 36px;
+      width: 32px;
+      height: 32px;
       display: block;
     }
-    .logo-text-study { color: #EA580C; font-weight: 900; font-size: 24px; letter-spacing: -0.5px; }
-    .logo-text-cloud { color: #2563EB; font-weight: 900; font-size: 24px; letter-spacing: -0.5px; }
-    .logo-sub { color: #F59E0B; font-size: 8.5px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; text-align: left; }
-    
-    .icon-badge {
-      width: 88px;
-      height: 88px;
-      border-radius: 26px;
-      margin: 0 auto 24px;
+    .logo-study { color: #EA580C; font-weight: 900; font-size: 21px; letter-spacing: -0.5px; }
+    .logo-cloud { color: #2563EB; font-weight: 900; font-size: 21px; letter-spacing: -0.5px; }
+    .logo-sub { color: #F59E0B; font-size: 8px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+
+    .status-icon {
+      width: 76px;
+      height: 76px;
+      border-radius: 22px;
+      margin: 0 auto 20px;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, #059669 0%, #10B981 50%, #06B6D4 100%);
-      box-shadow: 0 12px 36px rgba(16, 185, 129, 0.4);
-      font-size: 42px;
-      animation: pulseAura 2s infinite ease-in-out;
+      background: linear-gradient(135deg, rgba(16, 185, 129, 0.2) 0%, rgba(5, 150, 105, 0.3) 100%);
+      border: 1px solid rgba(16, 185, 129, 0.4);
+      box-shadow: 0 10px 25px rgba(16, 185, 129, 0.25);
+      font-size: 36px;
     }
-    @keyframes pulseAura {
-      0%, 100% { transform: scale(1); }
-      50% { transform: scale(1.04); }
-    }
+
     h1 {
-      font-size: 26px;
-      font-weight: 900;
+      font-size: 22px;
+      font-weight: 800;
       color: #ffffff;
-      margin-bottom: 12px;
-      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+      letter-spacing: -0.3px;
     }
-    p.desc {
-      font-size: 15px;
-      color: rgba(255, 255, 255, 0.75);
-      line-height: 1.6;
+    p.user-email {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-bottom: 22px;
+      line-height: 1.5;
+    }
+    p.user-email strong {
+      color: #e2e8f0;
+    }
+
+    .instruction-card {
+      background: rgba(16, 185, 129, 0.08);
+      border: 1px solid rgba(16, 185, 129, 0.25);
+      border-radius: 16px;
+      padding: 16px 18px;
       margin-bottom: 24px;
-    }
-    .highlight-card {
-      background: rgba(16, 185, 129, 0.12);
-      border: 1px solid rgba(16, 185, 129, 0.3);
-      border-radius: 18px;
-      padding: 16px 20px;
-      margin-bottom: 28px;
       text-align: left;
     }
-    .highlight-title {
+    .instruction-title {
       font-size: 13px;
       font-weight: 800;
       color: #34D399;
@@ -393,71 +400,99 @@ export default {
       gap: 8px;
       margin-bottom: 6px;
     }
-    .highlight-text {
+    .instruction-body {
       font-size: 12.5px;
-      color: rgba(255, 255, 255, 0.8);
+      color: #cbd5e1;
       line-height: 1.5;
     }
-    .btn {
-      display: block;
+
+    .btn-close {
+      display: inline-block;
       width: 100%;
-      padding: 16px 24px;
-      background: linear-gradient(135deg, #EA580C 0%, #F97316 50%, #2563EB 100%);
+      padding: 14px 20px;
+      background: linear-gradient(135deg, #10B981 0%, #059669 100%);
       color: #ffffff;
-      font-size: 16px;
-      font-weight: 800;
-      text-decoration: none;
-      border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(234, 88, 12, 0.35);
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(16, 185, 129, 0.3);
       transition: all 0.2s ease;
     }
-    .btn:hover {
+    .btn-close:hover {
       transform: translateY(-1px);
-      box-shadow: 0 14px 36px rgba(234, 88, 12, 0.5);
+      box-shadow: 0 10px 24px rgba(16, 185, 129, 0.4);
     }
-    .footer-note {
-      margin-top: 24px;
+    .btn-close:active {
+      transform: translateY(0);
+    }
+    .hint-text {
       font-size: 12px;
-      color: rgba(255, 255, 255, 0.45);
-      line-height: 1.5;
+      color: #64748b;
+      margin-top: 14px;
+      line-height: 1.4;
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="logo-box">
-      <img src="${appUrl}/assets/dna-logo.png" onerror="this.src='https://studycloud.dkd-technologies.com/assets/dna-logo.png'" class="logo-img" alt="Logo" />
+  <div class="modal-menu">
+    <div class="logo-badge">
+      <img src="https://studycloud.dkd-technologies.com/assets/dna-logo.png" class="logo-img" alt="Logo" />
       <div>
-        <div style="line-height:1;"><span class="logo-text-study">Study</span><span class="logo-text-cloud">Cloud</span></div>
+        <div style="line-height:1;"><span class="logo-study">Study</span><span class="logo-cloud">Cloud</span></div>
         <div class="logo-sub">DKD TECHNOLOGIES</div>
       </div>
     </div>
 
-    <div class="icon-badge">✅</div>
+    <div class="status-icon">✅</div>
 
-    <h1>Confirmation validée avec succès !</h1>
-    <p class="desc">
-      Bonjour <strong>${name || 'Étudiant'}</strong>, votre autorisation a été confirmée pour l'adresse <strong>${email}</strong>.
+    <h1>Email confirmé avec succès !</h1>
+    <p class="user-email">
+      L'adresse <strong>${email}</strong> a été validée avec succès.
     </p>
 
-    <div class="highlight-card">
-      <div class="highlight-title">
-        <span>⚡ Synchronisation automatique</span>
+    <div class="instruction-card">
+      <div class="instruction-title">
+        <span>📱 Retournez à l'application</span>
       </div>
-      <div class="highlight-text">
-        Si votre navigateur est ouvert sur votre ordinateur, <strong>votre session s'active automatiquement</strong> en ce moment même.<br>
-        Vous pouvez fermer cet onglet en toute sécurité ou continuer sur cet appareil ci-dessous.
+      <div class="instruction-body">
+        Votre appareil d'origine a automatiquement détecté la validation. Vous pouvez maintenant fermer cette fenêtre et <strong>continuer sur votre application StudyCloud</strong>.
       </div>
     </div>
 
-    <a href="${appUrl}" class="btn">
-      Accéder à StudyCloud &rarr;
-    </a>
+    <button type="button" class="btn-close" onclick="closeWindow()">
+      Fermer cette fenêtre
+    </button>
 
-    <div class="footer-note">
-      StudyCloud propulsé par <strong>DKD Technologies</strong> · Abidjan, Côte d'Ivoire
-    </div>
+    <p class="hint-text" id="hint">
+      Si la fenêtre ne se ferme pas automatiquement, basculez simplement sur l'onglet ou l'application StudyCloud déjà ouverte.
+    </p>
   </div>
+
+  <script>
+    try {
+      const bc = new BroadcastChannel('studycloud_email_verification');
+      bc.postMessage({ email: "${email}", success: true });
+    } catch (e) {}
+    try {
+      localStorage.setItem('sc_email_verified_signal', JSON.stringify({ email: "${email}", time: Date.now() }));
+    } catch (e) {}
+
+    function closeWindow() {
+      try {
+        window.open('', '_self', '');
+        window.close();
+      } catch (e) {}
+      setTimeout(function() {
+        var h = document.getElementById('hint');
+        if (h) {
+          h.innerText = "Vous pouvez fermer cet onglet et revenir sur votre application StudyCloud.";
+          h.style.color = '#38bdf8';
+        }
+      }, 200);
+    }
+  </script>
 </body>
 </html>`;
       }
@@ -468,10 +503,10 @@ export default {
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Lien de confirmation expiré - StudyCloud</title>
+  <title>Lien expiré - StudyCloud</title>
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@500;600;700;800;900&display=swap" rel="stylesheet">
   <style>
     * { margin:0; padding:0; box-sizing:border-box; font-family:'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif; }
     body {
@@ -479,142 +514,182 @@ export default {
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, #0f0c29 0%, #1a1a3e 40%, #24243e 70%, #0f2027 100%);
+      background-color: #0b0f19;
+      background-image: 
+        radial-gradient(at 0% 0%, rgba(234, 88, 12, 0.15) 0px, transparent 50%),
+        radial-gradient(at 100% 100%, rgba(220, 38, 38, 0.12) 0px, transparent 50%);
       color: #ffffff;
-      padding: 24px 16px;
+      padding: 20px 16px;
     }
-    .card {
+    .modal-menu {
       width: 100%;
-      max-width: 500px;
-      background: rgba(255, 255, 255, 0.05);
-      backdrop-filter: blur(20px);
-      -webkit-backdrop-filter: blur(20px);
+      max-width: 440px;
+      background: rgba(17, 24, 39, 0.95);
       border: 1px solid rgba(255, 255, 255, 0.12);
-      border-radius: 28px;
-      padding: 44px 32px 36px;
+      border-radius: 26px;
+      padding: 36px 28px 32px;
       text-align: center;
-      box-shadow: 0 25px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(245, 158, 11, 0.12);
+      box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.7), 0 0 35px rgba(245, 158, 11, 0.15);
       position: relative;
       overflow: hidden;
+      animation: popIn 0.35s cubic-bezier(0.16, 1, 0.3, 1);
     }
-    .card::before {
+    @keyframes popIn {
+      0% { opacity: 0; transform: scale(0.92) translateY(10px); }
+      100% { opacity: 1; transform: scale(1) translateY(0); }
+    }
+    .modal-menu::before {
       content: '';
       position: absolute;
       top: 0; left: 0; right: 0;
-      height: 6px;
+      height: 5px;
       background: linear-gradient(90deg, #F59E0B, #EF4444, #EA580C);
     }
-    .logo-box {
+    .logo-badge {
       display: inline-flex;
       align-items: center;
       gap: 10px;
-      margin-bottom: 28px;
+      margin-bottom: 24px;
     }
     .logo-img {
-      width: 36px;
-      height: 36px;
+      width: 32px;
+      height: 32px;
       display: block;
     }
-    .logo-text-study { color: #EA580C; font-weight: 900; font-size: 24px; letter-spacing: -0.5px; }
-    .logo-text-cloud { color: #2563EB; font-weight: 900; font-size: 24px; letter-spacing: -0.5px; }
-    .logo-sub { color: #F59E0B; font-size: 8.5px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; text-align: left; }
-    
-    .icon-badge {
-      width: 88px;
-      height: 88px;
-      border-radius: 26px;
-      margin: 0 auto 24px;
+    .logo-study { color: #EA580C; font-weight: 900; font-size: 21px; letter-spacing: -0.5px; }
+    .logo-cloud { color: #2563EB; font-weight: 900; font-size: 21px; letter-spacing: -0.5px; }
+    .logo-sub { color: #F59E0B; font-size: 8px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; margin-top: 2px; }
+
+    .status-icon {
+      width: 76px;
+      height: 76px;
+      border-radius: 22px;
+      margin: 0 auto 20px;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: linear-gradient(135deg, #B45309 0%, #F59E0B 50%, #DC2626 100%);
-      box-shadow: 0 12px 36px rgba(245, 158, 11, 0.35);
-      font-size: 42px;
+      background: linear-gradient(135deg, rgba(245, 158, 11, 0.2) 0%, rgba(220, 38, 38, 0.25) 100%);
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      box-shadow: 0 10px 25px rgba(245, 158, 11, 0.25);
+      font-size: 36px;
     }
+
     h1 {
-      font-size: 25px;
-      font-weight: 900;
+      font-size: 22px;
+      font-weight: 800;
       color: #ffffff;
-      margin-bottom: 12px;
-      letter-spacing: -0.5px;
+      margin-bottom: 8px;
+      letter-spacing: -0.3px;
     }
-    p.desc {
-      font-size: 14.5px;
-      color: rgba(255, 255, 255, 0.75);
-      line-height: 1.6;
+    p.user-email {
+      font-size: 14px;
+      color: #94a3b8;
+      margin-bottom: 22px;
+      line-height: 1.5;
+    }
+
+    .instruction-card {
+      background: rgba(245, 158, 11, 0.08);
+      border: 1px solid rgba(245, 158, 11, 0.25);
+      border-radius: 16px;
+      padding: 16px 18px;
       margin-bottom: 24px;
-    }
-    .highlight-card {
-      background: rgba(245, 158, 11, 0.12);
-      border: 1px solid rgba(245, 158, 11, 0.3);
-      border-radius: 18px;
-      padding: 16px 20px;
-      margin-bottom: 28px;
       text-align: left;
     }
-    .highlight-title {
+    .instruction-title {
       font-size: 13px;
       font-weight: 800;
       color: #FBBF24;
+      display: flex;
+      align-items: center;
+      gap: 8px;
       margin-bottom: 6px;
     }
-    .highlight-text {
+    .instruction-body {
       font-size: 12.5px;
-      color: rgba(255, 255, 255, 0.8);
+      color: #cbd5e1;
       line-height: 1.5;
     }
-    .btn {
-      display: block;
+
+    .btn-close {
+      display: inline-block;
       width: 100%;
-      padding: 16px 24px;
+      padding: 14px 20px;
       background: linear-gradient(135deg, #EA580C 0%, #F97316 100%);
       color: #ffffff;
-      font-size: 16px;
-      font-weight: 800;
-      text-decoration: none;
-      border-radius: 16px;
-      box-shadow: 0 10px 30px rgba(234, 88, 12, 0.35);
+      font-size: 15px;
+      font-weight: 700;
+      border: none;
+      border-radius: 14px;
+      cursor: pointer;
+      box-shadow: 0 8px 20px rgba(234, 88, 12, 0.3);
       transition: all 0.2s ease;
     }
-    .footer-note {
-      margin-top: 24px;
+    .btn-close:hover {
+      transform: translateY(-1px);
+      box-shadow: 0 10px 24px rgba(234, 88, 12, 0.4);
+    }
+    .btn-close:active {
+      transform: translateY(0);
+    }
+    .hint-text {
       font-size: 12px;
-      color: rgba(255, 255, 255, 0.45);
+      color: #64748b;
+      margin-top: 14px;
+      line-height: 1.4;
     }
   </style>
 </head>
 <body>
-  <div class="card">
-    <div class="logo-box">
-      <img src="${appUrl}/assets/dna-logo.png" onerror="this.src='https://studycloud.dkd-technologies.com/assets/dna-logo.png'" class="logo-img" alt="Logo" />
+  <div class="modal-menu">
+    <div class="logo-badge">
+      <img src="https://studycloud.dkd-technologies.com/assets/dna-logo.png" class="logo-img" alt="Logo" />
       <div>
-        <div style="line-height:1;"><span class="logo-text-study">Study</span><span class="logo-text-cloud">Cloud</span></div>
+        <div style="line-height:1;"><span class="logo-study">Study</span><span class="logo-cloud">Cloud</span></div>
         <div class="logo-sub">DKD TECHNOLOGIES</div>
       </div>
     </div>
 
-    <div class="icon-badge">⏳</div>
+    <div class="status-icon">⏳</div>
 
     <h1>Lien de confirmation expiré</h1>
-    <p class="desc">
-      ${customMessage || 'Pour des raisons strictes de sécurité, chaque lien de confirmation est valable pendant exactement 1 minute. Le temps imparti est dépassé ou ce lien a déjà été validé.'}
+    <p class="user-email">
+      ${customMessage || 'Ce lien de confirmation (valable 1 minute) a expiré ou a déjà été utilisé.'}
     </p>
 
-    <div class="highlight-card">
-      <div class="highlight-title">⚠️ Action requise</div>
-      <div class="highlight-text">
-        Veuillez retourner sur la page StudyCloud pour réclamer un nouveau lien de confirmation sécurisé.
+    <div class="instruction-card">
+      <div class="instruction-title">
+        <span>⚠️ Action requise</span>
+      </div>
+      <div class="instruction-body">
+        Veuillez retourner sur votre application StudyCloud pour réclamer l'envoi d'un nouveau lien de confirmation sécurisé.
       </div>
     </div>
 
-    <a href="${appUrl}" class="btn">
-      Retourner sur StudyCloud &rarr;
-    </a>
+    <button type="button" class="btn-close" onclick="closeWindow()">
+      Fermer cette fenêtre
+    </button>
 
-    <div class="footer-note">
-      StudyCloud · Sécurité DKD Technologies
-    </div>
+    <p class="hint-text" id="hint">
+      Revenez sur votre application StudyCloud pour continuer.
+    </p>
   </div>
+
+  <script>
+    function closeWindow() {
+      try {
+        window.open('', '_self', '');
+        window.close();
+      } catch (e) {}
+      setTimeout(function() {
+        var h = document.getElementById('hint');
+        if (h) {
+          h.innerText = "Vous pouvez fermer cet onglet et revenir sur votre application StudyCloud.";
+          h.style.color = '#fbbf24';
+        }
+      }, 200);
+    }
+  </script>
 </body>
 </html>`;
       }
@@ -739,15 +814,6 @@ export default {
                   </td>
                 </tr>
               </table>
-
-              <div style="background:#f8fafc;border-radius:12px;padding:16px;border:1px solid #e2e8f0;margin-bottom:24px;">
-                <p style="margin:0 0 8px 0;color:#64748b;font-size:12px;font-weight:600;">
-                  Si le bouton ne fonctionne pas, copiez et collez ce lien dans votre navigateur :
-                </p>
-                <a href="${confirmUrl}" style="color:#2563EB;font-size:12px;word-break:break-all;text-decoration:underline;">
-                  ${confirmUrl}
-                </a>
-              </div>
 
               <div style="border-left:3px solid #f97316;padding-left:12px;margin:20px 0;">
                 <p style="margin:0;color:#64748b;font-size:12px;line-height:1.5;">
@@ -1783,11 +1849,11 @@ export default {
         if (!emailParam) return errorResponse('Email requis', 400, origin);
         const cleanEmail = emailParam.toLowerCase().trim();
 
-        // Chercher une confirmation récente (moins de 5 minutes)
+        // 1. Chercher si la confirmation a été enregistrée dans email_verifications
         const verif: any = await env.DB.prepare(`
           SELECT * FROM email_verifications
-          WHERE email = ? AND confirmed = 1 AND confirmed_at > datetime('now', '-5 minutes')
-          ORDER BY confirmed_at DESC LIMIT 1
+          WHERE LOWER(TRIM(email)) = ? AND confirmed = 1
+          ORDER BY id DESC LIMIT 1
         `).bind(cleanEmail).first();
 
         if (verif && verif.confirmed_jwt) {
@@ -1802,6 +1868,22 @@ export default {
               user: sanitizeUser(user),
             }, 200, origin);
           }
+        }
+
+        // 2. Fallback direct sur la table users : si l'utilisateur a été marqué email_verified = 1
+        const userDirect: any = await env.DB.prepare('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
+        if (userDirect && userDirect.email_verified === 1) {
+          const jwtToken = await createJWT({ userId: userDirect.id, email: userDirect.email, name: userDirect.name });
+          const tokenHash = await hashToken(jwtToken);
+          const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+          await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), userDirect.id, tokenHash, expiresAt).run();
+          await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(userDirect.id).run();
+          return jsonResponse({
+            success: true,
+            confirmed: true,
+            token: jwtToken,
+            user: sanitizeUser(userDirect),
+          }, 200, origin);
         }
 
         return jsonResponse({
@@ -1828,6 +1910,19 @@ export default {
         ).bind(tokenParam).first();
 
         if (!verif) {
+          // Vérifier si le token a déjà été confirmé plus tôt
+          const alreadyConfirmed: any = await env.DB.prepare(
+            'SELECT * FROM email_verifications WHERE token = ? AND confirmed = 1'
+          ).bind(tokenParam).first();
+
+          if (alreadyConfirmed) {
+            const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(alreadyConfirmed.user_id).first();
+            return new Response(getSuccessConfirmationHtml(user?.name || 'Membre', alreadyConfirmed.email, appUrl), {
+              status: 200,
+              headers: { 'Content-Type': 'text/html; charset=utf-8', ...corsHeaders },
+            });
+          }
+
           const accept = request.headers.get('Accept') || '';
           if (accept.includes('application/json') && !accept.includes('text/html')) {
             return errorResponse('Lien de confirmation expiré (validité 1 minute dépassée). Veuillez réclamer un nouveau lien.', 400, origin);
