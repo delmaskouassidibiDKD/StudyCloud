@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from 'react';
-import { User, Share2, Crown, Settings as SettingsIcon, GraduationCap, Mail, Bell, Headphones, MessageCircle, PlusCircle, Users, AlertTriangle, X, Check, BookOpen, Home, Youtube, LogOut, Camera } from 'lucide-react';
+import { User, Share2, Crown, Settings as SettingsIcon, GraduationCap, Mail, Bell, Headphones, MessageCircle, PlusCircle, Users, AlertTriangle, X, Check, BookOpen, Home, Youtube, LogOut, Camera, Briefcase, Building2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { PromotionView } from './PromotionView';
 import { SettingsPricingView } from './SettingsPricingView';
 import { NotificationsView } from './NotificationsView';
 import { UserSettingsView } from './UserSettingsView';
 import { ServiceProposalView } from './ServiceProposalView';
+import studentLogo from '../assets/student-logo.jpg';
+import proLogo from '../assets/pro-logo.jpg';
 
 export const SettingsView: React.FC = () => {
   const { user, logout } = useAuth();
@@ -71,16 +73,31 @@ export const SettingsView: React.FC = () => {
   const userEmail = user?.email || localStorage.getItem('unifolder_user_email') || 'delmaskouassidibi@gmail.com';
   const userAvatar = user?.avatar_url || localStorage.getItem('unifolder_user_avatar') || '';
 
+  // Détection du statut étudiant ou profil standard / professionnel
+  const isStudent = user?.is_student === 1 || 
+                    (user?.is_student !== 0 && localStorage.getItem('unifolder_is_student') === 'true') ||
+                    (user?.school && user.school !== 'Particulier / Professionnel' && user.school !== 'Professionnel / Particulier' && user.school !== user.filiere && user.level !== 'Professionnel');
+
+  // Domaine ou profession nettoyé pour éviter tout doublon
+  const domainName = user?.profession || 
+                     localStorage.getItem('unifolder_user_profession') || 
+                     (userFiliere && userFiliere !== 'Particulier / Professionnel' && userFiliere !== 'Professionnel / Particulier' && userFiliere !== 'Général' ? userFiliere : '') ||
+                     (userSchool && userSchool !== 'Particulier / Professionnel' && userSchool !== 'Professionnel / Particulier' ? userSchool : '');
+
+  // Choix du logo/avatar adapté : si l'utilisateur n'a pas uploadé une photo personnelle, utiliser le logo officiel correspondant à son profil
+  const isCustomUploaded = Boolean(userAvatar && !userAvatar.startsWith('data:image/svg+xml'));
+  const displayAvatar = isCustomUploaded ? userAvatar : (!isStudent ? proLogo : studentLogo);
+
   return (
     <div className="max-w-2xl lg:max-w-3xl mx-auto px-4 sm:px-8 py-6 md:py-10 flex flex-col items-center text-center space-y-6 md:space-y-8 relative">
       {/* Profile Photo Circle */}
       <div 
         onClick={() => setActiveSubView('user-settings')}
         title="Cliquer pour changer le logo ou modifier le profil"
-        className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-orange-100 border-3 border-stone-800 flex items-center justify-center text-orange-600 shadow-[4px_4px_0px_0px_#1c1917] overflow-hidden my-2 md:my-4 transition-all hover:scale-105 cursor-pointer relative group"
+        className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-white border-3 border-stone-800 flex items-center justify-center text-orange-600 shadow-[4px_4px_0px_0px_#1c1917] overflow-hidden my-2 md:my-4 transition-all hover:scale-105 cursor-pointer relative group"
       >
-        {userAvatar ? (
-          <img src={userAvatar} alt={userName} className="w-full h-full object-cover" />
+        {displayAvatar ? (
+          <img src={displayAvatar} alt={userName} className="w-full h-full object-cover" />
         ) : (
           <User className="w-12 h-12 md:w-16 md:h-16" />
         )}
@@ -90,21 +107,45 @@ export const SettingsView: React.FC = () => {
         </div>
       </div>
 
-      {/* User Name */}
+      {/* User Name & Profile Info */}
       <div className="space-y-1 md:space-y-2">
         <h2 className="text-2xl md:text-3xl font-extrabold text-stone-900 tracking-tight">{userName}</h2>
+        
+        {/* Email */}
         <div className="flex items-center justify-center gap-1.5 md:gap-2 mt-1 md:mt-2 text-stone-600 text-sm md:text-base font-medium">
           <Mail className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
           <span>{userEmail}</span>
         </div>
-        <div className="flex items-center justify-center gap-1.5 md:gap-2 mt-1 md:mt-1.5 text-stone-600 text-sm md:text-base font-semibold">
-          <Home className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
-          <span>{userSchool}</span>
-        </div>
-        <div className="flex items-center justify-center gap-1.5 md:gap-2 mt-1 md:mt-1.5 text-stone-600 text-sm md:text-base font-semibold">
-          <GraduationCap className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
-          <span>{userFiliere}</span>
-        </div>
+
+        {/* Profil Étudiant vs Profil Standard / Professionnel */}
+        {isStudent ? (
+          <>
+            {userSchool && (
+              <div className="flex items-center justify-center gap-1.5 md:gap-2 mt-1 md:mt-1.5 text-stone-600 text-sm md:text-base font-semibold">
+                <Building2 className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
+                <span>{userSchool}</span>
+              </div>
+            )}
+            {userFiliere && userFiliere !== userSchool && (
+              <div className="flex items-center justify-center gap-1.5 md:gap-2 mt-1 md:mt-1.5 text-stone-600 text-sm md:text-base font-semibold">
+                <GraduationCap className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
+                <span>{userFiliere}</span>
+              </div>
+            )}
+          </>
+        ) : (
+          <>
+            {/* Profil Standard / Professionnel : logo adapté (Briefcase) et AUCUNE répétition de domaine */}
+            <div className="flex items-center justify-center gap-1.5 md:gap-2 mt-1 md:mt-1.5 text-stone-800 text-sm md:text-base font-bold">
+              <Briefcase className="w-4 h-4 md:w-5 md:h-5 text-orange-600" />
+              <span>{domainName || "Professionnel indépendant"}</span>
+            </div>
+            <div className="flex items-center justify-center gap-1.5 md:gap-2 mt-0.5 md:mt-1 text-stone-500 text-xs md:text-sm font-medium">
+              <Building2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-stone-400" />
+              <span>Profil Professionnel / Non-étudiant</span>
+            </div>
+          </>
+        )}
       </div>
 
       {/* Action Buttons */}

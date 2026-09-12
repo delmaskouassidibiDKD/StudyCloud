@@ -13,10 +13,14 @@ import {
   Globe,
   Camera,
   Upload,
+  Briefcase,
+  Building2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { StudyCloudAPI } from '../services/api';
 import { compressAvatarImage, getAvatarFromEmail } from '../services/imageUtils';
+import studentLogo from '../assets/student-logo.jpg';
+import proLogo from '../assets/pro-logo.jpg';
 
 interface UserSettingsViewProps {
   onBack: () => void;
@@ -159,13 +163,26 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
     }
   };
 
+  // Détection du statut étudiant ou profil standard / professionnel
+  const isStudent = user?.is_student === 1 || 
+                    (user?.is_student !== 0 && localStorage.getItem('unifolder_is_student') === 'true') ||
+                    (school && school !== 'Particulier / Professionnel' && school !== 'Professionnel / Particulier' && school !== filiere && user?.level !== 'Professionnel');
+
+  const domainName = user?.profession || 
+                     localStorage.getItem('unifolder_user_profession') || 
+                     (filiere && filiere !== 'Particulier / Professionnel' && filiere !== 'Professionnel / Particulier' && filiere !== 'Général' ? filiere : '') ||
+                     (school && school !== 'Particulier / Professionnel' && school !== 'Professionnel / Particulier' ? school : '');
+
+  const isCustomUploaded = Boolean(avatarUrl && !avatarUrl.startsWith('data:image/svg+xml'));
+  const displayAvatar = isCustomUploaded ? avatarUrl : (!isStudent ? proLogo : studentLogo);
+
   const isModified = editingField ? tempValue.trim() !== getOriginalValue(editingField) && tempValue.trim().length > 0 : false;
 
   const getFieldTitle = (field: string | null) => {
     switch (field) {
       case 'name': return "Nom de l'utilisateur";
-      case 'school': return "École / Université";
-      case 'filiere': return "Filière / Spécialité";
+      case 'school': return isStudent ? "École / Université" : "Statut du profil";
+      case 'filiere': return isStudent ? "Filière / Spécialité" : "Profession ou domaine d'activité";
       case 'email': return "Adresse email";
       case 'country': return "Pays de résidence / établissement";
       default: return "";
@@ -201,9 +218,9 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
         <div className="flex flex-col items-center justify-center space-y-3 md:space-y-4 pt-2">
           {/* Avatar container with camera overlay */}
           <div className="relative group">
-            <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-orange-100 border-3 border-stone-800 flex items-center justify-center text-orange-600 shadow-[4px_4px_0px_0px_#1c1917] overflow-hidden">
-              {avatarUrl ? (
-                <img src={avatarUrl} alt={name} className="w-full h-full object-cover" />
+            <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-white border-3 border-stone-800 flex items-center justify-center text-orange-600 shadow-[4px_4px_0px_0px_#1c1917] overflow-hidden">
+              {displayAvatar ? (
+                <img src={displayAvatar} alt={name} className="w-full h-full object-cover" />
               ) : (
                 <User className="w-12 h-12 md:w-16 md:h-16" />
               )}
@@ -274,39 +291,74 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
             </div>
           </div>
 
-          {/* Field 2: School */}
-          <div
-            onClick={() => openEditModal('school')}
-            className="group p-3 md:p-4 bg-stone-50 hover:bg-orange-50/50 border border-stone-200 rounded-xl md:rounded-2xl cursor-pointer transition-all flex items-center justify-between text-left"
-          >
-            <div className="space-y-0.5 md:space-y-1">
-              <span className="text-[11px] md:text-xs font-bold text-stone-500 flex items-center gap-1.5">
-                <Home className="w-3.5 h-3.5 md:w-4 md:h-4 text-orange-600" />
-                <span>Établissement / Organisation</span>
-              </span>
-              <span className="text-xs md:text-sm font-semibold text-stone-900 block">{school}</span>
-            </div>
-            <div className="w-7 h-7 md:w-9 md:h-9 rounded-lg md:rounded-xl bg-white border border-stone-200 flex items-center justify-center text-stone-600 group-hover:bg-orange-600 group-hover:text-white group-hover:border-orange-600 transition-colors">
-              <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
-            </div>
-          </div>
+          {/* Field 2 & 3: Adapté selon Étudiant ou Non-Étudiant */}
+          {isStudent ? (
+            <>
+              {/* Field 2 Étudiant: School */}
+              <div
+                onClick={() => openEditModal('school')}
+                className="group p-3 md:p-4 bg-stone-50 hover:bg-orange-50/50 border border-stone-200 rounded-xl md:rounded-2xl cursor-pointer transition-all flex items-center justify-between text-left"
+              >
+                <div className="space-y-0.5 md:space-y-1">
+                  <span className="text-[11px] md:text-xs font-bold text-stone-500 flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-orange-600" />
+                    <span>Établissement / Université</span>
+                  </span>
+                  <span className="text-xs md:text-sm font-semibold text-stone-900 block">{school}</span>
+                </div>
+                <div className="w-7 h-7 md:w-9 md:h-9 rounded-lg md:rounded-xl bg-white border border-stone-200 flex items-center justify-center text-stone-600 group-hover:bg-orange-600 group-hover:text-white group-hover:border-orange-600 transition-colors">
+                  <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                </div>
+              </div>
 
-          {/* Field 3: Filiere */}
-          <div
-            onClick={() => openEditModal('filiere')}
-            className="group p-3 md:p-4 bg-stone-50 hover:bg-orange-50/50 border border-stone-200 rounded-xl md:rounded-2xl cursor-pointer transition-all flex items-center justify-between text-left"
-          >
-            <div className="space-y-0.5 md:space-y-1">
-              <span className="text-[11px] md:text-xs font-bold text-stone-500 flex items-center gap-1.5">
-                <GraduationCap className="w-3.5 h-3.5 md:w-4 md:h-4 text-orange-600" />
-                <span>Filière / Spécialité</span>
-              </span>
-              <span className="text-xs md:text-sm font-semibold text-stone-900 block">{filiere}</span>
-            </div>
-            <div className="w-7 h-7 md:w-9 md:h-9 rounded-lg md:rounded-xl bg-white border border-stone-200 flex items-center justify-center text-stone-600 group-hover:bg-orange-600 group-hover:text-white group-hover:border-orange-600 transition-colors">
-              <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
-            </div>
-          </div>
+              {/* Field 3 Étudiant: Filiere */}
+              <div
+                onClick={() => openEditModal('filiere')}
+                className="group p-3 md:p-4 bg-stone-50 hover:bg-orange-50/50 border border-stone-200 rounded-xl md:rounded-2xl cursor-pointer transition-all flex items-center justify-between text-left"
+              >
+                <div className="space-y-0.5 md:space-y-1">
+                  <span className="text-[11px] md:text-xs font-bold text-stone-500 flex items-center gap-1.5">
+                    <GraduationCap className="w-3.5 h-3.5 md:w-4 md:h-4 text-orange-600" />
+                    <span>Filière / Spécialité</span>
+                  </span>
+                  <span className="text-xs md:text-sm font-semibold text-stone-900 block">{filiere}</span>
+                </div>
+                <div className="w-7 h-7 md:w-9 md:h-9 rounded-lg md:rounded-xl bg-white border border-stone-200 flex items-center justify-center text-stone-600 group-hover:bg-orange-600 group-hover:text-white group-hover:border-orange-600 transition-colors">
+                  <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                </div>
+              </div>
+            </>
+          ) : (
+            <>
+              {/* Field 2 Non-Étudiant: Profession avec logo adapté (Briefcase) sans doublon */}
+              <div
+                onClick={() => openEditModal('filiere')}
+                className="group p-3 md:p-4 bg-stone-50 hover:bg-orange-50/50 border border-stone-200 rounded-xl md:rounded-2xl cursor-pointer transition-all flex items-center justify-between text-left"
+              >
+                <div className="space-y-0.5 md:space-y-1">
+                  <span className="text-[11px] md:text-xs font-bold text-stone-500 flex items-center gap-1.5">
+                    <Briefcase className="w-3.5 h-3.5 md:w-4 md:h-4 text-orange-600" />
+                    <span>Profession ou domaine d'activité</span>
+                  </span>
+                  <span className="text-xs md:text-sm font-semibold text-stone-900 block">{domainName || "Professionnel"}</span>
+                </div>
+                <div className="w-7 h-7 md:w-9 md:h-9 rounded-lg md:rounded-xl bg-white border border-stone-200 flex items-center justify-center text-stone-600 group-hover:bg-orange-600 group-hover:text-white group-hover:border-orange-600 transition-colors">
+                  <Edit2 className="w-3.5 h-3.5 md:w-4 md:h-4" />
+                </div>
+              </div>
+
+              {/* Field 3 Non-Étudiant: Statut profil */}
+              <div className="p-3 md:p-4 bg-stone-50/60 border border-stone-200 rounded-xl md:rounded-2xl flex items-center justify-between text-left">
+                <div className="space-y-0.5 md:space-y-1">
+                  <span className="text-[11px] md:text-xs font-bold text-stone-500 flex items-center gap-1.5">
+                    <Building2 className="w-3.5 h-3.5 md:w-4 md:h-4 text-orange-600" />
+                    <span>Statut du profil</span>
+                  </span>
+                  <span className="text-xs md:text-sm font-semibold text-stone-900 block">Profil Professionnel / Non-étudiant</span>
+                </div>
+              </div>
+            </>
+          )}
 
           {/* Field 4: Email */}
           <div

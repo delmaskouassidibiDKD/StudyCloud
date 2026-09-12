@@ -2373,9 +2373,9 @@ export default {
         const { name, school, filiere, level, country, phone, bio, avatarUrl } = body;
         const isStudent = body.is_student === 0 || body.isStudent === false ? false : true;
         const profession = body.profession ? String(body.profession).trim() : '';
-        const finalSchool = !isStudent ? (profession || school || 'Particulier / Professionnel') : school;
+        const finalSchool = !isStudent ? 'Professionnel / Particulier' : school;
         const finalFiliere = !isStudent ? (profession || filiere || 'Général') : filiere;
-        const finalLevel = !isStudent ? (level || 'Professionnel') : (level || '');
+        const finalLevel = !isStudent ? 'Professionnel' : (level || '');
 
         if (!country) return errorResponse('Le pays est obligatoire', 400, origin);
         if (!phone || !String(phone).trim()) return errorResponse('Le numéro de téléphone est obligatoire', 400, origin);
@@ -2441,6 +2441,8 @@ export default {
             phone = COALESCE(?, phone),
             bio = COALESCE(?, bio),
             avatar_url = COALESCE(?, avatar_url),
+            profession = ?,
+            is_student = ?,
             is_onboarded = 1,
             last_active_at = CURRENT_TIMESTAMP,
             updated_at = CURRENT_TIMESTAMP
@@ -2454,6 +2456,8 @@ export default {
           phone || null,
           bio || null,
           finalAvatar,
+          profession || null,
+          isStudent ? 1 : 0,
           payload.userId
         ).run();
 

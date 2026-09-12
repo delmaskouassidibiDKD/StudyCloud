@@ -336,7 +336,14 @@ export function OnboardingPage() {
   const [name, setName] = useState(user?.name || '');
   const [country, setCountry] = useState(user?.country || "Côte d'Ivoire");
   const [phone, setPhone] = useState(user?.phone || '');
-  const [avatarUrl, setAvatarUrl] = useState(() => user?.avatar_url || getAvatarFromEmail(user?.email, user?.name));
+  const [avatarUrl, setAvatarUrl] = useState(() => {
+    if (user?.avatar_url && !user.avatar_url.startsWith('data:image/svg+xml')) {
+      return user.avatar_url;
+    }
+    if (user?.is_student === 0) return proLogo;
+    if (user?.is_student === 1) return studentLogo;
+    return '';
+  });
   const [isCustomAvatar, setIsCustomAvatar] = useState(Boolean(user?.avatar_url && !user.avatar_url.startsWith('data:image/svg+xml')));
   const [showAllDomains, setShowAllDomains] = useState(false);
   const [bio, setBio] = useState(user?.bio || '');
@@ -613,7 +620,7 @@ export function OnboardingPage() {
 
     const finalSchool = studentStatus
       ? school.trim()
-      : (profession.trim() || 'Particulier / Professionnel');
+      : 'Professionnel / Particulier';
 
     const finalFiliere = studentStatus
       ? filiere.trim()
@@ -632,7 +639,11 @@ export function OnboardingPage() {
     }
     const finalPhone = `${currentCountry.dialCode} ${phoneCheck.cleanDigits}`;
 
-    const finalAvatar = avatarUrl.trim() || user?.avatar_url || getAvatarFromEmail(user?.email, name);
+    // Logo par défaut adapté au profil si aucune image personnalisée importée
+    const defaultAvatar = !studentStatus ? proLogo : studentLogo;
+    const finalAvatar = isCustomAvatar && avatarUrl.trim()
+      ? avatarUrl.trim()
+      : defaultAvatar;
 
     try {
       const res: any = await StudyCloudAPI.completeOnboarding(token!, {
@@ -816,6 +827,7 @@ export function OnboardingPage() {
                   id="onboard-choice-student"
                   onClick={() => {
                     setIsStudent(true);
+                    if (!isCustomAvatar) setAvatarUrl(studentLogo);
                     setError(null);
                   }}
                   className={`relative p-8 sm:p-10 rounded-3xl cursor-pointer transition-all duration-300 flex flex-col justify-between ${
@@ -853,6 +865,7 @@ export function OnboardingPage() {
                   id="onboard-choice-non-student"
                   onClick={() => {
                     setIsStudent(false);
+                    if (!isCustomAvatar) setAvatarUrl(proLogo);
                     setError(null);
                   }}
                   className={`relative p-8 sm:p-10 rounded-3xl cursor-pointer transition-all duration-300 flex flex-col justify-between ${
@@ -1151,7 +1164,7 @@ export function OnboardingPage() {
                     >
                       <div className="relative shrink-0 w-20 h-20 sm:w-24 sm:h-24 rounded-2xl overflow-hidden border-2 border-orange-500/40 shadow-[0_0_20px_rgba(234,88,12,0.2)] bg-black/40 flex items-center justify-center group">
                         <img
-                          src={avatarUrl || getAvatarFromEmail(user?.email, name || user?.name)}
+                          src={avatarUrl || (!isStudent ? proLogo : studentLogo)}
                           alt="Aperçu photo de profil"
                           className="w-full h-full object-cover"
                         />
@@ -1168,10 +1181,10 @@ export function OnboardingPage() {
 
                       <div className="flex-1 text-center sm:text-left min-w-0">
                         <h4 className="text-sm font-bold text-white mb-1">
-                          {isCustomAvatar ? "Photo ou logo importé" : "Photo de profil par défaut"}
+                          {isCustomAvatar ? "Photo ou logo importé" : (!isStudent ? "Logo officiel Profil Professionnel" : "Logo officiel Profil Étudiant")}
                         </h4>
                         <p className="text-xs text-white/50 mb-3 leading-relaxed">
-                          Formats acceptés : JPG, PNG, BMP (max 1 Mo). Si vous ne mettez pas d'image, celle issue de votre email sera utilisée.
+                          Formats acceptés : JPG, PNG, BMP (max 1 Mo). Si vous n'importez pas d'image, le logo adapté à votre profil sera utilisé.
                         </p>
                         <div className="flex flex-wrap items-center justify-center sm:justify-start gap-2.5">
                           <button
