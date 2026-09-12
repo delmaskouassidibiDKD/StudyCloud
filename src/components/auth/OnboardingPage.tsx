@@ -124,9 +124,9 @@ export function OnboardingPage() {
   const [filiere, setFiliere] = useState(user?.filiere || '');
   const [level, setLevel] = useState(user?.level || '');
 
-  // ─── Gestion de l'expiration 20 minutes et inactivité 15 minutes (Horloge réelle continue) ───
-  const TOTAL_DURATION_SEC = 20 * 60; // 20 minutes maximum
-  const INACTIVITY_LIMIT_MS = 15 * 60 * 1000; // 15 minutes d'inactivité
+  // ─── Gestion de l'expiration 7 minutes et inactivité 5 minutes (Horloge réelle continue) ───
+  const TOTAL_DURATION_SEC = 7 * 60; // 7 minutes maximum
+  const INACTIVITY_LIMIT_MS = 5 * 60 * 1000; // 5 minutes d'inactivité
   const startKey = `sc_onb_start_${user?.id || 'default'}`;
   const lastActiveKey = `sc_onb_last_active_${user?.id || 'default'}`;
 
@@ -160,8 +160,8 @@ export function OnboardingPage() {
     localStorage.removeItem(startKey);
     localStorage.removeItem(lastActiveKey);
     const message = reason === 'timeout'
-      ? "Votre session d'inscription a expiré (délai de 20 minutes dépassé sans finalisation). Vos données temporaires ont été effacées. Veuillez recommencer."
-      : "Session d'inscription interrompue : vous avez quitté ou été inactif pendant plus de 15 minutes. Vos données temporaires ont été effacées. Veuillez recommencer.";
+      ? "Votre session d'inscription a expiré (délai de 7 minutes dépassé sans finalisation). Vos données temporaires ont été effacées. Veuillez recommencer."
+      : "Session d'inscription interrompue : vous avez quitté ou été inactif pendant plus de 5 minutes. Vos données temporaires ont été effacées. Veuillez recommencer.";
     localStorage.setItem('sc_onboarding_expired_notice', message);
     logout();
   }, [user, token, logout, startKey, lastActiveKey]);
@@ -198,13 +198,13 @@ export function OnboardingPage() {
       const remaining = calculateRemainingSeconds();
       setTimeLeft(remaining);
 
-      // 1. Délais global 20 minutes dépassé
+      // 1. Délais global 7 minutes dépassé
       if (remaining <= 0) {
         handleSessionExpired('timeout');
         return;
       }
 
-      // 2. Inactivité > 15 minutes
+      // 2. Inactivité > 5 minutes
       const lastActiveStr = localStorage.getItem(lastActiveKey) || localStorage.getItem(startKey);
       const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : Date.now();
       if (Date.now() - lastActive >= INACTIVITY_LIMIT_MS) {
@@ -503,7 +503,7 @@ export function OnboardingPage() {
             </div>
 
             <div className="flex items-center gap-2.5">
-              {/* Décompteur de 20 minutes */}
+              {/* Décompteur de 7 minutes */}
               <div
                 className={`flex items-center gap-2 px-3.5 py-1.5 rounded-full border text-xs font-bold transition-all shadow-sm ${
                   timeLeft < 180

@@ -1428,7 +1428,7 @@ export default {
         }
       }
 
-      // Nettoyage automatique de TOUS les comptes non finalisés après 20 minutes (ou 15 minutes d'inactivité)
+      // Nettoyage automatique de TOUS les comptes non finalisés après 7 minutes (ou 5 minutes d'inactivité)
       async function cleanupExpiredUnfinishedAccounts(db: any) {
         if (!db) return;
         try {
@@ -1440,8 +1440,8 @@ export default {
 
           if (unfinalized && unfinalized.results && unfinalized.results.length > 0) {
             const now = Date.now();
-            const TWENTY_MIN_MS = 20 * 60 * 1000;
-            const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+            const SEVEN_MIN_MS = 7 * 60 * 1000;
+            const FIVE_MIN_MS = 5 * 60 * 1000;
 
             const parseUtcDate = (dStr: any) => {
               if (!dStr) return 0;
@@ -1455,8 +1455,8 @@ export default {
               const createdMs = parseUtcDate(u.created_at);
               const activeMs = parseUtcDate(u.last_active_at) || createdMs;
 
-              const isTimeout = createdMs > 0 && (now - createdMs >= TWENTY_MIN_MS);
-              const isInactive = activeMs > 0 && (now - activeMs >= FIFTEEN_MIN_MS);
+              const isTimeout = createdMs > 0 && (now - createdMs >= SEVEN_MIN_MS);
+              const isInactive = activeMs > 0 && (now - activeMs >= FIVE_MIN_MS);
 
               if (isTimeout || isInactive) {
                 await deleteUserCompletely(db, u.id);
@@ -2263,7 +2263,7 @@ export default {
         const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.userId).first();
         if (!user) return errorResponse('Utilisateur introuvable', 404, origin);
 
-        // Si l'utilisateur n'a pas encore finalisé l'onboarding, vérifier immédiatement s'il a dépassé 20 min ou 15 min d'inactivité
+        // Si l'utilisateur n'a pas encore finalisé l'onboarding, vérifier immédiatement s'il a dépassé 7 min ou 5 min d'inactivité
         const isOnboarded = Number(user.is_onboarded) === 1;
         if (!isOnboarded) {
           const parseUtcDate = (dStr: any) => {
@@ -2275,15 +2275,15 @@ export default {
           };
           const createdMs = parseUtcDate(user.created_at);
           const activeMs = parseUtcDate(user.last_active_at) || createdMs;
-          const isTimeout = createdMs > 0 && (Date.now() - createdMs >= 20 * 60 * 1000);
-          const isInactive = activeMs > 0 && (Date.now() - activeMs >= 15 * 60 * 1000);
+          const isTimeout = createdMs > 0 && (Date.now() - createdMs >= 7 * 60 * 1000);
+          const isInactive = activeMs > 0 && (Date.now() - activeMs >= 5 * 60 * 1000);
 
           if (isTimeout || isInactive) {
             await deleteUserCompletely(env.DB, user.id);
             return jsonResponse({
               success: false,
               code: 'SESSION_EXPIRED_UNFINALIZED',
-              error: "Votre session d'inscription a expiré (délai de 20 minutes ou 15 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.",
+              error: "Votre session d'inscription a expiré (délai de 7 minutes ou 5 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.",
             }, 410, origin);
           }
         }

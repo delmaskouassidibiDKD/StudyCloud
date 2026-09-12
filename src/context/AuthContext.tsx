@@ -87,10 +87,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     StudyCloudAPI.getMe(storedToken)
       .then((res: any) => {
         if (res.success && res.data) {
-          // Si l'utilisateur n'a pas encore finalisé son onboarding, vérifier la limite de 20 min ou 15 min d'inactivité
+          // Si l'utilisateur n'a pas encore finalisé son onboarding, vérifier la limite de 7 min ou 5 min d'inactivité
           if (Number(res.data.is_onboarded) !== 1) {
-            const TWENTY_MIN_MS = 20 * 60 * 1000;
-            const FIFTEEN_MIN_MS = 15 * 60 * 1000;
+            const SEVEN_MIN_MS = 7 * 60 * 1000;
+            const FIVE_MIN_MS = 5 * 60 * 1000;
             const parseUtc = (d: any) => {
               if (!d) return 0;
               const s = String(d).trim();
@@ -100,13 +100,13 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
             };
             const createdAtTime = parseUtc(res.data.created_at);
             const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : createdAtTime;
-            const isTimeout = createdAtTime > 0 && (Date.now() - createdAtTime > TWENTY_MIN_MS);
-            const isInactive = lastActive > 0 && (Date.now() - lastActive > FIFTEEN_MIN_MS);
+            const isTimeout = createdAtTime > 0 && (Date.now() - createdAtTime > SEVEN_MIN_MS);
+            const isInactive = lastActive > 0 && (Date.now() - lastActive > FIVE_MIN_MS);
 
             if (isTimeout || isInactive) {
               // Compte non finalisé expiré : suppression et retour à l'accueil
               StudyCloudAPI.cancelUnfinalizedAccount({ userId: res.data.id, email: res.data.email }, storedToken).catch(() => {});
-              localStorage.setItem('sc_onboarding_expired_notice', "Votre session d'inscription a expiré (délai de 20 minutes ou 15 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.");
+              localStorage.setItem('sc_onboarding_expired_notice', "Votre session d'inscription a expiré (délai de 7 minutes ou 5 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.");
               clearUserDataOnLogout();
               setIsLoading(false);
               return;
@@ -132,7 +132,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
         } else {
           // Token invalide ou expiré
           if (res?.code === 'SESSION_EXPIRED_UNFINALIZED' || (res?.error && typeof res.error === 'string' && res.error.includes('expiré'))) {
-            localStorage.setItem('sc_onboarding_expired_notice', res.error || "Votre session d'inscription a expiré (délai de 20 minutes ou 15 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.");
+            localStorage.setItem('sc_onboarding_expired_notice', res.error || "Votre session d'inscription a expiré (délai de 7 minutes ou 5 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.");
           }
           clearUserDataOnLogout();
         }
@@ -140,7 +140,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       .catch((err: any) => {
         // Si le serveur nous dit que la session d'inscription a expiré (HTTP 410) ou token invalide (HTTP 401/403)
         if (err?.status === 410 || err?.data?.code === 'SESSION_EXPIRED_UNFINALIZED' || (err?.message && err.message.includes('expiré'))) {
-          localStorage.setItem('sc_onboarding_expired_notice', err?.data?.error || err?.message || "Votre session d'inscription a expiré (délai de 20 minutes ou 15 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.");
+          localStorage.setItem('sc_onboarding_expired_notice', err?.data?.error || err?.message || "Votre session d'inscription a expiré (délai de 7 minutes ou 5 minutes d'inactivité dépassé). Vos données temporaires ont été effacées. Veuillez recommencer.");
           clearUserDataOnLogout();
           return;
         }
