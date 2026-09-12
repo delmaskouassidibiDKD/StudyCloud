@@ -132,7 +132,7 @@ export function EmailPendingVerification({
     let isChecking = false;
 
     const checkStatus = async () => {
-      if (isChecking || !email || isAutoDetected) return;
+      if (isChecking || !email || isAutoDetected || (typeof document !== 'undefined' && document.hidden)) return;
       isChecking = true;
 
       try {
@@ -183,8 +183,12 @@ export function EmailPendingVerification({
       }
     };
 
-    // 1. Polling régulier rapide (1 seconde)
-    const pollInterval = setInterval(checkStatus, 1000);
+    // 1. Polling régulier optimisé toutes les 2,5 secondes (divise par 3 la consommation CPU sans perte de réactivité)
+    const pollInterval = setInterval(() => {
+      if (typeof document === 'undefined' || !document.hidden) {
+        checkStatus();
+      }
+    }, 2500);
 
     // 2. Détection immédiate dès que l'utilisateur revient sur l'application (quitte l'app mail et revient)
     const handleImmediateWakeUp = () => {

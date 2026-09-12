@@ -67,6 +67,10 @@ function errorResponse(error: string, status = 400, origin = '*') {
   return jsonResponse({ success: false, error }, status, origin);
 }
 
+// Cache en mémoire pour éviter d'exécuter des dizaines de requêtes DDL à chaque requête HTTP
+let isSchemaInitialized = false;
+let isEmailVerifTableInitialized = false;
+
 // ============================================================================
 // Gestionnaire Principal du Worker
 // ============================================================================
@@ -170,20 +174,23 @@ export default {
       async function hashPassword(password: string): Promise<string> {
         const encoder = new TextEncoder();
         const salt = crypto.getRandomValues(new Uint8Array(16));
+        const iterations = 10000;
         const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
-        const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, keyMaterial, 256);
+        const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, keyMaterial, 256);
         const hashArray = Array.from(new Uint8Array(bits));
         const saltArray = Array.from(salt);
-        return btoa(JSON.stringify({ salt: saltArray, hash: hashArray }));
+        return btoa(JSON.stringify({ salt: saltArray, hash: hashArray, iter: iterations }));
       }
 
       async function verifyPassword(password: string, stored: string): Promise<boolean> {
         try {
           const encoder = new TextEncoder();
-          const { salt: saltArray, hash: hashArray } = JSON.parse(atob(stored));
+          const parsed = JSON.parse(atob(stored));
+          const { salt: saltArray, hash: hashArray } = parsed;
+          const iterations = parsed.iter || 100000;
           const salt = new Uint8Array(saltArray);
           const keyMaterial = await crypto.subtle.importKey('raw', encoder.encode(password), 'PBKDF2', false, ['deriveBits']);
-          const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations: 100000, hash: 'SHA-256' }, keyMaterial, 256);
+          const bits = await crypto.subtle.deriveBits({ name: 'PBKDF2', salt, iterations, hash: 'SHA-256' }, keyMaterial, 256);
           const newHash = Array.from(new Uint8Array(bits));
           return JSON.stringify(newHash) === JSON.stringify(hashArray);
         } catch { return false; }
@@ -413,8 +420,8 @@ export default {
         });
       }
 
-      async function ensureEmailVerificationsTable(db: any) {
-        if (!db) return;
+      async function ensureEmailVerificationsTable(db: any, force = false) {
+        if (!db || (isEmailVerifTableInitialized && !force)) return;
 
         try {
           const tableInfo: any = await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'email_verifications'").first();
@@ -466,6 +473,7 @@ export default {
         for (const sql of cols) {
           try { await db.prepare(sql).run(); } catch (e) {}
         }
+        isEmailVerifTableInitialized = true;
       }
 
       async function sendConfirmationEmail(toEmail: string, name: string, token: string, appOrigin = 'https://studycloud.dkd-technologies.com', isLogin = false): Promise<void> {
@@ -841,8 +849,8 @@ export default {
       }
 
       // Initialisation et migration automatique de TOUTES les tables et colonnes Cloudflare D1
-      async function ensureDatabaseSchema(db: any) {
-        if (!db) return;
+      async function ensureDatabaseSchema(db: any, force = false) {
+        if (!db || (isSchemaInitialized && !force)) return;
 
         // 1. Table users & colonnes associées
         try {
@@ -1202,6 +1210,7 @@ export default {
 
         // 3. Index d'unicité sur l'email
         await ensureUsersTableUniqueIndex(db);
+        isSchemaInitialized = true;
       }
 
       // Alias de compatibilité
@@ -1287,19 +1296,16 @@ export default {
       // 0. AUTH — /api/auth/*
       // ----------------------------------------------------------------------
 
-      // Migration automatique de toutes les tables D1 et nettoyage systématique des comptes expirés
-      if (path.startsWith('/api/auth/')) {
+      // Initialisation paresseuse du schéma si ce n'est pas encore fait (exclut expressément le polling fréquent de vérification)
+      if (path.startsWith('/api/auth/') && path !== '/api/auth/check-verification-status' && !isSchemaInitialized) {
         await ensureDatabaseSchema(env.DB);
         await ensureEmailVerificationsTable(env.DB);
-        await cleanupExpiredUnfinishedAccounts(env.DB);
       }
 
       // POST /api/auth/register — Inscription email/password avec confirmation obligatoire & questions de sécurité
       if (path === '/api/auth/register' && method === 'POST') {
-        await ensureEmailVerificationsTable(env.DB);
-        await ensurePasswordResetsTable(env.DB);
-        await ensureUsersTableUniqueIndex(env.DB);
-        await cleanupExpiredUnfinishedAccounts(env.DB);
+        if (!isEmailVerifTableInitialized) await ensureEmailVerificationsTable(env.DB);
+        if (!isSchemaInitialized) await ensureDatabaseSchema(env.DB);
 
         const body: any = await request.json();
         const {
@@ -1550,7 +1556,6 @@ export default {
       // GET /api/auth/check-verification-status — Polling cross-device pour détecter la confirmation en direct (smartphone -> ordinateur)
       // GET /api/auth/check-verification-status?email=... — Polling automatique de confirmation
       if (path === '/api/auth/check-verification-status' && method === 'GET') {
-        await ensureEmailVerificationsTable(env.DB);
         const emailParam = url.searchParams.get('email');
         const userIdParam = url.searchParams.get('userId');
         if (!emailParam && !userIdParam) return errorResponse('Email ou userId requis', 400, origin);
@@ -1658,7 +1663,6 @@ export default {
 
       // GET /verify (et alias /api/auth/verify-email) — Page intermédiaire autonome
       if ((path === '/verify' || path === '/api/auth/verify-email') && method === 'GET') {
-        await ensureEmailVerificationsTable(env.DB);
         const token = url.searchParams.get('token');
 
         if (!token) {

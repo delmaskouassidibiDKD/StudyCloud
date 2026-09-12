@@ -58,6 +58,8 @@ function errorResponse(error, status = 400, origin = "*") {
   return jsonResponse({ success: false, error }, status, origin);
 }
 __name(errorResponse, "errorResponse");
+var isSchemaInitialized = false;
+var isEmailVerifTableInitialized = false;
 var src_default = {
   async fetch(request, rawEnv) {
     const url = new URL(request.url);
@@ -312,20 +314,23 @@ var src_default = {
       async function hashPassword(password) {
         const encoder = new TextEncoder();
         const salt = crypto.getRandomValues(new Uint8Array(16));
+        const iterations = 1e4;
         const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
-        const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 1e5, hash: "SHA-256" }, keyMaterial, 256);
+        const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-256" }, keyMaterial, 256);
         const hashArray = Array.from(new Uint8Array(bits));
         const saltArray = Array.from(salt);
-        return btoa(JSON.stringify({ salt: saltArray, hash: hashArray }));
+        return btoa(JSON.stringify({ salt: saltArray, hash: hashArray, iter: iterations }));
       }
       __name(hashPassword, "hashPassword");
       async function verifyPassword(password, stored) {
         try {
           const encoder = new TextEncoder();
-          const { salt: saltArray, hash: hashArray } = JSON.parse(atob(stored));
+          const parsed = JSON.parse(atob(stored));
+          const { salt: saltArray, hash: hashArray } = parsed;
+          const iterations = parsed.iter || 1e5;
           const salt = new Uint8Array(saltArray);
           const keyMaterial = await crypto.subtle.importKey("raw", encoder.encode(password), "PBKDF2", false, ["deriveBits"]);
-          const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations: 1e5, hash: "SHA-256" }, keyMaterial, 256);
+          const bits = await crypto.subtle.deriveBits({ name: "PBKDF2", salt, iterations, hash: "SHA-256" }, keyMaterial, 256);
           const newHash = Array.from(new Uint8Array(bits));
           return JSON.stringify(newHash) === JSON.stringify(hashArray);
         } catch {
@@ -383,8 +388,8 @@ var src_default = {
         return payload;
       }
       __name(getAuthUser, "getAuthUser");
-      async function ensureEmailVerificationsTable(db) {
-        if (!db)
+      async function ensureEmailVerificationsTable(db, force = false) {
+        if (!db || isEmailVerifTableInitialized && !force)
           return;
         try {
           const tableInfo = await db.prepare("SELECT sql FROM sqlite_master WHERE type = 'table' AND name = 'email_verifications'").first();
@@ -437,6 +442,7 @@ var src_default = {
           } catch (e) {
           }
         }
+        isEmailVerifTableInitialized = true;
       }
       __name(ensureEmailVerificationsTable, "ensureEmailVerificationsTable");
       async function sendConfirmationEmail(toEmail, name, token, appOrigin = "https://studycloud.dkd-technologies.com", isLogin = false) {
@@ -771,8 +777,8 @@ var src_default = {
         }
       }
       __name(sendPasswordResetEmail, "sendPasswordResetEmail");
-      async function ensureDatabaseSchema(db) {
-        if (!db)
+      async function ensureDatabaseSchema(db, force = false) {
+        if (!db || isSchemaInitialized && !force)
           return;
         try {
           await db.prepare(`
@@ -1131,6 +1137,7 @@ var src_default = {
           }
         }
         await ensureUsersTableUniqueIndex(db);
+        isSchemaInitialized = true;
       }
       __name(ensureDatabaseSchema, "ensureDatabaseSchema");
       const ensurePasswordResetsTable = ensureDatabaseSchema;
@@ -1208,16 +1215,15 @@ var src_default = {
         return;
       }
       __name(cleanupExpiredUnfinishedAccounts, "cleanupExpiredUnfinishedAccounts");
-      if (path.startsWith("/api/auth/")) {
+      if (path.startsWith("/api/auth/") && path !== "/api/auth/check-verification-status" && !isSchemaInitialized) {
         await ensureDatabaseSchema(env.DB);
         await ensureEmailVerificationsTable(env.DB);
-        await cleanupExpiredUnfinishedAccounts(env.DB);
       }
       if (path === "/api/auth/register" && method === "POST") {
-        await ensureEmailVerificationsTable(env.DB);
-        await ensurePasswordResetsTable(env.DB);
-        await ensureUsersTableUniqueIndex(env.DB);
-        await cleanupExpiredUnfinishedAccounts(env.DB);
+        if (!isEmailVerifTableInitialized)
+          await ensureEmailVerificationsTable(env.DB);
+        if (!isSchemaInitialized)
+          await ensureDatabaseSchema(env.DB);
         const body = await request.json();
         const {
           name,
@@ -1431,7 +1437,6 @@ var src_default = {
         }
       }
       if (path === "/api/auth/check-verification-status" && method === "GET") {
-        await ensureEmailVerificationsTable(env.DB);
         const emailParam = url.searchParams.get("email");
         const userIdParam = url.searchParams.get("userId");
         if (!emailParam && !userIdParam)
@@ -1531,7 +1536,6 @@ var src_default = {
         }, 200, origin);
       }
       if ((path === "/verify" || path === "/api/auth/verify-email") && method === "GET") {
-        await ensureEmailVerificationsTable(env.DB);
         const token = url.searchParams.get("token");
         if (!token) {
           return htmlResponse2("Lien invalide", "Le lien de confirmation est incomplet.", false);
