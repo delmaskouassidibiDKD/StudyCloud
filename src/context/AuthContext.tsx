@@ -238,7 +238,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     isAuthenticated &&
     !needsSecuritySetup &&
     user &&
-    user.is_onboarded === 0
+    Number(user.is_onboarded) !== 1
   );
 
   return (
