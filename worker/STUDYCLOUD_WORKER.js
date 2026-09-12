@@ -1243,7 +1243,7 @@ var src_default = {
               WHERE id = ?
             `).bind(name.trim(), passwordHash3, q1, answer1Hash, q2, answer2Hash, existing.id).run();
             const verificationToken2 = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-            const expiresAt3 = new Date(Date.now() + 15 * 60 * 1e3).toISOString();
+            const expiresAt3 = new Date(Date.now() + 70 * 1e3).toISOString();
             await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(existing.id).run();
             await env.DB.prepare(`
               INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
@@ -1299,7 +1299,7 @@ var src_default = {
         `).bind(userId, name.trim(), cleanEmail, passwordHash, q1, answer1Hash, q2, answer2Hash).run();
         await env.DB.prepare("INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)").bind(userId).run();
         const verificationToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-        const expiresAt = new Date(Date.now() + 15 * 60 * 1e3).toISOString();
+        const expiresAt = new Date(Date.now() + 70 * 1e3).toISOString();
         await env.DB.prepare(`
           INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
           VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
@@ -1332,7 +1332,7 @@ var src_default = {
         const now = Date.now();
         const THREE_HOURS_MS = 3 * 3600 * 1e3;
         const RESEND_COOLDOWN_MS = 70 * 1e3;
-        const TOKEN_EXPIRY_MS = 15 * 60 * 1e3;
+        const TOKEN_EXPIRY_MS = 70 * 1e3;
         if (verif) {
           if (verif.blocked_until) {
             const blockedTime = new Date(verif.blocked_until).getTime();
@@ -1625,7 +1625,7 @@ var src_default = {
         }
         const user = existingUser;
         const verificationToken = crypto.randomUUID().replace(/-/g, "") + crypto.randomUUID().replace(/-/g, "");
-        const expiresAt = new Date(Date.now() + 15 * 60 * 1e3).toISOString();
+        const expiresAt = new Date(Date.now() + 70 * 1e3).toISOString();
         await env.DB.prepare("DELETE FROM email_verifications WHERE user_id = ?").bind(user.id).run();
         await env.DB.prepare(`
           INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)

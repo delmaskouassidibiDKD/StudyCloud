@@ -83,7 +83,7 @@ export default function App() {
         });
     } else if (urlParams.get('verify_error') === 'expired') {
       window.history.replaceState({}, '', window.location.pathname);
-      localStorage.setItem('sc_verification_expired_notice', 'Votre lien de confirmation a expiré (validité 1 minute). Veuillez réclamer un nouveau lien ci-dessous.');
+      localStorage.setItem('sc_verification_expired_notice', 'Votre lien de confirmation a expiré (validité 70 secondes). Veuillez réclamer un nouveau lien ci-dessous.');
       setIsProcessingAuth(null);
       window.dispatchEvent(new Event('studycloud_auth_redirect'));
     } else if (verifyToken) {
@@ -96,13 +96,13 @@ export default function App() {
             localStorage.removeItem('sc_pending_verification_is_login');
             loginWithToken(res.token, res.user);
           } else {
-            localStorage.setItem('sc_verification_expired_notice', res.error || 'Votre lien de confirmation a expiré (validité 1 minute). Veuillez réclamer un nouveau lien ci-dessous.');
+            localStorage.setItem('sc_verification_expired_notice', res.error || 'Votre lien de confirmation a expiré (validité 70 secondes). Veuillez réclamer un nouveau lien ci-dessous.');
             window.dispatchEvent(new Event('studycloud_auth_redirect'));
           }
         })
         .catch((err: any) => {
           console.error(err);
-          localStorage.setItem('sc_verification_expired_notice', err.message || 'Votre lien de confirmation a expiré (validité 1 minute). Veuillez réclamer un nouveau lien ci-dessous.');
+          localStorage.setItem('sc_verification_expired_notice', err.message || 'Votre lien de confirmation a expiré (validité 70 secondes). Veuillez réclamer un nouveau lien ci-dessous.');
           window.dispatchEvent(new Event('studycloud_auth_redirect'));
         })
         .finally(() => {

@@ -1327,7 +1327,7 @@ export default {
             `).bind(name.trim(), passwordHash, q1, answer1Hash, q2, answer2Hash, existing.id).run();
 
             const verificationToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
-            const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+            const expiresAt = new Date(Date.now() + 70 * 1000).toISOString();
 
             await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(existing.id).run();
             await env.DB.prepare(`
@@ -1394,9 +1394,9 @@ export default {
 
         await env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)').bind(userId).run();
 
-        // Création du token de confirmation (valable 15 minutes)
+        // Création du token de confirmation (valable 70 secondes, calé exactement sur le décompteur)
         const verificationToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
-        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        const expiresAt = new Date(Date.now() + 70 * 1000).toISOString();
         await env.DB.prepare(`
           INSERT INTO email_verifications (id, user_id, email, token, resend_count, last_sent_at, expires_at)
           VALUES (?, ?, ?, ?, 1, CURRENT_TIMESTAMP, ?)
@@ -1433,7 +1433,7 @@ export default {
         const now = Date.now();
         const THREE_HOURS_MS = 3 * 3600 * 1000;
         const RESEND_COOLDOWN_MS = 70 * 1000;
-        const TOKEN_EXPIRY_MS = 15 * 60 * 1000;
+        const TOKEN_EXPIRY_MS = 70 * 1000;
 
         if (verif) {
           // 1. Vérification si l'utilisateur est actuellement bloqué (blocage de 3 heures)
@@ -1772,9 +1772,9 @@ export default {
 
         const user = existingUser;
 
-        // Générer le token de confirmation de connexion (valable 15 minutes)
+        // Générer le token de confirmation de connexion (valable 70 secondes, identique au décompteur)
         const verificationToken = crypto.randomUUID().replace(/-/g, '') + crypto.randomUUID().replace(/-/g, '');
-        const expiresAt = new Date(Date.now() + 15 * 60 * 1000).toISOString();
+        const expiresAt = new Date(Date.now() + 70 * 1000).toISOString();
 
         await env.DB.prepare('DELETE FROM email_verifications WHERE user_id = ?').bind(user.id).run();
         await env.DB.prepare(`
