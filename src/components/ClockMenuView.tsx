@@ -139,15 +139,33 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
   const [swTime, setSwTime] = useState(0); // in ms
   const [swRunning, setSwRunning] = useState(false);
   const [swLaps, setSwLaps] = useState<number[]>([]);
+  const swStartTimeRef = useRef<number>(0);
 
   useEffect(() => {
     let interval: any;
     if (swRunning) {
-      interval = setInterval(() => {
-        setSwTime(prev => prev + 10);
-      }, 10);
+      if (!swStartTimeRef.current) {
+        swStartTimeRef.current = Date.now() - swTime;
+      }
+      const syncSw = () => {
+        if (!swStartTimeRef.current) return;
+        setSwTime(Date.now() - swStartTimeRef.current);
+      };
+      interval = setInterval(syncSw, 25);
+      const handleWakeUp = () => syncSw();
+      document.addEventListener('visibilitychange', handleWakeUp);
+      window.addEventListener('focus', handleWakeUp);
+      window.addEventListener('pageshow', handleWakeUp);
+
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', handleWakeUp);
+        window.removeEventListener('focus', handleWakeUp);
+        window.removeEventListener('pageshow', handleWakeUp);
+      };
+    } else {
+      swStartTimeRef.current = 0;
     }
-    return () => clearInterval(interval);
   }, [swRunning]);
 
   const handleSwLap = () => {
@@ -155,6 +173,7 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
   };
 
   const handleSwReset = () => {
+    swStartTimeRef.current = 0;
     setSwRunning(false);
     setSwTime(0);
     setSwLaps([]);
@@ -176,6 +195,7 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
   const [timerLeft, setTimerLeft] = useState(300);
   const [timerRunning, setTimerRunning] = useState(false);
   const [timerFinishedAlert, setTimerFinishedAlert] = useState(false);
+  const timerTargetRef = useRef<number>(0);
 
   // Update timerLeft when custom time inputs change if timer is not running
   const applyCustomTime = (h: number, m: number, s: number) => {
@@ -188,6 +208,7 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
     setCustomSeconds(validS);
 
     const total = validH * 3600 + validM * 60 + validS;
+    timerTargetRef.current = 0;
     setTimerDuration(total);
     setTimerLeft(total);
     setTimerRunning(false);
@@ -195,17 +216,40 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
 
   useEffect(() => {
     let interval: any;
-    if (timerRunning && timerLeft > 0) {
-      interval = setInterval(() => {
-        setTimerLeft(prev => prev - 1);
-      }, 1000);
-    } else if (timerRunning && timerLeft === 0) {
-      setTimerRunning(false);
-      setTimerFinishedAlert(true);
-      playBeep();
+    if (timerRunning) {
+      if (!timerTargetRef.current || timerTargetRef.current <= Date.now()) {
+        timerTargetRef.current = Date.now() + timerLeft * 1000;
+      }
+      const syncTimer = () => {
+        if (!timerTargetRef.current) return;
+        const remaining = Math.max(0, Math.ceil((timerTargetRef.current - Date.now()) / 1000));
+        setTimerLeft(remaining);
+        if (remaining <= 0) {
+          timerTargetRef.current = 0;
+          setTimerRunning(false);
+          setTimerFinishedAlert(true);
+          playBeep();
+        }
+      };
+
+      syncTimer();
+      interval = setInterval(syncTimer, 500);
+
+      const handleWakeUp = () => syncTimer();
+      document.addEventListener('visibilitychange', handleWakeUp);
+      window.addEventListener('focus', handleWakeUp);
+      window.addEventListener('pageshow', handleWakeUp);
+
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', handleWakeUp);
+        window.removeEventListener('focus', handleWakeUp);
+        window.removeEventListener('pageshow', handleWakeUp);
+      };
+    } else {
+      timerTargetRef.current = 0;
     }
-    return () => clearInterval(interval);
-  }, [timerRunning, timerLeft]);
+  }, [timerRunning]);
 
   const handleStartTimerPreset = (seconds: number) => {
     const h = Math.floor(seconds / 3600);
@@ -215,6 +259,7 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
     setCustomMinutes(m);
     setCustomSeconds(s);
 
+    timerTargetRef.current = Date.now() + seconds * 1000;
     setTimerDuration(seconds);
     setTimerLeft(seconds);
     setTimerRunning(true);

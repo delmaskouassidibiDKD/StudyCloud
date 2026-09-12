@@ -34,22 +34,24 @@ export function GoogleSecuritySetupPage() {
   const [isLoading, setIsLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  // ─── Gestion de l'expiration 20 minutes et inactivité 15 minutes ─────────────
+  // ─── Gestion de l'expiration 20 minutes et inactivité 15 minutes (Horloge réelle continue) ───
   const TOTAL_DURATION_SEC = 20 * 60;
   const INACTIVITY_LIMIT_MS = 15 * 60 * 1000;
+  const startKey = `sc_onb_start_${user?.id || 'default'}`;
+  const lastActiveKey = `sc_onb_last_active_${user?.id || 'default'}`;
 
-  const [timeLeft, setTimeLeft] = useState<number>(() => {
-    const key = `sc_onb_start_${user?.id || 'default'}`;
-    let start = localStorage.getItem(key);
+  // Calcul dynamique et continu du temps restant basé sur l'horloge réelle Date.now()
+  const calculateRemainingSeconds = useCallback(() => {
+    let start = localStorage.getItem(startKey);
     if (!start) {
       start = Date.now().toString();
-      localStorage.setItem(key, start);
+      localStorage.setItem(startKey, start);
     }
     const elapsed = Math.floor((Date.now() - parseInt(start, 10)) / 1000);
     return Math.max(0, TOTAL_DURATION_SEC - elapsed);
-  });
+  }, [startKey]);
 
-  const lastActivityRef = useRef<number>(Date.now());
+  const [timeLeft, setTimeLeft] = useState<number>(calculateRemainingSeconds);
 
   const handleSessionExpired = useCallback(async (reason: 'timeout' | 'inactivity') => {
     try {
@@ -65,53 +67,86 @@ export function GoogleSecuritySetupPage() {
     } catch (e) {
       console.warn('Erreur annulation compte expiré:', e);
     }
-    localStorage.removeItem(`sc_onb_start_${user?.id || 'default'}`);
+    localStorage.removeItem(startKey);
+    localStorage.removeItem(lastActiveKey);
     const message = reason === 'timeout'
       ? "Votre session d'inscription a expiré (délai de 20 minutes dépassé sans finalisation). Vos données temporaires ont été effacées. Veuillez recommencer."
       : "Session d'inscription interrompue : vous avez quitté ou été inactif pendant plus de 15 minutes. Vos données temporaires ont été effacées. Veuillez recommencer.";
     localStorage.setItem('sc_onboarding_expired_notice', message);
     logout();
-  }, [user, token, logout]);
+  }, [user, token, logout, startKey, lastActiveKey]);
 
+  // Écoute des interactions pour rafraîchir l'activité en continu (même après sortie d'écran)
   useEffect(() => {
     const updateActivity = () => {
-      lastActivityRef.current = Date.now();
+      localStorage.setItem(lastActiveKey, Date.now().toString());
     };
+
+    // Initialiser l'activité courante
+    if (!localStorage.getItem(lastActiveKey)) {
+      updateActivity();
+    }
 
     window.addEventListener('mousemove', updateActivity, { passive: true });
     window.addEventListener('keydown', updateActivity, { passive: true });
     window.addEventListener('touchstart', updateActivity, { passive: true });
     window.addEventListener('scroll', updateActivity, { passive: true });
-    document.addEventListener('visibilitychange', updateActivity);
+    window.addEventListener('click', updateActivity, { passive: true });
 
     return () => {
       window.removeEventListener('mousemove', updateActivity);
       window.removeEventListener('keydown', updateActivity);
       window.removeEventListener('touchstart', updateActivity);
       window.removeEventListener('scroll', updateActivity);
-      document.removeEventListener('visibilitychange', updateActivity);
+      window.removeEventListener('click', updateActivity);
     };
-  }, []);
+  }, [lastActiveKey]);
 
+  // Décompteur ininterrompu : continue de s'écouler même si l'écran s'éteint ou l'app est minimisée
   useEffect(() => {
-    const timer = setInterval(() => {
-      const now = Date.now();
-      if (now - lastActivityRef.current >= INACTIVITY_LIMIT_MS) {
-        clearInterval(timer);
+    const syncContinuousTimer = () => {
+      const remaining = calculateRemainingSeconds();
+      setTimeLeft(remaining);
+
+      // 1. Délais global 20 minutes dépassé
+      if (remaining <= 0) {
+        handleSessionExpired('timeout');
+        return;
+      }
+
+      // 2. Inactivité > 15 minutes
+      const lastActiveStr = localStorage.getItem(lastActiveKey) || localStorage.getItem(startKey);
+      const lastActive = lastActiveStr ? parseInt(lastActiveStr, 10) : Date.now();
+      if (Date.now() - lastActive >= INACTIVITY_LIMIT_MS) {
         handleSessionExpired('inactivity');
         return;
       }
-      setTimeLeft((prev) => {
-        if (prev <= 1) {
-          clearInterval(timer);
-          handleSessionExpired('timeout');
-          return 0;
-        }
-        return prev - 1;
-      });
-    }, 1000);
-    return () => clearInterval(timer);
-  }, [handleSessionExpired]);
+    };
+
+    // Synchronisation immédiate
+    syncContinuousTimer();
+
+    // 1. Tick régulier toutes les 500ms
+    const timer = setInterval(syncContinuousTimer, 500);
+
+    // 2. Réactivation instantanée dès que l'écran se rallume, l'onglet redevient visible, ou l'utilisateur revient
+    const handleWakeUp = () => {
+      syncContinuousTimer();
+    };
+
+    document.addEventListener('visibilitychange', handleWakeUp);
+    window.addEventListener('focus', handleWakeUp);
+    window.addEventListener('pageshow', handleWakeUp);
+    window.addEventListener('storage', handleWakeUp);
+
+    return () => {
+      clearInterval(timer);
+      document.removeEventListener('visibilitychange', handleWakeUp);
+      window.removeEventListener('focus', handleWakeUp);
+      window.removeEventListener('pageshow', handleWakeUp);
+      window.removeEventListener('storage', handleWakeUp);
+    };
+  }, [calculateRemainingSeconds, handleSessionExpired, startKey, lastActiveKey]);
 
   const formatTime = (seconds: number) => {
     const m = Math.floor(seconds / 60);

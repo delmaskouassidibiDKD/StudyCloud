@@ -353,18 +353,50 @@ export default function App() {
 
   useEffect(() => {
     let interval: any;
-    if (timerRunning && timerLeft > 0) {
-      interval = setInterval(() => {
-        setTimerLeft((prev) => prev - 1);
-      }, 1000);
-    } else if (timerRunning && timerLeft === 0) {
-      setTimerRunning(false);
-      setTimerFinishedAlert(true);
-      setShowStudyTimer(true);
-      playTimerBeep();
+    if (timerRunning) {
+      // Déterminer ou récupérer l'heure cible exacte
+      let targetTime = parseInt(localStorage.getItem('sc_study_timer_target') || '0', 10);
+      if (!targetTime || targetTime <= Date.now()) {
+        targetTime = Date.now() + timerLeft * 1000;
+        localStorage.setItem('sc_study_timer_target', targetTime.toString());
+      }
+
+      const syncStudyTimer = () => {
+        const storedTarget = parseInt(localStorage.getItem('sc_study_timer_target') || '0', 10);
+        if (!storedTarget) return;
+        const remaining = Math.max(0, Math.ceil((storedTarget - Date.now()) / 1000));
+        setTimerLeft(remaining);
+
+        if (remaining <= 0) {
+          localStorage.removeItem('sc_study_timer_target');
+          setTimerRunning(false);
+          setTimerFinishedAlert(true);
+          setShowStudyTimer(true);
+          playTimerBeep();
+        }
+      };
+
+      // Synchronisation immédiate
+      syncStudyTimer();
+
+      interval = setInterval(syncStudyTimer, 500);
+
+      // Réactivation instantanée au retour sur l'écran
+      const handleWakeUp = () => syncStudyTimer();
+      document.addEventListener('visibilitychange', handleWakeUp);
+      window.addEventListener('focus', handleWakeUp);
+      window.addEventListener('pageshow', handleWakeUp);
+
+      return () => {
+        clearInterval(interval);
+        document.removeEventListener('visibilitychange', handleWakeUp);
+        window.removeEventListener('focus', handleWakeUp);
+        window.removeEventListener('pageshow', handleWakeUp);
+      };
+    } else {
+      localStorage.removeItem('sc_study_timer_target');
     }
-    return () => clearInterval(interval);
-  }, [timerRunning, timerLeft]);
+  }, [timerRunning]);
   
   const folderInputRef = useRef<HTMLInputElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);

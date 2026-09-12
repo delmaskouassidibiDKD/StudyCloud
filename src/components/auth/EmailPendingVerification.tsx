@@ -81,9 +81,9 @@ export function EmailPendingVerification({
     }
   }, [email]);
 
-  // Horloge de mise à jour toutes les 500ms pour garantir une précision absolue même en cas de pause
+  // Horloge de mise à jour toutes les 500ms et réveil instantané à la réactivation de l'écran
   useEffect(() => {
-    const interval = setInterval(() => {
+    const syncCooldown = () => {
       // Vérifier le blocage de 3h
       const savedBlockedUntil = localStorage.getItem(BLOCKED_KEY);
       if (savedBlockedUntil) {
@@ -108,9 +108,22 @@ export function EmailPendingVerification({
       } else {
         setSecondsLeft(0);
       }
-    }, 500);
+    };
 
-    return () => clearInterval(interval);
+    syncCooldown();
+    const interval = setInterval(syncCooldown, 500);
+
+    const handleWakeUp = () => syncCooldown();
+    document.addEventListener('visibilitychange', handleWakeUp);
+    window.addEventListener('focus', handleWakeUp);
+    window.addEventListener('pageshow', handleWakeUp);
+
+    return () => {
+      clearInterval(interval);
+      document.removeEventListener('visibilitychange', handleWakeUp);
+      window.removeEventListener('focus', handleWakeUp);
+      window.removeEventListener('pageshow', handleWakeUp);
+    };
   }, [email]);
 
   // Polling automatique pour détection cross-device en temps réel (si l'email est confirmé sur smartphone ou autre onglet)
