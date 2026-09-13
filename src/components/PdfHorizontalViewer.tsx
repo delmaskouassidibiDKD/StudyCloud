@@ -122,6 +122,7 @@ interface PdfPageRendererProps {
   pageNumber: number;
   layoutMode: 'vertical' | 'horizontal';
   docZoom: number;
+  containerWidth?: number;
   isSpeakingThisPage?: boolean;
   currentSpokenText?: string;
   activeSpeechLineIndex?: number;
@@ -133,6 +134,7 @@ function PdfPageRenderer({
   pageNumber,
   layoutMode,
   docZoom,
+  containerWidth,
   isSpeakingThisPage,
   currentSpokenText,
   activeSpeechLineIndex,
@@ -164,19 +166,22 @@ function PdfPageRenderer({
           setPageDims({ width: pageW, height: pageH });
         }
 
-        // Rendu Ultra Haute Définition Pleine Largeur (Vector Retina) : pas de flou !
-        const containerW = canvasRef.current?.parentElement?.clientWidth || window.innerWidth || 1100;
-        const dpr = typeof window !== 'undefined' ? Math.max(window.devicePixelRatio || 1, 2) : 2;
-        const targetPixelWidth = Math.max(containerW * 1.6, 1600) * dpr;
-        const renderScale = Math.max(targetPixelWidth / pageW, 2.5);
+        // Rendu Ultra Haute Définition Pleine Largeur (Vector Retina UHD) :
+        // 2400px ou 3.5x pour que même à 250% de zoom le texte et les formules restent d'une netteté absolue sans flou
+        const targetPixelWidth = Math.max(pageW * 3.5, 2400);
+        const renderScale = targetPixelWidth / pageW;
 
         const renderViewport = page.getViewport({ scale: renderScale });
         const canvas = canvasRef.current;
-        const context = canvas.getContext('2d');
+        const context = canvas.getContext('2d', { alpha: false });
         if (!context) return;
 
         canvas.width = renderViewport.width;
         canvas.height = renderViewport.height;
+
+        // Fond blanc opaque pour un contraste optimal et des polices nettes
+        context.fillStyle = '#FFFFFF';
+        context.fillRect(0, 0, canvas.width, canvas.height);
 
         const renderTask = page.render({
           canvasContext: context,
@@ -223,16 +228,25 @@ function PdfPageRenderer({
     return () => clearTimeout(timer);
   }, [activeSpeechLineIndex, isSpeakingThisPage, autoScrollEnabled]);
 
+  // Calcul de la largeur de base du document en mode vertical :
+  // En mode 3 colonnes (cWidth <= 900) : remplit la colonne avec une marge confortable (24px)
+  // En mode plein écran (cWidth > 900) : plafonné à 820px pour un format A4 élégant
+  const cWidth = containerWidth && containerWidth > 100 ? containerWidth : 500;
+  const baseWidth = cWidth > 900 
+    ? Math.min(cWidth - 48, 820) 
+    : Math.max(300, cWidth - 24);
+
+  const effectiveWidth = Math.round(baseWidth * (docZoom / 100));
+  const effectiveHeight = Math.round(effectiveWidth / (aspectRatio || 0.707));
+
   return (
-    <div className="relative w-full flex items-center justify-center select-none">
+    <div className="relative flex items-center justify-center select-none shrink-0">
       {!rendered && (
         <div 
-          className="bg-white dark:bg-stone-900 shadow-sm border border-stone-200 dark:border-stone-800 flex items-center justify-center animate-pulse"
+          className="bg-white dark:bg-stone-900 shadow-sm border border-stone-200 dark:border-stone-800 flex items-center justify-center animate-pulse shrink-0"
           style={{
-            height: layoutMode === 'horizontal' ? '80vh' : 'auto',
-            width: layoutMode === 'horizontal' ? `${80 * aspectRatio}vh` : `${docZoom}%`,
-            aspectRatio: `${aspectRatio}`,
-            minHeight: layoutMode === 'horizontal' ? undefined : '500px',
+            width: layoutMode === 'horizontal' ? `${80 * aspectRatio * (docZoom / 100)}vh` : `${effectiveWidth}px`,
+            height: layoutMode === 'horizontal' ? `${80 * (docZoom / 100)}vh` : `${effectiveHeight}px`,
           }}
         >
           <div className="w-7 h-7 border-3 border-orange-500 border-t-transparent rounded-full animate-spin" />
@@ -240,20 +254,23 @@ function PdfPageRenderer({
       )}
 
       <div
-        className={`relative bg-white shadow-sm border border-stone-200 dark:border-stone-800 transition-all duration-200 ${
+        className={`relative bg-white shadow-md border border-stone-200 dark:border-stone-800 transition-all duration-150 shrink-0 ${
           rendered ? 'block' : 'hidden'
         }`}
         style={{
           width: layoutMode === 'horizontal' 
             ? `${80 * aspectRatio * (docZoom / 100)}vh` 
-            : `${docZoom}%`,
-          height: layoutMode === 'horizontal' ? '80vh' : 'auto',
-          aspectRatio: `${aspectRatio}`,
+            : `${effectiveWidth}px`,
+          height: layoutMode === 'horizontal' 
+            ? `${80 * (docZoom / 100)}vh` 
+            : `${effectiveHeight}px`,
+          maxWidth: 'none',
         }}
       >
         <canvas
           ref={canvasRef}
-          className="w-full h-full block"
+          className="block"
+          style={{ width: '100%', height: '100%' }}
         />
 
         {/* Soulignage directement SUR le texte du document (SANS micro, SANS contour orange) */}
@@ -327,6 +344,20 @@ export function PdfHorizontalViewer({
   const [error, setError] = useState<string | null>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const pageRefs = useRef<Map<number, HTMLDivElement>>(new Map());
+  const [containerWidth, setContainerWidth] = useState<number>(0);
+
+  useEffect(() => {
+    if (!containerRef.current) return;
+    const updateWidth = () => {
+      if (containerRef.current) {
+        setContainerWidth(containerRef.current.clientWidth);
+      }
+    };
+    updateWidth();
+    const observer = new ResizeObserver(updateWidth);
+    observer.observe(containerRef.current);
+    return () => observer.disconnect();
+  }, [loading]);
 
   useEffect(() => {
     let isMounted = true;
@@ -575,42 +606,78 @@ export function PdfHorizontalViewer({
         className={`flex-1 w-full h-full ${
           layoutMode === 'horizontal'
             ? 'overflow-x-auto overflow-y-hidden flex flex-row items-center gap-8 px-8 py-4 snap-x snap-mandatory hide-scrollbar'
-            : 'overflow-y-auto overflow-x-auto flex flex-col items-center gap-6 px-0 sm:px-2 py-3'
+            : 'overflow-y-auto overflow-x-auto'
         }`}
       >
-        {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
-          const isSpeakingThisPage = isSpeaking && activeSpeechPage === pageNum;
-          return (
-            <div
-              key={pageNum}
-              ref={(el) => {
-                if (el) pageRefs.current.set(pageNum, el);
-                else pageRefs.current.delete(pageNum);
-              }}
-              className={`shrink-0 flex flex-col items-center justify-center relative transition-transform duration-300 ${
-                layoutMode === 'horizontal' ? 'h-full max-h-[82vh] snap-center' : 'w-full min-w-fit'
-              }`}
-            >
-              <PdfPageRenderer
-                pdfDoc={pdfDoc}
-                pageNumber={pageNum}
-                layoutMode={layoutMode}
-                docZoom={docZoom}
-                isSpeakingThisPage={isSpeakingThisPage}
-                currentSpokenText={currentSpokenText}
-                activeSpeechLineIndex={activeSpeechLineIndex}
-                autoScrollEnabled={autoScrollEnabled}
-              />
-              <div className={`text-[10px] font-bold mt-2 px-2.5 py-0.5 rounded-full border shadow-xs transition-colors ${
-                isSpeakingThisPage
-                  ? 'bg-orange-500 text-white border-orange-600'
-                  : 'text-stone-600 dark:text-stone-400 bg-white/90 dark:bg-stone-900/90 border-stone-300 dark:border-stone-700'
-              }`}>
-                Page {pageNum} sur {numPages}
+        {layoutMode === 'horizontal' ? (
+          Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
+            const isSpeakingThisPage = isSpeaking && activeSpeechPage === pageNum;
+            return (
+              <div
+                key={pageNum}
+                ref={(el) => {
+                  if (el) pageRefs.current.set(pageNum, el);
+                  else pageRefs.current.delete(pageNum);
+                }}
+                className="shrink-0 h-full max-h-[82vh] snap-center flex flex-col items-center justify-center relative transition-transform duration-300"
+              >
+                <PdfPageRenderer
+                  pdfDoc={pdfDoc}
+                  pageNumber={pageNum}
+                  layoutMode={layoutMode}
+                  docZoom={docZoom}
+                  containerWidth={containerWidth}
+                  isSpeakingThisPage={isSpeakingThisPage}
+                  currentSpokenText={currentSpokenText}
+                  activeSpeechLineIndex={activeSpeechLineIndex}
+                  autoScrollEnabled={autoScrollEnabled}
+                />
+                <div className={`text-[10px] font-bold mt-2 px-2.5 py-0.5 rounded-full border shadow-xs transition-colors ${
+                  isSpeakingThisPage
+                    ? 'bg-orange-500 text-white border-orange-600'
+                    : 'text-stone-600 dark:text-stone-400 bg-white/90 dark:bg-stone-900/90 border-stone-300 dark:border-stone-700'
+                }`}>
+                  Page {pageNum} sur {numPages}
+                </div>
               </div>
-            </div>
-          );
-        })}
+            );
+          })
+        ) : (
+          <div className="min-w-full w-max flex flex-col items-center gap-6 px-3 py-4">
+            {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
+              const isSpeakingThisPage = isSpeaking && activeSpeechPage === pageNum;
+              return (
+                <div
+                  key={pageNum}
+                  ref={(el) => {
+                    if (el) pageRefs.current.set(pageNum, el);
+                    else pageRefs.current.delete(pageNum);
+                  }}
+                  className="shrink-0 flex flex-col items-center justify-center relative transition-transform duration-300"
+                >
+                  <PdfPageRenderer
+                    pdfDoc={pdfDoc}
+                    pageNumber={pageNum}
+                    layoutMode={layoutMode}
+                    docZoom={docZoom}
+                    containerWidth={containerWidth}
+                    isSpeakingThisPage={isSpeakingThisPage}
+                    currentSpokenText={currentSpokenText}
+                    activeSpeechLineIndex={activeSpeechLineIndex}
+                    autoScrollEnabled={autoScrollEnabled}
+                  />
+                  <div className={`text-[10px] font-bold mt-2 px-2.5 py-0.5 rounded-full border shadow-xs transition-colors ${
+                    isSpeakingThisPage
+                      ? 'bg-orange-500 text-white border-orange-600'
+                      : 'text-stone-600 dark:text-stone-400 bg-white/90 dark:bg-stone-900/90 border-stone-300 dark:border-stone-700'
+                  }`}>
+                    Page {pageNum} sur {numPages}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
