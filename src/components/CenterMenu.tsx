@@ -786,52 +786,21 @@ export function CenterMenu({
 
           const currentUrl = resolvedUrl || activePreviewItem?.url || '';
 
-          // 1. PDF: Native PDF toolbar in Vertical mode, or Horizontal page reader in Horizontal mode!
+          // 1. PDF: Unified viewer supporting both Vertical and Horizontal modes with on-document highlighting!
           if (isPdf) {
-            if (previewScrollMode === 'horizontal') {
-              return (
-                <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
-                  <PdfHorizontalViewer 
-                    fileId={activePreviewItem?.id}
-                    file={activePreviewItem}
-                    url={currentUrl} 
-                    docZoom={docZoom}
-                    activeSpeechPage={speechSegments[currentSegmentIdx]?.page}
-                    autoScrollEnabled={autoScrollEnabled}
-                    isSpeaking={speechState === 'playing' || speechState === 'paused'}
-                  />
-                </div>
-              );
-            }
-
-            const activePdfSpeechPage = speechSegments[currentSegmentIdx]?.page;
-            const pdfTargetUrl = activePdfSpeechPage && autoScrollEnabled
-              ? `${currentUrl}#toolbar=1&navpanes=0&view=FitH&page=${activePdfSpeechPage}`
-              : `${currentUrl}#toolbar=1&navpanes=0&view=FitH`;
-
             return (
               <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
-                {currentUrl ? (
-                  <object
-                    data={pdfTargetUrl}
-                    type="application/pdf"
-                    className="w-full h-full border-0"
-                    style={{ zoom: `${docZoom}%` }}
-                  >
-                    <iframe
-                      src={pdfTargetUrl}
-                      title={activePreviewItem?.name || 'Document PDF'}
-                      className="w-full h-full border-0"
-                      style={{ zoom: `${docZoom}%` }}
-                    />
-                  </object>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
-                    <FileText className="w-12 h-12 text-red-500" />
-                    <p className="text-sm font-bold text-stone-800 dark:text-white">{activePreviewItem.name}</p>
-                    <p className="text-xs text-stone-500">Document PDF prêt pour l'analyse IA.</p>
-                  </div>
-                )}
+                <PdfHorizontalViewer 
+                  fileId={activePreviewItem?.id}
+                  file={activePreviewItem}
+                  url={currentUrl} 
+                  docZoom={docZoom}
+                  layoutMode={previewScrollMode}
+                  activeSpeechPage={speechSegments[currentSegmentIdx]?.page}
+                  currentSpokenText={speechSegments[currentSegmentIdx]?.text}
+                  autoScrollEnabled={autoScrollEnabled}
+                  isSpeaking={speechState === 'playing' || speechState === 'paused'}
+                />
               </div>
             );
           }
@@ -1202,114 +1171,6 @@ export function CenterMenu({
           );
         })()}
 
-        {/* Floating Teleprompter HUD with Moving Underline and Free-Scroll Control */}
-        {(speechState === 'playing' || speechState === 'paused') && speechSegments.length > 0 && (
-          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-[94%] sm:max-w-xl w-full bg-white/95 dark:bg-stone-900/95 backdrop-blur-md rounded-2xl shadow-2xl border-2 border-orange-500/80 p-3 sm:p-4 flex flex-col gap-2.5 transition-all animate-fadeIn">
-            {/* Header row of HUD */}
-            <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
-              <div className="flex items-center gap-2">
-                <div className="flex items-center gap-1 px-2 py-0.5 bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 font-bold rounded-lg text-[11px]">
-                  <Volume2 className="w-3.5 h-3.5 mr-0.5 animate-pulse" />
-                  <span>Vocal</span>
-                  {speechState === 'playing' && (
-                    <div className="flex items-center gap-0.5 ml-1">
-                      <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                      <span className="w-0.5 h-3.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                      <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                    </div>
-                  )}
-                </div>
-
-                {speechSegments[currentSegmentIdx]?.page && (
-                  <span className="px-2 py-0.5 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 font-bold rounded-md text-[11px] border border-stone-200 dark:border-stone-700">
-                    Page {speechSegments[currentSegmentIdx].page}
-                  </span>
-                )}
-                {speechSegments[currentSegmentIdx]?.slide && (
-                  <span className="px-2 py-0.5 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 font-bold rounded-md text-[11px] border border-stone-200 dark:border-stone-700">
-                    Diapo {speechSegments[currentSegmentIdx].slide}
-                  </span>
-                )}
-                <span className="text-[11px] text-stone-500 font-semibold">
-                  Phrase {currentSegmentIdx + 1} / {speechSegments.length}
-                </span>
-              </div>
-
-              {/* Auto-Scroll Toggle Button */}
-              <button
-                type="button"
-                onClick={() => setAutoScrollEnabled(prev => !prev)}
-                className={`px-2.5 py-1 rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
-                  autoScrollEnabled
-                    ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 ring-1 ring-emerald-300'
-                    : 'bg-stone-200 hover:bg-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-stone-600'
-                }`}
-                title={autoScrollEnabled ? "Cliquer pour arrêter le défilement et naviguer librement" : "Cliquer pour réactiver le défilement automatique"}
-              >
-                <span className={`w-2 h-2 rounded-full ${autoScrollEnabled ? 'bg-white animate-ping' : 'bg-stone-400'}`} />
-                <span>{autoScrollEnabled ? "Défilement auto : ACTIF" : "Défilement auto : ARRÊTÉ (Libre)"}</span>
-              </button>
-            </div>
-
-            {/* Current Sentence with Live Word-by-Word Moving Underline */}
-            <div className="bg-stone-50 dark:bg-stone-950/80 rounded-xl p-2.5 sm:p-3 border border-stone-200 dark:border-stone-800 text-stone-800 dark:text-stone-100 text-xs sm:text-sm leading-relaxed max-h-24 overflow-y-auto font-medium">
-              {renderSpokenSentence(speechSegments[currentSegmentIdx]?.text || '', spokenWordCharIndex, spokenWordLength)}
-            </div>
-
-            {/* Navigation & Audio Controls */}
-            <div className="flex items-center justify-between pt-0.5">
-              <div className="flex items-center gap-1.5">
-                <button
-                  type="button"
-                  onClick={() => speakSentence(Math.max(0, currentSegmentIdx - 1))}
-                  disabled={currentSegmentIdx <= 0}
-                  className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 rounded-lg text-stone-600 dark:text-stone-300 transition-colors cursor-pointer"
-                  title="Phrase précédente"
-                >
-                  <SkipBack className="w-3.5 h-3.5" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={handleTogglePause}
-                  className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
-                >
-                  {speechState === 'playing' ? (
-                    <>
-                      <Pause className="w-3.5 h-3.5 fill-white" />
-                      <span>Pause</span>
-                    </>
-                  ) : (
-                    <>
-                      <Play className="w-3.5 h-3.5 fill-white" />
-                      <span>Reprendre</span>
-                    </>
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => speakSentence(Math.min(speechSegments.length - 1, currentSegmentIdx + 1))}
-                  disabled={currentSegmentIdx >= speechSegments.length - 1}
-                  className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 rounded-lg text-stone-600 dark:text-stone-300 transition-colors cursor-pointer"
-                  title="Phrase suivante"
-                >
-                  <SkipForward className="w-3.5 h-3.5" />
-                </button>
-              </div>
-
-              <button
-                type="button"
-                onClick={handleStop}
-                className="px-2 py-1 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
-                title="Arrêter la lecture"
-              >
-                <Square className="w-3 h-3 fill-red-600" />
-                <span>Arrêter</span>
-              </button>
-            </div>
-          </div>
-        )}
       </div>
 
       {/* Drag Handle Right of Col 2 (Center to Right) */}
