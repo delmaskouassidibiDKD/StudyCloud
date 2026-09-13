@@ -167,8 +167,7 @@ function PdfPageRenderer({
         // Rendu Ultra Haute Définition Pleine Largeur (Vector Retina) : pas de flou !
         const containerW = canvasRef.current?.parentElement?.clientWidth || window.innerWidth || 1100;
         const dpr = typeof window !== 'undefined' ? Math.max(window.devicePixelRatio || 1, 2) : 2;
-        const zoomFactor = Math.max(1.0, docZoom / 100);
-        const targetPixelWidth = Math.max(containerW * zoomFactor, 1400) * dpr;
+        const targetPixelWidth = Math.max(containerW * 1.6, 1600) * dpr;
         const renderScale = Math.max(targetPixelWidth / pageW, 2.5);
 
         const renderViewport = page.getViewport({ scale: renderScale });
@@ -206,7 +205,7 @@ function PdfPageRenderer({
         try { cancelRender.cancel(); } catch {}
       }
     };
-  }, [pdfDoc, pageNumber, docZoom]);
+  }, [pdfDoc, pageNumber]);
 
   // Auto-scroll stable et calme SANS saccade ("sans sauter") : déclenché UNIQUEMENT quand la ligne change
   useEffect(() => {

@@ -596,11 +596,13 @@ export function CenterMenu({
     activeUtteranceRef.current = utterance;
     (window as any).__studyCloudUtterance = utterance;
 
-    // Suivi précis du mot prononcé pour le soulignage dynamique
+    // Suivi précis du mot prononcé pour le soulignage dynamique (sur Word/Texte uniquement pour éviter re-renders constants sur PDF)
     utterance.onboundary = (event) => {
-      if (event.name === 'word' || typeof event.charIndex === 'number') {
-        setSpokenWordCharIndex(event.charIndex);
-        setSpokenWordLength(event.charLength || 0);
+      if (isWord || isText) {
+        if (event.name === 'word' || typeof event.charIndex === 'number') {
+          setSpokenWordCharIndex(event.charIndex);
+          setSpokenWordLength(event.charLength || 0);
+        }
       }
     };
 
@@ -614,7 +616,6 @@ export function CenterMenu({
         setCurrentSegmentIdx(0);
         setActiveSpeechLineIndex(-1);
         setSpokenWordCharIndex(-1);
-        if (isPdf) setPdfViewerMode('native');
       }
     };
 
@@ -652,6 +653,10 @@ export function CenterMenu({
     }
 
     let segments = speechSegmentsRef.current;
+
+    if (isPdf && pdfViewerMode !== 'interactive') {
+      setPdfViewerMode('interactive');
+    }
 
     if (!segments || segments.length === 0) {
       setSpeechState('loading');
@@ -764,7 +769,6 @@ export function CenterMenu({
     setCurrentSegmentIdx(0);
     setActiveSpeechLineIndex(-1);
     setSpokenWordCharIndex(-1);
-    if (isPdf) setPdfViewerMode('native');
   };
 
   const handleRestart = () => {
@@ -1040,10 +1044,10 @@ export function CenterMenu({
 
           // 1. PDF:
           // Standard Vertical mode (default) -> Native PDF viewer with "le truc noir" (#toolbar=1, page counter, native - 122% + zoom, rotate, draw, download, print)
-          // Horizontal mode OR active speech reading -> Interactive viewer with live Stabilo yellow line highlighting & auto-scroll
+          // Horizontal mode OR Surlignage -> Interactive viewer with live Stabilo yellow line highlighting & auto-scroll
           if (isPdf) {
             const isSpeaking = speechState === 'playing' || speechState === 'paused';
-            const showInteractive = previewScrollMode === 'horizontal' || isSpeaking || pdfViewerMode === 'interactive';
+            const showInteractive = previewScrollMode === 'horizontal' || pdfViewerMode === 'interactive';
 
             if (showInteractive) {
               return (
@@ -1071,27 +1075,38 @@ export function CenterMenu({
             }
 
             // Native Vertical PDF Viewer with "le truc noir" (black PDF toolbar #toolbar=1)
+            // L'URL et les clés restent stables pour ne jamais détruire/recharger l'iframe lors du zoom
             const cleanPdfBase = (currentUrl || '').split('#')[0];
-            const nativePdfUrl = `${cleanPdfBase}#toolbar=1&navpanes=0&view=FitH${docZoom !== 100 ? `&zoom=${docZoom}` : ''}`;
+            const nativePdfUrl = `${cleanPdfBase}#toolbar=1&navpanes=0&view=FitH`;
 
             return (
-              <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
+              <div className="w-full h-full flex flex-col items-center overflow-auto bg-stone-100 dark:bg-stone-900">
                 {currentUrl ? (
-                  <object
-                    key={`pdf-native-${activePreviewItem?.id || activePreviewItem?.url}-${docZoom}`}
-                    data={nativePdfUrl}
-                    type="application/pdf"
-                    className="w-full h-full border-0 block"
-                    style={{ width: '100%', height: '100%' }}
+                  <div 
+                    className="transition-all duration-150 ease-out origin-top flex-1 w-full flex flex-col"
+                    style={{
+                      width: `${Math.max(40, docZoom)}%`,
+                      height: `${Math.max(100, docZoom)}%`,
+                      minWidth: '100%',
+                      minHeight: '100%'
+                    }}
                   >
-                    <iframe
-                      key={`iframe-pdf-native-${activePreviewItem?.id || activePreviewItem?.url}-${docZoom}`}
-                      src={nativePdfUrl}
-                      title={activePreviewItem?.name || 'Document PDF'}
-                      className="w-full h-full border-0 block"
+                    <object
+                      key={`pdf-native-${activePreviewItem?.id || activePreviewItem?.url || 'default'}`}
+                      data={nativePdfUrl}
+                      type="application/pdf"
+                      className="w-full h-full border-0 block flex-1"
                       style={{ width: '100%', height: '100%' }}
-                    />
-                  </object>
+                    >
+                      <iframe
+                        key={`iframe-pdf-native-${activePreviewItem?.id || activePreviewItem?.url || 'default'}`}
+                        src={nativePdfUrl}
+                        title={activePreviewItem?.name || 'Document PDF'}
+                        className="w-full h-full border-0 block flex-1"
+                        style={{ width: '100%', height: '100%' }}
+                      />
+                    </object>
+                  </div>
                 ) : (
                   <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
                     <FileText className="w-12 h-12 text-red-500" />
