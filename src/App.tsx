@@ -315,7 +315,7 @@ export default function App() {
       if (onComplete) {
         onComplete(newFolder);
       }
-    }, 2000);
+    }, 150);
   };
 
   // Modals state
@@ -1271,19 +1271,6 @@ export default function App() {
         />
       )}
 
-      {showCreateShareLinkModal && (
-        <CreateShareLinkModal
-          uploadedItems={shareModalTargetItems || uploadedItems}
-          initialLinkName={shareModalInitialName}
-          onClose={() => {
-            setShowCreateShareLinkModal(false);
-            setShareModalTargetItems(null);
-            setShareModalInitialName('');
-          }}
-          onStartBackgroundCreation={handleStartBackgroundCreation}
-        />
-      )}
-
       {toastMessage && (
         <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[10000] bg-emerald-900 border-2 border-emerald-500 text-white px-5 py-3 rounded-xl shadow-xl flex items-center justify-between gap-4 animate-fadeIn w-[90%] max-w-sm">
           <p className="text-xs font-bold leading-relaxed">{toastMessage}</p>
@@ -1546,6 +1533,20 @@ export default function App() {
         timerFinishedAlert={timerFinishedAlert}
         setTimerFinishedAlert={setTimerFinishedAlert}
       />
+
+      {/* Modal de Partage de Document / Dossier (Placé au premier plan absolu z-[100000]) */}
+      {showCreateShareLinkModal && (
+        <CreateShareLinkModal
+          uploadedItems={shareModalTargetItems || uploadedItems}
+          initialLinkName={shareModalInitialName}
+          onClose={() => {
+            setShowCreateShareLinkModal(false);
+            setShareModalTargetItems(null);
+            setShareModalInitialName('');
+          }}
+          onStartBackgroundCreation={handleStartBackgroundCreation}
+        />
+      )}
     </div>
   );
 }

@@ -85,8 +85,17 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
     }
   };
 
+  useEffect(() => {
+    if (createdFolder?.shareUrl) {
+      navigator.clipboard.writeText(createdFolder.shareUrl).then(() => {
+        setCopied(true);
+        setTimeout(() => setCopied(false), 3000);
+      }).catch(() => {});
+    }
+  }, [createdFolder?.shareUrl]);
+
   return (
-    <div className="fixed inset-0 z-[9999] overflow-y-auto p-4 flex items-start sm:items-center justify-center bg-black/50 backdrop-blur-xs animate-fadeIn">
+    <div className="fixed inset-0 z-[100000] overflow-y-auto p-4 flex items-start sm:items-center justify-center bg-black/60 backdrop-blur-xs animate-fadeIn">
       <div className="bg-[#FDFBF7] border-3 border-stone-800 rounded-3xl p-6 md:p-8 w-full max-w-md shadow-[8px_8px_0px_0px_#1c1917] relative my-auto">
         <button
           onClick={onClose}
