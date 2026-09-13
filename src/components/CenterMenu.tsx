@@ -648,6 +648,51 @@ export function CenterMenu({
     }
   };
 
+  const getWordHtmlWithHighlight = () => {
+    if (!docxHtml) return '';
+    const isSpeaking = speechState === 'playing' || speechState === 'paused';
+    const currentSpoken = speechSegments[currentSegmentIdx]?.text?.trim();
+    if (!isSpeaking || !currentSpoken || currentSpoken.length < 3) {
+      return docxHtml;
+    }
+
+    const cleanSpoken = currentSpoken.replace(/\s+/g, ' ');
+    const escaped = cleanSpoken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    try {
+      const regex = new RegExp(`(${escaped})`, 'i');
+      if (regex.test(docxHtml)) {
+        return docxHtml.replace(
+          regex, 
+          `<mark id="active-word-speech-target" style="background-color: rgba(255, 235, 59, 0.65); border-bottom: 3.5px solid #FF3B30; border-radius: 3px; padding: 1px 3px; box-shadow: 0 2px 8px rgba(255,59,48,0.45);">$1</mark>`
+        );
+      }
+    } catch (e) {}
+
+    // Fallback : correspondance des 15 premiers caractères
+    if (cleanSpoken.length > 15) {
+      const prefix = cleanSpoken.slice(0, 15).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+      try {
+        const regex = new RegExp(`(${prefix}[^<]{0,100})`, 'i');
+        if (regex.test(docxHtml)) {
+          return docxHtml.replace(
+            regex,
+            `<mark id="active-word-speech-target" style="background-color: rgba(255, 235, 59, 0.65); border-bottom: 3.5px solid #FF3B30; border-radius: 3px; padding: 1px 3px; box-shadow: 0 2px 8px rgba(255,59,48,0.45);">$1</mark>`
+          );
+        }
+      } catch (e) {}
+    }
+
+    return docxHtml;
+  };
+
+  useEffect(() => {
+    if (!autoScrollEnabled || (speechState !== 'playing' && speechState !== 'paused')) return;
+    const target = document.getElementById('active-word-speech-target');
+    if (target) {
+      target.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    }
+  }, [currentSegmentIdx, speechState, autoScrollEnabled]);
+
   const handleCopyText = (text: string) => {
     navigator.clipboard.writeText(text).then(() => {
       setCopiedText(true);
@@ -905,7 +950,7 @@ export function CenterMenu({
                   {docxHtml ? (
                     <div 
                       className="prose dark:prose-invert max-w-none text-sm sm:text-base space-y-4"
-                      dangerouslySetInnerHTML={{ __html: docxHtml }} 
+                      dangerouslySetInnerHTML={{ __html: getWordHtmlWithHighlight() }} 
                     />
                   ) : (
                     <div className="text-center py-16 text-stone-400">
@@ -1080,15 +1125,56 @@ export function CenterMenu({
                         </span>
                       </div>
                       <h2 className="text-xl md:text-3xl font-black text-stone-950 mb-6 leading-snug">
-                        {currentSlide.title}
+                        {(() => {
+                          const currentSpoken = speechSegments[currentSegmentIdx]?.text?.toLowerCase().trim();
+                          const isSpeaking = speechState === 'playing' || speechState === 'paused';
+                          const isTitleActive = isSpeaking && currentSpoken && (
+                            currentSlide.title.toLowerCase().includes(currentSpoken) || currentSpoken.includes(currentSlide.title.toLowerCase())
+                          );
+                          return isTitleActive ? (
+                            <span 
+                              style={{
+                                backgroundColor: 'rgba(255, 235, 59, 0.65)',
+                                borderBottom: '3.5px solid #FF3B30',
+                                borderRadius: '4px',
+                                padding: '2px 6px',
+                                boxShadow: '0 2px 8px rgba(255, 59, 48, 0.4)',
+                              }}
+                            >
+                              {currentSlide.title}
+                            </span>
+                          ) : currentSlide.title;
+                        })()}
                       </h2>
                       <ul className="space-y-4">
-                        {currentSlide.bullets.map((bullet, idx) => (
-                          <li key={idx} className="flex items-start gap-3 text-sm sm:text-base font-medium text-stone-700 leading-relaxed">
-                            <span className="w-2 h-2 rounded-full bg-orange-500 mt-2 shrink-0" />
-                            <span>{bullet}</span>
-                          </li>
-                        ))}
+                        {currentSlide.bullets.map((bullet, idx) => {
+                          const currentSpoken = speechSegments[currentSegmentIdx]?.text?.toLowerCase().trim();
+                          const isSpeaking = speechState === 'playing' || speechState === 'paused';
+                          const isBulletActive = isSpeaking && currentSpoken && (
+                            bullet.toLowerCase().includes(currentSpoken) || currentSpoken.includes(bullet.toLowerCase())
+                          );
+                          return (
+                            <li key={idx} className="flex items-start gap-3 text-sm sm:text-base font-medium text-stone-700 leading-relaxed">
+                              <span className="w-2 h-2 rounded-full bg-orange-500 mt-2 shrink-0" />
+                              {isBulletActive ? (
+                                <span 
+                                  className="text-stone-950 font-bold"
+                                  style={{
+                                    backgroundColor: 'rgba(255, 235, 59, 0.65)',
+                                    borderBottom: '3.5px solid #FF3B30',
+                                    borderRadius: '3px',
+                                    padding: '1px 4px',
+                                    boxShadow: '0 2px 8px rgba(255, 59, 48, 0.4)',
+                                  }}
+                                >
+                                  {bullet}
+                                </span>
+                              ) : (
+                                <span>{bullet}</span>
+                              )}
+                            </li>
+                          );
+                        })}
                       </ul>
                     </div>
 
@@ -1180,9 +1266,16 @@ export function CenterMenu({
                             ref={isActive ? (activeSentenceElRef as any) : null}
                             className={`inline transition-all duration-200 ${
                               isActive
-                                ? 'bg-amber-400 text-stone-950 font-bold px-1 py-0.5 rounded underline decoration-orange-600 decoration-3 underline-offset-4 shadow-sm'
+                                ? 'text-stone-950 font-bold shadow-sm'
                                 : ''
                             }`}
+                            style={isActive ? {
+                              backgroundColor: 'rgba(255, 235, 59, 0.8)',
+                              borderBottom: '3.5px solid #FF3B30',
+                              borderRadius: '3px',
+                              padding: '1px 4px',
+                              color: '#000000',
+                            } : undefined}
                           >
                             {seg.text}{' '}
                           </span>
