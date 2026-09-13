@@ -26,6 +26,7 @@ interface CenterMenuProps {
   previewScrollMode: 'vertical' | 'horizontal';
   setPreviewScrollMode?: React.Dispatch<React.SetStateAction<'vertical' | 'horizontal'>>;
   isMobileScreen?: boolean;
+  setIsResizingRight?: (v: boolean) => void;
 }
 
 interface PptxSlide {
@@ -43,7 +44,8 @@ export function CenterMenu({
   activePreviewItem,
   previewScrollMode,
   setPreviewScrollMode,
-  isMobileScreen
+  isMobileScreen,
+  setIsResizingRight
 }: CenterMenuProps) {
   const [docZoom, setDocZoom] = useState<number>(100);
   const [speechState, setSpeechState] = useState<'idle' | 'loading' | 'playing' | 'paused' | 'stopped'>('idle');
@@ -980,6 +982,21 @@ export function CenterMenu({
           );
         })()}
       </div>
+
+      {/* Drag Handle Right of Col 2 (Center to Right) */}
+      {setIsResizingRight && !isCenterFullscreen && !isRightFullscreen && (
+        <div 
+          className="hidden md:flex absolute -right-[9px] top-0 bottom-0 w-[18px] cursor-col-resize z-50 justify-center items-center group select-none"
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setIsResizingRight(true); }}
+          onTouchStart={(e) => { e.stopPropagation(); setIsResizingRight(true); }}
+          title="Glisser pour redimensionner"
+        >
+          <div className="w-[3px] h-full bg-transparent group-hover:bg-orange-500 group-active:bg-orange-500 transition-colors" />
+          <div className="absolute top-1/2 -translate-y-1/2 w-4 h-8 bg-white dark:bg-stone-800 border border-stone-400 dark:border-stone-600 rounded-full shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity pointer-events-none">
+            <ArrowLeftRight className="w-2.5 h-2.5 text-stone-600 dark:text-stone-300" />
+          </div>
+        </div>
+      )}
     </div>
   );
 }

@@ -513,16 +513,19 @@ export default function App() {
       const percentage = (x / rect.width) * 100;
 
       if (isResizingLeft) {
-        // Bloque le redimensionnement au niveau optimal (environ 260px / 23%) : ne réduit pas trop l'espace de gauche pour préserver l'Assistante DKD et les 2 colonnes de fichiers
+        // Bloque le panneau gauche au niveau optimal (~260px / ~22%) pour préserver LeftMenu
         const minLeft = Math.max(22, (260 / rect.width) * 100);
-        const maxLeft = Math.max(minLeft, 100 - previewRightWidth - 20);
+        // Bloque également quand le menu central (document) atteint sa taille minimale (~440px / ~38%) pour ne pas trop le réduire
+        const minCenter = Math.max(38, (440 / rect.width) * 100);
+        const maxLeft = Math.max(minLeft, 100 - previewRightWidth - minCenter);
         const newWidth = Math.min(Math.max(minLeft, percentage), maxLeft);
         setPreviewLeftWidth(newWidth);
       } else if (isResizingRight) {
-        // Limite également la colonne droite à un minimum équivalent
+        // Limite également la colonne droite en préservant le minimum du menu central
         const newRightWidth = 100 - percentage;
-        const minRight = Math.max(22, (260 / rect.width) * 100);
-        const maxRight = Math.max(minRight, 100 - previewLeftWidth - 20);
+        const minRight = Math.max(20, (240 / rect.width) * 100);
+        const minCenter = Math.max(38, (440 / rect.width) * 100);
+        const maxRight = Math.max(minRight, 100 - previewLeftWidth - minCenter);
         const boundedRight = Math.min(Math.max(minRight, newRightWidth), maxRight);
         setPreviewRightWidth(boundedRight);
       }
@@ -1315,6 +1318,7 @@ export default function App() {
                   previewScrollMode={previewScrollMode}
                   setPreviewScrollMode={setPreviewScrollMode}
                   isMobileScreen={isMobileScreen}
+                  setIsResizingRight={setIsResizingRight}
                 />
 
                 {/* Column 3: Right Area */}
