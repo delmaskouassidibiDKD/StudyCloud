@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Maximize, Minimize, Mic, Pause, Play, Square, RotateCcw, X, FileText, 
   ArrowLeftRight, ArrowUpDown, Music, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, 
-  Copy, Check, Search, Table, Presentation, FileCode
+  Copy, Check, Search, Table, Presentation, FileCode, Volume2, SkipBack, SkipForward, MousePointerClick
 } from 'lucide-react';
 import { FileIconBadge } from './FileIconBadge';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
@@ -30,6 +30,42 @@ interface CenterMenuProps {
   setIsResizingRight?: (v: boolean) => void;
 }
 
+export interface SpeechSegment {
+  text: string;
+  page?: number;
+  slide?: number;
+}
+
+function renderSpokenSentence(text: string, charIndex: number, wordLength: number) {
+  if (!text) return null;
+  if (charIndex < 0) {
+    return (
+      <span className="font-semibold underline decoration-orange-400 decoration-2 underline-offset-4">
+        {text}
+      </span>
+    );
+  }
+
+  const before = text.slice(0, charIndex);
+  let wordEnd = wordLength > 0 ? charIndex + wordLength : -1;
+  if (wordEnd === -1 || wordEnd <= charIndex) {
+    const nextSpace = text.indexOf(' ', charIndex);
+    wordEnd = nextSpace === -1 ? text.length : nextSpace;
+  }
+  const currentWord = text.slice(charIndex, wordEnd);
+  const after = text.slice(wordEnd);
+
+  return (
+    <span>
+      <span className="opacity-70">{before}</span>
+      <span className="bg-amber-300 dark:bg-amber-500/40 text-stone-950 dark:text-white font-extrabold px-1.5 py-0.5 rounded shadow-xs underline decoration-orange-600 dark:decoration-orange-400 decoration-3 underline-offset-4 animate-pulse">
+        {currentWord}
+      </span>
+      <span>{after}</span>
+    </span>
+  );
+}
+
 interface PptxSlide {
   slideNumber: number;
   title: string;
@@ -52,8 +88,20 @@ export function CenterMenu({
   const [speechState, setSpeechState] = useState<'idle' | 'loading' | 'playing' | 'paused' | 'stopped'>('idle');
   const [isAudioMenuOpen, setIsAudioMenuOpen] = useState(false);
   const [currentText, setCurrentText] = useState<string>('');
-  const sentencesRef = useRef<string[]>([]);
+  const [speechSegments, setSpeechSegments] = useState<SpeechSegment[]>([]);
+  const [currentSegmentIdx, setCurrentSegmentIdx] = useState<number>(0);
+  const [autoScrollEnabled, setAutoScrollEnabled] = useState<boolean>(true);
+  const [spokenWordCharIndex, setSpokenWordCharIndex] = useState<number>(-1);
+  const [spokenWordLength, setSpokenWordLength] = useState<number>(0);
+  const speechSegmentsRef = useRef<SpeechSegment[]>([]);
   const currentSentenceIdxRef = useRef<number>(0);
+  const autoScrollEnabledRef = useRef<boolean>(true);
+  const activeSentenceElRef = useRef<HTMLElement>(null);
+  const textContainerRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    autoScrollEnabledRef.current = autoScrollEnabled;
+  }, [autoScrollEnabled]);
 
   // Resolved binary / URL state
   const [resolvedUrl, setResolvedUrl] = useState<string>(activePreviewItem?.url || '');
@@ -269,8 +317,10 @@ export function CenterMenu({
     setSpeechState('idle');
     setIsAudioMenuOpen(false);
     setCurrentText('');
-    currentSentenceIdxRef.current = 0;
-    sentencesRef.current = [];
+    speechSegmentsRef.current = [];
+    setSpeechSegments([]);
+    setCurrentSegmentIdx(0);
+    setSpokenWordCharIndex(-1);
   }, [activePreviewItem?.id]);
 
   // Cleanup on unmount
@@ -296,6 +346,53 @@ export function CenterMenu({
     }
   }, []);
 
+  const extractPdfSegments = async (fileId?: string, url?: string): Promise<SpeechSegment[]> => {
+    try {
+      let arrayBuffer: ArrayBuffer | null = null;
+      if (fileId) {
+        try {
+          const blob = await getFileBlob(fileId);
+          if (blob) arrayBuffer = await blob.arrayBuffer();
+        } catch (e) {}
+      }
+      if (!arrayBuffer && url) {
+        try {
+          const resp = await fetch(url);
+          if (resp.ok) arrayBuffer = await resp.arrayBuffer();
+        } catch (e) {}
+      }
+      if (!arrayBuffer) return [];
+
+      const typedarray = new Uint8Array(arrayBuffer);
+      const loadingTask = pdfjsLib.getDocument({ data: typedarray, cMapPacked: true });
+      const pdf = await loadingTask.promise;
+      const result: SpeechSegment[] = [];
+
+      for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
+        const page = await pdf.getPage(pageNum);
+        const content = await page.getTextContent();
+        const pageText = content.items
+          .map((it: any) => it.str)
+          .join(' ')
+          .replace(/\s+/g, ' ')
+          .trim();
+
+        if (pageText.length > 0) {
+          const sentences = pageText.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 2);
+          if (sentences.length > 0) {
+            sentences.forEach(s => result.push({ text: s.trim(), page: pageNum }));
+          } else {
+            result.push({ text: pageText, page: pageNum });
+          }
+        }
+      }
+      return result;
+    } catch (e) {
+      console.warn('[CenterMenu] Erreur extraction segments PDF:', e);
+      return [];
+    }
+  };
+
   const getDocumentText = async (item: any): Promise<string> => {
     if (!item) return '';
     if (extractedDocText && extractedDocText.trim().length > 10) {
@@ -305,21 +402,10 @@ export function CenterMenu({
       return item.textContent;
     }
 
-    if (item.url && (item.extension === 'PDF' || item.name?.toLowerCase().endsWith('.pdf'))) {
-      try {
-        const loadingTask = pdfjsLib.getDocument(item.url);
-        const pdf = await loadingTask.promise;
-        let extracted = '';
-        for (let i = 1; i <= Math.min(pdf.numPages, 10); i++) {
-          const page = await pdf.getPage(i);
-          const content = await page.getTextContent();
-          extracted += content.items.map((it: any) => it.str).join(' ') + ' ';
-        }
-        if (extracted.trim().length > 30) {
-          return extracted.trim();
-        }
-      } catch (err) {
-        console.warn('Extraction PDF échouée:', err);
+    if (item.id || item.url) {
+      const segs = await extractPdfSegments(item.id, resolvedUrl || item.url);
+      if (segs.length > 0) {
+        return segs.map(s => s.text).join(' ');
       }
     }
 
@@ -335,17 +421,23 @@ export function CenterMenu({
       return;
     }
 
-    const sentences = sentencesRef.current;
-    if (index >= sentences.length) {
+    const segments = speechSegmentsRef.current;
+    if (index >= segments.length) {
       setSpeechState('stopped');
       currentSentenceIdxRef.current = 0;
+      setCurrentSegmentIdx(0);
+      setSpokenWordCharIndex(-1);
       return;
     }
 
     currentSentenceIdxRef.current = index;
+    setCurrentSegmentIdx(index);
+    setSpokenWordCharIndex(-1);
+    setSpokenWordLength(0);
     window.speechSynthesis.cancel();
 
-    const sentence = sentences[index];
+    const segment = segments[index];
+    const sentence = segment.text;
     const utterance = new SpeechSynthesisUtterance(sentence);
     utterance.lang = 'fr-FR';
     utterance.rate = 1.0;
@@ -357,20 +449,41 @@ export function CenterMenu({
       utterance.voice = frVoice;
     }
 
+    // Suivi précis du mot prononcé pour le soulignage dynamique
+    utterance.onboundary = (event) => {
+      if (event.name === 'word' || typeof event.charIndex === 'number') {
+        setSpokenWordCharIndex(event.charIndex);
+        setSpokenWordLength(event.charLength || 0);
+      }
+    };
+
     utterance.onend = () => {
-      if (currentSentenceIdxRef.current < sentences.length - 1) {
+      if (currentSentenceIdxRef.current < speechSegmentsRef.current.length - 1) {
         speakSentence(currentSentenceIdxRef.current + 1);
       } else {
         setSpeechState('stopped');
         currentSentenceIdxRef.current = 0;
+        setCurrentSegmentIdx(0);
+        setSpokenWordCharIndex(-1);
       }
     };
 
     utterance.onerror = (e) => {
       if (e.error !== 'canceled' && e.error !== 'interrupted') {
         setSpeechState('stopped');
+        setSpokenWordCharIndex(-1);
       }
     };
+
+    // Défilement automatique du fichier vers la phrase lue si activé
+    if (autoScrollEnabledRef.current) {
+      if (segment.slide) {
+        setActiveSlideIdx(segment.slide - 1);
+      }
+      if (activeSentenceElRef.current) {
+        activeSentenceElRef.current.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }
 
     setSpeechState('playing');
     window.speechSynthesis.speak(utterance);
@@ -380,14 +493,40 @@ export function CenterMenu({
     setIsAudioMenuOpen(true);
     setSpeechState('loading');
 
-    let text = currentText;
-    if (!text) {
-      text = await getDocumentText(activePreviewItem);
-      setCurrentText(text);
+    let segments: SpeechSegment[] = [];
+
+    // 1. PDF
+    if (isPdf) {
+      segments = await extractPdfSegments(activePreviewItem?.id, resolvedUrl || activePreviewItem?.url);
     }
 
-    const rawSentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
-    sentencesRef.current = rawSentences.length > 0 ? rawSentences : [text];
+    // 2. PPTX
+    if (segments.length === 0 && pptxSlides.length > 0) {
+      pptxSlides.forEach(slide => {
+        if (slide.title) segments.push({ text: slide.title, slide: slide.slideNumber });
+        slide.bullets.forEach(b => {
+          if (b.trim()) segments.push({ text: b.trim(), slide: slide.slideNumber });
+        });
+      });
+    }
+
+    // 3. Fallback texte / Word
+    if (segments.length === 0) {
+      let text = currentText;
+      if (!text) {
+        text = await getDocumentText(activePreviewItem);
+        setCurrentText(text);
+      }
+      const rawSentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 1);
+      segments = (rawSentences.length > 0 ? rawSentences : [text]).map(t => ({ text: t }));
+    }
+
+    if (segments.length === 0) {
+      segments = [{ text: `Lecture du document ${activePreviewItem?.name || ''}.` }];
+    }
+
+    speechSegmentsRef.current = segments;
+    setSpeechSegments(segments);
     speakSentence(0);
   };
 
@@ -411,6 +550,8 @@ export function CenterMenu({
     }
     setSpeechState('stopped');
     currentSentenceIdxRef.current = 0;
+    setCurrentSegmentIdx(0);
+    setSpokenWordCharIndex(-1);
   };
 
   const handleRestart = () => {
@@ -418,6 +559,8 @@ export function CenterMenu({
       window.speechSynthesis.cancel();
     }
     currentSentenceIdxRef.current = 0;
+    setCurrentSegmentIdx(0);
+    setSpokenWordCharIndex(-1);
     speakSentence(0);
   };
 
@@ -571,6 +714,21 @@ export function CenterMenu({
                   <RotateCcw className="w-3.5 h-3.5 shrink-0" />
                 </button>
 
+                {/* Auto-Scroll Toggle Button in Toolbar */}
+                <button
+                  type="button"
+                  onClick={() => setAutoScrollEnabled(prev => !prev)}
+                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border ${
+                    autoScrollEnabled
+                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                      : 'bg-stone-100 dark:bg-stone-800 text-stone-500 border-stone-300 dark:border-stone-600'
+                  }`}
+                  title={autoScrollEnabled ? "Défilement auto actif (cliquer pour arrêter et faufiler librement)" : "Défilement auto arrêté (cliquer pour réactiver)"}
+                >
+                  <span className={`w-1.5 h-1.5 rounded-full ${autoScrollEnabled ? 'bg-emerald-500 animate-ping' : 'bg-stone-400'}`} />
+                  <span className="hidden sm:inline">{autoScrollEnabled ? "Auto-scroll" : "Libre"}</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setIsAudioMenuOpen(false)}
@@ -637,23 +795,31 @@ export function CenterMenu({
                     fileId={activePreviewItem?.id}
                     file={activePreviewItem}
                     url={currentUrl} 
-                    docZoom={docZoom} 
+                    docZoom={docZoom}
+                    activeSpeechPage={speechSegments[currentSegmentIdx]?.page}
+                    autoScrollEnabled={autoScrollEnabled}
+                    isSpeaking={speechState === 'playing' || speechState === 'paused'}
                   />
                 </div>
               );
             }
 
+            const activePdfSpeechPage = speechSegments[currentSegmentIdx]?.page;
+            const pdfTargetUrl = activePdfSpeechPage && autoScrollEnabled
+              ? `${currentUrl}#toolbar=1&navpanes=0&view=FitH&page=${activePdfSpeechPage}`
+              : `${currentUrl}#toolbar=1&navpanes=0&view=FitH`;
+
             return (
               <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
                 {currentUrl ? (
                   <object
-                    data={`${currentUrl}#toolbar=1&navpanes=0&view=FitH`}
+                    data={pdfTargetUrl}
                     type="application/pdf"
                     className="w-full h-full border-0"
                     style={{ zoom: `${docZoom}%` }}
                   >
                     <iframe
-                      src={`${currentUrl}#toolbar=1&navpanes=0&view=FitH`}
+                      src={pdfTargetUrl}
                       title={activePreviewItem?.name || 'Document PDF'}
                       className="w-full h-full border-0"
                       style={{ zoom: `${docZoom}%` }}
@@ -975,10 +1141,32 @@ export function CenterMenu({
                 </div>
 
                 <div 
+                  ref={textContainerRef}
                   className="flex-1 w-full h-full p-4 sm:p-6 overflow-auto font-mono text-xs leading-relaxed text-[#d4d4d4] select-text"
                   style={{ zoom: `${docZoom}%` }}
                 >
-                  <pre className="whitespace-pre-wrap">{fileTextContent || activePreviewItem.textContent || "Fichier texte vide."}</pre>
+                  {speechSegments.length > 0 && (speechState === 'playing' || speechState === 'paused') ? (
+                    <div className="whitespace-pre-wrap leading-relaxed">
+                      {speechSegments.map((seg, idx) => {
+                        const isActive = idx === currentSegmentIdx;
+                        return (
+                          <span
+                            key={idx}
+                            ref={isActive ? (activeSentenceElRef as any) : null}
+                            className={`inline transition-all duration-200 ${
+                              isActive
+                                ? 'bg-amber-400 text-stone-950 font-bold px-1 py-0.5 rounded underline decoration-orange-600 decoration-3 underline-offset-4 shadow-sm'
+                                : ''
+                            }`}
+                          >
+                            {seg.text}{' '}
+                          </span>
+                        );
+                      })}
+                    </div>
+                  ) : (
+                    <pre className="whitespace-pre-wrap">{fileTextContent || activePreviewItem.textContent || "Fichier texte vide."}</pre>
+                  )}
                 </div>
               </div>
             );
@@ -1013,6 +1201,115 @@ export function CenterMenu({
             </div>
           );
         })()}
+
+        {/* Floating Teleprompter HUD with Moving Underline and Free-Scroll Control */}
+        {(speechState === 'playing' || speechState === 'paused') && speechSegments.length > 0 && (
+          <div className="absolute bottom-4 left-1/2 -translate-x-1/2 z-50 max-w-[94%] sm:max-w-xl w-full bg-white/95 dark:bg-stone-900/95 backdrop-blur-md rounded-2xl shadow-2xl border-2 border-orange-500/80 p-3 sm:p-4 flex flex-col gap-2.5 transition-all animate-fadeIn">
+            {/* Header row of HUD */}
+            <div className="flex items-center justify-between text-xs gap-2 flex-wrap">
+              <div className="flex items-center gap-2">
+                <div className="flex items-center gap-1 px-2 py-0.5 bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 font-bold rounded-lg text-[11px]">
+                  <Volume2 className="w-3.5 h-3.5 mr-0.5 animate-pulse" />
+                  <span>Vocal</span>
+                  {speechState === 'playing' && (
+                    <div className="flex items-center gap-0.5 ml-1">
+                      <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-0.5 h-3.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
+                  )}
+                </div>
+
+                {speechSegments[currentSegmentIdx]?.page && (
+                  <span className="px-2 py-0.5 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 font-bold rounded-md text-[11px] border border-stone-200 dark:border-stone-700">
+                    Page {speechSegments[currentSegmentIdx].page}
+                  </span>
+                )}
+                {speechSegments[currentSegmentIdx]?.slide && (
+                  <span className="px-2 py-0.5 bg-stone-100 dark:bg-stone-800 text-stone-700 dark:text-stone-300 font-bold rounded-md text-[11px] border border-stone-200 dark:border-stone-700">
+                    Diapo {speechSegments[currentSegmentIdx].slide}
+                  </span>
+                )}
+                <span className="text-[11px] text-stone-500 font-semibold">
+                  Phrase {currentSegmentIdx + 1} / {speechSegments.length}
+                </span>
+              </div>
+
+              {/* Auto-Scroll Toggle Button */}
+              <button
+                type="button"
+                onClick={() => setAutoScrollEnabled(prev => !prev)}
+                className={`px-2.5 py-1 rounded-xl text-[11px] sm:text-xs font-bold flex items-center gap-1.5 transition-all cursor-pointer shadow-sm ${
+                  autoScrollEnabled
+                    ? 'bg-emerald-500 hover:bg-emerald-600 text-white shadow-emerald-500/20 ring-1 ring-emerald-300'
+                    : 'bg-stone-200 hover:bg-stone-300 dark:bg-stone-800 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 border border-stone-300 dark:border-stone-600'
+                }`}
+                title={autoScrollEnabled ? "Cliquer pour arrêter le défilement et naviguer librement" : "Cliquer pour réactiver le défilement automatique"}
+              >
+                <span className={`w-2 h-2 rounded-full ${autoScrollEnabled ? 'bg-white animate-ping' : 'bg-stone-400'}`} />
+                <span>{autoScrollEnabled ? "Défilement auto : ACTIF" : "Défilement auto : ARRÊTÉ (Libre)"}</span>
+              </button>
+            </div>
+
+            {/* Current Sentence with Live Word-by-Word Moving Underline */}
+            <div className="bg-stone-50 dark:bg-stone-950/80 rounded-xl p-2.5 sm:p-3 border border-stone-200 dark:border-stone-800 text-stone-800 dark:text-stone-100 text-xs sm:text-sm leading-relaxed max-h-24 overflow-y-auto font-medium">
+              {renderSpokenSentence(speechSegments[currentSegmentIdx]?.text || '', spokenWordCharIndex, spokenWordLength)}
+            </div>
+
+            {/* Navigation & Audio Controls */}
+            <div className="flex items-center justify-between pt-0.5">
+              <div className="flex items-center gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => speakSentence(Math.max(0, currentSegmentIdx - 1))}
+                  disabled={currentSegmentIdx <= 0}
+                  className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 rounded-lg text-stone-600 dark:text-stone-300 transition-colors cursor-pointer"
+                  title="Phrase précédente"
+                >
+                  <SkipBack className="w-3.5 h-3.5" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleTogglePause}
+                  className="px-3 py-1 bg-orange-500 hover:bg-orange-600 text-white font-bold rounded-lg text-xs flex items-center gap-1.5 transition-colors cursor-pointer shadow-sm"
+                >
+                  {speechState === 'playing' ? (
+                    <>
+                      <Pause className="w-3.5 h-3.5 fill-white" />
+                      <span>Pause</span>
+                    </>
+                  ) : (
+                    <>
+                      <Play className="w-3.5 h-3.5 fill-white" />
+                      <span>Reprendre</span>
+                    </>
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => speakSentence(Math.min(speechSegments.length - 1, currentSegmentIdx + 1))}
+                  disabled={currentSegmentIdx >= speechSegments.length - 1}
+                  className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 disabled:opacity-30 rounded-lg text-stone-600 dark:text-stone-300 transition-colors cursor-pointer"
+                  title="Phrase suivante"
+                >
+                  <SkipForward className="w-3.5 h-3.5" />
+                </button>
+              </div>
+
+              <button
+                type="button"
+                onClick={handleStop}
+                className="px-2 py-1 text-xs font-bold text-red-600 hover:bg-red-50 dark:hover:bg-red-950/40 rounded-lg transition-colors cursor-pointer flex items-center gap-1"
+                title="Arrêter la lecture"
+              >
+                <Square className="w-3 h-3 fill-red-600" />
+                <span>Arrêter</span>
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Drag Handle Right of Col 2 (Center to Right) */}

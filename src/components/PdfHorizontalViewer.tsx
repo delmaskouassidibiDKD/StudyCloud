@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, FileText, AlertCircle } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileText, AlertCircle, Volume2 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { getFileBlob } from '../services/localFileStorage';
 
@@ -13,9 +13,20 @@ interface PdfHorizontalViewerProps {
   file?: any;
   url?: string;
   docZoom: number;
+  activeSpeechPage?: number;
+  autoScrollEnabled?: boolean;
+  isSpeaking?: boolean;
 }
 
-function PdfPageRenderer({ pdfDoc, pageNumber }: { pdfDoc: any; pageNumber: number }) {
+function PdfPageRenderer({ 
+  pdfDoc, 
+  pageNumber,
+  isSpeakingThisPage 
+}: { 
+  pdfDoc: any; 
+  pageNumber: number;
+  isSpeakingThisPage?: boolean;
+}) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [rendered, setRendered] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<number>(0.707); // Default A4 ratio
@@ -79,10 +90,23 @@ function PdfPageRenderer({ pdfDoc, pageNumber }: { pdfDoc: any; pageNumber: numb
           <div className="w-7 h-7 border-3 border-orange-500 border-t-transparent rounded-full animate-spin" />
         </div>
       )}
+
+      {/* Floating Reading Badge on the Active Page */}
+      {isSpeakingThisPage && (
+        <div className="absolute top-2 left-1/2 -translate-x-1/2 z-30 bg-orange-500 text-white font-bold text-[10px] sm:text-xs px-3 py-1 rounded-full shadow-lg flex items-center gap-1.5 animate-bounce pointer-events-none">
+          <Volume2 className="w-3.5 h-3.5" />
+          <span>Lecture vocale en cours</span>
+        </div>
+      )}
+
       <canvas
         ref={canvasRef}
-        className={`rounded-xl shadow-lg border border-stone-300 dark:border-stone-700 bg-white transition-opacity duration-200 ${
+        className={`rounded-xl shadow-lg border bg-white transition-all duration-300 ${
           rendered ? 'opacity-100 block' : 'hidden'
+        } ${
+          isSpeakingThisPage
+            ? 'border-orange-500 ring-4 ring-orange-500/80 shadow-2xl shadow-orange-500/20'
+            : 'border-stone-300 dark:border-stone-700'
         }`}
         style={{
           maxHeight: '74vh',
@@ -95,7 +119,15 @@ function PdfPageRenderer({ pdfDoc, pageNumber }: { pdfDoc: any; pageNumber: numb
   );
 }
 
-export function PdfHorizontalViewer({ fileId, file, url, docZoom }: PdfHorizontalViewerProps) {
+export function PdfHorizontalViewer({ 
+  fileId, 
+  file, 
+  url, 
+  docZoom,
+  activeSpeechPage,
+  autoScrollEnabled = true,
+  isSpeaking = false
+}: PdfHorizontalViewerProps) {
   const [numPages, setNumPages] = useState(0);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -185,6 +217,13 @@ export function PdfHorizontalViewer({ fileId, file, url, docZoom }: PdfHorizonta
       setCurrentPage(pageNum);
     }
   };
+
+  // Auto-scroll when activeSpeechPage changes during vocal playback
+  useEffect(() => {
+    if (isSpeaking && autoScrollEnabled && activeSpeechPage && activeSpeechPage !== currentPage) {
+      scrollToPage(activeSpeechPage);
+    }
+  }, [activeSpeechPage, autoScrollEnabled, isSpeaking]);
 
   const handleWheel = (e: React.WheelEvent) => {
     if (containerRef.current) {
@@ -306,24 +345,34 @@ export function PdfHorizontalViewer({ fileId, file, url, docZoom }: PdfHorizonta
         className="flex-1 w-full h-full overflow-x-auto overflow-y-hidden flex flex-row items-center gap-8 px-12 py-6 snap-x snap-mandatory hide-scrollbar"
         style={{ zoom: `${docZoom}%` }}
       >
-        {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (
-          <div
-            key={pageNum}
-            ref={(el) => {
-              if (el) pageRefs.current.set(pageNum, el);
-              else pageRefs.current.delete(pageNum);
-            }}
-            className="shrink-0 h-full max-h-[82vh] flex flex-col items-center justify-center snap-center relative"
-          >
-            <PdfPageRenderer
-              pdfDoc={pdfDoc}
-              pageNumber={pageNum}
-            />
-            <div className="text-[10px] font-bold text-stone-600 dark:text-stone-400 mt-2 bg-white/90 dark:bg-stone-900/90 px-2.5 py-0.5 rounded-full border border-stone-300 dark:border-stone-700 shadow-xs">
-              Page {pageNum} sur {numPages}
+        {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
+          const isSpeakingThisPage = isSpeaking && activeSpeechPage === pageNum;
+          return (
+            <div
+              key={pageNum}
+              ref={(el) => {
+                if (el) pageRefs.current.set(pageNum, el);
+                else pageRefs.current.delete(pageNum);
+              }}
+              className={`shrink-0 h-full max-h-[82vh] flex flex-col items-center justify-center snap-center relative transition-transform duration-300 ${
+                isSpeakingThisPage ? 'scale-[1.015]' : ''
+              }`}
+            >
+              <PdfPageRenderer
+                pdfDoc={pdfDoc}
+                pageNumber={pageNum}
+                isSpeakingThisPage={isSpeakingThisPage}
+              />
+              <div className={`text-[10px] font-bold mt-2 px-2.5 py-0.5 rounded-full border shadow-xs transition-colors ${
+                isSpeakingThisPage
+                  ? 'bg-orange-500 text-white border-orange-600 shadow-orange-500/20 animate-pulse'
+                  : 'text-stone-600 dark:text-stone-400 bg-white/90 dark:bg-stone-900/90 border-stone-300 dark:border-stone-700'
+              }`}>
+                Page {pageNum} sur {numPages}
+              </div>
             </div>
-          </div>
-        ))}
+          );
+        })}
       </div>
     </div>
   );
