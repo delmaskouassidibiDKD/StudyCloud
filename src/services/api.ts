@@ -407,6 +407,30 @@ export const StudyCloudAPI = {
     return request(`/api/files/${id}`, { method: 'DELETE' });
   },
 
+  // Fichiers d'étude (Fichiers Importés lors du travail/bosse - Indépendants de Mes dossiers)
+  async getStudyFiles(userId: string) {
+    return request<{ success: boolean; data: any[] }>(`/api/study-files?userId=${encodeURIComponent(userId)}`);
+  },
+
+  async registerStudyFile(fileData: {
+    id: string;
+    userId: string;
+    name: string;
+    size: number;
+    type: string;
+    extension?: string;
+    r2Key?: string | null;
+    fileUrl?: string;
+    isFavorite?: boolean;
+    importedAt?: number;
+  }) {
+    return request('/api/study-files', { method: 'POST', body: JSON.stringify(fileData) });
+  },
+
+  async deleteStudyFile(id: string) {
+    return request(`/api/study-files/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
   // --------------------------------------------------------------------------
   // Partages (Stock de liens & QR Codes)
   // --------------------------------------------------------------------------

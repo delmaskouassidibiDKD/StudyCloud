@@ -97,6 +97,9 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         if (Array.isArray(parsed)) {
           parsed.forEach(f => {
             if (f && f.id) {
+              // Ne JAMAIS inclure les fichiers d'étude dans Mes fichiers / Mes dossiers (ils sont totalement indépendants)
+              if (f.isLeftMenuImport || f.isStudyImport || f.is_study_session) return;
+
               orderCounter++;
               const existing = allFilesMap.get(f.id);
               const matiere = f.matiere || fallbackMatiere || existing?.matiere;
@@ -122,9 +125,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     // 1. Charger les fichiers directement importés dans "Mes fichiers"
     addFiles(localStorage.getItem('unifolder_files_menu_items'));
 
-    // 2. Charger les fichiers importés pendant l'étude (quelque soit où le fichier a été importé)
-    addFiles(localStorage.getItem('unifolder_study_imported_files'));
-    addFiles(localStorage.getItem('unifolder_left_menu_general_imports'));
+    // 2. Les fichiers importés pendant l'étude (unifolder_study_imported_files) sont indépendants et ne doivent pas s'afficher ici
 
     // 3. Charger les fichiers hérités d'anciennes versions
     addFiles(localStorage.getItem('unifolder_imported_files'));
@@ -172,11 +173,12 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     window.addEventListener('unifolder_files_updated', handleSync);
 
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-    StudyCloudAPI.getFiles(userId)
+    StudyCloudAPI.getFiles(userId, 'root', false)
       .then(async (res) => {
         if (res && res.success && Array.isArray(res.data)) {
+          const nonStudyRows = res.data.filter((row: any) => !row.is_study_session && !row.isStudyImport);
           const filesWithUrls = await Promise.all(
-            res.data.map(async (row: any) => {
+            nonStudyRows.map(async (row: any) => {
               const localBlobUrl = await getFileBlobUrl(row.id);
               return {
                 id: row.id,

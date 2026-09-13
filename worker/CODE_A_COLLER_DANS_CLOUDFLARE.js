@@ -1146,7 +1146,22 @@ var src_default = {
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
           )`,
           `CREATE INDEX IF NOT EXISTS idx_user_ai_ws_user ON user_ai_workspace(user_id, session_id)`,
-          `CREATE INDEX IF NOT EXISTS idx_user_ai_ws_file ON user_ai_workspace(user_id, attached_file_id)`
+          `CREATE INDEX IF NOT EXISTS idx_user_ai_ws_file ON user_ai_workspace(user_id, attached_file_id)`,
+          `CREATE TABLE IF NOT EXISTS study_imported_files (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            name TEXT NOT NULL,
+            size INTEGER NOT NULL DEFAULT 0,
+            type TEXT NOT NULL,
+            extension TEXT,
+            r2_key TEXT,
+            file_url TEXT,
+            is_favorite INTEGER DEFAULT 0,
+            imported_at INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )`,
+          `CREATE INDEX IF NOT EXISTS idx_study_files_user ON study_imported_files(user_id)`
         ];
         for (const query of tableQueries) {
           try {
@@ -2389,7 +2404,7 @@ var src_default = {
           let query = "SELECT * FROM files WHERE user_id = ?";
           const params = [userId];
           if (matiereId === "root" || matiereId === "none") {
-            query += ' AND (matiere_id IS NULL OR matiere_id = "" OR matiere_id = "Mes fichiers")';
+            query += ' AND (matiere_id IS NULL OR matiere_id = "" OR matiere_id = "Mes fichiers") AND (is_study_session IS NULL OR is_study_session = 0)';
           } else if (matiereId && matiereId !== "all") {
             query += " AND (matiere_id = ? OR matiere_id IN (SELECT id FROM matieres WHERE name = ? AND user_id = ?))";
             params.push(matiereId, matiereId, userId);
@@ -2466,6 +2481,100 @@ var src_default = {
         }
         await env.DB.prepare("DELETE FROM files WHERE id = ?").bind(id).run();
         return jsonResponse({ success: true, message: "Fichier supprim\xE9" }, 200, origin);
+      }
+      if (path === "/api/study-files") {
+        if (!isSchemaInitialized && env.DB)
+          await ensureDatabaseSchema(env.DB);
+        if (method === "GET") {
+          const userId = url.searchParams.get("userId");
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
+          
+          const { results } = await env.DB.prepare(
+            "SELECT * FROM study_imported_files WHERE user_id = ? ORDER BY imported_at DESC, created_at DESC"
+          ).bind(userId).all();
+
+          if (!results || results.length === 0) {
+            const legacy = await env.DB.prepare(
+              "SELECT * FROM files WHERE user_id = ? AND is_study_session = 1 ORDER BY last_imported DESC, created_at DESC"
+            ).bind(userId).all();
+            if (legacy && legacy.results && legacy.results.length > 0) {
+              return jsonResponse({ success: true, data: legacy.results }, 200, origin);
+            }
+          }
+          return jsonResponse({ success: true, data: results || [] }, 200, origin);
+        }
+        if (method === "POST") {
+          const body = await request.json();
+          const { id, userId, name, size, type, extension, r2Key, fileUrl, isFavorite, importedAt } = body;
+          if (!id || !userId || !name)
+            return errorResponse("id, userId et name requis", 400, origin);
+
+          await env.DB.prepare(`
+            INSERT INTO study_imported_files (id, user_id, name, size, type, extension, r2_key, file_url, is_favorite, imported_at, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              type = excluded.type,
+              extension = excluded.extension,
+              r2_key = COALESCE(excluded.r2_key, study_imported_files.r2_key),
+              file_url = COALESCE(excluded.file_url, study_imported_files.file_url),
+              is_favorite = excluded.is_favorite,
+              imported_at = excluded.imported_at,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id,
+            userId,
+            name,
+            size || 0,
+            type || "application/octet-stream",
+            extension || "",
+            r2Key || null,
+            fileUrl || "",
+            isFavorite ? 1 : 0,
+            importedAt || Date.now()
+          ).run();
+
+          try {
+            await env.DB.prepare(`
+              INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
+              VALUES (?, ?, 'Etude', ?, ?, ?, ?, ?, ?, ?, 1, 1, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET
+                is_study_session = 1,
+                last_imported = excluded.last_imported,
+                updated_at = CURRENT_TIMESTAMP
+            `).bind(
+              id,
+              userId,
+              name,
+              size || 0,
+              type || "application/octet-stream",
+              extension || "",
+              r2Key || null,
+              fileUrl || "",
+              isFavorite ? 1 : 0,
+              importedAt || Date.now()
+            ).run();
+          } catch (e) {}
+
+          return jsonResponse({ success: true, data: { id, name } }, 201, origin);
+        }
+      }
+      if (path.startsWith("/api/study-files/") && method === "DELETE") {
+        if (!isSchemaInitialized && env.DB)
+          await ensureDatabaseSchema(env.DB);
+        const id = path.split("/")[3];
+        const file = await env.DB.prepare("SELECT r2_key FROM study_imported_files WHERE id = ?").bind(id).first()
+          || await env.DB.prepare("SELECT r2_key FROM files WHERE id = ?").bind(id).first();
+        if (file && file.r2_key && env.BUCKET) {
+          try {
+            await env.BUCKET.delete(file.r2_key);
+          } catch (e) {}
+        }
+        await env.DB.prepare("DELETE FROM study_imported_files WHERE id = ?").bind(id).run();
+        await env.DB.prepare("DELETE FROM files WHERE id = ? AND is_study_session = 1").bind(id).run();
+        return jsonResponse({ success: true, message: "Fichier d'\xE9tude supprim\xE9" }, 200, origin);
       }
       if (path === "/api/storage/upload" && method === "PUT") {
         const key = url.searchParams.get("key");

@@ -4,7 +4,7 @@ import { DelmasRobot } from './DelmasRobot';
 import { AssistantChat } from './AssistantChat';
 import { FileIconBadge } from './FileIconBadge';
 import { StudyCloudAPI } from '../services/api';
-import { storeFileBlob, deleteFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
+import { storeFileBlob, deleteFileBlob, getFileBlobUrl, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 
 interface LeftMenuProps {
   isCenterFullscreen: boolean;
@@ -78,6 +78,75 @@ export function LeftMenu({
     return () => window.removeEventListener('auto-prompt', handleAutoPrompt);
   }, [setIsAssistantOpen]);
 
+  const [syncTick, setSyncTick] = useState(0);
+
+  useEffect(() => {
+    const handleUpdate = () => setSyncTick(prev => prev + 1);
+    window.addEventListener('unifolder_files_updated', handleUpdate);
+    window.addEventListener('storage', handleUpdate);
+    return () => {
+      window.removeEventListener('unifolder_files_updated', handleUpdate);
+      window.removeEventListener('storage', handleUpdate);
+    };
+  }, []);
+
+  // Synchronisation avec la base de données : charger tous les fichiers importés lors de l'étude
+  useEffect(() => {
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    let isMounted = true;
+
+    StudyCloudAPI.getStudyFiles(userId)
+      .then(async (res) => {
+        if (!isMounted) return;
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const filesWithUrls = await Promise.all(
+            res.data.map(async (row: any) => {
+              const localBlobUrl = await getFileBlobUrl(row.id);
+              return {
+                id: row.id,
+                name: row.name,
+                size: row.size || 0,
+                type: row.type || 'file',
+                extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+                url: localBlobUrl || row.file_url || '',
+                r2Key: row.r2_key,
+                isFavorite: !!row.is_favorite,
+                isLeftMenuImport: true,
+                isStudyImport: true,
+                isImported: true,
+                importedAt: row.imported_at || row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+                createdAt: row.created_at || Date.now(),
+                timestamp: row.imported_at || row.last_imported || Date.now(),
+                isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
+              };
+            })
+          );
+
+          if (!isMounted) return;
+
+          const existingRaw = localStorage.getItem('unifolder_study_imported_files');
+          let localList: any[] = [];
+          if (existingRaw) {
+            try { localList = JSON.parse(existingRaw); } catch (e) {}
+          }
+          const mergedMap = new Map<string, any>();
+          filesWithUrls.forEach(f => mergedMap.set(f.id, f));
+          localList.forEach(f => {
+            if (f && f.id && !mergedMap.has(f.id)) {
+              mergedMap.set(f.id, f);
+            }
+          });
+          const merged = Array.from(mergedMap.values());
+          localStorage.setItem('unifolder_study_imported_files', JSON.stringify(merged));
+          localStorage.setItem('unifolder_left_menu_general_imports', JSON.stringify(merged));
+          setSyncTick(prev => prev + 1);
+        }
+      })
+      .catch(err => console.warn('[LeftMenu] Erreur synchro study files:', err));
+
+    return () => { isMounted = false; };
+  }, []);
+
   useEffect(() => {
     const handleClickOutside = () => setOpenMenuId(null);
     document.addEventListener('click', handleClickOutside);
@@ -136,6 +205,19 @@ export function LeftMenu({
       lastImported: now
     }).catch(() => {});
 
+    StudyCloudAPI.registerStudyFile({
+      id,
+      userId,
+      name: file.name,
+      size: file.size,
+      type: file.type || 'application/octet-stream',
+      extension: extVal,
+      r2Key: null,
+      fileUrl: localUrl,
+      isFavorite: false,
+      importedAt: now
+    }).catch(() => {});
+
     // Upload vers Cloudflare R2
     const r2Key = `files/${userId}/${id}-${encodeURIComponent(file.name)}`;
     StudyCloudAPI.uploadFileToR2(file, r2Key).then(res => {
@@ -154,6 +236,19 @@ export function LeftMenu({
           isImported: true,
           isStudySession: true,
           lastImported: now
+        }).catch(() => {});
+
+        StudyCloudAPI.registerStudyFile({
+          id,
+          userId,
+          name: file.name,
+          size: file.size,
+          type: file.type || 'application/octet-stream',
+          extension: extVal,
+          r2Key: res.key,
+          fileUrl: res.url,
+          isFavorite: false,
+          importedAt: now
         }).catch(() => {});
       }
     }).catch(() => {});
@@ -192,6 +287,7 @@ export function LeftMenu({
     setMenuFiles(prev => prev.filter(f => f.id !== fileId));
     setSessionImportedIds(prev => prev.filter(id => id !== fileId));
     deleteFileBlob(fileId);
+    StudyCloudAPI.deleteStudyFile(fileId).catch(() => {});
     StudyCloudAPI.deleteFile(fileId).catch(() => {});
     
     // Update localStorage
@@ -243,6 +339,12 @@ export function LeftMenu({
     
     setMenuFiles(prev => prev.filter(f => !selectedIds.includes(f.id)));
     setSessionImportedIds(prev => prev.filter(id => !selectedIds.includes(id)));
+    
+    selectedIds.forEach(id => {
+      deleteFileBlob(id);
+      StudyCloudAPI.deleteStudyFile(id).catch(() => {});
+      StudyCloudAPI.deleteFile(id).catch(() => {});
+    });
     
     // Update localStorage
     try {
@@ -660,7 +762,7 @@ export function LeftMenu({
 
     setMenuFiles([...importedFilesList, ...baseFiles]);
     setSessionImportedIds(importedIds);
-  }, [activeFolderDetail, activePreviewItem, isMesFichiersMode, currentFolderName]);
+  }, [activeFolderDetail, activePreviewItem, isMesFichiersMode, currentFolderName, syncTick]);
 
   // Filtered files according to search query
   const query = searchQuery.toLowerCase().trim();
