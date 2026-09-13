@@ -70,7 +70,9 @@ export function CenterMenu({
   const [activeSlideIdx, setActiveSlideIdx] = useState<number>(0);
 
   const [copiedText, setCopiedText] = useState<boolean>(false);
-  const [showNativePdfToolbar, setShowNativePdfToolbar] = useState<boolean>(false);
+
+  const ext = (activePreviewItem?.name?.split('.').pop()?.toUpperCase() || activePreviewItem?.extension || 'FICHIER').toUpperCase();
+  const isPdf = ext === 'PDF' || activePreviewItem?.type === 'application/pdf';
 
   // Listen to external/keyboard zoom events
   useEffect(() => {
@@ -99,7 +101,7 @@ export function CenterMenu({
     setActiveSlideIdx(0);
     setExtractedDocText('');
 
-    const ext = (file.name?.split('.').pop() || file.extension || '').toLowerCase();
+    const fileExt = (file.name?.split('.').pop() || file.extension || '').toLowerCase();
 
     // 1. Resolve URL for media/PDF
     if (file.url) {
@@ -127,10 +129,10 @@ export function CenterMenu({
 
       if (!isMounted) return;
 
-      const isText = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'py', 'html', 'css', 'sql', 'xml', 'log', 'java', 'c', 'cpp', 'sh', 'env'].includes(ext);
-      const isWord = ['docx', 'doc'].includes(ext);
-      const isExcel = ['xlsx', 'xls', 'csv'].includes(ext);
-      const isPpt = ['pptx', 'ppt'].includes(ext);
+      const isText = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'py', 'html', 'css', 'sql', 'xml', 'log', 'java', 'c', 'cpp', 'sh', 'env'].includes(fileExt);
+      const isWord = ['docx', 'doc'].includes(fileExt);
+      const isExcel = ['xlsx', 'xls', 'csv'].includes(fileExt);
+      const isPpt = ['pptx', 'ppt'].includes(fileExt);
 
       if (isWord && blob) {
         try {
@@ -448,162 +450,179 @@ export function CenterMenu({
   };
 
   return (
-    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r border-stone-300 dark:border-stone-800'} flex flex-col animate-fadeIn relative pointer-events-auto overflow-hidden bg-white dark:bg-stone-950 pt-[40px] md:pt-[42px] ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
+    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r border-stone-300 dark:border-stone-800'} flex flex-col animate-fadeIn relative pointer-events-auto overflow-hidden bg-white dark:bg-stone-950 pt-[48px] ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
       
-      {/* Sleek, flat top action bar (integrated, no 3D creux, ultra-compact vertical height) */}
-      <div className="w-full bg-[#FDFBF7] dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 px-2 sm:px-3 py-1 flex items-center justify-between shrink-0 z-30">
-        
-        {/* Left Controls: Fullscreen + Zoom + Orientation + PDF Tools Toggle */}
-        <div className="flex items-center gap-1 sm:gap-1.5">
-          {!activePreviewItem?.lockFullscreen && (
-            <button
-              onClick={() => setIsCenterFullscreen(!isCenterFullscreen)}
-              className="hidden md:flex p-1.5 bg-amber-400 hover:bg-amber-300 rounded-lg text-stone-900 items-center justify-center shrink-0 transition-colors cursor-pointer"
-              title={isCenterFullscreen ? "Réduire à 3 colonnes" : "Agrandir en plein écran"}
-            >
-              {isCenterFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
-            </button>
-          )}
+      {/* Floating Controls for PDF (Non-intrusive pills, so PDF toolbar starts immediately with NO extra blank row) */}
+      {isPdf && (
+        <>
+          <div className="absolute top-[56px] left-3 z-30 flex items-center gap-1 bg-white/95 dark:bg-stone-900/95 backdrop-blur-sm px-1.5 py-1 rounded-lg border border-stone-300 dark:border-stone-700 shadow-sm">
+            {!activePreviewItem?.lockFullscreen && (
+              <button
+                onClick={() => setIsCenterFullscreen(!isCenterFullscreen)}
+                className="p-1 bg-amber-400 hover:bg-amber-300 rounded text-stone-900 items-center justify-center shrink-0 transition-colors cursor-pointer"
+                title={isCenterFullscreen ? "Réduire à 3 colonnes" : "Agrandir en plein écran"}
+              >
+                {isCenterFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+              </button>
+            )}
 
-          <div className="flex items-center bg-white dark:bg-stone-800 rounded-lg border border-stone-200 dark:border-stone-700 p-0.5">
-            <button
-              onClick={() => setDocZoom(prev => Math.max(40, prev - 15))}
-              className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded transition-colors cursor-pointer"
-              title="Zoom arrière (-)"
-            >
-              <ZoomOut className="w-3.5 h-3.5" />
-            </button>
-
-            <button
-              onClick={() => setDocZoom(100)}
-              className="px-2 py-0.5 text-stone-800 dark:text-stone-200 font-bold text-[10px] sm:text-xs hover:bg-stone-100 dark:hover:bg-stone-700 rounded transition-colors cursor-pointer"
-              title="Réinitialiser à 100%"
-            >
-              {docZoom}%
-            </button>
-
-            <button
-              onClick={() => setDocZoom(prev => Math.min(250, prev + 15))}
-              className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded transition-colors cursor-pointer"
-              title="Zoom avant (+)"
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-            </button>
+            {setPreviewScrollMode && (
+              <button
+                onClick={() => setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
+                className="px-1.5 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-200 font-bold text-[10px] rounded flex items-center gap-1 transition-colors cursor-pointer"
+                title="Basculer entre défilement vertical et horizontal"
+              >
+                <ArrowLeftRight className="w-3 h-3 text-stone-500" />
+                <span>{previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
+              </button>
+            )}
           </div>
 
-          {setPreviewScrollMode && (
-            <button
-              onClick={() => setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
-              className="hidden sm:flex px-2 py-1 bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-200 dark:border-stone-700 items-center gap-1 transition-colors cursor-pointer"
-              title="Basculer entre défilement vertical et horizontal"
-            >
-              <ArrowLeftRight className="w-3 h-3 text-stone-500" />
-              <span>{previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
-            </button>
-          )}
-
-          {/* Bouton pour basculer ou réduire la barre PDF interne */}
-          {activePreviewItem && ((activePreviewItem.name?.split('.').pop()?.toUpperCase() || activePreviewItem.extension || '').toUpperCase() === 'PDF' || activePreviewItem.type === 'application/pdf') && (
-            <button
-              onClick={() => setShowNativePdfToolbar(prev => !prev)}
-              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
-                showNativePdfToolbar
-                  ? 'bg-stone-800 text-white border-stone-800'
-                  : 'bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700 hover:bg-stone-100'
-              }`}
-              title={showNativePdfToolbar ? "Réduire la barre PDF pour maximiser l'espace vertical" : "Afficher la barre d'outils du PDF"}
-            >
-              <span>{showNativePdfToolbar ? 'Barre PDF : Visible' : 'Barre PDF : Réduite'}</span>
-            </button>
-          )}
-        </div>
-
-        {/* Right Controls: Audio Speech Controls */}
-        <div className="flex items-center gap-1.5">
-          {isAudioMenuOpen && (
-            <div className="flex items-center gap-1 bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg px-2 py-1 animate-fadeIn text-stone-800 dark:text-stone-200">
-              {speechState === 'playing' && (
-                <div className="flex items-center gap-0.5 mr-1 text-orange-500">
-                  <span className="w-0.5 h-2.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                  <span className="w-0.5 h-3.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                  <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                </div>
-              )}
-
-              <button
-                type="button"
-                onClick={handleTogglePause}
-                className="flex items-center gap-1 px-1.5 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-700 rounded text-[10px] font-bold transition-colors cursor-pointer"
-                title={speechState === 'playing' ? "Mettre en pause" : "Reprendre la lecture"}
-              >
-                {speechState === 'playing' ? (
-                  <>
-                    <Pause className="w-3 h-3 text-amber-600 fill-amber-600 shrink-0" />
-                    <span className="hidden sm:inline">Pause</span>
-                  </>
-                ) : (
-                  <>
-                    <Play className="w-3 h-3 text-emerald-600 fill-emerald-600 shrink-0" />
-                    <span className="hidden sm:inline">Reprendre</span>
-                  </>
+          <div className="absolute top-[56px] right-3 z-30 flex items-center gap-1">
+            {isAudioMenuOpen && (
+              <div className="flex items-center gap-1 bg-white/95 dark:bg-stone-900/95 backdrop-blur-sm border border-stone-300 dark:border-stone-700 rounded-lg px-2 py-1 shadow-sm text-stone-800 dark:text-stone-200">
+                {speechState === 'playing' && (
+                  <div className="flex items-center gap-0.5 mr-1 text-orange-500">
+                    <span className="w-0.5 h-2.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-0.5 h-3.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
                 )}
+
+                <button
+                  type="button"
+                  onClick={handleTogglePause}
+                  className="flex items-center gap-1 px-1 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-800 rounded text-[10px] font-bold transition-colors cursor-pointer"
+                  title={speechState === 'playing' ? "Mettre en pause" : "Reprendre la lecture"}
+                >
+                  {speechState === 'playing' ? (
+                    <Pause className="w-3 h-3 text-amber-600 fill-amber-600 shrink-0" />
+                  ) : (
+                    <Play className="w-3 h-3 text-emerald-600 fill-emerald-600 shrink-0" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  className="p-1 hover:bg-red-50 dark:hover:bg-red-950/30 rounded text-red-600 transition-colors cursor-pointer"
+                  title="Arrêter la lecture"
+                >
+                  <Square className="w-2.5 h-2.5 fill-red-600 shrink-0" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRestart}
+                  className="p-1 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded text-blue-600 transition-colors cursor-pointer"
+                  title="Recommencer la lecture"
+                >
+                  <RotateCcw className="w-3 h-3 shrink-0" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsAudioMenuOpen(false)}
+                  className="p-0.5 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full text-stone-400 hover:text-stone-600 ml-0.5 cursor-pointer"
+                  title="Fermer la barre audio"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+
+            <button
+              type="button"
+              onClick={handleMicClick}
+              className={`p-1.5 rounded-lg border border-stone-300 dark:border-stone-700 shadow-sm transition-all cursor-pointer flex items-center justify-center ${
+                speechState === 'playing'
+                  ? 'bg-orange-500 text-white animate-pulse ring-2 ring-orange-300'
+                  : speechState === 'paused'
+                  ? 'bg-amber-400 text-stone-900'
+                  : 'bg-white/95 dark:bg-stone-900/95 backdrop-blur-sm hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-200'
+              }`}
+              title="Lire automatiquement le document (Synthèse vocale)"
+            >
+              <Mic className="w-3.5 h-3.5" />
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* Slim Action Bar for Non-PDF documents (Word, Excel, PPTX, Code, etc.) */}
+      {!isPdf && activePreviewItem && (
+        <div className="w-full bg-[#FDFBF7] dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 px-3 py-1 flex items-center justify-between shrink-0 z-30">
+          <div className="flex items-center gap-1 sm:gap-1.5">
+            {!activePreviewItem?.lockFullscreen && (
+              <button
+                onClick={() => setIsCenterFullscreen(!isCenterFullscreen)}
+                className="hidden md:flex p-1.5 bg-amber-400 hover:bg-amber-300 rounded-lg text-stone-900 items-center justify-center shrink-0 transition-colors cursor-pointer"
+                title={isCenterFullscreen ? "Réduire à 3 colonnes" : "Agrandir en plein écran"}
+              >
+                {isCenterFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+              </button>
+            )}
+
+            <div className="flex items-center bg-white dark:bg-stone-800 rounded-lg border border-stone-200 dark:border-stone-700 p-0.5">
+              <button
+                onClick={() => setDocZoom(prev => Math.max(40, prev - 15))}
+                className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded transition-colors cursor-pointer"
+                title="Zoom arrière (-)"
+              >
+                <ZoomOut className="w-3.5 h-3.5" />
               </button>
 
-              <div className="w-[1px] h-3.5 bg-stone-300 dark:bg-stone-700" />
-
               <button
-                type="button"
-                onClick={handleStop}
-                className="flex items-center gap-1 px-1.5 py-0.5 hover:bg-red-50 dark:hover:bg-red-950/30 rounded text-[10px] font-bold text-red-600 transition-colors cursor-pointer"
-                title="Arrêter la lecture"
+                onClick={() => setDocZoom(100)}
+                className="px-2 py-0.5 text-stone-800 dark:text-stone-200 font-bold text-[10px] sm:text-xs hover:bg-stone-100 dark:hover:bg-stone-700 rounded transition-colors cursor-pointer"
+                title="Réinitialiser à 100%"
               >
-                <Square className="w-2.5 h-2.5 fill-red-600 shrink-0" />
-                <span className="hidden sm:inline">Arrêter</span>
-              </button>
-
-              <div className="w-[1px] h-3.5 bg-stone-300 dark:bg-stone-700" />
-
-              <button
-                type="button"
-                onClick={handleRestart}
-                className="flex items-center gap-1 px-1.5 py-0.5 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded text-[10px] font-bold text-blue-600 transition-colors cursor-pointer"
-                title="Recommencer la lecture"
-              >
-                <RotateCcw className="w-3 h-3 shrink-0" />
-                <span className="hidden sm:inline">Recommencer</span>
+                {docZoom}%
               </button>
 
               <button
-                type="button"
-                onClick={() => setIsAudioMenuOpen(false)}
-                className="p-0.5 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-full text-stone-400 hover:text-stone-600 ml-0.5 cursor-pointer"
-                title="Fermer la barre audio"
+                onClick={() => setDocZoom(prev => Math.min(250, prev + 15))}
+                className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded transition-colors cursor-pointer"
+                title="Zoom avant (+)"
               >
-                <X className="w-3 h-3" />
+                <ZoomIn className="w-3.5 h-3.5" />
               </button>
             </div>
-          )}
 
-          <button
-            type="button"
-            onClick={handleMicClick}
-            className={`p-1.5 rounded-lg border border-stone-200 dark:border-stone-700 transition-all cursor-pointer flex items-center justify-center ${
-              speechState === 'playing'
-                ? 'bg-orange-500 text-white animate-pulse ring-2 ring-orange-300'
-                : speechState === 'paused'
-                ? 'bg-amber-400 text-stone-900'
-                : isAudioMenuOpen
-                ? 'bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400'
-                : 'bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200'
-            }`}
-            title="Lire automatiquement le document (Synthèse vocale)"
-          >
-            <Mic className="w-3.5 h-3.5" />
-          </button>
+            {setPreviewScrollMode && (
+              <button
+                onClick={() => setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
+                className="hidden sm:flex px-2 py-1 bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-200 dark:border-stone-700 items-center gap-1 transition-colors cursor-pointer"
+                title="Basculer entre défilement vertical et horizontal"
+              >
+                <ArrowLeftRight className="w-3 h-3 text-stone-500" />
+                <span>{previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
+              </button>
+            )}
+          </div>
+
+          <div className="flex items-center gap-1.5">
+            <button
+              type="button"
+              onClick={handleMicClick}
+              className={`p-1.5 rounded-lg border border-stone-200 dark:border-stone-700 transition-all cursor-pointer flex items-center justify-center ${
+                speechState === 'playing'
+                  ? 'bg-orange-500 text-white animate-pulse ring-2 ring-orange-300'
+                  : speechState === 'paused'
+                  ? 'bg-amber-400 text-stone-900'
+                  : isAudioMenuOpen
+                  ? 'bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400'
+                  : 'bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200'
+              }`}
+              title="Lire automatiquement le document (Synthèse vocale)"
+            >
+              <Mic className="w-3.5 h-3.5" />
+            </button>
+          </div>
         </div>
-      </div>
+      )}
 
-      {/* Main Document Content Area: Occupies 100% of the width and height (NO side gutters, NO 3D creux) */}
+      {/* Main Document Content Area: Occupies 100% of the space edge-to-edge */}
       <div className="flex-1 w-full h-full overflow-hidden relative">
         {isPreviewLoading || isLoadingDocument ? (
           <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-white dark:bg-stone-950">
@@ -618,8 +637,6 @@ export function CenterMenu({
             <p className="text-xs font-bold text-stone-500">Aucun document sélectionné</p>
           </div>
         ) : (() => {
-          const ext = (activePreviewItem?.name?.split('.').pop()?.toUpperCase() || activePreviewItem?.extension || 'FICHIER').toUpperCase();
-          const isPdf = ext === 'PDF' || activePreviewItem?.type === 'application/pdf';
           const isImg = ['JPG', 'JPEG', 'PNG', 'WEBP', 'SVG', 'GIF', 'BMP', 'ICO'].includes(ext) || activePreviewItem?.type?.startsWith('image/') || activePreviewItem?.isImage;
           const isVideo = ['MP4', 'WEBM', 'MOV', 'MKV', 'OGG', 'AVI'].includes(ext) || activePreviewItem?.type?.startsWith('video/');
           const isAudio = ['MP3', 'WAV', 'M4A', 'AAC', 'FLAC', 'OGA', 'WMA'].includes(ext) || activePreviewItem?.type?.startsWith('audio/');
@@ -630,22 +647,19 @@ export function CenterMenu({
 
           const currentUrl = resolvedUrl || activePreviewItem?.url || '';
 
-          // 1. PDF (Fills 100% edge-to-edge, toolbar=0 by default to save vertical height)
+          // 1. PDF: Native PDF toolbar is 100% visible (page 2/13, zoom, rotate, download, print)
+          // Starts directly below header with NO bloated intermediate row!
           if (isPdf) {
-            const pdfParams = `#toolbar=${showNativePdfToolbar ? 1 : 0}&navpanes=0&view=FitH`;
             return (
               <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
                 {currentUrl ? (
                   <object
-                    key={`pdf-${showNativePdfToolbar}-${currentUrl}`}
-                    data={`${currentUrl}${pdfParams}`}
+                    data={`${currentUrl}#toolbar=1&navpanes=0&view=FitH`}
                     type="application/pdf"
                     className="w-full h-full border-0"
-                    style={{ zoom: `${docZoom}%` }}
                   >
                     <iframe
-                      key={`iframe-${showNativePdfToolbar}-${currentUrl}`}
-                      src={`${currentUrl}${pdfParams}`}
+                      src={`${currentUrl}#toolbar=1&navpanes=0&view=FitH`}
                       title={activePreviewItem?.name || 'Document PDF'}
                       className="w-full h-full border-0"
                     />
@@ -661,11 +675,10 @@ export function CenterMenu({
             );
           }
 
-          // 2. WORD (.docx / .doc) - Fills 100% of space, reflows comfortably
+          // 2. WORD (.docx / .doc)
           if (isWord) {
             return (
               <div className="w-full h-full flex flex-col overflow-hidden bg-white dark:bg-stone-950">
-                {/* Slim Document Header */}
                 <div className="flex items-center justify-between px-4 py-2 border-b border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-900 text-stone-800 dark:text-stone-200 text-xs shrink-0">
                   <div className="flex items-center gap-2 font-bold truncate">
                     <FileText className="w-4 h-4 text-blue-600 shrink-0" />
@@ -692,7 +705,6 @@ export function CenterMenu({
                   </div>
                 </div>
 
-                {/* Word Full Reading View: Expands fully across available space */}
                 <div 
                   className="flex-1 w-full h-full overflow-y-auto px-6 sm:px-12 md:px-20 py-8 select-text leading-relaxed font-serif text-stone-900 dark:text-stone-100"
                   style={{ zoom: `${docZoom}%` }}
@@ -714,7 +726,7 @@ export function CenterMenu({
             );
           }
 
-          // 3. EXCEL / SPREADSHEETS (.xlsx / .xls / .csv) - 100% Edge-to-Edge Table
+          // 3. EXCEL / SPREADSHEETS (.xlsx / .xls / .csv)
           if (isExcel) {
             const filteredRows = excelWorkbook?.rows ? (
               excelWorkbook.searchQuery.trim()
@@ -724,14 +736,12 @@ export function CenterMenu({
 
             return (
               <div className="w-full h-full flex flex-col overflow-hidden bg-white dark:bg-stone-900">
-                {/* Excel Header Toolbar */}
                 <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-stone-200 dark:border-stone-800 bg-[#F4F9F4] dark:bg-emerald-950/20 text-xs shrink-0">
                   <div className="flex items-center gap-2">
                     <Table className="w-4 h-4 text-emerald-600 shrink-0" />
                     <span className="font-extrabold text-stone-900 dark:text-emerald-300 truncate max-w-[180px] sm:max-w-xs">{activePreviewItem.name}</span>
                   </div>
 
-                  {/* Sheet Tabs */}
                   {excelWorkbook && excelWorkbook.sheetNames.length > 1 && (
                     <div className="flex items-center gap-1 overflow-x-auto max-w-xs py-0.5">
                       {excelWorkbook.sheetNames.map((sheet) => (
@@ -750,7 +760,6 @@ export function CenterMenu({
                     </div>
                   )}
 
-                  {/* Search Filter */}
                   <div className="flex items-center gap-2">
                     <div className="relative">
                       <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-stone-400" />
@@ -778,7 +787,6 @@ export function CenterMenu({
                   </div>
                 </div>
 
-                {/* Table Data View - Stretches 100% without card borders */}
                 <div 
                   className="flex-1 w-full h-full overflow-auto p-0"
                   style={{ zoom: `${docZoom}%` }}
@@ -824,7 +832,7 @@ export function CenterMenu({
             );
           }
 
-          // 4. POWERPOINT (.pptx / .ppt) - Expansive slide viewer
+          // 4. POWERPOINT (.pptx / .ppt)
           if (isPpt) {
             const totalSlides = pptxSlides.length || 1;
             const currentSlide = pptxSlides[activeSlideIdx] || {
@@ -835,7 +843,6 @@ export function CenterMenu({
 
             return (
               <div className="w-full h-full flex flex-col overflow-hidden bg-stone-950 text-white">
-                {/* PPT Header Toolbar */}
                 <div className="flex items-center justify-between px-4 py-2 bg-stone-900 text-white text-xs border-b border-stone-800 shrink-0">
                   <div className="flex items-center gap-2 font-bold truncate">
                     <Presentation className="w-4 h-4 text-orange-500 shrink-0" />
@@ -866,7 +873,6 @@ export function CenterMenu({
                   </div>
                 </div>
 
-                {/* Slide Viewport: Fills whole available screen */}
                 <div 
                   className="flex-1 w-full h-full flex items-center justify-center p-4 sm:p-8 overflow-auto"
                   style={{ zoom: `${docZoom}%` }}
@@ -903,7 +909,7 @@ export function CenterMenu({
             );
           }
 
-          // 5. IMAGES (Occupies full space cleanly)
+          // 5. IMAGES
           if (isImg) {
             return (
               <div className="w-full h-full flex items-center justify-center overflow-auto p-4 bg-stone-100 dark:bg-stone-950">
@@ -917,7 +923,7 @@ export function CenterMenu({
             );
           }
 
-          // 6. VIDEO (Full width player)
+          // 6. VIDEO
           if (isVideo) {
             return (
               <div className="w-full h-full flex items-center justify-center bg-black">
@@ -932,7 +938,7 @@ export function CenterMenu({
             );
           }
 
-          // 7. AUDIO (Modern clean player)
+          // 7. AUDIO
           if (isAudio) {
             return (
               <div className="w-full h-full flex flex-col items-center justify-center p-6 bg-[#FDFBF7] dark:bg-stone-950">
@@ -948,11 +954,10 @@ export function CenterMenu({
             );
           }
 
-          // 8. TEXT / CODE (Edge-to-Edge editor)
+          // 8. TEXT / CODE
           if (isText) {
             return (
               <div className="w-full h-full flex flex-col overflow-hidden bg-[#1e1e1e]">
-                {/* Code Header Bar */}
                 <div className="flex items-center justify-between px-4 py-2 bg-[#2d2d2d] text-stone-300 text-xs border-b border-stone-700 shrink-0">
                   <div className="flex items-center gap-2 font-mono">
                     <FileCode className="w-4 h-4 text-amber-400" />
@@ -967,7 +972,6 @@ export function CenterMenu({
                   </button>
                 </div>
 
-                {/* Code Content: 100% full view */}
                 <div 
                   className="flex-1 w-full h-full p-4 sm:p-6 overflow-auto font-mono text-xs leading-relaxed text-[#d4d4d4] select-text"
                   style={{ zoom: `${docZoom}%` }}

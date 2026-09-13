@@ -1122,7 +1122,7 @@ export default function App() {
       {activePreviewItem && (previewOwnerTab ? previewOwnerTab === currentTab : currentTab === 'folders') && (
         <div className="fixed inset-0 md:left-64 z-[99999] bg-[#FDFBF7] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-hidden">
           {/* Top Header Bar - Solid Dark #070a13 */}
-          <div className="fixed top-0 left-0 right-0 md:left-64 z-50 bg-[#FDFBF7] dark:bg-[#070a13] py-1.5 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
+          <div className="fixed top-0 left-0 right-0 md:left-64 z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[48px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
             {/* Left: Bouton Retour et badge du dossier/matière juste derrière */}
             <div className="flex items-center gap-2 shrink-0">
               <button
