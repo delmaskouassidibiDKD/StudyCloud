@@ -3447,6 +3447,83 @@ Instructions : L'\xE9l\xE8ve t'a transmis ce document pour que tu travailles ave
         }
         return jsonResponse({ success: true, message: "Pi\xE8ce jointe retir\xE9e et purg\xE9e avec succ\xE8s" }, 200, origin);
       }
+      if (path === "/api/ai-contents" && method === "GET") {
+        const userId = url.searchParams.get("userId");
+        const toolType = url.searchParams.get("toolType");
+        const fileId = url.searchParams.get("fileId");
+        if (!userId)
+          return errorResponse("userId requis", 400, origin);
+        if (!env.DB)
+          return jsonResponse({ success: true, data: [] }, 200, origin);
+        let q = "SELECT * FROM ai_generated_contents WHERE user_id = ?";
+        const params = [userId];
+        if (toolType) {
+          q += " AND tool_type = ?";
+          params.push(toolType);
+        }
+        if (fileId) {
+          q += " AND file_id = ?";
+          params.push(fileId);
+        }
+        q += " ORDER BY is_pinned DESC, created_at DESC";
+        const { results } = await env.DB.prepare(q).bind(...params).all();
+        const formatted = (results || []).map((r) => ({
+          ...r,
+          contentJson: typeof r.content_json === "string" ? JSON.parse(r.content_json || "{}") : r.content_json
+        }));
+        return jsonResponse({ success: true, data: formatted }, 200, origin);
+      }
+      if (path === "/api/ai-contents" && method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const { id, userId, fileId, toolType, title, contentJson, sourceFileName, isPinned } = body;
+        if (!userId || !toolType || !title) {
+          return errorResponse("userId, toolType et title requis", 400, origin);
+        }
+        if (!env.DB)
+          return errorResponse("Base de donn\xE9es non disponible", 500, origin);
+        const contentId = id || crypto.randomUUID();
+        const jsonStr = typeof contentJson === "string" ? contentJson : JSON.stringify(contentJson || {});
+        await env.DB.prepare(`
+          INSERT INTO ai_generated_contents (id, user_id, file_id, tool_type, title, content_json, source_file_name, is_pinned)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+          ON CONFLICT(id) DO UPDATE SET
+            title = excluded.title,
+            content_json = excluded.content_json,
+            source_file_name = excluded.source_file_name,
+            is_pinned = excluded.is_pinned,
+            updated_at = CURRENT_TIMESTAMP
+        `).bind(
+          contentId,
+          userId,
+          fileId || null,
+          toolType,
+          title,
+          jsonStr,
+          sourceFileName || null,
+          isPinned ? 1 : 0
+        ).run();
+        return jsonResponse({ success: true, data: { id: contentId } }, 200, origin);
+      }
+      if (path.startsWith("/api/ai-contents/") && path.endsWith("/pin") && method === "PUT") {
+        const id = path.replace("/api/ai-contents/", "").replace("/pin", "");
+        const body = await request.json().catch(() => ({}));
+        const { isPinned } = body;
+        if (env.DB) {
+          await env.DB.prepare(`
+            UPDATE ai_generated_contents
+            SET is_pinned = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind(isPinned ? 1 : 0, id).run();
+        }
+        return jsonResponse({ success: true, message: "Statut \xE9pingl\xE9 mis \xE0 jour" }, 200, origin);
+      }
+      if (path.startsWith("/api/ai-contents/") && method === "DELETE") {
+        const id = path.replace("/api/ai-contents/", "");
+        if (env.DB) {
+          await env.DB.prepare("DELETE FROM ai_generated_contents WHERE id = ?").bind(id).run();
+        }
+        return jsonResponse({ success: true, message: "Contenu supprim\xE9 avec succ\xE8s" }, 200, origin);
+      }
       if (path === "/api/sync/backup" && method === "POST") {
         const body = await request.json();
         const { userId, userProfile, matieres, notes, scheduleSlots, scheduleConfig, alarms, shopProfile } = body;

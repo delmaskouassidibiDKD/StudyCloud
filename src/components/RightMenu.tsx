@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { Maximize, Minimize, Menu, X, AlignLeft, Brain, Copy, MessageSquare, Presentation, Clock, ArrowLeft, Loader2, Sparkles, Dna, MoreVertical, Pin, CheckSquare, Square, Trash2 } from 'lucide-react';
 import { StudyCloudAPI } from '../services/api';
 
@@ -46,6 +46,34 @@ export function RightMenu({
   });
   const [selectedHistoryIds, setSelectedHistoryIds] = useState<string[]>([]);
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
+
+  // Synchronisation descendante depuis Cloudflare D1 au chargement
+  useEffect(() => {
+    const userId = localStorage.getItem('unifolder_user_id');
+    if (!userId) return;
+    StudyCloudAPI.getAiContents(userId).then(res => {
+      if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+        const fromD1 = res.data.map((item: any) => {
+          const prop = PROPOSALS.find(p => p.id === item.tool_type);
+          return {
+            id: item.id,
+            title: item.title,
+            dateStr: item.created_at ? new Date(item.created_at).toLocaleDateString('fr-FR') : "Récemment",
+            colorClass: prop ? prop.colorClass.split(' ').find((c: string) => c.startsWith('text-')) || 'text-orange-300' : 'text-orange-300',
+            desc: item.source_file_name ? `Généré pour "${item.source_file_name}"` : (item.contentJson?.desc || 'Création IA'),
+            pinned: Boolean(item.is_pinned),
+          };
+        });
+        setHistoryItems((prev: any[]) => {
+          const ids = new Set(fromD1.map((d: any) => d.id));
+          const localOnly = prev.filter((p: any) => !ids.has(p.id) && !p.id.startsWith('h'));
+          const merged = [...fromD1, ...localOnly];
+          localStorage.setItem('unifolder_ai_history', JSON.stringify(merged));
+          return merged;
+        });
+      }
+    }).catch(() => {});
+  }, []);
 
   const saveHistory = (items: any[]) => {
     setHistoryItems(items);

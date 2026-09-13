@@ -149,6 +149,84 @@ export default {
       });
     }
 
+    // Gestion des créations IA (résumés, cartes mémoire, quiz, cartes mentales)
+    if (request.method === "GET" && path === "/api/ai-contents") {
+      const userId = url.searchParams.get("userId");
+      const toolType = url.searchParams.get("toolType");
+      const fileId = url.searchParams.get("fileId");
+      if (!userId) return new Response(JSON.stringify({ error: "userId requis" }), { status: 400, headers: corsHeaders });
+      if (!db) return new Response(JSON.stringify({ success: true, data: [] }), { headers: corsHeaders });
+
+      let q = "SELECT * FROM ai_generated_contents WHERE user_id = ?";
+      const params = [userId];
+      if (toolType) {
+        q += " AND tool_type = ?";
+        params.push(toolType);
+      }
+      if (fileId) {
+        q += " AND file_id = ?";
+        params.push(fileId);
+      }
+      q += " ORDER BY is_pinned DESC, created_at DESC";
+      const { results } = await db.prepare(q).bind(...params).all();
+      const formatted = (results || []).map(r => ({
+        ...r,
+        contentJson: typeof r.content_json === "string" ? JSON.parse(r.content_json || "{}") : r.content_json
+      }));
+      return new Response(JSON.stringify({ success: true, data: formatted }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
+    if (request.method === "POST" && path === "/api/ai-contents") {
+      const body = await request.json().catch(() => ({}));
+      const { id, userId, fileId, toolType, title, contentJson, sourceFileName, isPinned } = body;
+      if (!userId || !toolType || !title) {
+        return new Response(JSON.stringify({ error: "userId, toolType et title requis" }), { status: 400, headers: corsHeaders });
+      }
+      if (!db) return new Response(JSON.stringify({ error: "D1 non configuré" }), { status: 500, headers: corsHeaders });
+
+      const contentId = id || crypto.randomUUID();
+      const jsonStr = typeof contentJson === "string" ? contentJson : JSON.stringify(contentJson || {});
+      await db.prepare(`
+        INSERT INTO ai_generated_contents (id, user_id, file_id, tool_type, title, content_json, source_file_name, is_pinned)
+        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+        ON CONFLICT(id) DO UPDATE SET
+          title = excluded.title,
+          content_json = excluded.content_json,
+          source_file_name = excluded.source_file_name,
+          is_pinned = excluded.is_pinned,
+          updated_at = CURRENT_TIMESTAMP
+      `).bind(contentId, userId, fileId || null, toolType, title, jsonStr, sourceFileName || null, isPinned ? 1 : 0).run();
+
+      return new Response(JSON.stringify({ success: true, data: { id: contentId } }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
+    if (request.method === "PUT" && path.startsWith("/api/ai-contents/") && path.endsWith("/pin")) {
+      const id = path.replace("/api/ai-contents/", "").replace("/pin", "");
+      const body = await request.json().catch(() => ({}));
+      const { isPinned } = body;
+      if (db) {
+        await db.prepare("UPDATE ai_generated_contents SET is_pinned = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?")
+          .bind(isPinned ? 1 : 0, id).run();
+      }
+      return new Response(JSON.stringify({ success: true, message: "Statut épinglé mis à jour" }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
+    if (request.method === "DELETE" && path.startsWith("/api/ai-contents/")) {
+      const id = path.replace("/api/ai-contents/", "");
+      if (db) {
+        await db.prepare("DELETE FROM ai_generated_contents WHERE id = ?").bind(id).run();
+      }
+      return new Response(JSON.stringify({ success: true, message: "Contenu supprimé avec succès" }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
     if (request.method !== "POST") {
       return new Response(JSON.stringify({ error: "Méthode non autorisée." }), {
         status: 405,
