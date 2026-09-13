@@ -23,6 +23,13 @@
       .goog-tooltip:hover { display: none !important; }
       .goog-text-highlight { background-color: transparent !important; border: none !important; box-shadow: none !important; }
     </style>
+    <script>
+      try {
+        if (localStorage.getItem('unifolder_dark_mode') === 'true') {
+          document.documentElement.classList.add('dark');
+        }
+      } catch (e) {}
+    </script>
     <script type="text/javascript">
       function googleTranslateElementInit() {
         new google.translate.TranslateElement({pageLanguage: 'fr', autoDisplay: false}, 'google_translate_element');

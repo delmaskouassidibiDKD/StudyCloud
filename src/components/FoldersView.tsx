@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, X, Search, Globe } from 'lucide-react';
+import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, X, Search, Globe, Sun, Moon } from 'lucide-react';
 import { MenuDrawer } from './MenuDrawer';
 import { GeminiDrawer } from './GeminiDrawer';
 import { DnaLogo } from './DnaLogo';
@@ -40,6 +40,27 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [isGeminiOpen, setIsGeminiOpen] = useState(false);
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
   const [currentLang, setCurrentLang] = useState('fr');
+
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('unifolder_dark_mode') === 'true' || document.documentElement.classList.contains('dark');
+    } catch (e) {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('unifolder_dark_mode', isDarkMode ? 'true' : 'false');
+      if (isDarkMode) {
+        document.documentElement.classList.add('dark');
+        document.body.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.body.classList.remove('dark');
+      }
+    } catch (e) {}
+  }, [isDarkMode]);
 
   useEffect(() => {
     const match = document.cookie.match(/(?:^|; )googtrans=([^;]*)/);
@@ -416,26 +437,13 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         onClick={defaultAction}
         className="group flex flex-col items-center cursor-pointer w-full max-w-[94px] sm:max-w-[102px] md:w-24 lg:w-26 md:shrink-0 transition-all duration-200 hover:scale-105"
       >
-        <div className="w-full aspect-square bg-stone-900 dark:bg-stone-800 border-2 border-stone-800 dark:border-stone-700 rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[3px_3px_0px_0px_#000] flex items-center justify-center group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all relative">
+        <div className="w-full aspect-square bg-stone-900 dark:bg-slate-800/80 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/15 rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[0_8px_25px_rgba(0,0,0,0.45)] dark:hover:border-blue-400/40 dark:hover:shadow-[0_12px_30px_rgba(37,99,235,0.25)] flex items-center justify-center group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all relative">
           {iconContent}
         </div>
         <span className="text-[11px] sm:text-xs md:text-sm font-extrabold text-blue-600 dark:text-blue-400 mt-1.5 sm:mt-2 text-center px-0.5 leading-snug tracking-wide w-full line-clamp-2">{label}</span>
       </div>
     );
   };
-
-  const [isDarkMode, setIsDarkMode] = useState(() => {
-    return localStorage.getItem('unifolder_dark_mode') === 'true';
-  });
-
-  useEffect(() => {
-    localStorage.setItem('unifolder_dark_mode', String(isDarkMode));
-    if (isDarkMode) {
-      document.documentElement.classList.add('dark');
-    } else {
-      document.documentElement.classList.remove('dark');
-    }
-  }, [isDarkMode]);
 
   // Schedule state
   const [scheduleItems, setScheduleItems] = useState<{ day: string; time: string; matiere: string; room: string }[]>(() => {
@@ -478,7 +486,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   return (
     <div className="flex flex-col items-center justify-start min-h-[75vh] px-2 sm:px-4 text-center pt-12 md:pt-14 pb-24">
       {/* Fixed Header bar with action buttons */}
-      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#FDFBF7] border-b-2 border-stone-800 shadow-sm px-3 md:px-6 py-1.5 flex items-center justify-between gap-2 md:gap-4">
+      <div className={`fixed top-0 left-0 right-0 md:left-64 z-40 px-3 md:px-6 py-1.5 flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${
+        isDarkMode 
+          ? 'bg-[#0f172a]/85 backdrop-blur-xl border-b border-white/10 shadow-lg' 
+          : 'bg-[#FDFBF7] border-b-2 border-stone-800 shadow-sm'
+      }`}>
         <div className="flex items-center gap-2">
           <MenuDrawer
             onNavigateHome={() => {
@@ -500,19 +512,51 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-3">
+          {/* Dark / Night Mode Toggle Button (Placé directement DEVANT le bouton langue) */}
+          <div className="flex flex-col items-center">
+            <button
+              onClick={() => setIsDarkMode(!isDarkMode)}
+              className={`p-1.5 rounded-xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
+                isDarkMode 
+                  ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30 shadow-[0_0_12px_rgba(251,191,36,0.25)]' 
+                  : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
+              }`}
+              title={isDarkMode ? "Passer en mode jour" : "Passer en mode nuit / sombre"}
+            >
+              {isDarkMode ? (
+                <Sun className="w-3.5 h-3.5 text-amber-400" />
+              ) : (
+                <Moon className="w-3.5 h-3.5 text-indigo-600" />
+              )}
+            </button>
+            <span className={`text-[9px] font-bold leading-none mt-0.5 ${isDarkMode ? 'text-amber-300/90' : 'text-stone-700'}`}>
+              {isDarkMode ? "Jour" : "Sombre"}
+            </span>
+          </div>
+
           {/* Language button */}
           <div className="flex flex-col items-center relative">
             <button
               onClick={() => setIsLanguageMenuOpen(!isLanguageMenuOpen)}
-              className="p-1.5 bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 rounded-lg border-2 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
+              className={`p-1.5 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
+                isDarkMode
+                  ? 'bg-white/10 hover:bg-white/15 text-white border-white/15 shadow-sm'
+                  : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
+              }`}
               title="Langue"
             >
-              <Globe className="w-3.5 h-3.5 text-red-600" />
+              <Globe className="w-3.5 h-3.5 text-red-500" />
             </button>
-            <span className="text-[9px] font-bold text-stone-700 leading-none mt-0.5">Langue</span>
+            <span className={`text-[9px] font-bold leading-none mt-0.5 ${isDarkMode ? 'text-slate-300' : 'text-stone-700'}`}>
+              Langue
+            </span>
             
             {isLanguageMenuOpen && (
-              <div className="absolute top-full right-0 mt-2 bg-[#F5F1E9] border-2 border-stone-800 rounded-xl shadow-xl z-50 min-w-[140px] py-1.5 max-h-[300px] overflow-y-auto">
+              <div className={`absolute top-full right-0 mt-2 rounded-2xl shadow-2xl z-50 min-w-[150px] py-1.5 max-h-[300px] overflow-y-auto border backdrop-blur-xl ${
+                isDarkMode
+                  ? 'bg-[#0f172a]/95 border-white/15 text-white'
+                  : 'bg-[#F5F1E9] border-2 border-stone-800 text-stone-800'
+              }`}>
                 {[
                   { code: 'fr', label: 'Français' },
                   { code: 'en', label: 'English' },
@@ -534,7 +578,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       onClick={() => handleLanguageChange(lang.code)}
                       className={`w-full text-left px-3 py-1.5 text-xs font-bold transition-colors ${
                         isSelected 
-                          ? 'bg-red-100/50 text-red-600 border-l-4 border-red-600' 
+                          ? 'bg-red-500/20 text-red-400 border-l-4 border-red-500' 
+                          : isDarkMode 
+                          ? 'text-slate-300 hover:bg-white/10 border-l-4 border-transparent' 
                           : 'text-stone-700 hover:bg-stone-200 border-l-4 border-transparent'
                       }`}
                     >
@@ -550,40 +596,57 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           <div className="flex flex-col items-center">
             <button
               onClick={() => setIsGeminiOpen(true)}
-              className="p-1.5 bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 rounded-lg border-2 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
+              className={`p-1.5 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
+                isDarkMode
+                  ? 'bg-white/10 hover:bg-white/15 text-indigo-400 border-white/15 shadow-sm'
+                  : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
+              }`}
               title="Gemini"
             >
-              <svg className="w-3.5 h-3.5 text-indigo-600" viewBox="0 0 24 24" fill="currentColor">
+              <svg className="w-3.5 h-3.5 text-indigo-500" viewBox="0 0 24 24" fill="currentColor">
                 <path d="M12 0C12 6.627 17.373 12 24 12C17.373 12 12 17.373 12 24C12 17.373 6.627 12 0 12C6.627 12 12 6.627 12 0Z"/>
               </svg>
             </button>
-            <span className="text-[9px] font-bold text-stone-700 leading-none mt-0.5">Gemini</span>
+            <span className={`text-[9px] font-bold leading-none mt-0.5 ${isDarkMode ? 'text-slate-300' : 'text-stone-700'}`}>
+              Gemini
+            </span>
           </div>
 
           {/* Abondamment button */}
           <div className="flex flex-col items-center">
             <button
               onClick={() => setViewMode('abondamment')}
-              className="p-1.5 bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 rounded-lg border-2 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
+              className={`p-1.5 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
+                isDarkMode
+                  ? 'bg-white/10 hover:bg-white/15 text-amber-400 border-white/15 shadow-sm'
+                  : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
+              }`}
               title="Abondamment"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
             </button>
-            <span className="text-[9px] font-bold text-stone-700 leading-none mt-0.5">Abondamment</span>
+            <span className={`text-[9px] font-bold leading-none mt-0.5 ${isDarkMode ? 'text-slate-300' : 'text-stone-700'}`}>
+              Abondamment
+            </span>
           </div>
 
           {/* Créer les matières */}
           <div className="flex flex-col items-center">
             <button
               onClick={() => setIsMatiereMenuOpen(true)}
-              className="p-1.5 bg-[#F5F1E9] hover:bg-[#EBE5DA] text-stone-800 rounded-lg border-2 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
+              className={`p-1.5 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
+                isDarkMode
+                  ? 'bg-white/10 hover:bg-white/15 text-orange-400 border-white/15 shadow-sm'
+                  : 'bg-[#F5F1E9] hover:bg-[#EBE5DA] text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
+              }`}
               title="Matière"
             >
-              <FolderPlus className="w-3.5 h-3.5 text-orange-600" />
+              <FolderPlus className="w-3.5 h-3.5 text-orange-500" />
             </button>
-            <span className="text-[9px] font-bold text-stone-700 leading-none mt-0.5">Matière</span>
+            <span className={`text-[9px] font-bold leading-none mt-0.5 ${isDarkMode ? 'text-slate-300' : 'text-stone-700'}`}>
+              Matière
+            </span>
           </div>
-
 
         </div>
       </div>

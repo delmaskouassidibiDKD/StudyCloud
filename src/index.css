@@ -1,5 +1,7 @@
 @import "tailwindcss";
 
+@custom-variant dark (&:where(.dark, .dark *));
+
 html,
 body {
   min-height: 100vh;
@@ -12,12 +14,21 @@ body {
   padding: 0;
   -webkit-overflow-scrolling: touch;
   touch-action: pan-x pan-y;
-  /* Bloque le pinch-zoom et double-tap zoom */
   -ms-touch-action: pan-x pan-y;
   scrollbar-width: none;
-  /* Firefox */
   -ms-overflow-style: none;
-  /* IE and Edge */
+  transition: background-color 0.25s ease, color 0.25s ease;
+}
+
+html.dark,
+body.dark {
+  background-color: #0b0f19 !important;
+  background-image: 
+    radial-gradient(circle at 50% -10%, rgba(37, 99, 235, 0.22) 0%, transparent 55%),
+    radial-gradient(circle at 100% 100%, rgba(234, 88, 12, 0.12) 0%, transparent 50%),
+    linear-gradient(135deg, #0b0f19 0%, #0f172a 45%, #131b2e 75%, #090d16 100%) !important;
+  background-attachment: fixed !important;
+  color: #f1f5f9 !important;
 }
 
 /* Adaptation fluide pour que l'application reste compacte et nette sur ordinateur */
@@ -113,3 +124,69 @@ rect,
   -ms-overflow-style: none;
   scrollbar-width: none;
 }
+
+/* ==========================================================================
+   MODERN DARK MODE DESIGN SYSTEM (Inspire de la page de connexion)
+   ========================================================================== */
+
+/* Transitions fluides pour le changement de theme */
+body, aside, nav, header, button, .app-scroll-container {
+  transition-property: background-color, border-color, color, box-shadow;
+  transition-duration: 250ms;
+  transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Transformation des fonds beiges brutaux en verre depoli moderne sombre */
+.dark .bg-\[\#FDFBF7\],
+.dark .bg-\[\#F5F1E9\],
+.dark .bg-\[\#F5F0E8\],
+.dark .bg-\[\#E8DFD0\],
+.dark .bg-\[\#EBE5DA\],
+.dark .bg-stone-50,
+.dark .bg-stone-100 {
+  background-color: rgba(15, 23, 42, 0.75) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: #f8fafc;
+}
+
+.dark .bg-white {
+  background-color: rgba(15, 23, 42, 0.85) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  color: #f8fafc;
+}
+
+/* Bordures modernes lumineuses et douces */
+.dark .border-stone-800,
+.dark .border-stone-900,
+.dark .border-\[\#2D4A3E\],
+.dark .border-stone-700,
+.dark .border-stone-300,
+.dark .border-stone-200 {
+  border-color: rgba(255, 255, 255, 0.12) !important;
+}
+
+/* Typographie moderne et lisible */
+.dark .text-\[\#2D4A3E\],
+.dark .text-stone-800,
+.dark .text-stone-900 {
+  color: #f8fafc !important;
+}
+
+.dark .text-\[\#5C6B5A\],
+.dark .text-stone-600,
+.dark .text-stone-700,
+.dark .text-stone-500 {
+  color: #94a3b8 !important;
+}
+
+/* Remplacement des ombres brutales dures par un halo moderne elegant */
+.dark [class*="shadow-\["][class*="\#1c1917\]"] {
+  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+}
+
+/* Zone d'upload pointillee en mode sombre */
+.dark .border-dashed {
+  border-color: rgba(59, 130, 246, 0.35) !important;
+}

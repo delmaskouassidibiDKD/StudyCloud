@@ -746,7 +746,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] text-[#2D4A3E] px-4 py-8 overflow-y-auto">
+    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-transparent text-[#2D4A3E] dark:text-slate-100 px-4 py-8 overflow-y-auto transition-colors duration-300">
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -758,7 +758,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">
           <button
             onClick={onBack}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-white/10 dark:hover:bg-white/15 dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-white/15 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
           >
             <ArrowLeft className="w-3 h-3" />
             <span>Retour</span>
@@ -766,15 +766,15 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
           <button
             onClick={handleButtonClick}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-gradient-to-r dark:from-orange-500 dark:to-amber-500 dark:hover:from-orange-600 dark:hover:to-amber-600 dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-orange-400/40 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-[0_0_12px_rgba(245,158,11,0.3)] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
             title="Importer des fichiers"
           >
-            <Upload className="w-3 h-3 text-[#2D4A3E]" />
+            <Upload className="w-3 h-3 text-[#2D4A3E] dark:text-white" />
             <span>Importer</span>
           </button>
         </div>
 
-        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] bg-[#E8DFD0] px-3 py-1 rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] self-start mt-0.5">
+        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] dark:text-white bg-[#E8DFD0] dark:bg-white/10 px-3 py-1 rounded-lg border-2 border-[#2D4A3E] dark:border-white/15 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none self-start mt-0.5 backdrop-blur-md">
           Mes fichiers
         </h1>
 
@@ -782,7 +782,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           <div className="relative">
             <button
               onClick={() => setShowFilesMenuDropdown(!showFilesMenuDropdown)}
-              className="p-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
+              className="p-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-white/10 dark:hover:bg-white/15 dark:text-white rounded-lg border-2 border-[#2D4A3E] dark:border-white/15 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
               title="Options"
             >
               <MoreVertical className="w-3.5 h-3.5" />
@@ -794,29 +794,29 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                   className="fixed inset-0 z-40 bg-transparent" 
                   onClick={() => setShowFilesMenuDropdown(false)} 
                 />
-                <div className="absolute top-10 right-0 z-50 w-52 bg-white border-2 border-stone-800 rounded-xl shadow-xl py-2 text-left animate-in fade-in duration-150">
+                <div className="absolute top-10 right-0 z-50 w-52 bg-white dark:bg-[#0f172a]/95 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/15 rounded-xl shadow-xl py-2 text-left animate-in fade-in duration-150">
                   <button
                     type="button"
                     onClick={() => {
                       setShowFilesMenuDropdown(false);
                       setIsSearchOpen(true);
                     }}
-                    className="w-full px-4 py-2 text-xs font-bold text-stone-800 hover:bg-stone-100 flex items-center gap-2.5 transition-colors cursor-pointer border-b border-stone-100"
+                    className="w-full px-4 py-2 text-xs font-bold text-stone-800 dark:text-slate-100 hover:bg-stone-100 dark:hover:bg-white/10 flex items-center gap-2.5 transition-colors cursor-pointer border-b border-stone-100 dark:border-white/10"
                   >
-                    <Search className="w-4 h-4 text-stone-600" />
+                    <Search className="w-4 h-4 text-stone-600 dark:text-slate-400" />
                     <span>Recherche</span>
                   </button>
-                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-400">Trier par</div>
+                  <div className="px-3 py-1.5 text-[10px] font-bold uppercase tracking-wider text-stone-400 dark:text-slate-500">Trier par</div>
                   <button
                     type="button"
                     onClick={() => {
                       setSortBy('recent');
                       setShowFilesMenuDropdown(false);
                     }}
-                    className={`w-full px-4 py-2 text-xs font-medium ${sortBy === 'recent' ? 'bg-[#2D4A3E]/10 font-bold text-[#2D4A3E]' : 'text-stone-800 hover:bg-stone-100'} flex items-center justify-between transition-colors cursor-pointer`}
+                    className={`w-full px-4 py-2 text-xs font-medium ${sortBy === 'recent' ? 'bg-[#2D4A3E]/10 dark:bg-white/15 font-bold text-[#2D4A3E] dark:text-white' : 'text-stone-800 dark:text-slate-300 hover:bg-stone-100 dark:hover:bg-white/10'} flex items-center justify-between transition-colors cursor-pointer`}
                   >
                     <span>Plus récent</span>
-                    {sortBy === 'recent' && <span className="text-[#2D4A3E]">✓</span>}
+                    {sortBy === 'recent' && <span className="text-[#2D4A3E] dark:text-orange-400">✓</span>}
                   </button>
                   <button
                     type="button"
@@ -824,10 +824,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                       setSortBy('oldest');
                       setShowFilesMenuDropdown(false);
                     }}
-                    className={`w-full px-4 py-2 text-xs font-medium ${sortBy === 'oldest' ? 'bg-[#2D4A3E]/10 font-bold text-[#2D4A3E]' : 'text-stone-800 hover:bg-stone-100'} flex items-center justify-between transition-colors cursor-pointer`}
+                    className={`w-full px-4 py-2 text-xs font-medium ${sortBy === 'oldest' ? 'bg-[#2D4A3E]/10 dark:bg-white/15 font-bold text-[#2D4A3E] dark:text-white' : 'text-stone-800 dark:text-slate-300 hover:bg-stone-100 dark:hover:bg-white/10'} flex items-center justify-between transition-colors cursor-pointer`}
                   >
                     <span>Plus ancien</span>
-                    {sortBy === 'oldest' && <span className="text-[#2D4A3E]">✓</span>}
+                    {sortBy === 'oldest' && <span className="text-[#2D4A3E] dark:text-orange-400">✓</span>}
                   </button>
                   <button
                     type="button"
@@ -835,10 +835,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                       setSortBy('size');
                       setShowFilesMenuDropdown(false);
                     }}
-                    className={`w-full px-4 py-2 text-xs font-medium ${sortBy === 'size' ? 'bg-[#2D4A3E]/10 font-bold text-[#2D4A3E]' : 'text-stone-800 hover:bg-stone-100'} flex items-center justify-between transition-colors cursor-pointer`}
+                    className={`w-full px-4 py-2 text-xs font-medium ${sortBy === 'size' ? 'bg-[#2D4A3E]/10 dark:bg-white/15 font-bold text-[#2D4A3E] dark:text-white' : 'text-stone-800 dark:text-slate-300 hover:bg-stone-100 dark:hover:bg-white/10'} flex items-center justify-between transition-colors cursor-pointer`}
                   >
                     <span>Taille</span>
-                    {sortBy === 'size' && <span className="text-[#2D4A3E]">✓</span>}
+                    {sortBy === 'size' && <span className="text-[#2D4A3E] dark:text-orange-400">✓</span>}
                   </button>
                   <button
                     type="button"
@@ -846,10 +846,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                       setShowDuplicatesOnly(!showDuplicatesOnly);
                       setShowFilesMenuDropdown(false);
                     }}
-                    className={`w-full px-4 py-2 text-xs font-medium ${showDuplicatesOnly ? 'bg-[#2D4A3E]/10 font-bold text-[#2D4A3E]' : 'text-stone-800 hover:bg-stone-100'} flex items-center justify-between transition-colors cursor-pointer border-t border-stone-100`}
+                    className={`w-full px-4 py-2 text-xs font-medium ${showDuplicatesOnly ? 'bg-[#2D4A3E]/10 dark:bg-white/15 font-bold text-[#2D4A3E] dark:text-white' : 'text-stone-800 dark:text-slate-300 hover:bg-stone-100 dark:hover:bg-white/10'} flex items-center justify-between transition-colors cursor-pointer border-t border-stone-100 dark:border-white/10`}
                   >
                     <span>📁 Afficher les doublons</span>
-                    {showDuplicatesOnly && <span className="text-[#2D4A3E]">✓</span>}
+                    {showDuplicatesOnly && <span className="text-[#2D4A3E] dark:text-orange-400">✓</span>}
                   </button>
                 </div>
               </>
@@ -929,24 +929,24 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         <div className="pt-1 pb-64 w-full max-w-7xl mx-auto">
           {importedFiles.length === 0 ? (
             <div className="text-center">
-              <h1 className="text-3xl sm:text-5xl font-serif font-normal text-[#2D4A3E] mb-3">Mes fichiers</h1>
-              <p className="text-sm font-sans text-[#5C6B5A] mb-6">Sélectionnez et importez vos fichiers ou dossiers depuis votre appareil.</p>
+              <h1 className="text-3xl sm:text-5xl font-serif dark:font-sans dark:font-extrabold font-normal text-[#2D4A3E] dark:text-white mb-3 tracking-tight">Mes fichiers</h1>
+              <p className="text-sm font-sans text-[#5C6B5A] dark:text-slate-400 mb-6">Sélectionnez et importez vos fichiers ou dossiers depuis votre appareil.</p>
               
               <div 
                 onClick={handleButtonClick}
-                className="border-3 border-dashed border-[#2D4A3E]/30 rounded-2xl p-8 bg-[#E8DFD0]/40 flex flex-col items-center justify-center cursor-pointer hover:bg-[#E8DFD0]/70 transition-all max-w-lg mx-auto"
+                className="border-3 border-dashed border-[#2D4A3E]/30 dark:border-blue-500/40 rounded-2xl p-8 bg-[#E8DFD0]/40 dark:bg-white/[0.04] dark:backdrop-blur-xl flex flex-col items-center justify-center cursor-pointer hover:bg-[#E8DFD0]/70 dark:hover:bg-white/[0.08] dark:hover:border-blue-400/60 dark:hover:shadow-[0_0_30px_rgba(59,130,246,0.2)] transition-all max-w-lg mx-auto group"
               >
-                <div className="w-16 h-16 bg-[#2D4A3E]/10 rounded-full flex items-center justify-center mb-3 text-[#2D4A3E]">
+                <div className="w-16 h-16 bg-[#2D4A3E]/10 dark:bg-blue-500/20 rounded-full flex items-center justify-center mb-3 text-[#2D4A3E] dark:text-blue-400 group-hover:scale-110 transition-transform">
                   <Upload className="w-8 h-8" />
                 </div>
-                <p className="font-bold text-sm text-[#2D4A3E] mb-1">Cliquez pour importer des fichiers ou dossiers</p>
-                <p className="text-xs text-[#5C6B5A]">Ouvre le sélecteur natif de votre appareil</p>
+                <p className="font-bold text-sm text-[#2D4A3E] dark:text-white mb-1">Cliquez pour importer des fichiers ou dossiers</p>
+                <p className="text-xs text-[#5C6B5A] dark:text-slate-400">Ouvre le sélecteur natif de votre appareil</p>
               </div>
             </div>
           ) : filteredFiles.length === 0 ? (
             <div className="text-center py-12">
-              <h1 className="text-2xl font-serif font-normal text-[#2D4A3E] mb-2">Mes fichiers</h1>
-              <p className="text-sm text-[#5C6B5A]">Aucun fichier ne correspond à votre recherche "{searchQuery}".</p>
+              <h1 className="text-2xl font-serif dark:font-sans dark:font-bold font-normal text-[#2D4A3E] dark:text-white mb-2">Mes fichiers</h1>
+              <p className="text-sm text-[#5C6B5A] dark:text-slate-400">Aucun fichier ne correspond à votre recherche "{searchQuery}".</p>
             </div>
           ) : (
             <div className="w-full">
