@@ -412,7 +412,6 @@ export default function App() {
   const [previewRightWidth, setPreviewRightWidth] = useState(33.33);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [isResizingLeft, setIsResizingLeft] = useState(false);
-  const [isResizingRight, setIsResizingRight] = useState(false);
   const [isCenterFullscreen, setIsCenterFullscreen] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('studycloud_active_preview_item');
@@ -586,7 +585,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    if (!isResizingLeft && !isResizingRight) return;
+    if (!isResizingLeft) return;
 
     const handleMouseMove = (e: MouseEvent | TouchEvent) => {
       if (!previewContainerRef.current) return;
@@ -595,28 +594,17 @@ export default function App() {
       const x = clientX - rect.left;
       const percentage = (x / rect.width) * 100;
 
-      if (isResizingLeft) {
-        // Bloque le panneau gauche au niveau optimal (~260px / ~22%) pour préserver LeftMenu
-        const minLeft = Math.max(22, (260 / rect.width) * 100);
-        // Bloque également quand le menu central (document) atteint sa taille minimale (~440px / ~38%) pour ne pas trop le réduire
-        const minCenter = Math.max(38, (440 / rect.width) * 100);
-        const maxLeft = Math.max(minLeft, 100 - previewRightWidth - minCenter);
-        const newWidth = Math.min(Math.max(minLeft, percentage), maxLeft);
-        setPreviewLeftWidth(newWidth);
-      } else if (isResizingRight) {
-        // Limite également la colonne droite en préservant le minimum du menu central
-        const newRightWidth = 100 - percentage;
-        const minRight = Math.max(20, (240 / rect.width) * 100);
-        const minCenter = Math.max(38, (440 / rect.width) * 100);
-        const maxRight = Math.max(minRight, 100 - previewLeftWidth - minCenter);
-        const boundedRight = Math.min(Math.max(minRight, newRightWidth), maxRight);
-        setPreviewRightWidth(boundedRight);
-      }
+      // Bloque le panneau gauche au niveau optimal (~260px / ~22%) pour préserver LeftMenu
+      const minLeft = Math.max(22, (260 / rect.width) * 100);
+      // Bloque également quand le menu central (document) atteint sa taille minimale (~440px / ~38%) pour ne pas trop le réduire
+      const minCenter = Math.max(38, (440 / rect.width) * 100);
+      const maxLeft = Math.max(minLeft, 100 - previewRightWidth - minCenter);
+      const newWidth = Math.min(Math.max(minLeft, percentage), maxLeft);
+      setPreviewLeftWidth(newWidth);
     };
 
     const handleMouseUp = () => {
       setIsResizingLeft(false);
-      setIsResizingRight(false);
       document.body.style.removeProperty('cursor');
       document.body.style.removeProperty('user-select');
     };
@@ -637,7 +625,7 @@ export default function App() {
       window.removeEventListener('mouseup', handleMouseUp);
       window.removeEventListener('touchend', handleMouseUp);
     };
-  }, [isResizingLeft, isResizingRight, previewLeftWidth, previewRightWidth]);
+  }, [isResizingLeft, previewLeftWidth, previewRightWidth]);
 
 
   const handleReplaceFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1328,7 +1316,7 @@ export default function App() {
           <div className="flex-1 w-full h-dvh relative">
             
             {/* Transparent blocker during resize so iframes (PDF/Viewer) never swallow mouse events */}
-            {(isResizingLeft || isResizingRight) && (
+            {isResizingLeft && (
               <div 
                 className="fixed inset-0 z-[999999] cursor-col-resize select-none bg-transparent"
                 style={{ cursor: 'col-resize' }}
@@ -1401,7 +1389,6 @@ export default function App() {
                   previewScrollMode={previewScrollMode}
                   setPreviewScrollMode={setPreviewScrollMode}
                   isMobileScreen={isMobileScreen}
-                  setIsResizingRight={setIsResizingRight}
                 />
 
                 {/* Column 3: Right Area */}
