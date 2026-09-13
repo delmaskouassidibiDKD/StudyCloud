@@ -1,5 +1,7 @@
 import React, { useRef, useState, useEffect } from 'react';
 import { Edit3, ArrowLeft, Upload, File, Folder, Check, MoreVertical, X, Search, Copy, Plus } from 'lucide-react';
+import { StudyCloudAPI } from '../services/api';
+import { storeFileBlob, getFileBlobUrl, deleteFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 
 interface FilesMenuViewProps {
   onBack: () => void;
@@ -168,6 +170,37 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     };
     window.addEventListener('storage', handleSync);
     window.addEventListener('unifolder_files_updated', handleSync);
+
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.getFiles(userId)
+      .then(async (res) => {
+        if (res && res.success && Array.isArray(res.data)) {
+          const filesWithUrls = await Promise.all(
+            res.data.map(async (row: any) => {
+              const localBlobUrl = await getFileBlobUrl(row.id);
+              return {
+                id: row.id,
+                name: row.name,
+                size: row.size || 0,
+                type: row.type || 'Fichier',
+                extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+                url: localBlobUrl || row.file_url || '',
+                r2Key: row.r2_key,
+                isFavorite: !!row.is_favorite,
+                matiere: row.matiere_id && row.matiere_id !== 'Mes fichiers' ? row.matiere_id : '',
+                importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+                createdAt: row.created_at,
+                timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+                isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
+              };
+            })
+          );
+          setImportedFiles(filesWithUrls);
+          localStorage.setItem('unifolder_files_menu_items', JSON.stringify(filesWithUrls));
+        }
+      })
+      .catch(() => {});
+
     return () => {
       window.removeEventListener('storage', handleSync);
       window.removeEventListener('unifolder_files_updated', handleSync);
@@ -344,10 +377,6 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     localStorage.setItem('unifolder_saved_matieres', JSON.stringify(savedMatieres));
   }, [savedMatieres]);
 
-  const handleToggleFavorite = (id: string) => {
-    setImportedFiles(prev => prev.map(item => item.id === id ? { ...item, isFavorite: !item.isFavorite } : item));
-    setOpenMenuId(null);
-  };
 
     const handleSaveRename = () => {
     if (!renamingFileId || !newFileName.trim()) return;
@@ -397,6 +426,25 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       }
     } catch (e) {}
 
+    if (targetFile) {
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      const existingExt = targetFile.extension || (targetFile.name.includes('.') ? targetFile.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
+      StudyCloudAPI.registerFileMetadata({
+        id: targetFile.id,
+        userId,
+        matiereId: targetFile.matiere || null,
+        name: newFileName.trim(),
+        size: targetFile.size,
+        type: targetFile.type,
+        extension: existingExt,
+        r2Key: (targetFile as any).r2Key || null,
+        fileUrl: targetFile.url,
+        isFavorite: targetFile.isFavorite,
+        isImported: true,
+        lastImported: typeof targetFile.importedAt === 'number' ? targetFile.importedAt : Date.now()
+      }).catch(() => {});
+    }
+
     window.dispatchEvent(new Event('unifolder_files_updated'));
     setRenamingFileId(null);
     setSuccessMessage("Fichier renommé avec succès !");
@@ -441,11 +489,37 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     setOpenMenuId(null);
   };
 
+  const handleToggleFavorite = (id: string) => {
+    const file = importedFiles.find(item => item.id === id);
+    const newFav = file ? !file.isFavorite : true;
+    setImportedFiles(prev => prev.map(item => item.id === id ? { ...item, isFavorite: newFav } : item));
+    setOpenMenuId(null);
+    if (file) {
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      StudyCloudAPI.registerFileMetadata({
+        id: file.id,
+        userId,
+        matiereId: file.matiere || null,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        extension: file.extension,
+        r2Key: (file as any).r2Key || null,
+        fileUrl: file.url,
+        isFavorite: newFav,
+        isImported: true,
+        lastImported: typeof file.importedAt === 'number' ? file.importedAt : Date.now()
+      }).catch(() => {});
+    }
+  };
+
   const handleDelete = (id: string) => {
     const fileToDelete = importedFiles.find(item => item.id === id);
     setImportedFiles(prev => prev.filter(item => item.id !== id));
     setOpenMenuId(null);
     setSelectedFileIds(prev => prev.filter(i => i !== id));
+    deleteFileBlob(id);
+    StudyCloudAPI.deleteFile(id).catch(() => {});
 
     // Supprimer du stockage direct
     try {
@@ -485,15 +559,21 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
   const handleBatchDelete = () => {
     if (selectedFileIds.length === 0) return;
-    const filesToDelete = importedFiles.filter(item => selectedFileIds.includes(item.id));
-    setImportedFiles(prev => prev.filter(item => !selectedFileIds.includes(item.id)));
+    const idsToDelete = [...selectedFileIds];
+    const filesToDelete = importedFiles.filter(item => idsToDelete.includes(item.id));
+    setImportedFiles(prev => prev.filter(item => !idsToDelete.includes(item.id)));
+
+    idsToDelete.forEach(id => {
+      deleteFileBlob(id);
+      StudyCloudAPI.deleteFile(id).catch(() => {});
+    });
 
     // Supprimer du stockage direct
     try {
       const directSaved = localStorage.getItem('unifolder_files_menu_items');
       if (directSaved) {
         const parsed: ImportedItem[] = JSON.parse(directSaved);
-        const filtered = parsed.filter(item => !selectedFileIds.includes(item.id));
+        const filtered = parsed.filter(item => !idsToDelete.includes(item.id));
         localStorage.setItem('unifolder_files_menu_items', JSON.stringify(filtered));
       }
     } catch (e) {}
@@ -506,7 +586,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           const matSaved = localStorage.getItem(matKey);
           if (matSaved) {
             const parsed: ImportedItem[] = JSON.parse(matSaved);
-            const filtered = parsed.filter(item => item.id !== f.id);
+            const filtered = parsed.filter(item => !idsToDelete.includes(item.id));
             localStorage.setItem(matKey, JSON.stringify(filtered));
           }
         } catch (e) {}
@@ -518,7 +598,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       const legSaved = localStorage.getItem('unifolder_matiere_files');
       if (legSaved) {
         const parsed: ImportedItem[] = JSON.parse(legSaved);
-        const filtered = parsed.filter(item => !selectedFileIds.includes(item.id));
+        const filtered = parsed.filter(item => !idsToDelete.includes(item.id));
         localStorage.setItem('unifolder_matiere_files', JSON.stringify(filtered));
       }
     } catch (e) {}
@@ -633,26 +713,32 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const fileList = e.target.files;
       const newItems: ImportedItem[] = [];
       const imageFilesToCompress: { id: string; file: File }[] = [];
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
       const now = Date.now();
 
       for (let i = 0; i < fileList.length; i++) {
         const f = fileList[i];
-        const isImg = f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg)$/i.test(f.name);
+
+        // Contrôle de taille 50 Mo (paramétrable)
+        if (f.size > MAX_FILE_SIZE_BYTES) {
+          alert(`Le fichier "${f.name}" dépasse la limite actuelle de 50 Mo (${formatFileSize(f.size)}).`);
+          continue;
+        }
+
+        const isImg = f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(f.name);
         const id = `file-${now + i}-${Math.random().toString(36).substring(2, 7)}`;
-        let url: string | undefined = undefined;
+        
+        // 1. Stocker le blob dans IndexedDB
+        await storeFileBlob(id, f);
+        const localUrl = URL.createObjectURL(f);
 
         if (isImg) {
-          try {
-            url = URL.createObjectURL(f);
-            imageFilesToCompress.push({ id, file: f });
-          } catch (err) {
-            console.error(err);
-          }
+          imageFilesToCompress.push({ id, file: f });
         }
 
         const extVal = f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : (f.type ? f.type.split('/').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
@@ -662,12 +748,51 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           size: f.size,
           type: f.type || 'Fichier',
           extension: extVal,
-          url,
+          url: localUrl,
           isImage: isImg,
+          matiere: '',
           importedAt: now + i,
           createdAt: now + i,
-          timestamp: now + i
+          timestamp: now + i,
+          isFavorite: false
         });
+
+        // 2. Enregistrer dans Cloudflare D1
+        StudyCloudAPI.registerFileMetadata({
+          id,
+          userId,
+          matiereId: null,
+          name: f.name,
+          size: f.size,
+          type: f.type || 'application/octet-stream',
+          extension: extVal,
+          r2Key: null,
+          fileUrl: localUrl,
+          isFavorite: false,
+          isImported: true,
+          lastImported: now + i
+        }).catch(() => {});
+
+        // 3. Upload vers R2 en arrière-plan
+        const r2Key = `files/${userId}/${id}-${encodeURIComponent(f.name)}`;
+        StudyCloudAPI.uploadFileToR2(f, r2Key).then((uploadRes) => {
+          if (uploadRes && uploadRes.url) {
+            StudyCloudAPI.registerFileMetadata({
+              id,
+              userId,
+              matiereId: null,
+              name: f.name,
+              size: f.size,
+              type: f.type || 'application/octet-stream',
+              extension: extVal,
+              r2Key: uploadRes.key,
+              fileUrl: uploadRes.url,
+              isFavorite: false,
+              isImported: true,
+              lastImported: now + i
+            }).catch(() => {});
+          }
+        }).catch(() => {});
       }
 
       // Placer en tête de liste pour affichage immédiat à l'en-tête même
@@ -1034,6 +1159,16 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                             <span>📚 Classer dans les matières</span>
                           </button>
 
+                          <button
+                            onClick={() => {
+                              handleToggleFavorite(f.id);
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                          >
+                            <span>❤️ {f.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}</span>
+                          </button>
+
 
                           <button
                             onClick={() => {
@@ -1111,6 +1246,12 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                             <span className="text-[7.5px] font-bold text-white/90 text-center leading-tight">
                               Enregistrement...
                             </span>
+                          </div>
+                        )}
+
+                        {f.isFavorite && (
+                          <div className="absolute top-2 right-8 z-20 w-6 h-6 rounded-full bg-white text-red-600 border-2 border-stone-800 flex items-center justify-center text-xs shadow-[1px_1px_0px_0px_#1c1917]">
+                            ❤️
                           </div>
                         )}
 

@@ -2429,8 +2429,8 @@ var src_default = {
         if (!key)
           return errorResponse("Cl\xE9 de stockage manquante", 400, origin);
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
-        const fileBlob = await request.arrayBuffer();
-        await env.BUCKET.put(key, fileBlob, {
+        const fileData = request.body || await request.arrayBuffer();
+        await env.BUCKET.put(key, fileData, {
           httpMetadata: { contentType }
         });
         const fileUrl = `${url.origin}/api/storage/file/${encodeURIComponent(key)}`;

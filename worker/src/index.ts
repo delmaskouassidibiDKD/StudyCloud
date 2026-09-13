@@ -2695,8 +2695,8 @@ export default {
         if (!key) return errorResponse('Clé de stockage manquante', 400, origin);
         const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
 
-        const fileBlob = await request.arrayBuffer();
-        await env.BUCKET.put(key, fileBlob, {
+        const fileData = request.body || (await request.arrayBuffer());
+        await env.BUCKET.put(key, fileData as any, {
           httpMetadata: { contentType },
         });
 

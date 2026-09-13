@@ -2,6 +2,8 @@ import React, { useRef, useState, useEffect } from 'react';
 import { Edit3, ArrowLeft, Upload, File, MoreVertical, X, Search, Check, Copy, Plus } from 'lucide-react';
 import { getFileTimestamp } from './FilesMenuView';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
+import { StudyCloudAPI } from '../services/api';
+import { storeFileBlob, getFileBlobUrl, deleteFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 
 interface MatiereMenuViewProps {
   matiereName: string;
@@ -225,10 +227,42 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     };
   }, [openMenuId]);
 
-  // Recharger les fichiers si la matière change
+  // Recharger les fichiers si la matière change + appel direct Cloudflare D1
   useEffect(() => {
     currentKeyRef.current = storageKey;
-    setImportedFiles(loadFilesForMatiere(matiereName));
+    const local = loadFilesForMatiere(matiereName);
+    setImportedFiles(local);
+
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.getFiles(userId, matiereName)
+      .then(async (res) => {
+        if (res && res.success && Array.isArray(res.data)) {
+          const filesWithUrls = await Promise.all(
+            res.data.map(async (row: any) => {
+              const localBlobUrl = await getFileBlobUrl(row.id);
+              return {
+                id: row.id,
+                name: row.name,
+                size: row.size || 0,
+                type: row.type || 'Fichier',
+                extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+                url: localBlobUrl || row.file_url || '',
+                r2Key: row.r2_key,
+                isFavorite: !!row.is_favorite,
+                matiere: row.matiere_id || matiereName,
+                importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+                createdAt: row.created_at,
+                timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+                isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
+              };
+            })
+          );
+          setImportedFiles(filesWithUrls);
+          localStorage.setItem(storageKey, JSON.stringify(filesWithUrls));
+          window.dispatchEvent(new Event('unifolder_files_updated'));
+        }
+      })
+      .catch(() => {});
   }, [matiereName, storageKey]);
 
   // Sauvegarder uniquement pour la matière active
@@ -243,25 +277,53 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     setImportedFiles(prev => prev.filter(item => item.id !== id));
     setOpenMenuId(null);
     setSelectedFileIds(prev => prev.filter(i => i !== id));
+    deleteFileBlob(id);
+    StudyCloudAPI.deleteFile(id).catch(() => {});
   };
 
   const handleBatchDelete = () => {
     if (selectedFileIds.length === 0) return;
-    setImportedFiles(prev => prev.filter(item => !selectedFileIds.includes(item.id)));
+    const idsToDelete = [...selectedFileIds];
+    setImportedFiles(prev => prev.filter(item => !idsToDelete.includes(item.id)));
     setSelectedFileIds([]);
     setIsSelectionMode(false);
+    idsToDelete.forEach(id => {
+      deleteFileBlob(id);
+      StudyCloudAPI.deleteFile(id).catch(() => {});
+    });
   };
 
   const handleToggleFavorite = (id: string) => {
-    setImportedFiles(prev => prev.map(item => item.id === id ? { ...item, isFavorite: !item.isFavorite } : item));
+    const file = importedFiles.find(item => item.id === id);
+    const newFav = file ? !file.isFavorite : true;
+    setImportedFiles(prev => prev.map(item => item.id === id ? { ...item, isFavorite: newFav } : item));
     setOpenMenuId(null);
+    if (file) {
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      StudyCloudAPI.registerFileMetadata({
+        id: file.id,
+        userId,
+        matiereId: file.matiere || matiereName,
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        extension: file.extension,
+        r2Key: (file as any).r2Key || null,
+        fileUrl: file.url,
+        isFavorite: newFav,
+        isImported: true,
+        lastImported: typeof file.importedAt === 'number' ? file.importedAt : Date.now()
+      }).catch(() => {});
+    }
   };
 
-    const handleSaveRename = () => {
+  const handleSaveRename = () => {
     if (!renamingFileId || !newFileName.trim()) return;
+    const targetFile = importedFiles.find(item => item.id === renamingFileId);
+    const existingExt = targetFile?.extension || (targetFile?.name.includes('.') ? targetFile.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
+    
     setImportedFiles(prev => prev.map(item => {
       if (item.id === renamingFileId) {
-        const existingExt = item.extension || (item.name.includes('.') ? item.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
         return {
           ...item,
           name: newFileName.trim(),
@@ -270,6 +332,25 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       }
       return item;
     }));
+
+    if (targetFile) {
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      StudyCloudAPI.registerFileMetadata({
+        id: targetFile.id,
+        userId,
+        matiereId: targetFile.matiere || matiereName,
+        name: newFileName.trim(),
+        size: targetFile.size,
+        type: targetFile.type,
+        extension: existingExt,
+        r2Key: (targetFile as any).r2Key || null,
+        fileUrl: targetFile.url,
+        isFavorite: targetFile.isFavorite,
+        isImported: true,
+        lastImported: typeof targetFile.importedAt === 'number' ? targetFile.importedAt : Date.now()
+      }).catch(() => {});
+    }
+
     setRenamingFileId(null);
     setSuccessMessage("Fichier renommé avec succès !");
     setTimeout(() => setSuccessMessage(null), 3000);
@@ -392,42 +473,87 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     }
   };
 
-  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files.length > 0) {
       const fileList = e.target.files;
       const newItems: ImportedItem[] = [];
       const imageFilesToCompress: { id: string; file: File }[] = [];
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
 
       const now = Date.now();
       for (let i = 0; i < fileList.length; i++) {
         const f = fileList[i];
-        const isImg = f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg)$/i.test(f.name);
+
+        // Contrôle de taille 50 Mo (paramétrable)
+        if (f.size > MAX_FILE_SIZE_BYTES) {
+          alert(`Le fichier "${f.name}" dépasse la limite actuelle de 50 Mo (${formatFileSize(f.size)}).`);
+          continue;
+        }
+
+        const isImg = f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(f.name);
         const id = `file-${now + i}-${Math.random().toString(36).substring(2, 7)}`;
-        let url: string | undefined = undefined;
+        
+        // 1. Stocker le blob complet dans IndexedDB
+        await storeFileBlob(id, f);
+        const localUrl = URL.createObjectURL(f);
 
         if (isImg) {
-          try {
-            url = URL.createObjectURL(f);
-            imageFilesToCompress.push({ id, file: f });
-          } catch (err) {
-            console.error(err);
-          }
+          imageFilesToCompress.push({ id, file: f });
         }
 
         const extVal = f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : (f.type ? f.type.split('/').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
-        newItems.push({
+        const itemObj: ImportedItem = {
           id,
           name: f.name,
           size: f.size,
           type: f.type || 'Fichier',
           extension: extVal,
-          url,
+          url: localUrl,
           isImage: isImg,
           matiere: matiereName,
           importedAt: now + i,
           createdAt: now + i,
-          timestamp: now + i
-        });
+          timestamp: now + i,
+          isFavorite: false
+        };
+        newItems.push(itemObj);
+
+        // 2. Enregistrer les métadonnées dans Cloudflare D1 avec matiere_id
+        StudyCloudAPI.registerFileMetadata({
+          id,
+          userId,
+          matiereId: matiereName,
+          name: f.name,
+          size: f.size,
+          type: f.type || 'application/octet-stream',
+          extension: extVal,
+          r2Key: null,
+          fileUrl: localUrl,
+          isFavorite: false,
+          isImported: true,
+          lastImported: now + i
+        }).catch(() => {});
+
+        // 3. Upload vers Cloudflare R2 en arrière-plan
+        const r2Key = `files/${userId}/${id}-${encodeURIComponent(f.name)}`;
+        StudyCloudAPI.uploadFileToR2(f, r2Key).then((uploadRes) => {
+          if (uploadRes && uploadRes.url) {
+            StudyCloudAPI.registerFileMetadata({
+              id,
+              userId,
+              matiereId: matiereName,
+              name: f.name,
+              size: f.size,
+              type: f.type || 'application/octet-stream',
+              extension: extVal,
+              r2Key: uploadRes.key,
+              fileUrl: uploadRes.url,
+              isFavorite: false,
+              isImported: true,
+              lastImported: now + i
+            }).catch(() => {});
+          }
+        }).catch(() => {});
       }
 
       setImportedFiles(prev => [...newItems, ...prev]);

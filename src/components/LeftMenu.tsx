@@ -3,6 +3,8 @@ import { Upload, File as FileIcon, MoreVertical, Trash2, CheckSquare, Square, Ch
 import { DelmasRobot } from './DelmasRobot';
 import { AssistantChat } from './AssistantChat';
 import { FileIconBadge } from './FileIconBadge';
+import { StudyCloudAPI } from '../services/api';
+import { storeFileBlob, deleteFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 
 interface LeftMenuProps {
   isCenterFullscreen: boolean;
@@ -78,21 +80,33 @@ export function LeftMenu({
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  const handleFileUpload = (e: React.ChangeEvent<HTMLInputElement>) => {
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
     
     const file = files[0];
+    if (file.size > MAX_FILE_SIZE_BYTES) {
+      alert(`Le fichier "${file.name}" dépasse la limite de 50 Mo (${formatFileSize(file.size)}).`);
+      return;
+    }
+
     const now = Date.now();
+    const id = `file-${now}-${Math.random().toString(36).substring(2, 7)}`;
+    await storeFileBlob(id, file);
+    const localUrl = URL.createObjectURL(file);
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const extVal = file.name.split('.').pop()?.toUpperCase() || 'FICHIER';
+
     const newFile = {
-      id: Date.now().toString(),
+      id,
       name: file.name,
-      type: 'file',
+      type: file.type || 'file',
       size: file.size,
       date: new Date().toLocaleDateString('fr-FR'),
-      extension: file.name.split('.').pop()?.toUpperCase() || 'FICHIER',
+      extension: extVal,
       isImage: file.type.startsWith('image/'),
-      url: URL.createObjectURL(file),
+      url: localUrl,
+      matiere: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : '',
       isLeftMenuImport: true,
       isStudyImport: true,
       isImported: true,
@@ -100,6 +114,45 @@ export function LeftMenu({
       createdAt: now,
       timestamp: now
     };
+    
+    // Enregistrer dans Cloudflare D1
+    StudyCloudAPI.registerFileMetadata({
+      id,
+      userId,
+      matiereId: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : null,
+      name: file.name,
+      size: file.size,
+      type: file.type || 'application/octet-stream',
+      extension: extVal,
+      r2Key: null,
+      fileUrl: localUrl,
+      isFavorite: false,
+      isImported: true,
+      isStudySession: true,
+      lastImported: now
+    }).catch(() => {});
+
+    // Upload vers Cloudflare R2
+    const r2Key = `files/${userId}/${id}-${encodeURIComponent(file.name)}`;
+    StudyCloudAPI.uploadFileToR2(file, r2Key).then(res => {
+      if (res && res.url) {
+        StudyCloudAPI.registerFileMetadata({
+          id,
+          userId,
+          matiereId: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : null,
+          name: file.name,
+          size: file.size,
+          type: file.type || 'application/octet-stream',
+          extension: extVal,
+          r2Key: res.key,
+          fileUrl: res.url,
+          isFavorite: false,
+          isImported: true,
+          isStudySession: true,
+          lastImported: now
+        }).catch(() => {});
+      }
+    }).catch(() => {});
     
     // Save to dedicated study imports localStorage (global and independent of current menu)
     try {
@@ -134,6 +187,8 @@ export function LeftMenu({
   const handleDeleteImportedFile = (fileId: string) => {
     setMenuFiles(prev => prev.filter(f => f.id !== fileId));
     setSessionImportedIds(prev => prev.filter(id => id !== fileId));
+    deleteFileBlob(fileId);
+    StudyCloudAPI.deleteFile(fileId).catch(() => {});
     
     // Update localStorage
     try {
