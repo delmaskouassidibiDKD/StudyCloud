@@ -2,7 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { 
   Maximize, Minimize, Mic, Pause, Play, Square, RotateCcw, X, FileText, 
   ArrowLeftRight, Music, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, 
-  Copy, Check, Search, Table, Presentation, FileCode, ExternalLink, RefreshCw
+  Copy, Check, Search, Table, Presentation, FileCode
 } from 'lucide-react';
 import { FileIconBadge } from './FileIconBadge';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -143,7 +143,7 @@ export function CenterMenu({
         } catch (err) {
           console.warn('Erreur décodage Word:', err);
           if (isMounted) {
-            setDocxHtml('<p class="text-stone-500 italic">Impossible de formater ce document Word automatiquement. Utilisez le téléchargement ci-dessous.</p>');
+            setDocxHtml('<p class="text-stone-500 italic">Formatage automatique impossible pour ce fichier Word.</p>');
           }
         }
       } else if (isExcel && blob) {
@@ -288,7 +288,6 @@ export function CenterMenu({
       return item.textContent;
     }
 
-    // Try extracting from PDF if URL is present
     if (item.url && (item.extension === 'PDF' || item.name?.toLowerCase().endsWith('.pdf'))) {
       try {
         const loadingTask = pdfjsLib.getDocument(item.url);
@@ -448,548 +447,548 @@ export function CenterMenu({
   };
 
   return (
-    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r-2 border-stone-800'} flex items-center justify-center animate-fadeIn p-2 sm:p-4 md:p-6 pt-[68px] sm:pt-[72px] md:pt-[76px] relative pointer-events-auto ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
-      {/* Top Left Floating Bar: Zoom & Navigation controls */}
-      <div className="flex items-center gap-1.5 absolute top-[62px] sm:top-[66px] md:top-[68px] left-2 md:left-4 z-50 bg-[#FDFBF7]/90 dark:bg-stone-900/90 backdrop-blur-sm p-1 rounded-xl border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917]">
-        {/* Fullscreen Toggle */}
-        {!activePreviewItem?.lockFullscreen && (
-          <button
-            onClick={() => setIsCenterFullscreen(!isCenterFullscreen)}
-            className="hidden md:flex p-1.5 bg-yellow-400 rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-yellow-300 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900 items-center justify-center shrink-0"
-            title={isCenterFullscreen ? "Réduire à 3 colonnes" : "Agrandir en plein écran"}
-          >
-            {isCenterFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
-          </button>
-        )}
-
-        {/* Zoom Out */}
-        <button
-          onClick={() => setDocZoom(prev => Math.max(40, prev - 15))}
-          className="p-1.5 bg-white hover:bg-stone-100 text-stone-900 rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center shrink-0"
-          title="Zoom arrière (-)"
-        >
-          <ZoomOut className="w-3.5 h-3.5" />
-        </button>
-
-        {/* Zoom Value Reset */}
-        <button
-          onClick={() => setDocZoom(100)}
-          className="px-2 py-0.5 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center shrink-0"
-          title="Réinitialiser à 100%"
-        >
-          <span>{docZoom}%</span>
-        </button>
-
-        {/* Zoom In */}
-        <button
-          onClick={() => setDocZoom(prev => Math.min(250, prev + 15))}
-          className="p-1.5 bg-white hover:bg-stone-100 text-stone-900 rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center shrink-0"
-          title="Zoom avant (+)"
-        >
-          <ZoomIn className="w-3.5 h-3.5" />
-        </button>
-
-        {/* Mode Défilement */}
-        {setPreviewScrollMode && (
-          <button
-            onClick={() => setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
-            className="hidden sm:flex px-2 py-0.5 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer items-center gap-1 shrink-0"
-            title="Basculer entre défilement vertical et horizontal"
-          >
-            <ArrowLeftRight className="w-3 h-3 text-stone-700" />
-            <span>{previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
-          </button>
-        )}
-      </div>
-
-      {/* Audio Reading Controls (Top Right of Center Menu) */}
-      <div className="absolute top-[62px] sm:top-[66px] md:top-[68px] right-2 md:right-4 z-50 flex items-center gap-1.5">
-        {isAudioMenuOpen && (
-          <div className="flex items-center gap-1 bg-[#FDFBF7] border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] rounded-lg px-2 py-1 animate-fadeIn text-stone-800">
-            {speechState === 'playing' && (
-              <div className="flex items-center gap-0.5 mr-1 text-orange-500">
-                <span className="w-0.5 h-2.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                <span className="w-0.5 h-3.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-              </div>
-            )}
-
+    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r border-stone-300 dark:border-stone-800'} flex flex-col animate-fadeIn relative pointer-events-auto overflow-hidden bg-white dark:bg-stone-950 pt-[46px] md:pt-[50px] ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
+      
+      {/* Sleek, flat top action bar (integrated, no 3D creux, no thick offset shadows) */}
+      <div className="w-full bg-[#FDFBF7] dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 px-2 sm:px-4 py-1.5 flex items-center justify-between shrink-0 z-30">
+        
+        {/* Left Controls: Fullscreen + Zoom + Orientation */}
+        <div className="flex items-center gap-1 sm:gap-1.5">
+          {!activePreviewItem?.lockFullscreen && (
             <button
-              type="button"
-              onClick={handleTogglePause}
-              className="flex items-center gap-1 px-1.5 py-0.5 hover:bg-stone-100 rounded text-[10px] font-bold text-stone-800 transition-colors cursor-pointer"
-              title={speechState === 'playing' ? "Mettre en pause" : "Reprendre la lecture"}
+              onClick={() => setIsCenterFullscreen(!isCenterFullscreen)}
+              className="hidden md:flex p-1.5 bg-amber-400 hover:bg-amber-300 rounded-lg text-stone-900 items-center justify-center shrink-0 transition-colors cursor-pointer"
+              title={isCenterFullscreen ? "Réduire à 3 colonnes" : "Agrandir en plein écran"}
             >
-              {speechState === 'playing' ? (
-                <>
-                  <Pause className="w-3 h-3 text-amber-600 fill-amber-600 shrink-0" />
-                  <span className="hidden sm:inline">Pause</span>
-                </>
-              ) : (
-                <>
-                  <Play className="w-3 h-3 text-emerald-600 fill-emerald-600 shrink-0" />
-                  <span className="hidden sm:inline">Reprendre</span>
-                </>
-              )}
+              {isCenterFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
             </button>
+          )}
 
-            <div className="w-[1px] h-3.5 bg-stone-300" />
-
+          <div className="flex items-center bg-white dark:bg-stone-800 rounded-lg border border-stone-200 dark:border-stone-700 p-0.5">
             <button
-              type="button"
-              onClick={handleStop}
-              className="flex items-center gap-1 px-1.5 py-0.5 hover:bg-red-50 rounded text-[10px] font-bold text-red-600 transition-colors cursor-pointer"
-              title="Arrêter la lecture"
+              onClick={() => setDocZoom(prev => Math.max(40, prev - 15))}
+              className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded transition-colors cursor-pointer"
+              title="Zoom arrière (-)"
             >
-              <Square className="w-2.5 h-2.5 fill-red-600 shrink-0" />
-              <span className="hidden sm:inline">Arrêter</span>
-            </button>
-
-            <div className="w-[1px] h-3.5 bg-stone-300" />
-
-            <button
-              type="button"
-              onClick={handleRestart}
-              className="flex items-center gap-1 px-1.5 py-0.5 hover:bg-blue-50 rounded text-[10px] font-bold text-blue-600 transition-colors cursor-pointer"
-              title="Recommencer la lecture"
-            >
-              <RotateCcw className="w-3 h-3 shrink-0" />
-              <span className="hidden sm:inline">Recommencer</span>
+              <ZoomOut className="w-3.5 h-3.5" />
             </button>
 
             <button
-              type="button"
-              onClick={() => setIsAudioMenuOpen(false)}
-              className="p-0.5 hover:bg-stone-200 rounded-full text-stone-400 hover:text-stone-700 ml-0.5 cursor-pointer"
-              title="Fermer la barre audio"
+              onClick={() => setDocZoom(100)}
+              className="px-2 py-0.5 text-stone-800 dark:text-stone-200 font-bold text-[10px] sm:text-xs hover:bg-stone-100 dark:hover:bg-stone-700 rounded transition-colors cursor-pointer"
+              title="Réinitialiser à 100%"
             >
-              <X className="w-3 h-3" />
+              {docZoom}%
+            </button>
+
+            <button
+              onClick={() => setDocZoom(prev => Math.min(250, prev + 15))}
+              className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded transition-colors cursor-pointer"
+              title="Zoom avant (+)"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
             </button>
           </div>
-        )}
 
-        <button
-          type="button"
-          onClick={handleMicClick}
-          className={`p-1.5 rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center ${
-            speechState === 'playing'
-              ? 'bg-orange-500 text-white ring-2 ring-orange-300 animate-pulse'
-              : speechState === 'paused'
-              ? 'bg-amber-400 text-stone-900'
-              : isAudioMenuOpen
-              ? 'bg-orange-100 text-orange-700'
-              : 'bg-white hover:bg-orange-50 text-stone-800'
-          }`}
-          title="Lire automatiquement le document (Synthèse vocale)"
-        >
-          <Mic className="w-3.5 h-3.5" />
-        </button>
-      </div>
-
-      {/* Main Document Content */}
-      {isPreviewLoading || isLoadingDocument ? (
-        <div className="flex flex-col items-center justify-center gap-4">
-          <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-stone-800 dark:text-white font-extrabold text-xs sm:text-sm tracking-wide">
-            Ouverture et adaptation du document...
-          </p>
+          {setPreviewScrollMode && (
+            <button
+              onClick={() => setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
+              className="hidden sm:flex px-2 py-1 bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-200 dark:border-stone-700 items-center gap-1 transition-colors cursor-pointer"
+              title="Basculer entre défilement vertical et horizontal"
+            >
+              <ArrowLeftRight className="w-3 h-3 text-stone-500" />
+              <span>{previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
+            </button>
+          )}
         </div>
-      ) : !activePreviewItem ? (
-        <div className="w-full h-full flex flex-col items-center justify-center text-center p-8 text-stone-400 gap-2">
-          <FileText className="w-10 h-10 opacity-30" />
-          <p className="text-xs font-bold text-stone-500">Aucun document sélectionné</p>
-        </div>
-      ) : (() => {
-        const ext = (activePreviewItem?.name?.split('.').pop()?.toUpperCase() || activePreviewItem?.extension || 'FICHIER').toUpperCase();
-        const isPdf = ext === 'PDF' || activePreviewItem?.type === 'application/pdf';
-        const isImg = ['JPG', 'JPEG', 'PNG', 'WEBP', 'SVG', 'GIF', 'BMP', 'ICO'].includes(ext) || activePreviewItem?.type?.startsWith('image/') || activePreviewItem?.isImage;
-        const isVideo = ['MP4', 'WEBM', 'MOV', 'MKV', 'OGG', 'AVI'].includes(ext) || activePreviewItem?.type?.startsWith('video/');
-        const isAudio = ['MP3', 'WAV', 'M4A', 'AAC', 'FLAC', 'OGA', 'WMA'].includes(ext) || activePreviewItem?.type?.startsWith('audio/');
-        const isWord = ['DOCX', 'DOC'].includes(ext);
-        const isExcel = ['XLSX', 'XLS', 'CSV'].includes(ext);
-        const isPpt = ['PPTX', 'PPT'].includes(ext);
-        const isText = ['TXT', 'MD', 'JSON', 'JS', 'TS', 'PY', 'HTML', 'CSS', 'SQL', 'XML', 'LOG', 'JAVA', 'C', 'CPP', 'SH', 'ENV'].includes(ext);
 
-        const currentUrl = resolvedUrl || activePreviewItem?.url || '';
-
-        // 1. PDF
-        if (isPdf) {
-          return (
-            <div className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden rounded-2xl bg-white dark:bg-stone-900 border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] p-1">
-              {currentUrl ? (
-                <object
-                  data={`${currentUrl}#toolbar=1&navpanes=0&view=FitH`}
-                  type="application/pdf"
-                  className="w-full h-full rounded-xl"
-                  style={{ zoom: `${docZoom}%` }}
-                >
-                  <iframe
-                    src={`${currentUrl}#toolbar=1&navpanes=0&view=FitH`}
-                    title={activePreviewItem?.name || 'Document PDF'}
-                    className="w-full h-full border-0 rounded-xl"
-                  />
-                </object>
-              ) : (
-                <div className="flex flex-col items-center gap-3 p-6 text-center">
-                  <FileText className="w-12 h-12 text-red-500" />
-                  <p className="text-sm font-bold text-stone-800 dark:text-white">{activePreviewItem.name}</p>
-                  <p className="text-xs text-stone-500">Document PDF prêt pour l'analyse IA.</p>
+        {/* Right Controls: Audio Speech Controls */}
+        <div className="flex items-center gap-1.5">
+          {isAudioMenuOpen && (
+            <div className="flex items-center gap-1 bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg px-2 py-1 animate-fadeIn text-stone-800 dark:text-stone-200">
+              {speechState === 'playing' && (
+                <div className="flex items-center gap-0.5 mr-1 text-orange-500">
+                  <span className="w-0.5 h-2.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                  <span className="w-0.5 h-3.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                  <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
                 </div>
               )}
+
+              <button
+                type="button"
+                onClick={handleTogglePause}
+                className="flex items-center gap-1 px-1.5 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-700 rounded text-[10px] font-bold transition-colors cursor-pointer"
+                title={speechState === 'playing' ? "Mettre en pause" : "Reprendre la lecture"}
+              >
+                {speechState === 'playing' ? (
+                  <>
+                    <Pause className="w-3 h-3 text-amber-600 fill-amber-600 shrink-0" />
+                    <span className="hidden sm:inline">Pause</span>
+                  </>
+                ) : (
+                  <>
+                    <Play className="w-3 h-3 text-emerald-600 fill-emerald-600 shrink-0" />
+                    <span className="hidden sm:inline">Reprendre</span>
+                  </>
+                )}
+              </button>
+
+              <div className="w-[1px] h-3.5 bg-stone-300 dark:bg-stone-700" />
+
+              <button
+                type="button"
+                onClick={handleStop}
+                className="flex items-center gap-1 px-1.5 py-0.5 hover:bg-red-50 dark:hover:bg-red-950/30 rounded text-[10px] font-bold text-red-600 transition-colors cursor-pointer"
+                title="Arrêter la lecture"
+              >
+                <Square className="w-2.5 h-2.5 fill-red-600 shrink-0" />
+                <span className="hidden sm:inline">Arrêter</span>
+              </button>
+
+              <div className="w-[1px] h-3.5 bg-stone-300 dark:bg-stone-700" />
+
+              <button
+                type="button"
+                onClick={handleRestart}
+                className="flex items-center gap-1 px-1.5 py-0.5 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded text-[10px] font-bold text-blue-600 transition-colors cursor-pointer"
+                title="Recommencer la lecture"
+              >
+                <RotateCcw className="w-3 h-3 shrink-0" />
+                <span className="hidden sm:inline">Recommencer</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setIsAudioMenuOpen(false)}
+                className="p-0.5 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-full text-stone-400 hover:text-stone-600 ml-0.5 cursor-pointer"
+                title="Fermer la barre audio"
+              >
+                <X className="w-3 h-3" />
+              </button>
             </div>
-          );
-        }
+          )}
 
-        // 2. WORD (.docx / .doc)
-        if (isWord) {
-          return (
-            <div className="w-full h-full flex flex-col overflow-hidden rounded-2xl bg-[#f8f9fa] dark:bg-stone-950 border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917]">
-              {/* Word Header Toolbar */}
-              <div className="flex items-center justify-between px-4 py-2 border-b border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200 text-xs shrink-0">
-                <div className="flex items-center gap-2 font-bold truncate">
-                  <FileText className="w-4 h-4 text-blue-600 shrink-0" />
-                  <span className="truncate">{activePreviewItem.name}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <button
-                    onClick={() => handleCopyText(extractedDocText || docxHtml.replace(/<[^>]+>/g, ''))}
-                    className="px-2 py-1 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 rounded border border-stone-300 dark:border-stone-700 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+          <button
+            type="button"
+            onClick={handleMicClick}
+            className={`p-1.5 rounded-lg border border-stone-200 dark:border-stone-700 transition-all cursor-pointer flex items-center justify-center ${
+              speechState === 'playing'
+                ? 'bg-orange-500 text-white animate-pulse ring-2 ring-orange-300'
+                : speechState === 'paused'
+                ? 'bg-amber-400 text-stone-900'
+                : isAudioMenuOpen
+                ? 'bg-orange-100 dark:bg-orange-950/40 text-orange-700 dark:text-orange-400'
+                : 'bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200'
+            }`}
+            title="Lire automatiquement le document (Synthèse vocale)"
+          >
+            <Mic className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      </div>
+
+      {/* Main Document Content Area: Occupies 100% of the width and height (NO side gutters, NO 3D creux) */}
+      <div className="flex-1 w-full h-full overflow-hidden relative">
+        {isPreviewLoading || isLoadingDocument ? (
+          <div className="w-full h-full flex flex-col items-center justify-center gap-4 bg-white dark:bg-stone-950">
+            <div className="w-12 h-12 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+            <p className="text-stone-800 dark:text-white font-extrabold text-xs sm:text-sm tracking-wide">
+              Chargement et adaptation du document...
+            </p>
+          </div>
+        ) : !activePreviewItem ? (
+          <div className="w-full h-full flex flex-col items-center justify-center text-center p-8 text-stone-400 gap-2 bg-white dark:bg-stone-950">
+            <FileText className="w-10 h-10 opacity-30" />
+            <p className="text-xs font-bold text-stone-500">Aucun document sélectionné</p>
+          </div>
+        ) : (() => {
+          const ext = (activePreviewItem?.name?.split('.').pop()?.toUpperCase() || activePreviewItem?.extension || 'FICHIER').toUpperCase();
+          const isPdf = ext === 'PDF' || activePreviewItem?.type === 'application/pdf';
+          const isImg = ['JPG', 'JPEG', 'PNG', 'WEBP', 'SVG', 'GIF', 'BMP', 'ICO'].includes(ext) || activePreviewItem?.type?.startsWith('image/') || activePreviewItem?.isImage;
+          const isVideo = ['MP4', 'WEBM', 'MOV', 'MKV', 'OGG', 'AVI'].includes(ext) || activePreviewItem?.type?.startsWith('video/');
+          const isAudio = ['MP3', 'WAV', 'M4A', 'AAC', 'FLAC', 'OGA', 'WMA'].includes(ext) || activePreviewItem?.type?.startsWith('audio/');
+          const isWord = ['DOCX', 'DOC'].includes(ext);
+          const isExcel = ['XLSX', 'XLS', 'CSV'].includes(ext);
+          const isPpt = ['PPTX', 'PPT'].includes(ext);
+          const isText = ['TXT', 'MD', 'JSON', 'JS', 'TS', 'PY', 'HTML', 'CSS', 'SQL', 'XML', 'LOG', 'JAVA', 'C', 'CPP', 'SH', 'ENV'].includes(ext);
+
+          const currentUrl = resolvedUrl || activePreviewItem?.url || '';
+
+          // 1. PDF (Fills 100% edge-to-edge)
+          if (isPdf) {
+            return (
+              <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
+                {currentUrl ? (
+                  <object
+                    data={`${currentUrl}#toolbar=1&navpanes=0&view=FitH`}
+                    type="application/pdf"
+                    className="w-full h-full border-0"
+                    style={{ zoom: `${docZoom}%` }}
                   >
-                    {copiedText ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
-                    <span>{copiedText ? 'Copié !' : 'Copier texte'}</span>
-                  </button>
-                  {currentUrl && (
-                    <a
-                      href={currentUrl}
-                      download={activePreviewItem.name}
-                      className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded text-stone-600 dark:text-stone-300"
-                      title="Télécharger"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </a>
-                  )}
-                </div>
+                    <iframe
+                      src={`${currentUrl}#toolbar=1&navpanes=0&view=FitH`}
+                      title={activePreviewItem?.name || 'Document PDF'}
+                      className="w-full h-full border-0"
+                    />
+                  </object>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
+                    <FileText className="w-12 h-12 text-red-500" />
+                    <p className="text-sm font-bold text-stone-800 dark:text-white">{activePreviewItem.name}</p>
+                    <p className="text-xs text-stone-500">Document PDF prêt pour l'analyse IA.</p>
+                  </div>
+                )}
               </div>
+            );
+          }
 
-              {/* Word Document Paper View */}
-              <div className="flex-1 w-full overflow-y-auto p-4 sm:p-8 flex justify-center">
-                <div
-                  className="w-full max-w-3xl bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 rounded-xl shadow-lg border border-stone-300 dark:border-stone-700 p-6 sm:p-12 transition-all select-text leading-relaxed font-serif"
-                  style={{ zoom: `${docZoom}%`, minHeight: '100%' }}
+          // 2. WORD (.docx / .doc) - Fills 100% of space, reflows comfortably
+          if (isWord) {
+            return (
+              <div className="w-full h-full flex flex-col overflow-hidden bg-white dark:bg-stone-950">
+                {/* Slim Document Header */}
+                <div className="flex items-center justify-between px-4 py-2 border-b border-stone-200 dark:border-stone-800 bg-stone-50 dark:bg-stone-900 text-stone-800 dark:text-stone-200 text-xs shrink-0">
+                  <div className="flex items-center gap-2 font-bold truncate">
+                    <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                    <span className="truncate">{activePreviewItem.name}</span>
+                  </div>
+                  <div className="flex items-center gap-2">
+                    <button
+                      onClick={() => handleCopyText(extractedDocText || docxHtml.replace(/<[^>]+>/g, ''))}
+                      className="px-2.5 py-1 bg-white hover:bg-stone-100 dark:bg-stone-800 dark:hover:bg-stone-700 rounded border border-stone-200 dark:border-stone-700 text-[11px] font-semibold flex items-center gap-1 cursor-pointer transition-colors"
+                    >
+                      {copiedText ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                      <span>{copiedText ? 'Copié !' : 'Copier texte'}</span>
+                    </button>
+                    {currentUrl && (
+                      <a
+                        href={currentUrl}
+                        download={activePreviewItem.name}
+                        className="p-1 hover:bg-stone-200 dark:hover:bg-stone-800 rounded text-stone-600 dark:text-stone-300 transition-colors"
+                        title="Télécharger"
+                      >
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                    )}
+                  </div>
+                </div>
+
+                {/* Word Full Reading View: Expands fully across available space */}
+                <div 
+                  className="flex-1 w-full h-full overflow-y-auto px-6 sm:px-12 md:px-20 py-8 select-text leading-relaxed font-serif text-stone-900 dark:text-stone-100"
+                  style={{ zoom: `${docZoom}%` }}
                 >
                   {docxHtml ? (
                     <div 
-                      className="prose dark:prose-invert max-w-none text-sm md:text-base space-y-4"
+                      className="prose dark:prose-invert max-w-none text-sm sm:text-base space-y-4"
                       dangerouslySetInnerHTML={{ __html: docxHtml }} 
                     />
                   ) : (
-                    <div className="text-center py-12 text-stone-400">
+                    <div className="text-center py-16 text-stone-400">
                       <FileText className="w-12 h-12 mx-auto mb-3 opacity-40 text-blue-500" />
                       <p className="font-semibold text-stone-700 dark:text-stone-300">Formatage du document Word...</p>
-                      <p className="text-xs mt-1">Vous pouvez également échanger avec Delmas IA dans le volet droit.</p>
+                      <p className="text-xs mt-1">Vous pouvez également échanger avec Delmas IA dans le panneau droit.</p>
                     </div>
                   )}
                 </div>
               </div>
-            </div>
-          );
-        }
+            );
+          }
 
-        // 3. EXCEL / SPREADSHEETS (.xlsx / .xls / .csv)
-        if (isExcel) {
-          const filteredRows = excelWorkbook?.rows ? (
-            excelWorkbook.searchQuery.trim()
-              ? excelWorkbook.rows.filter(r => r.some(c => String(c || '').toLowerCase().includes(excelWorkbook.searchQuery.toLowerCase())))
-              : excelWorkbook.rows
-          ) : [];
+          // 3. EXCEL / SPREADSHEETS (.xlsx / .xls / .csv) - 100% Edge-to-Edge Table
+          if (isExcel) {
+            const filteredRows = excelWorkbook?.rows ? (
+              excelWorkbook.searchQuery.trim()
+                ? excelWorkbook.rows.filter(r => r.some(c => String(c || '').toLowerCase().includes(excelWorkbook.searchQuery.toLowerCase())))
+                : excelWorkbook.rows
+            ) : [];
 
-          return (
-            <div className="w-full h-full flex flex-col overflow-hidden rounded-2xl bg-white dark:bg-stone-900 border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917]">
-              {/* Excel Header Toolbar */}
-              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-stone-200 dark:border-stone-800 bg-[#F4F9F4] dark:bg-emerald-950/20 text-xs shrink-0">
-                <div className="flex items-center gap-2">
-                  <Table className="w-4 h-4 text-emerald-600 shrink-0" />
-                  <span className="font-extrabold text-stone-900 dark:text-emerald-300 truncate max-w-[180px] sm:max-w-xs">{activePreviewItem.name}</span>
-                </div>
+            return (
+              <div className="w-full h-full flex flex-col overflow-hidden bg-white dark:bg-stone-900">
+                {/* Excel Header Toolbar */}
+                <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-stone-200 dark:border-stone-800 bg-[#F4F9F4] dark:bg-emerald-950/20 text-xs shrink-0">
+                  <div className="flex items-center gap-2">
+                    <Table className="w-4 h-4 text-emerald-600 shrink-0" />
+                    <span className="font-extrabold text-stone-900 dark:text-emerald-300 truncate max-w-[180px] sm:max-w-xs">{activePreviewItem.name}</span>
+                  </div>
 
-                {/* Sheet Tabs */}
-                {excelWorkbook && excelWorkbook.sheetNames.length > 1 && (
-                  <div className="flex items-center gap-1 overflow-x-auto max-w-xs py-0.5">
-                    {excelWorkbook.sheetNames.map((sheet) => (
-                      <button
-                        key={sheet}
-                        onClick={() => handleSwitchExcelSheet(sheet)}
-                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer whitespace-nowrap ${
-                          excelWorkbook.activeSheet === sheet
-                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
-                            : 'bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-300 dark:border-stone-700 hover:bg-stone-100'
-                        }`}
+                  {/* Sheet Tabs */}
+                  {excelWorkbook && excelWorkbook.sheetNames.length > 1 && (
+                    <div className="flex items-center gap-1 overflow-x-auto max-w-xs py-0.5">
+                      {excelWorkbook.sheetNames.map((sheet) => (
+                        <button
+                          key={sheet}
+                          onClick={() => handleSwitchExcelSheet(sheet)}
+                          className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer whitespace-nowrap ${
+                            excelWorkbook.activeSheet === sheet
+                              ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                              : 'bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700 hover:bg-stone-100'
+                          }`}
+                        >
+                          {sheet}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Search Filter */}
+                  <div className="flex items-center gap-2">
+                    <div className="relative">
+                      <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-stone-400" />
+                      <input
+                        type="text"
+                        placeholder="Filtrer cellules..."
+                        value={excelWorkbook?.searchQuery || ''}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          setExcelWorkbook(prev => prev ? { ...prev, searchQuery: val } : null);
+                        }}
+                        className="pl-6 pr-2 py-1 text-[11px] bg-white dark:bg-stone-800 border border-stone-200 dark:border-stone-700 rounded-lg text-stone-900 dark:text-white w-28 sm:w-36 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                      />
+                    </div>
+                    {currentUrl && (
+                      <a
+                        href={currentUrl}
+                        download={activePreviewItem.name}
+                        className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded text-stone-600 dark:text-stone-300"
+                        title="Télécharger le classeur"
                       >
-                        {sheet}
-                      </button>
-                    ))}
+                        <Download className="w-3.5 h-3.5" />
+                      </a>
+                    )}
                   </div>
-                )}
+                </div>
 
-                {/* Search Filter */}
-                <div className="flex items-center gap-2">
-                  <div className="relative">
-                    <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-stone-400" />
-                    <input
-                      type="text"
-                      placeholder="Filtrer cellules..."
-                      value={excelWorkbook?.searchQuery || ''}
-                      onChange={(e) => {
-                        const val = e.target.value;
-                        setExcelWorkbook(prev => prev ? { ...prev, searchQuery: val } : null);
-                      }}
-                      className="pl-6 pr-2 py-0.5 text-[11px] bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded-lg text-stone-900 dark:text-white w-28 sm:w-36 focus:outline-none focus:ring-1 focus:ring-emerald-500"
-                    />
-                  </div>
-                  {currentUrl && (
-                    <a
-                      href={currentUrl}
-                      download={activePreviewItem.name}
-                      className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded text-stone-600 dark:text-stone-300"
-                      title="Télécharger le classeur"
-                    >
-                      <Download className="w-3.5 h-3.5" />
-                    </a>
+                {/* Table Data View - Stretches 100% without card borders */}
+                <div 
+                  className="flex-1 w-full h-full overflow-auto p-0"
+                  style={{ zoom: `${docZoom}%` }}
+                >
+                  {filteredRows.length > 0 ? (
+                    <table className="w-full border-collapse text-xs font-mono">
+                      <thead>
+                        <tr className="bg-stone-100 dark:bg-stone-800 sticky top-0 z-10 border-b border-stone-300 dark:border-stone-700">
+                          <th className="p-2 border-r border-stone-200 dark:border-stone-700 text-stone-500 w-12 text-center font-bold">#</th>
+                          {filteredRows[0]?.map((_, colIdx: number) => {
+                            const colLetter = String.fromCharCode(65 + (colIdx % 26));
+                            return (
+                              <th key={colIdx} className="p-2 border-r border-stone-200 dark:border-stone-700 text-stone-700 dark:text-stone-300 font-bold text-left min-w-[110px]">
+                                {colLetter}
+                              </th>
+                            );
+                          })}
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {filteredRows.map((row: any[], rowIdx: number) => (
+                          <tr key={rowIdx} className="hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 transition-colors border-b border-stone-100 dark:border-stone-800">
+                            <td className="p-2 border-r border-stone-200 dark:border-stone-800 text-stone-400 bg-stone-50 dark:bg-stone-900 text-center select-none font-bold text-[10px]">
+                              {rowIdx + 1}
+                            </td>
+                            {row.map((cell: any, cellIdx: number) => (
+                              <td key={cellIdx} className="p-2 border-r border-stone-100 dark:border-stone-800/60 text-stone-800 dark:text-stone-200 whitespace-pre truncate max-w-sm select-text">
+                                {cell !== undefined && cell !== null ? String(cell) : ''}
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  ) : (
+                    <div className="flex flex-col items-center justify-center h-full text-stone-400 p-8">
+                      <Table className="w-10 h-10 mb-2 opacity-30 text-emerald-600" />
+                      <p className="font-semibold text-xs">Aucune donnée disponible dans cette feuille.</p>
+                    </div>
                   )}
                 </div>
               </div>
+            );
+          }
 
-              {/* Table Data View */}
-              <div 
-                className="flex-1 w-full overflow-auto p-2"
-                style={{ zoom: `${docZoom}%` }}
-              >
-                {filteredRows.length > 0 ? (
-                  <table className="w-full border-collapse text-xs font-mono">
-                    <thead>
-                      <tr className="bg-stone-100 dark:bg-stone-800 sticky top-0 z-10 shadow-sm">
-                        <th className="p-2 border border-stone-300 dark:border-stone-700 text-stone-500 w-10 text-center font-bold">#</th>
-                        {filteredRows[0]?.map((_, colIdx: number) => {
-                          const colLetter = String.fromCharCode(65 + (colIdx % 26));
-                          return (
-                            <th key={colIdx} className="p-2 border border-stone-300 dark:border-stone-700 text-stone-700 dark:text-stone-300 font-bold text-left min-w-[100px]">
-                              {colLetter}
-                            </th>
-                          );
-                        })}
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {filteredRows.map((row: any[], rowIdx: number) => (
-                        <tr key={rowIdx} className="hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors">
-                          <td className="p-1.5 border border-stone-200 dark:border-stone-800 text-stone-400 bg-stone-50 dark:bg-stone-900 text-center select-none font-bold text-[10px]">
-                            {rowIdx + 1}
-                          </td>
-                          {row.map((cell: any, cellIdx: number) => (
-                            <td key={cellIdx} className="p-1.5 border border-stone-200 dark:border-stone-800 text-stone-800 dark:text-stone-200 whitespace-pre truncate max-w-xs select-text">
-                              {cell !== undefined && cell !== null ? String(cell) : ''}
-                            </td>
-                          ))}
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full text-stone-400 p-8">
-                    <Table className="w-10 h-10 mb-2 opacity-30 text-emerald-600" />
-                    <p className="font-semibold text-xs">Aucune donnée disponible dans cette feuille.</p>
+          // 4. POWERPOINT (.pptx / .ppt) - Expansive slide viewer
+          if (isPpt) {
+            const totalSlides = pptxSlides.length || 1;
+            const currentSlide = pptxSlides[activeSlideIdx] || {
+              slideNumber: 1,
+              title: activePreviewItem.name,
+              bullets: ['Présentation PowerPoint prête pour révision.']
+            };
+
+            return (
+              <div className="w-full h-full flex flex-col overflow-hidden bg-stone-950 text-white">
+                {/* PPT Header Toolbar */}
+                <div className="flex items-center justify-between px-4 py-2 bg-stone-900 text-white text-xs border-b border-stone-800 shrink-0">
+                  <div className="flex items-center gap-2 font-bold truncate">
+                    <Presentation className="w-4 h-4 text-orange-500 shrink-0" />
+                    <span className="truncate">{activePreviewItem.name}</span>
                   </div>
-                )}
-              </div>
-            </div>
-          );
-        }
-
-        // 4. POWERPOINT (.pptx / .ppt)
-        if (isPpt) {
-          const totalSlides = pptxSlides.length || 1;
-          const currentSlide = pptxSlides[activeSlideIdx] || {
-            slideNumber: 1,
-            title: activePreviewItem.name,
-            bullets: ['Présentation PowerPoint prête pour révision.']
-          };
-
-          return (
-            <div className="w-full h-full flex flex-col overflow-hidden rounded-2xl bg-stone-900 border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917]">
-              {/* PPT Header Toolbar */}
-              <div className="flex items-center justify-between px-4 py-2 bg-stone-950 text-white text-xs border-b border-stone-800 shrink-0">
-                <div className="flex items-center gap-2 font-bold truncate">
-                  <Presentation className="w-4 h-4 text-orange-500 shrink-0" />
-                  <span className="truncate">{activePreviewItem.name}</span>
-                </div>
-                <div className="flex items-center gap-2">
-                  <span className="text-[11px] font-mono text-stone-400">
-                    Diapositive {activeSlideIdx + 1} / {totalSlides}
-                  </span>
-                  <div className="flex items-center gap-1">
-                    <button
-                      onClick={() => setActiveSlideIdx(prev => Math.max(0, prev - 1))}
-                      disabled={activeSlideIdx === 0}
-                      className="p-1 bg-stone-800 hover:bg-stone-700 disabled:opacity-40 rounded cursor-pointer"
-                      title="Diapositive précédente"
-                    >
-                      <ChevronLeft className="w-3.5 h-3.5" />
-                    </button>
-                    <button
-                      onClick={() => setActiveSlideIdx(prev => Math.min(totalSlides - 1, prev + 1))}
-                      disabled={activeSlideIdx >= totalSlides - 1}
-                      className="p-1 bg-stone-800 hover:bg-stone-700 disabled:opacity-40 rounded cursor-pointer"
-                      title="Diapositive suivante"
-                    >
-                      <ChevronRight className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
-                </div>
-              </div>
-
-              {/* Slide Viewport */}
-              <div 
-                className="flex-1 w-full flex items-center justify-center p-4 sm:p-8 overflow-auto"
-                style={{ zoom: `${docZoom}%` }}
-              >
-                <div className="w-full max-w-3xl aspect-[16/9] bg-[#FDFBF7] text-stone-900 rounded-2xl shadow-2xl border-2 border-stone-700 p-8 md:p-12 flex flex-col justify-between select-text relative overflow-hidden">
-                  <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-red-500" />
-                  
-                  <div>
-                    <div className="flex items-center justify-between mb-4">
-                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-orange-600 bg-orange-100 px-2.5 py-1 rounded-md">
-                        Diapositive {currentSlide.slideNumber}
-                      </span>
+                  <div className="flex items-center gap-2">
+                    <span className="text-[11px] font-mono text-stone-400">
+                      Diapositive {activeSlideIdx + 1} / {totalSlides}
+                    </span>
+                    <div className="flex items-center gap-1">
+                      <button
+                        onClick={() => setActiveSlideIdx(prev => Math.max(0, prev - 1))}
+                        disabled={activeSlideIdx === 0}
+                        className="p-1 bg-stone-800 hover:bg-stone-700 disabled:opacity-40 rounded cursor-pointer"
+                        title="Diapositive précédente"
+                      >
+                        <ChevronLeft className="w-3.5 h-3.5" />
+                      </button>
+                      <button
+                        onClick={() => setActiveSlideIdx(prev => Math.min(totalSlides - 1, prev + 1))}
+                        disabled={activeSlideIdx >= totalSlides - 1}
+                        className="p-1 bg-stone-800 hover:bg-stone-700 disabled:opacity-40 rounded cursor-pointer"
+                        title="Diapositive suivante"
+                      >
+                        <ChevronRight className="w-3.5 h-3.5" />
+                      </button>
                     </div>
-                    <h2 className="text-xl md:text-2xl font-black text-stone-950 mb-6 leading-snug">
-                      {currentSlide.title}
-                    </h2>
-                    <ul className="space-y-3">
-                      {currentSlide.bullets.map((bullet, idx) => (
-                        <li key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm font-medium text-stone-700 leading-relaxed">
-                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-1.5 shrink-0" />
-                          <span>{bullet}</span>
-                        </li>
-                      ))}
-                    </ul>
                   </div>
+                </div>
 
-                  <div className="flex items-center justify-between pt-4 border-t border-stone-200 text-[10px] font-bold text-stone-400">
-                    <span>StudyCloud Presentation Viewer</span>
-                    <span>{activeSlideIdx + 1} de {totalSlides}</span>
+                {/* Slide Viewport: Fills whole available screen */}
+                <div 
+                  className="flex-1 w-full h-full flex items-center justify-center p-4 sm:p-8 overflow-auto"
+                  style={{ zoom: `${docZoom}%` }}
+                >
+                  <div className="w-full h-full max-w-5xl max-h-[85vh] aspect-[16/9] bg-[#FDFBF7] text-stone-900 rounded-xl border border-stone-700 p-8 md:p-12 flex flex-col justify-between select-text relative overflow-hidden">
+                    <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-red-500" />
+                    
+                    <div>
+                      <div className="flex items-center justify-between mb-4">
+                        <span className="text-[10px] font-extrabold uppercase tracking-widest text-orange-600 bg-orange-100 px-2.5 py-1 rounded-md">
+                          Diapositive {currentSlide.slideNumber}
+                        </span>
+                      </div>
+                      <h2 className="text-xl md:text-3xl font-black text-stone-950 mb-6 leading-snug">
+                        {currentSlide.title}
+                      </h2>
+                      <ul className="space-y-4">
+                        {currentSlide.bullets.map((bullet, idx) => (
+                          <li key={idx} className="flex items-start gap-3 text-sm sm:text-base font-medium text-stone-700 leading-relaxed">
+                            <span className="w-2 h-2 rounded-full bg-orange-500 mt-2 shrink-0" />
+                            <span>{bullet}</span>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+
+                    <div className="flex items-center justify-between pt-4 border-t border-stone-200 text-[11px] font-bold text-stone-400">
+                      <span>StudyCloud Presentation Viewer</span>
+                      <span>{activeSlideIdx + 1} sur {totalSlides}</span>
+                    </div>
                   </div>
                 </div>
               </div>
-            </div>
-          );
-        }
+            );
+          }
 
-        // 5. IMAGES
-        if (isImg) {
-          return (
-            <div className="w-full h-full flex items-center justify-center overflow-auto p-2 sm:p-6">
-              <img
-                src={currentUrl}
-                alt={activePreviewItem?.name || 'Document'}
-                style={{ zoom: `${docZoom}%`, transformOrigin: 'center center' }}
-                className="max-w-full max-h-full object-contain rounded-xl shadow-md border border-stone-300 dark:border-stone-700 transition-all select-none"
-              />
-            </div>
-          );
-        }
+          // 5. IMAGES (Occupies full space cleanly)
+          if (isImg) {
+            return (
+              <div className="w-full h-full flex items-center justify-center overflow-auto p-4 bg-stone-100 dark:bg-stone-950">
+                <img
+                  src={currentUrl}
+                  alt={activePreviewItem?.name || 'Document'}
+                  style={{ zoom: `${docZoom}%`, transformOrigin: 'center center' }}
+                  className="max-w-full max-h-full object-contain transition-all select-none"
+                />
+              </div>
+            );
+          }
 
-        // 6. VIDEO
-        if (isVideo) {
-          return (
-            <div className="w-full h-full flex items-center justify-center p-2 sm:p-6">
-              <div className="w-full max-w-4xl max-h-full rounded-2xl overflow-hidden shadow-2xl border-2 border-stone-800 bg-black flex items-center justify-center">
+          // 6. VIDEO (Full width player)
+          if (isVideo) {
+            return (
+              <div className="w-full h-full flex items-center justify-center bg-black">
                 <video
                   src={currentUrl}
                   controls
                   playsInline
-                  className="w-full max-h-[75vh] object-contain rounded-xl"
+                  className="w-full max-h-full object-contain"
                   style={{ zoom: `${docZoom}%` }}
                 />
               </div>
-            </div>
-          );
-        }
+            );
+          }
 
-        // 7. AUDIO
-        if (isAudio) {
-          return (
-            <div className="w-full h-full flex flex-col items-center justify-center p-4 sm:p-8">
-              <div className="w-full max-w-md bg-white dark:bg-slate-800/90 rounded-2xl border-3 border-stone-800 shadow-[6px_6px_0px_0px_#1c1917] p-6 text-center">
-                <div className="w-20 h-20 mx-auto rounded-2xl bg-orange-500/10 border-2 border-orange-500 flex items-center justify-center mb-4 text-orange-500 shadow-md">
-                  <Music className="w-10 h-10 animate-pulse" />
+          // 7. AUDIO (Modern clean player)
+          if (isAudio) {
+            return (
+              <div className="w-full h-full flex flex-col items-center justify-center p-6 bg-[#FDFBF7] dark:bg-stone-950">
+                <div className="w-full max-w-md bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 p-8 text-center shadow-sm">
+                  <div className="w-20 h-20 mx-auto rounded-2xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center mb-4 text-orange-500">
+                    <Music className="w-10 h-10 animate-pulse" />
+                  </div>
+                  <h3 className="text-base font-extrabold text-stone-900 dark:text-white mb-1 truncate px-2">{activePreviewItem.name}</h3>
+                  <p className="text-xs text-stone-500 mb-6 font-mono">{formatFileSize(activePreviewItem.size)}</p>
+                  <audio src={currentUrl} controls className="w-full rounded-lg" />
                 </div>
-                <h3 className="text-base font-extrabold text-stone-900 dark:text-white mb-1 truncate px-2">{activePreviewItem.name}</h3>
-                <p className="text-xs text-stone-500 mb-6 font-mono">{formatFileSize(activePreviewItem.size)}</p>
-                <audio src={currentUrl} controls className="w-full rounded-lg" />
               </div>
-            </div>
-          );
-        }
+            );
+          }
 
-        // 8. TEXT / CODE
-        if (isText) {
-          return (
-            <div className="w-full h-full flex flex-col overflow-hidden rounded-2xl bg-[#1e1e1e] border-2 border-stone-800 shadow-[4px_4px_0px_0px_#1c1917]">
-              {/* Code Header Bar */}
-              <div className="flex items-center justify-between px-4 py-2 bg-[#2d2d2d] text-stone-300 text-xs border-b border-stone-700 shrink-0">
-                <div className="flex items-center gap-2 font-mono">
-                  <FileCode className="w-4 h-4 text-amber-400" />
-                  <span>{activePreviewItem.name}</span>
+          // 8. TEXT / CODE (Edge-to-Edge editor)
+          if (isText) {
+            return (
+              <div className="w-full h-full flex flex-col overflow-hidden bg-[#1e1e1e]">
+                {/* Code Header Bar */}
+                <div className="flex items-center justify-between px-4 py-2 bg-[#2d2d2d] text-stone-300 text-xs border-b border-stone-700 shrink-0">
+                  <div className="flex items-center gap-2 font-mono">
+                    <FileCode className="w-4 h-4 text-amber-400" />
+                    <span>{activePreviewItem.name}</span>
+                  </div>
+                  <button
+                    onClick={() => handleCopyText(fileTextContent || activePreviewItem.textContent || '')}
+                    className="px-2.5 py-1 bg-stone-700 hover:bg-stone-600 rounded text-[10px] font-semibold text-white flex items-center gap-1 cursor-pointer transition-colors"
+                  >
+                    {copiedText ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedText ? 'Copié' : 'Copier code'}</span>
+                  </button>
                 </div>
-                <button
-                  onClick={() => handleCopyText(fileTextContent || activePreviewItem.textContent || '')}
-                  className="px-2 py-1 bg-stone-700 hover:bg-stone-600 rounded text-[10px] font-semibold text-white flex items-center gap-1 cursor-pointer"
+
+                {/* Code Content: 100% full view */}
+                <div 
+                  className="flex-1 w-full h-full p-4 sm:p-6 overflow-auto font-mono text-xs leading-relaxed text-[#d4d4d4] select-text"
+                  style={{ zoom: `${docZoom}%` }}
                 >
-                  {copiedText ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
-                  <span>{copiedText ? 'Copié' : 'Copier'}</span>
-                </button>
+                  <pre className="whitespace-pre-wrap">{fileTextContent || activePreviewItem.textContent || "Fichier texte vide."}</pre>
+                </div>
               </div>
+            );
+          }
 
-              {/* Code Content */}
-              <div 
-                className="flex-1 w-full p-4 overflow-auto font-mono text-xs leading-relaxed text-[#d4d4d4] select-text"
-                style={{ zoom: `${docZoom}%` }}
-              >
-                <pre className="whitespace-pre-wrap">{fileTextContent || activePreviewItem.textContent || "Fichier texte vide."}</pre>
+          // 9. AUTRE / FICHIER GÉNÉRIQUE
+          return (
+            <div 
+              className="w-full h-full flex flex-col items-center justify-center text-center p-6 overflow-auto bg-white dark:bg-stone-950"
+              style={{ zoom: `${docZoom}%` }}
+            >
+              <div className="mb-6">
+                <FileIconBadge fileName={activePreviewItem?.name || ''} size={64} />
               </div>
+              <h4 className="text-lg font-extrabold text-stone-900 dark:text-white mb-2 max-w-full break-words px-4">{activePreviewItem?.name}</h4>
+              <p className="text-xs text-stone-500 font-mono mb-4">
+                Taille : {formatFileSize(activePreviewItem?.size)} • Format {ext}
+              </p>
+              <div className="bg-orange-50 dark:bg-orange-950/30 border border-orange-200 dark:border-orange-800/60 rounded-xl p-4 text-xs text-orange-900 dark:text-orange-200 font-medium leading-relaxed max-w-sm mb-4">
+                Ce document est ouvert dans StudyCloud. Vous pouvez échanger avec Delmas IA dans le panneau de droite ou utiliser la synthèse vocale en haut à droite.
+              </div>
+              {currentUrl && (
+                <a
+                  href={currentUrl}
+                  download={activePreviewItem.name}
+                  className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
+                >
+                  <Download className="w-4 h-4" />
+                  <span>Télécharger le fichier</span>
+                </a>
+              )}
             </div>
           );
-        }
-
-        // 9. AUTRE / FICHIER GÉNÉRIQUE
-        return (
-          <div 
-            className="w-full h-full flex flex-col items-center justify-center text-center p-4 sm:p-8 overflow-auto origin-center transition-all"
-            style={{ zoom: `${docZoom}%` }}
-          >
-            <div className="mb-6">
-              <FileIconBadge fileName={activePreviewItem?.name || ''} size={64} />
-            </div>
-            <h4 className="text-lg font-extrabold text-stone-900 dark:text-white mb-2 max-w-full break-words px-4">{activePreviewItem?.name}</h4>
-            <p className="text-xs text-stone-500 font-mono mb-4">
-              Taille : {formatFileSize(activePreviewItem?.size)} • Format {ext}
-            </p>
-            <div className="bg-orange-50 dark:bg-orange-950/30 border-2 border-orange-200 dark:border-orange-800/60 rounded-xl p-4 text-xs text-orange-900 dark:text-orange-200 font-medium leading-relaxed max-w-sm mb-4">
-              Ce document est synchronisé avec votre espace d'étude StudyCloud. Vous pouvez interagir avec Delmas IA dans le panneau de droite ou utiliser la synthèse vocale en haut à droite.
-            </div>
-            {currentUrl && (
-              <a
-                href={currentUrl}
-                download={activePreviewItem.name}
-                className="inline-flex items-center gap-2 px-4 py-2 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all"
-              >
-                <Download className="w-4 h-4" />
-                <span>Télécharger le fichier</span>
-              </a>
-            )}
-          </div>
-        );
-      })()}
+        })()}
+      </div>
     </div>
   );
 }
