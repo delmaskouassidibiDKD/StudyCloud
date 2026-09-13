@@ -351,7 +351,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   ? "Rechercher un fichier ou dossier..."
                   : "Rechercher un lien public ou dossier..."
               }
-              className="w-full bg-white border-2 border-stone-800 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+              className="w-full bg-white dark:bg-slate-900/80 dark:border-white/15 dark:text-white dark:placeholder-slate-400 border-2 border-stone-800 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium outline-none shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all"
             />
           </div>
 
@@ -360,12 +360,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <button
               type="button"
               onClick={() => setIsCartViewOpen(!isCartViewOpen)}
-              className={`px-3 py-1.5 font-extrabold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                isCartViewOpen ? 'bg-amber-400 text-stone-900' : 'bg-white hover:bg-stone-100 text-stone-900'
+              className={`px-3 py-1.5 font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                isCartViewOpen ? 'bg-amber-400 text-stone-900' : 'bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-900 dark:text-white'
               }`}
               title="Voir mon panier"
             >
-              <ShoppingCart className="w-4 h-4 text-stone-900" />
+              <ShoppingCart className="w-4 h-4 text-stone-900 dark:text-white" />
               <span className="hidden sm:inline font-extrabold">Panier</span>
             </button>
           )}
@@ -376,30 +376,30 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               {/* Filière Button */}
               <button
                 onClick={() => setShowFiliereModal(true)}
-                className="px-2.5 py-1.5 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-2.5 py-1.5 bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-900 dark:text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5"
                 title="Filières d'études"
               >
-                <GraduationCap className="w-3.5 h-3.5 text-blue-600" />
+                <GraduationCap className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
                 <span className="hidden sm:inline">Filière</span>
               </button>
 
               {/* Schools Button */}
               <button
                 onClick={() => setShowSchoolsModal(true)}
-                className="px-2.5 py-1.5 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-2.5 py-1.5 bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-900 dark:text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5"
                 title="Écoles partenaires"
               >
-                <Building2 className="w-3.5 h-3.5 text-orange-600" />
+                <Building2 className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
                 <span className="hidden sm:inline">Écoles</span>
               </button>
 
               {/* Three-line Menu Button at the very right */}
               <button
                 onClick={() => setShowMenuModal(true)}
-                className="p-2 bg-white hover:bg-stone-100 text-stone-900 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
+                className="p-2 bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-900 dark:text-white rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
                 title="Menu principal"
               >
-                <Menu className="w-4 h-4 text-stone-800" />
+                <Menu className="w-4 h-4 text-stone-800 dark:text-white" />
               </button>
             </div>
           )}
@@ -412,8 +412,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             onClick={() => { setActiveSubTab('librairie'); setIsRecentFilterActive(false); }}
             className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
               activeSubTab === 'librairie'
-                ? 'bg-amber-400 text-stone-900 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
-                : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-800'
+                ? 'bg-amber-400 text-stone-900 border-stone-800 dark:border-amber-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(251,191,36,0.3)]'
+                : 'bg-white dark:bg-white/5 hover:bg-stone-100 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 border-stone-800 dark:border-white/10'
             }`}
           >
             <span>📚</span>
@@ -425,8 +425,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             onClick={() => { setActiveSubTab('ressources'); setIsCartViewOpen(false); }}
             className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
               activeSubTab === 'ressources'
-                ? 'bg-orange-500 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
-                : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-800'
+                ? 'bg-orange-500 text-white border-stone-800 dark:border-orange-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(249,115,22,0.3)]'
+                : 'bg-white dark:bg-white/5 hover:bg-stone-100 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 border-stone-800 dark:border-white/10'
             }`}
           >
             <span>📁</span>
@@ -438,8 +438,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             onClick={() => { setActiveSubTab('liens'); setIsCartViewOpen(false); setIsRecentFilterActive(false); }}
             className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
               activeSubTab === 'liens'
-                ? 'bg-blue-600 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
-                : 'bg-white hover:bg-stone-100 text-stone-700 border-stone-800'
+                ? 'bg-blue-600 text-white border-stone-800 dark:border-blue-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(37,99,235,0.3)]'
+                : 'bg-white dark:bg-white/5 hover:bg-stone-100 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 border-stone-800 dark:border-white/10'
             }`}
           >
             <span>🔗</span>
@@ -1133,48 +1133,48 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     return (
                       <div
                         key={folder.id}
-                        className="bg-[#FDFBF7] border-2 border-stone-800 rounded-2xl p-4 shadow-[3px_3px_0px_0px_#1c1917] flex flex-col justify-between transition-all hover:shadow-[4px_4px_0px_0px_#1c1917]"
+                        className="bg-[#FDFBF7] dark:bg-slate-900/70 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/10 rounded-2xl p-4 shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[0_10px_30px_rgba(0,0,0,0.4)] flex flex-col justify-between transition-all hover:shadow-[4px_4px_0px_0px_#1c1917] dark:hover:border-blue-500/30"
                       >
                         <div>
                           {/* Top Line: Title inside pill badge on left, Size on right (No lock icon) */}
                           <div className="flex items-center justify-between gap-2 mb-2">
-                            <span className="px-3 py-1 bg-amber-100/90 text-amber-950 border border-stone-800 font-extrabold text-xs rounded-xl truncate max-w-[210px] sm:max-w-[240px] shadow-[1px_1px_0px_0px_#1c1917]">
+                            <span className="px-3 py-1 bg-amber-100/90 dark:bg-amber-500/15 text-amber-950 dark:text-amber-300 border border-stone-800 dark:border-amber-500/30 font-extrabold text-xs rounded-xl truncate max-w-[210px] sm:max-w-[240px] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none">
                               {folder.title}
                             </span>
-                            <span className="text-xs font-bold text-stone-600 shrink-0">
+                            <span className="text-xs font-bold text-stone-600 dark:text-slate-400 shrink-0">
                               {totalSizeStr}
                             </span>
                           </div>
 
                           {/* Description / Subtitle */}
-                          <p className="text-xs text-stone-600 font-medium line-clamp-2 my-2.5 leading-relaxed">
+                          <p className="text-xs text-stone-600 dark:text-slate-300 font-medium line-clamp-2 my-2.5 leading-relaxed">
                             {folder.description || (folder.school ? `Cours, TDs corrigés, codes sources et ressources d'études (${folder.school}).` : 'Cours, TDs corrigés, codes sources TP et rapport de projet.')}
                           </p>
 
-                          {/* Folder Files Box */}
+                          {/* Folder Files Box (Boîte sombre sans fond blanc avec texte parfaitement lisible) */}
                           <div
                             onClick={() => onSelectFolder(folder)}
-                            className="bg-stone-100/90 border-2 border-stone-800 rounded-xl p-3 flex items-center gap-3 my-2 cursor-pointer hover:bg-stone-200/70 transition-colors shadow-[1.5px_1.5px_0px_0px_#1c1917]"
+                            className="bg-stone-100/90 dark:bg-slate-950/70 dark:hover:bg-slate-950/90 border-2 border-stone-800 dark:border-white/10 rounded-xl p-3 flex items-center gap-3 my-2 cursor-pointer hover:bg-stone-200/70 transition-colors shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none group/box"
                           >
-                            <div className="w-10 h-10 bg-amber-400 border-2 border-stone-800 rounded-lg flex items-center justify-center shrink-0 shadow-[1px_1px_0px_0px_#1c1917]">
-                              <Folder className="w-5 h-5 text-amber-950 fill-amber-300 stroke-[2]" />
+                            <div className="w-10 h-10 bg-amber-400 dark:bg-amber-500/20 border-2 border-stone-800 dark:border-amber-500/40 rounded-lg flex items-center justify-center shrink-0 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none">
+                              <Folder className="w-5 h-5 text-amber-950 dark:text-amber-400 fill-amber-300 dark:fill-amber-400/30 stroke-[2]" />
                             </div>
                             <div className="overflow-hidden space-y-0.5">
-                              <h4 className="font-extrabold text-xs text-stone-900 truncate">
+                              <h4 className="font-extrabold text-xs text-stone-900 dark:text-white group-hover/box:text-orange-500 dark:group-hover/box:text-orange-400 transition-colors truncate">
                                 {folder.files.length} fichier{folder.files.length > 1 ? 's' : ''} inclus
                               </h4>
-                              <p className="text-[11px] text-stone-500 font-medium truncate">
+                              <p className="text-[11px] text-stone-500 dark:text-slate-400 font-medium truncate">
                                 {folder.files.length > 0 ? folder.files.map(f => f.name).join(', ') : 'Aucun fichier'}
                               </p>
                             </div>
                           </div>
 
                           {/* Dotted Divider */}
-                          <div className="border-b-2 border-dashed border-stone-300 my-3" />
+                          <div className="border-b-2 border-dashed border-stone-300 dark:border-white/10 my-3" />
 
                           {/* Downloads Counter */}
-                          <div className="text-xs font-bold text-stone-600 flex items-center justify-center gap-1.5 mb-3">
-                            <Download className="w-3.5 h-3.5 text-orange-600" />
+                          <div className="text-xs font-bold text-stone-600 dark:text-slate-400 flex items-center justify-center gap-1.5 mb-3">
+                            <Download className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
                             <span>{downloadsCount} téléchargements</span>
                           </div>
                         </div>
@@ -1184,15 +1184,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           <button
                             type="button"
                             onClick={() => handleCopyLink(folder)}
-                            className={`flex-1 py-2 px-3 font-extrabold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center gap-1.5 cursor-pointer transition-all active:translate-x-[1px] active:translate-y-[1px] ${
-                              isCopied ? 'bg-emerald-600 text-white' : 'bg-white hover:bg-stone-50 text-stone-900'
+                            className={`flex-1 py-2 px-3 font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center justify-center gap-1.5 cursor-pointer transition-all active:translate-x-[1px] active:translate-y-[1px] ${
+                              isCopied ? 'bg-emerald-600 text-white' : 'bg-white dark:bg-white/10 hover:bg-stone-50 dark:hover:bg-white/15 text-stone-900 dark:text-white'
                             }`}
                           >
                             {isCopied ? (
                               'Copié ! ✓'
                             ) : (
                               <>
-                                <Copy className="w-3.5 h-3.5" />
+                                <Copy className="w-3.5 h-3.5 text-stone-700 dark:text-slate-300" />
                                 <span>Lien</span>
                               </>
                             )}
@@ -1201,10 +1201,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           <button
                             type="button"
                             onClick={(e) => handleDownloadFolder(folder, e)}
-                            className="px-4 py-2 bg-white hover:bg-stone-50 active:bg-stone-100 text-stone-900 font-extrabold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center gap-1.5 cursor-pointer transition-all active:translate-x-[1px] active:translate-y-[1px]"
+                            className="px-4 py-2 bg-white dark:bg-white/10 hover:bg-stone-50 dark:hover:bg-white/15 active:bg-stone-100 text-stone-900 dark:text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center justify-center gap-1.5 cursor-pointer transition-all active:translate-x-[1px] active:translate-y-[1px]"
                             title="Télécharger les fichiers du dossier"
                           >
-                            <Download className="w-4 h-4 text-stone-900 stroke-[2.5]" />
+                            <Download className="w-4 h-4 text-stone-900 dark:text-white stroke-[2.5]" />
                           </button>
                         </div>
                       </div>

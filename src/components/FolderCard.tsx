@@ -77,7 +77,7 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
 
   return (
     <div
-      className="bg-[#FDFBF7] border-3 border-stone-800 rounded-2xl p-5 shadow-[4px_4px_0px_0px_#1c1917] hover:shadow-[6px_6px_0px_0px_#1c1917] transition-all flex flex-col justify-between group relative overflow-hidden"
+      className="bg-[#FDFBF7] dark:bg-slate-900/70 dark:backdrop-blur-xl border-3 border-stone-800 dark:border-white/10 rounded-2xl p-5 shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-[0_10px_30px_rgba(0,0,0,0.4)] hover:shadow-[6px_6px_0px_0px_#1c1917] dark:hover:border-blue-500/30 transition-all flex flex-col justify-between group relative overflow-hidden"
     >
       {/* Delete Confirmation Menu Overlay */}
       {showDeleteMenu && (
@@ -225,23 +225,23 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
         <div className="flex items-start justify-between gap-2 mb-3">
           <div className="flex flex-col gap-1">
             <div className="flex items-center gap-1.5 flex-wrap">
-              <span className="text-xs font-bold px-3 py-1 bg-orange-100 border-2 border-stone-800 rounded-lg text-orange-700 shadow-[2px_2px_0px_0px_#1c1917] truncate max-w-[180px]" title={folder.title}>
+              <span className="text-xs font-bold px-3 py-1 bg-orange-100 dark:bg-orange-500/15 border-2 border-stone-800 dark:border-orange-500/30 rounded-lg text-orange-700 dark:text-orange-300 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none truncate max-w-[180px]" title={folder.title}>
                 {folder.title}
               </span>
               {folder.shareCode && (
-                <span className="text-[10px] font-mono font-black px-2 py-0.5 bg-stone-900 text-amber-400 border border-stone-800 rounded-lg shadow-xs" title={`Code unique : ${folder.shareCode}`}>
+                <span className="text-[10px] font-mono font-black px-2 py-0.5 bg-stone-900 text-amber-400 border border-stone-800 dark:border-white/10 rounded-lg shadow-xs" title={`Code unique : ${folder.shareCode}`}>
                   {folder.shareCode}
                 </span>
               )}
             </div>
             {folder.country && (
-              <span className="text-[10px] text-stone-500 font-medium flex items-center gap-1">
+              <span className="text-[10px] text-stone-500 dark:text-slate-400 font-medium flex items-center gap-1">
                 <span>📍</span> {folder.country}
               </span>
             )}
           </div>
           <div className="flex items-start gap-3">
-            <span className="text-xs font-mono text-stone-600 font-bold mt-1">
+            <span className="text-xs font-mono text-stone-600 dark:text-slate-400 font-bold mt-1">
               {formatSize(folder.totalSize)}
             </span>
             {!isPublicView && (
@@ -253,16 +253,16 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
                     setCommentError(false);
                     setShowPublishModal(true);
                   }}
-                  className={`p-1.5 border-2 border-stone-800 rounded-lg shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer ${
+                  className={`p-1.5 border-2 border-stone-800 dark:border-white/15 rounded-lg shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer ${
                     isPublic
-                      ? 'bg-emerald-100 hover:bg-emerald-200 text-emerald-700'
-                      : 'bg-[#FFF3D6] hover:bg-[#ffe8b3] text-amber-800'
+                      ? 'bg-emerald-100 dark:bg-emerald-500/20 hover:bg-emerald-200 text-emerald-700 dark:text-emerald-300'
+                      : 'bg-[#FFF3D6] dark:bg-amber-500/20 hover:bg-[#ffe8b3] text-amber-800 dark:text-amber-300'
                   }`}
                   title={isPublic ? 'Lien public (Cliquer pour modifier ou repasser en privé)' : 'Rendre ce lien public'}
                 >
                   {isPublic ? <Unlock className="w-3.5 h-3.5" /> : <Lock className="w-3.5 h-3.5" />}
                 </button>
-                <span className="text-[10px] font-extrabold text-stone-700 mt-0.5 tracking-tight">
+                <span className="text-[10px] font-extrabold text-stone-700 dark:text-slate-400 mt-0.5 tracking-tight">
                   {isPublic ? 'Public' : 'Privé'}
                 </span>
               </div>
@@ -272,27 +272,27 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
 
         {/* Description / Comment */}
         {folder.description && folder.description.trim() !== '' && (
-          <p className="text-xs text-stone-600 line-clamp-2 mb-3 leading-relaxed">
+          <p className="text-xs text-stone-600 dark:text-slate-300 line-clamp-2 mb-3 leading-relaxed">
             {folder.description}
           </p>
         )}
 
-        {/* Clean files summary box (without checkboxes) */}
+        {/* Clean files summary box (without checkboxes) - Dark mode modern inset box */}
         <div
           onClick={(e) => {
             e.stopPropagation();
             onSelect(folder);
           }}
-          className="bg-[#F5F1E9] hover:bg-[#efe9df] border-2 border-stone-800 rounded-xl p-3 mb-4 shadow-[2px_2px_0px_0px_#1c1917] flex items-center gap-3 cursor-pointer transition-colors group/box"
+          className="bg-[#F5F1E9] dark:bg-slate-950/70 dark:hover:bg-slate-950/90 hover:bg-[#efe9df] border-2 border-stone-800 dark:border-white/10 rounded-xl p-3 mb-4 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center gap-3 cursor-pointer transition-colors group/box"
         >
           <div className="shrink-0 flex items-center justify-center">
             <FileIconBadge isFolder={true} size={40} />
           </div>
           <div className="min-w-0 flex-1">
-            <p className="text-xs font-extrabold text-stone-900 group-hover/box:text-orange-600 transition-colors">
+            <p className="text-xs font-extrabold text-stone-900 dark:text-white group-hover/box:text-orange-600 dark:group-hover/box:text-orange-400 transition-colors">
               {folder.files.length} fichier{folder.files.length > 1 ? 's' : ''} inclus
             </p>
-            <p className="text-[11px] text-stone-600 truncate font-medium">
+            <p className="text-[11px] text-stone-600 dark:text-slate-400 truncate font-medium">
               {fileNamesSummary || 'Aucun fichier'}
             </p>
           </div>
@@ -301,9 +301,9 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
 
       <div>
         {/* Analytics stats */}
-        <div className="flex items-center justify-center text-xs text-stone-600 pt-3 border-t-2 border-dashed border-stone-300 mb-3">
+        <div className="flex items-center justify-center text-xs text-stone-600 dark:text-slate-400 pt-3 border-t-2 border-dashed border-stone-300 dark:border-white/10 mb-3">
           <div className="flex items-center gap-1.5 font-medium">
-            <Download className="w-3.5 h-3.5 text-orange-600" />
+            <Download className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
             <span>{folder.downloadsCount} téléchargements</span>
           </div>
         </div>
@@ -312,10 +312,10 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
         <div className={`grid ${isPublicView ? 'grid-cols-2' : 'grid-cols-3'} gap-2`}>
           <button
             onClick={handleCopyLink}
-            className="bg-white hover:bg-stone-100 text-stone-800 text-xs font-bold py-2 px-2 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center gap-1 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+            className="bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-800 dark:text-white text-xs font-bold py-2 px-2 rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center justify-center gap-1 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
             title="Copier le lien sécurisé"
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5 text-stone-700" />}
+            {copied ? <Check className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> : <Copy className="w-3.5 h-3.5 text-stone-700 dark:text-slate-300" />}
             <span className="truncate">{copied ? 'Copié' : 'Lien'}</span>
           </button>
 
@@ -324,10 +324,10 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
               e.stopPropagation();
               onOpenQR(folder);
             }}
-            className="bg-white hover:bg-stone-100 text-stone-800 text-xs font-bold py-2 px-2 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center gap-1 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+            className="bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-800 dark:text-white text-xs font-bold py-2 px-2 rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center justify-center gap-1 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
             title="Générer QR Code mobile"
           >
-            <QrCode className="w-3.5 h-3.5 text-stone-700" />
+            <QrCode className="w-3.5 h-3.5 text-stone-700 dark:text-slate-300" />
             <span>QR Code</span>
           </button>
 
@@ -337,7 +337,7 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
                 e.stopPropagation();
                 setShowDeleteMenu(true);
               }}
-              className="bg-red-50 hover:bg-red-100 text-red-600 text-xs font-bold py-2 px-2 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center gap-1 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+              className="bg-red-50 dark:bg-red-500/15 hover:bg-red-100 dark:hover:bg-red-500/25 text-red-600 dark:text-red-400 text-xs font-bold py-2 px-2 rounded-xl border-2 border-stone-800 dark:border-red-500/30 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center justify-center gap-1 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
               title="Supprimer le dossier"
             >
               <Trash2 className="w-3.5 h-3.5" />

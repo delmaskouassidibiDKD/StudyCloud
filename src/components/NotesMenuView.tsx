@@ -542,21 +542,21 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
       {/* ---------------- RENDER MAIN NOTES LIST VIEW ---------------- */}
       <div 
         ref={listContainerRef} 
-        className={`absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] text-[#2D4A3E] overflow-y-auto flex-col min-h-[calc(100vh-60px)] select-none transition-all duration-300 ease-in-out flex ${viewMode !== 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
+        className={`absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-transparent text-[#2D4A3E] dark:text-slate-100 overflow-y-auto flex-col min-h-[calc(100vh-60px)] select-none transition-all duration-300 ease-in-out flex ${viewMode !== 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
       >
       
       {/* Fixed 3D Header */}
       <div className="fixed top-14 left-4 right-4 md:left-[17rem] flex items-center justify-between z-40 pointer-events-none">
         <button
           onClick={onBack}
-          className="pointer-events-auto flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          className="pointer-events-auto flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-white/10 dark:hover:bg-white/15 dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-white/15 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
         >
           <ArrowLeft className="w-3 h-3" />
           <span>Retour</span>
         </button>
 
         <h1 
-          className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] bg-[#E8DFD0] px-3 py-1 rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] text-center"
+          className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] dark:text-white bg-[#E8DFD0] dark:bg-white/10 px-3 py-1 rounded-lg border-2 border-[#2D4A3E] dark:border-white/15 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none text-center"
           dangerouslySetInnerHTML={{ __html: 'Bloc-notes' }}
         />
 

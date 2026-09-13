@@ -136,7 +136,16 @@ body, aside, nav, header, button, .app-scroll-container {
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Transformation des fonds beiges brutaux en verre depoli moderne sombre */
+/* Transformation des fonds clairs (brutaux, beiges, blancs ou gris pierre) en verre depoli sombre */
+.dark [class*="bg-[#FDFBF7]"],
+.dark [class*="bg-[#F5F1E9]"],
+.dark [class*="bg-[#F5F0E8]"],
+.dark [class*="bg-[#E8DFD0]"],
+.dark [class*="bg-[#EBE5DA]"],
+.dark [class*="bg-stone-50"],
+.dark [class*="bg-stone-100"],
+.dark [class*="bg-stone-200"],
+.dark [class*="bg-amber-100"],
 .dark .bg-\[\#FDFBF7\],
 .dark .bg-\[\#F5F1E9\],
 .dark .bg-\[\#F5F0E8\],
@@ -147,14 +156,46 @@ body, aside, nav, header, button, .app-scroll-container {
   background-color: rgba(15, 23, 42, 0.75) !important;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #f8fafc !important;
 }
 
-.dark .bg-white {
+/* Boites interieures et resumes de fichiers (elimine definitivement les boites blanches sur les fichiers) */
+.dark [class*="bg-stone-100/"],
+.dark [class*="bg-stone-200/"],
+.dark [class*="bg-amber-100/"],
+.dark [class*="bg-orange-100/"],
+.dark [class*="bg-[#F5F1E9]/"],
+.dark [class*="bg-[#E8DFD0]/"] {
+  background-color: rgba(2, 6, 23, 0.7) !important;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  border-color: rgba(255, 255, 255, 0.12) !important;
+  color: #f8fafc !important;
+}
+
+/* Boutons, inputs et menus avec fond blanc */
+.dark .bg-white,
+.dark [class*="bg-white/90"],
+.dark [class*="bg-white/80"] {
   background-color: rgba(15, 23, 42, 0.85) !important;
   backdrop-filter: blur(16px);
   -webkit-backdrop-filter: blur(16px);
-  color: #f8fafc;
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  color: #f8fafc !important;
+}
+
+/* Champs de saisie en mode sombre */
+.dark input,
+.dark textarea {
+  background-color: rgba(15, 23, 42, 0.9) !important;
+  color: #ffffff !important;
+  border-color: rgba(255, 255, 255, 0.15) !important;
+}
+
+.dark input::placeholder,
+.dark textarea::placeholder {
+  color: #64748b !important;
 }
 
 /* Bordures modernes lumineuses et douces */
@@ -163,21 +204,33 @@ body, aside, nav, header, button, .app-scroll-container {
 .dark .border-\[\#2D4A3E\],
 .dark .border-stone-700,
 .dark .border-stone-300,
-.dark .border-stone-200 {
+.dark .border-stone-200,
+.dark [class*="border-stone-"] {
   border-color: rgba(255, 255, 255, 0.12) !important;
 }
 
-/* Typographie moderne et lisible */
+/* Typographie moderne et ultra-lisible (contraste eleve sur fond sombre) */
 .dark .text-\[\#2D4A3E\],
 .dark .text-stone-800,
-.dark .text-stone-900 {
-  color: #f8fafc !important;
+.dark .text-stone-900,
+.dark .text-amber-950,
+.dark [class*="text-stone-900"],
+.dark [class*="text-stone-800"] {
+  color: #ffffff !important;
+}
+
+.dark .text-stone-600,
+.dark .text-stone-700,
+.dark [class*="text-stone-600"],
+.dark [class*="text-stone-700"] {
+  color: #cbd5e1 !important;
 }
 
 .dark .text-\[\#5C6B5A\],
-.dark .text-stone-600,
-.dark .text-stone-700,
-.dark .text-stone-500 {
+.dark .text-stone-500,
+.dark .text-stone-400,
+.dark [class*="text-stone-500"],
+.dark [class*="text-stone-400"] {
   color: #94a3b8 !important;
 }
 
