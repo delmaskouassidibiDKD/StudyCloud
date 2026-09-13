@@ -76,6 +76,18 @@ export const DelmasRobot: React.FC<DelmasRobotProps> = ({ className = '', size =
     };
   }, []);
 
+  const scale = size / 42;
+  const eyeW = Math.max(2.5, +(6 * scale).toFixed(1));
+  const eyeH = Math.max(4, +(10 * scale).toFixed(1));
+  const eyeGap = Math.max(1.5, +(4.5 * scale).toFixed(1));
+  const mouthW = Math.max(4, +(11 * scale).toFixed(1));
+  const mouthH = Math.max(1.2, +(3.5 * scale).toFixed(1));
+  const mouthMt = Math.max(1, +(3 * scale).toFixed(1));
+  const borderWidth = size <= 26 ? 1 : 2;
+  const shadowSpread = size <= 26 ? '0 0 1px rgba(255,255,255,0.9)' : '0 0 2px rgba(255,255,255,0.9)';
+  const maxGazeX = +(gaze.x * 0.18 * scale).toFixed(2);
+  const maxGazeY = +(gaze.y * 0.18 * scale).toFixed(2);
+
   return (
     <div
       className={`relative flex items-center justify-center overflow-hidden shrink-0 ${className}`}
@@ -84,12 +96,15 @@ export const DelmasRobot: React.FC<DelmasRobotProps> = ({ className = '', size =
       <div className="relative w-full h-full rounded-full flex items-center justify-center">
         {/* Sphère avec dégradé bleu franc, net et vibrant */}
         <div
-          className="relative w-full h-full rounded-full flex items-center justify-center overflow-hidden border-2 border-blue-300/80"
+          className="relative w-full h-full rounded-full flex items-center justify-center overflow-hidden"
           style={{
+            border: `${borderWidth}px solid rgba(147, 197, 253, 0.85)`,
             background:
               'radial-gradient(circle at 35% 26%, #93c5fd 0%, #3b82f6 30%, #1d4ed8 66%, #1e3a8a 92%, #0f172a 100%)',
             boxShadow:
-              '0 3px 10px rgba(29, 78, 216, 0.4), inset 0 -3px 6px rgba(15, 23, 42, 0.65), inset 0 2px 4px rgba(255, 255, 255, 0.55)',
+              size <= 26
+                ? '0 1px 4px rgba(29, 78, 216, 0.4), inset 0 -1.5px 3px rgba(15, 23, 42, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.5)'
+                : '0 3px 10px rgba(29, 78, 216, 0.4), inset 0 -3px 6px rgba(15, 23, 42, 0.65), inset 0 2px 4px rgba(255, 255, 255, 0.55)',
           }}
         >
           {/* Reflet lumineux net sans flou */}
@@ -110,24 +125,26 @@ export const DelmasRobot: React.FC<DelmasRobotProps> = ({ className = '', size =
             <div
               className="flex flex-col items-center justify-center transition-transform duration-500 ease-out"
               style={{
-                transform: `translate(${gaze.x * 0.2}px, ${gaze.y * 0.22}px)`,
+                transform: `translate(${maxGazeX}px, ${maxGazeY}px)`,
               }}
             >
               {/* Yeux nets */}
-              <div className="flex items-center justify-center gap-1.5">
+              <div className="flex items-center justify-center" style={{ gap: `${eyeGap}px` }}>
                 <span
-                  className="block bg-white rounded-full shadow-[0_0_2px_rgba(255,255,255,0.9)] transition-transform duration-100"
+                  className="block bg-white rounded-full transition-transform duration-100 shrink-0"
                   style={{
-                    width: '6px',
-                    height: '10px',
+                    width: `${eyeW}px`,
+                    height: `${eyeH}px`,
+                    boxShadow: shadowSpread,
                     transform: blinking ? 'scaleY(0.1)' : 'scaleY(1)',
                   }}
                 />
                 <span
-                  className="block bg-white rounded-full shadow-[0_0_2px_rgba(255,255,255,0.9)] transition-transform duration-100"
+                  className="block bg-white rounded-full transition-transform duration-100 shrink-0"
                   style={{
-                    width: '6px',
-                    height: '10px',
+                    width: `${eyeW}px`,
+                    height: `${eyeH}px`,
+                    boxShadow: shadowSpread,
                     transform: blinking ? 'scaleY(0.1)' : 'scaleY(1)',
                   }}
                 />
@@ -135,10 +152,12 @@ export const DelmasRobot: React.FC<DelmasRobotProps> = ({ className = '', size =
 
               {/* Bouche nette */}
               <span
-                className="block bg-white rounded-b-full rounded-t-sm shadow-[0_0_2px_rgba(255,255,255,0.9)] mt-1.5"
+                className="block bg-white rounded-b-full rounded-t-xs shrink-0"
                 style={{
-                  width: '11px',
-                  height: '3.5px',
+                  width: `${mouthW}px`,
+                  height: `${mouthH}px`,
+                  marginTop: `${mouthMt}px`,
+                  boxShadow: shadowSpread,
                 }}
               />
             </div>

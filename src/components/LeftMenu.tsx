@@ -349,6 +349,11 @@ export function LeftMenu({
       const isSelected = selectedIds.includes(f.id);
       const isAttached = attachedResources.some(res => res.id === f.id);
       
+      const totalContextCount = (activePreviewItem ? 1 : 0) + attachedResources.filter(res => res.id !== activePreviewItem?.id).length;
+      const isLimitReached = totalContextCount >= 3;
+      // Le bouton trois traits disparaît sur les fichiers non attachés quand la limite de 3 est atteinte
+      const showMenuButton = !isSelectionMode && !isActive && (isAttached || !isLimitReached);
+      
       let containerClass = "border-2 border-transparent bg-transparent";
       let textClass = "text-stone-700";
       
@@ -385,14 +390,14 @@ export function LeftMenu({
           <div className={`relative p-2.5 rounded-xl transition-all ${containerClass}`}>
             <FileIconBadge fileName={f.name} size={48} />
             
-            {!isSelectionMode && !isActive && (
+            {showMenuButton && (
               <div className={`absolute top-1 right-1 transition-opacity z-50 ${openMenuId === f.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
                 <button 
                   onClick={(e) => {
                     e.stopPropagation();
                     setOpenMenuId(openMenuId === f.id ? null : f.id);
                   }}
-                  className="p-1 bg-white/90 shadow-sm rounded-full hover:bg-orange-50 text-stone-500 hover:text-orange-600 transition-colors"
+                  className="p-1 bg-white/90 shadow-sm rounded-full hover:bg-orange-50 text-stone-500 hover:text-orange-600 transition-colors cursor-pointer"
                 >
                   <MoreVertical className="w-3.5 h-3.5" />
                 </button>
@@ -402,14 +407,14 @@ export function LeftMenu({
             {openMenuId === f.id && (
               <div className="absolute top-[85%] left-1/2 -translate-x-1/2 mt-1 w-[110px] bg-white rounded-xl shadow-xl border border-stone-200 py-1 z-[100] overflow-hidden animate-fadeIn">
                     
-                    {attachedResources.some(res => res.id === f.id) ? (
+                    {isAttached ? (
                       <button
                         onClick={(e) => {
                           e.stopPropagation();
                           setAttachedResources(prev => prev.filter(res => res.id !== f.id));
                           setOpenMenuId(null);
                         }}
-                        className="w-full px-2 py-2 text-left text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:text-orange-600 flex items-center gap-2 transition-colors"
+                        className="w-full px-2 py-2 text-left text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:text-orange-600 flex items-center gap-2 transition-colors cursor-pointer"
                       >
                         <X className="w-3.5 h-3.5 shrink-0" />
                         Retirer du contexte
@@ -423,14 +428,14 @@ export function LeftMenu({
                           <Plus className="w-3.5 h-3.5 shrink-0 opacity-50" />
                           Déjà ouvert
                         </button>
-                      ) : (attachedResources.length < 2) && (
+                      ) : (!isLimitReached) && (
                         <button
                           onClick={(e) => {
                             e.stopPropagation();
                             setAttachedResources(prev => [...prev, f]);
                             setOpenMenuId(null);
                           }}
-                          className="w-full px-2 py-2 text-left text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:text-orange-600 flex items-center gap-2 transition-colors"
+                          className="w-full px-2 py-2 text-left text-xs font-semibold text-stone-700 hover:bg-stone-50 hover:text-orange-600 flex items-center gap-2 transition-colors cursor-pointer"
                         >
                           <Plus className="w-3.5 h-3.5 shrink-0" />
                           Ajouter au contexte

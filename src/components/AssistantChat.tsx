@@ -166,33 +166,61 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     setIsWaitingServer(true);
 
     try {
-      // 1. Extraction en direct du contenu textuel du document PDF ou Word joint
-      let attachedFileContent = '';
-      let attachedFileName = '';
-      let attachedFileId = '';
-      let attachedFileR2Key = '';
+      // 1. Rassemblement de tous les documents (Actif en Orange + Pièces jointes en Bleu, jusqu'à 3 max)
+      const allDocs: any[] = [];
+      if (activePreviewItem && activePreviewItem.id) {
+        allDocs.push({ ...activePreviewItem, isOrangeActive: true });
+      }
+      if (Array.isArray(attachedResources)) {
+        for (const res of attachedResources) {
+          if (res && res.id && !allDocs.some(d => d.id === res.id)) {
+            allDocs.push({ ...res, isOrangeActive: false });
+          }
+        }
+      }
 
-      const targetDoc = (attachedResources && attachedResources.length > 0) ? attachedResources[0] : activePreviewItem;
-      if (targetDoc) {
-        attachedFileName = targetDoc.name || targetDoc.title || '';
-        attachedFileId = targetDoc.id || '';
-        attachedFileR2Key = targetDoc.r2_key || targetDoc.r2Key || '';
+      const targetDocs = allDocs.slice(0, 3);
+      const docNames: string[] = [];
+      const docIds: string[] = [];
+      const docR2Keys: string[] = [];
+      const docContents: string[] = [];
 
+      if (targetDocs.length > 0) {
         try {
           setIsExtractingDoc(true);
-          attachedFileContent = await extractDocumentText(targetDoc);
-        } catch (e) {
-          console.warn('[AssistantChat] Erreur extraction texte du document:', e);
+          for (let i = 0; i < targetDocs.length; i++) {
+            const doc = targetDocs[i];
+            const name = doc.name || doc.title || `Document_${i + 1}`;
+            docNames.push(name);
+            if (doc.id) docIds.push(doc.id);
+            const r2 = doc.r2_key || doc.r2Key;
+            if (r2) docR2Keys.push(r2);
+
+            try {
+              const text = await extractDocumentText(doc);
+              if (text && text.trim()) {
+                const tag = doc.isOrangeActive ? "Document actif à l'écran (Orange)" : `Document joint (${i + 1}) (Bleu)`;
+                docContents.push(`=== DOCUMENT [${i + 1}/${targetDocs.length}] : "${name}" (${tag}) ===\n${text.trim()}\n=== FIN DE "${name}" ===`);
+              }
+            } catch (err) {
+              console.warn('[AssistantChat] Erreur extraction document:', name, err);
+            }
+          }
         } finally {
           setIsExtractingDoc(false);
         }
       }
 
+      const attachedFileContent = docContents.join('\n\n');
+      const attachedFileName = docNames.join(', ');
+      const attachedFileId = docIds.join(',');
+      const attachedFileR2Key = docR2Keys.join(',');
+
       // 2. Contexte du document actif et des ressources jointes
       let systemContent = "Tu es l'assistante IA officielle de la plateforme StudyCloud, développée par DKD Technologies. Tu es une tutrice académique bienveillante, dynamique, très claire et structurée. Tu réponds TOUJOURS en français pour aider l'élève ou l'étudiant dans ses cours, révisions et exercices.";
       
-      if (attachedFileName) {
-        systemContent += `\nL'utilisateur étudie actuellement le document : "${attachedFileName}". Si sa question porte sur ce cours, réponds précisément en t'appuyant sur les explications, définitions, théorèmes et exercices contenus dans ce document.`;
+      if (docNames.length > 0) {
+        systemContent += `\nL'utilisateur a mis à disposition ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et intégral au contenu de ces ${docNames.length} document(s). Réponds précisément en t'appuyant sur l'ensemble de ces documents (théorèmes, cours, formules, définitions, exercices). Si la question compare plusieurs documents ou demande une synthèse, croise les informations entre eux.`;
       }
 
       // 3. Préparation de l'historique des messages pour le format chat
@@ -334,9 +362,13 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
                       <span className="text-xs font-bold text-orange-500/90 tracking-wide uppercase">Assistant StudyCloud</span>
                     </div>
                     {msg.attachedFileName && (
-                      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-[10px] font-semibold text-orange-300">
-                        <FileText className="w-3 h-3 text-orange-400 shrink-0" />
-                        <span className="truncate max-w-[180px] sm:max-w-[240px]">{msg.attachedFileName}</span>
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {msg.attachedFileName.split(', ').map((docName, idx) => (
+                          <div key={idx} className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-[10px] font-semibold text-orange-300">
+                            <FileText className="w-3 h-3 text-orange-400 shrink-0" />
+                            <span className="truncate max-w-[140px] sm:max-w-[200px]">{docName}</span>
+                          </div>
+                        ))}
                       </div>
                     )}
                   </div>
@@ -443,12 +475,15 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           <div className="flex items-center justify-between pt-0.5">
             <div className="flex items-center gap-2 overflow-x-auto flex-1 mr-2 custom-scrollbar pb-1">
                {activePreviewItem?.name && (
-                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-[#1e2024] border border-zinc-700/50 rounded-lg max-w-[150px] sm:max-w-[200px] shrink-0">
+                 <div className="flex items-center gap-1.5 px-2.5 py-1 bg-orange-500/10 border border-orange-500/40 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0" title="Document ouvert à l'écran (sélectionné en orange)">
                    <div className="shrink-0 flex items-center justify-center">
                      <FileIconBadge fileName={activePreviewItem.name} size={16} />
                    </div>
-                   <span className="text-[10px] sm:text-[11px] font-bold text-zinc-300 truncate">
+                   <span className="text-[10px] sm:text-[11px] font-bold text-orange-300 truncate">
                      {activePreviewItem.name}
+                   </span>
+                   <span className="text-[8px] font-black uppercase px-1 py-0.2 rounded bg-orange-500/25 text-orange-400 shrink-0">
+                     Actif
                    </span>
                    {activePreviewItem.isExtracting && (
                      <Loader2 className="w-3 h-3 animate-spin text-orange-400 ml-1 shrink-0" />
@@ -457,15 +492,15 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
                )}
                
                {attachedResources.map(res => (
-                 <div key={res.id} className="flex items-center gap-1.5 px-2.5 py-1 bg-[#1e2024] border border-zinc-700/50 rounded-lg max-w-[150px] sm:max-w-[200px] shrink-0">
+                 <div key={res.id} className="flex items-center gap-1.5 px-2.5 py-1 bg-blue-500/10 border border-blue-500/40 rounded-lg max-w-[160px] sm:max-w-[210px] shrink-0" title="Document joint (sélectionné en bleu)">
                    <div className="shrink-0 flex items-center justify-center">
                      <FileIconBadge fileName={res.name} size={16} />
                    </div>
-                   <span className="text-[10px] sm:text-[11px] font-bold text-zinc-300 truncate">
+                   <span className="text-[10px] sm:text-[11px] font-bold text-blue-300 truncate">
                      {res.name}
                    </span>
                    {res.isExtracting ? (
-                     <Loader2 className="w-3 h-3 animate-spin text-orange-400 ml-1 shrink-0" />
+                     <Loader2 className="w-3 h-3 animate-spin text-blue-400 ml-1 shrink-0" />
                    ) : (
                      <button 
                        type="button"
@@ -474,7 +509,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
                          e.stopPropagation();
                          handleRemoveAttachment(res);
                        }}
-                       className="ml-1 text-zinc-500 hover:text-white p-0.5 rounded-full hover:bg-zinc-700 transition-colors cursor-pointer"
+                       className="ml-1 text-blue-400 hover:text-white p-0.5 rounded-full hover:bg-blue-700/50 transition-colors cursor-pointer"
                        title="Retirer ce document"
                      >
                        <X className="w-3 h-3" />
