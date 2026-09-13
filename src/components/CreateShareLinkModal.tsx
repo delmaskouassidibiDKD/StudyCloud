@@ -12,14 +12,20 @@ interface CreateShareLinkModalProps {
     onComplete?: (folder: SharedFolder) => void,
     isPublic?: boolean
   ) => void;
+  initialLinkName?: string;
 }
 
 export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
   uploadedItems,
   onClose,
   onStartBackgroundCreation,
+  initialLinkName,
 }) => {
-  const [linkName, setLinkName] = useState('');
+  const [linkName, setLinkName] = useState(() => {
+    if (initialLinkName?.trim()) return initialLinkName.trim();
+    if (uploadedItems.length === 1) return uploadedItems[0].name.replace(/\.[^/.]+$/, '');
+    return '';
+  });
   const [comment, setComment] = useState('');
   const [isPublic, setIsPublic] = useState(true);
   const [isCreating, setIsCreating] = useState(false);

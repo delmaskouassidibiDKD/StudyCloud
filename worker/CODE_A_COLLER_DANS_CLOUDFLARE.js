@@ -1161,7 +1161,18 @@ var src_default = {
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
           )`,
-          `CREATE INDEX IF NOT EXISTS idx_study_files_user ON study_imported_files(user_id)`
+          `CREATE INDEX IF NOT EXISTS idx_study_files_user ON study_imported_files(user_id)`,
+          `CREATE TABLE IF NOT EXISTS study_timer_presets (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            duration_seconds INTEGER NOT NULL,
+            hours INTEGER DEFAULT 0,
+            minutes INTEGER DEFAULT 0,
+            seconds INTEGER DEFAULT 0,
+            label TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )`,
+          `CREATE INDEX IF NOT EXISTS idx_timer_presets_user ON study_timer_presets(user_id)`
         ];
         for (const query of tableQueries) {
           try {
@@ -2995,6 +3006,58 @@ var src_default = {
           `).bind(id || crypto.randomUUID(), userId2, durationSeconds, matiereName || "").run();
           return jsonResponse({ success: true }, 201, origin);
         }
+      }
+      if (path === "/api/timer-presets") {
+        const userId = url.searchParams.get("userId");
+        if (method === "GET") {
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
+          const { results } = await env.DB.prepare(
+            "SELECT * FROM study_timer_presets WHERE user_id = ? ORDER BY duration_seconds ASC"
+          ).bind(userId).all();
+          return jsonResponse({ success: true, data: results || [] }, 200, origin);
+        }
+        if (method === "POST") {
+          const body = await request.json();
+          const { id, userId: uId, durationSeconds, hours, minutes, seconds, label } = body;
+          const finalUserId = uId || userId;
+          if (!finalUserId || !durationSeconds) {
+            return errorResponse("userId et durationSeconds requis", 400, origin);
+          }
+          const finalId = id || crypto.randomUUID();
+          const h = typeof hours === "number" ? hours : Math.floor(durationSeconds / 3600);
+          const m = typeof minutes === "number" ? minutes : Math.floor((durationSeconds % 3600) / 60);
+          const s = typeof seconds === "number" ? seconds : durationSeconds % 60;
+          const defaultLabel = label || `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+          await env.DB.prepare(`
+            INSERT INTO study_timer_presets (id, user_id, duration_seconds, hours, minutes, seconds, label)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              duration_seconds = excluded.duration_seconds,
+              hours = excluded.hours,
+              minutes = excluded.minutes,
+              seconds = excluded.seconds,
+              label = excluded.label
+          `).bind(finalId, finalUserId, durationSeconds, h, m, s, defaultLabel).run();
+          return jsonResponse({
+            success: true,
+            data: { id: finalId, userId: finalUserId, durationSeconds, hours: h, minutes: m, seconds: s, label: defaultLabel }
+          }, 201, origin);
+        }
+        if (method === "DELETE") {
+          const id = url.searchParams.get("id");
+          if (id) {
+            await env.DB.prepare("DELETE FROM study_timer_presets WHERE id = ?").bind(id).run();
+          }
+          return jsonResponse({ success: true, message: "Preset supprimé" }, 200, origin);
+        }
+      }
+      if (path.startsWith("/api/timer-presets/") && method === "DELETE") {
+        const id = path.split("/")[3];
+        if (id) {
+          await env.DB.prepare("DELETE FROM study_timer_presets WHERE id = ?").bind(id).run();
+        }
+        return jsonResponse({ success: true, message: "Preset supprimé" }, 200, origin);
       }
       if (path === "/api/shop/profile") {
         const userId = url.searchParams.get("userId");

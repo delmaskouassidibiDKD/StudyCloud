@@ -14,7 +14,7 @@ import { CreateShareLinkModal } from './components/CreateShareLinkModal';
 import { PublishFileView } from './components/PublishFileView';
 import { INITIAL_FOLDERS } from './data/initialData';
 import { SharedFolder, NavigationTab } from './types';
-import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight, Maximize, Minimize, Dna, Menu, Clock, Mic } from 'lucide-react';
+import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight, Maximize, Minimize, Dna, Menu, Clock, Mic, Loader2 } from 'lucide-react';
 import { FileIconBadge } from './components/FileIconBadge';
 import { AssistantChat } from './components/AssistantChat';
 import { DnaLogo } from './components/DnaLogo';
@@ -23,6 +23,7 @@ import { CenterMenu } from './components/CenterMenu';
 import { RightMenu } from './components/RightMenu';
 import { StudyTimerModal, formatTimerDisplay } from './components/StudyTimerModal';
 import { StudyCloudAPI } from './services/api';
+import { getFileBlob } from './services/localFileStorage';
 import { useAuth } from './context/AuthContext';
 import { AuthPage } from './components/auth/AuthPage';
 import { OnboardingPage } from './components/auth/OnboardingPage';
@@ -209,6 +210,10 @@ export default function App() {
     }, 8000);
   };
 
+  const [showCreateShareLinkModal, setShowCreateShareLinkModal] = useState(false);
+  const [shareModalTargetItems, setShareModalTargetItems] = useState<any[] | null>(null);
+  const [shareModalInitialName, setShareModalInitialName] = useState<string>('');
+
   const handleStartBackgroundCreation = (
     linkName: string,
     comment: string,
@@ -217,14 +222,6 @@ export default function App() {
     isPublic: boolean = true
   ) => {
     setTimeout(async () => {
-      const files = items.map((item) => ({
-        id: item.id,
-        name: item.name,
-        size: item.size,
-        type: item.type || 'file',
-        url: item.url,
-      }));
-      const totalSize = files.reduce((acc, f) => acc + f.size, 0);
       const folderId = 'folder-' + Math.random().toString(36).substring(2, 9);
       const shareCode = 'DKD-' + Math.random().toString(36).substring(2, 8).toUpperCase();
       const userCountry = localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire";
@@ -233,6 +230,37 @@ export default function App() {
       const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
       const shareUrl = `${window.location.origin}/#share=${folderId}`;
       const qrCodeData = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(shareUrl)}`;
+
+      // Résoudre ou uploader vers Cloudflare R2 les fichiers locaux (blobs) pour garantir le téléchargement par tous
+      const files = await Promise.all(
+        items.map(async (item) => {
+          let fileUrl = item.url || '';
+          if (!fileUrl || fileUrl.startsWith('blob:')) {
+            try {
+              const blob = await getFileBlob(item.id);
+              if (blob) {
+                const r2Key = `shares/${folderId}/${item.id}_${item.name}`;
+                const fileObj = new File([blob], item.name, { type: item.type || blob.type || 'application/octet-stream' });
+                const r2Res = await StudyCloudAPI.uploadFileToR2(fileObj, r2Key);
+                if (r2Res.success && r2Res.url) {
+                  fileUrl = r2Res.url;
+                }
+              }
+            } catch (err) {
+              console.warn('Sync blob vers R2 lors de la création du partage:', err);
+            }
+          }
+          return {
+            id: item.id || crypto.randomUUID(),
+            name: item.name,
+            size: item.size || 0,
+            type: item.type || 'file',
+            url: fileUrl,
+          };
+        })
+      );
+
+      const totalSize = files.reduce((acc, f) => acc + f.size, 0);
 
       const newFolder: SharedFolder = {
         id: folderId,
@@ -256,7 +284,9 @@ export default function App() {
       };
 
       setFolders((prev) => [newFolder, ...prev]);
-      setUploadedItems([]);
+      if (!shareModalTargetItems) {
+        setUploadedItems([]);
+      }
       showToast(`✨ Votre lien "${linkName.trim()}" a été créé ! Code : ${shareCode} (${userCountry}). Retrouvez-le dans Partagés.`);
 
       try {
@@ -292,7 +322,6 @@ export default function App() {
   const [showUploadModal, setShowUploadModal] = useState(false);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
-  const [showCreateShareLinkModal, setShowCreateShareLinkModal] = useState(false);
   const [activeFolderDetail, setActiveFolderDetail] = useState<SharedFolder | null>(() => {
     try {
       const saved = localStorage.getItem('studycloud_active_folder_detail');
@@ -748,6 +777,10 @@ export default function App() {
     return null;
   });
 
+  const [remoteSharedFolder, setRemoteSharedFolder] = useState<SharedFolder | null>(null);
+  const [isLoadingRemoteShare, setIsLoadingRemoteShare] = useState<boolean>(false);
+  const [remoteShareError, setRemoteShareError] = useState<boolean>(false);
+
   useEffect(() => {
     const handleHashChange = () => {
       const hash = window.location.hash;
@@ -760,6 +793,70 @@ export default function App() {
     window.addEventListener('hashchange', handleHashChange);
     return () => window.removeEventListener('hashchange', handleHashChange);
   }, []);
+
+  // Récupération automatique du dossier partagé depuis Cloudflare D1/R2 si absent localement
+  useEffect(() => {
+    if (!shareId) {
+      setRemoteSharedFolder(null);
+      setRemoteShareError(false);
+      setIsLoadingRemoteShare(false);
+      return;
+    }
+
+    const localFolder = folders.find((f) => f.id === shareId);
+    if (localFolder) {
+      setRemoteSharedFolder(localFolder);
+      return;
+    }
+
+    setIsLoadingRemoteShare(true);
+    setRemoteShareError(false);
+    StudyCloudAPI.getShareDetail(shareId)
+      .then((res) => {
+        if (res.success && res.data) {
+          const row = res.data;
+          const mapped: SharedFolder = {
+            id: row.id,
+            title: row.title,
+            description: row.description || '',
+            category: row.category || 'Cours',
+            author: row.author_name || 'Étudiant',
+            school: row.school || '',
+            country: row.country || "Côte d'Ivoire",
+            createdAt: row.created_at || new Date().toISOString(),
+            files: Array.isArray(row.files)
+              ? row.files.map((f: any) => ({
+                  id: f.id || f.file_id || crypto.randomUUID(),
+                  name: f.name,
+                  size: f.size || 0,
+                  type: f.type || 'file',
+                  url: f.file_url || f.url || '',
+                }))
+              : [],
+            totalSize: row.total_size || 0,
+            downloadsCount: row.downloads_count || 0,
+            isPasswordProtected: Boolean(row.is_password_protected),
+            password: row.password_hash || undefined,
+            viewsCount: row.views_count || 0,
+            shareCode: row.share_code,
+            shareUrl: row.share_url || `${window.location.origin}/#share=${row.id}`,
+            qrCodeData: row.qr_code_data,
+            isPublic: Boolean(row.is_public),
+            allowDownload: Boolean(row.allow_download),
+          };
+          setRemoteSharedFolder(mapped);
+        } else {
+          setRemoteShareError(true);
+        }
+      })
+      .catch((err) => {
+        console.warn('Erreur chargement share distant:', err);
+        setRemoteShareError(true);
+      })
+      .finally(() => {
+        setIsLoadingRemoteShare(false);
+      });
+  }, [shareId, folders]);
 
   useEffect(() => {
     localStorage.setItem('unifolder_shares', JSON.stringify(folders));
@@ -877,6 +974,53 @@ export default function App() {
     );
   }
 
+  // If viewing a share link (e.g. #share=folder-id)
+  if (shareId) {
+    if (isLoadingRemoteShare) {
+      return (
+        <div className="min-h-dvh bg-[#FDFBF7] flex items-center justify-center p-4">
+          <div className="bg-[#F5F1E9] border-3 border-stone-800 rounded-2xl p-8 max-w-sm text-center shadow-[6px_6px_0px_0px_#1c1917] flex flex-col items-center gap-3 animate-fadeIn">
+            <Loader2 className="w-8 h-8 text-orange-500 animate-spin" />
+            <h3 className="text-base font-extrabold text-stone-900">Chargement du document partagé...</h3>
+            <p className="text-xs text-stone-600">Connexion sécurisée à Cloudflare D1/R2...</p>
+          </div>
+        </div>
+      );
+    }
+    const targetFolder = remoteSharedFolder || folders.find((f) => f.id === shareId);
+    if (!targetFolder || remoteShareError) {
+      return (
+        <div className="min-h-dvh bg-[#FDFBF7] flex items-center justify-center p-4">
+          <div className="bg-[#F5F1E9] border-3 border-stone-800 rounded-2xl p-8 max-w-md text-center shadow-[6px_6px_0px_0px_#1c1917]">
+            <h2 className="text-xl font-extrabold text-stone-900 mb-2">Dossier introuvable</h2>
+            <p className="text-sm text-stone-600 mb-6">Le lien de partage est invalide ou le dossier a été supprimé par l'étudiant.</p>
+            <button
+              onClick={() => {
+                window.location.hash = '';
+                setShareId(null);
+                setRemoteSharedFolder(null);
+              }}
+              className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-6 py-3 rounded-xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] cursor-pointer"
+            >
+              Retourner à l'accueil
+            </button>
+          </div>
+        </div>
+      );
+    }
+    return (
+      <SharePortalView
+        folder={targetFolder}
+        onBackToApp={() => {
+          window.location.hash = '';
+          setShareId(null);
+          setRemoteSharedFolder(null);
+        }}
+        onIncrementDownload={handleIncrementDownload}
+      />
+    );
+  }
+
   // 2. Si non connecté : afficher directement la page de connexion (Google ou Email)
   if (!isAuthenticated) {
     return <AuthPage />;
@@ -890,40 +1034,6 @@ export default function App() {
   // 4. Ensuite, questions personnelles d'onboarding (nom, école, filière, niveau, pays, téléphone, photo/logo)
   if (needsOnboarding) {
     return <OnboardingPage />;
-  }
-
-  // If viewing a share link (e.g. #share=folder-id)
-  if (shareId) {
-    const sharedFolder = folders.find((f) => f.id === shareId);
-    if (!sharedFolder) {
-      return (
-        <div className="min-h-dvh bg-[#FDFBF7] flex items-center justify-center p-4">
-          <div className="bg-[#F5F1E9] border-3 border-stone-800 rounded-2xl p-8 max-w-md text-center shadow-[6px_6px_0px_0px_#1c1917]">
-            <h2 className="text-xl font-extrabold text-stone-900 mb-2">Dossier introuvable</h2>
-            <p className="text-sm text-stone-600 mb-6">Le lien de partage est invalide ou le dossier a été supprimé par l'étudiant.</p>
-            <button
-              onClick={() => {
-                window.location.hash = '';
-                setShareId(null);
-              }}
-              className="bg-orange-500 text-white font-bold text-xs px-6 py-3 rounded-xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917]"
-            >
-              Retourner à l'accueil
-            </button>
-          </div>
-        </div>
-      );
-    }
-    return (
-      <SharePortalView
-        folder={sharedFolder}
-        onBackToApp={() => {
-          window.location.hash = '';
-          setShareId(null);
-        }}
-        onIncrementDownload={handleIncrementDownload}
-      />
-    );
   }
 
   // Filter folders
@@ -1163,8 +1273,13 @@ export default function App() {
 
       {showCreateShareLinkModal && (
         <CreateShareLinkModal
-          uploadedItems={uploadedItems}
-          onClose={() => setShowCreateShareLinkModal(false)}
+          uploadedItems={shareModalTargetItems || uploadedItems}
+          initialLinkName={shareModalInitialName}
+          onClose={() => {
+            setShowCreateShareLinkModal(false);
+            setShareModalTargetItems(null);
+            setShareModalInitialName('');
+          }}
           onStartBackgroundCreation={handleStartBackgroundCreation}
         />
       )}
@@ -1268,16 +1383,13 @@ export default function App() {
                 {/* Share Button */}
                 <button
                   onClick={() => {
-                    const shareUrl = window.location.href;
-                    navigator.clipboard.writeText(shareUrl).then(() => {
-                      setShareToast(true);
-                      setTimeout(() => setShareToast(false), 2500);
-                    }).catch(() => {
-                      alert("Lien du document copié dans le presse-papier !");
-                    });
+                    if (!activePreviewItem) return;
+                    setShareModalTargetItems([activePreviewItem]);
+                    setShareModalInitialName(activePreviewItem.name.replace(/\.[^/.]+$/, ''));
+                    setShowCreateShareLinkModal(true);
                   }}
                   className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 shrink-0"
-                  title="Partager le document"
+                  title="Créer un lien de partage pour ce document"
                 >
                   <Share2 className="w-3.5 h-3.5 text-orange-500 shrink-0" />
                   <span className="text-[7.5px] sm:text-xs font-bold sm:font-extrabold leading-none text-center">
@@ -1418,6 +1530,7 @@ export default function App() {
       <StudyTimerModal
         isOpen={showStudyTimer}
         onClose={() => setShowStudyTimer(false)}
+        userId={user?.id || localStorage.getItem('unifolder_user_id') || undefined}
         timerLeft={timerLeft}
         setTimerLeft={setTimerLeft}
         timerDuration={timerDuration}

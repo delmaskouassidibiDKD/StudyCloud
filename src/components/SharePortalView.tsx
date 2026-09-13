@@ -4,6 +4,7 @@ import { SharedFolder, SharedFile } from '../types';
 import JSZip from 'jszip';
 import { DownloadDestinationModal, DownloadDestinationChoice } from './DownloadDestinationModal';
 import { importFilesToMesFichiers } from '../services/userSync';
+import { getWorkerApiUrl } from '../services/api';
 
 interface SharePortalViewProps {
   folder: SharedFolder;
@@ -23,6 +24,15 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
     type: 'all' | 'single';
     file?: SharedFile;
   } | null>(null);
+
+  const resolveFileUrl = (url?: string): string => {
+    if (!url) return '';
+    if (url.startsWith('/api/')) {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      return `${baseUrl}${url}`;
+    }
+    return url;
+  };
 
   const showToast = (msg: string) => {
     setToastMsg(msg);
@@ -45,10 +55,26 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
     onIncrementDownload(folder.id);
     try {
       const zip = new JSZip();
-      folder.files.forEach((file) => {
-        const content = file.url || `Contenu officiel du fichier ${file.name}\nDossier partagé: ${folder.title}\nPartagé via StudyCloud - Plateforme étudiante`;
-        zip.file(file.name, content);
-      });
+      await Promise.all(
+        folder.files.map(async (file) => {
+          const content = file.url || `Contenu officiel du fichier ${file.name}\nDossier partagé: ${folder.title}\nPartagé via StudyCloud - Plateforme étudiante`;
+          const resolved = resolveFileUrl(file.url);
+          const isFetchable = Boolean(resolved && (resolved.startsWith('http') || resolved.startsWith('blob:') || resolved.startsWith('data:')));
+          if (isFetchable) {
+            try {
+              const resp = await fetch(resolved);
+              if (resp.ok) {
+                const b = await resp.blob();
+                zip.file(file.name, b);
+                return;
+              }
+            } catch (e) {
+              console.warn('Erreur zip download file:', file.name, e);
+            }
+          }
+          zip.file(file.name, content);
+        })
+      );
 
       const blob = await zip.generateAsync({ type: 'blob' });
       const url = URL.createObjectURL(blob);
@@ -67,23 +93,36 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
   };
 
   // Exécution réelle du téléchargement sur l'appareil (fichier unique)
-  const executeDeviceDownloadSingle = (file: SharedFile) => {
+  const executeDeviceDownloadSingle = async (file: SharedFile) => {
     onIncrementDownload(folder.id);
     const content = file.url || `Ceci est le fichier ${file.name} téléchargé depuis le dossier partagé ${folder.title}.`;
-    const blob = file.url && file.url.startsWith('data:') 
-      ? fetch(file.url).then(r => r.blob()).catch(() => new Blob([content], { type: 'text/plain;charset=utf-8' }))
-      : Promise.resolve(new Blob([content], { type: 'text/plain;charset=utf-8' }));
-    
-    blob.then((b) => {
-      const url = URL.createObjectURL(b);
-      const a = document.createElement('a');
-      a.href = url;
-      a.download = file.name;
-      document.body.appendChild(a);
-      a.click();
-      document.body.removeChild(a);
-      URL.revokeObjectURL(url);
-    });
+    const resolved = resolveFileUrl(file.url);
+    const isFetchable = Boolean(resolved && (resolved.startsWith('http') || resolved.startsWith('blob:') || resolved.startsWith('data:')));
+
+    let blob: Blob;
+    if (isFetchable) {
+      try {
+        const resp = await fetch(resolved);
+        if (resp.ok) {
+          blob = await resp.blob();
+        } else {
+          blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+        }
+      } catch (e) {
+        blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+      }
+    } else {
+      blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+    }
+
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = file.name;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
   };
 
   // Gestion du choix de l'utilisateur (Appareil, StudyCloud ou les deux)

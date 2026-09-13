@@ -773,6 +773,34 @@ export const StudyCloudAPI = {
     });
   },
 
+  // --------------------------------------------------------------------------
+  // Minuteur d'Étude & Presets d'Heures Enregistrées (Horloge)
+  // --------------------------------------------------------------------------
+  async getTimerPresets(userId: string) {
+    return request<{ success: boolean; data: any[] }>(`/api/timer-presets?userId=${encodeURIComponent(userId)}`);
+  },
+
+  async saveTimerPreset(preset: {
+    id?: string;
+    userId: string;
+    durationSeconds: number;
+    hours?: number;
+    minutes?: number;
+    seconds?: number;
+    label?: string;
+  }) {
+    return request<{ success: boolean; data: any }>('/api/timer-presets', {
+      method: 'POST',
+      body: JSON.stringify(preset),
+    });
+  },
+
+  async deleteTimerPreset(id: string) {
+    return request<{ success: boolean; message: string }>(`/api/timer-presets/${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
   async restoreCloud(userId: string) {
     return request<{ success: boolean; data: any }>(`/api/sync/restore?userId=${encodeURIComponent(userId)}`);
   },
