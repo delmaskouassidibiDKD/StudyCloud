@@ -129,7 +129,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
     // 2. Charger les créneaux réels
     StudyCloudAPI.getScheduleSlots(userId)
       .then((res: any) => {
-        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (res && res.success && Array.isArray(res.data)) {
           const mapped: Record<string, ScheduleEntry> = {};
           for (const s of res.data) {
             const k = `${s.day}_${s.hour_slot}`;
@@ -141,6 +141,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
             };
           }
           setScheduleData(mapped);
+          localStorage.setItem('user_schedule_data', JSON.stringify(mapped));
         }
       })
       .catch(() => {});

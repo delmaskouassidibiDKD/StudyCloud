@@ -56,7 +56,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.getCalendarEvents(userId)
       .then((res: any) => {
-        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (res && res.success && Array.isArray(res.data)) {
           const mapped: CalendarEventItem[] = res.data.map((row: any) => ({
             id: row.id,
             title: row.title,
@@ -68,6 +68,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
             location: row.location || undefined,
           }));
           setEvents(mapped);
+          localStorage.setItem('unifolder_calendar_data', JSON.stringify(mapped));
         }
       })
       .catch(() => {});

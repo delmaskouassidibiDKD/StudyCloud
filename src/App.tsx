@@ -136,10 +136,10 @@ export default function App() {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        if (Array.isArray(parsed)) return parsed;
       } catch (e) {}
     }
-    return INITIAL_FOLDERS.map((f) => ({ ...f, isPasswordProtected: true }));
+    return [];
   });
 
   const [currentTab, setCurrentTab] = useState<NavigationTab>(() => {
@@ -165,6 +165,42 @@ export default function App() {
     localStorage.setItem('unifolder_current_tab', currentTab);
     window.scrollTo({ top: 0, behavior: 'instant' });
   }, [currentTab]);
+
+  // Nettoyage immédiat des anciennes données de démonstration / locales écrites en dur dans le cache
+  useEffect(() => {
+    try {
+      if (localStorage.getItem('sc_mock_cleaned_v2') !== 'true') {
+        localStorage.setItem('sc_mock_cleaned_v2', 'true');
+        // Nettoyer les faux dossiers de démo
+        const savedShares = localStorage.getItem('unifolder_shares');
+        if (savedShares && savedShares.includes('math-l1')) {
+          localStorage.removeItem('unifolder_shares');
+          setFolders([]);
+        }
+        // Nettoyer les faux produits de démo
+        const savedProds = localStorage.getItem('unifolder_published_products');
+        if (savedProds && savedProds.includes("Cours d'Électrotechnique S1")) {
+          localStorage.removeItem('unifolder_published_products');
+        }
+        // Nettoyer les fausses notes de démo
+        const savedNotes = localStorage.getItem('unifolder_keep_notes');
+        if (savedNotes && savedNotes.includes('note-1')) {
+          localStorage.removeItem('unifolder_keep_notes');
+        }
+        // Nettoyer les fausses alarmes de démo
+        const savedAlarms = localStorage.getItem('unifolder_clock_alarms') || localStorage.getItem('unifolder_alarms');
+        if (savedAlarms && savedAlarms.includes('alarm-1')) {
+          localStorage.removeItem('unifolder_clock_alarms');
+          localStorage.removeItem('unifolder_alarms');
+        }
+        // Nettoyer les fausses notes d'école
+        const savedGrades = localStorage.getItem('user_grades_trimesters_data');
+        if (savedGrades && savedGrades.includes('Mathématiques') && !savedGrades.includes('custom_')) {
+          localStorage.removeItem('user_grades_trimesters_data');
+        }
+      }
+    } catch (e) {}
+  }, []);
 
   const showToast = (msg: string) => {
     setToastMessage(msg);
@@ -648,15 +684,15 @@ export default function App() {
     if (!isAuthenticated || !user?.id) return;
     StudyCloudAPI.getShares(user.id)
       .then((res) => {
-        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (res.success && Array.isArray(res.data)) {
           const mapped: SharedFolder[] = res.data.map((row: any) => ({
             id: row.id,
             title: row.title,
             description: row.description || '',
             category: row.category || 'Cours',
-            author: row.author_name || user.name || 'Étudiant',
-            school: row.school || user.school || '',
-            country: row.country || user.country || "Côte d'Ivoire",
+            author: row.author_name || user?.name || 'Étudiant',
+            school: row.school || user?.school || '',
+            country: row.country || user?.country || "Côte d'Ivoire",
             createdAt: row.created_at || new Date().toISOString(),
             files: Array.isArray(row.files)
               ? row.files.map((f: any) => ({
@@ -679,6 +715,7 @@ export default function App() {
             allowDownload: Boolean(row.allow_download),
           }));
           setFolders(mapped);
+          localStorage.setItem('unifolder_shares', JSON.stringify(mapped));
         }
       })
       .catch((err) => console.warn('Failed to load user shares from D1:', err));

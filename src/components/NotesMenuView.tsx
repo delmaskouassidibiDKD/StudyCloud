@@ -18,43 +18,7 @@ interface NoteItem {
   imageUrl?: string;
 }
 
-const DEFAULT_NOTES: NoteItem[] = [
-  {
-    id: 'note-1',
-    title: 'Est-ce que pour le Web ça c\'est la bonne solution',
-    content: '1. La classification par extension (Le routeur de fichiers)\nPour que ton application sache quoi faire selon le fichier, le réflexe est de ...',
-    createdAt: new Date().toISOString(),
-    color: '#25272C'
-  },
-  {
-    id: 'note-2',
-    title: '1. Dans quel langage l\'application est-elle développée ?',
-    content: 'L\'application est développée en TypeScript (un sur-ensemble de JavaScript qui ajoute un système de types stricts) avec la bibliothèque Re...',
-    createdAt: new Date().toISOString(),
-    color: '#25272C'
-  },
-  {
-    id: 'note-3',
-    title: 'Bouton de navigation et clavier collé',
-    content: 'Le CSS pur atteint ses limites sur les navigateurs mobiles (surtout sur Android) car l\'ouverture du clavier virtuel réduit le layout viewport du navigateur, ce qui force les éléments en fixed ou sticky à se repositionner ou à flotter au-dessus d...',
-    createdAt: new Date().toISOString(),
-    color: '#25272C'
-  },
-  {
-    id: 'note-4',
-    title: 'Important',
-    content: 'C\'est une excellente question, et c\'est exactement ce qui sépare une simple maquette visuelle d\'un véritable IDE professionnel (comme VS Code).\nDerrière les grands IDE, il y a un système de communication en temp...',
-    createdAt: new Date().toISOString(),
-    color: '#25272C'
-  },
-  {
-    id: 'note-5',
-    title: 'comme la recherche asymétrique ou l\'intégration Google Maps) pour voir comment il réagit ?',
-    content: 'Super IA DKD\nClé pour lia;',
-    createdAt: new Date().toISOString(),
-    color: '#25272C'
-  }
-];
+const DEFAULT_NOTES: NoteItem[] = [];
 
 const COLOR_OPTIONS = [
   { id: 'dark-gray', bg: '#25272C', label: 'Noir/Gris' },
@@ -81,7 +45,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     if (saved) {
       try {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
+        if (Array.isArray(parsed)) {
           return parsed.map((item: NoteItem) => ({
             ...item,
             color: item.color && item.color !== '#FDFBF7' ? item.color : '#25272C'
@@ -89,7 +53,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         }
       } catch (e) {}
     }
-    return DEFAULT_NOTES;
+    return [];
   });
 
   // Mode: 'list' or 'editor'
@@ -131,7 +95,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.getNotes(userId)
       .then((res: any) => {
-        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (res && res.success && Array.isArray(res.data)) {
           const mapped: NoteItem[] = res.data.map((row: any) => ({
             id: row.id,
             title: row.title || '',
@@ -142,6 +106,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
             createdAt: row.created_at || new Date().toISOString(),
           }));
           setNotes(mapped);
+          localStorage.setItem('unifolder_keep_notes', JSON.stringify(mapped));
         }
       })
       .catch(() => {});

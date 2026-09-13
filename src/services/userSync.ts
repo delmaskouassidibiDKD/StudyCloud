@@ -47,9 +47,13 @@ export function clearUserDataOnLogout(): void {
     'unifolder_user_files',
     'unifolder_files',
     'unifolder_shared_folders',
+    'unifolder_shares',
+    'unifolder_published_products',
+    'unifolder_cart',
+    'unifolder_cart_items',
+    'unifolder_calendar_data',
     'unifolder_history_files',
     'studycloud_last_sync',
-    'unifolder_cart_items',
     'unifolder_view_mode',
   ];
 

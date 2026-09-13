@@ -62,17 +62,14 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
   }, []);
 
   // ---------------- 2. ALARMS STATE ----------------
-  const defaultAlarms: AlarmItem[] = [
-    { id: 'alarm-1', time: '07:00', label: 'Réveil Cours', active: true, days: ['Lun', 'Mar', 'Mer', 'Jeu', 'Ven'] },
-    { id: 'alarm-2', time: '12:30', label: 'Pause Déjeuner', active: false, days: ['Tous les jours'] },
-  ];
+  const defaultAlarms: AlarmItem[] = [];
 
   const [alarms, setAlarms] = useState<AlarmItem[]>(() => {
     const saved = localStorage.getItem('unifolder_clock_alarms');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { console.error(e); }
     }
-    return defaultAlarms;
+    return [];
   });
 
   useEffect(() => {
@@ -86,7 +83,7 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.getAlarms(userId)
       .then((res: any) => {
-        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (res && res.success && Array.isArray(res.data)) {
           const mapped: AlarmItem[] = res.data.map((row: any) => ({
             id: row.id,
             time: row.time,
@@ -95,6 +92,8 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
             days: row.days_json ? JSON.parse(row.days_json) : ['Tous les jours'],
           }));
           setAlarms(mapped);
+          localStorage.setItem('unifolder_clock_alarms', JSON.stringify(mapped));
+          localStorage.setItem('unifolder_alarms', JSON.stringify(mapped));
         }
       })
       .catch(() => {});

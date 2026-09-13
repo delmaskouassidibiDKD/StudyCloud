@@ -38,10 +38,7 @@ const getInitialTrimestersData = (): Record<string, GradeItem[]> => {
   } catch (e) {}
 
   if (initialSubjects.length === 0) {
-    initialSubjects = [
-      { id: '1', name: 'Mathématiques', coefficient: '2' },
-      { id: '2', name: 'Anglais', coefficient: '2' },
-    ];
+    return { '1': [], '2': [], '3': [] };
   }
 
   const baseItems: GradeItem[] = initialSubjects.map((m, idx) => ({
@@ -126,7 +123,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.getGrades(userId)
       .then((res: any) => {
-        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (res && res.success && Array.isArray(res.data)) {
           const mapped: Record<string, GradeItem[]> = { '1': [], '2': [], '3': [] };
           for (const row of res.data) {
             const trimKey = String(row.trimester || '1');
@@ -139,9 +136,8 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
               subGrades: row.sub_grades_json ? JSON.parse(row.sub_grades_json) : [],
             });
           }
-          if (mapped['1'].length > 0 || mapped['2'].length > 0 || mapped['3'].length > 0) {
-            setTrimestersData(mapped);
-          }
+          setTrimestersData(mapped);
+          localStorage.setItem('user_grades_trimesters_data', JSON.stringify(mapped));
         }
       })
       .catch(() => {});

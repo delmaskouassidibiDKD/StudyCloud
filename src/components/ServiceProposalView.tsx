@@ -140,42 +140,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
       const saved = localStorage.getItem('unifolder_published_products');
       if (saved) return JSON.parse(saved);
     } catch (e) {}
-    return [
-      {
-        id: '1',
-        title: 'Cours d\'Électrotechnique S1',
-        description: 'Résumés complets et schémas expliqués',
-        price: '5 €',
-        category: 'Cours',
-        date: '02/09/2026',
-        views: 320,
-        sales: 8,
-        imageUrls: [],
-        isBoosted: true,
-        boostStatus: 'active',
-        boostFormula: 'Basique',
-        boostViewsTarget: 500,
-        boostViewsCurrent: 320,
-        boostEndDate: 'Dans 3 jours'
-      },
-      {
-        id: '2',
-        title: 'Aide Projet Arduino',
-        description: 'Assistance pour câblage et programmation C++',
-        price: '15 €',
-        category: 'Service',
-        date: '01/09/2026',
-        views: 2000,
-        sales: 14,
-        imageUrls: [],
-        isBoosted: true,
-        boostStatus: 'completed',
-        boostFormula: 'Pro',
-        boostViewsTarget: 2000,
-        boostViewsCurrent: 2000,
-        boostEndDate: 'Terminé le 28 Août'
-      }
-    ];
+    return [];
   });
 
   const [newTitle, setNewTitle] = useState('');
@@ -218,7 +183,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
     // 2. Récupérer les produits réels depuis D1
     StudyCloudAPI.getProducts()
       .then((res) => {
-        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (res.success && Array.isArray(res.data)) {
           const mapped: ProductItem[] = res.data.map((row: any) => ({
             id: String(row.id),
             title: row.title,
@@ -238,6 +203,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
             boostEndDate: row.boost_end_date || undefined
           }));
           setProducts(mapped);
+          localStorage.setItem('unifolder_published_products', JSON.stringify(mapped));
         }
       })
       .catch((e) => console.warn('D1 Products fetch:', e));

@@ -27,44 +27,7 @@ interface LibraryViewProps {
   setActivePreviewItem: (file: any) => void;
 }
 
-const DEFAULT_PRODUCTS: ProductItem[] = [
-  {
-    id: '1',
-    title: "Cours d'Électrotechnique S1",
-    description: 'Résumés complets et schémas expliqués pour le premier semestre.',
-    price: '5 €',
-    category: 'Cours',
-    date: '02/09/2026',
-    imageUrls: [],
-  },
-  {
-    id: '2',
-    title: 'Aide Projet Arduino',
-    description: 'Assistance pour câblage, schémas et programmation C++.',
-    price: '15 €',
-    category: 'Service',
-    date: '01/09/2026',
-    imageUrls: [],
-  },
-  {
-    id: '3',
-    title: 'Annales Corrigées Physique - L2',
-    description: 'Sujets d\'examens résolus avec explications détaillées étape par étape.',
-    price: '8 €',
-    category: 'Examens',
-    date: '31/08/2026',
-    imageUrls: [],
-  },
-  {
-    id: '4',
-    title: 'Fiches de Synthèse Thermodynamique',
-    description: 'Formules clés et fiches mémo condensées pour révisions rapides.',
-    price: '6 €',
-    category: 'Notes',
-    date: '28/08/2026',
-    imageUrls: [],
-  },
-];
+const DEFAULT_PRODUCTS: ProductItem[] = [];
 
 export const LibraryView: React.FC<LibraryViewProps> = ({
   folders,
@@ -185,7 +148,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     // 1. Charger les produits réels depuis Cloudflare D1
     StudyCloudAPI.getProducts()
       .then((res) => {
-        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (res.success && Array.isArray(res.data)) {
           const mapped: ProductItem[] = res.data.map((row: any) => ({
             id: String(row.id),
             title: row.title,
@@ -205,6 +168,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             boostEndDate: row.boost_end_date || undefined,
           }));
           setProductsList(mapped);
+          localStorage.setItem('unifolder_published_products', JSON.stringify(mapped));
         }
       })
       .catch(() => {});
@@ -212,9 +176,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     // 2. Charger le panier depuis D1
     StudyCloudAPI.getCart(userId)
       .then((res) => {
-        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+        if (res.success && Array.isArray(res.data)) {
           const ids = res.data.map((item: any) => String(item.product_id || item.id));
           setCartItemIds(ids);
+          localStorage.setItem('unifolder_cart', JSON.stringify(ids));
         }
       })
       .catch(() => {});
