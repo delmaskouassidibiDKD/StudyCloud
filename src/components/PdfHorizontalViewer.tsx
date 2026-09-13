@@ -71,8 +71,13 @@ export async function extractPageLines(page: any, pageNumber: number): Promise<P
 
     const grouped: PageLine[] = [];
     for (const it of sorted) {
-      // Trouver une ligne sur la même hauteur
-      const existing = grouped.find(l => Math.abs(l.top - it.top) < 1.3);
+      // Trouver une ligne sur la même hauteur (avec écart horizontal raisonnable pour ne pas fusionner des colonnes séparées)
+      const existing = grouped.find(l => {
+        const sameHeight = Math.abs(l.top - it.top) < 1.3;
+        if (!sameHeight) return false;
+        const gap = it.left - (l.left + l.width);
+        return gap >= -2 && gap < 7;
+      });
       if (existing) {
         // Détecter si un espace est nécessaire entre deux mots
         const existingEnd = existing.left + existing.width;

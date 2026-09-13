@@ -35,7 +35,94 @@ export interface SpeechSegment {
   page?: number;
   slide?: number;
   lineIndex?: number;
+  isTitle?: boolean;
+  bulletIdx?: number;
+  rowIdx?: number;
 }
+
+export function smartSentenceSplit(text: string): string[] {
+  if (!text || !text.trim()) return [];
+  const clean = text.replace(/\s+/g, ' ').trim();
+  const protectedText = clean
+    .replace(/(\d)\.(\d)/g, '$1__DEC_DOT__$2')
+    .replace(/\b(M|Mme|Mlle|Dr|Prof|Mr|Mrs|Ms|vs|etc|ex|fig)\./gi, '$1__ABBR_DOT__');
+  
+  const rawSentences = protectedText.split(/(?<=[.!?])\s+/);
+  return rawSentences
+    .map(s => s.replace(/__DEC_DOT__/g, '.').replace(/__ABBR_DOT__/g, '.').trim())
+    .filter(s => s.length > 0);
+}
+
+export function prepareWordDocumentForSpeech(rawHtml: string): {
+  preparedHtml: string;
+  speechSegments: SpeechSegment[];
+} {
+  if (!rawHtml || !rawHtml.trim()) {
+    return { preparedHtml: rawHtml || '', speechSegments: [] };
+  }
+
+  if (typeof window === 'undefined' || typeof DOMParser === 'undefined') {
+    return { preparedHtml: rawHtml, speechSegments: [] };
+  }
+
+  try {
+    const parser = new DOMParser();
+    const doc = parser.parseFromString(rawHtml, 'text/html');
+    const speechSegments: SpeechSegment[] = [];
+    let segmentIndex = 0;
+
+    // Find all readable block elements in natural reading order
+    const allBlocks = Array.from(doc.body.querySelectorAll('h1, h2, h3, h4, h5, h6, p, li, blockquote, th, td'));
+    
+    // Filter only leaf blocks (blocks that do not contain another candidate block inside them)
+    const leafBlocks = allBlocks.filter(block => {
+      return !block.querySelector('h1, h2, h3, h4, h5, h6, p, li, blockquote, th, td');
+    });
+
+    for (const block of leafBlocks) {
+      const textContent = block.textContent?.trim() || '';
+      if (textContent.length === 0) continue;
+
+      const hasChildElements = block.children.length > 0;
+
+      if (!hasChildElements) {
+        // Plain text block: split into smart sentences
+        const sentences = smartSentenceSplit(textContent);
+        if (sentences.length <= 1) {
+          const segId = `word-speech-seg-${segmentIndex}`;
+          block.setAttribute('id', segId);
+          block.classList.add('word-speech-seg');
+          speechSegments.push({ text: sentences[0] || textContent });
+          segmentIndex++;
+        } else {
+          // Wrap each sentence in a span with a unique speech segment ID
+          block.innerHTML = sentences.map(sentence => {
+            const segId = `word-speech-seg-${segmentIndex}`;
+            segmentIndex++;
+            speechSegments.push({ text: sentence });
+            return `<span id="${segId}" class="word-speech-seg inline cursor-pointer hover:bg-amber-100/60 dark:hover:bg-amber-950/40 rounded transition-colors">${sentence}</span>`;
+          }).join(' ');
+        }
+      } else {
+        // Formatted block with tags (strong, em, a, etc.): tag the block itself to keep 100% markup intact
+        const segId = `word-speech-seg-${segmentIndex}`;
+        block.setAttribute('id', segId);
+        block.classList.add('word-speech-seg', 'cursor-pointer');
+        speechSegments.push({ text: textContent });
+        segmentIndex++;
+      }
+    }
+
+    return {
+      preparedHtml: doc.body.innerHTML,
+      speechSegments,
+    };
+  } catch (err) {
+    console.warn('[prepareWordDocumentForSpeech] Erreur parsing DOM:', err);
+    return { preparedHtml: rawHtml, speechSegments: [] };
+  }
+}
+
 
 function renderSpokenSentence(text: string, charIndex: number, wordLength: number) {
   if (!text) return null;
@@ -130,6 +217,7 @@ export function CenterMenu({
   // Formats state
   const [fileTextContent, setFileTextContent] = useState<string>('');
   const [docxHtml, setDocxHtml] = useState<string>('');
+  const [wordSpeechSegments, setWordSpeechSegments] = useState<SpeechSegment[]>([]);
   const [excelWorkbook, setExcelWorkbook] = useState<{
     sheetNames: string[];
     activeSheet: string;
@@ -224,9 +312,12 @@ export function CenterMenu({
           const arrayBuffer = await blob.arrayBuffer();
           const conv = await mammoth.convertToHtml({ arrayBuffer });
           const raw = await mammoth.extractRawText({ arrayBuffer });
+          const rawHtml = conv.value || '<p>Document Word vide.</p>';
+          const { preparedHtml, speechSegments: wordSegments } = prepareWordDocumentForSpeech(rawHtml);
           if (isMounted) {
-            setDocxHtml(conv.value || '<p>Document Word vide.</p>');
-            setExtractedDocText(raw.value || '');
+            setDocxHtml(preparedHtml);
+            setWordSpeechSegments(wordSegments);
+            setExtractedDocText(raw.value || wordSegments.map(s => s.text).join('\n'));
           }
         } catch (err) {
           console.warn('Erreur décodage Word:', err);
@@ -342,6 +433,7 @@ export function CenterMenu({
     setCurrentText('');
     speechSegmentsRef.current = [];
     setSpeechSegments([]);
+    setWordSpeechSegments([]);
     setCurrentSegmentIdx(0);
     setActiveSpeechPage(1);
     setActiveSpeechLineIndex(-1);
@@ -564,35 +656,54 @@ export function CenterMenu({
       else if (isPpt && pptxSlides.length > 0) {
         segments = [];
         pptxSlides.forEach(slide => {
-          if (slide.title) segments.push({ text: slide.title, slide: slide.slideNumber });
-          slide.bullets.forEach(b => {
-            if (b.trim()) segments.push({ text: b.trim(), slide: slide.slideNumber });
+          if (slide.title?.trim()) {
+            segments.push({ 
+              text: slide.title.trim(), 
+              slide: slide.slideNumber,
+              isTitle: true 
+            });
+          }
+          slide.bullets.forEach((b, bIdx) => {
+            if (b.trim()) {
+              segments.push({ 
+                text: b.trim(), 
+                slide: slide.slideNumber,
+                bulletIdx: bIdx 
+              });
+            }
           });
         });
       }
       // 3. EXCEL
       else if (isExcel && excelWorkbook?.rows) {
-        const excelLines: string[] = [];
-        excelWorkbook.rows.forEach(r => {
-          const line = r.filter(c => c !== undefined && c !== null && String(c).trim().length > 0).map(c => String(c).trim()).join(', ');
-          if (line.length > 0) excelLines.push(line);
+        segments = [];
+        excelWorkbook.rows.forEach((r, originalRowIdx) => {
+          const line = r
+            .filter(c => c !== undefined && c !== null && String(c).trim().length > 0)
+            .map(c => String(c).trim())
+            .join(', ');
+          if (line.length > 0) {
+            segments.push({ text: line, rowIdx: originalRowIdx });
+          }
         });
-        segments = excelLines.map(text => ({ text }));
       }
       // 4. WORD
       else if (isWord) {
-        const raw = extractedDocText || (docxHtml ? docxHtml.replace(/<[^>]+>/g, ' ') : '');
-        if (raw) {
-          const rawLines = raw.split(/\r?\n+|(?<=[.!?])\s+/).map(s => s.replace(/\s+/g, ' ').trim()).filter(s => s.length > 0);
-          segments = rawLines.map(text => ({ text }));
+        if (wordSpeechSegments.length > 0) {
+          segments = wordSpeechSegments;
+        } else if (docxHtml) {
+          const prep = prepareWordDocumentForSpeech(docxHtml);
+          setDocxHtml(prep.preparedHtml);
+          setWordSpeechSegments(prep.speechSegments);
+          segments = prep.speechSegments;
         }
       }
       // 5. TEXT / CODE
       else if (isText) {
         const raw = fileTextContent || activePreviewItem.textContent || '';
         if (raw) {
-          const rawLines = raw.split(/\r?\n+|(?<=[.!?])\s+/).map(s => s.replace(/\s+/g, ' ').trim()).filter(s => s.length > 0);
-          segments = rawLines.map(text => ({ text }));
+          const sentences = smartSentenceSplit(raw);
+          segments = sentences.map((text, idx) => ({ text, lineIndex: idx }));
         }
       }
 
@@ -692,48 +803,12 @@ export function CenterMenu({
     }
   };
 
-  const getWordHtmlWithHighlight = () => {
-    if (!docxHtml) return '';
-    const isSpeaking = speechState === 'playing' || speechState === 'paused';
-    const currentSpoken = speechSegments[currentSegmentIdx]?.text?.trim();
-    if (!isSpeaking || !currentSpoken || currentSpoken.length < 2) {
-      return docxHtml;
-    }
-
-    const cleanSpoken = currentSpoken.replace(/\s+/g, ' ');
-    // 1. Essai de correspondance exacte
-    const escaped = cleanSpoken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-    try {
-      const regex = new RegExp(`(${escaped})`, 'i');
-      if (regex.test(docxHtml)) {
-        return docxHtml.replace(
-          regex, 
-          `<mark id="active-word-speech-target" style="background-color: rgba(255, 235, 59, 0.7); border-bottom: 3.5px solid #FF3B30; border-radius: 3px; padding: 2px 4px; box-shadow: 0 2px 8px rgba(255,59,48,0.45); color: inherit;">$1</mark>`
-        );
-      }
-    } catch (e) {}
-
-    // 2. Essai avec les premiers mots de la phrase (2 à 5 mots)
-    const words = cleanSpoken.split(/\s+/).filter(w => w.length > 1);
-    if (words.length >= 2) {
-      const phrase = words.slice(0, Math.min(5, words.length)).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
-      try {
-        const regex = new RegExp(`(${phrase})`, 'i');
-        if (regex.test(docxHtml)) {
-          return docxHtml.replace(
-            regex,
-            `<mark id="active-word-speech-target" style="background-color: rgba(255, 235, 59, 0.7); border-bottom: 3.5px solid #FF3B30; border-radius: 3px; padding: 2px 4px; box-shadow: 0 2px 8px rgba(255,59,48,0.45); color: inherit;">$1</mark>`
-          );
-        }
-      } catch (e) {}
-    }
-
-    return docxHtml;
-  };
-
   useEffect(() => {
     if (!autoScrollEnabled || (speechState !== 'playing' && speechState !== 'paused')) return;
-    const target = document.getElementById('active-word-speech-target') || document.getElementById('active-excel-speech-target');
+    const target = document.getElementById(`word-speech-seg-${currentSegmentIdx}`) || 
+                   document.getElementById('active-excel-speech-target') ||
+                   document.getElementById('active-pptx-speech-target') ||
+                   document.getElementById('active-text-speech-target');
     if (target) {
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
@@ -993,10 +1068,53 @@ export function CenterMenu({
                     ...(previewScrollMode === 'horizontal' ? { columnWidth: '500px', columnGap: '40px', height: '100%' } : {})
                   }}
                 >
+                  {/* Dynamic CSS highlighting for active Word speech segment */}
+                  <style>{`
+                    ${(speechState === 'playing' || speechState === 'paused') ? `
+                      #word-speech-seg-${currentSegmentIdx} {
+                        background-color: rgba(255, 235, 59, 0.75) !important;
+                        border-bottom: 3.5px solid #FF3B30 !important;
+                        border-radius: 4px !important;
+                        box-shadow: 0 2px 10px rgba(255, 59, 48, 0.45) !important;
+                        padding: 2px 6px !important;
+                        color: inherit !important;
+                        transition: background-color 0.15s ease, box-shadow 0.15s ease !important;
+                      }
+                      p#word-speech-seg-${currentSegmentIdx},
+                      h1#word-speech-seg-${currentSegmentIdx},
+                      h2#word-speech-seg-${currentSegmentIdx},
+                      h3#word-speech-seg-${currentSegmentIdx},
+                      h4#word-speech-seg-${currentSegmentIdx},
+                      h5#word-speech-seg-${currentSegmentIdx},
+                      h6#word-speech-seg-${currentSegmentIdx},
+                      li#word-speech-seg-${currentSegmentIdx},
+                      blockquote#word-speech-seg-${currentSegmentIdx},
+                      td#word-speech-seg-${currentSegmentIdx} {
+                        display: block !important;
+                      }
+                    ` : ''}
+                  `}</style>
+
                   {docxHtml ? (
                     <div 
                       className="prose dark:prose-invert max-w-none text-sm sm:text-base space-y-4"
-                      dangerouslySetInnerHTML={{ __html: getWordHtmlWithHighlight() }} 
+                      dangerouslySetInnerHTML={{ __html: docxHtml }} 
+                      onClick={(e) => {
+                        const target = (e.target as HTMLElement)?.closest('.word-speech-seg');
+                        if (target) {
+                          const id = target.getAttribute('id');
+                          const match = id?.match(/word-speech-seg-(\d+)/);
+                          if (match) {
+                            const segIdx = parseInt(match[1], 10);
+                            if (!isNaN(segIdx) && segIdx >= 0 && segIdx < speechSegmentsRef.current.length) {
+                              if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                                window.speechSynthesis.cancel();
+                              }
+                              speakSentence(segIdx);
+                            }
+                          }
+                        }
+                      }}
                     />
                   ) : (
                     <div className="text-center py-16 text-stone-400">
@@ -1091,20 +1209,27 @@ export function CenterMenu({
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredRows.map((row: any[], rowIdx: number) => {
-                          const isRowSpeaking = (speechState === 'playing' || speechState === 'paused') && rowIdx === currentSegmentIdx;
+                        {filteredRows.map((row: any[], displayIdx: number) => {
+                          const originalRowIdx = excelWorkbook?.rows ? excelWorkbook.rows.indexOf(row) : displayIdx;
+                          const activeSeg = speechSegments[currentSegmentIdx];
+                          const isRowSpeaking = (speechState === 'playing' || speechState === 'paused') && activeSeg?.rowIdx === originalRowIdx;
                           return (
                             <tr 
-                              key={rowIdx} 
+                              key={displayIdx} 
                               id={isRowSpeaking ? 'active-excel-speech-target' : undefined}
                               className={`transition-colors border-b border-stone-100 dark:border-stone-800 ${
                                 isRowSpeaking 
-                                  ? 'bg-yellow-200/80 dark:bg-yellow-950/60 ring-2 ring-orange-500 font-bold' 
+                                  ? 'bg-yellow-200/90 dark:bg-yellow-950/80 font-bold' 
                                   : 'hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20'
                               }`}
+                              style={isRowSpeaking ? {
+                                outline: '3.5px solid #FF3B30',
+                                outlineOffset: '-2px',
+                                boxShadow: '0 2px 10px rgba(255, 59, 48, 0.4)',
+                              } : undefined}
                             >
                               <td className="p-2 border-r border-stone-200 dark:border-stone-800 text-stone-400 bg-stone-50 dark:bg-stone-900 text-center select-none font-bold text-[10px]">
-                                {rowIdx + 1}
+                                {originalRowIdx + 1}
                               </td>
                               {row.map((cell: any, cellIdx: number) => (
                                 <td key={cellIdx} className="p-2 border-r border-stone-100 dark:border-stone-800/60 text-stone-800 dark:text-stone-200 whitespace-pre truncate max-w-sm select-text">
@@ -1183,19 +1308,18 @@ export function CenterMenu({
                       </div>
                       <h2 className="text-xl md:text-3xl font-black text-stone-950 mb-6 leading-snug">
                         {(() => {
-                          const currentSpoken = speechSegments[currentSegmentIdx]?.text?.toLowerCase().trim();
+                          const activeSeg = speechSegments[currentSegmentIdx];
                           const isSpeaking = speechState === 'playing' || speechState === 'paused';
-                          const isTitleActive = isSpeaking && currentSpoken && (
-                            currentSlide.title.toLowerCase().includes(currentSpoken) || currentSpoken.includes(currentSlide.title.toLowerCase())
-                          );
+                          const isTitleActive = isSpeaking && activeSeg?.slide === currentSlide.slideNumber && activeSeg?.isTitle;
                           return isTitleActive ? (
                             <span 
+                              id="active-pptx-speech-target"
                               style={{
-                                backgroundColor: 'rgba(255, 235, 59, 0.65)',
+                                backgroundColor: 'rgba(255, 235, 59, 0.75)',
                                 borderBottom: '3.5px solid #FF3B30',
                                 borderRadius: '4px',
                                 padding: '2px 6px',
-                                boxShadow: '0 2px 8px rgba(255, 59, 48, 0.4)',
+                                boxShadow: '0 2px 10px rgba(255, 59, 48, 0.45)',
                               }}
                             >
                               {currentSlide.title}
@@ -1205,23 +1329,22 @@ export function CenterMenu({
                       </h2>
                       <ul className="space-y-4">
                         {currentSlide.bullets.map((bullet, idx) => {
-                          const currentSpoken = speechSegments[currentSegmentIdx]?.text?.toLowerCase().trim();
+                          const activeSeg = speechSegments[currentSegmentIdx];
                           const isSpeaking = speechState === 'playing' || speechState === 'paused';
-                          const isBulletActive = isSpeaking && currentSpoken && (
-                            bullet.toLowerCase().includes(currentSpoken) || currentSpoken.includes(bullet.toLowerCase())
-                          );
+                          const isBulletActive = isSpeaking && activeSeg?.slide === currentSlide.slideNumber && activeSeg?.bulletIdx === idx;
                           return (
                             <li key={idx} className="flex items-start gap-3 text-sm sm:text-base font-medium text-stone-700 leading-relaxed">
                               <span className="w-2 h-2 rounded-full bg-orange-500 mt-2 shrink-0" />
                               {isBulletActive ? (
                                 <span 
+                                  id="active-pptx-speech-target"
                                   className="text-stone-950 font-bold"
                                   style={{
-                                    backgroundColor: 'rgba(255, 235, 59, 0.65)',
+                                    backgroundColor: 'rgba(255, 235, 59, 0.75)',
                                     borderBottom: '3.5px solid #FF3B30',
                                     borderRadius: '3px',
-                                    padding: '1px 4px',
-                                    boxShadow: '0 2px 8px rgba(255, 59, 48, 0.4)',
+                                    padding: '2px 6px',
+                                    boxShadow: '0 2px 10px rgba(255, 59, 48, 0.45)',
                                   }}
                                 >
                                   {bullet}
@@ -1320,18 +1443,26 @@ export function CenterMenu({
                         return (
                           <span
                             key={idx}
+                            id={isActive ? 'active-text-speech-target' : undefined}
                             ref={isActive ? (activeSentenceElRef as any) : null}
-                            className={`inline transition-all duration-200 ${
+                            onClick={() => {
+                              if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                                window.speechSynthesis.cancel();
+                              }
+                              speakSentence(idx);
+                            }}
+                            className={`inline transition-all duration-150 cursor-pointer rounded px-1 ${
                               isActive
                                 ? 'text-stone-950 font-bold shadow-sm'
-                                : ''
+                                : 'hover:bg-stone-800'
                             }`}
                             style={isActive ? {
-                              backgroundColor: 'rgba(255, 235, 59, 0.8)',
+                              backgroundColor: 'rgba(255, 235, 59, 0.85)',
                               borderBottom: '3.5px solid #FF3B30',
                               borderRadius: '3px',
-                              padding: '1px 4px',
+                              padding: '2px 4px',
                               color: '#000000',
+                              boxShadow: '0 2px 8px rgba(255, 59, 48, 0.45)',
                             } : undefined}
                           >
                             {seg.text}{' '}
