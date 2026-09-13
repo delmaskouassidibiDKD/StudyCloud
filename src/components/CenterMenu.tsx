@@ -13,8 +13,8 @@ import JSZip from 'jszip';
 import { getFileBlob, getFileBlobUrl, formatFileSize } from '../services/localFileStorage';
 
 // Worker configuration for pdfjsLib
-if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 }
 
 interface CenterMenuProps {
@@ -75,7 +75,11 @@ export function CenterMenu({
   const [copiedText, setCopiedText] = useState<boolean>(false);
 
   const ext = (activePreviewItem?.name?.split('.').pop()?.toUpperCase() || activePreviewItem?.extension || 'FICHIER').toUpperCase();
-  const isPdf = ext === 'PDF' || activePreviewItem?.type === 'application/pdf';
+  const isPdf = ext === 'PDF' || 
+                activePreviewItem?.type === 'application/pdf' || 
+                activePreviewItem?.type?.includes('pdf') ||
+                activePreviewItem?.url?.toLowerCase()?.includes('.pdf') ||
+                activePreviewItem?.name?.toLowerCase()?.endsWith('.pdf');
 
   // Listen to external speech toggle from header
   useEffect(() => {
@@ -114,12 +118,12 @@ export function CenterMenu({
     const fileExt = (file.name?.split('.').pop() || file.extension || '').toLowerCase();
 
     // 1. Resolve URL for media/PDF
-    if (file.url) {
-      setResolvedUrl(file.url);
-    } else if (file.id) {
+    if (file.id) {
       getFileBlobUrl(file.id).then(url => {
         if (isMounted && url) setResolvedUrl(url);
       });
+    } else if (file.url) {
+      setResolvedUrl(file.url);
     }
 
     // 2. Fetch binary blob for in-depth parsing (mammoth, xlsx, jszip, text)
@@ -629,7 +633,12 @@ export function CenterMenu({
             if (previewScrollMode === 'horizontal') {
               return (
                 <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
-                  <PdfHorizontalViewer url={currentUrl} docZoom={docZoom} />
+                  <PdfHorizontalViewer 
+                    fileId={activePreviewItem?.id}
+                    file={activePreviewItem}
+                    url={currentUrl} 
+                    docZoom={docZoom} 
+                  />
                 </div>
               );
             }

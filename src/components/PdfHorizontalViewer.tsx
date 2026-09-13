@@ -1,20 +1,24 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ChevronLeft, ChevronRight, FileText } from 'lucide-react';
+import { ChevronLeft, ChevronRight, FileText, AlertCircle } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
+import { getFileBlob } from '../services/localFileStorage';
 
-// Ensure worker is configured
-if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
-  pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+// Configure local worker
+if (typeof window !== 'undefined') {
+  pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 }
 
 interface PdfHorizontalViewerProps {
-  url: string;
+  fileId?: string;
+  file?: any;
+  url?: string;
   docZoom: number;
 }
 
 function PdfPageRenderer({ pdfDoc, pageNumber }: { pdfDoc: any; pageNumber: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const [rendered, setRendered] = useState(false);
+  const [aspectRatio, setAspectRatio] = useState<number>(0.707); // Default A4 ratio
 
   useEffect(() => {
     let cancelRender: any = null;
@@ -25,8 +29,12 @@ function PdfPageRenderer({ pdfDoc, pageNumber }: { pdfDoc: any; pageNumber: numb
         const page = await pdfDoc.getPage(pageNumber);
         if (!isMounted || !canvasRef.current) return;
 
-        // Render at 1.8x scale for crisp display
-        const viewport = page.getViewport({ scale: 1.8 });
+        // Render at 1.5x for sharp text while maintaining optimal performance
+        const viewport = page.getViewport({ scale: 1.5 });
+        if (viewport.width && viewport.height) {
+          setAspectRatio(viewport.width / viewport.height);
+        }
+
         const canvas = canvasRef.current;
         const context = canvas.getContext('2d');
         if (!context) return;
@@ -59,23 +67,35 @@ function PdfPageRenderer({ pdfDoc, pageNumber }: { pdfDoc: any; pageNumber: numb
   }, [pdfDoc, pageNumber]);
 
   return (
-    <div className="relative h-full flex items-center justify-center">
+    <div className="relative h-full flex items-center justify-center select-none">
       {!rendered && (
-        <div className="w-[320px] h-[440px] bg-white dark:bg-stone-900 rounded-xl shadow-md border border-stone-200 dark:border-stone-800 flex items-center justify-center">
-          <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin" />
+        <div 
+          className="bg-white dark:bg-stone-900 rounded-xl shadow-md border border-stone-200 dark:border-stone-800 flex items-center justify-center animate-pulse"
+          style={{
+            height: '74vh',
+            width: `${74 * aspectRatio}vh`,
+          }}
+        >
+          <div className="w-7 h-7 border-3 border-orange-500 border-t-transparent rounded-full animate-spin" />
         </div>
       )}
       <canvas
         ref={canvasRef}
-        className={`max-h-[76vh] w-auto rounded-xl shadow-lg border border-stone-300 dark:border-stone-700 bg-white transition-opacity duration-300 ${
-          rendered ? 'opacity-100' : 'opacity-0 absolute'
+        className={`rounded-xl shadow-lg border border-stone-300 dark:border-stone-700 bg-white transition-opacity duration-200 ${
+          rendered ? 'opacity-100 block' : 'hidden'
         }`}
+        style={{
+          maxHeight: '74vh',
+          height: '74vh',
+          width: 'auto',
+          aspectRatio: `${aspectRatio}`,
+        }}
       />
     </div>
   );
 }
 
-export function PdfHorizontalViewer({ url, docZoom }: PdfHorizontalViewerProps) {
+export function PdfHorizontalViewer({ fileId, file, url, docZoom }: PdfHorizontalViewerProps) {
   const [numPages, setNumPages] = useState(0);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
   const [currentPage, setCurrentPage] = useState(1);
@@ -91,7 +111,52 @@ export function PdfHorizontalViewer({ url, docZoom }: PdfHorizontalViewerProps) 
 
     const loadPdf = async () => {
       try {
-        const loadingTask = pdfjsLib.getDocument(url);
+        let arrayBuffer: ArrayBuffer | null = null;
+
+        // 1. Priorité 1 : lecture binaire locale directe depuis IndexedDB (100% local, rapide et sans expiration d'URL)
+        if (fileId) {
+          try {
+            const blob = await getFileBlob(fileId);
+            if (blob) {
+              arrayBuffer = await blob.arrayBuffer();
+            }
+          } catch (e) {
+            console.warn('[PdfHorizontalViewer] Lecture binaire IndexedDB:', e);
+          }
+        }
+
+        // 2. Priorité 2 : si l'objet file passé possède directement arrayBuffer
+        if (!arrayBuffer && file && typeof file.arrayBuffer === 'function') {
+          try {
+            arrayBuffer = await file.arrayBuffer();
+          } catch (e) {}
+        }
+
+        // 3. Priorité 3 : récupération via l'URL (blob: ou http:)
+        if (!arrayBuffer && url) {
+          try {
+            const resp = await fetch(url);
+            if (resp.ok) {
+              arrayBuffer = await resp.arrayBuffer();
+            }
+          } catch (e) {
+            console.warn('[PdfHorizontalViewer] Fetch url fallback:', e);
+          }
+        }
+
+        let loadingTask: any;
+        if (arrayBuffer) {
+          const typedarray = new Uint8Array(arrayBuffer);
+          loadingTask = pdfjsLib.getDocument({
+            data: typedarray,
+            cMapPacked: true,
+          });
+        } else if (url) {
+          loadingTask = pdfjsLib.getDocument(url);
+        } else {
+          throw new Error("Impossible de charger les données du document PDF.");
+        }
+
         const doc = await loadingTask.promise;
         if (isMounted) {
           setPdfDoc(doc);
@@ -99,9 +164,9 @@ export function PdfHorizontalViewer({ url, docZoom }: PdfHorizontalViewerProps) 
           setLoading(false);
         }
       } catch (err: any) {
-        console.error('Erreur chargement PDF horizontal:', err);
+        console.error('[PdfHorizontalViewer] Erreur chargement PDF horizontal:', err);
         if (isMounted) {
-          setError("Impossible d'activer le défilement horizontal pour ce PDF.");
+          setError("Impossible de charger l'affichage horizontal pour ce document.");
           setLoading(false);
         }
       }
@@ -111,7 +176,7 @@ export function PdfHorizontalViewer({ url, docZoom }: PdfHorizontalViewerProps) 
     return () => {
       isMounted = false;
     };
-  }, [url]);
+  }, [fileId, url, file?.id, file?.url]);
 
   const scrollToPage = (pageNum: number) => {
     const el = pageRefs.current.get(pageNum);
@@ -122,8 +187,10 @@ export function PdfHorizontalViewer({ url, docZoom }: PdfHorizontalViewerProps) 
   };
 
   const handleWheel = (e: React.WheelEvent) => {
-    if (containerRef.current && e.deltaY !== 0) {
-      containerRef.current.scrollLeft += e.deltaY;
+    if (containerRef.current) {
+      if (e.deltaY !== 0) {
+        containerRef.current.scrollLeft += e.deltaY;
+      }
     }
   };
 
@@ -141,12 +208,25 @@ export function PdfHorizontalViewer({ url, docZoom }: PdfHorizontalViewerProps) 
     }
   };
 
+  // Keyboard navigation (ArrowLeft / ArrowRight)
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        scrollToPage(Math.min(numPages, currentPage + 1));
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        scrollToPage(Math.max(1, currentPage - 1));
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [numPages, currentPage]);
+
   if (loading) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center gap-3 bg-stone-100 dark:bg-stone-900">
         <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin" />
         <p className="text-xs font-bold text-stone-600 dark:text-stone-300">
-          Conversion en défilement horizontal de gauche à droite...
+          Chargement du mode horizontal (de gauche à droite)...
         </p>
       </div>
     );
@@ -155,16 +235,17 @@ export function PdfHorizontalViewer({ url, docZoom }: PdfHorizontalViewerProps) 
   if (error || !pdfDoc) {
     return (
       <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center bg-stone-100 dark:bg-stone-900">
-        <FileText className="w-10 h-10 text-red-500 mb-2" />
+        <AlertCircle className="w-10 h-10 text-amber-500 mb-2" />
         <p className="text-sm font-bold text-stone-800 dark:text-stone-200">{error || "Erreur de rendu horizontal"}</p>
+        <p className="text-xs text-stone-500 mt-1">Vous pouvez rebasculer en mode vertical avec le bouton du haut.</p>
       </div>
     );
   }
 
   return (
     <div className="w-full h-full flex flex-col bg-stone-100 dark:bg-stone-950 overflow-hidden relative select-none">
-      {/* Horizontal Reading Header Controls */}
-      <div className="w-full px-4 py-1.5 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between shrink-0 z-20 shadow-xs">
+      {/* Top Controls Bar for Horizontal Mode */}
+      <div className="w-full px-4 py-1 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between shrink-0 z-20 shadow-xs">
         <div className="flex items-center gap-2">
           <button
             onClick={() => scrollToPage(Math.max(1, currentPage - 1))}
@@ -176,7 +257,7 @@ export function PdfHorizontalViewer({ url, docZoom }: PdfHorizontalViewerProps) 
             <span className="hidden sm:inline">Précédent</span>
           </button>
 
-          <span className="text-xs font-black text-stone-700 dark:text-stone-200 bg-stone-200/60 dark:bg-stone-800 px-3 py-1 rounded-md">
+          <span className="text-xs font-black text-stone-800 dark:text-stone-100 bg-orange-100 dark:bg-orange-950/60 border border-orange-300 dark:border-orange-800 px-3 py-1 rounded-md">
             Page {currentPage} / {numPages}
           </span>
 
@@ -191,17 +272,38 @@ export function PdfHorizontalViewer({ url, docZoom }: PdfHorizontalViewerProps) 
           </button>
         </div>
 
-        <div className="flex items-center gap-2 text-[11px] font-medium text-stone-500">
-          <span className="hidden md:inline">↔ Défilement horizontal (molette ou balayage)</span>
+        <div className="flex items-center gap-3 text-[11px] font-semibold text-stone-500">
+          <span className="hidden md:inline">↔ Molette souris ou flèches clavier pour défiler</span>
         </div>
       </div>
+
+      {/* Floating Side Navigation Arrows */}
+      {currentPage > 1 && (
+        <button
+          onClick={() => scrollToPage(currentPage - 1)}
+          className="absolute left-3 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-white/90 dark:bg-stone-800/90 shadow-lg border border-stone-300 dark:border-stone-700 flex items-center justify-center hover:bg-orange-500 hover:text-white transition-all cursor-pointer text-stone-700 dark:text-stone-200"
+          title="Page précédente"
+        >
+          <ChevronLeft className="w-5 h-5" />
+        </button>
+      )}
+
+      {currentPage < numPages && (
+        <button
+          onClick={() => scrollToPage(currentPage + 1)}
+          className="absolute right-3 top-1/2 -translate-y-1/2 z-30 w-9 h-9 rounded-full bg-white/90 dark:bg-stone-800/90 shadow-lg border border-stone-300 dark:border-stone-700 flex items-center justify-center hover:bg-orange-500 hover:text-white transition-all cursor-pointer text-stone-700 dark:text-stone-200"
+          title="Page suivante"
+        >
+          <ChevronRight className="w-5 h-5" />
+        </button>
+      )}
 
       {/* Horizontal Viewport */}
       <div
         ref={containerRef}
         onWheel={handleWheel}
         onScroll={handleScroll}
-        className="flex-1 w-full h-full overflow-x-auto overflow-y-hidden flex flex-row items-center gap-8 px-8 py-6 snap-x snap-mandatory hide-scrollbar"
+        className="flex-1 w-full h-full overflow-x-auto overflow-y-hidden flex flex-row items-center gap-8 px-12 py-6 snap-x snap-mandatory hide-scrollbar"
         style={{ zoom: `${docZoom}%` }}
       >
         {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => (

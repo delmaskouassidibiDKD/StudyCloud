@@ -7,7 +7,7 @@ import * as XLSX from 'xlsx';
 import { StudyCloudAPI } from '../services/api';
 
 // Configure worker for PDF.js
-pdfjsLib.GlobalWorkerOptions.workerSrc = `https://cdnjs.cloudflare.com/ajax/libs/pdf.js/${pdfjsLib.version}/pdf.worker.min.js`;
+pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 
 interface PublishFileViewProps {
   onBack: () => void;
