@@ -124,6 +124,7 @@ interface PdfPageRendererProps {
   docZoom: number;
   containerWidth?: number;
   isSpeakingThisPage?: boolean;
+  isSpeaking?: boolean;
   currentSpokenText?: string;
   activeSpeechLineIndex?: number;
   autoScrollEnabled?: boolean;
@@ -136,6 +137,7 @@ function PdfPageRenderer({
   docZoom,
   containerWidth,
   isSpeakingThisPage,
+  isSpeaking = false,
   currentSpokenText,
   activeSpeechLineIndex,
   autoScrollEnabled = true,
@@ -274,33 +276,32 @@ function PdfPageRenderer({
         />
 
         {/* Soulignage directement SUR le texte du document (SANS micro, SANS contour orange) */}
-        <div className="absolute inset-0 pointer-events-none overflow-visible rounded-xl">
-          {lines.map((line) => {
-            const isLineActive = isSpeakingThisPage && (
-              (typeof activeSpeechLineIndex === 'number' && activeSpeechLineIndex >= 0 && line.lineIndex === activeSpeechLineIndex) ||
-              (activeSpeechLineIndex === -1 && currentSpokenText && line.text.length >= 3 && line.text.toLowerCase().includes(currentSpokenText.toLowerCase().slice(0, 15)))
-            );
+        {isSpeaking && isSpeakingThisPage && typeof activeSpeechLineIndex === 'number' && activeSpeechLineIndex >= 0 && (
+          <div className="absolute inset-0 pointer-events-none overflow-visible rounded-xl">
+            {lines.map((line) => {
+              const isLineActive = line.lineIndex === activeSpeechLineIndex;
 
-            if (!isLineActive) return null;
+              if (!isLineActive) return null;
 
-            return (
-              <div
-                key={line.id}
-                ref={activeAnchorRef}
-                className="absolute pointer-events-none rounded transition-all duration-200 z-30"
-                style={{
-                  left: `${Math.max(0, line.left - 0.4)}%`,
-                  top: `${Math.max(0, line.top - 0.3)}%`,
-                  width: `${Math.min(100 - line.left, line.width + 0.8)}%`,
-                  height: `${Math.max(line.height + 0.6, 2.8)}%`,
-                  backgroundColor: 'rgba(255, 235, 59, 0.65)', // Jaune fluo Stabilo doux et très lisible
-                  borderBottom: '3.5px solid #FF3B30',          // Soulignage rouge-orangé électrique
-                  boxShadow: '0 2px 8px rgba(255, 59, 48, 0.45)',
-                }}
-              />
-            );
-          })}
-        </div>
+              return (
+                <div
+                  key={line.id}
+                  ref={activeAnchorRef}
+                  className="absolute pointer-events-none rounded transition-all duration-200 z-30"
+                  style={{
+                    left: `${Math.max(0, line.left - 0.4)}%`,
+                    top: `${Math.max(0, line.top - 0.3)}%`,
+                    width: `${Math.min(100 - line.left, line.width + 0.8)}%`,
+                    height: `${Math.max(line.height + 0.6, 2.8)}%`,
+                    backgroundColor: 'rgba(255, 235, 59, 0.65)', // Jaune fluo Stabilo doux et très lisible
+                    borderBottom: '3.5px solid #FF3B30',          // Soulignage rouge-orangé électrique
+                    boxShadow: '0 2px 8px rgba(255, 59, 48, 0.45)',
+                  }}
+                />
+              );
+            })}
+          </div>
+        )}
       </div>
     </div>
   );
@@ -320,6 +321,7 @@ export interface PdfDocumentViewerProps {
   onSegmentsExtracted?: (segments: any[]) => void;
   currentPage?: number;
   onPageChange?: (page: number) => void;
+  isFullscreen?: boolean;
 }
 
 export function PdfHorizontalViewer({ 
@@ -336,6 +338,7 @@ export function PdfHorizontalViewer({
   onSegmentsExtracted,
   currentPage: externalCurrentPage,
   onPageChange,
+  isFullscreen = false,
 }: PdfDocumentViewerProps) {
   const [numPages, setNumPages] = useState(0);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
@@ -547,33 +550,39 @@ export function PdfHorizontalViewer({
         <div className="w-full px-4 py-1 bg-white dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 flex items-center justify-between shrink-0 z-20 shadow-xs">
           <div className="flex items-center gap-2">
             <button
+              type="button"
               onClick={() => scrollToPage(Math.max(1, currentPage - 1))}
               disabled={currentPage <= 1}
               className="px-2.5 py-1 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 disabled:opacity-30 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer text-stone-800 dark:text-stone-200"
               title="Page précédente"
             >
               <ChevronLeft className="w-3.5 h-3.5" />
-              <span className="hidden sm:inline">Précédent</span>
+              <span>Précédent</span>
             </button>
 
-            <span className="text-xs font-black text-stone-800 dark:text-stone-100 bg-orange-100 dark:bg-orange-950/60 border border-orange-300 dark:border-orange-800 px-3 py-1 rounded-md">
-              Page {currentPage} / {numPages}
-            </span>
+            {isFullscreen && (
+              <span className="text-xs font-black text-stone-800 dark:text-stone-100 bg-orange-100 dark:bg-orange-950/60 border border-orange-300 dark:border-orange-800 px-3 py-1 rounded-md">
+                Page {currentPage} / {numPages}
+              </span>
+            )}
 
             <button
+              type="button"
               onClick={() => scrollToPage(Math.min(numPages, currentPage + 1))}
               disabled={currentPage >= numPages}
               className="px-2.5 py-1 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 disabled:opacity-30 rounded-lg text-xs font-bold flex items-center gap-1 transition-colors cursor-pointer text-stone-800 dark:text-stone-200"
               title="Page suivante"
             >
-              <span className="hidden sm:inline">Suivant</span>
+              <span>Suivant</span>
               <ChevronRight className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          <div className="flex items-center gap-3 text-[11px] font-semibold text-stone-500">
-            <span className="hidden md:inline">↔ Molette souris ou glissement pour défiler</span>
-          </div>
+          {isFullscreen && (
+            <div className="flex items-center gap-3 text-[11px] font-semibold text-stone-500">
+              <span className="hidden md:inline">↔ Molette souris ou glissement pour défiler</span>
+            </div>
+          )}
         </div>
       )}
 
@@ -628,6 +637,7 @@ export function PdfHorizontalViewer({
                   docZoom={docZoom}
                   containerWidth={containerWidth}
                   isSpeakingThisPage={isSpeakingThisPage}
+                  isSpeaking={isSpeaking}
                   currentSpokenText={currentSpokenText}
                   activeSpeechLineIndex={activeSpeechLineIndex}
                   autoScrollEnabled={autoScrollEnabled}
@@ -662,6 +672,7 @@ export function PdfHorizontalViewer({
                     docZoom={docZoom}
                     containerWidth={containerWidth}
                     isSpeakingThisPage={isSpeakingThisPage}
+                    isSpeaking={isSpeaking}
                     currentSpokenText={currentSpokenText}
                     activeSpeechLineIndex={activeSpeechLineIndex}
                     autoScrollEnabled={autoScrollEnabled}

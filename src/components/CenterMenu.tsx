@@ -268,6 +268,16 @@ export function CenterMenu({
 
   const effectiveZoom = isLectureEtSoulignement ? docZoom : 100;
 
+  // Le basculement vers le mode horizontal ou vertical ne doit JAMAIS activer la lecture automatique ni le soulignage
+  useEffect(() => {
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+    setSpeechState('idle');
+    setActiveSpeechLineIndex(-1);
+    setSpokenWordCharIndex(-1);
+  }, [previewScrollMode]);
+
   // Listen to external speech toggle from header
   useEffect(() => {
     const handleToggleSpeech = () => handleMicClick();
@@ -914,7 +924,16 @@ export function CenterMenu({
 
             {setPreviewScrollMode && (
               <button
-                onClick={() => setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
+                type="button"
+                onClick={() => {
+                  if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                    window.speechSynthesis.cancel();
+                  }
+                  setSpeechState('idle');
+                  setActiveSpeechLineIndex(-1);
+                  setSpokenWordCharIndex(-1);
+                  setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical');
+                }}
                 className={`px-2 py-1 text-[10px] sm:text-xs rounded-lg border items-center gap-1 transition-all cursor-pointer flex shadow-sm font-bold ${
                   previewScrollMode === 'horizontal'
                     ? 'bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300 border-orange-400 dark:border-orange-600 ring-1 ring-orange-400'
@@ -1092,7 +1111,7 @@ export function CenterMenu({
           // Standard Vertical mode (default) -> Native PDF viewer with "le truc noir" (#toolbar=1, page counter, native - 122% + zoom, rotate, draw, download, print)
           // Horizontal mode OR Surlignage -> Interactive viewer with live Stabilo yellow line highlighting & auto-scroll
           if (isPdf) {
-            const isSpeaking = speechState === 'playing' || speechState === 'paused';
+            const isSpeaking = speechState === 'playing';
             const showInteractive = previewScrollMode === 'horizontal' || pdfViewerMode === 'interactive';
 
             if (showInteractive) {
@@ -1115,6 +1134,7 @@ export function CenterMenu({
                     }}
                     currentPage={currentPdfViewerPage}
                     onPageChange={setCurrentPdfViewerPage}
+                    isFullscreen={isCenterFullscreen}
                   />
                 </div>
               );
