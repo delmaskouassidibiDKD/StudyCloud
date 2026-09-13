@@ -246,6 +246,14 @@ export function CenterMenu({
   const isPpt = ['PPTX', 'PPT'].includes(ext);
   const isText = ['TXT', 'MD', 'JSON', 'JS', 'TS', 'PY', 'HTML', 'CSS', 'SQL', 'XML', 'LOG', 'JAVA', 'C', 'CPP', 'SH', 'ENV'].includes(ext);
 
+  useEffect(() => {
+    if (!isCenterFullscreen) {
+      setDocZoom(100);
+    }
+  }, [isCenterFullscreen]);
+
+  const effectiveZoom = isCenterFullscreen ? docZoom : 100;
+
   // Listen to external speech toggle from header
   useEffect(() => {
     const handleToggleSpeech = () => handleMicClick();
@@ -847,7 +855,13 @@ export function CenterMenu({
           <div className="flex items-center gap-1.5 sm:gap-2">
             {!activePreviewItem?.lockFullscreen && (
               <button
-                onClick={() => setIsCenterFullscreen(!isCenterFullscreen)}
+                onClick={() => {
+                  const next = !isCenterFullscreen;
+                  setIsCenterFullscreen(next);
+                  if (!next) {
+                    setDocZoom(100);
+                  }
+                }}
                 className="p-1.5 bg-amber-400 hover:bg-amber-300 rounded-lg text-stone-900 items-center justify-center shrink-0 transition-colors cursor-pointer border border-stone-300 dark:border-stone-700"
                 title={isCenterFullscreen ? "Réduire à 3 colonnes" : "Agrandir en plein écran"}
               >
@@ -855,32 +869,34 @@ export function CenterMenu({
               </button>
             )}
 
-            {/* Application Zoom Controls */}
-            <div className="flex items-center bg-white dark:bg-stone-800 rounded-lg border border-stone-200 dark:border-stone-700 p-0.5 shadow-sm">
-              <button
-                onClick={() => setDocZoom(prev => Math.max(40, prev - 15))}
-                className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded transition-colors cursor-pointer"
-                title="Zoom arrière (-)"
-              >
-                <ZoomOut className="w-3.5 h-3.5" />
-              </button>
+            {/* Application Zoom Controls : Apparaît UNIQUEMENT en mode agrandi (plein écran) */}
+            {isCenterFullscreen && (
+              <div className="flex items-center bg-white dark:bg-stone-800 rounded-lg border border-stone-200 dark:border-stone-700 p-0.5 shadow-sm animate-fadeIn">
+                <button
+                  onClick={() => setDocZoom(prev => Math.max(40, prev - 15))}
+                  className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded transition-colors cursor-pointer"
+                  title="Zoom arrière (-)"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
 
-              <button
-                onClick={() => setDocZoom(100)}
-                className="px-2 py-0.5 text-stone-800 dark:text-stone-200 font-bold text-[10px] sm:text-xs hover:bg-stone-100 dark:hover:bg-stone-700 rounded transition-colors cursor-pointer"
-                title="Réinitialiser à 100%"
-              >
-                {docZoom}%
-              </button>
+                <button
+                  onClick={() => setDocZoom(100)}
+                  className="px-2 py-0.5 text-stone-800 dark:text-stone-200 font-bold text-[10px] sm:text-xs hover:bg-stone-100 dark:hover:bg-stone-700 rounded transition-colors cursor-pointer"
+                  title="Réinitialiser à 100%"
+                >
+                  {docZoom}%
+                </button>
 
-              <button
-                onClick={() => setDocZoom(prev => Math.min(250, prev + 15))}
-                className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded transition-colors cursor-pointer"
-                title="Zoom avant (+)"
-              >
-                <ZoomIn className="w-3.5 h-3.5" />
-              </button>
-            </div>
+                <button
+                  onClick={() => setDocZoom(prev => Math.min(250, prev + 15))}
+                  className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded transition-colors cursor-pointer"
+                  title="Zoom avant (+)"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
 
             {setPreviewScrollMode && (
               <button
@@ -1056,7 +1072,7 @@ export function CenterMenu({
                     fileId={activePreviewItem?.id}
                     file={activePreviewItem}
                     url={currentUrl} 
-                    docZoom={docZoom}
+                    docZoom={effectiveZoom}
                     layoutMode={previewScrollMode}
                     activeSpeechPage={activeSpeechPage}
                     activeSpeechLineIndex={activeSpeechLineIndex}
@@ -1085,8 +1101,8 @@ export function CenterMenu({
                   <div 
                     className="transition-all duration-150 ease-out origin-top flex-1 w-full flex flex-col"
                     style={{
-                      width: `${Math.max(40, docZoom)}%`,
-                      height: `${Math.max(100, docZoom)}%`,
+                      width: `${Math.max(40, effectiveZoom)}%`,
+                      height: `${Math.max(100, effectiveZoom)}%`,
                       minWidth: '100%',
                       minHeight: '100%'
                     }}
@@ -1155,7 +1171,7 @@ export function CenterMenu({
                       : 'overflow-y-auto px-6 sm:px-12 md:px-20 py-8'
                   }`}
                   style={{ 
-                    zoom: `${docZoom}%`,
+                    zoom: `${effectiveZoom}%`,
                     ...(previewScrollMode === 'horizontal' ? { columnWidth: '500px', columnGap: '40px', height: '100%' } : {})
                   }}
                 >
@@ -1386,7 +1402,7 @@ export function CenterMenu({
 
                 <div 
                   className="flex-1 w-full h-full flex items-center justify-center p-4 sm:p-8 overflow-auto"
-                  style={{ zoom: `${docZoom}%` }}
+                  style={{ zoom: `${effectiveZoom}%` }}
                 >
                   <div className="w-full h-full max-w-5xl max-h-[85vh] aspect-[16/9] bg-[#FDFBF7] text-stone-900 rounded-xl border border-stone-700 p-8 md:p-12 flex flex-col justify-between select-text relative overflow-hidden">
                     <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-red-500" />
@@ -1466,7 +1482,7 @@ export function CenterMenu({
                 <img
                   src={currentUrl}
                   alt={activePreviewItem?.name || 'Document'}
-                  style={{ zoom: `${docZoom}%`, transformOrigin: 'center center' }}
+                  style={{ zoom: `${effectiveZoom}%`, transformOrigin: 'center center' }}
                   className="max-w-full max-h-full object-contain transition-all select-none"
                 />
               </div>
@@ -1482,7 +1498,7 @@ export function CenterMenu({
                   controls
                   playsInline
                   className="w-full max-h-full object-contain"
-                  style={{ zoom: `${docZoom}%` }}
+                  style={{ zoom: `${effectiveZoom}%` }}
                 />
               </div>
             );
@@ -1525,7 +1541,7 @@ export function CenterMenu({
                 <div 
                   ref={textContainerRef}
                   className="flex-1 w-full h-full p-4 sm:p-6 overflow-auto font-mono text-xs leading-relaxed text-[#d4d4d4] select-text"
-                  style={{ zoom: `${docZoom}%` }}
+                  style={{ zoom: `${effectiveZoom}%` }}
                 >
                   {speechSegments.length > 0 && (speechState === 'playing' || speechState === 'paused') ? (
                     <div className="whitespace-pre-wrap leading-relaxed">
