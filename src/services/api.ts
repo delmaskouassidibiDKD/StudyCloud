@@ -33,8 +33,43 @@ export async function sendChatMessageToAi(params: {
   messages: Array<{ role: string; content: string }>;
   prompt?: string;
 }): Promise<{ response: string; success: boolean; model?: string }> {
-  const url = getAiWorkerUrl().replace(/\/+$/, '');
-  const response = await fetch(url, {
+  const mainWorkerChatUrl = `${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/chat`;
+  const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
+
+  // 1. Tenter en priorité la route /api/ai/chat sur le Worker principal de l'application
+  try {
+    const mainResponse = await fetch(mainWorkerChatUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(params),
+    });
+
+    if (mainResponse.ok) {
+      const data = await mainResponse.json();
+      let text = '';
+      if (typeof data.response === 'string') {
+        text = data.response;
+      } else if (data.response?.response) {
+        text = data.response.response;
+      } else if (Array.isArray(data) && data[0]?.response?.response) {
+        text = data[0].response.response;
+      } else if (data.message?.content) {
+        text = data.message.content;
+      } else if (typeof data === 'string') {
+        text = data;
+      } else {
+        text = JSON.stringify(data);
+      }
+      return { response: text, success: true, model: data.model };
+    }
+  } catch (mainErr) {
+    console.warn('Appel au Worker principal /api/ai/chat indisponible, tentative sur le Worker IA dédié...', mainErr);
+  }
+
+  // 2. Repli direct sur le Worker IA dédié (studycloud-ai)
+  const response = await fetch(dedicatedAiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
