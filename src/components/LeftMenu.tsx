@@ -729,9 +729,9 @@ export function LeftMenu({
                 title="Ouvrir l'Assistante DKD"
               >
                 <div className="relative p-0.5 rounded-full transition-all duration-200 hover:scale-105 shadow-[0_2px_8px_rgba(37,99,235,0.3)]">
-                  <DelmasRobot size={36} />
+                  <DelmasRobot size={42} />
                 </div>
-                <span className="text-[9px] font-black uppercase tracking-wider mt-0.5 leading-none whitespace-nowrap text-blue-600 group-hover:text-blue-700">
+                <span className="text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap text-blue-600 group-hover:text-blue-700">
                   Assistante DKD
                 </span>
               </button>
@@ -772,15 +772,23 @@ export function LeftMenu({
                 </div>
               </div>
 
-              {/* Row 2: Assistante DKD Robot directly BELOW the search field */}
-              <div className="flex items-center justify-end w-full">
+              {/* Row 2: Assistante DKD Robot directly BELOW the search field with exact original vertical design */}
+              <div className="flex items-center justify-end w-full pr-2 pt-0.5">
                 <button
                   onClick={() => setIsAssistantOpen(!isAssistantOpen)}
-                  className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800/60 shadow-xs cursor-pointer group active:scale-95 transition-all select-none"
-                  title="Ouvrir l'Assistante DKD"
+                  className="flex flex-col items-center justify-center cursor-pointer group active:scale-95 transition-all select-none shrink-0"
+                  title={isAssistantOpen ? "Fermer l'Assistante DKD" : "Ouvrir l'Assistante DKD"}
                 >
-                  <DelmasRobot size={26} />
-                  <span className="text-[9.5px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 group-hover:text-blue-700">
+                  <div className={`relative p-0.5 rounded-full transition-all duration-200 ${
+                    isAssistantOpen 
+                      ? 'ring-2 ring-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.6)] scale-105' 
+                      : 'hover:scale-105 shadow-[0_2px_8px_rgba(37,99,235,0.3)]'
+                  }`}>
+                    <DelmasRobot size={42} />
+                  </div>
+                  <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap transition-colors ${
+                    isAssistantOpen ? 'text-orange-600' : 'text-blue-600 group-hover:text-blue-700'
+                  }`}>
                     Assistante DKD
                   </span>
                 </button>
