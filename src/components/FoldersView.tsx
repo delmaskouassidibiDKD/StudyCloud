@@ -485,10 +485,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
   return (
     <div className="flex flex-col items-center justify-start min-h-[75vh] px-2 sm:px-4 text-center pt-12 md:pt-14 pb-24">
-      {/* Fixed Header bar with action buttons */}
-      <div className={`fixed top-0 left-0 right-0 md:left-64 z-40 px-3 md:px-6 py-1.5 flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${
+      {/* Fixed Header bar with action buttons - Solid Dark #070a13 */}
+      <div className={`fixed top-0 left-0 right-0 md:left-64 z-40 px-3 md:px-6 py-2 flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${
         isDarkMode 
-          ? 'bg-[#0f172a]/85 backdrop-blur-xl border-b border-white/10 shadow-lg' 
+          ? 'bg-[#070a13] border-b border-[#1e293b] shadow-md' 
           : 'bg-[#FDFBF7] border-b-2 border-stone-800 shadow-sm'
       }`}>
         <div className="flex items-center gap-2">
@@ -516,45 +516,45 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           <div className="flex flex-col items-center">
             <button
               onClick={() => setIsDarkMode(!isDarkMode)}
-              className={`p-1.5 rounded-xl border transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
+              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
                 isDarkMode 
-                  ? 'bg-amber-500/15 hover:bg-amber-500/25 text-amber-300 border-amber-500/30 shadow-[0_0_12px_rgba(251,191,36,0.25)]' 
+                  ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-amber-500/50 shadow-sm' 
                   : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
               }`}
               title={isDarkMode ? "Passer en mode jour" : "Passer en mode nuit / sombre"}
             >
               {isDarkMode ? (
-                <Sun className="w-3.5 h-3.5 text-amber-400" />
+                <Sun className="w-4 h-4 text-amber-400" />
               ) : (
-                <Moon className="w-3.5 h-3.5 text-indigo-600" />
+                <Moon className="w-4 h-4 text-indigo-600" />
               )}
             </button>
-            <span className={`text-[9px] font-bold leading-none mt-0.5 ${isDarkMode ? 'text-amber-300/90' : 'text-stone-700'}`}>
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${isDarkMode ? 'text-amber-300' : 'text-stone-700'}`}>
               {isDarkMode ? "Jour" : "Sombre"}
             </span>
           </div>
 
-          {/* Language button */}
+          {/* Language button - Solid filled #1e293b, no transparency */}
           <div className="flex flex-col items-center relative">
             <button
               onClick={() => setIsLanguageMenuOpen(!isLanguageMenuOpen)}
-              className={`p-1.5 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
+              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
                 isDarkMode
-                  ? 'bg-white/10 hover:bg-white/15 text-white border-white/15 shadow-sm'
+                  ? 'bg-[#1e293b] hover:bg-[#283852] text-white border-[#334155] shadow-sm'
                   : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
               }`}
               title="Langue"
             >
-              <Globe className="w-3.5 h-3.5 text-red-500" />
+              <Globe className="w-4 h-4 text-rose-400" />
             </button>
-            <span className={`text-[9px] font-bold leading-none mt-0.5 ${isDarkMode ? 'text-slate-300' : 'text-stone-700'}`}>
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${isDarkMode ? 'text-white' : 'text-stone-700'}`}>
               Langue
             </span>
             
             {isLanguageMenuOpen && (
-              <div className={`absolute top-full right-0 mt-2 rounded-2xl shadow-2xl z-50 min-w-[150px] py-1.5 max-h-[300px] overflow-y-auto border backdrop-blur-xl ${
+              <div className={`absolute top-full right-0 mt-2 rounded-2xl shadow-2xl z-50 min-w-[160px] py-1.5 max-h-[300px] overflow-y-auto border-2 ${
                 isDarkMode
-                  ? 'bg-[#0f172a]/95 border-white/15 text-white'
+                  ? 'bg-[#111a2e] border-[#334155] text-white'
                   : 'bg-[#F5F1E9] border-2 border-stone-800 text-stone-800'
               }`}>
                 {[
@@ -576,11 +576,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                     <button
                       key={lang.code}
                       onClick={() => handleLanguageChange(lang.code)}
-                      className={`w-full text-left px-3 py-1.5 text-xs font-bold transition-colors ${
+                      className={`w-full text-left px-3.5 py-2 text-xs font-bold transition-colors ${
                         isSelected 
-                          ? 'bg-red-500/20 text-red-400 border-l-4 border-red-500' 
+                          ? 'bg-rose-500/25 text-rose-400 border-l-4 border-rose-500' 
                           : isDarkMode 
-                          ? 'text-slate-300 hover:bg-white/10 border-l-4 border-transparent' 
+                          ? 'text-slate-200 hover:bg-[#1e293b] border-l-4 border-transparent' 
                           : 'text-stone-700 hover:bg-stone-200 border-l-4 border-transparent'
                       }`}
                     >
@@ -592,58 +592,58 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             )}
           </div>
 
-          {/* Gemini button */}
+          {/* Gemini button - Solid filled #1e293b, no transparency */}
           <div className="flex flex-col items-center">
             <button
               onClick={() => setIsGeminiOpen(true)}
-              className={`p-1.5 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
+              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
                 isDarkMode
-                  ? 'bg-white/10 hover:bg-white/15 text-indigo-400 border-white/15 shadow-sm'
+                  ? 'bg-[#1e293b] hover:bg-[#283852] text-indigo-400 border-[#334155] shadow-sm'
                   : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
               }`}
               title="Gemini"
             >
-              <svg className="w-3.5 h-3.5 text-indigo-500" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0C12 6.627 17.373 12 24 12C17.373 12 12 17.373 12 24C12 17.373 6.627 12 0 12C6.627 12 12 6.627 12 0Z"/>
+              <svg className="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor">
+                <path d="M12 0C12 6.627 17.373 12 24 12C17.373 12 12 17.373 12 24C12 17.373 6.627 12 0 12C6.627 12 12 0 12 0Z"/>
               </svg>
             </button>
-            <span className={`text-[9px] font-bold leading-none mt-0.5 ${isDarkMode ? 'text-slate-300' : 'text-stone-700'}`}>
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${isDarkMode ? 'text-white' : 'text-stone-700'}`}>
               Gemini
             </span>
           </div>
 
-          {/* Abondamment button */}
+          {/* Abondamment button - Solid filled #1e293b, no transparency */}
           <div className="flex flex-col items-center">
             <button
               onClick={() => setViewMode('abondamment')}
-              className={`p-1.5 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
+              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
                 isDarkMode
-                  ? 'bg-white/10 hover:bg-white/15 text-amber-400 border-white/15 shadow-sm'
+                  ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-[#334155] shadow-sm'
                   : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
               }`}
               title="Abondamment"
             >
-              <Sparkles className="w-3.5 h-3.5 text-amber-500" />
+              <Sparkles className="w-4 h-4 text-amber-400" />
             </button>
-            <span className={`text-[9px] font-bold leading-none mt-0.5 ${isDarkMode ? 'text-slate-300' : 'text-stone-700'}`}>
-              Abondamment
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${isDarkMode ? 'text-white' : 'text-stone-700'}`}>
+              Abonnement
             </span>
           </div>
 
-          {/* Créer les matières */}
+          {/* Créer les matières - Solid filled #1e293b, no transparency */}
           <div className="flex flex-col items-center">
             <button
               onClick={() => setIsMatiereMenuOpen(true)}
-              className={`p-1.5 rounded-xl border transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
+              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
                 isDarkMode
-                  ? 'bg-white/10 hover:bg-white/15 text-orange-400 border-white/15 shadow-sm'
+                  ? 'bg-[#1e293b] hover:bg-[#283852] text-orange-400 border-[#334155] shadow-sm'
                   : 'bg-[#F5F1E9] hover:bg-[#EBE5DA] text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
               }`}
               title="Matière"
             >
-              <FolderPlus className="w-3.5 h-3.5 text-orange-500" />
+              <FolderPlus className="w-4 h-4 text-orange-400" />
             </button>
-            <span className={`text-[9px] font-bold leading-none mt-0.5 ${isDarkMode ? 'text-slate-300' : 'text-stone-700'}`}>
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${isDarkMode ? 'text-white' : 'text-stone-700'}`}>
               Matière
             </span>
           </div>

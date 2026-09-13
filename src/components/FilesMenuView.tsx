@@ -746,7 +746,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-transparent text-[#2D4A3E] dark:text-slate-100 px-4 py-8 overflow-y-auto transition-colors duration-300">
+    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-8 overflow-y-auto transition-colors duration-300">
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -758,15 +758,15 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">
           <button
             onClick={onBack}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-white/10 dark:hover:bg-white/15 dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-white/15 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
           >
-            <ArrowLeft className="w-3 h-3" />
+            <ArrowLeft className="w-3 h-3 text-[#2D4A3E] dark:text-white" />
             <span>Retour</span>
           </button>
 
           <button
             onClick={handleButtonClick}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-gradient-to-r dark:from-orange-500 dark:to-amber-500 dark:hover:from-orange-600 dark:hover:to-amber-600 dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-orange-400/40 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-[0_0_12px_rgba(245,158,11,0.3)] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
             title="Importer des fichiers"
           >
             <Upload className="w-3 h-3 text-[#2D4A3E] dark:text-white" />
@@ -774,7 +774,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           </button>
         </div>
 
-        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] dark:text-white bg-[#E8DFD0] dark:bg-white/10 px-3 py-1 rounded-lg border-2 border-[#2D4A3E] dark:border-white/15 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none self-start mt-0.5 backdrop-blur-md">
+        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] dark:text-white bg-[#E8DFD0] dark:bg-[#070a13] px-3 py-1 rounded-lg border-2 border-[#2D4A3E] dark:border-[#1e293b] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none self-start mt-0.5">
           Mes fichiers
         </h1>
 
@@ -782,10 +782,10 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           <div className="relative">
             <button
               onClick={() => setShowFilesMenuDropdown(!showFilesMenuDropdown)}
-              className="p-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-white/10 dark:hover:bg-white/15 dark:text-white rounded-lg border-2 border-[#2D4A3E] dark:border-white/15 shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
+              className="p-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center"
               title="Options"
             >
-              <MoreVertical className="w-3.5 h-3.5" />
+              <MoreVertical className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
             </button>
 
             {showFilesMenuDropdown && (
@@ -794,7 +794,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                   className="fixed inset-0 z-40 bg-transparent" 
                   onClick={() => setShowFilesMenuDropdown(false)} 
                 />
-                <div className="absolute top-10 right-0 z-50 w-52 bg-white dark:bg-[#0f172a]/95 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/15 rounded-xl shadow-xl py-2 text-left animate-in fade-in duration-150">
+                <div className="absolute top-10 right-0 z-50 w-52 bg-white dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#334155] rounded-xl shadow-xl py-2 text-left animate-in fade-in duration-150">
                   <button
                     type="button"
                     onClick={() => {

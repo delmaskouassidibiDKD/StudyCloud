@@ -55,12 +55,12 @@ export const UploadView: React.FC<UploadViewProps> = ({
 }) => {
   return (
     <div className="flex flex-col space-y-4 pb-24 pt-24 md:pt-24 animate-fadeIn">
-      {/* Fixed Header for Upload Tab */}
-      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#FDFBF7] py-2 px-4 md:px-8 border-b-2 border-stone-800 shadow-sm space-y-1.5">
+      {/* Fixed Header for Upload Tab - Solid Dark #070a13 */}
+      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#FDFBF7] dark:bg-[#070a13] py-2 px-4 md:px-8 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm space-y-1.5">
         <div className="flex items-center justify-between gap-3 max-w-7xl mx-auto w-full">
           <div className="flex items-center gap-2.5 sm:gap-3.5">
-            <label className="flex flex-col items-center justify-center bg-[#F5F1E9] hover:bg-[#EBE5DA] text-stone-800 font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
-              <Upload className="w-3.5 h-3.5 text-orange-600 mb-0.5" />
+            <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+              <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
               <span className="leading-none">dossier</span>
               <input
                 type="file"
@@ -71,8 +71,8 @@ export const UploadView: React.FC<UploadViewProps> = ({
               />
             </label>
 
-            <label className="flex flex-col items-center justify-center bg-[#F5F1E9] hover:bg-[#EBE5DA] text-stone-800 font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
-              <Upload className="w-3.5 h-3.5 text-orange-600 mb-0.5" />
+            <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+              <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
               <span className="leading-none">fichier</span>
               <input
                 type="file"
@@ -82,8 +82,8 @@ export const UploadView: React.FC<UploadViewProps> = ({
               />
             </label>
 
-            <label className="flex flex-col items-center justify-center bg-[#F5F1E9] hover:bg-[#EBE5DA] text-stone-800 font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
-              <Upload className="w-3.5 h-3.5 text-orange-600 mb-0.5" />
+            <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+              <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
               <span className="leading-none">images</span>
               <input
                 type="file"
@@ -94,8 +94,8 @@ export const UploadView: React.FC<UploadViewProps> = ({
               />
             </label>
 
-            <label className="flex flex-col items-center justify-center bg-[#F5F1E9] hover:bg-[#EBE5DA] text-stone-800 font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
-              <Upload className="w-3.5 h-3.5 text-orange-600 mb-0.5" />
+            <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
+              <Upload className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400 mb-0.5" />
               <span className="leading-none">son</span>
               <input
                 type="file"
@@ -109,7 +109,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
 
           <button
             onClick={onOpenClearConfirm}
-            className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-3 py-2 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer shrink-0"
+            className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-3 py-2 rounded-xl border-2 border-stone-800 dark:border-orange-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer shrink-0"
           >
             <FolderPlus className="w-3.5 h-3.5" />
             <span>Nouveau partage</span>

@@ -10,14 +10,14 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
   const [billingCycle, setBillingCycle] = useState<'annual' | 'monthly'>('annual');
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] text-[#2D4A3E] overflow-y-auto animate-fadeIn pb-24">
-      {/* Sticky Top Bar exactly below the top header */}
-      <div className="sticky top-0 z-40 bg-[#F5F0E8]/95 backdrop-blur-xs px-4 py-3 flex items-center justify-between border-b-2 border-[#2D4A3E]/20 shadow-xs">
+    <div className="absolute inset-x-0 bottom-0 top-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-white overflow-y-auto animate-fadeIn pb-24">
+      {/* Sticky Top Bar exactly below the top header - Solid Dark #070a13 */}
+      <div className="sticky top-0 z-40 bg-[#F5F0E8] dark:bg-[#070a13] px-4 py-3 flex items-center justify-between border-b-2 border-[#2D4A3E]/20 dark:border-[#1e293b] shadow-xs">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 px-3.5 py-2 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-xs rounded-xl border-2 border-[#2D4A3E] shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          className="flex items-center gap-1.5 px-3.5 py-2 bg-[#E8DFD0] dark:bg-[#1e293b] hover:bg-[#D4C9B5] dark:hover:bg-[#283852] text-[#2D4A3E] dark:text-white font-bold text-xs rounded-xl border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4 text-[#2D4A3E] dark:text-white" />
           <span>Retour</span>
         </button>
 

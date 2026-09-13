@@ -21,8 +21,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
 
   return (
     <>
-      {/* Desktop Sidebar */}
-      <aside className="hidden md:flex flex-col w-64 h-screen fixed top-0 left-0 overflow-y-auto bg-[#F5F1E9] dark:bg-[#0b0f19]/90 dark:backdrop-blur-2xl p-6 pb-24 shrink-0 select-none z-40 border-r-2 border-stone-800 dark:border-white/10 shadow-[2px_0px_5px_-2px_rgba(0,0,0,0.1)] transition-colors duration-300">
+      {/* Desktop Sidebar - Solide Opaque Dark #070a13 */}
+      <aside className="hidden md:flex flex-col w-64 h-screen fixed top-0 left-0 overflow-y-auto bg-[#F5F1E9] dark:bg-[#070a13] p-6 pb-24 shrink-0 select-none z-40 border-r-2 border-stone-800 dark:border-[#1e293b] shadow-[2px_0px_5px_-2px_rgba(0,0,0,0.1)] transition-colors duration-300">
         {/* Brand Header */}
         <div className="flex items-center gap-2 mb-8">
           <DnaLogo className="w-8 h-8 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
@@ -49,8 +49,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
                 }}
                 className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl font-bold text-base transition-all border-2 ${
                   isActive
-                    ? 'bg-orange-100 dark:bg-orange-500/15 border-stone-800 dark:border-orange-500/40 text-stone-900 dark:text-orange-400 shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none'
-                    : 'border-transparent text-stone-600 dark:text-slate-400 hover:bg-[#EBE5DA] dark:hover:bg-white/5 hover:border-stone-800 dark:hover:border-white/10 hover:text-stone-900 dark:hover:text-white'
+                    ? 'bg-orange-100 dark:bg-[#1e293b] border-stone-800 dark:border-orange-500/50 text-stone-900 dark:text-orange-400 shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none'
+                    : 'border-transparent text-stone-600 dark:text-slate-300 hover:bg-[#EBE5DA] dark:hover:bg-[#162033] hover:border-stone-800 dark:hover:border-[#1e293b] hover:text-stone-900 dark:hover:text-white'
                 }`}
               >
                 <div className="flex items-center gap-3">
@@ -58,7 +58,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
                   <span>{item.label}</span>
                 </div>
                 {item.badge !== undefined && (
-                  <span className="text-xs px-2 py-0.5 bg-stone-200 dark:bg-white/10 border border-stone-800 dark:border-white/10 rounded-md font-mono text-stone-800 dark:text-slate-200">
+                  <span className="text-xs px-2 py-0.5 bg-stone-200 dark:bg-[#1e293b] border border-stone-800 dark:border-[#334155] rounded-md font-mono text-stone-800 dark:text-slate-200">
                     {item.badge}
                   </span>
                 )}
@@ -67,8 +67,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
           })}
         </nav>
 
-        {/* Student Promo Card */}
-        <div className="bg-[#EBE5DA] dark:bg-white/[0.04] border-2 border-stone-800 dark:border-white/10 rounded-2xl p-4 mt-auto shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all">
+        {/* Student Promo Card - Solide Dark #111a2e */}
+        <div className="bg-[#EBE5DA] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#1e293b] rounded-2xl p-4 mt-auto shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all">
           <div className="flex items-center gap-2 text-orange-600 dark:text-orange-400 mb-1 font-bold text-xs">
             <Sparkles className="w-3.5 h-3.5" />
             <span>Version Étudiante 100% Gratuite</span>
@@ -79,9 +79,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
         </div>
       </aside>
 
-      {/* Bottom Navigation Bar */}
+      {/* Bottom Navigation Bar - Solide Opaque Dark #070a13 */}
       <div 
-        className="mobile-fixed-bottom bottom-nav bg-[#F5F1E9] dark:bg-[#0b0f19]/95 dark:backdrop-blur-xl border-t-3 border-stone-800 dark:border-white/10 px-3 py-0 z-[99999] flex items-center justify-around shadow-[0px_-4px_10px_rgba(0,0,0,0.05)] md:!hidden transition-colors duration-300"
+        className="mobile-fixed-bottom bottom-nav bg-[#F5F1E9] dark:bg-[#070a13] border-t-3 border-stone-800 dark:border-[#1e293b] px-3 py-0 z-[99999] flex items-center justify-around shadow-[0px_-4px_10px_rgba(0,0,0,0.05)] md:!hidden transition-colors duration-300"
       >
         {navItems.map((item) => {
           const Icon = item.icon;

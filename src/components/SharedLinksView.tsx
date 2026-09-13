@@ -60,8 +60,8 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
 
   return (
     <div className="flex flex-col space-y-6 pb-20 pt-20 md:pt-20 animate-fadeIn">
-      {/* Fixed Header Container enclosing both Search bar and Filter buttons */}
-      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#FDFBF7] dark:bg-[#0f172a]/85 dark:backdrop-blur-xl border-b-2 border-stone-800 dark:border-white/10 shadow-sm px-4 md:px-8 pt-3 pb-2 space-y-2 transition-all">
+      {/* Fixed Header Container enclosing both Search bar and Filter buttons - Solid Dark #070a13 */}
+      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#FDFBF7] dark:bg-[#070a13] border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm px-4 md:px-8 pt-3 pb-2 space-y-2 transition-all">
         <div className="flex items-center justify-between gap-2 max-w-7xl mx-auto w-full">
           <div className="relative flex-1 min-w-0">
             <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-stone-400" />
@@ -70,14 +70,14 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
               value={searchQuery}
               onChange={(e) => setSearchQuery(e.target.value)}
               placeholder="Rechercher dans mes liens..."
-              className="w-full bg-white dark:bg-slate-900/80 dark:border-white/15 dark:text-white dark:placeholder-slate-400 border-2 border-stone-800 rounded-xl pl-9 pr-3 py-1.5 text-xs font-medium outline-none shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all"
+              className="w-full bg-white dark:bg-[#111a2e] dark:border-[#334155] dark:text-white dark:placeholder-slate-400 border-2 border-stone-800 rounded-xl pl-9 pr-3 py-1.5 text-xs font-medium outline-none shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all"
             />
           </div>
           <div className="flex items-center gap-1.5 shrink-0 relative">
             <button
               onClick={() => setShowDeleteAllModal(true)}
               title="Supprimer tous les liens"
-              className="p-1.5 bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-700 dark:text-slate-300 rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+              className="p-1.5 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
             >
               <Trash2 className="w-4 h-4 text-red-600 dark:text-red-400" />
             </button>
@@ -87,14 +87,14 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
               <button
                 onClick={() => setMenuOpen(!menuOpen)}
                 title="Options de tri"
-                className="p-1.5 bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-700 dark:text-slate-300 rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                className="p-1.5 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
               >
                 <MoreVertical className="w-4 h-4" />
               </button>
 
               {menuOpen && (
-                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#0f172a]/95 dark:backdrop-blur-xl border-3 border-stone-800 dark:border-white/15 rounded-2xl shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-2xl py-2 z-50 animate-fadeIn">
-                  <div className="px-3 py-1.5 text-[11px] font-extrabold text-stone-400 dark:text-slate-500 uppercase tracking-wider border-b border-stone-200 dark:border-white/10 mb-1">
+                <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-[#111a2e] border-3 border-stone-800 dark:border-[#334155] rounded-2xl shadow-2xl py-2 z-50 animate-fadeIn">
+                  <div className="px-3 py-1.5 text-[11px] font-extrabold text-stone-400 dark:text-slate-400 uppercase tracking-wider border-b border-stone-200 dark:border-[#1e293b] mb-1">
                     Options de tri
                   </div>
                   <button
@@ -102,8 +102,8 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
                       setSortBy('size');
                       setMenuOpen(false);
                     }}
-                    className={`w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-orange-50 dark:hover:bg-white/10 transition-colors ${
-                      sortBy === 'size' ? 'text-orange-600 dark:text-orange-400 bg-orange-50/50 dark:bg-white/10' : 'text-stone-800 dark:text-slate-300'
+                    className={`w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-orange-50 dark:hover:bg-[#1e293b] transition-colors ${
+                      sortBy === 'size' ? 'text-orange-600 dark:text-orange-400 bg-orange-50/50 dark:bg-[#1e293b]' : 'text-stone-800 dark:text-slate-200'
                     }`}
                   >
                     <HardDrive className="w-3.5 h-3.5" />
@@ -114,8 +114,8 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
                       setSortBy('recent');
                       setMenuOpen(false);
                     }}
-                    className={`w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-orange-50 dark:hover:bg-white/10 transition-colors ${
-                      sortBy === 'recent' ? 'text-orange-600 dark:text-orange-400 bg-orange-50/50 dark:bg-white/10' : 'text-stone-800 dark:text-slate-300'
+                    className={`w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-orange-50 dark:hover:bg-[#1e293b] transition-colors ${
+                      sortBy === 'recent' ? 'text-orange-600 dark:text-orange-400 bg-orange-50/50 dark:bg-[#1e293b]' : 'text-stone-800 dark:text-slate-200'
                     }`}
                   >
                     <Clock className="w-3.5 h-3.5" />
@@ -126,8 +126,8 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
                       setSortBy('oldest');
                       setMenuOpen(false);
                     }}
-                    className={`w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-orange-50 dark:hover:bg-white/10 transition-colors ${
-                      sortBy === 'oldest' ? 'text-orange-600 dark:text-orange-400 bg-orange-50/50 dark:bg-white/10' : 'text-stone-800 dark:text-slate-300'
+                    className={`w-full text-left px-4 py-2 text-xs font-bold flex items-center gap-2 hover:bg-orange-50 dark:hover:bg-[#1e293b] transition-colors ${
+                      sortBy === 'oldest' ? 'text-orange-600 dark:text-orange-400 bg-orange-50/50 dark:bg-[#1e293b]' : 'text-stone-800 dark:text-slate-200'
                     }`}
                   >
                     <ArrowUpDown className="w-3.5 h-3.5" />
@@ -143,8 +143,8 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
         <div className="flex items-center gap-2 overflow-x-auto pt-0.5 pb-0.5 max-w-7xl mx-auto w-full">
           <button
             onClick={() => setFilterStatus('all')}
-            className={`px-3 py-1 rounded-xl border-2 border-stone-800 dark:border-white/15 text-xs font-bold shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              filterStatus === 'all' ? 'bg-orange-500 text-white dark:shadow-[0_0_12px_rgba(249,115,22,0.3)]' : 'bg-white dark:bg-white/5 text-stone-800 dark:text-slate-300 hover:bg-stone-100 dark:hover:bg-white/10'
+            className={`px-3 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] text-xs font-bold shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              filterStatus === 'all' ? 'bg-orange-500 text-white shadow-sm' : 'bg-white dark:bg-[#1e293b] text-stone-800 dark:text-slate-200 hover:bg-stone-100 dark:hover:bg-[#283852]'
             }`}
           >
             <Folder className="w-3.5 h-3.5" />
@@ -152,8 +152,8 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
           </button>
           <button
             onClick={() => setFilterStatus('unpublished')}
-            className={`px-3 py-1 rounded-xl border-2 border-stone-800 dark:border-white/15 text-xs font-bold shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              filterStatus === 'unpublished' ? 'bg-amber-500 text-white dark:shadow-[0_0_12px_rgba(245,158,11,0.3)]' : 'bg-white dark:bg-white/5 text-stone-800 dark:text-slate-300 hover:bg-stone-100 dark:hover:bg-white/10'
+            className={`px-3 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] text-xs font-bold shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              filterStatus === 'unpublished' ? 'bg-amber-500 text-white shadow-sm' : 'bg-white dark:bg-[#1e293b] text-stone-800 dark:text-slate-200 hover:bg-stone-100 dark:hover:bg-[#283852]'
             }`}
           >
             <Lock className="w-3.5 h-3.5" />
@@ -161,8 +161,8 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
           </button>
           <button
             onClick={() => setFilterStatus('published')}
-            className={`px-3 py-1 rounded-xl border-2 border-stone-800 dark:border-white/15 text-xs font-bold shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
-              filterStatus === 'published' ? 'bg-emerald-500 text-white dark:shadow-[0_0_12px_rgba(16,185,129,0.3)]' : 'bg-white dark:bg-white/5 text-stone-800 dark:text-slate-300 hover:bg-stone-100 dark:hover:bg-white/10'
+            className={`px-3 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] text-xs font-bold shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center gap-1.5 transition-all cursor-pointer whitespace-nowrap ${
+              filterStatus === 'published' ? 'bg-emerald-500 text-white shadow-sm' : 'bg-white dark:bg-[#1e293b] text-stone-800 dark:text-slate-200 hover:bg-stone-100 dark:hover:bg-[#283852]'
             }`}
           >
             <Globe className="w-3.5 h-3.5" />

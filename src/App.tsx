@@ -1032,21 +1032,21 @@ export default function App() {
       )}
 
       {activePreviewItem && (previewOwnerTab ? previewOwnerTab === currentTab : currentTab === 'folders') && (
-        <div className="fixed inset-0 md:left-64 z-[99999] bg-[#FDFBF7] flex flex-col animate-fadeIn overflow-hidden">
-          {/* Top Header Bar */}
-          <div className="fixed top-0 left-0 right-0 md:left-64 z-50 bg-[#FDFBF7] py-1.5 px-3 md:px-6 border-b-2 border-stone-800 shadow-sm flex items-center justify-between gap-2">
+        <div className="fixed inset-0 md:left-64 z-[99999] bg-[#FDFBF7] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-hidden">
+          {/* Top Header Bar - Solid Dark #070a13 */}
+          <div className="fixed top-0 left-0 right-0 md:left-64 z-50 bg-[#FDFBF7] dark:bg-[#070a13] py-1.5 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
             {/* Left: Bouton Retour et badge du dossier/matière juste derrière */}
             <div className="flex items-center gap-2 shrink-0">
               <button
                 onClick={() => setActivePreviewItem(null)}
-                className="flex items-center gap-1 px-2 py-1 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                className="flex items-center gap-1 px-2 py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
               >
-                <ArrowLeft className="w-3 h-3" />
+                <ArrowLeft className="w-3 h-3 text-stone-900 dark:text-white" />
                 <span>Retour</span>
               </button>
 
               {(activePreviewItem.folderName || activeFolderDetail?.title) && (
-                <span className="text-[10px] sm:text-[11px] font-black text-stone-800 uppercase tracking-widest max-w-[140px] sm:max-w-[220px] truncate bg-[#E8DFD0] px-2.5 py-1 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] shrink-0 text-center">
+                <span className="text-[10px] sm:text-[11px] font-black text-stone-800 dark:text-orange-400 uppercase tracking-widest max-w-[140px] sm:max-w-[220px] truncate bg-[#E8DFD0] dark:bg-[#111a2e] px-2.5 py-1 rounded-lg border-2 border-stone-800 dark:border-[#1e293b] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none shrink-0 text-center">
                   {activePreviewItem.folderName || activeFolderDetail?.title}
                 </span>
               )}
@@ -1054,13 +1054,13 @@ export default function App() {
 
             {/* Center: Nom du fichier (masqué sur mobile car pas assez de place) */}
             <div className="hidden md:flex flex-1 items-center justify-center gap-2 overflow-hidden px-1 sm:px-2 min-w-0">
-              <p className="text-[11px] sm:text-xs font-bold text-stone-900 leading-tight truncate overflow-hidden text-ellipsis text-center max-w-sm lg:max-w-md">
+              <p className="text-[11px] sm:text-xs font-bold text-stone-900 dark:text-white leading-tight truncate overflow-hidden text-ellipsis text-center max-w-sm lg:max-w-md">
                 {activePreviewItem.name}
               </p>
             </div>
             
             <div className="flex flex-col items-end gap-0.5 shrink-0">
-              <span className="text-[9px] sm:text-[10px] text-stone-600 font-semibold px-1">
+              <span className="text-[9px] sm:text-[10px] text-stone-600 dark:text-slate-300 font-semibold px-1">
                 {(() => {
                   const bytes = activePreviewItem.size;
                   if (!bytes) return '0 o';

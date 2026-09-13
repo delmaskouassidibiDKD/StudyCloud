@@ -332,8 +332,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
   return (
     <div className="flex flex-col space-y-4 pb-24 pt-24 md:pt-26 animate-fadeIn w-full px-2 sm:px-4">
-      {/* Fixed Header Container enclosing search bar and 3 fixed compact buttons */}
-      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#FDFBF7] border-b-2 border-stone-800 shadow-sm px-3 sm:px-6 pt-2.5 pb-2 space-y-2">
+      {/* Fixed Header Container enclosing search bar and 3 fixed compact buttons - Solid Dark #070a13 */}
+      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#FDFBF7] dark:bg-[#070a13] border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm px-3 sm:px-6 pt-2.5 pb-2 space-y-2">
         <div className="flex items-center justify-between gap-2 sm:gap-3 w-full">
           {/* Expanded Search input */}
           <div className="relative flex-1 min-w-[120px]">
@@ -351,7 +351,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   ? "Rechercher un fichier ou dossier..."
                   : "Rechercher un lien public ou dossier..."
               }
-              className="w-full bg-white dark:bg-slate-900/80 dark:border-white/15 dark:text-white dark:placeholder-slate-400 border-2 border-stone-800 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium outline-none shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all"
+              className="w-full bg-white dark:bg-[#111a2e] dark:border-[#334155] dark:text-white dark:placeholder-slate-400 border-2 border-stone-800 rounded-xl pl-8 pr-3 py-1.5 text-xs font-medium outline-none shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all"
             />
           </div>
 
@@ -360,8 +360,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <button
               type="button"
               onClick={() => setIsCartViewOpen(!isCartViewOpen)}
-              className={`px-3 py-1.5 font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
-                isCartViewOpen ? 'bg-amber-400 text-stone-900' : 'bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-900 dark:text-white'
+              className={`px-3 py-1.5 font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 shrink-0 ${
+                isCartViewOpen ? 'bg-amber-400 text-stone-900' : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white'
               }`}
               title="Voir mon panier"
             >
@@ -376,7 +376,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               {/* Filière Button */}
               <button
                 onClick={() => setShowFiliereModal(true)}
-                className="px-2.5 py-1.5 bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-900 dark:text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-2.5 py-1.5 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5"
                 title="Filières d'études"
               >
                 <GraduationCap className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
@@ -386,7 +386,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               {/* Schools Button */}
               <button
                 onClick={() => setShowSchoolsModal(true)}
-                className="px-2.5 py-1.5 bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-900 dark:text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5"
+                className="px-2.5 py-1.5 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5"
                 title="Écoles partenaires"
               >
                 <Building2 className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
@@ -396,7 +396,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               {/* Three-line Menu Button at the very right */}
               <button
                 onClick={() => setShowMenuModal(true)}
-                className="p-2 bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-900 dark:text-white rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
+                className="p-2 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
                 title="Menu principal"
               >
                 <Menu className="w-4 h-4 text-stone-800 dark:text-white" />
@@ -413,7 +413,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
               activeSubTab === 'librairie'
                 ? 'bg-amber-400 text-stone-900 border-stone-800 dark:border-amber-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(251,191,36,0.3)]'
-                : 'bg-white dark:bg-white/5 hover:bg-stone-100 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 border-stone-800 dark:border-white/10'
+                : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
             }`}
           >
             <span>📚</span>
@@ -426,7 +426,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
               activeSubTab === 'ressources'
                 ? 'bg-orange-500 text-white border-stone-800 dark:border-orange-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(249,115,22,0.3)]'
-                : 'bg-white dark:bg-white/5 hover:bg-stone-100 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 border-stone-800 dark:border-white/10'
+                : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
             }`}
           >
             <span>📁</span>
@@ -439,7 +439,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
               activeSubTab === 'liens'
                 ? 'bg-blue-600 text-white border-stone-800 dark:border-blue-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(37,99,235,0.3)]'
-                : 'bg-white dark:bg-white/5 hover:bg-stone-100 dark:hover:bg-white/10 text-stone-700 dark:text-slate-300 border-stone-800 dark:border-white/10'
+                : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
             }`}
           >
             <span>🔗</span>

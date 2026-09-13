@@ -375,8 +375,8 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
         </div>
       )}
 
-      {/* Sticky Top Bar (En-tête) */}
-      <div className="sticky top-0 left-0 right-0 z-40 bg-[#FDFBF7]/95 backdrop-blur-xs px-4 py-2.5 flex items-center justify-between border-b border-stone-200/60">
+      {/* Sticky Top Bar (En-tête) - Solid Dark #070a13 */}
+      <div className="sticky top-0 left-0 right-0 z-40 bg-[#FDFBF7] dark:bg-[#070a13] px-4 py-2.5 flex items-center justify-between border-b border-stone-200/60 dark:border-[#1e293b]">
         <button
           onClick={() => {
             if (activePage === 'product-picker') {
@@ -392,26 +392,26 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
               onBack();
             }
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FDFBF7] hover:bg-orange-50 text-stone-900 font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FDFBF7] dark:bg-[#1e293b] hover:bg-orange-50 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-bold text-xs rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4 text-stone-900 dark:text-white" />
           <span>Retour</span>
         </button>
 
         <div className="text-center">
-          <h2 className="font-serif font-bold text-xs sm:text-sm text-stone-900 whitespace-nowrap">{getPageTitle()}</h2>
+          <h2 className="font-serif font-bold text-xs sm:text-sm text-stone-900 dark:text-white whitespace-nowrap">{getPageTitle()}</h2>
           {activePage === 'list' && (
-            <p className="text-[10px] font-bold text-stone-500">{products.length} produit{products.length > 1 ? 's' : ''} publié{products.length > 1 ? 's' : ''}</p>
+            <p className="text-[10px] font-bold text-stone-500 dark:text-slate-400">{products.length} produit{products.length > 1 ? 's' : ''} publié{products.length > 1 ? 's' : ''}</p>
           )}
         </div>
 
         {activePage === 'main' ? (
           <button
             onClick={() => setIsRightDrawerOpen(true)}
-            className="p-2 bg-[#E8DFD0] hover:bg-stone-200 text-stone-900 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center"
+            className="p-2 bg-[#E8DFD0] dark:bg-[#1e293b] hover:bg-stone-200 dark:hover:bg-[#283852] text-stone-900 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer flex items-center justify-center"
             title="Menu latéral"
           >
-            <Menu className="w-4 h-4" />
+            <Menu className="w-4 h-4 text-stone-900 dark:text-white" />
           </button>
         ) : activePage === 'list' && listSubView === 'publications' ? (
           <button

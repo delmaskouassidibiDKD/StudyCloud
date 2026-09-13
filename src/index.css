@@ -132,65 +132,110 @@ rect,
 /* Transitions fluides pour le changement de theme */
 body, aside, nav, header, button, .app-scroll-container {
   transition-property: background-color, border-color, color, box-shadow;
-  transition-duration: 250ms;
+  transition-duration: 200ms;
   transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-/* Transformation des fonds clairs (brutaux, beiges, blancs ou gris pierre) en verre depoli sombre */
+/* Fond general de l'application en mode sombre (Solide Opaque) */
+html.dark,
+body.dark,
+.dark {
+  background-color: #0b0f19 !important;
+  color: #f8fafc !important;
+}
+
+/* TOUS LES EN-TETES (Headers fixes, sticky et barres hautes) : 
+   NOIR TRES FONCE SOLIDE (#070a13) pour une separation franche avec le contenu */
+.dark header,
+.dark [class*="sticky top-0"],
+.dark [class*="fixed top-0"],
+.dark .app-header {
+  background-color: #070a13 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: #1e293b !important;
+}
+
+/* Typographie des en-tetes ultra-nette et blanche */
+.dark header h1,
+.dark header h2,
+.dark header h3,
+.dark header p,
+.dark header span,
+.dark [class*="sticky top-0"] h1,
+.dark [class*="sticky top-0"] h2,
+.dark [class*="sticky top-0"] h3,
+.dark [class*="sticky top-0"] p,
+.dark [class*="sticky top-0"] span,
+.dark [class*="fixed top-0"] h1,
+.dark [class*="fixed top-0"] h2,
+.dark [class*="fixed top-0"] h3,
+.dark [class*="fixed top-0"] p,
+.dark [class*="fixed top-0"] span {
+  color: #ffffff !important;
+}
+
+/* BARRES LATERALES ET BARRE MOBILE BASSE : SOLIDE SANS AUCUNE TRANSPARENCE */
+.dark aside,
+.dark .mobile-fixed-bottom,
+.dark .bottom-nav {
+  background-color: #070a13 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: #1e293b !important;
+}
+
+/* Transformation de tous les fonds clairs (blancs, beiges, stone) en fond sombre solide */
 .dark [class*="bg-[#FDFBF7]"],
 .dark [class*="bg-[#F5F1E9]"],
 .dark [class*="bg-[#F5F0E8]"],
 .dark [class*="bg-[#E8DFD0]"],
-.dark [class*="bg-[#EBE5DA]"],
+.dark [class*="bg-[#EBE5DA]"] {
+  background-color: #0b0f19 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: #1e293b !important;
+}
+
+/* CARTES, MODALES, MENUS DEROULANTS ET PANNEAUX (SOLIDE OPAQUE #111a2e) */
+.dark .bg-white,
+.dark [class*="bg-white/"],
+.dark .bg-stone-50,
+.dark .bg-stone-100,
 .dark [class*="bg-stone-50"],
 .dark [class*="bg-stone-100"],
 .dark [class*="bg-stone-200"],
-.dark [class*="bg-amber-100"],
-.dark .bg-\[\#FDFBF7\],
-.dark .bg-\[\#F5F1E9\],
-.dark .bg-\[\#F5F0E8\],
-.dark .bg-\[\#E8DFD0\],
-.dark .bg-\[\#EBE5DA\],
-.dark .bg-stone-50,
-.dark .bg-stone-100 {
-  background-color: rgba(15, 23, 42, 0.75) !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-color: rgba(255, 255, 255, 0.12) !important;
+.dark [class*="bg-amber-100"] {
+  background-color: #111a2e !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: #1e293b !important;
   color: #f8fafc !important;
 }
 
-/* Boites interieures et resumes de fichiers (elimine definitivement les boites blanches sur les fichiers) */
+/* Boites de fichiers, apercus et sous-sections */
 .dark [class*="bg-stone-100/"],
 .dark [class*="bg-stone-200/"],
 .dark [class*="bg-amber-100/"],
 .dark [class*="bg-orange-100/"],
 .dark [class*="bg-[#F5F1E9]/"],
 .dark [class*="bg-[#E8DFD0]/"] {
-  background-color: rgba(2, 6, 23, 0.7) !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-color: rgba(255, 255, 255, 0.12) !important;
-  color: #f8fafc !important;
-}
-
-/* Boutons, inputs et menus avec fond blanc */
-.dark .bg-white,
-.dark [class*="bg-white/90"],
-.dark [class*="bg-white/80"] {
-  background-color: rgba(15, 23, 42, 0.85) !important;
-  backdrop-filter: blur(16px);
-  -webkit-backdrop-filter: blur(16px);
-  border-color: rgba(255, 255, 255, 0.14) !important;
+  background-color: #0c1424 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+  border-color: #1e293b !important;
   color: #f8fafc !important;
 }
 
 /* Champs de saisie en mode sombre */
 .dark input,
-.dark textarea {
-  background-color: rgba(15, 23, 42, 0.9) !important;
+.dark textarea,
+.dark select {
+  background-color: #070a13 !important;
   color: #ffffff !important;
-  border-color: rgba(255, 255, 255, 0.15) !important;
+  border-color: #334155 !important;
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
 }
 
 .dark input::placeholder,
@@ -198,7 +243,7 @@ body, aside, nav, header, button, .app-scroll-container {
   color: #64748b !important;
 }
 
-/* Bordures modernes lumineuses et douces */
+/* Bordures modernes nettes */
 .dark .border-stone-800,
 .dark .border-stone-900,
 .dark .border-\[\#2D4A3E\],
@@ -206,7 +251,7 @@ body, aside, nav, header, button, .app-scroll-container {
 .dark .border-stone-300,
 .dark .border-stone-200,
 .dark [class*="border-stone-"] {
-  border-color: rgba(255, 255, 255, 0.12) !important;
+  border-color: #1e293b !important;
 }
 
 /* Typographie moderne et ultra-lisible (contraste eleve sur fond sombre) */
@@ -236,10 +281,10 @@ body, aside, nav, header, button, .app-scroll-container {
 
 /* Remplacement des ombres brutales dures par un halo moderne elegant */
 .dark [class*="shadow-\["][class*="\#1c1917\]"] {
-  box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.5), 0 0 0 1px rgba(255, 255, 255, 0.08) !important;
+  box-shadow: 0 4px 20px -2px rgba(0, 0, 0, 0.7), 0 0 0 1px #1e293b !important;
 }
 
 /* Zone d'upload pointillee en mode sombre */
 .dark .border-dashed {
-  border-color: rgba(59, 130, 246, 0.35) !important;
+  border-color: #3b82f6 !important;
 }

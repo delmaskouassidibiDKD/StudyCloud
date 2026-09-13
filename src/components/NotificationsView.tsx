@@ -75,17 +75,17 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onBack }) 
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#FDFBF7] text-stone-900 overflow-y-auto animate-fadeIn">
-      {/* Sticky Top Bar with Back Button */}
-      <div className="sticky top-0 left-0 right-0 z-40 bg-[#FDFBF7]/95 backdrop-blur-xs px-4 py-2 flex items-center justify-between border-b border-stone-200/60">
+    <div className="absolute inset-x-0 bottom-0 top-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#FDFBF7] dark:bg-[#0b0f19] text-stone-900 dark:text-white overflow-y-auto animate-fadeIn">
+      {/* Sticky Top Bar with Back Button - Solid Dark #070a13 */}
+      <div className="sticky top-0 left-0 right-0 z-40 bg-[#FDFBF7] dark:bg-[#070a13] px-4 py-2 flex items-center justify-between border-b border-stone-200/60 dark:border-[#1e293b]">
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FDFBF7] hover:bg-orange-50 text-stone-900 font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FDFBF7] dark:bg-[#1e293b] hover:bg-orange-50 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-bold text-xs rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4 text-stone-900 dark:text-white" />
           <span>Retour</span>
         </button>
-        <h2 className="font-serif font-bold text-base text-stone-900">Boîte de réception</h2>
+        <h2 className="font-serif font-bold text-base text-stone-900 dark:text-white">Boîte de réception</h2>
         <div className="flex items-center gap-1.5">
           {notifications.length > 0 && (
             <button
