@@ -457,74 +457,25 @@ export function CenterMenu({
   };
 
   return (
-    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r border-stone-300 dark:border-stone-800'} flex flex-col animate-fadeIn relative pointer-events-auto overflow-hidden bg-white dark:bg-stone-950 pt-[48px] ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
+    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r border-stone-300 dark:border-stone-800'} flex flex-col animate-fadeIn relative pointer-events-auto overflow-hidden bg-white dark:bg-stone-950 pt-[44px] ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
       
-      {/* Floating Audio Player at bottom-center (modern, unobtrusive, does not cover any header or PDF bar) */}
-      {isAudioMenuOpen && (
-        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-white dark:bg-stone-900 border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] rounded-full px-4 py-2 flex items-center gap-3 animate-fadeIn text-stone-800 dark:text-stone-200">
-          {speechState === 'playing' && (
-            <div className="flex items-center gap-0.5 mr-1 text-orange-500">
-              <span className="w-1 h-3 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-              <span className="w-1 h-4 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-              <span className="w-1 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-            </div>
-          )}
-
-          <button
-            type="button"
-            onClick={handleTogglePause}
-            className="p-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full text-stone-800 dark:text-stone-200 cursor-pointer transition-colors"
-            title={speechState === 'playing' ? "Pause" : "Reprendre"}
-          >
-            {speechState === 'playing' ? <Pause className="w-4 h-4 text-amber-600 fill-amber-600" /> : <Play className="w-4 h-4 text-emerald-600 fill-emerald-600" />}
-          </button>
-
-          <button
-            type="button"
-            onClick={handleStop}
-            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-full text-red-600 cursor-pointer transition-colors"
-            title="Arrêter la lecture"
-          >
-            <Square className="w-3.5 h-3.5 fill-red-600" />
-          </button>
-
-          <button
-            type="button"
-            onClick={handleRestart}
-            className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-full text-blue-600 cursor-pointer transition-colors"
-            title="Recommencer"
-          >
-            <RotateCcw className="w-3.5 h-3.5" />
-          </button>
-
-          <div className="w-[1px] h-4 bg-stone-300 dark:bg-stone-700" />
-
-          <button
-            type="button"
-            onClick={() => setIsAudioMenuOpen(false)}
-            className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full text-stone-400 hover:text-stone-600 cursor-pointer transition-colors"
-            title="Fermer"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-      )}
-
-      {/* Slim Action Bar for Non-PDF documents (Word, Excel, PPTX, Code, etc.) */}
-      {!isPdf && activePreviewItem && (
-        <div className="w-full bg-[#FDFBF7] dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 px-3 py-1 flex items-center justify-between shrink-0 z-30">
-          <div className="flex items-center gap-1 sm:gap-1.5">
+      {/* Sleek Document Action Bar: Present for ALL documents (PDF, Word, Excel, PPTX, Images, Code) */}
+      {activePreviewItem && (
+        <div className="w-full bg-[#FDFBF7] dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 px-3 py-1 flex items-center justify-between shrink-0 z-30 h-9">
+          {/* Left: Plein écran, Zoom (- 100% +), Défilement */}
+          <div className="flex items-center gap-1.5 sm:gap-2">
             {!activePreviewItem?.lockFullscreen && (
               <button
                 onClick={() => setIsCenterFullscreen(!isCenterFullscreen)}
-                className="hidden md:flex p-1.5 bg-amber-400 hover:bg-amber-300 rounded-lg text-stone-900 items-center justify-center shrink-0 transition-colors cursor-pointer"
+                className="p-1.5 bg-amber-400 hover:bg-amber-300 rounded-lg text-stone-900 items-center justify-center shrink-0 transition-colors cursor-pointer border border-stone-300 dark:border-stone-700"
                 title={isCenterFullscreen ? "Réduire à 3 colonnes" : "Agrandir en plein écran"}
               >
                 {isCenterFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
               </button>
             )}
 
-            <div className="flex items-center bg-white dark:bg-stone-800 rounded-lg border border-stone-200 dark:border-stone-700 p-0.5">
+            {/* Application Zoom Controls */}
+            <div className="flex items-center bg-white dark:bg-stone-800 rounded-lg border border-stone-200 dark:border-stone-700 p-0.5 shadow-sm">
               <button
                 onClick={() => setDocZoom(prev => Math.max(40, prev - 15))}
                 className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 rounded transition-colors cursor-pointer"
@@ -553,7 +504,7 @@ export function CenterMenu({
             {setPreviewScrollMode && (
               <button
                 onClick={() => setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
-                className="hidden sm:flex px-2 py-1 bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-200 dark:border-stone-700 items-center gap-1 transition-colors cursor-pointer"
+                className="px-2 py-1 bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-200 dark:border-stone-700 items-center gap-1 transition-colors cursor-pointer flex shadow-sm"
                 title="Basculer entre défilement vertical et horizontal"
               >
                 <ArrowLeftRight className="w-3 h-3 text-stone-500" />
@@ -562,11 +513,64 @@ export function CenterMenu({
             )}
           </div>
 
+          {/* Right: Audio Playback Controls & Microphone Toggle */}
           <div className="flex items-center gap-1.5">
+            {isAudioMenuOpen && (
+              <div className="flex items-center gap-1 bg-white dark:bg-stone-800 px-2 py-0.5 rounded-lg border border-stone-200 dark:border-stone-700 text-stone-800 dark:text-stone-200 shadow-sm">
+                {speechState === 'playing' && (
+                  <div className="flex items-center gap-0.5 mr-1 text-orange-500">
+                    <span className="w-0.5 h-2.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                    <span className="w-0.5 h-3.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                    <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                  </div>
+                )}
+
+                <button
+                  type="button"
+                  onClick={handleTogglePause}
+                  className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 rounded text-[10px] font-bold transition-colors cursor-pointer"
+                  title={speechState === 'playing' ? "Pause" : "Reprendre"}
+                >
+                  {speechState === 'playing' ? (
+                    <Pause className="w-3.5 h-3.5 text-amber-600 fill-amber-600 shrink-0" />
+                  ) : (
+                    <Play className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600 shrink-0" />
+                  )}
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleStop}
+                  className="p-1 hover:bg-red-50 dark:hover:bg-red-950/40 rounded text-red-600 transition-colors cursor-pointer"
+                  title="Arrêter"
+                >
+                  <Square className="w-3 h-3 fill-red-600 shrink-0" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleRestart}
+                  className="p-1 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded text-blue-600 transition-colors cursor-pointer"
+                  title="Recommencer"
+                >
+                  <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setIsAudioMenuOpen(false)}
+                  className="p-0.5 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-full text-stone-400 hover:text-stone-600 ml-0.5 cursor-pointer"
+                  title="Fermer"
+                >
+                  <X className="w-3 h-3" />
+                </button>
+              </div>
+            )}
+
             <button
               type="button"
               onClick={handleMicClick}
-              className={`p-1.5 rounded-lg border border-stone-200 dark:border-stone-700 transition-all cursor-pointer flex items-center justify-center ${
+              className={`px-2 py-1 rounded-lg border border-stone-200 dark:border-stone-700 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm ${
                 speechState === 'playing'
                   ? 'bg-orange-500 text-white animate-pulse ring-2 ring-orange-300'
                   : speechState === 'paused'
@@ -577,7 +581,8 @@ export function CenterMenu({
               }`}
               title="Lire automatiquement le document (Synthèse vocale)"
             >
-              <Mic className="w-3.5 h-3.5" />
+              <Mic className="w-3.5 h-3.5 text-orange-500" />
+              <span className="text-[10px] font-bold">Vocal</span>
             </button>
           </div>
         </div>
@@ -618,11 +623,13 @@ export function CenterMenu({
                     data={`${currentUrl}#toolbar=1&navpanes=0&view=FitH`}
                     type="application/pdf"
                     className="w-full h-full border-0"
+                    style={{ zoom: `${docZoom}%` }}
                   >
                     <iframe
                       src={`${currentUrl}#toolbar=1&navpanes=0&view=FitH`}
                       title={activePreviewItem?.name || 'Document PDF'}
                       className="w-full h-full border-0"
+                      style={{ zoom: `${docZoom}%` }}
                     />
                   </object>
                 ) : (

@@ -1122,14 +1122,14 @@ export default function App() {
       {activePreviewItem && (previewOwnerTab ? previewOwnerTab === currentTab : currentTab === 'folders') && (
         <div className="fixed inset-0 md:left-64 z-[99999] bg-[#FDFBF7] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-hidden">
           {/* Top Header Bar - Solid Dark #070a13 */}
-          <div className="fixed top-0 left-0 right-0 md:left-64 z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[48px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
-            {/* Left: Bouton Retour, badge du dossier/matière, Plein écran & Défilement */}
+          <div className="fixed top-0 left-0 right-0 md:left-64 z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[44px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
+            {/* Left: Bouton Retour & badge du dossier/matière */}
             <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={() => setActivePreviewItem(null)}
-                className="flex items-center gap-1 px-2 py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
               >
-                <ArrowLeft className="w-3 h-3 text-stone-900 dark:text-white" />
+                <ArrowLeft className="w-3.5 h-3.5 text-stone-900 dark:text-white" />
                 <span>Retour</span>
               </button>
 
@@ -1138,36 +1138,17 @@ export default function App() {
                   {activePreviewItem.folderName || activeFolderDetail?.title}
                 </span>
               )}
-
-              {!activePreviewItem?.lockFullscreen && (
-                <button
-                  onClick={() => setIsCenterFullscreen(!isCenterFullscreen)}
-                  className="hidden md:flex p-1.5 bg-amber-400 hover:bg-amber-300 rounded-lg text-stone-900 items-center justify-center shrink-0 border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
-                  title={isCenterFullscreen ? "Réduire à 3 colonnes" : "Agrandir en plein écran"}
-                >
-                  {isCenterFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
-                </button>
-              )}
-
-              <button
-                onClick={() => setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
-                className="hidden sm:flex px-2 py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 text-stone-900 dark:text-white font-extrabold text-[10px] rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] items-center gap-1 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
-                title="Basculer entre défilement vertical et horizontal"
-              >
-                <ArrowLeftRight className="w-3 h-3 text-stone-600 dark:text-stone-300" />
-                <span>{previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
-              </button>
             </div>
 
-            {/* Center: Nom du fichier (masqué sur mobile car pas assez de place) */}
-            <div className="hidden md:flex flex-1 items-center justify-center gap-2 overflow-hidden px-1 sm:px-2 min-w-0">
+            {/* Center: Nom du fichier */}
+            <div className="flex-1 items-center justify-center gap-2 overflow-hidden px-1 sm:px-2 min-w-0 flex">
               <p className="text-[11px] sm:text-xs font-bold text-stone-900 dark:text-white leading-tight truncate overflow-hidden text-ellipsis text-center max-w-sm lg:max-w-md">
                 {activePreviewItem.name}
               </p>
             </div>
             
-            <div className="flex flex-col items-end gap-0.5 shrink-0">
-              <span className="text-[9px] sm:text-[10px] text-stone-600 dark:text-slate-300 font-semibold px-1">
+            <div className="flex items-center gap-2 shrink-0">
+              <span className="hidden sm:inline text-[9px] sm:text-[10px] text-stone-600 dark:text-slate-300 font-semibold px-1">
                 {(() => {
                   const bytes = activePreviewItem.size;
                   if (!bytes) return '0 o';
@@ -1178,15 +1159,6 @@ export default function App() {
                 })()}
               </span>
               <div className="flex items-center gap-1.5 sm:gap-2">
-                {/* Audio Reading Button */}
-                <button
-                  onClick={() => window.dispatchEvent(new CustomEvent('studycloud:toggle-speech'))}
-                  className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white hover:bg-orange-50 text-stone-900 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 shrink-0"
-                  title="Lecture audio automatique du document (Synthèse vocale)"
-                >
-                  <Mic className="w-3.5 h-3.5 text-orange-600 shrink-0" />
-                  <span className="text-[7.5px] sm:text-xs font-bold leading-none">Audio</span>
-                </button>
                 {/* Clock / Study Timer Button */}
                 <button
                   onClick={() => setShowStudyTimer(true)}
