@@ -65,10 +65,12 @@ function PdfPageRenderer({
           setPageDims({ width: pageW, height: pageH });
         }
 
-        // Rendu Ultra Haute Définition (Vector Retina) : pas de flou !
+        // Rendu Ultra Haute Définition Pleine Largeur (Vector Retina) : pas de flou !
+        const containerW = canvasRef.current?.parentElement?.clientWidth || window.innerWidth || 1100;
         const dpr = typeof window !== 'undefined' ? Math.max(window.devicePixelRatio || 1, 2) : 2;
-        const zoomFactor = Math.max(0.6, Math.min(2.5, docZoom / 100));
-        const renderScale = 2.0 * zoomFactor * dpr;
+        const zoomFactor = Math.max(1.0, docZoom / 100);
+        const targetPixelWidth = Math.max(containerW * zoomFactor, 1400) * dpr;
+        const renderScale = Math.max(targetPixelWidth / pageW, 2.5);
 
         const renderViewport = page.getViewport({ scale: renderScale });
         const canvas = canvasRef.current;
@@ -195,15 +197,15 @@ function PdfPageRenderer({
   }, [activeSpeechLineIndex, isSpeakingThisPage, autoScrollEnabled]);
 
   return (
-    <div className="relative flex items-center justify-center select-none">
+    <div className="relative w-full flex items-center justify-center select-none">
       {!rendered && (
         <div 
-          className="bg-white dark:bg-stone-900 rounded-xl shadow-md border border-stone-200 dark:border-stone-800 flex items-center justify-center animate-pulse"
+          className="bg-white dark:bg-stone-900 shadow-sm border border-stone-200 dark:border-stone-800 flex items-center justify-center animate-pulse"
           style={{
-            height: layoutMode === 'horizontal' ? '74vh' : '520px',
-            width: layoutMode === 'horizontal' ? `${74 * aspectRatio}vh` : '100%',
-            maxWidth: layoutMode === 'vertical' ? '860px' : undefined,
+            height: layoutMode === 'horizontal' ? '80vh' : 'auto',
+            width: layoutMode === 'horizontal' ? `${80 * aspectRatio}vh` : `${docZoom}%`,
             aspectRatio: `${aspectRatio}`,
+            minHeight: layoutMode === 'horizontal' ? undefined : '500px',
           }}
         >
           <div className="w-7 h-7 border-3 border-orange-500 border-t-transparent rounded-full animate-spin" />
@@ -211,20 +213,20 @@ function PdfPageRenderer({
       )}
 
       <div
-        className={`relative rounded-xl shadow-md bg-white border border-stone-200 dark:border-stone-800 transition-all duration-200 ${
+        className={`relative bg-white shadow-sm border border-stone-200 dark:border-stone-800 transition-all duration-200 ${
           rendered ? 'block' : 'hidden'
         }`}
         style={{
-          maxHeight: layoutMode === 'horizontal' ? '76vh' : undefined,
-          height: layoutMode === 'horizontal' ? '76vh' : 'auto',
-          width: layoutMode === 'horizontal' ? `${76 * aspectRatio}vh` : '100%',
-          maxWidth: layoutMode === 'vertical' ? `${Math.round(860 * (docZoom / 100))}px` : undefined,
+          width: layoutMode === 'horizontal' 
+            ? `${80 * aspectRatio * (docZoom / 100)}vh` 
+            : `${docZoom}%`,
+          height: layoutMode === 'horizontal' ? '80vh' : 'auto',
           aspectRatio: `${aspectRatio}`,
         }}
       >
         <canvas
           ref={canvasRef}
-          className="w-full h-full block rounded-xl"
+          className="w-full h-full block"
         />
 
         {/* Soulignage directement SUR le texte du document (SANS micro, SANS contour orange) */}
@@ -604,8 +606,8 @@ export function PdfHorizontalViewer({
         onScroll={handleScroll}
         className={`flex-1 w-full h-full ${
           layoutMode === 'horizontal'
-            ? 'overflow-x-auto overflow-y-hidden flex flex-row items-center gap-8 px-12 py-6 snap-x snap-mandatory hide-scrollbar'
-            : 'overflow-y-auto overflow-x-hidden flex flex-col items-center gap-6 px-4 sm:px-8 py-6'
+            ? 'overflow-x-auto overflow-y-hidden flex flex-row items-center gap-8 px-8 py-4 snap-x snap-mandatory hide-scrollbar'
+            : 'overflow-y-auto overflow-x-auto flex flex-col items-center gap-6 px-0 sm:px-2 py-3'
         }`}
       >
         {Array.from({ length: numPages }, (_, i) => i + 1).map((pageNum) => {
@@ -618,7 +620,7 @@ export function PdfHorizontalViewer({
                 else pageRefs.current.delete(pageNum);
               }}
               className={`shrink-0 flex flex-col items-center justify-center relative transition-transform duration-300 ${
-                layoutMode === 'horizontal' ? 'h-full max-h-[82vh] snap-center' : 'w-full max-w-[880px]'
+                layoutMode === 'horizontal' ? 'h-full max-h-[82vh] snap-center' : 'w-full'
               }`}
             >
               <PdfPageRenderer
