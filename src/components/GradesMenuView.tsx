@@ -102,17 +102,19 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
     const timer = setTimeout(() => {
       Object.entries(trimestersData).forEach(([trim, items]) => {
-        items.forEach((item) => {
-          StudyCloudAPI.saveGrade({
-            id: item.id,
-            userId,
-            trimester: Number(trim) || 1,
-            subjectName: item.subject,
-            coefficient: item.coefficient,
-            subGradesJson: JSON.stringify(item.subGrades || []),
-            average: item.grade
-          }).catch(() => {});
-        });
+        if (Array.isArray(items)) {
+          items.forEach((item: any) => {
+            StudyCloudAPI.saveGrade({
+              id: item.id,
+              userId,
+              trimester: Number(trim) || 1,
+              subjectName: item.subject,
+              coefficient: item.coefficient,
+              subGradesJson: JSON.stringify(item.subGrades || []),
+              average: item.grade
+            }).catch(() => {});
+          });
+        }
       });
     }, 1500);
     return () => clearTimeout(timer);

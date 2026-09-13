@@ -2565,13 +2565,14 @@ export default {
       // 2. MATIÈRES & DOSSIERS
       // ----------------------------------------------------------------------
       if (path === '/api/matieres') {
+        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
         if (method === 'GET') {
           const userId = url.searchParams.get('userId');
           if (!userId) return errorResponse('userId requis', 400, origin);
           const { results } = await env.DB.prepare(`
             SELECT m.*, 
-              (SELECT COUNT(*) FROM files f WHERE f.matiere_id = m.id) AS files_count,
-              (SELECT COALESCE(SUM(f.size), 0) FROM files f WHERE f.matiere_id = m.id) AS total_size
+              (SELECT COUNT(*) FROM files f WHERE f.matiere_id = m.id OR f.matiere_id = m.name) AS files_count,
+              (SELECT COALESCE(SUM(f.size), 0) FROM files f WHERE f.matiere_id = m.id OR f.matiere_id = m.name) AS total_size
             FROM matieres m
             WHERE m.user_id = ?
             ORDER BY m.display_order ASC, m.name ASC
@@ -2600,6 +2601,7 @@ export default {
       }
 
       if (path.startsWith('/api/matieres/') && method === 'DELETE') {
+        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
         const id = path.split('/')[3];
         await env.DB.prepare('DELETE FROM matieres WHERE id = ?').bind(id).run();
         return jsonResponse({ success: true, message: 'Matière supprimée' }, 200, origin);
@@ -2609,10 +2611,12 @@ export default {
       // 3. FICHIERS (Métadonnées & Fichiers de cours)
       // ----------------------------------------------------------------------
       if (path === '/api/files') {
+        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
         if (method === 'GET') {
           const userId = url.searchParams.get('userId');
           const matiereId = url.searchParams.get('matiereId');
           const isStudySession = url.searchParams.get('isStudySession');
+          const isFavorite = url.searchParams.get('isFavorite');
           if (!userId) return errorResponse('userId requis', 400, origin);
 
           let query = 'SELECT * FROM files WHERE user_id = ?';
@@ -2621,8 +2625,12 @@ export default {
           if (matiereId === 'root' || matiereId === 'none') {
             query += ' AND (matiere_id IS NULL OR matiere_id = "" OR matiere_id = "Mes fichiers")';
           } else if (matiereId && matiereId !== 'all') {
-            query += ' AND matiere_id = ?';
-            params.push(matiereId);
+            query += ' AND (matiere_id = ? OR matiere_id IN (SELECT id FROM matieres WHERE name = ? AND user_id = ?))';
+            params.push(matiereId, matiereId, userId);
+          }
+
+          if (isFavorite === 'true' || isFavorite === '1') {
+            query += ' AND is_favorite = 1';
           }
 
           if (isStudySession === 'true' || isStudySession === '1') {
@@ -2677,7 +2685,17 @@ export default {
         }
       }
 
+      if (path.startsWith('/api/files/') && path.endsWith('/favorite') && (method === 'PATCH' || method === 'PUT')) {
+        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
+        const id = path.split('/')[3];
+        const body: any = await request.json().catch(() => ({}));
+        const isFavoriteVal = body.isFavorite === true || body.isFavorite === 1 ? 1 : 0;
+        await env.DB.prepare('UPDATE files SET is_favorite = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?').bind(isFavoriteVal, id).run();
+        return jsonResponse({ success: true, message: 'Favori mis à jour', isFavorite: isFavoriteVal }, 200, origin);
+      }
+
       if (path.startsWith('/api/files/') && method === 'DELETE') {
+        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
         const id = path.split('/')[3];
         const file = await env.DB.prepare('SELECT r2_key FROM files WHERE id = ?').bind(id).first<any>();
         if (file && file.r2_key && env.BUCKET) {

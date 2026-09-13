@@ -16,6 +16,7 @@ import { CalculatorMenuView } from './CalculatorMenuView';
 import { MatiereMenuView } from './MatiereMenuView';
 import { NavigationTab } from '../types';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
+import { StudyCloudAPI } from '../services/api';
 
 interface FoldersViewProps {
   onOpenUpload: () => void;
@@ -127,13 +128,32 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [matieresList, setMatieresList] = useState<{ name: string; coefficient: string }[]>([
     { name: '', coefficient: '' }
   ]);
-  const [savedMatieres, setSavedMatieres] = useState<{ name: string; coefficient: string; color?: string }[]>(() => {
+  const [savedMatieres, setSavedMatieres] = useState<{ id?: string; name: string; coefficient: string; color?: string }[]>(() => {
     const saved = localStorage.getItem('unifolder_saved_matieres');
     if (saved) {
       try { return JSON.parse(saved); } catch (e) { }
     }
     return [];
   });
+
+  // Charger les vraies matières depuis Cloudflare D1
+  useEffect(() => {
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.getMatieres(userId)
+      .then((res) => {
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const apiMatieres = res.data.map((m: any) => ({
+            id: m.id,
+            name: m.name,
+            coefficient: String(m.coefficient ?? '1'),
+            color: m.color || '#EA580C',
+          }));
+          setSavedMatieres(apiMatieres);
+          localStorage.setItem('unifolder_saved_matieres', JSON.stringify(apiMatieres));
+        }
+      })
+      .catch((err) => console.warn('Erreur chargement matières depuis D1:', err));
+  }, []);
 
   useEffect(() => {
     localStorage.setItem('unifolder_saved_matieres', JSON.stringify(savedMatieres));
@@ -164,6 +184,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     if (!window.confirm(`Voulez-vous vraiment supprimer le dossier de la matière "${mat.name}" ainsi que ses fichiers ?`)) return;
     localStorage.removeItem(`unifolder_matiere_files_${mat.name}`);
     setSavedMatieres(prev => prev.filter((_, i) => i !== index));
+    if (mat.id) {
+      StudyCloudAPI.deleteMatiere(mat.id).catch(() => {});
+    }
     notify("Matière supprimée avec succès !");
   };
 
@@ -760,7 +783,26 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                     setShowEmptyError(true);
                     return;
                   }
-                  setSavedMatieres(prev => [...prev, ...matieresList]);
+                  const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+                  const createdWithIds = matieresList.map((m, idx) => ({
+                    id: 'mat-' + Date.now() + '-' + idx,
+                    name: m.name.trim(),
+                    coefficient: m.coefficient.trim() || '1',
+                    color: '#EA580C',
+                  }));
+
+                  // Synchroniser chaque matière avec Cloudflare D1
+                  createdWithIds.forEach((m) => {
+                    StudyCloudAPI.createMatiere({
+                      id: m.id,
+                      userId,
+                      name: m.name,
+                      coefficient: parseFloat(m.coefficient) || 1.0,
+                      color: m.color,
+                    }).catch((err) => console.warn('Erreur création matière D1:', err));
+                  });
+
+                  setSavedMatieres(prev => [...prev, ...createdWithIds]);
                   notify("Matières créées avec succès !");
                   setIsMatiereMenuOpen(false);
                   setShowEmptyError(false);
@@ -822,9 +864,26 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 disabled={!editingMatiere.name.trim()}
                 onClick={() => {
                   if (editingMatiere.name.trim()) {
+                    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+                    const targetMat = savedMatieres[editingMatiere.index];
+                    const matId = targetMat?.id || ('mat-' + Date.now());
+                    
+                    StudyCloudAPI.createMatiere({
+                      id: matId,
+                      userId,
+                      name: editingMatiere.name.trim(),
+                      coefficient: parseFloat(editingMatiere.coefficient) || 1.0,
+                      color: targetMat?.color || '#EA580C',
+                    }).catch((err) => console.warn('Erreur modification matière D1:', err));
+
                     setSavedMatieres(prev => {
                       const updated = [...prev];
-                      updated[editingMatiere.index] = { name: editingMatiere.name, coefficient: editingMatiere.coefficient };
+                      updated[editingMatiere.index] = { 
+                        id: matId,
+                        name: editingMatiere.name.trim(), 
+                        coefficient: editingMatiere.coefficient.trim() || '1',
+                        color: targetMat?.color || '#EA580C'
+                      };
                       return updated;
                     });
                     notify("Matière modifiée avec succès !");
@@ -1088,7 +1147,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'notes-menu' && <NotesMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'grades-menu' && <GradesMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'calendar-menu' && <CalendarMenuView onBack={() => setViewMode('home')} />}
-      {viewMode === 'favorites-menu' && <FavoritesMenuView onBack={() => setViewMode('home')} />}
+      {viewMode === 'favorites-menu' && <FavoritesMenuView onBack={() => setViewMode('home')} setActivePreviewItem={setActivePreviewItem} />}
       {viewMode === 'clock-menu' && <ClockMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'level-menu' && <LevelMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'calculator-menu' && <CalculatorMenuView onBack={() => setViewMode('home')} />}

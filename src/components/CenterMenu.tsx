@@ -1,8 +1,15 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Maximize, Minimize, Mic, Pause, Play, Square, RotateCcw, X, FileText, ArrowLeftRight, Music, Download } from 'lucide-react';
+import { 
+  Maximize, Minimize, Mic, Pause, Play, Square, RotateCcw, X, FileText, 
+  ArrowLeftRight, Music, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, 
+  Copy, Check, Search, Table, Presentation, FileCode, ExternalLink, RefreshCw
+} from 'lucide-react';
 import { FileIconBadge } from './FileIconBadge';
 import * as pdfjsLib from 'pdfjs-dist';
-import { getFileBlobUrl, formatFileSize } from '../services/localFileStorage';
+import mammoth from 'mammoth';
+import * as XLSX from 'xlsx';
+import JSZip from 'jszip';
+import { getFileBlob, getFileBlobUrl, formatFileSize } from '../services/localFileStorage';
 
 // Worker configuration for pdfjsLib
 if (typeof window !== 'undefined' && !pdfjsLib.GlobalWorkerOptions.workerSrc) {
@@ -19,6 +26,12 @@ interface CenterMenuProps {
   previewScrollMode: 'vertical' | 'horizontal';
   setPreviewScrollMode?: React.Dispatch<React.SetStateAction<'vertical' | 'horizontal'>>;
   isMobileScreen?: boolean;
+}
+
+interface PptxSlide {
+  slideNumber: number;
+  title: string;
+  bullets: string[];
 }
 
 export function CenterMenu({
@@ -39,6 +52,25 @@ export function CenterMenu({
   const sentencesRef = useRef<string[]>([]);
   const currentSentenceIdxRef = useRef<number>(0);
 
+  // Resolved binary / URL state
+  const [resolvedUrl, setResolvedUrl] = useState<string>(activePreviewItem?.url || '');
+  const [isLoadingDocument, setIsLoadingDocument] = useState<boolean>(false);
+  const [extractedDocText, setExtractedDocText] = useState<string>('');
+
+  // Formats state
+  const [fileTextContent, setFileTextContent] = useState<string>('');
+  const [docxHtml, setDocxHtml] = useState<string>('');
+  const [excelWorkbook, setExcelWorkbook] = useState<{
+    sheetNames: string[];
+    activeSheet: string;
+    rows: any[][];
+    searchQuery: string;
+  } | null>(null);
+  const [pptxSlides, setPptxSlides] = useState<PptxSlide[]>([]);
+  const [activeSlideIdx, setActiveSlideIdx] = useState<number>(0);
+
+  const [copiedText, setCopiedText] = useState<boolean>(false);
+
   // Listen to external/keyboard zoom events
   useEffect(() => {
     const handleDocZoomEvent = (e: any) => {
@@ -52,61 +84,159 @@ export function CenterMenu({
     return () => window.removeEventListener('studycloud:doc-zoom', handleDocZoomEvent);
   }, []);
 
-  const [resolvedUrl, setResolvedUrl] = useState<string>(activePreviewItem?.url || '');
-  const [fileTextContent, setFileTextContent] = useState<string>('');
-  const [loadingText, setLoadingText] = useState<boolean>(false);
-
+  // Main loader for any document
   useEffect(() => {
     let isMounted = true;
-    if (activePreviewItem?.url) {
-      setResolvedUrl(activePreviewItem.url);
-    } else if (activePreviewItem?.id) {
-      getFileBlobUrl(activePreviewItem.id).then(url => {
+    const file = activePreviewItem;
+    if (!file) return;
+
+    setIsLoadingDocument(true);
+    setFileTextContent('');
+    setDocxHtml('');
+    setExcelWorkbook(null);
+    setPptxSlides([]);
+    setActiveSlideIdx(0);
+    setExtractedDocText('');
+
+    const ext = (file.name?.split('.').pop() || file.extension || '').toLowerCase();
+
+    // 1. Resolve URL for media/PDF
+    if (file.url) {
+      setResolvedUrl(file.url);
+    } else if (file.id) {
+      getFileBlobUrl(file.id).then(url => {
         if (isMounted && url) setResolvedUrl(url);
       });
     }
 
-    const ext = (activePreviewItem?.name?.split('.').pop()?.toUpperCase() || activePreviewItem?.extension || '').toLowerCase();
-    const isTextFile = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'py', 'html', 'css', 'sql', 'xml', 'log'].includes(ext);
-
-    if (isTextFile) {
-      setLoadingText(true);
-      const urlToFetch = activePreviewItem?.url;
-      if (urlToFetch) {
-        fetch(urlToFetch)
-          .then(r => r.text())
-          .then(t => {
-            if (isMounted) {
-              setFileTextContent(t);
-              setLoadingText(false);
-            }
-          })
-          .catch(() => {
-            if (isMounted) setLoadingText(false);
-          });
-      } else if (activePreviewItem?.id) {
-        getFileBlobUrl(activePreviewItem.id).then(url => {
-          if (url) {
-            fetch(url)
-              .then(r => r.text())
-              .then(t => {
-                if (isMounted) {
-                  setFileTextContent(t);
-                  setLoadingText(false);
-                }
-              })
-              .catch(() => {
-                if (isMounted) setLoadingText(false);
-              });
-          } else {
-            if (isMounted) setLoadingText(false);
-          }
-        });
+    // 2. Fetch binary blob for in-depth parsing (mammoth, xlsx, jszip, text)
+    const loadBinaryData = async () => {
+      let blob: Blob | null = null;
+      if (file.id) {
+        blob = await getFileBlob(file.id);
       }
-    } else {
-      setFileTextContent('');
-      setLoadingText(false);
-    }
+      if (!blob && file.url) {
+        try {
+          const resp = await fetch(file.url);
+          blob = await resp.blob();
+        } catch (e) {
+          console.warn('CenterMenu fetch fallback error:', e);
+        }
+      }
+
+      if (!isMounted) return;
+
+      const isText = ['txt', 'md', 'json', 'csv', 'js', 'ts', 'py', 'html', 'css', 'sql', 'xml', 'log', 'java', 'c', 'cpp', 'sh', 'env'].includes(ext);
+      const isWord = ['docx', 'doc'].includes(ext);
+      const isExcel = ['xlsx', 'xls', 'csv'].includes(ext);
+      const isPpt = ['pptx', 'ppt'].includes(ext);
+
+      if (isWord && blob) {
+        try {
+          const arrayBuffer = await blob.arrayBuffer();
+          const conv = await mammoth.convertToHtml({ arrayBuffer });
+          const raw = await mammoth.extractRawText({ arrayBuffer });
+          if (isMounted) {
+            setDocxHtml(conv.value || '<p>Document Word vide.</p>');
+            setExtractedDocText(raw.value || '');
+          }
+        } catch (err) {
+          console.warn('Erreur décodage Word:', err);
+          if (isMounted) {
+            setDocxHtml('<p class="text-stone-500 italic">Impossible de formater ce document Word automatiquement. Utilisez le téléchargement ci-dessous.</p>');
+          }
+        }
+      } else if (isExcel && blob) {
+        try {
+          const arrayBuffer = await blob.arrayBuffer();
+          const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+          const sheetNames = workbook.SheetNames || [];
+          const activeSheet = sheetNames[0] || 'Feuille 1';
+          const worksheet = workbook.Sheets[activeSheet];
+          const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+          const csvText = XLSX.utils.sheet_to_csv(worksheet);
+
+          if (isMounted) {
+            setExcelWorkbook({
+              sheetNames,
+              activeSheet,
+              rows: rows.length > 0 ? rows : [['(Tableau vide)']],
+              searchQuery: '',
+            });
+            setExtractedDocText(csvText);
+          }
+        } catch (err) {
+          console.warn('Erreur décodage Excel:', err);
+        }
+      } else if (isPpt && blob) {
+        try {
+          const arrayBuffer = await blob.arrayBuffer();
+          const zip = await JSZip.loadAsync(arrayBuffer);
+          const slideFiles = Object.keys(zip.files).filter(k => /^ppt\/slides\/slide\d+\.xml$/.test(k));
+          
+          slideFiles.sort((a, b) => {
+            const nA = parseInt(a.match(/slide(\d+)\.xml/)?.[1] || '0', 10);
+            const nB = parseInt(b.match(/slide(\d+)\.xml/)?.[1] || '0', 10);
+            return nA - nB;
+          });
+
+          const slides: PptxSlide[] = [];
+          let allSlideText = '';
+
+          for (let i = 0; i < slideFiles.length; i++) {
+            const rawXml = await zip.files[slideFiles[i]].async('string');
+            const matches = rawXml.match(/<a:t>([^<]*)<\/a:t>/g);
+            if (matches) {
+              const textItems = matches.map(m => m.replace(/<[^>]+>/g, '').trim()).filter(Boolean);
+              if (textItems.length > 0) {
+                const title = textItems[0];
+                const bullets = textItems.slice(1);
+                slides.push({ slideNumber: i + 1, title, bullets });
+                allSlideText += `\nDiapositive ${i + 1}: ${title}\n` + bullets.join('\n');
+              }
+            }
+          }
+
+          if (isMounted) {
+            if (slides.length > 0) {
+              setPptxSlides(slides);
+              setExtractedDocText(allSlideText);
+            } else {
+              setPptxSlides([{
+                slideNumber: 1,
+                title: file.name,
+                bullets: ['Présentation PowerPoint prête pour révision et analyse IA.']
+              }]);
+            }
+          }
+        } catch (err) {
+          console.warn('Erreur décodage PPTX:', err);
+        }
+      } else if (isText) {
+        if (blob) {
+          try {
+            const text = await blob.text();
+            if (isMounted) {
+              setFileTextContent(text);
+              setExtractedDocText(text);
+            }
+          } catch (e) {
+            console.warn('Erreur lecture texte blob:', e);
+          }
+        } else if (file.textContent) {
+          if (isMounted) {
+            setFileTextContent(file.textContent);
+            setExtractedDocText(file.textContent);
+          }
+        }
+      }
+
+      if (isMounted) {
+        setIsLoadingDocument(false);
+      }
+    };
+
+    loadBinaryData();
 
     return () => {
       isMounted = false;
@@ -151,7 +281,10 @@ export function CenterMenu({
 
   const getDocumentText = async (item: any): Promise<string> => {
     if (!item) return '';
-    if (item.textContent && item.textContent.trim().length > 30) {
+    if (extractedDocText && extractedDocText.trim().length > 10) {
+      return extractedDocText.trim();
+    }
+    if (item.textContent && item.textContent.trim().length > 20) {
       return item.textContent;
     }
 
@@ -161,7 +294,7 @@ export function CenterMenu({
         const loadingTask = pdfjsLib.getDocument(item.url);
         const pdf = await loadingTask.promise;
         let extracted = '';
-        for (let i = 1; i <= Math.min(pdf.numPages, 8); i++) {
+        for (let i = 1; i <= Math.min(pdf.numPages, 10); i++) {
           const page = await pdf.getPage(i);
           const content = await page.getTextContent();
           extracted += content.items.map((it: any) => it.str).join(' ') + ' ';
@@ -170,37 +303,13 @@ export function CenterMenu({
           return extracted.trim();
         }
       } catch (err) {
-        console.warn('Extraction PDF via URL échouée:', err);
+        console.warn('Extraction PDF échouée:', err);
       }
     }
 
-    // Realistic spoken text generator tailored to the document name
     const name = item.name || 'Document';
     const cleanTitle = name.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
-    const lower = cleanTitle.toLowerCase();
-
-    if (lower.includes('pointeur') || lower.includes('liste')) {
-      return `Lecture automatique du cours : ${cleanTitle}. 
-      Introduction aux pointeurs et structures de données en C. 
-      Première partie : Définition des pointeurs. Un pointeur est une variable qui stocke l'adresse mémoire d'une autre variable. L'opérateur esperluette permet d'obtenir l'adresse mémoire, tandis que l'opérateur étoile permet de manipuler la valeur stockée à cette adresse. 
-      Deuxième partie : Gestion dynamique de la mémoire. Avec malloc et free, le programmeur contrôle l'allocation et la libération sur le tas mémoire pour optimiser les performances. 
-      Troisième partie : Les listes simplement et doublement chaînées. Une liste chaînée est un ensemble de nœuds reliés dynamiquement, facilitant l'insertion et la suppression rapide d'éléments. 
-      Ce document constitue le socle indispensable pour maîtriser la programmation système et les algorithmes.`;
-    }
-
-    if (lower.includes('anatomie') || lower.includes('membre') || lower.includes('corps')) {
-      return `Lecture automatique des planches anatomiques : ${cleanTitle}. 
-      Étude myologique et ostéologique détaillée. 
-      Section un : Morphologie générale et repères osseux essentiels. 
-      Section deux : Groupes musculaires, origines, terminaisons et vascularisation. 
-      Section trois : Applications cliniques et fonctionnelles pour la compréhension du mouvement.`;
-    }
-
-    return `Lecture automatique du document : ${cleanTitle}. 
-    Ce document pédagogique aborde les notions fondamentales du programme. 
-    Dans un premier temps, nous explorons les définitions clés et le contexte général du sujet. 
-    Dans un second temps, les concepts théoriques sont développés à travers des cas pratiques et des analyses approfondies. 
-    Enfin, une synthèse récapitulative rassemble les points capitaux pour préparer vos révisions.`;
+    return `Lecture du document ${cleanTitle}. Ce document est ouvert dans StudyCloud pour votre session d'étude.`;
   };
 
   const speakSentence = (index: number) => {
@@ -303,7 +412,6 @@ export function CenterMenu({
         handleStartSpeech();
       }
     } else {
-      // Toggle pause/play if already open
       if (speechState === 'playing' || speechState === 'paused') {
         handleTogglePause();
       } else {
@@ -312,25 +420,80 @@ export function CenterMenu({
     }
   };
 
+  const handleSwitchExcelSheet = async (sheetName: string) => {
+    if (!activePreviewItem) return;
+    let blob = await getFileBlob(activePreviewItem.id);
+    if (!blob && activePreviewItem.url) {
+      const resp = await fetch(activePreviewItem.url);
+      blob = await resp.blob();
+    }
+    if (blob) {
+      const arrayBuffer = await blob.arrayBuffer();
+      const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+      const worksheet = workbook.Sheets[sheetName];
+      const rows = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+      setExcelWorkbook(prev => prev ? {
+        ...prev,
+        activeSheet: sheetName,
+        rows: rows.length > 0 ? rows : [['(Feuille vide)']],
+      } : null);
+    }
+  };
+
+  const handleCopyText = (text: string) => {
+    navigator.clipboard.writeText(text).then(() => {
+      setCopiedText(true);
+      setTimeout(() => setCopiedText(false), 2000);
+    });
+  };
+
   return (
-    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r-2 border-stone-800'} flex items-center justify-center animate-fadeIn p-4 md:p-8 pt-[70px] md:pt-[76px] relative pointer-events-auto ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
-      {/* Top Left Controls: Zoom/Fullscreen (Ordinateur uniquement) + Mode Défilement */}
-      <div className="flex items-center gap-1.5 absolute top-[64px] sm:top-[68px] md:top-[70px] left-2 md:left-4 z-50">
+    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r-2 border-stone-800'} flex items-center justify-center animate-fadeIn p-2 sm:p-4 md:p-6 pt-[68px] sm:pt-[72px] md:pt-[76px] relative pointer-events-auto ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
+      {/* Top Left Floating Bar: Zoom & Navigation controls */}
+      <div className="flex items-center gap-1.5 absolute top-[62px] sm:top-[66px] md:top-[68px] left-2 md:left-4 z-50 bg-[#FDFBF7]/90 dark:bg-stone-900/90 backdrop-blur-sm p-1 rounded-xl border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917]">
+        {/* Fullscreen Toggle */}
         {!activePreviewItem?.lockFullscreen && (
           <button
             onClick={() => setIsCenterFullscreen(!isCenterFullscreen)}
-            className="hidden md:flex p-1 bg-yellow-400 rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-yellow-300 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900 items-center justify-center shrink-0"
-            title={isCenterFullscreen ? "Réduire" : "Plein écran"}
+            className="hidden md:flex p-1.5 bg-yellow-400 rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-yellow-300 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900 items-center justify-center shrink-0"
+            title={isCenterFullscreen ? "Réduire à 3 colonnes" : "Agrandir en plein écran"}
           >
             {isCenterFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
           </button>
         )}
 
-        {/* Bouton Vertical / Horizontal placé sur la page du milieu derrière le bouton zoom */}
+        {/* Zoom Out */}
+        <button
+          onClick={() => setDocZoom(prev => Math.max(40, prev - 15))}
+          className="p-1.5 bg-white hover:bg-stone-100 text-stone-900 rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center shrink-0"
+          title="Zoom arrière (-)"
+        >
+          <ZoomOut className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Zoom Value Reset */}
+        <button
+          onClick={() => setDocZoom(100)}
+          className="px-2 py-0.5 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center shrink-0"
+          title="Réinitialiser à 100%"
+        >
+          <span>{docZoom}%</span>
+        </button>
+
+        {/* Zoom In */}
+        <button
+          onClick={() => setDocZoom(prev => Math.min(250, prev + 15))}
+          className="p-1.5 bg-white hover:bg-stone-100 text-stone-900 rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center shrink-0"
+          title="Zoom avant (+)"
+        >
+          <ZoomIn className="w-3.5 h-3.5" />
+        </button>
+
+        {/* Mode Défilement */}
         {setPreviewScrollMode && (
           <button
             onClick={() => setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
-            className="px-2 py-0.5 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-[10px] sm:text-xs rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 shrink-0"
+            className="hidden sm:flex px-2 py-0.5 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer items-center gap-1 shrink-0"
             title="Basculer entre défilement vertical et horizontal"
           >
             <ArrowLeftRight className="w-3 h-3 text-stone-700" />
@@ -340,12 +503,9 @@ export function CenterMenu({
       </div>
 
       {/* Audio Reading Controls (Top Right of Center Menu) */}
-      <div className="absolute top-[64px] sm:top-[68px] md:top-[70px] right-2 md:right-4 z-50 flex items-center gap-1.5">
-
-        {/* Small Action Menu to the left on the same line */}
+      <div className="absolute top-[62px] sm:top-[66px] md:top-[68px] right-2 md:right-4 z-50 flex items-center gap-1.5">
         {isAudioMenuOpen && (
           <div className="flex items-center gap-1 bg-[#FDFBF7] border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] rounded-lg px-2 py-1 animate-fadeIn text-stone-800">
-            {/* Audio Wave indicator when playing */}
             {speechState === 'playing' && (
               <div className="flex items-center gap-0.5 mr-1 text-orange-500">
                 <span className="w-0.5 h-2.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
@@ -354,7 +514,6 @@ export function CenterMenu({
               </div>
             )}
 
-            {/* Pause / Reprendre */}
             <button
               type="button"
               onClick={handleTogglePause}
@@ -376,7 +535,6 @@ export function CenterMenu({
 
             <div className="w-[1px] h-3.5 bg-stone-300" />
 
-            {/* Arrêter */}
             <button
               type="button"
               onClick={handleStop}
@@ -389,12 +547,11 @@ export function CenterMenu({
 
             <div className="w-[1px] h-3.5 bg-stone-300" />
 
-            {/* Recommencer */}
             <button
               type="button"
               onClick={handleRestart}
               className="flex items-center gap-1 px-1.5 py-0.5 hover:bg-blue-50 rounded text-[10px] font-bold text-blue-600 transition-colors cursor-pointer"
-              title="Recommencer la lecture depuis le début"
+              title="Recommencer la lecture"
             >
               <RotateCcw className="w-3 h-3 shrink-0" />
               <span className="hidden sm:inline">Recommencer</span>
@@ -411,7 +568,6 @@ export function CenterMenu({
           </div>
         )}
 
-        {/* Microphone Button */}
         <button
           type="button"
           onClick={handleMicClick}
@@ -430,14 +586,17 @@ export function CenterMenu({
         </button>
       </div>
 
-      {isPreviewLoading ? (
+      {/* Main Document Content */}
+      {isPreviewLoading || isLoadingDocument ? (
         <div className="flex flex-col items-center justify-center gap-4">
-          <div className="w-16 h-16 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
-          <p className="text-stone-800 dark:text-white font-extrabold text-sm tracking-wide">Chargement du document...</p>
+          <div className="w-14 h-14 border-4 border-orange-500 border-t-transparent rounded-full animate-spin"></div>
+          <p className="text-stone-800 dark:text-white font-extrabold text-xs sm:text-sm tracking-wide">
+            Ouverture et adaptation du document...
+          </p>
         </div>
       ) : !activePreviewItem ? (
         <div className="w-full h-full flex flex-col items-center justify-center text-center p-8 text-stone-400 gap-2">
-          <FileText className="w-8 h-8 opacity-40" />
+          <FileText className="w-10 h-10 opacity-30" />
           <p className="text-xs font-bold text-stone-500">Aucun document sélectionné</p>
         </div>
       ) : (() => {
@@ -446,10 +605,14 @@ export function CenterMenu({
         const isImg = ['JPG', 'JPEG', 'PNG', 'WEBP', 'SVG', 'GIF', 'BMP', 'ICO'].includes(ext) || activePreviewItem?.type?.startsWith('image/') || activePreviewItem?.isImage;
         const isVideo = ['MP4', 'WEBM', 'MOV', 'MKV', 'OGG', 'AVI'].includes(ext) || activePreviewItem?.type?.startsWith('video/');
         const isAudio = ['MP3', 'WAV', 'M4A', 'AAC', 'FLAC', 'OGA', 'WMA'].includes(ext) || activePreviewItem?.type?.startsWith('audio/');
-        const isText = ['TXT', 'MD', 'JSON', 'CSV', 'JS', 'TS', 'PY', 'HTML', 'CSS', 'SQL', 'XML', 'LOG', 'JAVA', 'C', 'CPP', 'SH'].includes(ext);
+        const isWord = ['DOCX', 'DOC'].includes(ext);
+        const isExcel = ['XLSX', 'XLS', 'CSV'].includes(ext);
+        const isPpt = ['PPTX', 'PPT'].includes(ext);
+        const isText = ['TXT', 'MD', 'JSON', 'JS', 'TS', 'PY', 'HTML', 'CSS', 'SQL', 'XML', 'LOG', 'JAVA', 'C', 'CPP', 'SH', 'ENV'].includes(ext);
 
         const currentUrl = resolvedUrl || activePreviewItem?.url || '';
 
+        // 1. PDF
         if (isPdf) {
           return (
             <div className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden rounded-2xl bg-white dark:bg-stone-900 border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] p-1">
@@ -477,6 +640,251 @@ export function CenterMenu({
           );
         }
 
+        // 2. WORD (.docx / .doc)
+        if (isWord) {
+          return (
+            <div className="w-full h-full flex flex-col overflow-hidden rounded-2xl bg-[#f8f9fa] dark:bg-stone-950 border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917]">
+              {/* Word Header Toolbar */}
+              <div className="flex items-center justify-between px-4 py-2 border-b border-stone-200 dark:border-stone-800 bg-white dark:bg-stone-900 text-stone-800 dark:text-stone-200 text-xs shrink-0">
+                <div className="flex items-center gap-2 font-bold truncate">
+                  <FileText className="w-4 h-4 text-blue-600 shrink-0" />
+                  <span className="truncate">{activePreviewItem.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button
+                    onClick={() => handleCopyText(extractedDocText || docxHtml.replace(/<[^>]+>/g, ''))}
+                    className="px-2 py-1 bg-stone-100 hover:bg-stone-200 dark:bg-stone-800 rounded border border-stone-300 dark:border-stone-700 text-[11px] font-semibold flex items-center gap-1 cursor-pointer"
+                  >
+                    {copiedText ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                    <span>{copiedText ? 'Copié !' : 'Copier texte'}</span>
+                  </button>
+                  {currentUrl && (
+                    <a
+                      href={currentUrl}
+                      download={activePreviewItem.name}
+                      className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded text-stone-600 dark:text-stone-300"
+                      title="Télécharger"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* Word Document Paper View */}
+              <div className="flex-1 w-full overflow-y-auto p-4 sm:p-8 flex justify-center">
+                <div
+                  className="w-full max-w-3xl bg-white dark:bg-stone-900 text-stone-900 dark:text-stone-100 rounded-xl shadow-lg border border-stone-300 dark:border-stone-700 p-6 sm:p-12 transition-all select-text leading-relaxed font-serif"
+                  style={{ zoom: `${docZoom}%`, minHeight: '100%' }}
+                >
+                  {docxHtml ? (
+                    <div 
+                      className="prose dark:prose-invert max-w-none text-sm md:text-base space-y-4"
+                      dangerouslySetInnerHTML={{ __html: docxHtml }} 
+                    />
+                  ) : (
+                    <div className="text-center py-12 text-stone-400">
+                      <FileText className="w-12 h-12 mx-auto mb-3 opacity-40 text-blue-500" />
+                      <p className="font-semibold text-stone-700 dark:text-stone-300">Formatage du document Word...</p>
+                      <p className="text-xs mt-1">Vous pouvez également échanger avec Delmas IA dans le volet droit.</p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // 3. EXCEL / SPREADSHEETS (.xlsx / .xls / .csv)
+        if (isExcel) {
+          const filteredRows = excelWorkbook?.rows ? (
+            excelWorkbook.searchQuery.trim()
+              ? excelWorkbook.rows.filter(r => r.some(c => String(c || '').toLowerCase().includes(excelWorkbook.searchQuery.toLowerCase())))
+              : excelWorkbook.rows
+          ) : [];
+
+          return (
+            <div className="w-full h-full flex flex-col overflow-hidden rounded-2xl bg-white dark:bg-stone-900 border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917]">
+              {/* Excel Header Toolbar */}
+              <div className="flex flex-wrap items-center justify-between gap-2 px-3 py-2 border-b border-stone-200 dark:border-stone-800 bg-[#F4F9F4] dark:bg-emerald-950/20 text-xs shrink-0">
+                <div className="flex items-center gap-2">
+                  <Table className="w-4 h-4 text-emerald-600 shrink-0" />
+                  <span className="font-extrabold text-stone-900 dark:text-emerald-300 truncate max-w-[180px] sm:max-w-xs">{activePreviewItem.name}</span>
+                </div>
+
+                {/* Sheet Tabs */}
+                {excelWorkbook && excelWorkbook.sheetNames.length > 1 && (
+                  <div className="flex items-center gap-1 overflow-x-auto max-w-xs py-0.5">
+                    {excelWorkbook.sheetNames.map((sheet) => (
+                      <button
+                        key={sheet}
+                        onClick={() => handleSwitchExcelSheet(sheet)}
+                        className={`px-2.5 py-1 rounded-md text-[10px] font-bold border transition-all cursor-pointer whitespace-nowrap ${
+                          excelWorkbook.activeSheet === sheet
+                            ? 'bg-emerald-600 text-white border-emerald-700 shadow-sm'
+                            : 'bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-300 dark:border-stone-700 hover:bg-stone-100'
+                        }`}
+                      >
+                        {sheet}
+                      </button>
+                    ))}
+                  </div>
+                )}
+
+                {/* Search Filter */}
+                <div className="flex items-center gap-2">
+                  <div className="relative">
+                    <Search className="w-3 h-3 absolute left-2 top-1/2 -translate-y-1/2 text-stone-400" />
+                    <input
+                      type="text"
+                      placeholder="Filtrer cellules..."
+                      value={excelWorkbook?.searchQuery || ''}
+                      onChange={(e) => {
+                        const val = e.target.value;
+                        setExcelWorkbook(prev => prev ? { ...prev, searchQuery: val } : null);
+                      }}
+                      className="pl-6 pr-2 py-0.5 text-[11px] bg-white dark:bg-stone-800 border border-stone-300 dark:border-stone-700 rounded-lg text-stone-900 dark:text-white w-28 sm:w-36 focus:outline-none focus:ring-1 focus:ring-emerald-500"
+                    />
+                  </div>
+                  {currentUrl && (
+                    <a
+                      href={currentUrl}
+                      download={activePreviewItem.name}
+                      className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded text-stone-600 dark:text-stone-300"
+                      title="Télécharger le classeur"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </a>
+                  )}
+                </div>
+              </div>
+
+              {/* Table Data View */}
+              <div 
+                className="flex-1 w-full overflow-auto p-2"
+                style={{ zoom: `${docZoom}%` }}
+              >
+                {filteredRows.length > 0 ? (
+                  <table className="w-full border-collapse text-xs font-mono">
+                    <thead>
+                      <tr className="bg-stone-100 dark:bg-stone-800 sticky top-0 z-10 shadow-sm">
+                        <th className="p-2 border border-stone-300 dark:border-stone-700 text-stone-500 w-10 text-center font-bold">#</th>
+                        {filteredRows[0]?.map((_, colIdx: number) => {
+                          const colLetter = String.fromCharCode(65 + (colIdx % 26));
+                          return (
+                            <th key={colIdx} className="p-2 border border-stone-300 dark:border-stone-700 text-stone-700 dark:text-stone-300 font-bold text-left min-w-[100px]">
+                              {colLetter}
+                            </th>
+                          );
+                        })}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {filteredRows.map((row: any[], rowIdx: number) => (
+                        <tr key={rowIdx} className="hover:bg-emerald-50/50 dark:hover:bg-emerald-950/20 transition-colors">
+                          <td className="p-1.5 border border-stone-200 dark:border-stone-800 text-stone-400 bg-stone-50 dark:bg-stone-900 text-center select-none font-bold text-[10px]">
+                            {rowIdx + 1}
+                          </td>
+                          {row.map((cell: any, cellIdx: number) => (
+                            <td key={cellIdx} className="p-1.5 border border-stone-200 dark:border-stone-800 text-stone-800 dark:text-stone-200 whitespace-pre truncate max-w-xs select-text">
+                              {cell !== undefined && cell !== null ? String(cell) : ''}
+                            </td>
+                          ))}
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full text-stone-400 p-8">
+                    <Table className="w-10 h-10 mb-2 opacity-30 text-emerald-600" />
+                    <p className="font-semibold text-xs">Aucune donnée disponible dans cette feuille.</p>
+                  </div>
+                )}
+              </div>
+            </div>
+          );
+        }
+
+        // 4. POWERPOINT (.pptx / .ppt)
+        if (isPpt) {
+          const totalSlides = pptxSlides.length || 1;
+          const currentSlide = pptxSlides[activeSlideIdx] || {
+            slideNumber: 1,
+            title: activePreviewItem.name,
+            bullets: ['Présentation PowerPoint prête pour révision.']
+          };
+
+          return (
+            <div className="w-full h-full flex flex-col overflow-hidden rounded-2xl bg-stone-900 border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917]">
+              {/* PPT Header Toolbar */}
+              <div className="flex items-center justify-between px-4 py-2 bg-stone-950 text-white text-xs border-b border-stone-800 shrink-0">
+                <div className="flex items-center gap-2 font-bold truncate">
+                  <Presentation className="w-4 h-4 text-orange-500 shrink-0" />
+                  <span className="truncate">{activePreviewItem.name}</span>
+                </div>
+                <div className="flex items-center gap-2">
+                  <span className="text-[11px] font-mono text-stone-400">
+                    Diapositive {activeSlideIdx + 1} / {totalSlides}
+                  </span>
+                  <div className="flex items-center gap-1">
+                    <button
+                      onClick={() => setActiveSlideIdx(prev => Math.max(0, prev - 1))}
+                      disabled={activeSlideIdx === 0}
+                      className="p-1 bg-stone-800 hover:bg-stone-700 disabled:opacity-40 rounded cursor-pointer"
+                      title="Diapositive précédente"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5" />
+                    </button>
+                    <button
+                      onClick={() => setActiveSlideIdx(prev => Math.min(totalSlides - 1, prev + 1))}
+                      disabled={activeSlideIdx >= totalSlides - 1}
+                      className="p-1 bg-stone-800 hover:bg-stone-700 disabled:opacity-40 rounded cursor-pointer"
+                      title="Diapositive suivante"
+                    >
+                      <ChevronRight className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+              </div>
+
+              {/* Slide Viewport */}
+              <div 
+                className="flex-1 w-full flex items-center justify-center p-4 sm:p-8 overflow-auto"
+                style={{ zoom: `${docZoom}%` }}
+              >
+                <div className="w-full max-w-3xl aspect-[16/9] bg-[#FDFBF7] text-stone-900 rounded-2xl shadow-2xl border-2 border-stone-700 p-8 md:p-12 flex flex-col justify-between select-text relative overflow-hidden">
+                  <div className="absolute top-0 left-0 right-0 h-2 bg-gradient-to-r from-orange-500 via-amber-400 to-red-500" />
+                  
+                  <div>
+                    <div className="flex items-center justify-between mb-4">
+                      <span className="text-[10px] font-extrabold uppercase tracking-widest text-orange-600 bg-orange-100 px-2.5 py-1 rounded-md">
+                        Diapositive {currentSlide.slideNumber}
+                      </span>
+                    </div>
+                    <h2 className="text-xl md:text-2xl font-black text-stone-950 mb-6 leading-snug">
+                      {currentSlide.title}
+                    </h2>
+                    <ul className="space-y-3">
+                      {currentSlide.bullets.map((bullet, idx) => (
+                        <li key={idx} className="flex items-start gap-2.5 text-xs sm:text-sm font-medium text-stone-700 leading-relaxed">
+                          <span className="w-1.5 h-1.5 rounded-full bg-orange-500 mt-1.5 shrink-0" />
+                          <span>{bullet}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+
+                  <div className="flex items-center justify-between pt-4 border-t border-stone-200 text-[10px] font-bold text-stone-400">
+                    <span>StudyCloud Presentation Viewer</span>
+                    <span>{activeSlideIdx + 1} de {totalSlides}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          );
+        }
+
+        // 5. IMAGES
         if (isImg) {
           return (
             <div className="w-full h-full flex items-center justify-center overflow-auto p-2 sm:p-6">
@@ -490,6 +898,7 @@ export function CenterMenu({
           );
         }
 
+        // 6. VIDEO
         if (isVideo) {
           return (
             <div className="w-full h-full flex items-center justify-center p-2 sm:p-6">
@@ -506,6 +915,7 @@ export function CenterMenu({
           );
         }
 
+        // 7. AUDIO
         if (isAudio) {
           return (
             <div className="w-full h-full flex flex-col items-center justify-center p-4 sm:p-8">
@@ -521,29 +931,37 @@ export function CenterMenu({
           );
         }
 
+        // 8. TEXT / CODE
         if (isText) {
           return (
-            <div className="w-full h-full flex flex-col p-2 sm:p-4 overflow-hidden">
+            <div className="w-full h-full flex flex-col overflow-hidden rounded-2xl bg-[#1e1e1e] border-2 border-stone-800 shadow-[4px_4px_0px_0px_#1c1917]">
+              {/* Code Header Bar */}
+              <div className="flex items-center justify-between px-4 py-2 bg-[#2d2d2d] text-stone-300 text-xs border-b border-stone-700 shrink-0">
+                <div className="flex items-center gap-2 font-mono">
+                  <FileCode className="w-4 h-4 text-amber-400" />
+                  <span>{activePreviewItem.name}</span>
+                </div>
+                <button
+                  onClick={() => handleCopyText(fileTextContent || activePreviewItem.textContent || '')}
+                  className="px-2 py-1 bg-stone-700 hover:bg-stone-600 rounded text-[10px] font-semibold text-white flex items-center gap-1 cursor-pointer"
+                >
+                  {copiedText ? <Check className="w-3 h-3 text-emerald-400" /> : <Copy className="w-3 h-3" />}
+                  <span>{copiedText ? 'Copié' : 'Copier'}</span>
+                </button>
+              </div>
+
+              {/* Code Content */}
               <div 
-                className="w-full h-full bg-[#1e1e1e] text-[#d4d4d4] rounded-2xl border-2 border-stone-800 shadow-[4px_4px_0px_0px_#1c1917] p-4 font-mono text-xs overflow-auto leading-relaxed select-text"
+                className="flex-1 w-full p-4 overflow-auto font-mono text-xs leading-relaxed text-[#d4d4d4] select-text"
                 style={{ zoom: `${docZoom}%` }}
               >
-                {loadingText ? (
-                  <div className="flex items-center justify-center h-full text-stone-400">
-                    <div className="w-6 h-6 border-2 border-orange-500 border-t-transparent rounded-full animate-spin mr-2" />
-                    Chargement du texte...
-                  </div>
-                ) : fileTextContent ? (
-                  <pre className="whitespace-pre-wrap font-mono text-xs">{fileTextContent}</pre>
-                ) : (
-                  <pre className="whitespace-pre-wrap font-mono text-xs">{activePreviewItem.textContent || "Fichier texte vide ou en cours de lecture."}</pre>
-                )}
+                <pre className="whitespace-pre-wrap">{fileTextContent || activePreviewItem.textContent || "Fichier texte vide."}</pre>
               </div>
             </div>
           );
         }
 
-        // Fichier Word, Excel, PowerPoint ou Autre
+        // 9. AUTRE / FICHIER GÉNÉRIQUE
         return (
           <div 
             className="w-full h-full flex flex-col items-center justify-center text-center p-4 sm:p-8 overflow-auto origin-center transition-all"
@@ -554,10 +972,10 @@ export function CenterMenu({
             </div>
             <h4 className="text-lg font-extrabold text-stone-900 dark:text-white mb-2 max-w-full break-words px-4">{activePreviewItem?.name}</h4>
             <p className="text-xs text-stone-500 font-mono mb-4">
-              Taille : {formatFileSize(activePreviewItem?.size)} • Mode {previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}
+              Taille : {formatFileSize(activePreviewItem?.size)} • Format {ext}
             </p>
             <div className="bg-orange-50 dark:bg-orange-950/30 border-2 border-orange-200 dark:border-orange-800/60 rounded-xl p-4 text-xs text-orange-900 dark:text-orange-200 font-medium leading-relaxed max-w-sm mb-4">
-              Ce document est ouvert dans votre espace d'étude. Vous pouvez dialoguer avec Delmas IA dans le panneau de droite ou utiliser le bouton micro en haut à droite pour la lecture audio.
+              Ce document est synchronisé avec votre espace d'étude StudyCloud. Vous pouvez interagir avec Delmas IA dans le panneau de droite ou utiliser la synthèse vocale en haut à droite.
             </div>
             {currentUrl && (
               <a

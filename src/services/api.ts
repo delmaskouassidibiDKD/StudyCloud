@@ -201,10 +201,11 @@ export const StudyCloudAPI = {
   // --------------------------------------------------------------------------
   // Fichiers & Stockage R2
   // --------------------------------------------------------------------------
-  async getFiles(userId: string, matiereId?: string, isStudySession?: boolean) {
+  async getFiles(userId: string, matiereId?: string, isStudySession?: boolean, isFavorite?: boolean) {
     let endpoint = `/api/files?userId=${encodeURIComponent(userId)}`;
     if (matiereId) endpoint += `&matiereId=${encodeURIComponent(matiereId)}`;
     if (isStudySession !== undefined) endpoint += `&isStudySession=${isStudySession ? '1' : '0'}`;
+    if (isFavorite !== undefined) endpoint += `&isFavorite=${isFavorite ? '1' : '0'}`;
     return request<{ success: boolean; data: any[] }>(endpoint);
   },
 
@@ -240,6 +241,13 @@ export const StudyCloudAPI = {
     lastImported?: number;
   }) {
     return request('/api/files', { method: 'POST', body: JSON.stringify(fileData) });
+  },
+
+  async toggleFileFavorite(id: string, isFavorite: boolean) {
+    return request<{ success: boolean; message: string; isFavorite: number }>(`/api/files/${encodeURIComponent(id)}/favorite`, {
+      method: 'PATCH',
+      body: JSON.stringify({ isFavorite }),
+    });
   },
 
   async deleteFile(id: string) {

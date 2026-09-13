@@ -279,6 +279,17 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     setSelectedFileIds(prev => prev.filter(i => i !== id));
     deleteFileBlob(id);
     StudyCloudAPI.deleteFile(id).catch(() => {});
+
+    // Supprimer également de "Mes fichiers"
+    try {
+      const directSaved = localStorage.getItem('unifolder_files_menu_items');
+      if (directSaved) {
+        const parsed: ImportedItem[] = JSON.parse(directSaved);
+        const filtered = parsed.filter(item => item.id !== id);
+        localStorage.setItem('unifolder_files_menu_items', JSON.stringify(filtered));
+      }
+    } catch (e) {}
+    window.dispatchEvent(new Event('unifolder_files_updated'));
   };
 
   const handleBatchDelete = () => {
@@ -291,6 +302,16 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       deleteFileBlob(id);
       StudyCloudAPI.deleteFile(id).catch(() => {});
     });
+
+    try {
+      const directSaved = localStorage.getItem('unifolder_files_menu_items');
+      if (directSaved) {
+        const parsed: ImportedItem[] = JSON.parse(directSaved);
+        const filtered = parsed.filter(item => !idsToDelete.includes(item.id));
+        localStorage.setItem('unifolder_files_menu_items', JSON.stringify(filtered));
+      }
+    } catch (e) {}
+    window.dispatchEvent(new Event('unifolder_files_updated'));
   };
 
   const handleToggleFavorite = (id: string) => {
@@ -298,23 +319,37 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     const newFav = file ? !file.isFavorite : true;
     setImportedFiles(prev => prev.map(item => item.id === id ? { ...item, isFavorite: newFav } : item));
     setOpenMenuId(null);
-    if (file) {
-      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-      StudyCloudAPI.registerFileMetadata({
-        id: file.id,
-        userId,
-        matiereId: file.matiere || matiereName,
-        name: file.name,
-        size: file.size,
-        type: file.type,
-        extension: file.extension,
-        r2Key: (file as any).r2Key || null,
-        fileUrl: file.url,
-        isFavorite: newFav,
-        isImported: true,
-        lastImported: typeof file.importedAt === 'number' ? file.importedAt : Date.now()
-      }).catch(() => {});
-    }
+
+    // Mettre à jour dans "Mes fichiers"
+    try {
+      const directSaved = localStorage.getItem('unifolder_files_menu_items');
+      if (directSaved) {
+        const parsed: ImportedItem[] = JSON.parse(directSaved);
+        const updated = parsed.map(item => item.id === id ? { ...item, isFavorite: newFav } : item);
+        localStorage.setItem('unifolder_files_menu_items', JSON.stringify(updated));
+      }
+    } catch (e) {}
+
+    StudyCloudAPI.toggleFileFavorite(id, newFav).catch(() => {
+      if (file) {
+        const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+        StudyCloudAPI.registerFileMetadata({
+          id: file.id,
+          userId,
+          matiereId: file.matiere || matiereName,
+          name: file.name,
+          size: file.size,
+          type: file.type,
+          extension: file.extension,
+          r2Key: (file as any).r2Key || null,
+          fileUrl: file.url,
+          isFavorite: newFav,
+          isImported: true,
+          lastImported: typeof file.importedAt === 'number' ? file.importedAt : Date.now()
+        }).catch(() => {});
+      }
+    });
+    window.dispatchEvent(new Event('unifolder_files_updated'));
   };
 
   const handleSaveRename = () => {
@@ -558,6 +593,17 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
       setImportedFiles(prev => [...newItems, ...prev]);
       startSavingAnimation(newItems.map(item => item.id));
+
+      // Ajouter automatiquement et immédiatement dans "Mes fichiers" avec le tag de matière
+      try {
+        const directSaved = localStorage.getItem('unifolder_files_menu_items');
+        let directList: ImportedItem[] = directSaved ? JSON.parse(directSaved) : [];
+        const newIds = new Set(newItems.map(item => item.id));
+        directList = [...newItems, ...directList.filter(item => !newIds.has(item.id))];
+        localStorage.setItem('unifolder_files_menu_items', JSON.stringify(directList));
+      } catch (e) {
+        console.error(e);
+      }
 
       if (newItems.length > 0) {
         localStorage.setItem('unifolder_last_imported_id', newItems[newItems.length - 1].id);
