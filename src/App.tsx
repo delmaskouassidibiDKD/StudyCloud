@@ -293,7 +293,26 @@ export default function App() {
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [showClearConfirmModal, setShowClearConfirmModal] = useState(false);
   const [showCreateShareLinkModal, setShowCreateShareLinkModal] = useState(false);
-  const [activeFolderDetail, setActiveFolderDetail] = useState<SharedFolder | null>(null);
+  const [activeFolderDetail, setActiveFolderDetail] = useState<SharedFolder | null>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_active_folder_detail');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return null;
+  });
+
+  useEffect(() => {
+    try {
+      if (activeFolderDetail) {
+        localStorage.setItem('studycloud_active_folder_detail', JSON.stringify(activeFolderDetail));
+      } else {
+        localStorage.removeItem('studycloud_active_folder_detail');
+      }
+    } catch (e) {}
+  }, [activeFolderDetail]);
+
   const [activeQRCodeFolder, setActiveQRCodeFolder] = useState<SharedFolder | null>(null);
   const [uploadedItems, setUploadedItems] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[]>(() => {
     const saved = localStorage.getItem('unifolder_uploaded_items');
@@ -307,8 +326,24 @@ export default function App() {
     }
     return [];
   });
-  const [activePreviewItemState, setActivePreviewItemState] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null>(null);
-  const [previewOwnerTab, setPreviewOwnerTab] = useState<NavigationTab | null>('folders');
+  const [activePreviewItemState, setActivePreviewItemState] = useState<{ id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_active_preview_item');
+      if (saved) {
+        return JSON.parse(saved);
+      }
+    } catch (e) {}
+    return null;
+  });
+  const [previewOwnerTab, setPreviewOwnerTab] = useState<NavigationTab | null>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_preview_owner_tab');
+      if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file'].includes(saved)) {
+        return saved as NavigationTab;
+      }
+    } catch (e) {}
+    return 'folders';
+  });
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
 
   const setActivePreviewItem = (item: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null) => {
@@ -317,11 +352,20 @@ export default function App() {
       setPreviewOwnerTab(null);
       setIsPreviewLoading(false);
       setIsCenterFullscreen(false);
+      try {
+        localStorage.removeItem('studycloud_active_preview_item');
+        localStorage.removeItem('studycloud_preview_owner_tab');
+      } catch (e) {}
       return;
     }
     setIsPreviewLoading(true);
     setActivePreviewItemState(item);
-    setPreviewOwnerTab(currentTab || 'folders');
+    const tabOwner = currentTab || 'folders';
+    setPreviewOwnerTab(tabOwner);
+    try {
+      localStorage.setItem('studycloud_active_preview_item', JSON.stringify(item));
+      localStorage.setItem('studycloud_preview_owner_tab', tabOwner);
+    } catch (e) {}
     if (item.lockFullscreen) {
       setIsCenterFullscreen(true);
       setMobilePreviewTab(1);
@@ -331,15 +375,54 @@ export default function App() {
     }, 1000);
   };
 
+  useEffect(() => {
+    try {
+      if (activePreviewItemState) {
+        localStorage.setItem('studycloud_active_preview_item', JSON.stringify(activePreviewItemState));
+      } else {
+        localStorage.removeItem('studycloud_active_preview_item');
+      }
+    } catch (e) {}
+  }, [activePreviewItemState]);
+
+  // Synchronise currentTab avec previewOwnerTab si un preview actif est restauré
+  useEffect(() => {
+    if (activePreviewItemState && previewOwnerTab && currentTab !== previewOwnerTab) {
+      setCurrentTab(previewOwnerTab);
+    }
+  }, []);
+
   const activePreviewItem = activePreviewItemState;
-  const [previewScrollMode, setPreviewScrollMode] = useState<'vertical' | 'horizontal'>('vertical');
+  const [previewScrollMode, setPreviewScrollMode] = useState<'vertical' | 'horizontal'>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_preview_scroll_mode');
+      if (saved === 'vertical' || saved === 'horizontal') return saved;
+    } catch (e) {}
+    return 'vertical';
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_preview_scroll_mode', previewScrollMode);
+    } catch (e) {}
+  }, [previewScrollMode]);
+
   const [mobilePreviewTab, setMobilePreviewTab] = useState<0 | 1 | 2>(1);
   const [previewLeftWidth, setPreviewLeftWidth] = useState(33.33);
   const [previewRightWidth, setPreviewRightWidth] = useState(33.33);
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [isResizingLeft, setIsResizingLeft] = useState(false);
   const [isResizingRight, setIsResizingRight] = useState(false);
-  const [isCenterFullscreen, setIsCenterFullscreen] = useState(false);
+  const [isCenterFullscreen, setIsCenterFullscreen] = useState<boolean>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_active_preview_item');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (parsed?.lockFullscreen) return true;
+      }
+    } catch (e) {}
+    return false;
+  });
   const [isRightFullscreen, setIsRightFullscreen] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
 
