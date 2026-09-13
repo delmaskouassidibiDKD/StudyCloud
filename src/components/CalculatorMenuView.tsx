@@ -298,7 +298,7 @@ export const CalculatorMenuView: React.FC<CalculatorMenuViewProps> = ({ onBack }
   }, [discountPrice, discountPercent]);
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-stone-950 text-white px-2 sm:px-4 pt-4 pb-44 sm:pb-48 overflow-y-auto min-h-screen">
+    <div className="absolute inset-x-0 bottom-0 top-[72px] md:top-[76px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-stone-950 text-white px-2 sm:px-4 pt-4 pb-44 sm:pb-48 overflow-y-auto min-h-screen">
       
 
       {/* APP HEADER */}

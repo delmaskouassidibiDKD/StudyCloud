@@ -419,13 +419,13 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] text-[#2D4A3E] px-4 py-6 overflow-y-auto">
+    <div className="absolute inset-x-0 bottom-0 top-[72px] md:top-[76px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-6 overflow-y-auto transition-colors duration-300">
       <svg style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
         <defs>
           {trimesterData.map((item, idx) => {
             const stops = getGradientStops(item.count, standardScale);
             return (
-              <linearGradient key={`trim-grad-${idx}`} id={`trimGradient-${idx}`} x1="0" y1="1" x2="0" y2="0">
+              <linearGradient key={`tri-grad-${idx}`} id={`triGradient-${idx}`} x1="0" y1="1" x2="0" y2="0">
                 {stops.map((s, sIdx) => (
                   <stop key={sIdx} offset={s.offset} stopColor={s.color} />
                 ))}
@@ -455,13 +455,13 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
         </defs>
       </svg>
 
-      <div className="fixed top-14 left-4 right-4 md:left-[17rem] grid grid-cols-3 items-start z-40 pointer-events-none">
+      <div className="fixed top-[84px] md:top-[88px] left-4 right-4 md:left-[17.5rem] grid grid-cols-3 items-start z-40 pointer-events-none">
         <div className="flex flex-col items-start gap-1.5 pointer-events-auto justify-self-start">
           <button
             onClick={onBack}
-            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:text-white dark:border-[#334155] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
           >
-            <ArrowLeft className="w-3 h-3" />
+            <ArrowLeft className="w-3 h-3 text-[#2D4A3E] dark:text-white" />
             <span>Retour</span>
           </button>
 
@@ -543,7 +543,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
         </div>
       </div>
 
-      <div className="w-full h-[calc(100vh-100px)] px-2 sm:px-4 pt-12 flex flex-col">
+      <div className="w-full h-[calc(100vh-100px)] px-2 sm:px-4 pt-20 sm:pt-24 flex flex-col">
         {selectedAnalysis === 'analyse globale' ? (
           <div className="w-full h-full py-4 overflow-y-auto">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 h-auto min-h-full pb-10">

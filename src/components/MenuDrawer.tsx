@@ -112,10 +112,10 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
               <div className="flex items-center gap-2 notranslate">
                 <DnaLogo className="w-8 h-8 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
                 <div className="flex flex-col truncate text-left leading-none mt-0.5">
-                  <h1 className="font-extrabold text-[18px] md:text-[20px] tracking-tight truncate leading-none" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                    <span className="text-orange-600 dark:text-orange-500">Study</span><span className="text-blue-600 dark:text-blue-500">Cloud</span>
+                  <h1 className="brand-header font-extrabold text-[18px] md:text-[20px] tracking-tight truncate leading-none" style={{ fontFamily: 'Outfit, sans-serif' }}>
+                    <span className="brand-study text-orange-600 dark:text-orange-500" style={{ color: '#ea580c' }}>Study</span><span className="brand-cloud text-blue-600 dark:text-blue-500" style={{ color: '#2563eb' }}>Cloud</span>
                   </h1>
-                  <p className="text-[8px] md:text-[8.5px] font-bold text-orange-400/90 dark:text-amber-400 uppercase tracking-widest leading-none truncate mt-[2px]">
+                  <p className="brand-tagline text-[8px] md:text-[8.5px] font-bold uppercase tracking-widest leading-none truncate mt-[2px]" style={{ color: '#f59e0b' }}>
                     DKD Technologies
                   </p>
                 </div>

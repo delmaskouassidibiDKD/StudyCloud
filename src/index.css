@@ -157,22 +157,39 @@ body.dark,
 }
 
 /* Typographie des en-tetes ultra-nette et blanche */
-.dark header h1,
+.dark header h1:not(.brand-header),
 .dark header h2,
 .dark header h3,
-.dark header p,
-.dark header span,
-.dark [class*="sticky top-0"] h1,
+.dark header p:not(.brand-tagline),
+.dark header span:not(.brand-study):not(.brand-cloud),
+.dark [class*="sticky top-0"] h1:not(.brand-header),
 .dark [class*="sticky top-0"] h2,
 .dark [class*="sticky top-0"] h3,
-.dark [class*="sticky top-0"] p,
-.dark [class*="sticky top-0"] span,
-.dark [class*="fixed top-0"] h1,
-.dark [class*="fixed top-0"] h2,
-.dark [class*="fixed top-0"] h3,
-.dark [class*="fixed top-0"] p,
-.dark [class*="fixed top-0"] span {
+.dark [class*="sticky top-0"] p:not(.brand-tagline),
+.dark [class*="sticky top-0"] span:not(.brand-study):not(.brand-cloud) {
   color: #ffffff !important;
+}
+
+/* Couleurs officielles de la marque StudyCloud (Orange et Bleu préservés en mode sombre) */
+.brand-study,
+.dark .brand-study,
+aside .brand-study,
+.dark aside .brand-study {
+  color: #ea580c !important; /* Orange StudyCloud */
+}
+
+.brand-cloud,
+.dark .brand-cloud,
+aside .brand-cloud,
+.dark aside .brand-cloud {
+  color: #2563eb !important; /* Bleu StudyCloud */
+}
+
+.brand-tagline,
+.dark .brand-tagline,
+aside .brand-tagline,
+.dark aside .brand-tagline {
+  color: #f59e0b !important; /* Ambre DKD Technologies */
 }
 
 /* BARRES LATERALES ET BARRE MOBILE BASSE : SOLIDE SANS AUCUNE TRANSPARENCE */
@@ -287,4 +304,35 @@ body.dark,
 /* Zone d'upload pointillee en mode sombre */
 .dark .border-dashed {
   border-color: #3b82f6 !important;
-}
+}
+
+/* ==========================================================================
+   PROTECTION ABSOLUE DES COULEURS OFFICIELLES STUDYCLOUD (Orange & Bleu)
+   ========================================================================== */
+.brand-study,
+.dark .brand-study,
+aside .brand-study,
+.dark aside .brand-study,
+span.brand-study,
+.dark span.brand-study {
+  color: #ea580c !important;
+}
+
+.brand-cloud,
+.dark .brand-cloud,
+aside .brand-cloud,
+.dark aside .brand-cloud,
+span.brand-cloud,
+.dark span.brand-cloud {
+  color: #2563eb !important;
+}
+
+.brand-tagline,
+.dark .brand-tagline,
+aside .brand-tagline,
+.dark aside .brand-tagline,
+p.brand-tagline,
+.dark p.brand-tagline {
+  color: #f59e0b !important;
+}
+

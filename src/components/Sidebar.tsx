@@ -27,11 +27,11 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
         <div className="flex items-center gap-2 mb-8">
           <DnaLogo className="w-8 h-8 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
           <div className="notranslate">
-            <h1 className="font-extrabold tracking-tight text-2xl leading-tight">
-              <span className="text-orange-600 dark:text-orange-500">Study</span>
-              <span className="text-blue-600 dark:text-blue-500">Cloud</span>
+            <h1 className="brand-header font-extrabold tracking-tight text-2xl leading-tight">
+              <span className="brand-study text-orange-600 dark:text-orange-500" style={{ color: '#ea580c' }}>Study</span>
+              <span className="brand-cloud text-blue-600 dark:text-blue-500" style={{ color: '#2563eb' }}>Cloud</span>
             </h1>
-            <p className="text-[9px] text-orange-400/90 dark:text-amber-400 font-bold uppercase tracking-widest mt-0.5">DKD Technologies</p>
+            <p className="brand-tagline text-[9px] text-orange-400/90 dark:text-amber-400 font-bold uppercase tracking-widest mt-0.5" style={{ color: '#f59e0b' }}>DKD Technologies</p>
           </div>
         </div>
 

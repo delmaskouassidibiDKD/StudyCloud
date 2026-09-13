@@ -147,15 +147,15 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] text-[#2D4A3E] px-2 sm:px-4 py-6 overflow-y-auto min-h-[calc(100vh-60px)] flex flex-col">
+    <div className="absolute inset-x-0 bottom-0 top-[72px] md:top-[76px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-2 sm:px-4 py-6 overflow-y-auto min-h-[calc(100vh-76px)] flex flex-col transition-colors duration-300">
       
       {/* Header Bar */}
-      <div className="fixed top-14 left-4 right-4 md:left-[17rem] flex items-center justify-between z-40 pointer-events-none">
+      <div className="fixed top-[84px] md:top-[88px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none">
         <button
           onClick={onBack}
-          className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-xs rounded-xl border-2 border-[#2D4A3E] shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:text-white dark:border-[#334155] font-bold text-xs rounded-xl border-2 border-[#2D4A3E] shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
         >
-          <ArrowLeft className="w-4 h-4" />
+          <ArrowLeft className="w-4 h-4 text-[#2D4A3E] dark:text-white" />
           <span>Retour</span>
         </button>
 
@@ -164,7 +164,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
             setNewEventDate(new Date().toISOString().split('T')[0]);
             setIsAddModalOpen(true);
           }}
-          className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#18568A] hover:bg-[#13436D] text-white font-bold text-xs rounded-xl border-2 border-stone-900 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#18568A] hover:bg-[#13436D] text-white font-bold text-xs rounded-xl border-2 border-stone-900 dark:border-blue-500 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
         >
           <Plus className="w-4 h-4" />
           <span>Créer un événement</span>
@@ -172,7 +172,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
       </div>
 
       {/* Main Container */}
-      <div className="w-full max-w-6xl mx-auto pt-14 pb-12 flex-1 flex flex-col">
+      <div className="w-full max-w-6xl mx-auto pt-20 pb-12 flex-1 flex flex-col">
         
         {/* Title & Quick Jump Toolbar */}
         <div className="mb-4 bg-white/80 backdrop-blur-sm p-4 rounded-2xl border-2 border-stone-900 shadow-[3px_3px_0px_0px_#1c1917] flex flex-col sm:flex-row items-center justify-between gap-4">

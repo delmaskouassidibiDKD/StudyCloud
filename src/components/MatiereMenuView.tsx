@@ -487,7 +487,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[56px] md:top-[60px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-8 overflow-y-auto transition-colors duration-300">
+    <div className="absolute inset-x-0 bottom-0 top-[72px] md:top-[76px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-8 overflow-y-auto transition-colors duration-300">
       <input 
         type="file" 
         ref={fileInputRef} 
@@ -495,7 +495,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         multiple 
         onChange={handleFileChange} 
       />
-      <div className="fixed top-14 left-4 right-4 md:left-[17rem] flex items-start justify-between z-40 pointer-events-none gap-2">
+      <div className="fixed top-[84px] md:top-[88px] left-4 right-4 md:left-[17.5rem] flex items-start justify-between z-40 pointer-events-none gap-2">
         <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">
           <button
             onClick={onBack}
@@ -593,7 +593,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
       </div>
 
       {isSearchOpen && (
-        <div className="fixed top-20 left-4 right-4 z-50 bg-white border-3 border-stone-900 px-4 py-3 flex items-center justify-center gap-3 shadow-2xl rounded-2xl max-w-xl mx-auto animate-fadeIn">
+        <div className="fixed top-[84px] md:top-[88px] left-4 right-4 z-50 bg-white border-3 border-stone-900 px-4 py-3 flex items-center justify-center gap-3 shadow-2xl rounded-2xl max-w-xl mx-auto animate-fadeIn">
           <div className="relative w-full flex items-center">
             <Search className="absolute left-3 w-4 h-4 text-stone-600" />
             <input
@@ -620,7 +620,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
 
       {/* Top Selection Action Bar */}
       {isSelectionMode && !classifyFileIds && (
-        <div className="fixed top-12 left-2 right-2 md:left-[16.5rem] max-w-4xl mx-auto z-[99999] bg-[#FDFBF7] border-2 border-stone-800 rounded-xl px-3 py-2 shadow-xl flex items-center justify-between gap-2 animate-fadeIn pointer-events-auto">
+        <div className="fixed top-[84px] md:top-[88px] left-2 right-2 md:left-[17.5rem] max-w-4xl mx-auto z-[99999] bg-[#FDFBF7] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#334155] rounded-xl px-3 py-2 shadow-xl flex items-center justify-between gap-2 animate-fadeIn pointer-events-auto">
           <div className="flex items-center gap-1.5 shrink-0">
             <span className="bg-[#2D4A3E] text-white px-2 py-0.5 rounded-lg text-[11px] font-bold">
               {selectedFileIds.length} sélec.
@@ -659,7 +659,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         </div>
       )}
 
-      <div className="w-full px-2 sm:px-4 pt-16 sm:pt-20">
+      <div className="w-full px-2 sm:px-4 pt-20 sm:pt-24">
         <div className="pt-1 pb-64 w-full max-w-7xl mx-auto">
           {filteredFiles.length === 0 ? (
             <div className="text-center pt-2">

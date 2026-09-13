@@ -116,7 +116,7 @@ export function RightMenu({
       {(!isRightSidebarOpen || isRightFullscreen) && (
         <button
           onClick={() => setIsRightFullscreen(!isRightFullscreen)}
-          className="hidden md:flex absolute top-[60px] md:top-[64px] left-1 md:left-2 z-50 p-1 bg-yellow-400 rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-yellow-300 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900"
+          className="hidden md:flex absolute top-[72px] md:top-[76px] left-1 md:left-2 z-50 p-1 bg-yellow-400 rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-yellow-300 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900"
           title={isRightFullscreen ? "Réduire" : "Plein écran"}
         >
           {isRightFullscreen ? <Minimize className="w-3 h-3" /> : <Maximize className="w-3 h-3" />}
@@ -126,7 +126,7 @@ export function RightMenu({
       {/* Right Sidebar Toggle / Close Button */}
       <button
         onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
-        className={`${isRightFullscreen ? 'fixed' : 'absolute'} top-[60px] md:top-[64px] right-2 md:right-4 z-[99999] p-1.5 bg-white rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-stone-100 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900 flex items-center justify-center`}
+        className={`${isRightFullscreen ? 'fixed' : 'absolute'} top-[72px] md:top-[76px] right-2 md:right-4 z-[99999] p-1.5 bg-white rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-stone-100 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900 flex items-center justify-center`}
         title={isRightSidebarOpen ? "Fermer le menu" : "Ouvrir le menu latéral"}
       >
         {isRightSidebarOpen ? <X className="w-3.5 h-3.5" /> : <Menu className="w-3.5 h-3.5" />}
