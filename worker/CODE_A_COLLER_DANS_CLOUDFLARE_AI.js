@@ -2,8 +2,8 @@
 // STUDYCLOUD - CLOUDFLARE WORKERS AI (ASSISTANTE IA OFFICIELLE DKD)
 // ============================================================================
 // Domaine de déploiement : https://studycloud-ai.delmaskouassidibi.workers.dev
-// Liaison Workers AI supportée : STUDYCLOUD-IA ou AI
-// Modèle IA principal : @cf/meta/llama-3.1-8b-instruct (remplace l'ancien llama-3 déprécié)
+// Liaison Workers AI : MON-STUDYCLOUD-ia (ou STUDYCLOUD-IA, AI)
+// Modèle IA principal : @cf/meta/llama-3.1-8b-instruct
 //
 // POUR METTRE À JOUR DANS CLOUDFLARE :
 // 1. Allez sur votre Cloudflare Dashboard > Workers & Pages > studycloud-ai.
@@ -27,13 +27,15 @@ export default {
     }
 
     // Détection universelle et automatique de la liaison Workers AI
-    // (Supporte STUDYCLOUD-IA, STUDYCLOUD_IA, AI, ou tout binding ayant la fonction run)
-    const ai = env?.["STUDYCLOUD-IA"] || 
+    // Supporte en priorité 'MON-STUDYCLOUD-ia' et toutes les variantes
+    const ai = env?.["MON-STUDYCLOUD-ia"] || 
+               env?.MON_STUDYCLOUD_IA || 
+               env?.["MON-STUDYCLOUD-IA"] || 
+               env?.["MON_STUDYCLOUD-ia"] || 
+               env?.["STUDYCLOUD-IA"] || 
                env?.STUDYCLOUD_IA || 
                env?.["STUDYCLOUD-AI"] || 
                env?.STUDYCLOUD_AI || 
-               env?.["studycloud-ia"] || 
-               env?.studycloud_ia || 
                env?.AI || 
                env?.ai ||
                (env && typeof env === "object" ? Object.values(env).find(v => v && typeof v.run === "function") : null);
