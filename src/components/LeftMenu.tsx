@@ -875,7 +875,7 @@ export function LeftMenu({
                   </div>
                 </div>
                 {subjectFiles.length > 0 ? (
-                  <div className="w-full grid grid-cols-[repeat(auto-fit,minmax(100px,1fr))] gap-3 pt-2 pb-6 px-2 justify-items-center justify-start overflow-y-auto flex-1">
+                  <div className="w-full grid grid-cols-[repeat(auto-fit,minmax(100px,1fr))] content-start auto-rows-max gap-3 pt-2 pb-6 px-2 justify-items-center justify-start overflow-y-auto flex-1">
                     {renderFileGroup(subjectFiles, false)}
                   </div>
                 ) : (
