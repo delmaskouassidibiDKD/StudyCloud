@@ -513,15 +513,17 @@ export default function App() {
       const percentage = (x / rect.width) * 100;
 
       if (isResizingLeft) {
-        // Allow left column to resize smoothly from 12% to (100% - rightWidth - 20% for center)
-        const maxLeft = Math.max(25, 100 - previewRightWidth - 20);
-        const newWidth = Math.min(Math.max(12, percentage), maxLeft);
+        // Bloque le redimensionnement au niveau optimal (environ 260px / 23%) : ne réduit pas trop l'espace de gauche pour préserver l'Assistante DKD et les 2 colonnes de fichiers
+        const minLeft = Math.max(22, (260 / rect.width) * 100);
+        const maxLeft = Math.max(minLeft, 100 - previewRightWidth - 20);
+        const newWidth = Math.min(Math.max(minLeft, percentage), maxLeft);
         setPreviewLeftWidth(newWidth);
       } else if (isResizingRight) {
-        // Limit right column width between 15% and (100% - leftWidth - 20% for center)
+        // Limite également la colonne droite à un minimum équivalent
         const newRightWidth = 100 - percentage;
-        const maxRight = Math.max(20, 100 - previewLeftWidth - 20);
-        const boundedRight = Math.min(Math.max(15, newRightWidth), maxRight);
+        const minRight = Math.max(22, (260 / rect.width) * 100);
+        const maxRight = Math.max(minRight, 100 - previewLeftWidth - 20);
+        const boundedRight = Math.min(Math.max(minRight, newRightWidth), maxRight);
         setPreviewRightWidth(boundedRight);
       }
     };
