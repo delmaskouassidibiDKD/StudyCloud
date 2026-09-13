@@ -1,14 +1,17 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, ThumbsUp, ThumbsDown, Copy, Check, X } from 'lucide-react';
+import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2 } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { FileIconBadge } from './FileIconBadge';
-import { sendChatMessageToAi } from '../services/api';
+import { sendChatMessageToAi, saveAiReaction, removeAiAttachment } from '../services/api';
+import { extractDocumentText } from '../services/documentTextExtractor';
 
 interface Message {
   id: string;
   text: string;
   sender: 'user' | 'ai';
   isStreaming?: boolean;
+  reaction?: 'like' | 'dislike' | null;
+  attachedFileName?: string;
 }
 
 const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: boolean; isStreaming?: boolean }) => {
@@ -92,10 +95,16 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const [isTyping, setIsTyping] = useState(false);
   const [isWaitingServer, setIsWaitingServer] = useState(false);
   const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
+  const [isExtractingDoc, setIsExtractingDoc] = useState(false);
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimerRef = useRef<any>(null);
+
+  const currentUserId = typeof window !== 'undefined'
+    ? (localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id') || 'default-user')
+    : 'default-user';
+  const currentSessionId = useRef('session-' + Date.now()).current;
 
   useEffect(() => {
     onHasMessagesChange?.(messages.length > 0);
@@ -114,6 +123,35 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     };
   }, []);
 
+  const handleReaction = async (messageId: string, reaction: 'like' | 'dislike') => {
+    setMessages(prev => prev.map(m => {
+      if (m.id === messageId) {
+        const next = m.reaction === reaction ? null : reaction;
+        return { ...m, reaction: next };
+      }
+      return m;
+    }));
+
+    if (currentUserId) {
+      await saveAiReaction({
+        userId: currentUserId,
+        messageId,
+        reaction,
+      });
+    }
+  };
+
+  const handleRemoveAttachment = async (res: any) => {
+    setAttachedResources?.((prev: any[]) => prev.filter((r: any) => r.id !== res.id));
+    if (currentUserId && res.id) {
+      await removeAiAttachment({
+        userId: currentUserId,
+        fileId: res.id,
+        r2Key: res.r2_key || res.r2Key,
+      });
+    }
+  };
+
   const sendMessage = async (textToSend: string) => {
     if (!textToSend.trim() || isTyping) return;
 
@@ -128,21 +166,36 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     setIsWaitingServer(true);
 
     try {
-      // 1. Contexte du document actif et des ressources jointes
-      let systemContent = "Tu es l'assistante IA officielle de la plateforme StudyCloud, développée par DKD Technologies. Tu es une tutrice académique bienveillante, dynamique, très claire et structurée. Tu réponds TOUJOURS en français pour aider l'élève ou l'étudiant dans ses cours, révisions et exercices.";
-      
-      if (activePreviewItem?.name) {
-        systemContent += `\nL'utilisateur consulte actuellement le document : "${activePreviewItem.name}". Si la question porte sur ce cours ou ce document, explique-lui clairement les notions.`;
-      }
+      // 1. Extraction en direct du contenu textuel du document PDF ou Word joint
+      let attachedFileContent = '';
+      let attachedFileName = '';
+      let attachedFileId = '';
+      let attachedFileR2Key = '';
 
-      if (attachedResources && attachedResources.length > 0) {
-        const attachedNames = attachedResources.map((r: any) => r.name).filter(Boolean).join(', ');
-        if (attachedNames) {
-          systemContent += `\nDocuments attachés à la discussion : ${attachedNames}.`;
+      const targetDoc = (attachedResources && attachedResources.length > 0) ? attachedResources[0] : activePreviewItem;
+      if (targetDoc) {
+        attachedFileName = targetDoc.name || targetDoc.title || '';
+        attachedFileId = targetDoc.id || '';
+        attachedFileR2Key = targetDoc.r2_key || targetDoc.r2Key || '';
+
+        try {
+          setIsExtractingDoc(true);
+          attachedFileContent = await extractDocumentText(targetDoc);
+        } catch (e) {
+          console.warn('[AssistantChat] Erreur extraction texte du document:', e);
+        } finally {
+          setIsExtractingDoc(false);
         }
       }
 
-      // 2. Préparation de l'historique des messages pour le format chat
+      // 2. Contexte du document actif et des ressources jointes
+      let systemContent = "Tu es l'assistante IA officielle de la plateforme StudyCloud, développée par DKD Technologies. Tu es une tutrice académique bienveillante, dynamique, très claire et structurée. Tu réponds TOUJOURS en français pour aider l'élève ou l'étudiant dans ses cours, révisions et exercices.";
+      
+      if (attachedFileName) {
+        systemContent += `\nL'utilisateur étudie actuellement le document : "${attachedFileName}". Si sa question porte sur ce cours, réponds précisément en t'appuyant sur les explications, définitions, théorèmes et exercices contenus dans ce document.`;
+      }
+
+      // 3. Préparation de l'historique des messages pour le format chat
       const chatHistory = [
         { role: 'system', content: systemContent },
         ...updatedMessages.slice(-8).map(m => ({
@@ -151,26 +204,33 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         })),
       ];
 
-      // 3. Appel à l'IA Cloudflare Workers AI
+      // 4. Appel à l'IA Cloudflare Workers AI avec injection sécurisée du texte extrait du PDF
       const aiResult = await sendChatMessageToAi({
         messages: chatHistory,
         prompt: userText,
+        userId: currentUserId,
+        sessionId: currentSessionId,
+        attachedFileId,
+        attachedFileName,
+        attachedFileContent,
+        attachedFileR2Key,
       });
 
       const fullResponseText = aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";
       setIsWaitingServer(false);
 
-      // 4. Initialisation du message IA avec écriture en temps réel
+      // 5. Initialisation du message IA avec écriture en temps réel
       const aiMsgId = (Date.now() + 1).toString();
       const initialAiMsg: Message = {
         id: aiMsgId,
         text: '',
         sender: 'ai',
         isStreaming: true,
+        attachedFileName: attachedFileName || undefined,
       };
       setMessages(prev => [...prev, initialAiMsg]);
 
-      // 5. Animation machine à écrire fluide avec l'ADN qui tourne et se déplace
+      // 6. Animation machine à écrire fluide avec l'ADN qui tourne et se déplace
       let index = 0;
       const chunkSize = 3; // 3 caractères par saut pour un flux rapide et naturel
       const tickSpeed = 16; // ~60fps d'écriture
@@ -267,10 +327,18 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
                 </div>
               ) : (
                 <div className="flex flex-col w-full text-zinc-100">
-                  {/* AI Sparkle/DNA Icon */}
-                  <div className="mb-2 flex items-center gap-2">
-                    <DnaLogo className="w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)] text-orange-500" glow={true} />
-                    <span className="text-xs font-bold text-orange-500/90 tracking-wide uppercase">Assistant StudyCloud</span>
+                  {/* AI Sparkle/DNA Icon & Attached Doc Badge */}
+                  <div className="mb-2 flex items-center justify-between flex-wrap gap-2">
+                    <div className="flex items-center gap-2">
+                      <DnaLogo className="w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)] text-orange-500" glow={true} />
+                      <span className="text-xs font-bold text-orange-500/90 tracking-wide uppercase">Assistant StudyCloud</span>
+                    </div>
+                    {msg.attachedFileName && (
+                      <div className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-[10px] font-semibold text-orange-300">
+                        <FileText className="w-3 h-3 text-orange-400 shrink-0" />
+                        <span className="truncate max-w-[180px] sm:max-w-[240px]">{msg.attachedFileName}</span>
+                      </div>
+                    )}
                   </div>
                   
                   {/* AI Text Content */}
@@ -284,14 +352,24 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
                       <div className="flex items-center gap-1 sm:gap-2 text-zinc-400">
                         <button 
                           type="button"
-                          className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer text-zinc-400 hover:text-white"
-                          title="Bonne réponse"
+                          onClick={() => handleReaction(msg.id, 'like')}
+                          className={`p-1.5 sm:p-2 rounded-full transition-colors cursor-pointer ${
+                            msg.reaction === 'like'
+                              ? 'text-emerald-400 bg-emerald-500/20 hover:bg-emerald-500/30'
+                              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                          }`}
+                          title="Bonne réponse (j'aime)"
                         >
                           <ThumbsUp className="w-4 h-4" />
                         </button>
                         <button 
                           type="button"
-                          className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer text-zinc-400 hover:text-white"
+                          onClick={() => handleReaction(msg.id, 'dislike')}
+                          className={`p-1.5 sm:p-2 rounded-full transition-colors cursor-pointer ${
+                            msg.reaction === 'dislike'
+                              ? 'text-rose-400 bg-rose-500/20 hover:bg-rose-500/30'
+                              : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                          }`}
                           title="Mauvaise réponse"
                         >
                           <ThumbsDown className="w-4 h-4" />
@@ -372,6 +450,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
                    <span className="text-[10px] sm:text-[11px] font-bold text-zinc-300 truncate">
                      {activePreviewItem.name}
                    </span>
+                   {activePreviewItem.isExtracting && (
+                     <Loader2 className="w-3 h-3 animate-spin text-orange-400 ml-1 shrink-0" />
+                   )}
                  </div>
                )}
                
@@ -383,17 +464,22 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
                    <span className="text-[10px] sm:text-[11px] font-bold text-zinc-300 truncate">
                      {res.name}
                    </span>
-                   <button 
-                     type="button"
-                     onClick={(e) => {
-                       e.preventDefault();
-                       e.stopPropagation();
-                       setAttachedResources?.((prev: any[]) => prev.filter(r => r.id !== res.id));
-                     }}
-                     className="ml-1 text-zinc-500 hover:text-white p-0.5 rounded-full hover:bg-zinc-700 transition-colors cursor-pointer"
-                   >
-                     <X className="w-3 h-3" />
-                   </button>
+                   {res.isExtracting ? (
+                     <Loader2 className="w-3 h-3 animate-spin text-orange-400 ml-1 shrink-0" />
+                   ) : (
+                     <button 
+                       type="button"
+                       onClick={(e) => {
+                         e.preventDefault();
+                         e.stopPropagation();
+                         handleRemoveAttachment(res);
+                       }}
+                       className="ml-1 text-zinc-500 hover:text-white p-0.5 rounded-full hover:bg-zinc-700 transition-colors cursor-pointer"
+                       title="Retirer ce document"
+                     >
+                       <X className="w-3 h-3" />
+                     </button>
+                   )}
                  </div>
                ))}
             </div>

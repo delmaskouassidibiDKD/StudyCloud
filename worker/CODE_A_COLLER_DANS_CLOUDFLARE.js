@@ -1128,7 +1128,25 @@ var src_default = {
             is_pinned INTEGER DEFAULT 0,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP,
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-          )`
+          )`,
+          `CREATE TABLE IF NOT EXISTS user_ai_workspace (
+            id TEXT PRIMARY KEY,
+            user_id TEXT NOT NULL,
+            session_id TEXT NOT NULL,
+            role TEXT NOT NULL,
+            message_text TEXT NOT NULL,
+            reaction TEXT DEFAULT NULL,
+            attached_file_id TEXT,
+            attached_file_name TEXT,
+            attached_file_r2_key TEXT,
+            attached_file_content TEXT,
+            user_notes TEXT,
+            is_pinned INTEGER DEFAULT 0,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )`,
+          `CREATE INDEX IF NOT EXISTS idx_user_ai_ws_user ON user_ai_workspace(user_id, session_id)`,
+          `CREATE INDEX IF NOT EXISTS idx_user_ai_ws_file ON user_ai_workspace(user_id, attached_file_id)`
         ];
         for (const query of tableQueries) {
           try {
@@ -3251,10 +3269,24 @@ var src_default = {
         const body = await request.json().catch(() => ({}));
         let messages = Array.isArray(body.messages) ? body.messages : [];
         const userPrompt = body.prompt || body.text || "";
+        const userId = body.userId;
+        const sessionId = body.sessionId || "default-session";
         if (messages.length === 0) {
           messages = [
             { role: "user", content: userPrompt || "Bonjour !" }
           ];
+        }
+        if (body.attachedFileContent && typeof body.attachedFileContent === "string" && body.attachedFileContent.trim().length > 0) {
+          const docTitle = body.attachedFileName || "Document joint";
+          const maxDocChars = 32e3;
+          const cleanDocContent = body.attachedFileContent.slice(0, maxDocChars);
+          messages.unshift({
+            role: "system",
+            content: `=== DOCUMENT JOINT DE L'\xC9L\xC8VE ("${docTitle}") ===
+${cleanDocContent}
+=== FIN DU DOCUMENT ===
+Instructions : L'\xE9l\xE8ve t'a transmis ce document pour que tu travailles avec lui dessus. Tu as un acc\xE8s COMPLET et DIRECT \xE0 son texte. R\xE9ponds pr\xE9cis\xE9ment \xE0 ses questions en t'appuyant rigoureusement sur les le\xE7ons, th\xE9or\xE8mes, d\xE9finitions, exercices et explications contenus dans ce fichier.`
+          });
         }
         const hasSystemMessage = messages.some((m) => m.role === "system");
         if (!hasSystemMessage) {
@@ -3263,6 +3295,8 @@ var src_default = {
             content: "Tu es l'assistante IA officielle de la plateforme StudyCloud, cr\xE9\xE9e par DKD Technologies. Tu es une tutrice acad\xE9mique et p\xE9dagogique bienveillante, dynamique, tr\xE8s claire et structur\xE9e. Tu r\xE9ponds TOUJOURS en fran\xE7ais avec des explications simples, compl\xE8tes et faciles \xE0 comprendre pour aider l'\xE9l\xE8ve ou l'\xE9tudiant dans ses r\xE9visions, ses devoirs et sa compr\xE9hension des documents."
           });
         }
+        let replyText = "";
+        let usedModel = "";
         if (aiInstance && typeof aiInstance.run === "function") {
           const candidateModels = [
             "@cf/meta/llama-3.1-8b-instruct",
@@ -3272,13 +3306,12 @@ var src_default = {
             "@cf/mistral/mistral-7b-instruct-v0.2"
           ];
           let aiResult = null;
-          let usedModel = "";
           let lastError = null;
           for (const m of candidateModels) {
             try {
               aiResult = await aiInstance.run(m, {
                 messages,
-                max_tokens: 1200,
+                max_tokens: 1500,
                 temperature: 0.65
               });
               usedModel = m;
@@ -3289,7 +3322,6 @@ var src_default = {
             }
           }
           if (aiResult) {
-            let replyText = "";
             if (typeof aiResult?.response === "string") {
               replyText = aiResult.response;
             } else if (typeof aiResult === "string") {
@@ -3297,35 +3329,123 @@ var src_default = {
             } else if (aiResult && typeof aiResult === "object") {
               replyText = aiResult.response || aiResult.text || JSON.stringify(aiResult);
             }
-            return jsonResponse({
-              success: true,
-              response: replyText,
-              model: usedModel,
-              source: "worker_local"
-            }, 200, origin);
           }
         }
-        try {
-          const aiWorkerRes = await fetch("https://studycloud-ai.delmaskouassidibi.workers.dev", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ messages, prompt: userPrompt })
-          });
-          if (aiWorkerRes.ok) {
-            const aiData = await aiWorkerRes.json();
-            return jsonResponse({
-              ...aiData,
-              source: "worker_proxy"
-            }, 200, origin);
+        if (!replyText) {
+          try {
+            const aiWorkerRes = await fetch("https://studycloud-ai.delmaskouassidibi.workers.dev", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                messages,
+                prompt: userPrompt,
+                attachedFileContent: body.attachedFileContent,
+                attachedFileName: body.attachedFileName
+              })
+            });
+            if (aiWorkerRes.ok) {
+              const aiData = await aiWorkerRes.json();
+              replyText = aiData.response || "";
+              usedModel = aiData.model || "studycloud-ai-worker";
+            }
+          } catch (fetchErr) {
+            console.warn("Proxy vers studycloud-ai a \xE9chou\xE9:", fetchErr?.message || fetchErr);
           }
-        } catch (fetchErr) {
-          console.warn("Proxy vers studycloud-ai a \xE9chou\xE9:", fetchErr?.message || fetchErr);
         }
-        return errorResponse(
-          "L'IA StudyCloud n'a pas pu r\xE9pondre. V\xE9rifiez que la liaison Workers AI 'MON-STUDYCLOUD-ia' est configur\xE9e dans Cloudflare (Settings > Variables and Bindings > Workers AI), ou que votre Worker IA 'studycloud-ai' est bien d\xE9ploy\xE9.",
-          500,
-          origin
-        );
+        if (!replyText) {
+          return errorResponse(
+            "L'IA StudyCloud n'a pas pu r\xE9pondre. V\xE9rifiez que la liaison Workers AI 'MON-STUDYCLOUD-ia' est configur\xE9e dans Cloudflare (Settings > Variables and Bindings > Workers AI), ou que votre Worker IA 'studycloud-ai' est bien d\xE9ploy\xE9.",
+            500,
+            origin
+          );
+        }
+        if (userId && env.DB) {
+          try {
+            const userMsgId = crypto.randomUUID();
+            const aiMsgId = crypto.randomUUID();
+            await env.DB.prepare(`
+              INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, attached_file_id, attached_file_name, attached_file_r2_key, attached_file_content)
+              VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?)
+            `).bind(
+              userMsgId,
+              userId,
+              sessionId,
+              userPrompt,
+              body.attachedFileId || null,
+              body.attachedFileName || null,
+              body.attachedFileR2Key || null,
+              body.attachedFileContent || null
+            ).run();
+            await env.DB.prepare(`
+              INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text)
+              VALUES (?, ?, ?, 'assistant', ?)
+            `).bind(
+              aiMsgId,
+              userId,
+              sessionId,
+              replyText
+            ).run();
+          } catch (dbSaveErr) {
+            console.warn("[Workspace] Erreur sauvegarde conversation D1:", dbSaveErr);
+          }
+        }
+        return jsonResponse({
+          success: true,
+          response: replyText,
+          model: usedModel,
+          source: "studycloud_ai"
+        }, 200, origin);
+      }
+      if (path === "/api/ai/workspace" && method === "GET") {
+        const userId = url.searchParams.get("userId");
+        const sessionId = url.searchParams.get("sessionId");
+        if (!userId)
+          return errorResponse("userId requis", 400, origin);
+        if (!env.DB)
+          return jsonResponse({ success: true, data: [] }, 200, origin);
+        let q = "SELECT * FROM user_ai_workspace WHERE user_id = ?";
+        const params = [userId];
+        if (sessionId) {
+          q += " AND session_id = ?";
+          params.push(sessionId);
+        }
+        q += " ORDER BY created_at ASC";
+        const { results } = await env.DB.prepare(q).bind(...params).all();
+        return jsonResponse({ success: true, data: results || [] }, 200, origin);
+      }
+      if (path === "/api/ai/workspace/reaction" && method === "PUT") {
+        const body = await request.json().catch(() => ({}));
+        const { userId, messageId, reaction } = body;
+        if (!userId || !messageId)
+          return errorResponse("userId et messageId requis", 400, origin);
+        if (env.DB) {
+          await env.DB.prepare(`
+            UPDATE user_ai_workspace
+            SET reaction = ?, updated_at = CURRENT_TIMESTAMP
+            WHERE id = ? AND user_id = ?
+          `).bind(reaction || null, messageId, userId).run();
+        }
+        return jsonResponse({ success: true, message: "R\xE9action enregistr\xE9e avec succ\xE8s" }, 200, origin);
+      }
+      if (path === "/api/ai/workspace/attachment" && method === "DELETE") {
+        const body = await request.json().catch(() => ({}));
+        const { userId, fileId, r2Key } = body;
+        if (!userId || !fileId)
+          return errorResponse("userId et fileId requis", 400, origin);
+        if (env.DB) {
+          await env.DB.prepare(`
+            UPDATE user_ai_workspace
+            SET attached_file_id = NULL, attached_file_name = NULL, attached_file_content = NULL, attached_file_r2_key = NULL, updated_at = CURRENT_TIMESTAMP
+            WHERE user_id = ? AND attached_file_id = ?
+          `).bind(userId, fileId).run();
+        }
+        if (r2Key && env.BUCKET) {
+          try {
+            await env.BUCKET.delete(r2Key);
+          } catch (e) {
+          }
+        }
+        return jsonResponse({ success: true, message: "Pi\xE8ce jointe retir\xE9e et purg\xE9e avec succ\xE8s" }, 200, origin);
       }
       if (path === "/api/sync/backup" && method === "POST") {
         const body = await request.json();

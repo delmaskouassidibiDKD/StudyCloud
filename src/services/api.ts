@@ -32,6 +32,12 @@ export const setAiWorkerUrl = (url: string) => {
 export async function sendChatMessageToAi(params: {
   messages: Array<{ role: string; content: string }>;
   prompt?: string;
+  userId?: string;
+  sessionId?: string;
+  attachedFileId?: string;
+  attachedFileName?: string;
+  attachedFileContent?: string;
+  attachedFileR2Key?: string;
 }): Promise<{ response: string; success: boolean; model?: string }> {
   const mainWorkerChatUrl = `${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/chat`;
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
@@ -99,6 +105,67 @@ export async function sendChatMessageToAi(params: {
   }
 
   return { response: text, success: true, model: data.model };
+}
+
+/**
+ * Enregistre la réaction (pouce levé ou pouce baissé) de l'élève pour le modèle IA
+ */
+export async function saveAiReaction(params: {
+  userId: string;
+  messageId: string;
+  reaction: 'like' | 'dislike' | null;
+}): Promise<boolean> {
+  try {
+    const res = await fetch(`${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/workspace/reaction`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn('[API] Erreur sauvegarde réaction IA:', e);
+    return false;
+  }
+}
+
+/**
+ * Supprime la référence et le contenu du fichier joint dans l'espace IA (D1 & R2)
+ */
+export async function removeAiAttachment(params: {
+  userId: string;
+  fileId: string;
+  r2Key?: string;
+}): Promise<boolean> {
+  try {
+    const res = await fetch(`${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/workspace/attachment`, {
+      method: 'DELETE',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(params),
+    });
+    return res.ok;
+  } catch (e) {
+    console.warn('[API] Erreur suppression pièce jointe IA:', e);
+    return false;
+  }
+}
+
+/**
+ * Récupère l'historique sécurisé des échanges et mémoires de l'IA pour un utilisateur
+ */
+export async function getAiWorkspaceHistory(userId: string, sessionId?: string): Promise<any[]> {
+  try {
+    const url = new URL(`${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/workspace`);
+    url.searchParams.set('userId', userId);
+    if (sessionId) url.searchParams.set('sessionId', sessionId);
+    const res = await fetch(url.toString());
+    if (res.ok) {
+      const data = await res.json();
+      return data.data || [];
+    }
+  } catch (e) {
+    console.warn('[API] Erreur récupération historique IA:', e);
+  }
+  return [];
 }
 
 
