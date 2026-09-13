@@ -14,7 +14,7 @@ import { CreateShareLinkModal } from './components/CreateShareLinkModal';
 import { PublishFileView } from './components/PublishFileView';
 import { INITIAL_FOLDERS } from './data/initialData';
 import { SharedFolder, NavigationTab } from './types';
-import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight, Maximize, Minimize, Dna, Menu, Clock } from 'lucide-react';
+import { X, FolderPlus, Upload, ArrowLeft, Download, Share2, ArrowLeftRight, Maximize, Minimize, Dna, Menu, Clock, Mic } from 'lucide-react';
 import { FileIconBadge } from './components/FileIconBadge';
 import { AssistantChat } from './components/AssistantChat';
 import { DnaLogo } from './components/DnaLogo';
@@ -1123,8 +1123,8 @@ export default function App() {
         <div className="fixed inset-0 md:left-64 z-[99999] bg-[#FDFBF7] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-hidden">
           {/* Top Header Bar - Solid Dark #070a13 */}
           <div className="fixed top-0 left-0 right-0 md:left-64 z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[48px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
-            {/* Left: Bouton Retour et badge du dossier/matière juste derrière */}
-            <div className="flex items-center gap-2 shrink-0">
+            {/* Left: Bouton Retour, badge du dossier/matière, Plein écran & Défilement */}
+            <div className="flex items-center gap-1.5 shrink-0">
               <button
                 onClick={() => setActivePreviewItem(null)}
                 className="flex items-center gap-1 px-2 py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
@@ -1134,10 +1134,29 @@ export default function App() {
               </button>
 
               {(activePreviewItem.folderName || activeFolderDetail?.title) && (
-                <span className="text-[10px] sm:text-[11px] font-black text-stone-800 dark:text-orange-400 uppercase tracking-widest max-w-[140px] sm:max-w-[220px] truncate bg-[#E8DFD0] dark:bg-[#111a2e] px-2.5 py-1 rounded-lg border-2 border-stone-800 dark:border-[#1e293b] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none shrink-0 text-center">
+                <span className="text-[10px] sm:text-[11px] font-black text-stone-800 dark:text-orange-400 uppercase tracking-widest max-w-[120px] sm:max-w-[180px] truncate bg-[#E8DFD0] dark:bg-[#111a2e] px-2.5 py-1 rounded-lg border-2 border-stone-800 dark:border-[#1e293b] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none shrink-0 text-center">
                   {activePreviewItem.folderName || activeFolderDetail?.title}
                 </span>
               )}
+
+              {!activePreviewItem?.lockFullscreen && (
+                <button
+                  onClick={() => setIsCenterFullscreen(!isCenterFullscreen)}
+                  className="hidden md:flex p-1.5 bg-amber-400 hover:bg-amber-300 rounded-lg text-stone-900 items-center justify-center shrink-0 border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                  title={isCenterFullscreen ? "Réduire à 3 colonnes" : "Agrandir en plein écran"}
+                >
+                  {isCenterFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
+                </button>
+              )}
+
+              <button
+                onClick={() => setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
+                className="hidden sm:flex px-2 py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 text-stone-900 dark:text-white font-extrabold text-[10px] rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] items-center gap-1 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                title="Basculer entre défilement vertical et horizontal"
+              >
+                <ArrowLeftRight className="w-3 h-3 text-stone-600 dark:text-stone-300" />
+                <span>{previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
+              </button>
             </div>
 
             {/* Center: Nom du fichier (masqué sur mobile car pas assez de place) */}
@@ -1158,7 +1177,16 @@ export default function App() {
                   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
                 })()}
               </span>
-              <div className="flex items-center gap-1.5 sm:gap-2.5">
+              <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Audio Reading Button */}
+                <button
+                  onClick={() => window.dispatchEvent(new CustomEvent('studycloud:toggle-speech'))}
+                  className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white hover:bg-orange-50 text-stone-900 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                  title="Lecture audio automatique du document (Synthèse vocale)"
+                >
+                  <Mic className="w-3.5 h-3.5 text-orange-600 shrink-0" />
+                  <span className="text-[7.5px] sm:text-xs font-bold leading-none">Audio</span>
+                </button>
                 {/* Clock / Study Timer Button */}
                 <button
                   onClick={() => setShowStudyTimer(true)}

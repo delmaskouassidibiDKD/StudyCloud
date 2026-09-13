@@ -74,6 +74,13 @@ export function CenterMenu({
   const ext = (activePreviewItem?.name?.split('.').pop()?.toUpperCase() || activePreviewItem?.extension || 'FICHIER').toUpperCase();
   const isPdf = ext === 'PDF' || activePreviewItem?.type === 'application/pdf';
 
+  // Listen to external speech toggle from header
+  useEffect(() => {
+    const handleToggleSpeech = () => handleMicClick();
+    window.addEventListener('studycloud:toggle-speech', handleToggleSpeech);
+    return () => window.removeEventListener('studycloud:toggle-speech', handleToggleSpeech);
+  });
+
   // Listen to external/keyboard zoom events
   useEffect(() => {
     const handleDocZoomEvent = (e: any) => {
@@ -452,101 +459,55 @@ export function CenterMenu({
   return (
     <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r border-stone-300 dark:border-stone-800'} flex flex-col animate-fadeIn relative pointer-events-auto overflow-hidden bg-white dark:bg-stone-950 pt-[48px] ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
       
-      {/* Floating Controls for PDF (Non-intrusive pills, so PDF toolbar starts immediately with NO extra blank row) */}
-      {isPdf && (
-        <>
-          <div className="absolute top-[56px] left-3 z-30 flex items-center gap-1 bg-white/95 dark:bg-stone-900/95 backdrop-blur-sm px-1.5 py-1 rounded-lg border border-stone-300 dark:border-stone-700 shadow-sm">
-            {!activePreviewItem?.lockFullscreen && (
-              <button
-                onClick={() => setIsCenterFullscreen(!isCenterFullscreen)}
-                className="p-1 bg-amber-400 hover:bg-amber-300 rounded text-stone-900 items-center justify-center shrink-0 transition-colors cursor-pointer"
-                title={isCenterFullscreen ? "Réduire à 3 colonnes" : "Agrandir en plein écran"}
-              >
-                {isCenterFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
-              </button>
-            )}
+      {/* Floating Audio Player at bottom-center (modern, unobtrusive, does not cover any header or PDF bar) */}
+      {isAudioMenuOpen && (
+        <div className="fixed bottom-6 left-1/2 -translate-x-1/2 z-[100] bg-white dark:bg-stone-900 border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] rounded-full px-4 py-2 flex items-center gap-3 animate-fadeIn text-stone-800 dark:text-stone-200">
+          {speechState === 'playing' && (
+            <div className="flex items-center gap-0.5 mr-1 text-orange-500">
+              <span className="w-1 h-3 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+              <span className="w-1 h-4 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+              <span className="w-1 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+            </div>
+          )}
 
-            {setPreviewScrollMode && (
-              <button
-                onClick={() => setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
-                className="px-1.5 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-200 font-bold text-[10px] rounded flex items-center gap-1 transition-colors cursor-pointer"
-                title="Basculer entre défilement vertical et horizontal"
-              >
-                <ArrowLeftRight className="w-3 h-3 text-stone-500" />
-                <span>{previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
-              </button>
-            )}
-          </div>
+          <button
+            type="button"
+            onClick={handleTogglePause}
+            className="p-1.5 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full text-stone-800 dark:text-stone-200 cursor-pointer transition-colors"
+            title={speechState === 'playing' ? "Pause" : "Reprendre"}
+          >
+            {speechState === 'playing' ? <Pause className="w-4 h-4 text-amber-600 fill-amber-600" /> : <Play className="w-4 h-4 text-emerald-600 fill-emerald-600" />}
+          </button>
 
-          <div className="absolute top-[56px] right-3 z-30 flex items-center gap-1">
-            {isAudioMenuOpen && (
-              <div className="flex items-center gap-1 bg-white/95 dark:bg-stone-900/95 backdrop-blur-sm border border-stone-300 dark:border-stone-700 rounded-lg px-2 py-1 shadow-sm text-stone-800 dark:text-stone-200">
-                {speechState === 'playing' && (
-                  <div className="flex items-center gap-0.5 mr-1 text-orange-500">
-                    <span className="w-0.5 h-2.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-0.5 h-3.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
-                )}
+          <button
+            type="button"
+            onClick={handleStop}
+            className="p-1.5 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-full text-red-600 cursor-pointer transition-colors"
+            title="Arrêter la lecture"
+          >
+            <Square className="w-3.5 h-3.5 fill-red-600" />
+          </button>
 
-                <button
-                  type="button"
-                  onClick={handleTogglePause}
-                  className="flex items-center gap-1 px-1 py-0.5 hover:bg-stone-100 dark:hover:bg-stone-800 rounded text-[10px] font-bold transition-colors cursor-pointer"
-                  title={speechState === 'playing' ? "Mettre en pause" : "Reprendre la lecture"}
-                >
-                  {speechState === 'playing' ? (
-                    <Pause className="w-3 h-3 text-amber-600 fill-amber-600 shrink-0" />
-                  ) : (
-                    <Play className="w-3 h-3 text-emerald-600 fill-emerald-600 shrink-0" />
-                  )}
-                </button>
+          <button
+            type="button"
+            onClick={handleRestart}
+            className="p-1.5 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-full text-blue-600 cursor-pointer transition-colors"
+            title="Recommencer"
+          >
+            <RotateCcw className="w-3.5 h-3.5" />
+          </button>
 
-                <button
-                  type="button"
-                  onClick={handleStop}
-                  className="p-1 hover:bg-red-50 dark:hover:bg-red-950/30 rounded text-red-600 transition-colors cursor-pointer"
-                  title="Arrêter la lecture"
-                >
-                  <Square className="w-2.5 h-2.5 fill-red-600 shrink-0" />
-                </button>
+          <div className="w-[1px] h-4 bg-stone-300 dark:bg-stone-700" />
 
-                <button
-                  type="button"
-                  onClick={handleRestart}
-                  className="p-1 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded text-blue-600 transition-colors cursor-pointer"
-                  title="Recommencer la lecture"
-                >
-                  <RotateCcw className="w-3 h-3 shrink-0" />
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setIsAudioMenuOpen(false)}
-                  className="p-0.5 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full text-stone-400 hover:text-stone-600 ml-0.5 cursor-pointer"
-                  title="Fermer la barre audio"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            )}
-
-            <button
-              type="button"
-              onClick={handleMicClick}
-              className={`p-1.5 rounded-lg border border-stone-300 dark:border-stone-700 shadow-sm transition-all cursor-pointer flex items-center justify-center ${
-                speechState === 'playing'
-                  ? 'bg-orange-500 text-white animate-pulse ring-2 ring-orange-300'
-                  : speechState === 'paused'
-                  ? 'bg-amber-400 text-stone-900'
-                  : 'bg-white/95 dark:bg-stone-900/95 backdrop-blur-sm hover:bg-stone-100 dark:hover:bg-stone-800 text-stone-800 dark:text-stone-200'
-              }`}
-              title="Lire automatiquement le document (Synthèse vocale)"
-            >
-              <Mic className="w-3.5 h-3.5" />
-            </button>
-          </div>
-        </>
+          <button
+            type="button"
+            onClick={() => setIsAudioMenuOpen(false)}
+            className="p-1 hover:bg-stone-100 dark:hover:bg-stone-800 rounded-full text-stone-400 hover:text-stone-600 cursor-pointer transition-colors"
+            title="Fermer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
       )}
 
       {/* Slim Action Bar for Non-PDF documents (Word, Excel, PPTX, Code, etc.) */}
