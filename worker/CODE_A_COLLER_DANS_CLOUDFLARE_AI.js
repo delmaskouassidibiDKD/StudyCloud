@@ -53,7 +53,7 @@ export default {
     const db = env?.MON_D1_STUDYCLOUD || env?.["MON_D1-STUDYCLOUD"] || env?.DB;
     const bucket = env?.MON_R2_STUDYCLOUD || env?.["MON_R2-STUDYCLOUD"] || env?.BUCKET;
 
-    // Auto-initialisation sécurisée des tables IA dans D1 si connectée
+    // Auto-initialisation de la table user_ai_workspace dans D1 si connectée
     if (db) {
       try {
         await db.prepare(`
@@ -74,23 +74,6 @@ export default {
             updated_at TEXT DEFAULT CURRENT_TIMESTAMP
           )
         `).run();
-
-        await db.prepare(`
-          CREATE TABLE IF NOT EXISTS ai_generated_contents (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            file_id TEXT,
-            tool_type TEXT NOT NULL,
-            title TEXT NOT NULL,
-            content_json TEXT NOT NULL DEFAULT '{}',
-            source_file_name TEXT,
-            is_pinned INTEGER DEFAULT 0,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-          )
-        `).run();
-
-        await db.prepare(`CREATE INDEX IF NOT EXISTS idx_ai_contents_user ON ai_generated_contents(user_id)`).run();
       } catch (e) {}
     }
 
