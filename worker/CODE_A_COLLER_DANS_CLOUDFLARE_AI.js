@@ -53,29 +53,6 @@ export default {
     const db = env?.MON_D1_STUDYCLOUD || env?.["MON_D1-STUDYCLOUD"] || env?.DB;
     const bucket = env?.MON_R2_STUDYCLOUD || env?.["MON_R2-STUDYCLOUD"] || env?.BUCKET;
 
-    // Auto-initialisation de la table user_ai_workspace dans D1 si connectée
-    if (db) {
-      try {
-        await db.prepare(`
-          CREATE TABLE IF NOT EXISTS user_ai_workspace (
-            id TEXT PRIMARY KEY,
-            user_id TEXT NOT NULL,
-            session_id TEXT NOT NULL,
-            role TEXT NOT NULL,
-            message_text TEXT NOT NULL,
-            reaction TEXT DEFAULT NULL,
-            attached_file_id TEXT,
-            attached_file_name TEXT,
-            attached_file_r2_key TEXT,
-            attached_file_content TEXT,
-            user_notes TEXT,
-            is_pinned INTEGER DEFAULT 0,
-            created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-          )
-        `).run();
-      } catch (e) {}
-    }
 
     // Requête GET : Test de santé et d'état du Worker IA
     if (request.method === "GET" && (path === "/" || path === "/health")) {
