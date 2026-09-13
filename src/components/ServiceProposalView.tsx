@@ -299,7 +299,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
   return (
     <div 
-      className="absolute inset-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] h-full bg-[#FDFBF7] text-stone-900 overflow-y-auto overscroll-contain animate-fadeIn"
+      className="absolute inset-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] h-full bg-[#FDFBF7] dark:bg-[#0b0f19] text-stone-900 dark:text-slate-100 overflow-y-auto overscroll-contain animate-fadeIn transition-colors duration-300"
       style={{ WebkitOverflowScrolling: 'touch' }}
     >
       {/* Toast Notification */}
@@ -523,50 +523,50 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
               {/* 1. Publier un produit */}
               <button
                 onClick={() => setActivePage('publish')}
-                className="bg-white hover:bg-stone-50 border-3 border-stone-800 rounded-3xl p-4 shadow-[5px_5px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[2px_2px_0px_0px_#1c1917] flex flex-col items-center justify-between text-center cursor-pointer group min-h-[170px]"
+                className="bg-white dark:bg-[#111a2e] hover:bg-stone-50 dark:hover:bg-[#162033] border-3 border-stone-800 dark:border-[#334155] rounded-3xl p-4 shadow-[5px_5px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 flex flex-col items-center justify-between text-center cursor-pointer group min-h-[170px]"
               >
                 <div className="w-24 h-24 sm:w-26 sm:h-26 flex items-center justify-center p-1 group-hover:scale-105 transition-transform my-auto">
                   <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-xs">
-                    <circle cx="50" cy="50" r="48" fill="black" />
+                    <circle cx="50" cy="50" r="48" className="fill-stone-900 dark:fill-blue-600" />
                     <path
                       d="M50 18 L73 41 C75 43 74 46 71 46 L60 46 L60 76 C60 78 58 80 56 80 L44 80 C42 80 40 78 40 76 L40 46 L29 46 C26 46 25 43 27 41 Z"
                       fill="white"
                     />
                   </svg>
                 </div>
-                <span className="font-extrabold text-xs text-stone-900 leading-snug mt-1">Publier un produit</span>
+                <span className="font-extrabold text-xs text-stone-900 dark:text-white leading-snug mt-1">Publier un produit</span>
               </button>
 
               {/* 2. Voir mes produits */}
               <button
                 onClick={() => setActivePage('list')}
-                className="bg-white hover:bg-stone-50 border-3 border-stone-800 rounded-3xl p-4 shadow-[5px_5px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[2px_2px_0px_0px_#1c1917] flex flex-col items-center justify-between text-center cursor-pointer group min-h-[170px]"
+                className="bg-white dark:bg-[#111a2e] hover:bg-stone-50 dark:hover:bg-[#162033] border-3 border-stone-800 dark:border-[#334155] rounded-3xl p-4 shadow-[5px_5px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 flex flex-col items-center justify-between text-center cursor-pointer group min-h-[170px]"
               >
                 <div className="w-24 h-24 sm:w-26 sm:h-26 flex items-center justify-center p-1 group-hover:scale-105 transition-transform relative my-auto">
                   <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-xs" fill="none">
                     {/* Top box */}
-                    <rect x="28" y="8" width="44" height="38" rx="3" fill="white" stroke="black" strokeWidth="6" />
-                    <path d="M44 8 L44 26 L50 21 L56 26 L56 8" fill="black" />
+                    <rect x="28" y="8" width="44" height="38" rx="3" className="fill-white dark:fill-slate-800 stroke-stone-900 dark:stroke-white" strokeWidth="6" />
+                    <path d="M44 8 L44 26 L50 21 L56 26 L56 8" className="fill-stone-900 dark:fill-white" />
 
                     {/* Bottom Left box */}
-                    <rect x="6" y="48" width="44" height="44" rx="3" fill="white" stroke="black" strokeWidth="6" />
-                    <path d="M22 48 L22 66 L28 61 L34 66 L34 48" fill="black" />
+                    <rect x="6" y="48" width="44" height="44" rx="3" className="fill-white dark:fill-slate-800 stroke-stone-900 dark:stroke-white" strokeWidth="6" />
+                    <path d="M22 48 L22 66 L28 61 L34 66 L34 48" className="fill-stone-900 dark:fill-white" />
 
                     {/* Bottom Right box */}
-                    <rect x="50" y="48" width="44" height="44" rx="3" fill="white" stroke="black" strokeWidth="6" />
-                    <path d="M66 48 L66 66 L72 61 L78 66 L78 48" fill="black" />
+                    <rect x="50" y="48" width="44" height="44" rx="3" className="fill-white dark:fill-slate-800 stroke-stone-900 dark:stroke-white" strokeWidth="6" />
+                    <path d="M66 48 L66 66 L72 61 L78 66 L78 48" className="fill-stone-900 dark:fill-white" />
                   </svg>
                 </div>
-                <span className="font-extrabold text-xs text-stone-900 leading-snug mt-1">Voir mes produits</span>
+                <span className="font-extrabold text-xs text-stone-900 dark:text-white leading-snug mt-1">Voir mes produits</span>
               </button>
 
               {/* 3. Faire une publicité */}
               <button
                 onClick={() => setActivePage('advertise')}
-                className="bg-white hover:bg-stone-50 border-3 border-stone-800 rounded-3xl p-4 shadow-[5px_5px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[2px_2px_0px_0px_#1c1917] flex flex-col items-center justify-between text-center cursor-pointer group min-h-[170px]"
+                className="bg-white dark:bg-[#111a2e] hover:bg-stone-50 dark:hover:bg-[#162033] border-3 border-stone-800 dark:border-[#334155] rounded-3xl p-4 shadow-[5px_5px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 flex flex-col items-center justify-between text-center cursor-pointer group min-h-[170px]"
               >
                 <div className="w-24 h-24 sm:w-26 sm:h-26 flex items-center justify-center p-1 group-hover:scale-105 transition-transform my-auto">
-                  <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-xs" fill="black">
+                  <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-xs text-stone-900 dark:text-amber-400" fill="currentColor">
                     {/* Handle */}
                     <path d="M26 60 C26 60 28 82 36 82 C42 82 41 68 41 68 Z" />
                     {/* Body */}
@@ -574,38 +574,38 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                     {/* Cone */}
                     <path d="M38 36 L66 18 C69 16 72 18 72 22 L72 78 C72 82 69 84 66 82 L38 64 Z" />
                     {/* Front rim */}
-                    <rect x="72" y="20" width="5" height="60" rx="2.5" fill="black" />
+                    <rect x="72" y="20" width="5" height="60" rx="2.5" fill="currentColor" />
                     {/* Sound Waves */}
-                    <path d="M82 30 L93 20" stroke="black" strokeWidth="6" strokeLinecap="round" />
-                    <path d="M85 50 L97 50" stroke="black" strokeWidth="6" strokeLinecap="round" />
-                    <path d="M82 70 L93 80" stroke="black" strokeWidth="6" strokeLinecap="round" />
+                    <path d="M82 30 L93 20" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
+                    <path d="M85 50 L97 50" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
+                    <path d="M82 70 L93 80" stroke="currentColor" strokeWidth="6" strokeLinecap="round" />
                   </svg>
                 </div>
-                <span className="font-extrabold text-xs text-stone-900 leading-snug mt-1">Faire une publicité</span>
+                <span className="font-extrabold text-xs text-stone-900 dark:text-white leading-snug mt-1">Faire une publicité</span>
               </button>
 
               {/* 4. Analyse de vente */}
               <button
                 onClick={() => setActivePage('analytics')}
-                className="bg-white hover:bg-stone-50 border-3 border-stone-800 rounded-3xl p-4 shadow-[5px_5px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[2px_2px_0px_0px_#1c1917] flex flex-col items-center justify-between text-center cursor-pointer group min-h-[170px]"
+                className="bg-white dark:bg-[#111a2e] hover:bg-stone-50 dark:hover:bg-[#162033] border-3 border-stone-800 dark:border-[#334155] rounded-3xl p-4 shadow-[5px_5px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 flex flex-col items-center justify-between text-center cursor-pointer group min-h-[170px]"
               >
                 <div className="w-24 h-24 sm:w-26 sm:h-26 flex items-center justify-center p-1 group-hover:scale-105 transition-transform my-auto">
-                  <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-xs" fill="none">
+                  <svg viewBox="0 0 100 100" className="w-full h-full drop-shadow-xs text-stone-900 dark:text-emerald-400" fill="none">
                     {/* Glass Lens Circle */}
-                    <circle cx="42" cy="42" r="32" stroke="black" strokeWidth="8" />
+                    <circle cx="42" cy="42" r="32" stroke="currentColor" strokeWidth="8" />
                     {/* Handle */}
-                    <path d="M64 64 L86 86" stroke="black" strokeWidth="12" strokeLinecap="round" />
+                    <path d="M64 64 L86 86" stroke="currentColor" strokeWidth="12" strokeLinecap="round" />
                     {/* Bar Chart */}
-                    <rect x="25" y="48" width="7" height="16" rx="2" fill="black" />
-                    <rect x="36" y="40" width="7" height="24" rx="2" fill="black" />
-                    <rect x="47" y="30" width="7" height="34" rx="2" fill="black" />
+                    <rect x="25" y="48" width="7" height="16" rx="2" fill="currentColor" />
+                    <rect x="36" y="40" width="7" height="24" rx="2" fill="currentColor" />
+                    <rect x="47" y="30" width="7" height="34" rx="2" fill="currentColor" />
                     {/* Arrow Line */}
-                    <path d="M22 45 L34 33 L42 39 L56 22" stroke="black" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
+                    <path d="M22 45 L34 33 L42 39 L56 22" stroke="currentColor" strokeWidth="6" strokeLinecap="round" strokeLinejoin="round" />
                     {/* Arrow Head */}
-                    <path d="M45 22 L58 21 L56 34 Z" fill="black" />
+                    <path d="M45 22 L58 21 L56 34 Z" fill="currentColor" />
                   </svg>
                 </div>
-                <span className="font-extrabold text-xs text-stone-900 leading-snug mt-1">Analyse de vente</span>
+                <span className="font-extrabold text-xs text-stone-900 dark:text-white leading-snug mt-1">Analyse de vente</span>
               </button>
             </div>
           </div>
@@ -770,15 +770,15 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
         {activePage === 'list' && (
           <div className="w-full animate-fadeIn">
             {/* Sticky Top Switcher: Mes publications & Boutique */}
-            <div className="sticky top-[51px] z-30 bg-[#FDFBF7]/95 backdrop-blur-xs px-4 py-2 md:py-4 border-b border-stone-200/60 shadow-xs">
-              <div className="max-w-3xl lg:max-w-4xl mx-auto flex items-center gap-2 bg-stone-100 p-1.5 md:p-2 rounded-2xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]">
+            <div className="sticky top-[51px] z-30 bg-[#FDFBF7]/95 dark:bg-[#070a13] backdrop-blur-xs px-4 py-2 md:py-4 border-b border-stone-200/60 dark:border-[#1e293b] shadow-xs">
+              <div className="max-w-3xl lg:max-w-4xl mx-auto flex items-center gap-2 bg-stone-100 dark:bg-[#111a2e] p-1.5 md:p-2 rounded-2xl border-2 border-stone-800 dark:border-[#1e293b] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none">
                 <button
                   type="button"
                   onClick={() => setListSubView('publications')}
                   className={`flex-1 py-2 md:py-3 font-extrabold text-xs md:text-sm rounded-xl md:rounded-2xl border-2 transition-all cursor-pointer ${
                     listSubView === 'publications'
-                      ? 'bg-stone-900 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
-                      : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
+                      ? 'bg-stone-900 text-white border-stone-800 dark:border-emerald-500 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
+                      : 'bg-white dark:bg-[#1e293b] text-stone-700 dark:text-slate-200 border-stone-300 dark:border-[#334155] hover:bg-stone-50 dark:hover:bg-[#283852]'
                   }`}
                 >
                   Mes publications
@@ -998,33 +998,33 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
         {activePage === 'advertise' && (
           <div className="w-full max-w-5xl lg:max-w-6xl mx-auto px-4 sm:px-8 py-6 md:py-10 animate-fadeIn space-y-6 md:space-y-10 text-left">
             <div className="space-y-2 md:space-y-3">
-              <h2 className="font-serif font-black text-xl md:text-3xl lg:text-4xl text-stone-900">Services de Publicité</h2>
-              <p className="text-xs md:text-sm lg:text-base text-stone-600 font-medium">Choisissez une formule pour booster la visibilité de vos produits et atteindre plus de clients.</p>
+              <h2 className="font-serif font-black text-xl md:text-3xl lg:text-4xl text-stone-900 dark:text-white">Services de Publicité</h2>
+              <p className="text-xs md:text-sm lg:text-base text-stone-600 dark:text-slate-300 font-medium">Choisissez une formule pour booster la visibilité de vos produits et atteindre plus de clients.</p>
             </div>
 
             <div className="grid md:grid-cols-2 gap-6 md:gap-8 lg:gap-10">
               {/* Card 1: Basique */}
-              <div className="bg-[#FAF7F2] rounded-3xl border border-stone-200/80 p-6 md:p-8 lg:p-10 shadow-sm space-y-5 md:space-y-8">
+              <div className="bg-[#FAF7F2] dark:bg-[#111a2e] rounded-3xl border border-stone-200/80 dark:border-[#1e293b] p-6 md:p-8 lg:p-10 shadow-sm space-y-5 md:space-y-8">
                 <div className="space-y-2">
-                  <h3 className="font-serif font-black text-xl md:text-2xl lg:text-3xl text-stone-900">Basique (Sur l'application)</h3>
-                  <p className="text-xs md:text-sm text-stone-600 font-medium">La publication sera faite exclusivement sur l'application. Choisissez votre budget pour définir le nombre de vues et booster votre visibilité.</p>
+                  <h3 className="font-serif font-black text-xl md:text-2xl lg:text-3xl text-stone-900 dark:text-white">Basique (Sur l'application)</h3>
+                  <p className="text-xs md:text-sm text-stone-600 dark:text-slate-300 font-medium">La publication sera faite exclusivement sur l'application. Choisissez votre budget pour définir le nombre de vues et booster votre visibilité.</p>
                 </div>
 
-                <div className="bg-stone-100 rounded-2xl p-4 md:p-6 border border-stone-200 text-xs md:text-sm text-stone-700 font-medium leading-relaxed">
+                <div className="bg-stone-100 dark:bg-[#162033] rounded-2xl p-4 md:p-6 border border-stone-200 dark:border-[#1e293b] text-xs md:text-sm text-stone-700 dark:text-slate-200 font-medium leading-relaxed">
                   Diffusion ciblée au sein de la communauté DKD Technologies. Sélectionnez votre budget lors du lancement.
                 </div>
 
                 <button
                   type="button"
                   onClick={() => setShowBasiqueModal(true)}
-                  className="w-full py-3 md:py-4 bg-[#D4C5B9] hover:bg-[#C5B5A8] text-stone-900 font-extrabold text-xs md:text-sm rounded-xl md:rounded-2xl shadow-xs transition-all cursor-pointer"
+                  className="w-full py-3 md:py-4 bg-[#D4C5B9] dark:bg-[#1e293b] hover:bg-[#C5B5A8] dark:hover:bg-[#283852] text-stone-900 dark:text-white border dark:border-[#334155] font-extrabold text-xs md:text-sm rounded-xl md:rounded-2xl shadow-xs transition-all cursor-pointer"
                 >
                   Commencer
                 </button>
               </div>
 
               {/* Card 2: Pro */}
-              <div className="bg-[#1C3B32] text-white rounded-3xl border border-stone-800 p-6 md:p-8 lg:p-10 shadow-md space-y-5 md:space-y-8">
+              <div className="bg-[#1C3B32] dark:bg-[#0f2d24] text-white rounded-3xl border border-stone-800 dark:border-emerald-500/30 p-6 md:p-8 lg:p-10 shadow-md space-y-5 md:space-y-8">
                 <div className="flex items-start justify-between gap-3">
                   <div className="space-y-2">
                     <h3 className="font-serif font-black text-xl md:text-2xl lg:text-3xl text-white">Pro (App &amp; Réseaux Sociaux)</h3>
@@ -1135,15 +1135,15 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
         {activePage === 'boosted-products' && (
           <div className="w-full animate-fadeIn">
             {/* Sticky Top Switcher: En cours de boost & Terminé */}
-            <div className="sticky top-[51px] z-30 bg-[#FDFBF7]/95 backdrop-blur-xs px-4 py-2 border-b border-stone-200/60 shadow-xs">
-              <div className="max-w-3xl lg:max-w-4xl mx-auto flex items-center gap-2 bg-stone-100 p-1.5 md:p-2 rounded-2xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]">
+            <div className="sticky top-[51px] z-30 bg-[#FDFBF7]/95 dark:bg-[#070a13] backdrop-blur-xs px-4 py-2 border-b border-stone-200/60 dark:border-[#1e293b] shadow-xs">
+              <div className="max-w-3xl lg:max-w-4xl mx-auto flex items-center gap-2 bg-stone-100 dark:bg-[#111a2e] p-1.5 md:p-2 rounded-2xl border-2 border-stone-800 dark:border-[#1e293b] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none">
                 <button
                   type="button"
                   onClick={() => setBoostSubView('active')}
                   className={`flex-1 py-2 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                     boostSubView === 'active'
-                      ? 'bg-amber-400 text-stone-900 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
-                      : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
+                      ? 'bg-amber-400 text-stone-900 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
+                      : 'bg-white dark:bg-[#1e293b] text-stone-700 dark:text-slate-200 border-stone-300 dark:border-[#334155] hover:bg-stone-50 dark:hover:bg-[#283852]'
                   }`}
                 >
                   <Zap className="w-3.5 h-3.5 fill-stone-900" />
@@ -1154,8 +1154,8 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                   onClick={() => setBoostSubView('completed')}
                   className={`flex-1 py-2 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center justify-center gap-1.5 ${
                     boostSubView === 'completed'
-                      ? 'bg-stone-900 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
-                      : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
+                      ? 'bg-stone-900 text-white border-stone-800 dark:border-emerald-500 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
+                      : 'bg-white dark:bg-[#1e293b] text-stone-700 dark:text-slate-200 border-stone-300 dark:border-[#334155] hover:bg-stone-50 dark:hover:bg-[#283852]'
                   }`}
                 >
                   <Check className="w-3.5 h-3.5" />
@@ -1293,17 +1293,17 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'tween', ease: 'easeOut', duration: 0.25 }}
-              className="absolute top-0 right-0 bottom-0 w-72 sm:w-80 md:w-96 bg-[#FDFBF7] border-l-3 border-stone-800 shadow-2xl p-5 flex flex-col justify-between pointer-events-auto overflow-y-auto text-left"
+              className="absolute top-0 right-0 bottom-0 w-72 sm:w-80 md:w-96 bg-[#FDFBF7] dark:bg-[#0b0f19] border-l-3 border-stone-800 dark:border-[#1e293b] shadow-2xl p-5 flex flex-col justify-between pointer-events-auto overflow-y-auto text-left"
             >
               <div className="space-y-5">
-                <div className="flex items-center justify-between pb-3 border-b-2 border-stone-200">
+                <div className="flex items-center justify-between pb-3 border-b-2 border-stone-200 dark:border-[#1e293b]">
                   <div>
-                    <h2 className="font-extrabold text-sm text-stone-900">Profil Boutique</h2>
-                    <p className="text-[10px] text-stone-500 font-medium">Gérer vos coordonnées</p>
+                    <h2 className="font-extrabold text-sm text-stone-900 dark:text-white">Profil Boutique</h2>
+                    <p className="text-[10px] text-stone-500 dark:text-slate-400 font-medium">Gérer vos coordonnées</p>
                   </div>
                   <button
                     onClick={() => setIsRightDrawerOpen(false)}
-                    className="p-1.5 hover:bg-stone-200 rounded-lg border-2 border-stone-800 bg-[#E8DFD0] text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center"
+                    className="p-1.5 hover:bg-stone-200 dark:hover:bg-[#1e293b] rounded-lg border-2 border-stone-800 dark:border-[#334155] bg-[#E8DFD0] dark:bg-[#111a2e] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer flex items-center justify-center"
                   >
                     <X className="w-4 h-4" />
                   </button>

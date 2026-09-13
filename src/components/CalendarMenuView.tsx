@@ -175,26 +175,26 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
       <div className="w-full max-w-6xl mx-auto pt-20 pb-12 flex-1 flex flex-col">
         
         {/* Title & Quick Jump Toolbar */}
-        <div className="mb-4 bg-white/80 backdrop-blur-sm p-4 rounded-2xl border-2 border-stone-900 shadow-[3px_3px_0px_0px_#1c1917] flex flex-col sm:flex-row items-center justify-between gap-4">
+        <div className="mb-4 bg-white/90 dark:bg-[#111a2e] backdrop-blur-sm p-4 rounded-2xl border-2 border-stone-900 dark:border-[#1e293b] shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <div className="w-10 h-10 rounded-xl bg-[#18568A] text-white flex items-center justify-center border-2 border-stone-900 shadow-[2px_2px_0px_0px_#1c1917]">
+            <div className="w-10 h-10 rounded-xl bg-[#18568A] text-white flex items-center justify-center border-2 border-stone-900 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none">
               <CalendarIcon className="w-5 h-5" />
             </div>
             <div>
-              <h1 className="text-xl sm:text-2xl font-serif font-bold text-[#2D4A3E]">Calendrier</h1>
-              <p className="text-xs text-[#5C6B5A]">Consultez et planifiez vos tâches & événements</p>
+              <h1 className="text-xl sm:text-2xl font-serif font-bold text-[#2D4A3E] dark:text-white">Calendrier</h1>
+              <p className="text-xs text-[#5C6B5A] dark:text-slate-400">Consultez et planifiez vos tâches & événements</p>
             </div>
           </div>
 
           {/* Jump to Decade / Year / Month controls */}
           <div className="flex items-center gap-2 flex-wrap justify-center">
-            <span className="text-xs font-semibold text-stone-700 hidden md:inline">Accès rapide :</span>
+            <span className="text-xs font-semibold text-stone-700 dark:text-slate-300 hidden md:inline">Accès rapide :</span>
             
             {/* Month Select */}
             <select
               value={jumpMonth}
               onChange={(e) => handleJumpToDate(jumpYear, parseInt(e.target.value))}
-              className="px-2.5 py-1.5 bg-[#FDFBF7] text-stone-900 font-semibold text-xs rounded-xl border-2 border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] focus:outline-none cursor-pointer"
+              className="px-2.5 py-1.5 bg-[#FDFBF7] dark:bg-[#070a13] text-stone-900 dark:text-white font-semibold text-xs rounded-xl border-2 border-stone-900 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none focus:outline-none cursor-pointer"
             >
               {monthsNames.map((m, idx) => (
                 <option key={idx} value={idx}>{m}</option>
@@ -205,7 +205,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
             <select
               value={jumpYear}
               onChange={(e) => handleJumpToDate(parseInt(e.target.value), jumpMonth)}
-              className="px-2.5 py-1.5 bg-[#FDFBF7] text-stone-900 font-semibold text-xs rounded-xl border-2 border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] focus:outline-none cursor-pointer"
+              className="px-2.5 py-1.5 bg-[#FDFBF7] dark:bg-[#070a13] text-stone-900 dark:text-white font-semibold text-xs rounded-xl border-2 border-stone-900 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none focus:outline-none cursor-pointer"
             >
               {yearsOptions.map((y) => (
                 <option key={y} value={y}>{y}</option>
@@ -218,7 +218,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
                 const today = new Date();
                 handleJumpToDate(today.getFullYear(), today.getMonth());
               }}
-              className="px-2.5 py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-stone-900 font-bold text-xs rounded-xl border-2 border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+              className="px-2.5 py-1.5 bg-[#E8DFD0] dark:bg-[#1e293b] hover:bg-[#D4C9B5] dark:hover:bg-[#283852] text-stone-900 dark:text-white font-bold text-xs rounded-xl border-2 border-stone-900 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
             >
               Aujourd'hui
             </button>
@@ -226,7 +226,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
         </div>
 
         {/* FullCalendar Wrapper */}
-        <div className="flex-1 bg-white p-2 sm:p-4 rounded-2xl border-2 border-stone-900 shadow-[4px_4px_0px_0px_#1c1917] overflow-hidden min-h-[550px] custom-fullcalendar-container">
+        <div className="flex-1 bg-white dark:bg-[#070a13] p-2 sm:p-4 rounded-2xl border-2 border-stone-900 dark:border-[#1e293b] shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none overflow-hidden min-h-[550px] custom-fullcalendar-container">
           <FullCalendar
             ref={calendarRef}
             plugins={[dayGridPlugin, timeGridPlugin, interactionPlugin]}
@@ -522,6 +522,44 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
           cursor: pointer !important;
           border: 1px solid #1c1917 !important;
           box-shadow: 1px 1px 0px 0px #1c1917 !important;
+        }
+
+        /* Mode Sombre Spécifique pour FullCalendar */
+        .dark .custom-fullcalendar-container .fc-toolbar-title {
+          color: #ffffff !important;
+        }
+        .dark .custom-fullcalendar-container .fc-button {
+          background-color: #1e293b !important;
+          color: #ffffff !important;
+          border: 2px solid #334155 !important;
+          box-shadow: none !important;
+        }
+        .dark .custom-fullcalendar-container .fc-button:hover {
+          background-color: #283852 !important;
+        }
+        .dark .custom-fullcalendar-container .fc-button-active {
+          background-color: #2563eb !important;
+          color: #ffffff !important;
+          border-color: #3b82f6 !important;
+        }
+        .dark .custom-fullcalendar-container .fc-daygrid-day-number {
+          color: #f8fafc !important;
+        }
+        .dark .custom-fullcalendar-container .fc-col-header-cell-cushion {
+          color: #60a5fa !important;
+        }
+        .dark .custom-fullcalendar-container .fc-day-today {
+          background-color: #162a45 !important;
+        }
+        .dark .custom-fullcalendar-container .fc-theme-standard td,
+        .dark .custom-fullcalendar-container .fc-theme-standard th {
+          border-color: #1e293b !important;
+        }
+        .dark .custom-fullcalendar-container .fc-scrollgrid {
+          border-color: #1e293b !important;
+        }
+        .dark .custom-fullcalendar-container .fc-daygrid-day {
+          background-color: #070a13;
         }
       `}</style>
 

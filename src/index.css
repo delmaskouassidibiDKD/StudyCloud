@@ -204,6 +204,8 @@ aside .brand-tagline,
 
 /* Transformation de tous les fonds clairs (blancs, beiges, stone) en fond sombre solide */
 .dark [class*="bg-[#FDFBF7]"],
+.dark [class*="bg-[#FAF7F2]"],
+.dark [class*="bg-[#F9F6F0]"],
 .dark [class*="bg-[#F5F1E9]"],
 .dark [class*="bg-[#F5F0E8]"],
 .dark [class*="bg-[#E8DFD0]"],
@@ -217,6 +219,7 @@ aside .brand-tagline,
 /* CARTES, MODALES, MENUS DEROULANTS ET PANNEAUX (SOLIDE OPAQUE #111a2e) */
 .dark .bg-white,
 .dark [class*="bg-white/"],
+.dark [class*="bg-[#FAF7F2]"],
 .dark .bg-stone-50,
 .dark .bg-stone-100,
 .dark [class*="bg-stone-50"],
@@ -230,18 +233,26 @@ aside .brand-tagline,
   color: #f8fafc !important;
 }
 
-/* Boites de fichiers, apercus et sous-sections */
+/* Boites de fichiers, apercus, cellules et sous-sections */
 .dark [class*="bg-stone-100/"],
 .dark [class*="bg-stone-200/"],
 .dark [class*="bg-amber-100/"],
 .dark [class*="bg-orange-100/"],
 .dark [class*="bg-[#F5F1E9]/"],
-.dark [class*="bg-[#E8DFD0]/"] {
+.dark [class*="bg-[#E8DFD0]/"],
+.dark [class*="bg-[#F9F6F0]"] {
   background-color: #0c1424 !important;
   backdrop-filter: none !important;
   -webkit-backdrop-filter: none !important;
   border-color: #1e293b !important;
   color: #f8fafc !important;
+}
+
+/* Boutons beige/crème */
+.dark [class*="bg-[#D4C5B9]"],
+.dark [class*="bg-[#D4C9B5]"] {
+  background-color: #1e293b !important;
+  color: #ffffff !important;
 }
 
 /* Champs de saisie en mode sombre */
