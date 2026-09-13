@@ -8,8 +8,10 @@ if (typeof window !== 'undefined') {
   pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 }
 
-interface PageTextItem {
-  str: string;
+export interface PageLine {
+  id: string;
+  lineIndex: number;
+  text: string;
   left: number;   // percent 0-100
   top: number;    // percent 0-100
   width: number;  // percent 0-100
@@ -22,6 +24,7 @@ interface PdfPageRendererProps {
   layoutMode: 'vertical' | 'horizontal';
   isSpeakingThisPage?: boolean;
   currentSpokenText?: string;
+  activeSpeechLineIndex?: number;
   autoScrollEnabled?: boolean;
 }
 
@@ -31,13 +34,14 @@ function PdfPageRenderer({
   layoutMode,
   isSpeakingThisPage,
   currentSpokenText,
+  activeSpeechLineIndex,
   autoScrollEnabled = true,
 }: PdfPageRendererProps) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const activeAnchorRef = useRef<HTMLDivElement>(null);
   const [rendered, setRendered] = useState(false);
   const [aspectRatio, setAspectRatio] = useState<number>(0.707); // Default A4
-  const [textItems, setTextItems] = useState<PageTextItem[]>([]);
+  const [lines, setLines] = useState<PageLine[]>([]);
 
   useEffect(() => {
     let cancelRender: any = null;
@@ -71,23 +75,34 @@ function PdfPageRenderer({
         // Extract text items with exact coordinate positions for on-document highlighting
         try {
           const content = await page.getTextContent();
-          const items: PageTextItem[] = [];
+          const rawItems: { str: string; left: number; top: number; width: number; height: number }[] = [];
 
           for (const it of content.items as any[]) {
             if (!it.str || it.str.trim().length === 0) continue;
             try {
-              const rect = viewport.convertToViewportRectangle([
-                it.transform[4],
-                it.transform[5],
-                it.transform[4] + (it.width || 0),
-                it.transform[5] + (it.height || 10)
-              ]);
-              const minX = Math.min(rect[0], rect[2]);
-              const minY = Math.min(rect[1], rect[3]);
-              const w = Math.abs(rect[2] - rect[0]);
-              const h = Math.abs(rect[3] - rect[1]);
+              const fontHeight = Math.hypot(it.transform[2], it.transform[3]) || Math.hypot(it.transform[0], it.transform[1]) || it.height || 12;
+              let minX = 0, minY = 0, w = 0, h = 0;
+              if (typeof viewport.convertToViewportRectangle === 'function') {
+                const rect = viewport.convertToViewportRectangle([
+                  it.transform[4],
+                  it.transform[5],
+                  it.transform[4] + (it.width || 0),
+                  it.transform[5] + fontHeight
+                ]);
+                minX = Math.min(rect[0], rect[2]);
+                minY = Math.min(rect[1], rect[3]);
+                w = Math.abs(rect[2] - rect[0]);
+                h = Math.abs(rect[3] - rect[1]);
+              } else {
+                const scaleX = viewport.width / (page.view ? page.view[2] : 612);
+                const scaleY = viewport.height / (page.view ? page.view[3] : 792);
+                minX = it.transform[4] * scaleX;
+                minY = viewport.height - (it.transform[5] + fontHeight) * scaleY;
+                w = (it.width || 10) * scaleX;
+                h = fontHeight * scaleY;
+              }
 
-              items.push({
+              rawItems.push({
                 str: it.str,
                 left: (minX / viewport.width) * 100,
                 top: (minY / viewport.height) * 100,
@@ -96,7 +111,40 @@ function PdfPageRenderer({
               });
             } catch (e) {}
           }
-          if (isMounted) setTextItems(items);
+
+          // Regroupement précis par lignes horizontales complètes
+          const sorted = [...rawItems].sort((a, b) => {
+            if (Math.abs(a.top - b.top) > 1.2) return a.top - b.top;
+            return a.left - b.left;
+          });
+
+          const grouped: PageLine[] = [];
+          for (const it of sorted) {
+            const existing = grouped.find(l => Math.abs(l.top - it.top) < 1.4);
+            if (existing) {
+              existing.text += ' ' + it.str.trim();
+              const right = Math.max(existing.left + existing.width, it.left + it.width);
+              existing.left = Math.min(existing.left, it.left);
+              existing.width = right - existing.left;
+              existing.height = Math.max(existing.height, it.height);
+            } else {
+              grouped.push({
+                id: `p${pageNumber}-l${grouped.length}`,
+                lineIndex: grouped.length,
+                text: it.str.trim(),
+                left: it.left,
+                top: it.top,
+                width: it.width,
+                height: it.height,
+              });
+            }
+          }
+
+          const cleaned = grouped
+            .map((l, idx) => ({ ...l, lineIndex: idx, text: l.text.replace(/\s+/g, ' ').trim() }))
+            .filter(l => l.text.length > 0);
+
+          if (isMounted) setLines(cleaned);
         } catch (err) {
           console.warn('Erreur extraction coordonnées texte page', pageNumber, err);
         }
@@ -119,12 +167,12 @@ function PdfPageRenderer({
     };
   }, [pdfDoc, pageNumber]);
 
-  // Auto-scroll to active sentence element directly on the document
+  // Auto-scroll to active sentence/line element directly on the document
   useEffect(() => {
     if (isSpeakingThisPage && autoScrollEnabled && activeAnchorRef.current) {
       activeAnchorRef.current.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
     }
-  }, [currentSpokenText, isSpeakingThisPage, autoScrollEnabled]);
+  }, [currentSpokenText, activeSpeechLineIndex, isSpeakingThisPage, autoScrollEnabled]);
 
   let firstActiveFound = false;
 
@@ -165,33 +213,56 @@ function PdfPageRenderer({
           className="w-full h-full block rounded-xl"
         />
 
-        {/* Soulignage et surlignage directement SUR le texte du document */}
-        <div className="absolute inset-0 pointer-events-none overflow-hidden rounded-xl">
-          {textItems.map((it, idx) => {
-            const isItemActive = isSpeakingThisPage && currentSpokenText && (() => {
-              const itemStr = it.str.trim().toLowerCase();
-              if (itemStr.length < 2) return false;
-              const spokenStr = currentSpokenText.toLowerCase();
-              return spokenStr.includes(itemStr) || (itemStr.length > 6 && spokenStr.includes(itemStr.slice(0, 6)));
+        {/* Soulignage rouge-orangé électrique + surlignage jaune fluo Stabilo directement SUR le texte du document */}
+        <div className="absolute inset-0 pointer-events-none overflow-visible rounded-xl">
+          {lines.map((line) => {
+            const isLineActive = isSpeakingThisPage && (() => {
+              if (typeof activeSpeechLineIndex === 'number' && activeSpeechLineIndex >= 0) {
+                if (line.lineIndex === activeSpeechLineIndex) return true;
+              }
+              if (currentSpokenText) {
+                const spoken = currentSpokenText.toLowerCase().replace(/[.,!?;:'"()\-]/g, ' ').replace(/\s+/g, ' ').trim();
+                const lineTxt = line.text.toLowerCase().replace(/[.,!?;:'"()\-]/g, ' ').replace(/\s+/g, ' ').trim();
+                if (lineTxt.length >= 3 && (spoken.includes(lineTxt) || lineTxt.includes(spoken))) {
+                  return true;
+                }
+                const words = lineTxt.split(' ').filter(w => w.length > 2);
+                if (words.length > 0) {
+                  const matchCount = words.filter(w => spoken.includes(w)).length;
+                  if (matchCount >= Math.min(2, words.length)) return true;
+                }
+              }
+              return false;
             })();
 
-            if (!isItemActive) return null;
+            if (!isLineActive) return null;
 
             const isFirst = !firstActiveFound;
             if (isFirst) firstActiveFound = true;
 
             return (
               <div
-                key={idx}
+                key={line.id}
                 ref={isFirst ? activeAnchorRef : null}
-                className="absolute pointer-events-none rounded-xs bg-amber-400/35 border-b-[3px] border-orange-500 shadow-[0_2px_8px_rgba(249,115,22,0.9)] animate-pulse z-20"
+                className="absolute pointer-events-none rounded transition-all duration-150 z-30 flex items-center"
                 style={{
-                  left: `${it.left}%`,
-                  top: `${it.top}%`,
-                  width: `${it.width}%`,
-                  height: `${Math.max(it.height, 2.5)}%`,
+                  left: `${Math.max(0, line.left - 0.5)}%`,
+                  top: `${Math.max(0, line.top - 0.4)}%`,
+                  width: `${Math.min(100 - line.left, line.width + 1.0)}%`,
+                  height: `${Math.max(line.height + 0.8, 3.2)}%`,
+                  backgroundColor: 'rgba(255, 235, 59, 0.68)', // Jaune fluo Stabilo éclatant
+                  borderBottom: '4px solid #FF3B30',            // Soulignage rouge-orangé électrique
+                  boxShadow: '0 4px 14px rgba(255, 59, 48, 0.85), 0 0 12px rgba(255, 235, 59, 0.9)',
                 }}
-              />
+              >
+                {/* Pointeur vocal rouge animé en début de ligne */}
+                <div 
+                  className="absolute -left-6 top-1/2 -translate-y-1/2 bg-[#FF3B30] text-white rounded-full p-1 shadow-lg flex items-center justify-center animate-bounce z-40"
+                  style={{ width: '20px', height: '20px' }}
+                >
+                  <Volume2 className="w-3 h-3 text-white" />
+                </div>
+              </div>
             );
           })}
         </div>
@@ -207,9 +278,13 @@ export interface PdfDocumentViewerProps {
   docZoom: number;
   layoutMode?: 'vertical' | 'horizontal';
   activeSpeechPage?: number;
+  activeSpeechLineIndex?: number;
   currentSpokenText?: string;
   autoScrollEnabled?: boolean;
   isSpeaking?: boolean;
+  onSegmentsExtracted?: (segments: any[]) => void;
+  currentPage?: number;
+  onPageChange?: (page: number) => void;
 }
 
 export function PdfHorizontalViewer({ 
@@ -219,9 +294,13 @@ export function PdfHorizontalViewer({
   docZoom,
   layoutMode = 'vertical',
   activeSpeechPage,
+  activeSpeechLineIndex,
   currentSpokenText,
   autoScrollEnabled = true,
-  isSpeaking = false
+  isSpeaking = false,
+  onSegmentsExtracted,
+  currentPage: externalCurrentPage,
+  onPageChange,
 }: PdfDocumentViewerProps) {
   const [numPages, setNumPages] = useState(0);
   const [pdfDoc, setPdfDoc] = useState<any>(null);
@@ -301,11 +380,103 @@ export function PdfHorizontalViewer({
     };
   }, [fileId, url, file?.id, file?.url]);
 
+  // Extraction automatique de tous les segments de lecture vocale pour synchronisation parfaite
+  useEffect(() => {
+    if (!pdfDoc || !onSegmentsExtracted) return;
+
+    let isMounted = true;
+    const extractAllSegments = async () => {
+      try {
+        const allSegments: any[] = [];
+        for (let p = 1; p <= pdfDoc.numPages; p++) {
+          const page = await pdfDoc.getPage(p);
+          const viewport = page.getViewport({ scale: 1.5 });
+          const content = await page.getTextContent();
+          
+          const rawItems: any[] = [];
+          for (const it of content.items as any[]) {
+            if (!it.str || it.str.trim().length === 0) continue;
+            try {
+              const fontHeight = Math.hypot(it.transform[2], it.transform[3]) || Math.hypot(it.transform[0], it.transform[1]) || it.height || 12;
+              let minX = 0, minY = 0, w = 0, h = 0;
+              if (typeof viewport.convertToViewportRectangle === 'function') {
+                const rect = viewport.convertToViewportRectangle([
+                  it.transform[4],
+                  it.transform[5],
+                  it.transform[4] + (it.width || 0),
+                  it.transform[5] + fontHeight
+                ]);
+                minX = Math.min(rect[0], rect[2]);
+                minY = Math.min(rect[1], rect[3]);
+                w = Math.abs(rect[2] - rect[0]);
+                h = Math.abs(rect[3] - rect[1]);
+              } else {
+                const scaleX = viewport.width / (page.view ? page.view[2] : 612);
+                const scaleY = viewport.height / (page.view ? page.view[3] : 792);
+                minX = it.transform[4] * scaleX;
+                minY = viewport.height - (it.transform[5] + fontHeight) * scaleY;
+                w = (it.width || 10) * scaleX;
+                h = fontHeight * scaleY;
+              }
+              rawItems.push({
+                str: it.str,
+                left: (minX / viewport.width) * 100,
+                top: (minY / viewport.height) * 100,
+                width: (w / viewport.width) * 100,
+                height: (h / viewport.height) * 100,
+              });
+            } catch (e) {}
+          }
+
+          const sorted = [...rawItems].sort((a, b) => {
+            if (Math.abs(a.top - b.top) > 1.2) return a.top - b.top;
+            return a.left - b.left;
+          });
+
+          const pageLines: any[] = [];
+          for (const it of sorted) {
+            const existing = pageLines.find(l => Math.abs(l.top - it.top) < 1.4);
+            if (existing) {
+              existing.text += ' ' + it.str.trim();
+            } else {
+              pageLines.push({
+                lineIndex: pageLines.length,
+                text: it.str.trim(),
+                page: p,
+              });
+            }
+          }
+
+          pageLines.forEach(l => {
+            const cleaned = l.text.replace(/\s+/g, ' ').trim();
+            if (cleaned.length > 1) {
+              allSegments.push({
+                text: cleaned,
+                page: p,
+                lineIndex: l.lineIndex,
+              });
+            }
+          });
+        }
+
+        if (isMounted && allSegments.length > 0) {
+          onSegmentsExtracted(allSegments);
+        }
+      } catch (err) {
+        console.warn('[PdfHorizontalViewer] Erreur extraction all segments:', err);
+      }
+    };
+
+    extractAllSegments();
+    return () => { isMounted = false; };
+  }, [pdfDoc]);
+
   const scrollToPage = (pageNum: number) => {
     const el = pageRefs.current.get(pageNum);
     if (el) {
       el.scrollIntoView({ behavior: 'smooth', block: 'center', inline: 'center' });
       setCurrentPage(pageNum);
+      onPageChange?.(pageNum);
     }
   };
 
@@ -333,11 +504,13 @@ export function PdfHorizontalViewer({
       if (layoutMode === 'horizontal') {
         if (rect.left <= centerX && rect.right >= centerX) {
           setCurrentPage(pageNum);
+          onPageChange?.(pageNum);
           break;
         }
       } else {
         if (rect.top <= centerY && rect.bottom >= centerY) {
           setCurrentPage(pageNum);
+          onPageChange?.(pageNum);
           break;
         }
       }
@@ -466,6 +639,7 @@ export function PdfHorizontalViewer({
                 layoutMode={layoutMode}
                 isSpeakingThisPage={isSpeakingThisPage}
                 currentSpokenText={currentSpokenText}
+                activeSpeechLineIndex={activeSpeechLineIndex}
                 autoScrollEnabled={autoScrollEnabled}
               />
               <div className={`text-[10px] font-bold mt-2 px-2.5 py-0.5 rounded-full border shadow-xs transition-colors ${

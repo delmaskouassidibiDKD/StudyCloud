@@ -34,6 +34,7 @@ export interface SpeechSegment {
   text: string;
   page?: number;
   slide?: number;
+  lineIndex?: number;
 }
 
 function renderSpokenSentence(text: string, charIndex: number, wordLength: number) {
@@ -90,6 +91,9 @@ export function CenterMenu({
   const [currentText, setCurrentText] = useState<string>('');
   const [speechSegments, setSpeechSegments] = useState<SpeechSegment[]>([]);
   const [currentSegmentIdx, setCurrentSegmentIdx] = useState<number>(0);
+  const [activeSpeechPage, setActiveSpeechPage] = useState<number>(1);
+  const [activeSpeechLineIndex, setActiveSpeechLineIndex] = useState<number>(-1);
+  const [currentPdfViewerPage, setCurrentPdfViewerPage] = useState<number>(1);
   const [autoScrollEnabled, setAutoScrollEnabled] = useState<boolean>(true);
   const [spokenWordCharIndex, setSpokenWordCharIndex] = useState<number>(-1);
   const [spokenWordLength, setSpokenWordLength] = useState<number>(0);
@@ -320,6 +324,9 @@ export function CenterMenu({
     speechSegmentsRef.current = [];
     setSpeechSegments([]);
     setCurrentSegmentIdx(0);
+    setActiveSpeechPage(1);
+    setActiveSpeechLineIndex(-1);
+    setCurrentPdfViewerPage(1);
     setSpokenWordCharIndex(-1);
   }, [activePreviewItem?.id]);
 
@@ -355,6 +362,11 @@ export function CenterMenu({
           if (blob) arrayBuffer = await blob.arrayBuffer();
         } catch (e) {}
       }
+      if (!arrayBuffer && activePreviewItem && typeof activePreviewItem.arrayBuffer === 'function') {
+        try {
+          arrayBuffer = await activePreviewItem.arrayBuffer();
+        } catch (e) {}
+      }
       if (!arrayBuffer && url) {
         try {
           const resp = await fetch(url);
@@ -371,20 +383,37 @@ export function CenterMenu({
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
         const content = await page.getTextContent();
-        const pageText = content.items
-          .map((it: any) => it.str)
-          .join(' ')
-          .replace(/\s+/g, ' ')
-          .trim();
+        const rawItems: any[] = [];
+        for (const it of content.items as any[]) {
+          if (!it.str || it.str.trim().length === 0) continue;
+          rawItems.push({
+            str: it.str,
+            top: it.transform ? it.transform[5] : 0,
+            left: it.transform ? it.transform[4] : 0,
+          });
+        }
 
-        if (pageText.length > 0) {
-          const sentences = pageText.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 2);
-          if (sentences.length > 0) {
-            sentences.forEach(s => result.push({ text: s.trim(), page: pageNum }));
+        const sorted = [...rawItems].sort((a, b) => {
+          if (Math.abs(a.top - b.top) > 8) return b.top - a.top;
+          return a.left - b.left;
+        });
+
+        const lines: { text: string; lineIndex: number; top: number }[] = [];
+        for (const it of sorted) {
+          const existing = lines.find(l => (it.top !== 0 && Math.abs(l.top - it.top) < 8));
+          if (existing) {
+            existing.text += ' ' + it.str.trim();
           } else {
-            result.push({ text: pageText, page: pageNum });
+            lines.push({ text: it.str.trim(), lineIndex: lines.length, top: it.top });
           }
         }
+
+        lines.forEach((l, idx) => {
+          const cleaned = l.text.replace(/\s+/g, ' ').trim();
+          if (cleaned.length > 1) {
+            result.push({ text: cleaned, page: pageNum, lineIndex: idx });
+          }
+        });
       }
       return result;
     } catch (e) {
@@ -437,6 +466,13 @@ export function CenterMenu({
     window.speechSynthesis.cancel();
 
     const segment = segments[index];
+    if (segment?.page) {
+      setActiveSpeechPage(segment.page);
+    }
+    if (typeof segment?.lineIndex === 'number') {
+      setActiveSpeechLineIndex(segment.lineIndex);
+    }
+
     const sentence = segment.text;
     const utterance = new SpeechSynthesisUtterance(sentence);
     utterance.lang = 'fr-FR';
@@ -464,6 +500,7 @@ export function CenterMenu({
         setSpeechState('stopped');
         currentSentenceIdxRef.current = 0;
         setCurrentSegmentIdx(0);
+        setActiveSpeechLineIndex(-1);
         setSpokenWordCharIndex(-1);
       }
     };
@@ -471,6 +508,7 @@ export function CenterMenu({
     utterance.onerror = (e) => {
       if (e.error !== 'canceled' && e.error !== 'interrupted') {
         setSpeechState('stopped');
+        setActiveSpeechLineIndex(-1);
         setSpokenWordCharIndex(-1);
       }
     };
@@ -491,43 +529,53 @@ export function CenterMenu({
 
   const handleStartSpeech = async () => {
     setIsAudioMenuOpen(true);
-    setSpeechState('loading');
+    let segments = speechSegmentsRef.current;
 
-    let segments: SpeechSegment[] = [];
+    if (!segments || segments.length === 0) {
+      setSpeechState('loading');
 
-    // 1. PDF
-    if (isPdf) {
-      segments = await extractPdfSegments(activePreviewItem?.id, resolvedUrl || activePreviewItem?.url);
-    }
-
-    // 2. PPTX
-    if (segments.length === 0 && pptxSlides.length > 0) {
-      pptxSlides.forEach(slide => {
-        if (slide.title) segments.push({ text: slide.title, slide: slide.slideNumber });
-        slide.bullets.forEach(b => {
-          if (b.trim()) segments.push({ text: b.trim(), slide: slide.slideNumber });
-        });
-      });
-    }
-
-    // 3. Fallback texte / Word
-    if (segments.length === 0) {
-      let text = currentText;
-      if (!text) {
-        text = await getDocumentText(activePreviewItem);
-        setCurrentText(text);
+      // 1. PDF
+      if (isPdf) {
+        segments = await extractPdfSegments(activePreviewItem?.id, resolvedUrl || activePreviewItem?.url);
       }
-      const rawSentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 1);
-      segments = (rawSentences.length > 0 ? rawSentences : [text]).map(t => ({ text: t }));
+
+      // 2. PPTX
+      if ((!segments || segments.length === 0) && pptxSlides.length > 0) {
+        segments = [];
+        pptxSlides.forEach(slide => {
+          if (slide.title) segments.push({ text: slide.title, slide: slide.slideNumber });
+          slide.bullets.forEach(b => {
+            if (b.trim()) segments.push({ text: b.trim(), slide: slide.slideNumber });
+          });
+        });
+      }
+
+      // 3. Fallback texte / Word
+      if (!segments || segments.length === 0) {
+        let text = currentText;
+        if (!text) {
+          text = await getDocumentText(activePreviewItem);
+          setCurrentText(text);
+        }
+        const rawSentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 1);
+        segments = (rawSentences.length > 0 ? rawSentences : [text]).map(t => ({ text: t }));
+      }
     }
 
-    if (segments.length === 0) {
-      segments = [{ text: `Lecture du document ${activePreviewItem?.name || ''}.` }];
+    if (!segments || segments.length === 0) {
+      segments = [{ text: `Lecture du document ${activePreviewItem?.name || ''}.`, page: 1 }];
     }
 
     speechSegmentsRef.current = segments;
     setSpeechSegments(segments);
-    speakSentence(0);
+
+    let startIdx = 0;
+    if (currentPdfViewerPage > 1) {
+      const idxOnPage = segments.findIndex(s => s.page === currentPdfViewerPage);
+      if (idxOnPage !== -1) startIdx = idxOnPage;
+    }
+
+    speakSentence(startIdx);
   };
 
   const handleTogglePause = () => {
@@ -551,6 +599,7 @@ export function CenterMenu({
     setSpeechState('stopped');
     currentSentenceIdxRef.current = 0;
     setCurrentSegmentIdx(0);
+    setActiveSpeechLineIndex(-1);
     setSpokenWordCharIndex(-1);
   };
 
@@ -796,10 +845,17 @@ export function CenterMenu({
                   url={currentUrl} 
                   docZoom={docZoom}
                   layoutMode={previewScrollMode}
-                  activeSpeechPage={speechSegments[currentSegmentIdx]?.page}
-                  currentSpokenText={speechSegments[currentSegmentIdx]?.text}
+                  activeSpeechPage={activeSpeechPage}
+                  activeSpeechLineIndex={activeSpeechLineIndex}
+                  currentSpokenText={speechSegmentsRef.current[currentSegmentIdx]?.text || speechSegments[currentSegmentIdx]?.text}
                   autoScrollEnabled={autoScrollEnabled}
                   isSpeaking={speechState === 'playing' || speechState === 'paused'}
+                  onSegmentsExtracted={(segs) => {
+                    speechSegmentsRef.current = segs;
+                    setSpeechSegments(segs);
+                  }}
+                  currentPage={currentPdfViewerPage}
+                  onPageChange={setCurrentPdfViewerPage}
                 />
               </div>
             );
