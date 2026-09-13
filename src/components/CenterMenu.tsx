@@ -745,10 +745,13 @@ export function CenterMenu({
       }
       // 5. TEXT / CODE
       else if (isText) {
-        const raw = fileTextContent || activePreviewItem.textContent || '';
+        let raw = fileTextContent || activePreviewItem.textContent || '';
+        if (!raw && activePreviewItem) {
+          raw = await getDocumentText(activePreviewItem);
+        }
         if (raw) {
-          const sentences = smartSentenceSplit(raw);
-          segments = sentences.map((text, idx) => ({ text, lineIndex: idx }));
+          const lines = raw.split(/\r?\n/);
+          segments = lines.map((text, idx) => ({ text: text.trim(), lineIndex: idx }));
         }
       }
 
@@ -1591,43 +1594,54 @@ export function CenterMenu({
                   className="flex-1 w-full h-full p-4 sm:p-6 overflow-auto font-mono text-xs leading-relaxed text-[#d4d4d4] select-text"
                   style={{ zoom: `${effectiveZoom}%` }}
                 >
-                  {speechSegments.length > 0 && (speechState === 'playing' || speechState === 'paused') ? (
-                    <div className="whitespace-pre-wrap leading-relaxed">
-                      {speechSegments.map((seg, idx) => {
-                        const isActive = idx === currentSegmentIdx;
-                        return (
-                          <span
-                            key={idx}
-                            id={isActive ? 'active-text-speech-target' : undefined}
-                            ref={isActive ? (activeSentenceElRef as any) : null}
-                            onClick={() => {
-                              if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
-                                window.speechSynthesis.cancel();
-                              }
-                              speakSentence(idx);
-                            }}
-                            className={`inline transition-all duration-150 cursor-pointer rounded px-1 ${
-                              isActive
-                                ? 'text-stone-950 font-bold shadow-sm'
-                                : 'hover:bg-stone-800'
-                            }`}
-                            style={isActive ? {
-                              backgroundColor: 'rgba(255, 235, 59, 0.85)',
-                              borderBottom: '3.5px solid #FF3B30',
-                              borderRadius: '3px',
-                              padding: '2px 4px',
-                              color: '#000000',
-                              boxShadow: '0 2px 8px rgba(255, 59, 48, 0.45)',
-                            } : undefined}
-                          >
-                            {seg.text}{' '}
-                          </span>
-                        );
-                      })}
-                    </div>
-                  ) : (
-                    <pre className="whitespace-pre-wrap">{fileTextContent || activePreviewItem.textContent || "Fichier texte vide."}</pre>
-                  )}
+                  {(() => {
+                    const rawText = fileTextContent || activePreviewItem.textContent || '';
+                    if (!rawText.trim()) {
+                      return <p className="text-stone-500 italic">Fichier texte vide.</p>;
+                    }
+                    const textLines = rawText.split(/\r?\n/);
+                    const isAudioActive = speechState === 'playing' || speechState === 'paused';
+                    const activeIndex = activeSpeechLineIndex >= 0 ? activeSpeechLineIndex : currentSegmentIdx;
+
+                    return (
+                      <pre className="font-mono text-xs leading-relaxed whitespace-pre-wrap break-words m-0 p-0">
+                        {textLines.map((lineContent, lineIdx) => {
+                          const isActive = isAudioActive && lineIdx === activeIndex;
+                          return (
+                            <div
+                              key={lineIdx}
+                              id={isActive ? 'active-text-speech-target' : undefined}
+                              ref={isActive ? (activeSentenceElRef as any) : null}
+                              onClick={() => {
+                                if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+                                  window.speechSynthesis.cancel();
+                                }
+                                const segs = textLines.map((t, idx) => ({ text: t.trim(), lineIndex: idx }));
+                                speechSegmentsRef.current = segs;
+                                setSpeechSegments(segs);
+                                setIsAudioMenuOpen(true);
+                                speakSentence(lineIdx);
+                              }}
+                              className={`transition-colors duration-150 rounded px-1.5 py-0.5 cursor-pointer block min-h-[1.5em] w-fit ${
+                                isActive
+                                  ? 'font-bold shadow-sm'
+                                  : 'hover:bg-stone-800/60'
+                              }`}
+                              style={isActive ? {
+                                backgroundColor: 'rgba(255, 235, 59, 0.85)',
+                                borderBottom: '3.5px solid #FF3B30',
+                                borderRadius: '3px',
+                                color: '#000000',
+                                boxShadow: '0 2px 8px rgba(255, 59, 48, 0.45)',
+                              } : undefined}
+                            >
+                              {lineContent || '\u00A0'}
+                            </div>
+                          );
+                        })}
+                      </pre>
+                    );
+                  })()}
                 </div>
               </div>
             );
