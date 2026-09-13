@@ -228,6 +228,7 @@ export function CenterMenu({
   const [activeSlideIdx, setActiveSlideIdx] = useState<number>(0);
 
   const [copiedText, setCopiedText] = useState<boolean>(false);
+  const [pdfViewerMode, setPdfViewerMode] = useState<'native' | 'interactive'>('native');
 
   const ext = (activePreviewItem?.name?.split('.').pop()?.toUpperCase() || activePreviewItem?.extension || 'FICHIER').toUpperCase();
   const isPdf = ext === 'PDF' || 
@@ -439,6 +440,7 @@ export function CenterMenu({
     setActiveSpeechLineIndex(-1);
     setCurrentPdfViewerPage(1);
     setSpokenWordCharIndex(-1);
+    setPdfViewerMode('native');
   }, [activePreviewItem?.id]);
 
   // Cleanup on unmount
@@ -607,6 +609,7 @@ export function CenterMenu({
         setCurrentSegmentIdx(0);
         setActiveSpeechLineIndex(-1);
         setSpokenWordCharIndex(-1);
+        if (isPdf) setPdfViewerMode('native');
       }
     };
 
@@ -756,6 +759,7 @@ export function CenterMenu({
     setCurrentSegmentIdx(0);
     setActiveSpeechLineIndex(-1);
     setSpokenWordCharIndex(-1);
+    if (isPdf) setPdfViewerMode('native');
   };
 
   const handleRestart = () => {
@@ -765,6 +769,7 @@ export function CenterMenu({
     currentSentenceIdxRef.current = 0;
     setCurrentSegmentIdx(0);
     setSpokenWordCharIndex(-1);
+    if (isPdf) setPdfViewerMode('interactive');
     speakSentence(0);
   };
 
@@ -772,12 +777,14 @@ export function CenterMenu({
     if (!isAudioMenuOpen) {
       setIsAudioMenuOpen(true);
       if (speechState !== 'playing' && speechState !== 'paused') {
+        if (isPdf) setPdfViewerMode('interactive');
         handleStartSpeech();
       }
     } else {
       if (speechState === 'playing' || speechState === 'paused') {
         handleTogglePause();
       } else {
+        if (isPdf) setPdfViewerMode('interactive');
         handleStartSpeech();
       }
     }
@@ -882,6 +889,31 @@ export function CenterMenu({
                   <ArrowUpDown className="w-3 h-3 text-stone-500" />
                 )}
                 <span>{previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
+              </button>
+            )}
+
+            {isPdf && previewScrollMode === 'vertical' && (
+              <button
+                type="button"
+                onClick={() => setPdfViewerMode(prev => prev === 'native' ? 'interactive' : 'native')}
+                className={`px-2 py-1 text-[10px] sm:text-xs rounded-lg border flex items-center gap-1 font-bold transition-all cursor-pointer shadow-sm ${
+                  pdfViewerMode === 'native'
+                    ? 'bg-stone-900 text-white border-stone-800 hover:bg-stone-800'
+                    : 'bg-amber-100 dark:bg-amber-950/60 text-amber-900 dark:text-amber-200 border-amber-300 dark:border-amber-700'
+                }`}
+                title={pdfViewerMode === 'native' ? "Passer en mode lecture vocale avec surlignage" : "Revenir à la visionneuse PDF native (avec barre d'outils noire)"}
+              >
+                {pdfViewerMode === 'native' ? (
+                  <>
+                    <FileText className="w-3 h-3 text-amber-400" />
+                    <span>Outils PDF</span>
+                  </>
+                ) : (
+                  <>
+                    <Volume2 className="w-3 h-3 text-amber-600 dark:text-amber-400" />
+                    <span>Surlignage</span>
+                  </>
+                )}
               </button>
             )}
           </div>
@@ -1001,28 +1033,67 @@ export function CenterMenu({
 
           const currentUrl = resolvedUrl || activePreviewItem?.url || '';
 
-          // 1. PDF: Unified viewer supporting both Vertical and Horizontal modes with on-document highlighting!
+          // 1. PDF:
+          // Standard Vertical mode (default) -> Native PDF viewer with "le truc noir" (#toolbar=1, page counter, native - 122% + zoom, rotate, draw, download, print)
+          // Horizontal mode OR active speech reading -> Interactive viewer with live Stabilo yellow line highlighting & auto-scroll
           if (isPdf) {
+            const isSpeaking = speechState === 'playing' || speechState === 'paused';
+            const showInteractive = previewScrollMode === 'horizontal' || isSpeaking || pdfViewerMode === 'interactive';
+
+            if (showInteractive) {
+              return (
+                <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
+                  <PdfHorizontalViewer 
+                    fileId={activePreviewItem?.id}
+                    file={activePreviewItem}
+                    url={currentUrl} 
+                    docZoom={docZoom}
+                    layoutMode={previewScrollMode}
+                    activeSpeechPage={activeSpeechPage}
+                    activeSpeechLineIndex={activeSpeechLineIndex}
+                    currentSpokenText={speechSegmentsRef.current[currentSegmentIdx]?.text || speechSegments[currentSegmentIdx]?.text}
+                    autoScrollEnabled={autoScrollEnabled}
+                    isSpeaking={isSpeaking}
+                    onSegmentsExtracted={(segs) => {
+                      speechSegmentsRef.current = segs;
+                      setSpeechSegments(segs);
+                    }}
+                    currentPage={currentPdfViewerPage}
+                    onPageChange={setCurrentPdfViewerPage}
+                  />
+                </div>
+              );
+            }
+
+            // Native Vertical PDF Viewer with "le truc noir" (black PDF toolbar #toolbar=1)
+            const cleanPdfBase = (currentUrl || '').split('#')[0];
+            const nativePdfUrl = `${cleanPdfBase}#toolbar=1&navpanes=0&view=FitH${docZoom !== 100 ? `&zoom=${docZoom}` : ''}`;
+
             return (
               <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
-                <PdfHorizontalViewer 
-                  fileId={activePreviewItem?.id}
-                  file={activePreviewItem}
-                  url={currentUrl} 
-                  docZoom={docZoom}
-                  layoutMode={previewScrollMode}
-                  activeSpeechPage={activeSpeechPage}
-                  activeSpeechLineIndex={activeSpeechLineIndex}
-                  currentSpokenText={speechSegmentsRef.current[currentSegmentIdx]?.text || speechSegments[currentSegmentIdx]?.text}
-                  autoScrollEnabled={autoScrollEnabled}
-                  isSpeaking={speechState === 'playing' || speechState === 'paused'}
-                  onSegmentsExtracted={(segs) => {
-                    speechSegmentsRef.current = segs;
-                    setSpeechSegments(segs);
-                  }}
-                  currentPage={currentPdfViewerPage}
-                  onPageChange={setCurrentPdfViewerPage}
-                />
+                {currentUrl ? (
+                  <object
+                    key={`pdf-native-${activePreviewItem?.id || activePreviewItem?.url}-${docZoom}`}
+                    data={nativePdfUrl}
+                    type="application/pdf"
+                    className="w-full h-full border-0 block"
+                    style={{ width: '100%', height: '100%' }}
+                  >
+                    <iframe
+                      key={`iframe-pdf-native-${activePreviewItem?.id || activePreviewItem?.url}-${docZoom}`}
+                      src={nativePdfUrl}
+                      title={activePreviewItem?.name || 'Document PDF'}
+                      className="w-full h-full border-0 block"
+                      style={{ width: '100%', height: '100%' }}
+                    />
+                  </object>
+                ) : (
+                  <div className="flex flex-col items-center justify-center h-full gap-3 p-6 text-center">
+                    <FileText className="w-12 h-12 text-red-500" />
+                    <p className="text-sm font-bold text-stone-800 dark:text-white">{activePreviewItem.name}</p>
+                    <p className="text-xs text-stone-500">Document PDF prêt pour l'analyse IA.</p>
+                  </div>
+                )}
               </div>
             );
           }

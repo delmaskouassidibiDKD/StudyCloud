@@ -589,7 +589,7 @@ export function PdfHorizontalViewer({
                 else pageRefs.current.delete(pageNum);
               }}
               className={`shrink-0 flex flex-col items-center justify-center relative transition-transform duration-300 ${
-                layoutMode === 'horizontal' ? 'h-full max-h-[82vh] snap-center' : 'w-full'
+                layoutMode === 'horizontal' ? 'h-full max-h-[82vh] snap-center' : 'w-full min-w-fit'
               }`}
             >
               <PdfPageRenderer
