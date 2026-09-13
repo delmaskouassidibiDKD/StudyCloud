@@ -70,6 +70,7 @@ export function CenterMenu({
   const [activeSlideIdx, setActiveSlideIdx] = useState<number>(0);
 
   const [copiedText, setCopiedText] = useState<boolean>(false);
+  const [showNativePdfToolbar, setShowNativePdfToolbar] = useState<boolean>(false);
 
   // Listen to external/keyboard zoom events
   useEffect(() => {
@@ -447,12 +448,12 @@ export function CenterMenu({
   };
 
   return (
-    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r border-stone-300 dark:border-stone-800'} flex flex-col animate-fadeIn relative pointer-events-auto overflow-hidden bg-white dark:bg-stone-950 pt-[46px] md:pt-[50px] ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
+    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r border-stone-300 dark:border-stone-800'} flex flex-col animate-fadeIn relative pointer-events-auto overflow-hidden bg-white dark:bg-stone-950 pt-[40px] md:pt-[42px] ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
       
-      {/* Sleek, flat top action bar (integrated, no 3D creux, no thick offset shadows) */}
-      <div className="w-full bg-[#FDFBF7] dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 px-2 sm:px-4 py-1.5 flex items-center justify-between shrink-0 z-30">
+      {/* Sleek, flat top action bar (integrated, no 3D creux, ultra-compact vertical height) */}
+      <div className="w-full bg-[#FDFBF7] dark:bg-stone-900 border-b border-stone-200 dark:border-stone-800 px-2 sm:px-3 py-1 flex items-center justify-between shrink-0 z-30">
         
-        {/* Left Controls: Fullscreen + Zoom + Orientation */}
+        {/* Left Controls: Fullscreen + Zoom + Orientation + PDF Tools Toggle */}
         <div className="flex items-center gap-1 sm:gap-1.5">
           {!activePreviewItem?.lockFullscreen && (
             <button
@@ -498,6 +499,21 @@ export function CenterMenu({
             >
               <ArrowLeftRight className="w-3 h-3 text-stone-500" />
               <span>{previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
+            </button>
+          )}
+
+          {/* Bouton pour basculer ou réduire la barre PDF interne */}
+          {activePreviewItem && ((activePreviewItem.name?.split('.').pop()?.toUpperCase() || activePreviewItem.extension || '').toUpperCase() === 'PDF' || activePreviewItem.type === 'application/pdf') && (
+            <button
+              onClick={() => setShowNativePdfToolbar(prev => !prev)}
+              className={`px-2 py-0.5 rounded text-[10px] font-bold border transition-colors cursor-pointer ${
+                showNativePdfToolbar
+                  ? 'bg-stone-800 text-white border-stone-800'
+                  : 'bg-white dark:bg-stone-800 text-stone-700 dark:text-stone-300 border-stone-200 dark:border-stone-700 hover:bg-stone-100'
+              }`}
+              title={showNativePdfToolbar ? "Réduire la barre PDF pour maximiser l'espace vertical" : "Afficher la barre d'outils du PDF"}
+            >
+              <span>{showNativePdfToolbar ? 'Barre PDF : Visible' : 'Barre PDF : Réduite'}</span>
             </button>
           )}
         </div>
@@ -614,19 +630,22 @@ export function CenterMenu({
 
           const currentUrl = resolvedUrl || activePreviewItem?.url || '';
 
-          // 1. PDF (Fills 100% edge-to-edge)
+          // 1. PDF (Fills 100% edge-to-edge, toolbar=0 by default to save vertical height)
           if (isPdf) {
+            const pdfParams = `#toolbar=${showNativePdfToolbar ? 1 : 0}&navpanes=0&view=FitH`;
             return (
               <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
                 {currentUrl ? (
                   <object
-                    data={`${currentUrl}#toolbar=1&navpanes=0&view=FitH`}
+                    key={`pdf-${showNativePdfToolbar}-${currentUrl}`}
+                    data={`${currentUrl}${pdfParams}`}
                     type="application/pdf"
                     className="w-full h-full border-0"
                     style={{ zoom: `${docZoom}%` }}
                   >
                     <iframe
-                      src={`${currentUrl}#toolbar=1&navpanes=0&view=FitH`}
+                      key={`iframe-${showNativePdfToolbar}-${currentUrl}`}
+                      src={`${currentUrl}${pdfParams}`}
                       title={activePreviewItem?.name || 'Document PDF'}
                       className="w-full h-full border-0"
                     />
