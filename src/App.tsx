@@ -29,7 +29,7 @@ import { OnboardingPage } from './components/auth/OnboardingPage';
 import { GoogleSecuritySetupPage } from './components/auth/GoogleSecuritySetupPage';
 
 export default function App() {
-  const { isAuthenticated, isLoading: authLoading, needsOnboarding, needsSecuritySetup, loginWithToken } = useAuth();
+  const { user, isAuthenticated, isLoading: authLoading, needsOnboarding, needsSecuritySetup, loginWithToken } = useAuth();
 
   // Détecter immédiatement à l'initialisation si l'URL contient un retour Google OAuth ou une confirmation email
   const [isProcessingAuth, setIsProcessingAuth] = useState<string | null>(() => {
