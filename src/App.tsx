@@ -513,13 +513,15 @@ export default function App() {
       const percentage = (x / rect.width) * 100;
 
       if (isResizingLeft) {
-        // Limit left column width between 25% and (100% - rightWidth - 30% for center)
-        const newWidth = Math.min(Math.max(25, percentage), 100 - previewRightWidth - 30);
+        // Allow left column to resize smoothly from 12% to (100% - rightWidth - 20% for center)
+        const maxLeft = Math.max(25, 100 - previewRightWidth - 20);
+        const newWidth = Math.min(Math.max(12, percentage), maxLeft);
         setPreviewLeftWidth(newWidth);
       } else if (isResizingRight) {
-        // Limit right column width between 25% and (100% - leftWidth - 30% for center)
+        // Limit right column width between 15% and (100% - leftWidth - 20% for center)
         const newRightWidth = 100 - percentage;
-        const boundedRight = Math.min(Math.max(25, newRightWidth), 100 - previewLeftWidth - 30);
+        const maxRight = Math.max(20, 100 - previewLeftWidth - 20);
+        const boundedRight = Math.min(Math.max(15, newRightWidth), maxRight);
         setPreviewRightWidth(boundedRight);
       }
     };
@@ -527,14 +529,21 @@ export default function App() {
     const handleMouseUp = () => {
       setIsResizingLeft(false);
       setIsResizingRight(false);
+      document.body.style.removeProperty('cursor');
+      document.body.style.removeProperty('user-select');
     };
 
-    window.addEventListener('mousemove', handleMouseMove);
-    window.addEventListener('touchmove', handleMouseMove);
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: false });
+    window.addEventListener('touchmove', handleMouseMove, { passive: false });
     window.addEventListener('mouseup', handleMouseUp);
     window.addEventListener('touchend', handleMouseUp);
 
     return () => {
+      document.body.style.removeProperty('cursor');
+      document.body.style.removeProperty('user-select');
       window.removeEventListener('mousemove', handleMouseMove);
       window.removeEventListener('touchmove', handleMouseMove);
       window.removeEventListener('mouseup', handleMouseUp);
@@ -1228,12 +1237,20 @@ export default function App() {
           </div>
 
           {/* Main Content Area: 3 Columns on Desktop, Navigable Tabs on Mobile */}
-          <div className="flex-1 w-full h-dvh">
+          <div className="flex-1 w-full h-dvh relative">
             
+            {/* Transparent blocker during resize so iframes (PDF/Viewer) never swallow mouse events */}
+            {(isResizingLeft || isResizingRight) && (
+              <div 
+                className="fixed inset-0 z-[999999] cursor-col-resize select-none bg-transparent"
+                style={{ cursor: 'col-resize' }}
+              />
+            )}
+
             {/* Desktop 3-Column Grid / Mobile Single Tab */}
             <div 
               ref={previewContainerRef}
-              className={`w-full h-full ${isMobileScreen ? 'flex flex-col' : 'grid'} gap-0 relative ${isResizingLeft || isResizingRight ? 'select-none pointer-events-none' : ''}`}
+              className={`w-full h-full ${isMobileScreen ? 'flex flex-col' : 'grid'} gap-0 relative`}
               style={{
                 gridTemplateColumns: isCenterFullscreen || isRightFullscreen 
                   ? '100%' 

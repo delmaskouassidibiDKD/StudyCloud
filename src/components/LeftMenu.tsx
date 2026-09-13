@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { Upload, File as FileIcon, MoreVertical, Trash2, CheckSquare, Square, Check, X, Plus, Search } from 'lucide-react';
+import { Upload, File as FileIcon, MoreVertical, Trash2, CheckSquare, Square, Check, X, Plus, Search, ArrowLeftRight, RotateCcw } from 'lucide-react';
 import { DelmasRobot } from './DelmasRobot';
 import { AssistantChat } from './AssistantChat';
 import { FileIconBadge } from './FileIconBadge';
@@ -52,12 +52,14 @@ export function LeftMenu({
 
   const currentFolderName = activePreviewItem?.folderName || activePreviewItem?.matiere || activeFolderDetail?.title;
   const isMesFichiersMode = currentFolderName === 'Mes fichiers' || (!currentFolderName && !!activePreviewItem);
+  const [panelWidth, setPanelWidth] = useState(380);
 
   useEffect(() => {
     if (!containerRef.current) return;
     const observer = new ResizeObserver((entries) => {
       for (let entry of entries) {
         const width = entry.contentRect.width;
+        setPanelWidth(width);
         // width minus padding (32px). Item is 105px, gap is 12px.
         const available = width - 32;
         const n = Math.floor((available + 12) / 117);
@@ -67,6 +69,8 @@ export function LeftMenu({
     observer.observe(containerRef.current);
     return () => observer.disconnect();
   }, []);
+
+  const isCompact = panelWidth < 360;
 
   useEffect(() => {
     const handleAutoPrompt = () => setIsAssistantOpen(true);
@@ -666,10 +670,15 @@ export function LeftMenu({
     .sort(sortFilesByHistory);
 
   return (
-    <div ref={containerRef} className={`w-full h-full border-r-2 border-stone-800 relative pointer-events-auto bg-[#FDFBF7] ${isCenterFullscreen || isRightFullscreen ? 'hidden' : (mobilePreviewTab === 0 ? 'flex' : 'hidden md:flex')} flex flex-col`}>
-      {/* Action Button (Top Left of Left Menu) */}
+    <div 
+      ref={containerRef} 
+      className={`w-full h-full border-r-2 border-stone-800 relative pointer-events-auto bg-[#FDFBF7] ${
+        isCenterFullscreen || isRightFullscreen ? 'hidden' : (mobilePreviewTab === 0 ? 'flex' : 'hidden md:flex')
+      } flex flex-col pt-[44px] overflow-hidden`}
+    >
+      {/* Top Header & Actions Section */}
       {!isAssistantOpen ? (
-        <>
+        <div className="w-full px-3 py-2 shrink-0 border-b border-stone-200/80 bg-[#FDFBF7] z-30">
           <input 
             type="file" 
             ref={fileInputRef}
@@ -677,91 +686,136 @@ export function LeftMenu({
             className="hidden"
             accept="*/*"
           />
-          <button
-            onClick={() => fileInputRef.current?.click()}
-            className="absolute top-[64px] md:top-[66px] left-2 md:left-4 z-50 px-2 py-0.5 bg-white rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-stone-50 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-stone-800"
-            title="Importer un fichier depuis l'appareil"
-          >
-            <Upload className="w-3.5 h-3.5" />
-            <span className="text-[9px] font-extrabold uppercase tracking-widest">Importer</span>
-          </button>
-        </>
-      ) : hasChatMessages ? (
-        <button
-          onClick={() => setChatKey(prev => prev + 1)}
-          className="absolute top-[64px] md:top-[66px] left-2 md:left-4 z-50 px-2 py-0.5 bg-[#1e2024] rounded border border-stone-600 shadow-[1px_1px_0px_0px_#444] hover:bg-[#2a2d33] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-zinc-300"
-          title="Réinitialiser la discussion"
-        >
-          <svg className="w-[14px] h-[14px]" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-            <defs>
-              <mask id="history-cutout">
-                <rect width="24" height="24" fill="white" />
-                <circle cx="19" cy="19" r="5" fill="black" />
-              </mask>
-            </defs>
-            <g mask="url(#history-cutout)">
-              <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
-              <path d="M3 3v5h5" />
-              <path d="M12 7v5l3 3" />
-            </g>
-            <path d="M16 16l6 6" strokeWidth="2.5" />
-            <path d="M22 16l-6 6" strokeWidth="2.5" />
-          </svg>
-          <span className="text-[9px] font-extrabold uppercase tracking-widest">Nouvelle disc.</span>
-        </button>
-      ) : null}
 
-      {/* Search Bar between Importer and Assistante DKD */}
-      {!isAssistantOpen && (
-        <div className="absolute top-[64px] md:top-[66px] left-[118px] md:left-[132px] z-50 flex items-center">
-          <div className="relative w-[125px] sm:w-[145px] md:w-[160px] flex items-center">
-            <Search className="w-3 h-3 text-stone-400 absolute left-2 pointer-events-none" />
-            <input
-              type="text"
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="Rechercher..."
-              className="w-full bg-white border border-stone-300 focus:border-stone-800 rounded-full pl-6 pr-6 py-0.5 text-[10px] font-semibold text-stone-800 placeholder-stone-400 shadow-xs focus:outline-none focus:ring-1 focus:ring-orange-400 transition-all h-[26px]"
-            />
-            {searchQuery && (
+          {!isCompact ? (
+            /* Normal Width Layout: 1 Row (Importer + Search + Robot) */
+            <div className="flex items-center justify-between gap-2 w-full">
+              <div className="flex items-center gap-2 flex-1 min-w-0">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-2 py-1 bg-white rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-stone-50 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-stone-800 shrink-0"
+                  title="Importer un fichier depuis l'appareil"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span className="text-[9px] font-extrabold uppercase tracking-widest">Importer</span>
+                </button>
+
+                <div className="relative flex-1 min-w-[90px] max-w-[200px] flex items-center">
+                  <Search className="w-3 h-3 text-stone-400 absolute left-2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Rechercher..."
+                    className="w-full bg-white border border-stone-300 focus:border-stone-800 rounded-full pl-6 pr-6 py-0.5 text-[10px] font-semibold text-stone-800 placeholder-stone-400 shadow-xs focus:outline-none focus:ring-1 focus:ring-orange-400 transition-all h-[26px]"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-1.5 p-0.5 text-stone-400 hover:text-stone-700 rounded-full cursor-pointer"
+                      title="Effacer la recherche"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Assistante DKD Robot Button */}
               <button
-                type="button"
-                onClick={() => setSearchQuery('')}
-                className="absolute right-1.5 p-0.5 text-stone-400 hover:text-stone-700 rounded-full cursor-pointer"
-                title="Effacer la recherche"
+                onClick={() => setIsAssistantOpen(!isAssistantOpen)}
+                className="flex flex-col items-center justify-center cursor-pointer group active:scale-95 transition-all select-none shrink-0"
+                title="Ouvrir l'Assistante DKD"
               >
-                <X className="w-2.5 h-2.5" />
+                <div className="relative p-0.5 rounded-full transition-all duration-200 hover:scale-105 shadow-[0_2px_8px_rgba(37,99,235,0.3)]">
+                  <DelmasRobot size={36} />
+                </div>
+                <span className="text-[9px] font-black uppercase tracking-wider mt-0.5 leading-none whitespace-nowrap text-blue-600 group-hover:text-blue-700">
+                  Assistante DKD
+                </span>
               </button>
-            )}
-          </div>
+            </div>
+          ) : (
+            /* Compact Width Layout: 2 Rows (Robot positioned directly BELOW search field so they never overlap) */
+            <div className="flex flex-col gap-2 w-full">
+              {/* Row 1: Importer + Search Bar */}
+              <div className="flex items-center gap-2 w-full">
+                <button
+                  onClick={() => fileInputRef.current?.click()}
+                  className="px-2 py-1 bg-white rounded border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] hover:bg-stone-50 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-stone-800 shrink-0"
+                  title="Importer un fichier depuis l'appareil"
+                >
+                  <Upload className="w-3.5 h-3.5" />
+                  <span className="text-[9px] font-extrabold uppercase tracking-widest">Importer</span>
+                </button>
+
+                <div className="relative flex-1 min-w-0 flex items-center">
+                  <Search className="w-3 h-3 text-stone-400 absolute left-2 pointer-events-none" />
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder="Rechercher..."
+                    className="w-full bg-white border border-stone-300 focus:border-stone-800 rounded-full pl-6 pr-6 py-0.5 text-[10px] font-semibold text-stone-800 placeholder-stone-400 shadow-xs focus:outline-none focus:ring-1 focus:ring-orange-400 transition-all h-[26px]"
+                  />
+                  {searchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="absolute right-1.5 p-0.5 text-stone-400 hover:text-stone-700 rounded-full cursor-pointer"
+                      title="Effacer la recherche"
+                    >
+                      <X className="w-2.5 h-2.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* Row 2: Assistante DKD Robot directly BELOW the search field */}
+              <div className="flex items-center justify-end w-full">
+                <button
+                  onClick={() => setIsAssistantOpen(!isAssistantOpen)}
+                  className="flex items-center gap-2 px-2.5 py-1 rounded-full bg-blue-50 hover:bg-blue-100 dark:bg-blue-950/40 dark:hover:bg-blue-900/40 border border-blue-200 dark:border-blue-800/60 shadow-xs cursor-pointer group active:scale-95 transition-all select-none"
+                  title="Ouvrir l'Assistante DKD"
+                >
+                  <DelmasRobot size={26} />
+                  <span className="text-[9.5px] font-black uppercase tracking-wider text-blue-600 dark:text-blue-400 group-hover:text-blue-700">
+                    Assistante DKD
+                  </span>
+                </button>
+              </div>
+            </div>
+          )}
+        </div>
+      ) : (
+        /* Top Header when Assistant Chat is Open */
+        <div className="w-full px-3 py-2 shrink-0 bg-[#1e2024] border-b border-stone-700 flex items-center justify-between z-30">
+          {hasChatMessages ? (
+            <button
+              onClick={() => setChatKey(prev => prev + 1)}
+              className="px-2 py-1 bg-[#2a2d33] rounded border border-stone-600 shadow-xs hover:bg-[#343840] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-zinc-300"
+              title="Réinitialiser la discussion"
+            >
+              <RotateCcw className="w-3.5 h-3.5 text-orange-400" />
+              <span className="text-[9px] font-extrabold uppercase tracking-widest">Nouvelle disc.</span>
+            </button>
+          ) : <div />}
+
+          <button
+            onClick={() => setIsAssistantOpen(false)}
+            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-500/20 border border-orange-500/50 text-orange-400 text-[10px] font-black cursor-pointer hover:bg-orange-500/30 transition-colors"
+            title="Fermer l'Assistante DKD"
+          >
+            <DelmasRobot size={22} />
+            <span>Fermer</span>
+          </button>
         </div>
       )}
 
-      {/* Active Folder Title was moved to Top Header */}
-
-      {/* Assistante DKD Robot Button (Top Right of Left Menu) */}
-      <button
-        onClick={() => setIsAssistantOpen(!isAssistantOpen)}
-        className="absolute top-[62px] md:top-[66px] right-2 md:right-4 z-50 flex flex-col items-center justify-center cursor-pointer group active:scale-95 transition-all select-none"
-        title={isAssistantOpen ? "Fermer l'Assistante DKD" : "Ouvrir l'Assistante DKD"}
-      >
-        <div className={`relative p-0.5 rounded-full transition-all duration-200 ${
-          isAssistantOpen 
-            ? 'ring-2 ring-orange-500 shadow-[0_0_12px_rgba(249,115,22,0.6)] scale-105' 
-            : 'hover:scale-105 shadow-[0_2px_8px_rgba(37,99,235,0.3)]'
-        }`}>
-          <DelmasRobot size={42} />
-        </div>
-        <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap transition-colors ${
-          isAssistantOpen ? 'text-orange-600' : 'text-blue-600 group-hover:text-blue-700'
-        }`}>
-          Assistante DKD
-        </span>
-      </button>
-
-      {/* Available Files in current Folder/Subject */}
-      {!isAssistantOpen && (
-        <div className="absolute top-[138px] md:top-[142px] bottom-0 left-0 right-0 flex flex-col overflow-hidden px-3 sm:px-4 pb-4">
+      {/* Main Content: Files List OR Assistant Chat in natural flex flow */}
+      {!isAssistantOpen ? (
+        <div className="flex-1 w-full overflow-hidden flex flex-col px-3 sm:px-4 py-2 min-h-0">
           {menuFiles.length > 0 ? (
             <div className="w-full flex flex-col gap-4 h-full overflow-hidden">
               {/* Imported Files Section - fixed at top */}
@@ -830,19 +884,23 @@ export function LeftMenu({
              </div>
           )}
         </div>
+      ) : (
+        <div className="flex-1 w-full overflow-hidden bg-[#1e2024] flex flex-col min-h-0 relative">
+          <AssistantChat key={chatKey} onClose={() => setIsAssistantOpen(false)} onHasMessagesChange={setHasChatMessages} activePreviewItem={activePreviewItem} attachedResources={attachedResources} setAttachedResources={setAttachedResources} />
+        </div>
       )}
-
-      <div className={`absolute inset-0 z-40 bg-[#1e2024] pt-[136px] md:pt-[142px] ${isAssistantOpen ? 'block' : 'hidden'}`}>
-        <AssistantChat key={chatKey} onClose={() => setIsAssistantOpen(false)} onHasMessagesChange={setHasChatMessages} activePreviewItem={activePreviewItem} attachedResources={attachedResources} setAttachedResources={setAttachedResources} />
-      </div>
       
-      {/* Drag Handle Right of Col 1 */}
+      {/* Drag Handle Right of Col 1 with Fluid Resize & Visual Indicator */}
       <div 
-        className="hidden md:flex absolute -right-[5px] top-0 bottom-0 w-[10px] cursor-col-resize z-40 justify-center group"
-        onMouseDown={(e) => { e.preventDefault(); setIsResizingLeft(true); }}
+        className="hidden md:flex absolute -right-[9px] top-0 bottom-0 w-[18px] cursor-col-resize z-50 justify-center items-center group select-none"
+        onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setIsResizingLeft(true); }}
         onTouchStart={(e) => { e.stopPropagation(); setIsResizingLeft(true); }}
+        title="Glisser pour redimensionner"
       >
-        <div className="w-[4px] h-full bg-transparent group-hover:bg-orange-500 transition-colors" />
+        <div className="w-[3px] h-full bg-transparent group-hover:bg-orange-500 group-active:bg-orange-500 transition-colors" />
+        <div className="absolute top-1/2 -translate-y-1/2 w-4 h-8 bg-white dark:bg-stone-800 border border-stone-400 dark:border-stone-600 rounded-full shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity pointer-events-none">
+          <ArrowLeftRight className="w-2.5 h-2.5 text-stone-600 dark:text-stone-300" />
+        </div>
       </div>
 
       {/* Delete Confirmation Modal */}
