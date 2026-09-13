@@ -2,18 +2,15 @@
 // STUDYCLOUD - CLOUDFLARE WORKERS AI (ASSISTANTE IA OFFICIELLE DKD)
 // ============================================================================
 // Domaine de déploiement : https://studycloud-ai.delmaskouassidibi.workers.dev
+// Liaison Workers AI supportée : STUDYCLOUD-IA ou AI
 // Modèle IA : @cf/meta/llama-3-8b-instruct
 //
-// POUR DÉPLOYER OU METTRE À JOUR DANS CLOUDFLARE :
-// 1. Allez sur votre Cloudflare Dashboard > Workers & Pages > Votre Worker (ex: studycloud-ai).
-// 2. IMPORTANT : Vérifiez la liaison Workers AI :
-//    - Allez dans Settings > Variables and Bindings (ou Paramètres > Variables et liaisons).
-//    - Dans la section "Workers AI", vérifiez qu'il y a une liaison avec :
-//      Variable name : AI
-//    - Si elle n'existe pas, cliquez sur "Add" > "Workers AI" > Nom : AI > Enregistrer.
-// 3. Cliquez sur "Edit code" (ou Quick Edit).
-// 4. Copiez TOUT le code de ce fichier (Ctrl+A puis Ctrl+C).
-// 5. Collez-le dans l'éditeur Cloudflare et cliquez sur "Save and Deploy" (Enregistrer et déployer).
+// POUR METTRE À JOUR DANS CLOUDFLARE :
+// 1. Allez sur votre Cloudflare Dashboard > Workers & Pages > studycloud-ai.
+// 2. Cliquez sur "Edit code" (ou Quick Edit).
+// 3. Copiez TOUT le code de ce fichier (Ctrl+A puis Ctrl+C).
+// 4. Collez-le dans l'éditeur Cloudflare (Ctrl+A puis Ctrl+V).
+// 5. Cliquez sur "Save and Deploy" (Enregistrer et déployer).
 // ============================================================================
 
 export default {
@@ -29,17 +26,31 @@ export default {
       return new Response(null, { headers: corsHeaders, status: 204 });
     }
 
+    // Détection universelle et automatique de la liaison Workers AI
+    // (Supporte STUDYCLOUD-IA, STUDYCLOUD_IA, AI, ou tout binding ayant la fonction run)
+    const ai = env?.["STUDYCLOUD-IA"] || 
+               env?.STUDYCLOUD_IA || 
+               env?.["STUDYCLOUD-AI"] || 
+               env?.STUDYCLOUD_AI || 
+               env?.["studycloud-ia"] || 
+               env?.studycloud_ia || 
+               env?.AI || 
+               env?.ai ||
+               (env && typeof env === "object" ? Object.values(env).find(v => v && typeof v.run === "function") : null);
+
     // Requête GET : Test de santé et d'état du Worker
     if (request.method === "GET") {
-      const hasAiBinding = Boolean(env && env.AI);
+      const hasAi = Boolean(ai && typeof ai.run === "function");
+      const availableBindings = env && typeof env === "object" ? Object.keys(env) : [];
       return new Response(JSON.stringify({
         service: "StudyCloud Workers AI Assistant (DKD Technologies)",
-        status: hasAiBinding ? "ready" : "missing_ai_binding",
+        status: hasAi ? "ready" : "missing_ai_binding",
         model: "@cf/meta/llama-3-8b-instruct",
-        ai_binding_detected: hasAiBinding,
-        message: hasAiBinding 
-          ? "L'IA StudyCloud est opérationnelle et prête à répondre !"
-          : "Attention: la liaison 'AI' n'a pas été trouvée dans env.AI. Ajoutez une liaison Workers AI nommée 'AI' dans les paramètres de votre Worker (Settings > Variables and Bindings > Workers AI).",
+        ai_binding_detected: hasAi,
+        detected_bindings: availableBindings,
+        message: hasAi 
+          ? "L'IA StudyCloud est 100% opérationnelle et prête à répondre !"
+          : "Attention : aucune liaison Workers AI n'a été détectée. Vérifiez vos liaisons dans Cloudflare (Settings > Variables and Bindings > Workers AI).",
         timestamp: new Date().toISOString()
       }), {
         headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
@@ -55,10 +66,11 @@ export default {
 
     try {
       // 1. Vérification de la liaison Workers AI
-      if (!env || !env.AI) {
+      if (!ai || typeof ai.run !== "function") {
+        const bindingsList = env && typeof env === "object" ? Object.keys(env).join(", ") : "aucun";
         return new Response(JSON.stringify({
           success: false,
-          error: "Liaison Workers AI manquante. Dans Cloudflare Dashboard > Settings > Variables and Bindings > Workers AI, ajoutez une liaison nommée 'AI'."
+          error: `Liaison Workers AI introuvable. Liaisons actuelles : [${bindingsList}]. Dans Cloudflare Dashboard > Settings > Variables and Bindings > Workers AI, ajoutez une liaison nommée 'STUDYCLOUD-IA' ou 'AI'.`
         }), {
           status: 500,
           headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
@@ -88,7 +100,7 @@ export default {
 
       // 3. Exécution du modèle LLaMA 3 8B Instruct de Cloudflare Workers AI
       const model = "@cf/meta/llama-3-8b-instruct";
-      const aiResult = await env.AI.run(model, {
+      const aiResult = await ai.run(model, {
         messages: messages,
         max_tokens: 1200,
         temperature: 0.65,
