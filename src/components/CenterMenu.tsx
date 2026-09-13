@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   Maximize, Minimize, Mic, Pause, Play, Square, RotateCcw, X, FileText, 
   ArrowLeftRight, ArrowUpDown, Music, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, 
@@ -232,6 +233,14 @@ export function CenterMenu({
 
   const [copiedText, setCopiedText] = useState<boolean>(false);
   const [pdfViewerMode, setPdfViewerMode] = useState<'native' | 'interactive'>('native');
+  const [topPortalEl, setTopPortalEl] = useState<HTMLElement | null>(null);
+
+  useEffect(() => {
+    if (typeof document !== 'undefined') {
+      const el = document.getElementById('studycloud-top-audio-portal');
+      if (el) setTopPortalEl(el);
+    }
+  }, [activePreviewItem?.id, isAudioMenuOpen, isCenterFullscreen]);
 
   const ext = (activePreviewItem?.name?.split('.').pop()?.toUpperCase() || activePreviewItem?.extension || 'FICHIER').toUpperCase();
   const isPdf = ext === 'PDF' || 
@@ -949,78 +958,94 @@ export function CenterMenu({
           </div>
 
           {/* Right: Audio Playback Controls & Microphone Toggle */}
-          <div className="flex items-center gap-1.5">
-            {isAudioMenuOpen && (
-              <div className="flex items-center gap-1 bg-white dark:bg-stone-800 px-2 py-0.5 rounded-lg border border-stone-200 dark:border-stone-700 text-stone-800 dark:text-stone-200 shadow-sm">
-                {speechState === 'playing' && (
-                  <div className="flex items-center gap-0.5 mr-1 text-orange-500">
-                    <span className="w-0.5 h-2.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
-                    <span className="w-0.5 h-3.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
-                    <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
-                  </div>
-                )}
-
-                <button
-                  type="button"
-                  onClick={handleTogglePause}
-                  className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 rounded text-[10px] font-bold transition-colors cursor-pointer"
-                  title={speechState === 'playing' ? "Pause" : "Reprendre"}
-                >
-                  {speechState === 'playing' ? (
-                    <Pause className="w-3.5 h-3.5 text-amber-600 fill-amber-600 shrink-0" />
-                  ) : (
-                    <Play className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600 shrink-0" />
+          <div className="flex items-center gap-1.5 shrink-0">
+            {/* Définition des boutons de contrôle de lecture (Pause, Arrêt, Recommencer, Défilement auto) */}
+            {isAudioMenuOpen && (() => {
+              const audioControls = (
+                <div className="flex items-center gap-1 bg-white dark:bg-stone-800 px-2 py-0.5 rounded-lg border border-stone-200 dark:border-stone-700 text-stone-800 dark:text-stone-200 shadow-sm shrink-0 animate-fadeIn">
+                  {speechState === 'playing' && (
+                    <div className="flex items-center gap-0.5 mr-1 text-orange-500">
+                      <span className="w-0.5 h-2.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '0ms' }} />
+                      <span className="w-0.5 h-3.5 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '150ms' }} />
+                      <span className="w-0.5 h-2 bg-orange-500 rounded-full animate-bounce" style={{ animationDelay: '300ms' }} />
+                    </div>
                   )}
-                </button>
 
-                <button
-                  type="button"
-                  onClick={handleStop}
-                  className="p-1 hover:bg-red-50 dark:hover:bg-red-950/40 rounded text-red-600 transition-colors cursor-pointer"
-                  title="Arrêter"
-                >
-                  <Square className="w-3 h-3 fill-red-600 shrink-0" />
-                </button>
+                  <button
+                    type="button"
+                    onClick={handleTogglePause}
+                    className="p-1 hover:bg-stone-100 dark:hover:bg-stone-700 rounded text-[10px] font-bold transition-colors cursor-pointer"
+                    title={speechState === 'playing' ? "Pause" : "Reprendre"}
+                  >
+                    {speechState === 'playing' ? (
+                      <Pause className="w-3.5 h-3.5 text-amber-600 fill-amber-600 shrink-0" />
+                    ) : (
+                      <Play className="w-3.5 h-3.5 text-emerald-600 fill-emerald-600 shrink-0" />
+                    )}
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={handleRestart}
-                  className="p-1 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded text-blue-600 transition-colors cursor-pointer"
-                  title="Recommencer"
-                >
-                  <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-                </button>
+                  <button
+                    type="button"
+                    onClick={handleStop}
+                    className="p-1 hover:bg-red-50 dark:hover:bg-red-950/40 rounded text-red-600 transition-colors cursor-pointer"
+                    title="Arrêter"
+                  >
+                    <Square className="w-3 h-3 fill-red-600 shrink-0" />
+                  </button>
 
-                {/* Auto-Scroll Toggle Button in Toolbar */}
-                <button
-                  type="button"
-                  onClick={() => setAutoScrollEnabled(prev => !prev)}
-                  className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border ${
-                    autoScrollEnabled
-                      ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
-                      : 'bg-stone-100 dark:bg-stone-800 text-stone-500 border-stone-300 dark:border-stone-600'
-                  }`}
-                  title={autoScrollEnabled ? "Défilement auto actif (cliquer pour arrêter et faufiler librement)" : "Défilement auto arrêté (cliquer pour réactiver)"}
-                >
-                  <span className={`w-1.5 h-1.5 rounded-full ${autoScrollEnabled ? 'bg-emerald-500 animate-ping' : 'bg-stone-400'}`} />
-                  <span className="hidden sm:inline">{autoScrollEnabled ? "Auto-scroll" : "Libre"}</span>
-                </button>
+                  <button
+                    type="button"
+                    onClick={handleRestart}
+                    className="p-1 hover:bg-blue-50 dark:hover:bg-blue-950/40 rounded text-blue-600 transition-colors cursor-pointer"
+                    title="Recommencer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                  </button>
 
-                <button
-                  type="button"
-                  onClick={() => setIsAudioMenuOpen(false)}
-                  className="p-0.5 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-full text-stone-400 hover:text-stone-600 ml-0.5 cursor-pointer"
-                  title="Fermer"
-                >
-                  <X className="w-3 h-3" />
-                </button>
-              </div>
-            )}
+                  {/* Auto-Scroll Toggle Button */}
+                  <button
+                    type="button"
+                    onClick={() => setAutoScrollEnabled(prev => !prev)}
+                    className={`px-1.5 py-0.5 rounded text-[10px] font-bold transition-all cursor-pointer flex items-center gap-1 border ${
+                      autoScrollEnabled
+                        ? 'bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border-emerald-300 dark:border-emerald-700'
+                        : 'bg-stone-100 dark:bg-stone-800 text-stone-500 border-stone-300 dark:border-stone-600'
+                    }`}
+                    title={autoScrollEnabled ? "Défilement auto actif (cliquer pour arrêter et faufiler librement)" : "Défilement auto arrêté (cliquer pour réactiver)"}
+                  >
+                    <span className={`w-1.5 h-1.5 rounded-full ${autoScrollEnabled ? 'bg-emerald-500 animate-ping' : 'bg-stone-400'}`} />
+                    <span className="hidden sm:inline">{autoScrollEnabled ? "Auto-scroll" : "Libre"}</span>
+                  </button>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsAudioMenuOpen(false)}
+                    className="p-0.5 hover:bg-stone-100 dark:hover:bg-stone-700 rounded-full text-stone-400 hover:text-stone-600 ml-0.5 cursor-pointer"
+                    title="Fermer"
+                  >
+                    <X className="w-3 h-3" />
+                  </button>
+                </div>
+              );
+
+              // 1. Si écran agrandi (plein écran) : afficher à côté du micro
+              if (isCenterFullscreen) {
+                return audioControls;
+              }
+
+              // 2. Si écran réduit / 3 colonnes : afficher en haut au-dessus de la page (dans le header portal)
+              const portalTarget = topPortalEl || (typeof document !== 'undefined' ? document.getElementById('studycloud-top-audio-portal') : null);
+              if (portalTarget) {
+                return createPortal(audioControls, portalTarget);
+              }
+
+              return audioControls;
+            })()}
 
             <button
               type="button"
               onClick={handleMicClick}
-              className={`px-2 py-1 rounded-lg border border-stone-200 dark:border-stone-700 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm ${
+              className={`px-2 py-1 rounded-lg border border-stone-200 dark:border-stone-700 transition-all cursor-pointer flex items-center justify-center gap-1.5 shadow-sm shrink-0 ${
                 speechState === 'playing'
                   ? 'bg-orange-500 text-white animate-pulse ring-2 ring-orange-300'
                   : speechState === 'paused'

@@ -1225,11 +1225,12 @@ export default function App() {
               )}
             </div>
 
-            {/* Center: Nom du fichier */}
+            {/* Center: Nom du fichier & Contrôles Audio (au-dessus de la page en mode écran réduit) */}
             <div className="flex-1 items-center justify-center gap-2 overflow-hidden px-1 sm:px-2 min-w-0 flex">
-              <p className="text-[11px] sm:text-xs font-bold text-stone-900 dark:text-white leading-tight truncate overflow-hidden text-ellipsis text-center max-w-sm lg:max-w-md">
+              <p className="text-[11px] sm:text-xs font-bold text-stone-900 dark:text-white leading-tight truncate overflow-hidden text-ellipsis text-center max-w-[140px] sm:max-w-xs lg:max-w-sm shrink">
                 {activePreviewItem.name}
               </p>
+              <div id="studycloud-top-audio-portal" className="flex items-center shrink-0" />
             </div>
             
             <div className="flex items-center gap-2 shrink-0">
