@@ -5,7 +5,7 @@ import {
   Copy, Check, Search, Table, Presentation, FileCode, Volume2, SkipBack, SkipForward, MousePointerClick
 } from 'lucide-react';
 import { FileIconBadge } from './FileIconBadge';
-import { PdfHorizontalViewer } from './PdfHorizontalViewer';
+import { PdfHorizontalViewer, extractPageLines } from './PdfHorizontalViewer';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
@@ -102,10 +102,25 @@ export function CenterMenu({
   const autoScrollEnabledRef = useRef<boolean>(true);
   const activeSentenceElRef = useRef<HTMLElement>(null);
   const textContainerRef = useRef<HTMLDivElement>(null);
+  const activeUtteranceRef = useRef<SpeechSynthesisUtterance | null>(null);
 
   useEffect(() => {
     autoScrollEnabledRef.current = autoScrollEnabled;
   }, [autoScrollEnabled]);
+
+  // Watchdog pour éviter que Chrome / Edge ne bloque la synthèse vocale
+  useEffect(() => {
+    if (speechState !== 'playing') return;
+    const interval = setInterval(() => {
+      if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+        if (window.speechSynthesis.speaking && !window.speechSynthesis.paused) {
+          window.speechSynthesis.pause();
+          window.speechSynthesis.resume();
+        }
+      }
+    }, 8000);
+    return () => clearInterval(interval);
+  }, [speechState]);
 
   // Resolved binary / URL state
   const [resolvedUrl, setResolvedUrl] = useState<string>(activePreviewItem?.url || '');
@@ -132,6 +147,10 @@ export function CenterMenu({
                 activePreviewItem?.type?.includes('pdf') ||
                 activePreviewItem?.url?.toLowerCase()?.includes('.pdf') ||
                 activePreviewItem?.name?.toLowerCase()?.endsWith('.pdf');
+  const isWord = ['DOCX', 'DOC'].includes(ext);
+  const isExcel = ['XLSX', 'XLS', 'CSV'].includes(ext);
+  const isPpt = ['PPTX', 'PPT'].includes(ext);
+  const isText = ['TXT', 'MD', 'JSON', 'JS', 'TS', 'PY', 'HTML', 'CSS', 'SQL', 'XML', 'LOG', 'JAVA', 'C', 'CPP', 'SH', 'ENV'].includes(ext);
 
   // Listen to external speech toggle from header
   useEffect(() => {
@@ -382,38 +401,10 @@ export function CenterMenu({
 
       for (let pageNum = 1; pageNum <= pdf.numPages; pageNum++) {
         const page = await pdf.getPage(pageNum);
-        const content = await page.getTextContent();
-        const rawItems: any[] = [];
-        for (const it of content.items as any[]) {
-          if (!it.str || it.str.trim().length === 0) continue;
-          rawItems.push({
-            str: it.str,
-            top: it.transform ? it.transform[5] : 0,
-            left: it.transform ? it.transform[4] : 0,
-          });
+        const pageLines = await extractPageLines(page, pageNum);
+        for (const l of pageLines) {
+          result.push({ text: l.text, page: pageNum, lineIndex: l.lineIndex });
         }
-
-        const sorted = [...rawItems].sort((a, b) => {
-          if (Math.abs(a.top - b.top) > 8) return b.top - a.top;
-          return a.left - b.left;
-        });
-
-        const lines: { text: string; lineIndex: number; top: number }[] = [];
-        for (const it of sorted) {
-          const existing = lines.find(l => (it.top !== 0 && Math.abs(l.top - it.top) < 8));
-          if (existing) {
-            existing.text += ' ' + it.str.trim();
-          } else {
-            lines.push({ text: it.str.trim(), lineIndex: lines.length, top: it.top });
-          }
-        }
-
-        lines.forEach((l, idx) => {
-          const cleaned = l.text.replace(/\s+/g, ' ').trim();
-          if (cleaned.length > 1) {
-            result.push({ text: cleaned, page: pageNum, lineIndex: idx });
-          }
-        });
       }
       return result;
     } catch (e) {
@@ -424,23 +415,26 @@ export function CenterMenu({
 
   const getDocumentText = async (item: any): Promise<string> => {
     if (!item) return '';
-    if (extractedDocText && extractedDocText.trim().length > 10) {
+    if (extractedDocText && extractedDocText.trim().length > 5) {
       return extractedDocText.trim();
     }
-    if (item.textContent && item.textContent.trim().length > 20) {
-      return item.textContent;
+    if (item.textContent && item.textContent.trim().length > 5) {
+      return item.textContent.trim();
+    }
+    if (fileTextContent && fileTextContent.trim().length > 5) {
+      return fileTextContent.trim();
     }
 
-    if (item.id || item.url) {
+    if (isPdf && (item.id || item.url)) {
       const segs = await extractPdfSegments(item.id, resolvedUrl || item.url);
       if (segs.length > 0) {
-        return segs.map(s => s.text).join(' ');
+        return segs.map(s => s.text).join('\n');
       }
     }
 
     const name = item.name || 'Document';
     const cleanTitle = name.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
-    return `Lecture du document ${cleanTitle}. Ce document est ouvert dans StudyCloud pour votre session d'étude.`;
+    return `Lecture du document ${cleanTitle}.`;
   };
 
   const speakSentence = (index: number) => {
@@ -451,21 +445,35 @@ export function CenterMenu({
     }
 
     const segments = speechSegmentsRef.current;
-    if (index >= segments.length) {
+    if (!segments || segments.length === 0 || index >= segments.length) {
       setSpeechState('stopped');
       currentSentenceIdxRef.current = 0;
       setCurrentSegmentIdx(0);
+      setActiveSpeechLineIndex(-1);
       setSpokenWordCharIndex(-1);
+      activeUtteranceRef.current = null;
       return;
+    }
+
+    const segment = segments[index];
+    const sentence = segment?.text?.trim();
+
+    // Passer les segments vides ou sans caractères prononçables
+    if (!sentence || sentence.replace(/[^\w\d\u00C0-\u017F]/g, '').length === 0) {
+      if (index < segments.length - 1) {
+        speakSentence(index + 1);
+        return;
+      } else {
+        setSpeechState('stopped');
+        return;
+      }
     }
 
     currentSentenceIdxRef.current = index;
     setCurrentSegmentIdx(index);
     setSpokenWordCharIndex(-1);
     setSpokenWordLength(0);
-    window.speechSynthesis.cancel();
 
-    const segment = segments[index];
     if (segment?.page) {
       setActiveSpeechPage(segment.page);
     }
@@ -473,17 +481,21 @@ export function CenterMenu({
       setActiveSpeechLineIndex(segment.lineIndex);
     }
 
-    const sentence = segment.text;
     const utterance = new SpeechSynthesisUtterance(sentence);
     utterance.lang = 'fr-FR';
-    utterance.rate = 1.0;
+    utterance.rate = 1.12; // Lecture fluide, naturelle et dynamique (pas lente)
     utterance.pitch = 1.0;
 
     const voices = window.speechSynthesis.getVoices();
-    const frVoice = voices.find(v => v.lang.startsWith('fr') || v.lang.includes('fr'));
+    const frVoice = voices.find(v => v.lang.startsWith('fr') && (v.name.includes('Natural') || v.name.includes('Google') || v.name.includes('Online')))
+      || voices.find(v => v.lang.startsWith('fr') || v.lang.includes('fr'));
     if (frVoice) {
       utterance.voice = frVoice;
     }
+
+    // Référence active pour empêcher le ramasse-miettes (Garbage Collector) de Chrome/Edge
+    activeUtteranceRef.current = utterance;
+    (window as any).__studyCloudUtterance = utterance;
 
     // Suivi précis du mot prononcé pour le soulignage dynamique
     utterance.onboundary = (event) => {
@@ -494,6 +506,7 @@ export function CenterMenu({
     };
 
     utterance.onend = () => {
+      activeUtteranceRef.current = null;
       if (currentSentenceIdxRef.current < speechSegmentsRef.current.length - 1) {
         speakSentence(currentSentenceIdxRef.current + 1);
       } else {
@@ -506,10 +519,15 @@ export function CenterMenu({
     };
 
     utterance.onerror = (e) => {
+      activeUtteranceRef.current = null;
       if (e.error !== 'canceled' && e.error !== 'interrupted') {
-        setSpeechState('stopped');
-        setActiveSpeechLineIndex(-1);
-        setSpokenWordCharIndex(-1);
+        if (currentSentenceIdxRef.current < speechSegmentsRef.current.length - 1) {
+          speakSentence(currentSentenceIdxRef.current + 1);
+        } else {
+          setSpeechState('stopped');
+          setActiveSpeechLineIndex(-1);
+          setSpokenWordCharIndex(-1);
+        }
       }
     };
 
@@ -529,6 +547,10 @@ export function CenterMenu({
 
   const handleStartSpeech = async () => {
     setIsAudioMenuOpen(true);
+    if (typeof window !== 'undefined' && 'speechSynthesis' in window) {
+      window.speechSynthesis.cancel();
+    }
+
     let segments = speechSegmentsRef.current;
 
     if (!segments || segments.length === 0) {
@@ -538,9 +560,8 @@ export function CenterMenu({
       if (isPdf) {
         segments = await extractPdfSegments(activePreviewItem?.id, resolvedUrl || activePreviewItem?.url);
       }
-
       // 2. PPTX
-      if ((!segments || segments.length === 0) && pptxSlides.length > 0) {
+      else if (isPpt && pptxSlides.length > 0) {
         segments = [];
         pptxSlides.forEach(slide => {
           if (slide.title) segments.push({ text: slide.title, slide: slide.slideNumber });
@@ -549,15 +570,36 @@ export function CenterMenu({
           });
         });
       }
-
-      // 3. Fallback texte / Word
-      if (!segments || segments.length === 0) {
-        let text = currentText;
-        if (!text) {
-          text = await getDocumentText(activePreviewItem);
-          setCurrentText(text);
+      // 3. EXCEL
+      else if (isExcel && excelWorkbook?.rows) {
+        const excelLines: string[] = [];
+        excelWorkbook.rows.forEach(r => {
+          const line = r.filter(c => c !== undefined && c !== null && String(c).trim().length > 0).map(c => String(c).trim()).join(', ');
+          if (line.length > 0) excelLines.push(line);
+        });
+        segments = excelLines.map(text => ({ text }));
+      }
+      // 4. WORD
+      else if (isWord) {
+        const raw = extractedDocText || (docxHtml ? docxHtml.replace(/<[^>]+>/g, ' ') : '');
+        if (raw) {
+          const rawLines = raw.split(/\r?\n+|(?<=[.!?])\s+/).map(s => s.replace(/\s+/g, ' ').trim()).filter(s => s.length > 0);
+          segments = rawLines.map(text => ({ text }));
         }
-        const rawSentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 1);
+      }
+      // 5. TEXT / CODE
+      else if (isText) {
+        const raw = fileTextContent || activePreviewItem.textContent || '';
+        if (raw) {
+          const rawLines = raw.split(/\r?\n+|(?<=[.!?])\s+/).map(s => s.replace(/\s+/g, ' ').trim()).filter(s => s.length > 0);
+          segments = rawLines.map(text => ({ text }));
+        }
+      }
+
+      // Fallback si rien trouvé
+      if (!segments || segments.length === 0) {
+        let text = await getDocumentText(activePreviewItem);
+        const rawSentences = text.split(/(?<=[.!?])\s+/).filter(s => s.trim().length > 0);
         segments = (rawSentences.length > 0 ? rawSentences : [text]).map(t => ({ text: t }));
       }
     }
@@ -575,7 +617,9 @@ export function CenterMenu({
       if (idxOnPage !== -1) startIdx = idxOnPage;
     }
 
-    speakSentence(startIdx);
+    setTimeout(() => {
+      speakSentence(startIdx);
+    }, 50);
   };
 
   const handleTogglePause = () => {
@@ -652,31 +696,33 @@ export function CenterMenu({
     if (!docxHtml) return '';
     const isSpeaking = speechState === 'playing' || speechState === 'paused';
     const currentSpoken = speechSegments[currentSegmentIdx]?.text?.trim();
-    if (!isSpeaking || !currentSpoken || currentSpoken.length < 3) {
+    if (!isSpeaking || !currentSpoken || currentSpoken.length < 2) {
       return docxHtml;
     }
 
     const cleanSpoken = currentSpoken.replace(/\s+/g, ' ');
+    // 1. Essai de correspondance exacte
     const escaped = cleanSpoken.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
     try {
       const regex = new RegExp(`(${escaped})`, 'i');
       if (regex.test(docxHtml)) {
         return docxHtml.replace(
           regex, 
-          `<mark id="active-word-speech-target" style="background-color: rgba(255, 235, 59, 0.65); border-bottom: 3.5px solid #FF3B30; border-radius: 3px; padding: 1px 3px; box-shadow: 0 2px 8px rgba(255,59,48,0.45);">$1</mark>`
+          `<mark id="active-word-speech-target" style="background-color: rgba(255, 235, 59, 0.7); border-bottom: 3.5px solid #FF3B30; border-radius: 3px; padding: 2px 4px; box-shadow: 0 2px 8px rgba(255,59,48,0.45); color: inherit;">$1</mark>`
         );
       }
     } catch (e) {}
 
-    // Fallback : correspondance des 15 premiers caractères
-    if (cleanSpoken.length > 15) {
-      const prefix = cleanSpoken.slice(0, 15).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+    // 2. Essai avec les premiers mots de la phrase (2 à 5 mots)
+    const words = cleanSpoken.split(/\s+/).filter(w => w.length > 1);
+    if (words.length >= 2) {
+      const phrase = words.slice(0, Math.min(5, words.length)).map(w => w.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')).join('\\s+');
       try {
-        const regex = new RegExp(`(${prefix}[^<]{0,100})`, 'i');
+        const regex = new RegExp(`(${phrase})`, 'i');
         if (regex.test(docxHtml)) {
           return docxHtml.replace(
             regex,
-            `<mark id="active-word-speech-target" style="background-color: rgba(255, 235, 59, 0.65); border-bottom: 3.5px solid #FF3B30; border-radius: 3px; padding: 1px 3px; box-shadow: 0 2px 8px rgba(255,59,48,0.45);">$1</mark>`
+            `<mark id="active-word-speech-target" style="background-color: rgba(255, 235, 59, 0.7); border-bottom: 3.5px solid #FF3B30; border-radius: 3px; padding: 2px 4px; box-shadow: 0 2px 8px rgba(255,59,48,0.45); color: inherit;">$1</mark>`
           );
         }
       } catch (e) {}
@@ -687,7 +733,7 @@ export function CenterMenu({
 
   useEffect(() => {
     if (!autoScrollEnabled || (speechState !== 'playing' && speechState !== 'paused')) return;
-    const target = document.getElementById('active-word-speech-target');
+    const target = document.getElementById('active-word-speech-target') || document.getElementById('active-excel-speech-target');
     if (target) {
       target.scrollIntoView({ behavior: 'smooth', block: 'center' });
     }
@@ -1045,18 +1091,29 @@ export function CenterMenu({
                         </tr>
                       </thead>
                       <tbody>
-                        {filteredRows.map((row: any[], rowIdx: number) => (
-                          <tr key={rowIdx} className="hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20 transition-colors border-b border-stone-100 dark:border-stone-800">
-                            <td className="p-2 border-r border-stone-200 dark:border-stone-800 text-stone-400 bg-stone-50 dark:bg-stone-900 text-center select-none font-bold text-[10px]">
-                              {rowIdx + 1}
-                            </td>
-                            {row.map((cell: any, cellIdx: number) => (
-                              <td key={cellIdx} className="p-2 border-r border-stone-100 dark:border-stone-800/60 text-stone-800 dark:text-stone-200 whitespace-pre truncate max-w-sm select-text">
-                                {cell !== undefined && cell !== null ? String(cell) : ''}
+                        {filteredRows.map((row: any[], rowIdx: number) => {
+                          const isRowSpeaking = (speechState === 'playing' || speechState === 'paused') && rowIdx === currentSegmentIdx;
+                          return (
+                            <tr 
+                              key={rowIdx} 
+                              id={isRowSpeaking ? 'active-excel-speech-target' : undefined}
+                              className={`transition-colors border-b border-stone-100 dark:border-stone-800 ${
+                                isRowSpeaking 
+                                  ? 'bg-yellow-200/80 dark:bg-yellow-950/60 ring-2 ring-orange-500 font-bold' 
+                                  : 'hover:bg-emerald-50/40 dark:hover:bg-emerald-950/20'
+                              }`}
+                            >
+                              <td className="p-2 border-r border-stone-200 dark:border-stone-800 text-stone-400 bg-stone-50 dark:bg-stone-900 text-center select-none font-bold text-[10px]">
+                                {rowIdx + 1}
                               </td>
-                            ))}
-                          </tr>
-                        ))}
+                              {row.map((cell: any, cellIdx: number) => (
+                                <td key={cellIdx} className="p-2 border-r border-stone-100 dark:border-stone-800/60 text-stone-800 dark:text-stone-200 whitespace-pre truncate max-w-sm select-text">
+                                  {cell !== undefined && cell !== null ? String(cell) : ''}
+                                </td>
+                              ))}
+                            </tr>
+                          );
+                        })}
                       </tbody>
                     </table>
                   ) : (

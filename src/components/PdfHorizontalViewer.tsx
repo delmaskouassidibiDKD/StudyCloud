@@ -18,6 +18,100 @@ export interface PageLine {
   height: number; // percent 0-100
 }
 
+export async function extractPageLines(page: any, pageNumber: number): Promise<PageLine[]> {
+  try {
+    const unscaledViewport = page.getViewport({ scale: 1.0 });
+    const pageW = unscaledViewport.width || 595;
+    const pageH = unscaledViewport.height || 842;
+    const content = await page.getTextContent();
+    if (!content || !content.items || content.items.length === 0) return [];
+
+    const rawItems: { str: string; left: number; top: number; width: number; height: number }[] = [];
+
+    for (const it of content.items as any[]) {
+      if (!it.str || it.str.length === 0) continue;
+      try {
+        const fontHeight = Math.hypot(it.transform[2], it.transform[3]) || Math.hypot(it.transform[0], it.transform[1]) || it.height || 12;
+        let minX = 0, minY = 0, w = 0, h = 0;
+        if (typeof unscaledViewport.convertToViewportRectangle === 'function') {
+          const rect = unscaledViewport.convertToViewportRectangle([
+            it.transform[4],
+            it.transform[5],
+            it.transform[4] + (it.width || 0),
+            it.transform[5] + fontHeight
+          ]);
+          minX = Math.min(rect[0], rect[2]);
+          minY = Math.min(rect[1], rect[3]);
+          w = Math.abs(rect[2] - rect[0]);
+          h = Math.abs(rect[3] - rect[1]);
+        } else {
+          minX = it.transform[4];
+          minY = pageH - (it.transform[5] + fontHeight);
+          w = it.width || 10;
+          h = fontHeight;
+        }
+
+        rawItems.push({
+          str: it.str,
+          left: (minX / pageW) * 100,
+          top: (minY / pageH) * 100,
+          width: (w / pageW) * 100,
+          height: (h / pageH) * 100,
+        });
+      } catch (e) {}
+    }
+
+    if (rawItems.length === 0) return [];
+
+    // Trier les éléments du haut vers le bas, puis de gauche à droite
+    const sorted = [...rawItems].sort((a, b) => {
+      if (Math.abs(a.top - b.top) > 1.2) return a.top - b.top;
+      return a.left - b.left;
+    });
+
+    const grouped: PageLine[] = [];
+    for (const it of sorted) {
+      // Trouver une ligne sur la même hauteur
+      const existing = grouped.find(l => Math.abs(l.top - it.top) < 1.3);
+      if (existing) {
+        // Détecter si un espace est nécessaire entre deux mots
+        const existingEnd = existing.left + existing.width;
+        const gap = it.left - existingEnd;
+        const needsSpace = gap > 0.35 && !existing.text.endsWith(' ') && !it.str.startsWith(' ');
+        
+        existing.text += (needsSpace ? ' ' : '') + it.str;
+        const newRight = Math.max(existing.left + existing.width, it.left + it.width);
+        existing.left = Math.min(existing.left, it.left);
+        existing.width = Math.max(0.5, newRight - existing.left);
+        existing.height = Math.max(existing.height, it.height);
+      } else {
+        grouped.push({
+          id: `p${pageNumber}-l${grouped.length}`,
+          lineIndex: grouped.length,
+          text: it.str,
+          left: it.left,
+          top: it.top,
+          width: Math.max(0.5, it.width),
+          height: it.height,
+        });
+      }
+    }
+
+    // Nettoyer les espaces multiples et préserver toutes les lettres, formules et chiffres
+    return grouped
+      .map((l, idx) => ({
+        ...l,
+        lineIndex: idx,
+        id: `p${pageNumber}-l${idx}`,
+        text: l.text.replace(/\s+/g, ' ').trim(),
+      }))
+      .filter(l => l.text.length > 0);
+  } catch (err) {
+    console.warn(`Erreur extraction lignes page ${pageNumber}:`, err);
+    return [];
+  }
+}
+
 interface PdfPageRendererProps {
   pdfDoc: any;
   pageNumber: number;
@@ -88,79 +182,8 @@ function PdfPageRenderer({
         await renderTask.promise;
 
         // Extraction précise des coordonnées des lignes de texte
-        try {
-          const content = await page.getTextContent();
-          const rawItems: { str: string; left: number; top: number; width: number; height: number }[] = [];
-
-          for (const it of content.items as any[]) {
-            if (!it.str || it.str.trim().length === 0) continue;
-            try {
-              const fontHeight = Math.hypot(it.transform[2], it.transform[3]) || Math.hypot(it.transform[0], it.transform[1]) || it.height || 12;
-              let minX = 0, minY = 0, w = 0, h = 0;
-              if (typeof unscaledViewport.convertToViewportRectangle === 'function') {
-                const rect = unscaledViewport.convertToViewportRectangle([
-                  it.transform[4],
-                  it.transform[5],
-                  it.transform[4] + (it.width || 0),
-                  it.transform[5] + fontHeight
-                ]);
-                minX = Math.min(rect[0], rect[2]);
-                minY = Math.min(rect[1], rect[3]);
-                w = Math.abs(rect[2] - rect[0]);
-                h = Math.abs(rect[3] - rect[1]);
-              } else {
-                minX = it.transform[4];
-                minY = pageH - (it.transform[5] + fontHeight);
-                w = it.width || 10;
-                h = fontHeight;
-              }
-
-              rawItems.push({
-                str: it.str,
-                left: (minX / pageW) * 100,
-                top: (minY / pageH) * 100,
-                width: (w / pageW) * 100,
-                height: (h / pageH) * 100,
-              });
-            } catch (e) {}
-          }
-
-          // Regroupement précis par lignes horizontales complètes
-          const sorted = [...rawItems].sort((a, b) => {
-            if (Math.abs(a.top - b.top) > 1.2) return a.top - b.top;
-            return a.left - b.left;
-          });
-
-          const grouped: PageLine[] = [];
-          for (const it of sorted) {
-            const existing = grouped.find(l => Math.abs(l.top - it.top) < 1.4);
-            if (existing) {
-              existing.text += ' ' + it.str.trim();
-              const right = Math.max(existing.left + existing.width, it.left + it.width);
-              existing.left = Math.min(existing.left, it.left);
-              existing.width = right - existing.left;
-              existing.height = Math.max(existing.height, it.height);
-            } else {
-              grouped.push({
-                id: `p${pageNumber}-l${grouped.length}`,
-                lineIndex: grouped.length,
-                text: it.str.trim(),
-                left: it.left,
-                top: it.top,
-                width: it.width,
-                height: it.height,
-              });
-            }
-          }
-
-          const cleaned = grouped
-            .map((l, idx) => ({ ...l, lineIndex: idx, text: l.text.replace(/\s+/g, ' ').trim() }))
-            .filter(l => l.text.length > 0);
-
-          if (isMounted) setLines(cleaned);
-        } catch (err) {
-          console.warn('Erreur extraction coordonnées texte page', pageNumber, err);
-        }
+        const pageLines = await extractPageLines(page, pageNumber);
+        if (isMounted) setLines(pageLines);
 
         if (isMounted) setRendered(true);
       } catch (err: any) {
@@ -381,73 +404,14 @@ export function PdfHorizontalViewer({
         const allSegments: any[] = [];
         for (let p = 1; p <= pdfDoc.numPages; p++) {
           const page = await pdfDoc.getPage(p);
-          const viewport = page.getViewport({ scale: 1.5 });
-          const content = await page.getTextContent();
-          
-          const rawItems: any[] = [];
-          for (const it of content.items as any[]) {
-            if (!it.str || it.str.trim().length === 0) continue;
-            try {
-              const fontHeight = Math.hypot(it.transform[2], it.transform[3]) || Math.hypot(it.transform[0], it.transform[1]) || it.height || 12;
-              let minX = 0, minY = 0, w = 0, h = 0;
-              if (typeof viewport.convertToViewportRectangle === 'function') {
-                const rect = viewport.convertToViewportRectangle([
-                  it.transform[4],
-                  it.transform[5],
-                  it.transform[4] + (it.width || 0),
-                  it.transform[5] + fontHeight
-                ]);
-                minX = Math.min(rect[0], rect[2]);
-                minY = Math.min(rect[1], rect[3]);
-                w = Math.abs(rect[2] - rect[0]);
-                h = Math.abs(rect[3] - rect[1]);
-              } else {
-                const scaleX = viewport.width / (page.view ? page.view[2] : 612);
-                const scaleY = viewport.height / (page.view ? page.view[3] : 792);
-                minX = it.transform[4] * scaleX;
-                minY = viewport.height - (it.transform[5] + fontHeight) * scaleY;
-                w = (it.width || 10) * scaleX;
-                h = fontHeight * scaleY;
-              }
-              rawItems.push({
-                str: it.str,
-                left: (minX / viewport.width) * 100,
-                top: (minY / viewport.height) * 100,
-                width: (w / viewport.width) * 100,
-                height: (h / viewport.height) * 100,
-              });
-            } catch (e) {}
+          const pageLines = await extractPageLines(page, p);
+          for (const l of pageLines) {
+            allSegments.push({
+              text: l.text,
+              page: p,
+              lineIndex: l.lineIndex,
+            });
           }
-
-          const sorted = [...rawItems].sort((a, b) => {
-            if (Math.abs(a.top - b.top) > 1.2) return a.top - b.top;
-            return a.left - b.left;
-          });
-
-          const pageLines: any[] = [];
-          for (const it of sorted) {
-            const existing = pageLines.find(l => Math.abs(l.top - it.top) < 1.4);
-            if (existing) {
-              existing.text += ' ' + it.str.trim();
-            } else {
-              pageLines.push({
-                lineIndex: pageLines.length,
-                text: it.str.trim(),
-                page: p,
-              });
-            }
-          }
-
-          pageLines.forEach(l => {
-            const cleaned = l.text.replace(/\s+/g, ' ').trim();
-            if (cleaned.length > 1) {
-              allSegments.push({
-                text: cleaned,
-                page: p,
-                lineIndex: l.lineIndex,
-              });
-            }
-          });
         }
 
         if (isMounted && allSegments.length > 0) {
