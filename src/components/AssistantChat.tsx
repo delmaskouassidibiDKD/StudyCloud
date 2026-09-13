@@ -2,6 +2,7 @@ import React, { useState, useRef, useEffect } from 'react';
 import { Send, ThumbsUp, ThumbsDown, Copy, FileText, X } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { FileIconBadge } from './FileIconBadge';
+import { sendChatMessageToAi } from '../services/api';
 
 interface Message {
   id: string;
@@ -58,42 +59,81 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       scrollContainerRef.current.scrollTo({ top: scrollContainerRef.current.scrollHeight, behavior: 'smooth' });
     }
   }, [messages, isTyping]);
-  useEffect(() => {
-    const handleAutoPrompt = (e: any) => {
-      const promptText = e.detail.prompt;
-      const newUserMsg: Message = { id: Date.now().toString(), text: promptText, sender: 'user' };
-      setMessages(prev => [...prev, newUserMsg]);
-      setIsTyping(true);
-      
-      // Simulate AI response
-      setTimeout(() => {
-        setIsTyping(false);
-        const aiMsg: Message = { id: (Date.now() + 1).toString(), text: "C'est noté ! Je suis en train de générer cela pour vous...", sender: 'ai' };
-        setMessages(prev => [...prev, aiMsg]);
-      }, 1000);
-    };
-    window.addEventListener('auto-prompt', handleAutoPrompt as any);
-    return () => window.removeEventListener('auto-prompt', handleAutoPrompt as any);
-  }, []);
 
-  const handleSend = () => {
-    if (!inputValue.trim() || isTyping) return;
+  const sendMessage = async (textToSend: string) => {
+    if (!textToSend.trim() || isTyping) return;
+
+    const userText = textToSend.trim();
+    const newUserMsg: Message = { id: Date.now().toString(), text: userText, sender: 'user' };
     
-    const newUserMsg: Message = { id: Date.now().toString(), text: inputValue, sender: 'user' };
-    setMessages(prev => [...prev, newUserMsg]);
+    // Ajout immédiat du message utilisateur à la liste
+    const updatedMessages = [...messages, newUserMsg];
+    setMessages(updatedMessages);
     setInputValue('');
     setIsTyping(true);
 
-    // Simulate AI response
-    setTimeout(() => {
-      const aiResponse: Message = { 
-        id: (Date.now() + 1).toString(), 
-        text: "Je suis en cours de développement. Je pourrai bientôt analyser vos documents et répondre à vos questions !", 
-        sender: 'ai' 
+    try {
+      // 1. Contexte du document actif et des ressources jointes
+      let systemContent = "Tu es l'assistante IA officielle de la plateforme StudyCloud, développée par DKD Technologies. Tu es une tutrice académique bienveillante, dynamique, très claire et structurée. Tu réponds TOUJOURS en français pour aider l'élève ou l'étudiant dans ses cours, révisions et exercices.";
+      
+      if (activePreviewItem?.name) {
+        systemContent += `\nL'utilisateur consulte actuellement le document : "${activePreviewItem.name}". Si la question porte sur ce cours ou ce document, explique-lui clairement les notions.`;
+      }
+
+      if (attachedResources && attachedResources.length > 0) {
+        const attachedNames = attachedResources.map((r: any) => r.name).filter(Boolean).join(', ');
+        if (attachedNames) {
+          systemContent += `\nDocuments attachés à la discussion : ${attachedNames}.`;
+        }
+      }
+
+      // 2. Préparation de l'historique des messages pour le format chat
+      const chatHistory = [
+        { role: 'system', content: systemContent },
+        ...updatedMessages.slice(-8).map(m => ({
+          role: m.sender === 'user' ? 'user' : 'assistant',
+          content: m.text,
+        })),
+      ];
+
+      // 3. Appel à l'IA Cloudflare Workers AI
+      const aiResult = await sendChatMessageToAi({
+        messages: chatHistory,
+        prompt: userText,
+      });
+
+      const aiMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        text: aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.",
+        sender: 'ai',
       };
-      setMessages(prev => [...prev, aiResponse]);
+      setMessages(prev => [...prev, aiMsg]);
+    } catch (err: any) {
+      console.error('[AssistantChat] Erreur appel IA:', err);
+      const errorMsg: Message = {
+        id: (Date.now() + 1).toString(),
+        text: `⚠️ Erreur de connexion avec l'IA (${err.message || 'Serveur indisponible'}).\n\nVérifiez que le code du fichier 'worker/CODE_A_COLLER_DANS_CLOUDFLARE_AI.js' est bien déployé sur Cloudflare et que la liaison 'AI' est bien ajoutée dans les paramètres de votre Worker.`,
+        sender: 'ai',
+      };
+      setMessages(prev => [...prev, errorMsg]);
+    } finally {
       setIsTyping(false);
-    }, 1500);
+    }
+  };
+
+  useEffect(() => {
+    const handleAutoPrompt = (e: any) => {
+      const promptText = e.detail?.prompt;
+      if (promptText) {
+        sendMessage(promptText);
+      }
+    };
+    window.addEventListener('auto-prompt', handleAutoPrompt as any);
+    return () => window.removeEventListener('auto-prompt', handleAutoPrompt as any);
+  }, [messages, isTyping, activePreviewItem, attachedResources]);
+
+  const handleSend = () => {
+    sendMessage(inputValue);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {

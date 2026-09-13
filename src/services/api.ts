@@ -16,6 +16,57 @@ export const setWorkerApiUrl = (url: string) => {
   localStorage.setItem('studycloud_worker_url', url.trim());
 };
 
+// URL du Worker Cloudflare Workers AI dédié à l'assistante IA StudyCloud
+export const getAiWorkerUrl = (): string => {
+  return (
+    (import.meta as any).env?.VITE_AI_WORKER_URL ||
+    localStorage.getItem('studycloud_ai_worker_url') ||
+    'https://studycloud-ai.delmaskouassidibi.workers.dev'
+  );
+};
+
+export const setAiWorkerUrl = (url: string) => {
+  localStorage.setItem('studycloud_ai_worker_url', url.trim());
+};
+
+export async function sendChatMessageToAi(params: {
+  messages: Array<{ role: string; content: string }>;
+  prompt?: string;
+}): Promise<{ response: string; success: boolean; model?: string }> {
+  const url = getAiWorkerUrl().replace(/\/+$/, '');
+  const response = await fetch(url, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(params),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: response.statusText }));
+    throw new Error(err.error || `Erreur API IA (${response.status})`);
+  }
+
+  const data = await response.json();
+  let text = '';
+  if (typeof data.response === 'string') {
+    text = data.response;
+  } else if (data.response?.response) {
+    text = data.response.response;
+  } else if (Array.isArray(data) && data[0]?.response?.response) {
+    text = data[0].response.response;
+  } else if (data.message?.content) {
+    text = data.message.content;
+  } else if (typeof data === 'string') {
+    text = data;
+  } else {
+    text = JSON.stringify(data);
+  }
+
+  return { response: text, success: true, model: data.model };
+}
+
+
 async function request<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
   const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
   const url = `${baseUrl}${endpoint}`;
