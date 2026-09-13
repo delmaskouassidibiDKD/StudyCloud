@@ -346,4 +346,43 @@ p.brand-tagline,
 .dark p.brand-tagline {
   color: #f59e0b !important;
 }
+
+/* ==========================================================================
+   ANIMATION ADN TOURNANT & FLOTTANT (IA STUDYCLOUD)
+   ========================================================================== */
+@keyframes dnaFloatSpin {
+  0% {
+    transform: translateY(0px) rotate(0deg) scale(1);
+  }
+  25% {
+    transform: translateY(-3px) rotate(90deg) scale(1.1);
+  }
+  50% {
+    transform: translateY(0px) rotate(180deg) scale(1);
+  }
+  75% {
+    transform: translateY(3px) rotate(270deg) scale(1.1);
+  }
+  100% {
+    transform: translateY(0px) rotate(360deg) scale(1);
+  }
+}
+
+@keyframes dnaGlowPulse {
+  0%, 100% {
+    filter: drop-shadow(0 0 4px rgba(249, 115, 22, 0.7));
+    opacity: 0.9;
+  }
+  50% {
+    filter: drop-shadow(0 0 10px rgba(249, 115, 22, 1)) drop-shadow(0 0 16px rgba(59, 130, 246, 0.6));
+    opacity: 1;
+  }
+}
+
+.animate-dna-spin-float {
+  display: inline-block;
+  animation: dnaFloatSpin 2s ease-in-out infinite, dnaGlowPulse 1.5s ease-in-out infinite;
+  transform-origin: center center;
+}
+
 

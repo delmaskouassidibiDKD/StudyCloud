@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, ThumbsUp, ThumbsDown, Copy, FileText, X } from 'lucide-react';
+import { Send, ThumbsUp, ThumbsDown, Copy, Check, X } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { FileIconBadge } from './FileIconBadge';
 import { sendChatMessageToAi } from '../services/api';
@@ -8,27 +8,71 @@ interface Message {
   id: string;
   text: string;
   sender: 'user' | 'ai';
+  isStreaming?: boolean;
 }
 
-const ChatMessageText = ({ text, isUser }: { text: string, isUser: boolean }) => {
+const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: boolean; isStreaming?: boolean }) => {
   const [expanded, setExpanded] = useState(false);
-  const maxLength = 250;
-  const isLong = text.length > maxLength;
-  const displayText = !expanded && isLong ? text.slice(0, maxLength) + '...' : text;
+
+  // LE MASQUAGE/DÉMASQUAGE EST STRICTEMENT RÉSERVÉ AUX MESSAGES TRÈS VOLUMINEUX ENVOYÉS PAR L'UTILISATEUR
+  // L'IA N'EST JAMAIS MASQUÉE NI TRONQUÉE : ELLE S'AFFICHE TOUJOURS EN ENTIER
+  const maxUserPromptLength = 350;
+  const isLongUserMsg = isUser && text.length > maxUserPromptLength;
+  const displayText = isLongUserMsg && !expanded ? text.slice(0, maxUserPromptLength) + '...' : text;
+
+  if (isUser) {
+    return (
+      <div className="flex flex-col w-full items-end">
+        <p className="whitespace-pre-wrap break-words text-left w-full">
+          {displayText}
+        </p>
+        {isLongUserMsg && (
+          <button 
+            type="button"
+            onClick={() => setExpanded(!expanded)} 
+            className="mt-1.5 text-[10px] font-bold underline transition-colors cursor-pointer text-orange-200 hover:text-white"
+          >
+            {expanded ? 'Masquer' : 'Démasquer'}
+          </button>
+        )}
+      </div>
+    );
+  }
+
+  // Pour l'IA : Rendu complet, sans coupure, avec typographie soignée
+  const lines = displayText.split('\n');
 
   return (
-    <div className={`flex flex-col w-full ${isUser ? 'items-end' : 'items-start'}`}>
-      <p className={`whitespace-pre-wrap break-words ${isUser ? '' : 'text-zinc-200'} text-left w-full`}>
-        {displayText}
-      </p>
-      {isLong && (
-        <button 
-          onClick={() => setExpanded(!expanded)} 
-          className={`mt-1.5 text-[10px] font-bold underline transition-colors cursor-pointer ${isUser ? 'text-orange-200 hover:text-white' : 'text-orange-500 hover:text-orange-400'}`}
-        >
-          {expanded ? 'Masquer' : 'Démasquer'}
-        </button>
-      )}
+    <div className="flex flex-col w-full items-start">
+      <div className="space-y-1.5 text-zinc-200 text-left w-full leading-relaxed font-medium">
+        {lines.map((line, idx) => {
+          const isLastLine = idx === lines.length - 1;
+          // Parser inline pour **gras**
+          const parts = line.split(/(\*\*[^*]+\*\*)/g);
+          const formattedLine = parts.map((part, i) => {
+            if (part.startsWith('**') && part.endsWith('**')) {
+              return (
+                <strong key={i} className="font-bold text-white">
+                  {part.slice(2, -2)}
+                </strong>
+              );
+            }
+            return part;
+          });
+
+          return (
+            <p key={idx} className="whitespace-pre-wrap break-words">
+              {formattedLine}
+              {/* ADN qui tourne et se déplace en temps réel juste après le dernier mot pendant la rédaction ! */}
+              {isStreaming && isLastLine && (
+                <span className="inline-flex items-center align-middle ml-2 select-none" title="L'IA écrit en temps réel...">
+                  <DnaLogo className="w-4 h-4 animate-dna-spin-float text-orange-500 drop-shadow-[0_0_8px_rgba(243,128,32,0.9)]" glow={true} />
+                </span>
+              )}
+            </p>
+          );
+        })}
+      </div>
     </div>
   );
 };
@@ -46,9 +90,12 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
+  const [isWaitingServer, setIsWaitingServer] = useState(false);
+  const [copiedMsgId, setCopiedMsgId] = useState<string | null>(null);
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const typingTimerRef = useRef<any>(null);
 
   useEffect(() => {
     onHasMessagesChange?.(messages.length > 0);
@@ -58,7 +105,14 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTo({ top: scrollContainerRef.current.scrollHeight, behavior: 'smooth' });
     }
-  }, [messages, isTyping]);
+  }, [messages, isTyping, isWaitingServer]);
+
+  // Nettoyage du timer d'animation au démontage
+  useEffect(() => {
+    return () => {
+      if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+    };
+  }, []);
 
   const sendMessage = async (textToSend: string) => {
     if (!textToSend.trim() || isTyping) return;
@@ -71,6 +125,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     setMessages(updatedMessages);
     setInputValue('');
     setIsTyping(true);
+    setIsWaitingServer(true);
 
     try {
       // 1. Contexte du document actif et des ressources jointes
@@ -102,22 +157,61 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         prompt: userText,
       });
 
-      const aiMsg: Message = {
-        id: (Date.now() + 1).toString(),
-        text: aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.",
+      const fullResponseText = aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";
+      setIsWaitingServer(false);
+
+      // 4. Initialisation du message IA avec écriture en temps réel
+      const aiMsgId = (Date.now() + 1).toString();
+      const initialAiMsg: Message = {
+        id: aiMsgId,
+        text: '',
         sender: 'ai',
+        isStreaming: true,
       };
-      setMessages(prev => [...prev, aiMsg]);
+      setMessages(prev => [...prev, initialAiMsg]);
+
+      // 5. Animation machine à écrire fluide avec l'ADN qui tourne et se déplace
+      let index = 0;
+      const chunkSize = 3; // 3 caractères par saut pour un flux rapide et naturel
+      const tickSpeed = 16; // ~60fps d'écriture
+
+      if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+
+      typingTimerRef.current = setInterval(() => {
+        index += chunkSize;
+        if (index >= fullResponseText.length) {
+          if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === aiMsgId ? { ...m, text: fullResponseText, isStreaming: false } : m
+            )
+          );
+          setIsTyping(false);
+        } else {
+          const partial = fullResponseText.slice(0, index);
+          setMessages(prev =>
+            prev.map(m =>
+              m.id === aiMsgId ? { ...m, text: partial } : m
+            )
+          );
+        }
+
+        if (scrollContainerRef.current) {
+          scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
+        }
+      }, tickSpeed);
+
     } catch (err: any) {
       console.error('[AssistantChat] Erreur appel IA:', err);
+      setIsWaitingServer(false);
+      setIsTyping(false);
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         text: `⚠️ Erreur IA : ${err.message || 'Impossible de joindre le serveur'}.`,
         sender: 'ai',
+        isStreaming: false,
       };
       setMessages(prev => [...prev, errorMsg]);
-    } finally {
-      setIsTyping(false);
     }
   };
 
@@ -145,14 +239,12 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   return (
     <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50">
-
-
       {/* Messages Area */}
       <div 
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto px-6 py-6 space-y-6 flex flex-col"
       >
-        {messages.length === 0 && !isTyping ? (
+        {messages.length === 0 && !isTyping && !isWaitingServer ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center max-h-full my-auto pb-10">
             <div className="mb-4">
               <DnaLogo className="w-12 h-12 drop-shadow-[0_0_8px_rgba(249,115,22,0.8)] text-orange-500" glow={true} />
@@ -167,48 +259,85 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         ) : (
           messages.map(msg => (
             <div key={msg.id} className="w-full shrink-0">
-            {msg.sender === 'user' ? (
-              <div className="flex justify-end w-full">
-                <div className="bg-[#2a2b2f] text-zinc-100 px-4 py-2.5 rounded-[24px] rounded-tr-[4px] text-[13px] sm:text-sm max-w-[85%] break-words">
-                  <ChatMessageText text={msg.text} isUser={true} />
-                </div>
-              </div>
-            ) : (
-              <div className="flex flex-col w-full text-zinc-100">
-                {/* AI Sparkle/DNA Icon */}
-                <div className="mb-2">
-                  <DnaLogo className="w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
-                </div>
-                
-                {/* AI Text Content */}
-                <div className="text-[13px] sm:text-sm leading-relaxed font-medium text-zinc-200">
-                  <ChatMessageText text={msg.text} isUser={false} />
-                </div>
-
-                {/* AI Action Buttons */}
-                <div className="flex items-center mt-4">
-                  <div className="flex items-center gap-1 sm:gap-2 text-zinc-400">
-                    <button className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer"><ThumbsUp className="w-4 h-4" /></button>
-                    <button className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer"><ThumbsDown className="w-4 h-4" /></button>
-                    <div className="w-1 sm:w-2" />
-                    <button className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer"><Copy className="w-4 h-4" /></button>
+              {msg.sender === 'user' ? (
+                <div className="flex justify-end w-full">
+                  <div className="bg-[#2a2b2f] text-zinc-100 px-4 py-2.5 rounded-[24px] rounded-tr-[4px] text-[13px] sm:text-sm max-w-[85%] break-words shadow-sm">
+                    <ChatMessageText text={msg.text} isUser={true} />
                   </div>
                 </div>
-              </div>
-            )}
-          </div>
+              ) : (
+                <div className="flex flex-col w-full text-zinc-100">
+                  {/* AI Sparkle/DNA Icon */}
+                  <div className="mb-2 flex items-center gap-2">
+                    <DnaLogo className="w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)] text-orange-500" glow={true} />
+                    <span className="text-xs font-bold text-orange-500/90 tracking-wide uppercase">Assistant StudyCloud</span>
+                  </div>
+                  
+                  {/* AI Text Content */}
+                  <div className="text-[13px] sm:text-sm leading-relaxed font-medium text-zinc-200 pl-1">
+                    <ChatMessageText text={msg.text} isUser={false} isStreaming={msg.isStreaming} />
+                  </div>
+
+                  {/* AI Action Buttons */}
+                  {!msg.isStreaming && msg.text && (
+                    <div className="flex items-center mt-3 pl-1">
+                      <div className="flex items-center gap-1 sm:gap-2 text-zinc-400">
+                        <button 
+                          type="button"
+                          className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer text-zinc-400 hover:text-white"
+                          title="Bonne réponse"
+                        >
+                          <ThumbsUp className="w-4 h-4" />
+                        </button>
+                        <button 
+                          type="button"
+                          className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer text-zinc-400 hover:text-white"
+                          title="Mauvaise réponse"
+                        >
+                          <ThumbsDown className="w-4 h-4" />
+                        </button>
+                        <div className="w-1 sm:w-2" />
+                        <button 
+                          type="button"
+                          onClick={() => {
+                            navigator.clipboard.writeText(msg.text);
+                            setCopiedMsgId(msg.id);
+                            setTimeout(() => setCopiedMsgId(null), 2000);
+                          }}
+                          className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-full transition-colors cursor-pointer text-zinc-400 hover:text-white flex items-center gap-1.5"
+                          title="Copier la réponse"
+                        >
+                          {copiedMsgId === msg.id ? (
+                            <>
+                              <Check className="w-4 h-4 text-emerald-400" />
+                              <span className="text-[11px] font-bold text-emerald-400">Copié</span>
+                            </>
+                          ) : (
+                            <Copy className="w-4 h-4" />
+                          )}
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
           ))
         )}
         
-        {isTyping && (
-          <div className="flex flex-col w-full text-zinc-100 mb-5">
-            <div className="mb-3">
-              <DnaLogo className="w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)] opacity-70" glow={true} />
-            </div>
-            <div className="flex flex-col gap-2.5 w-full mt-1 animate-pulse">
-              <div className="h-[14px] w-[90%] rounded-full bg-[#2a2b2f]" />
-              <div className="h-[14px] w-[75%] rounded-full bg-[#2a2b2f]" />
-              <div className="h-[14px] w-[45%] rounded-full bg-[#2a2b2f]" />
+        {/* État de chargement pendant la réflexion du modèle IA */}
+        {isWaitingServer && (
+          <div className="flex flex-col w-full text-zinc-100 mb-4 animate-fadeIn">
+            <div className="flex items-center gap-3 bg-[#26282d] border border-orange-500/25 px-4 py-3 rounded-2xl w-fit max-w-[90%] shadow-lg">
+              <DnaLogo className="w-6 h-6 animate-dna-spin-float shrink-0 text-orange-500" glow={true} />
+              <div className="flex flex-col">
+                <span className="text-xs font-bold text-orange-400 animate-pulse">
+                  L'IA formule votre réponse...
+                </span>
+                <span className="text-[11px] text-zinc-400">
+                  Recherche et analyse pédagogique
+                </span>
+              </div>
             </div>
           </div>
         )}
@@ -282,3 +411,4 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     </div>
   );
 }
+
