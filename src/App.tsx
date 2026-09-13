@@ -437,6 +437,16 @@ export default function App() {
   }, [previewScrollMode]);
 
   const [mobilePreviewTab, setMobilePreviewTab] = useState<0 | 1 | 2>(1);
+
+  useEffect(() => {
+    const handleSwitchMobileTab = (e: any) => {
+      if (typeof e.detail?.tab === 'number') {
+        setMobilePreviewTab(e.detail.tab);
+      }
+    };
+    window.addEventListener('switch-mobile-tab', handleSwitchMobileTab as any);
+    return () => window.removeEventListener('switch-mobile-tab', handleSwitchMobileTab as any);
+  }, []);
   const [previewLeftWidth, setPreviewLeftWidth] = useState(33.33);
   const [previewRightWidth, setPreviewRightWidth] = useState(33.33);
   const previewContainerRef = useRef<HTMLDivElement>(null);
