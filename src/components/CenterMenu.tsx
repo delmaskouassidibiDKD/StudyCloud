@@ -1,10 +1,11 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   Maximize, Minimize, Mic, Pause, Play, Square, RotateCcw, X, FileText, 
-  ArrowLeftRight, Music, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, 
+  ArrowLeftRight, ArrowUpDown, Music, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, 
   Copy, Check, Search, Table, Presentation, FileCode
 } from 'lucide-react';
 import { FileIconBadge } from './FileIconBadge';
+import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
@@ -506,10 +507,18 @@ export function CenterMenu({
             {setPreviewScrollMode && (
               <button
                 onClick={() => setPreviewScrollMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
-                className="px-2 py-1 bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-200 dark:border-stone-700 items-center gap-1 transition-colors cursor-pointer flex shadow-sm"
-                title="Basculer entre défilement vertical et horizontal"
+                className={`px-2 py-1 text-[10px] sm:text-xs rounded-lg border items-center gap-1 transition-all cursor-pointer flex shadow-sm font-bold ${
+                  previewScrollMode === 'horizontal'
+                    ? 'bg-orange-100 dark:bg-orange-950/50 text-orange-700 dark:text-orange-300 border-orange-400 dark:border-orange-600 ring-1 ring-orange-400'
+                    : 'bg-white dark:bg-stone-800 hover:bg-stone-100 dark:hover:bg-stone-700 text-stone-800 dark:text-stone-200 border-stone-200 dark:border-stone-700'
+                }`}
+                title={previewScrollMode === 'vertical' ? "Activer le défilement horizontal (de gauche à droite)" : "Activer le défilement vertical"}
               >
-                <ArrowLeftRight className="w-3 h-3 text-stone-500" />
+                {previewScrollMode === 'horizontal' ? (
+                  <ArrowLeftRight className="w-3 h-3 text-orange-600 dark:text-orange-400" />
+                ) : (
+                  <ArrowUpDown className="w-3 h-3 text-stone-500" />
+                )}
                 <span>{previewScrollMode === 'vertical' ? 'Vertical' : 'Horizontal'}</span>
               </button>
             )}
@@ -615,9 +624,16 @@ export function CenterMenu({
 
           const currentUrl = resolvedUrl || activePreviewItem?.url || '';
 
-          // 1. PDF: Native PDF toolbar is 100% visible (page 2/13, zoom, rotate, download, print)
-          // Starts directly below header with NO bloated intermediate row!
+          // 1. PDF: Native PDF toolbar in Vertical mode, or Horizontal page reader in Horizontal mode!
           if (isPdf) {
+            if (previewScrollMode === 'horizontal') {
+              return (
+                <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
+                  <PdfHorizontalViewer url={currentUrl} docZoom={docZoom} />
+                </div>
+              );
+            }
+
             return (
               <div className="w-full h-full flex flex-col bg-white dark:bg-stone-900 overflow-hidden">
                 {currentUrl ? (
@@ -676,8 +692,15 @@ export function CenterMenu({
                 </div>
 
                 <div 
-                  className="flex-1 w-full h-full overflow-y-auto px-6 sm:px-12 md:px-20 py-8 select-text leading-relaxed font-serif text-stone-900 dark:text-stone-100"
-                  style={{ zoom: `${docZoom}%` }}
+                  className={`flex-1 w-full h-full select-text leading-relaxed font-serif text-stone-900 dark:text-stone-100 ${
+                    previewScrollMode === 'horizontal'
+                      ? 'overflow-x-auto overflow-y-hidden px-8 sm:px-12 py-8'
+                      : 'overflow-y-auto px-6 sm:px-12 md:px-20 py-8'
+                  }`}
+                  style={{ 
+                    zoom: `${docZoom}%`,
+                    ...(previewScrollMode === 'horizontal' ? { columnWidth: '500px', columnGap: '40px', height: '100%' } : {})
+                  }}
                 >
                   {docxHtml ? (
                     <div 
