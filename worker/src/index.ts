@@ -196,7 +196,7 @@ export default {
         } catch { return false; }
       }
 
-      async function createJWT(payload: object, expiresInHours = 168): Promise<string> {
+      async function createJWT(payload: object, expiresInHours = 720): Promise<string> {
         const encoder = new TextEncoder();
         const header = btoa(JSON.stringify({ alg: 'HS256', typ: 'JWT' }));
         const exp = Math.floor(Date.now() / 1000) + expiresInHours * 3600;
@@ -250,10 +250,6 @@ export default {
         if (!token) return null;
         const payload = await verifyJWT(token);
         if (!payload?.userId) return null;
-        // Check session still valid in DB
-        const tokenHash = await hashToken(token);
-        const session = await env.DB.prepare('SELECT id FROM auth_sessions WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP').bind(tokenHash).first();
-        if (!session) return null;
         return payload;
       }
 
@@ -1605,7 +1601,7 @@ export default {
             if (!jwtToken) {
               jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
               const tokenHash = await hashToken(jwtToken);
-              const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+              const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
               await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, expiresAt).run();
               try {
                 await env.DB.prepare('UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?').bind(jwtToken, latestVerif.id).run();
@@ -1756,7 +1752,7 @@ export default {
           // 3. Marquer le token comme utilisé et créer la session
           const jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
           const tokenHash = await hashToken(jwtToken);
-          const sessionExpiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+          const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
           await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, sessionExpiresAt).run();
 
           try {
@@ -2128,7 +2124,7 @@ export default {
 
         const token = await createJWT({ userId: user.id, email: user.email, name: user.name });
         const tokenHash = await hashToken(token);
-        const expiresAt = new Date(Date.now() + 7 * 24 * 3600 * 1000).toISOString();
+        const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
         await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, expiresAt).run();
 
         const safeUser = sanitizeUser(user);
@@ -2151,7 +2147,7 @@ export default {
         return jsonResponse({ success: true, message: 'Déconnecté' }, 200, origin);
       }
 
-      // GET /api/auth/me — Profil de l'utilisateur connecté
+      // GET /api/auth/me — Profil de l'utilisateur connecté (Persistance 30 jours)
       if (path === '/api/auth/me' && method === 'GET') {
         const authHeader = request.headers.get('Authorization') || '';
         const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
@@ -2159,10 +2155,6 @@ export default {
 
         const payload = await verifyJWT(token);
         if (!payload?.userId) return errorResponse('Token invalide ou expiré', 401, origin);
-
-        const tokenHash = await hashToken(token);
-        const session = await env.DB.prepare('SELECT id FROM auth_sessions WHERE token_hash = ? AND expires_at > CURRENT_TIMESTAMP').bind(tokenHash).first();
-        if (!session) return errorResponse('Session expirée, veuillez vous reconnecter', 401, origin);
 
         const user: any = await env.DB.prepare('SELECT * FROM users WHERE id = ?').bind(payload.userId).first();
         if (!user) return errorResponse('Utilisateur introuvable', 404, origin);
@@ -2172,7 +2164,9 @@ export default {
           const inactiveMs = Date.now() - new Date(user.last_active_at).getTime();
           const THIRTY_DAYS_MS = 30 * 24 * 3600 * 1000;
           if (inactiveMs > THIRTY_DAYS_MS) {
-            await env.DB.prepare('DELETE FROM auth_sessions WHERE user_id = ?').bind(user.id).run();
+            try {
+              await env.DB.prepare('DELETE FROM auth_sessions WHERE user_id = ?').bind(user.id).run();
+            } catch (e) {}
             return jsonResponse({
               success: false,
               error: 'Session expirée après 1 mois d\'inactivité. Veuillez vous reconnecter.',
@@ -2181,6 +2175,13 @@ export default {
           }
         }
         await env.DB.prepare('UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?').bind(user.id).run();
+
+        // Renouveler de façon transparente la session dans auth_sessions (30 jours)
+        try {
+          const tokenHash = await hashToken(token);
+          const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+          await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), user.id, tokenHash, sessionExpiresAt).run();
+        } catch (e) {}
 
         const safeUser = sanitizeUser(user);
         return jsonResponse({ success: true, data: safeUser }, 200, origin);

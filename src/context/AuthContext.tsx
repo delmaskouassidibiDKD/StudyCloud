@@ -53,14 +53,118 @@ export function useAuth(): AuthContextValue {
   return ctx;
 }
 
+// ─── Helpers & Initial State ─────────────────────────────────────────────────
+
+const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000; // 30 jours (1 mois)
+
+function parseJwtPayload(token: string): any {
+  try {
+    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
+    return JSON.parse(atob(base64));
+  } catch {
+    return null;
+  }
+}
+
+/**
+ * Récupère immédiatement et de façon synchrone la session locale enregistrée
+ * pour éviter tout flash ou redirection vers la page de connexion au rechargement.
+ */
+function getStoredAuth(): { user: AuthUser | null; token: string | null } {
+  try {
+    const storedToken = localStorage.getItem('sc_auth_token');
+    if (!storedToken) return { user: null, token: null };
+
+    // Vérifier la règle d'inactivité stricte de 1 mois (30 jours)
+    const lastActiveStr = localStorage.getItem('sc_last_active_at');
+    if (lastActiveStr) {
+      const lastActive = parseInt(lastActiveStr, 10);
+      if (Date.now() - lastActive > ONE_MONTH_MS) {
+        // Plus de 30 jours sans utiliser l'application : session expirée, reconnexion requise
+        clearUserDataOnLogout();
+        return { user: null, token: null };
+      }
+    }
+
+    // 1. Tenter de charger l'objet utilisateur complet en cache
+    const rawCachedUser = localStorage.getItem('sc_auth_user');
+    if (rawCachedUser) {
+      try {
+        const parsed = JSON.parse(rawCachedUser);
+        if (parsed && parsed.id) {
+          return { user: parsed, token: storedToken };
+        }
+      } catch {}
+    }
+
+    // 2. Sinon, reconstituer immédiatement l'utilisateur à partir des champs du profil enregistrés
+    const userId = localStorage.getItem('unifolder_user_id');
+    const userName = localStorage.getItem('unifolder_user_name');
+    if (userId && userName) {
+      const reconstructed: AuthUser = {
+        id: userId,
+        name: userName,
+        email: localStorage.getItem('unifolder_user_email') || '',
+        provider: 'email',
+        school: localStorage.getItem('unifolder_user_school') || '',
+        filiere: localStorage.getItem('unifolder_user_filiere') || '',
+        country: localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire",
+        level: '',
+        bio: '',
+        phone: localStorage.getItem('unifolder_user_phone') || '',
+        avatar_url: localStorage.getItem('unifolder_user_avatar') || null,
+        profession: localStorage.getItem('unifolder_user_profession') || undefined,
+        is_onboarded: 1,
+        is_student: localStorage.getItem('unifolder_is_student') === 'false' ? 0 : 1,
+        email_verified: 1,
+        created_at: new Date().toISOString(),
+        has_password: true,
+        has_security_questions: true,
+      };
+      return { user: reconstructed, token: storedToken };
+    }
+
+    // 3. Fallback JWT
+    const payload = parseJwtPayload(storedToken);
+    if (payload && (payload.userId || payload.user?.id)) {
+      const fallbackUser: AuthUser = {
+        id: payload.userId || payload.user?.id,
+        name: payload.name || payload.user?.name || 'Étudiant',
+        email: payload.email || payload.user?.email || '',
+        provider: 'email',
+        school: '',
+        filiere: '',
+        country: "Côte d'Ivoire",
+        level: '',
+        bio: '',
+        phone: '',
+        avatar_url: null,
+        is_onboarded: 1,
+        email_verified: 1,
+        created_at: new Date().toISOString(),
+        has_password: true,
+        has_security_questions: true,
+      };
+      return { user: fallbackUser, token: storedToken };
+    }
+
+    return { user: null, token: storedToken };
+  } catch {
+    return { user: null, token: null };
+  }
+}
+
 // ─── Provider ─────────────────────────────────────────────────────────────────
 
 export function AuthProvider({ children }: { children: React.ReactNode }) {
-  const [user, setUser] = useState<AuthUser | null>(null);
-  const [token, setToken] = useState<string | null>(null);
-  const [isLoading, setIsLoading] = useState(true); // true = vérification du token en cours
+  // Initialisation synchrone : l'utilisateur est reconnu dès le 1er rendu si connecté
+  const [initialSession] = useState(() => getStoredAuth());
+  const [user, setUser] = useState<AuthUser | null>(() => initialSession.user);
+  const [token, setToken] = useState<string | null>(() => initialSession.token);
+  // Si on a déjà un utilisateur connecté en cache, aucun chargement bloquant n'est nécessaire
+  const [isLoading, setIsLoading] = useState<boolean>(() => !initialSession.user && Boolean(initialSession.token));
 
-  // Au montage : vérifier si un token valide existe dans localStorage et tester l'inactivité de 1 mois (30 jours)
+  // Au montage : rafraîchir l'activité et synchroniser les données avec le Worker
   useEffect(() => {
     const storedToken = localStorage.getItem('sc_auth_token');
     if (!storedToken) {
@@ -68,23 +172,24 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       return;
     }
 
-    const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+    // Vérifier l'inactivité de 30 jours (1 mois)
     const lastActiveStr = localStorage.getItem('sc_last_active_at');
     if (lastActiveStr) {
       const lastActive = parseInt(lastActiveStr, 10);
       if (Date.now() - lastActive > ONE_MONTH_MS) {
-        // Plus d'un mois d'inactivité : session expirée, reconnexion obligatoire !
-        localStorage.removeItem('sc_auth_token');
-        localStorage.removeItem('sc_last_active_at');
+        // Plus d'un mois d'inactivité : session expirée
+        clearUserDataOnLogout();
+        setUser(null);
+        setToken(null);
         setIsLoading(false);
         return;
       }
     }
 
-    // Rafraîchir l'activité
+    // Rafraîchir le timestamp d'activité
     localStorage.setItem('sc_last_active_at', Date.now().toString());
 
-    // Valider le token auprès du Worker
+    // Valider et mettre à jour le profil en arrière-plan auprès du Worker
     StudyCloudAPI.getMe(storedToken)
       .then((res: any) => {
         if (res.success && res.data) {
@@ -92,6 +197,7 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           localStorage.removeItem('sc_verification_expired_notice');
           setUser(res.data);
           setToken(storedToken);
+          localStorage.setItem('sc_auth_user', JSON.stringify(res.data));
           localStorage.setItem('sc_last_active_at', Date.now().toString());
           // Sync user info in localStorage for the rest of the app
           localStorage.setItem('unifolder_user_id', res.data.id);
@@ -106,39 +212,22 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
           }
           // Hydrater automatiquement les données Cloudflare D1 de l'utilisateur
           restoreUserDataFromCloud(res.data.id).catch(() => {});
-        } else {
-          clearUserDataOnLogout();
         }
       })
       .catch((err: any) => {
-        if (err?.status === 401 || err?.status === 403 || err?.status === 410) {
+        // SEULEMENT si le serveur signale explicitement que le compte a été supprimé (404)
+        // ou que la session a dépassé 1 mois d'inactivité côté serveur
+        if (
+          err?.status === 404 ||
+          err?.data?.code === 'SESSION_EXPIRED_INACTIVE' ||
+          err?.message?.includes("1 mois d'inactivité")
+        ) {
           clearUserDataOnLogout();
-          return;
+          setUser(null);
+          setToken(null);
         }
-
-        // Erreur réseau pure — on garde la session locale si le token existe
-        // (mode offline-first : pas de déconnexion forcée pour les comptes actifs)
-        try {
-          const payload = parseJwtPayload(storedToken);
-          if (payload && payload.exp * 1000 > Date.now()) {
-            // Ne pas restaurer en offline un compte non finalisé dont le délai est passé
-            if (payload.user && Number(payload.user.is_onboarded) !== 1) {
-              clearUserDataOnLogout();
-              return;
-            }
-            setUser(payload.user as AuthUser);
-            setToken(storedToken);
-            localStorage.setItem('unifolder_user_id', payload.user.id);
-            localStorage.setItem('unifolder_user_name', payload.user.name || 'Étudiant');
-            if (payload.user.avatar_url) {
-              localStorage.setItem('unifolder_user_avatar', payload.user.avatar_url);
-            }
-          } else {
-            clearUserDataOnLogout();
-          }
-        } catch {
-          clearUserDataOnLogout();
-        }
+        // En cas d'erreur réseau, de coupure temporaire ou de rechargement de page :
+        // ON NE DÉCONNECTE JAMAIS l'utilisateur ! Il reste dans sa session.
       })
       .finally(() => {
         setIsLoading(false);
@@ -154,7 +243,10 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
     localStorage.removeItem('sc_onb_last_active_default');
     localStorage.removeItem('dkd_verification_status');
     localStorage.removeItem('sc_email_verified_signal');
+    
+    // Mémoriser le token, l'utilisateur complet et l'activité
     localStorage.setItem('sc_auth_token', newToken);
+    localStorage.setItem('sc_auth_user', JSON.stringify(newUser));
     localStorage.setItem('sc_last_active_at', Date.now().toString());
     localStorage.setItem('unifolder_user_id', newUser.id);
     localStorage.setItem('unifolder_user_name', newUser.name);
@@ -173,7 +265,14 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
   }, []);
 
   const updateProfile = useCallback((data: Partial<AuthUser>) => {
-    setUser((prev) => (prev ? { ...prev, ...data } : prev));
+    setUser((prev) => {
+      if (!prev) return prev;
+      const updated = { ...prev, ...data };
+      try {
+        localStorage.setItem('sc_auth_user', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
     if (data.avatar_url !== undefined) {
       if (data.avatar_url) {
         localStorage.setItem('unifolder_user_avatar', data.avatar_url);
@@ -230,15 +329,4 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       {children}
     </AuthContext.Provider>
   );
-}
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
-
-function parseJwtPayload(token: string): any {
-  try {
-    const base64 = token.split('.')[1].replace(/-/g, '+').replace(/_/g, '/');
-    return JSON.parse(atob(base64));
-  } catch {
-    return null;
-  }
 }

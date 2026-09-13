@@ -21,6 +21,7 @@ export function isUserLoggedIn(): boolean {
 export function clearUserDataOnLogout(): void {
   const userKeys = [
     'sc_auth_token',
+    'sc_auth_user',
     'sc_last_active_at',
     'unifolder_user_id',
     'unifolder_user_name',
