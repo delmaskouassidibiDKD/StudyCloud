@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Trash2, Edit2, Clock, Calendar, Check, X, ZoomIn, ZoomOut, MapPin, User } from 'lucide-react';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
+import { StudyCloudAPI } from '../services/api';
 
 interface ScheduleMenuViewProps {
   onBack: () => void;
@@ -99,6 +100,61 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
     } catch (e) {}
   }, [zoomLevel]);
 
+  // Synchronisation avec Cloudflare D1
+  useEffect(() => {
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    // 1. Charger la configuration (jours, heures, zoom)
+    StudyCloudAPI.getScheduleConfig(userId)
+      .then((res: any) => {
+        if (res && res.success && res.data) {
+          if (res.data.days_json) {
+            try {
+              const d = JSON.parse(res.data.days_json);
+              if (Array.isArray(d) && d.length > 0) setDays(d);
+            } catch (e) {}
+          }
+          if (res.data.hours_json) {
+            try {
+              const h = JSON.parse(res.data.hours_json);
+              if (Array.isArray(h) && h.length > 0) setHours(h);
+            } catch (e) {}
+          }
+          if (res.data.zoom_level) {
+            setZoomLevel(Number(res.data.zoom_level));
+          }
+        }
+      })
+      .catch(() => {});
+
+    // 2. Charger les créneaux réels
+    StudyCloudAPI.getScheduleSlots(userId)
+      .then((res: any) => {
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const mapped: Record<string, ScheduleEntry> = {};
+          for (const s of res.data) {
+            const k = `${s.day}_${s.hour_slot}`;
+            mapped[k] = {
+              subject: s.subject,
+              room: s.room || '',
+              note: s.note_or_teacher || '',
+              color: s.color || COLORS[0].bg,
+            };
+          }
+          setScheduleData(mapped);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Mettre à jour la configuration vers D1 dès modification
+  useEffect(() => {
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const timer = setTimeout(() => {
+      StudyCloudAPI.updateScheduleConfig(userId, JSON.stringify(days), JSON.stringify(hours), zoomLevel).catch(() => {});
+    }, 1000);
+    return () => clearTimeout(timer);
+  }, [days, hours, zoomLevel]);
+
   useEffect(() => {
     const handleRestore = () => {
       try {
@@ -190,15 +246,29 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
     if (!activeSlot) return;
     const key = `${activeSlot.day}_${activeSlot.hour}`;
     const updated = { ...scheduleData };
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+
     if (!subjectInput.trim()) {
       delete updated[key];
+      StudyCloudAPI.deleteScheduleSlot({ userId, day: activeSlot.day, hourSlot: activeSlot.hour }).catch(() => {});
     } else {
-      updated[key] = {
+      const entry: ScheduleEntry = {
         subject: subjectInput.trim(),
         room: roomInput.trim(),
         note: noteInput.trim(),
         color: selectedColor
       };
+      updated[key] = entry;
+      StudyCloudAPI.addScheduleSlot({
+        id: `${userId}-${activeSlot.day}-${activeSlot.hour}`,
+        userId,
+        day: activeSlot.day,
+        hourSlot: activeSlot.hour,
+        subject: entry.subject,
+        room: entry.room,
+        noteOrTeacher: entry.note,
+        color: entry.color,
+      }).catch(() => {});
     }
     setScheduleData(updated);
     try {

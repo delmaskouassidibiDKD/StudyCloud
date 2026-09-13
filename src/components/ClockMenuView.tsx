@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Clock as ClockIcon, Bell, Timer as TimerIcon, Watch, Plus, Trash2, Play, Pause, RotateCcw, Flag, Volume2, X } from 'lucide-react';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
+import { StudyCloudAPI } from '../services/api';
 
 interface ClockMenuViewProps {
   onBack: () => void;
@@ -80,6 +81,25 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
     triggerDebouncedCloudBackup();
   }, [alarms]);
 
+  // Synchronisation avec Cloudflare D1
+  useEffect(() => {
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.getAlarms(userId)
+      .then((res: any) => {
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const mapped: AlarmItem[] = res.data.map((row: any) => ({
+            id: row.id,
+            time: row.time,
+            label: row.label || 'Alarme',
+            active: Boolean(row.is_active),
+            days: row.days_json ? JSON.parse(row.days_json) : ['Tous les jours'],
+          }));
+          setAlarms(mapped);
+        }
+      })
+      .catch(() => {});
+  }, []);
+
   useEffect(() => {
     const handleRestore = () => {
       const saved = localStorage.getItem('unifolder_clock_alarms') || localStorage.getItem('unifolder_alarms');
@@ -123,16 +143,39 @@ export const ClockMenuView: React.FC<ClockMenuViewProps> = ({ onBack }) => {
       days: ['Tous les jours']
     };
     setAlarms(prev => [...prev, created]);
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.createAlarm({
+      id: created.id,
+      userId,
+      time: created.time,
+      label: created.label,
+      isActive: created.active ? 1 : 0,
+      daysJson: JSON.stringify(created.days)
+    }).catch(() => {});
     setNewAlarmLabel('');
     setIsAddAlarmOpen(false);
   };
 
   const toggleAlarmActive = (id: string) => {
-    setAlarms(prev => prev.map(a => a.id === id ? { ...a, active: !a.active } : a));
+    const target = alarms.find(a => a.id === id);
+    if (target) {
+      const updated = { ...target, active: !target.active };
+      setAlarms(prev => prev.map(a => a.id === id ? updated : a));
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      StudyCloudAPI.createAlarm({
+        id: updated.id,
+        userId,
+        time: updated.time,
+        label: updated.label,
+        isActive: updated.active ? 1 : 0,
+        daysJson: JSON.stringify(updated.days)
+      }).catch(() => {});
+    }
   };
 
   const deleteAlarm = (id: string) => {
     setAlarms(prev => prev.filter(a => a.id !== id));
+    StudyCloudAPI.deleteAlarm(id).catch(() => {});
   };
 
   // ---------------- 3. STOPWATCH STATE ----------------

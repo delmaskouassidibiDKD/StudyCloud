@@ -2737,8 +2737,16 @@ export default {
           }
 
           query += ' ORDER BY created_at DESC';
-          const { results } = await env.DB.prepare(query).bind(...params).all();
-          return jsonResponse({ success: true, data: results }, 200, origin);
+          const { results } = await env.DB.prepare(query).bind(...params).all<any>();
+          const foldersWithFiles = await Promise.all(
+            (results || []).map(async (folder: any) => {
+              const { results: files } = await env.DB.prepare(
+                'SELECT * FROM shared_folder_files WHERE shared_folder_id = ?'
+              ).bind(folder.id).all();
+              return { ...folder, files: files || [] };
+            })
+          );
+          return jsonResponse({ success: true, data: foldersWithFiles }, 200, origin);
         }
 
         if (method === 'POST') {
@@ -2953,11 +2961,29 @@ export default {
         if (method === 'POST') {
           const body: any = await request.json();
           const { id, userId, day, hourSlot, subject, room, noteOrTeacher, color } = body;
+          const slotId = id || `${userId}-${day}-${hourSlot}`;
           await env.DB.prepare(`
             INSERT INTO schedule_slots (id, user_id, day, hour_slot, subject, room, note_or_teacher, color)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          `).bind(id || crypto.randomUUID(), userId, day, hourSlot, subject, room || '', noteOrTeacher || '', color || '#EA580C').run();
-          return jsonResponse({ success: true }, 201, origin);
+            ON CONFLICT(id) DO UPDATE SET
+              subject = excluded.subject,
+              room = excluded.room,
+              note_or_teacher = excluded.note_or_teacher,
+              color = excluded.color
+          `).bind(slotId, userId, day, hourSlot, subject, room || '', noteOrTeacher || '', color || '#EA580C').run();
+          return jsonResponse({ success: true, id: slotId }, 201, origin);
+        }
+        if (method === 'DELETE') {
+          const id = url.searchParams.get('id');
+          const userId = url.searchParams.get('userId');
+          const day = url.searchParams.get('day');
+          const hourSlot = url.searchParams.get('hourSlot');
+          if (id) {
+            await env.DB.prepare('DELETE FROM schedule_slots WHERE id = ?').bind(id).run();
+          } else if (userId && day && hourSlot) {
+            await env.DB.prepare('DELETE FROM schedule_slots WHERE user_id = ? AND day = ? AND hour_slot = ?').bind(userId, day, hourSlot).run();
+          }
+          return jsonResponse({ success: true, message: 'Créneau supprimé' }, 200, origin);
         }
       }
 
@@ -2978,12 +3004,25 @@ export default {
             INSERT INTO grades (id, user_id, trimester, subject_name, coefficient, sub_grades_json, average, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
+              subject_name = excluded.subject_name,
+              coefficient = excluded.coefficient,
               sub_grades_json = excluded.sub_grades_json,
               average = excluded.average,
               updated_at = CURRENT_TIMESTAMP
           `).bind(id || crypto.randomUUID(), userId, trimester || 1, subjectName, coefficient || 1.0, subGradesJson || '[]', average || 0.0).run();
           return jsonResponse({ success: true }, 200, origin);
         }
+        if (method === 'DELETE') {
+          const id = url.searchParams.get('id');
+          if (id) await env.DB.prepare('DELETE FROM grades WHERE id = ?').bind(id).run();
+          return jsonResponse({ success: true, message: 'Note supprimée' }, 200, origin);
+        }
+      }
+
+      if (path.startsWith('/api/grades/') && method === 'DELETE') {
+        const id = path.split('/')[3];
+        await env.DB.prepare('DELETE FROM grades WHERE id = ?').bind(id).run();
+        return jsonResponse({ success: true, message: 'Note supprimée' }, 200, origin);
       }
 
       // ----------------------------------------------------------------------
@@ -3033,12 +3072,32 @@ export default {
         if (method === 'POST') {
           const body: any = await request.json();
           const { id, userId, title, startDate, endDate, allDay, color, description, location } = body;
+          const eventId = id || crypto.randomUUID();
           await env.DB.prepare(`
             INSERT INTO calendar_events (id, user_id, title, start_date, end_date, all_day, color, description, location)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-          `).bind(id || crypto.randomUUID(), userId, title, startDate, endDate || null, allDay ? 1 : 0, color || '#EA580C', description || '', location || '').run();
-          return jsonResponse({ success: true }, 201, origin);
+            ON CONFLICT(id) DO UPDATE SET
+              title = excluded.title,
+              start_date = excluded.start_date,
+              end_date = excluded.end_date,
+              all_day = excluded.all_day,
+              color = excluded.color,
+              description = excluded.description,
+              location = excluded.location
+          `).bind(eventId, userId, title, startDate, endDate || null, allDay ? 1 : 0, color || '#EA580C', description || '', location || '').run();
+          return jsonResponse({ success: true, id: eventId }, 201, origin);
         }
+        if (method === 'DELETE') {
+          const id = url.searchParams.get('id');
+          if (id) await env.DB.prepare('DELETE FROM calendar_events WHERE id = ?').bind(id).run();
+          return jsonResponse({ success: true, message: 'Événement supprimé' }, 200, origin);
+        }
+      }
+
+      if (path.startsWith('/api/calendar/') && method === 'DELETE') {
+        const id = path.split('/')[3];
+        await env.DB.prepare('DELETE FROM calendar_events WHERE id = ?').bind(id).run();
+        return jsonResponse({ success: true, message: 'Événement supprimé' }, 200, origin);
       }
 
       // ----------------------------------------------------------------------
@@ -3057,9 +3116,25 @@ export default {
           await env.DB.prepare(`
             INSERT INTO alarms (id, user_id, time, label, is_active, days_json)
             VALUES (?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              time = excluded.time,
+              label = excluded.label,
+              is_active = excluded.is_active,
+              days_json = excluded.days_json
           `).bind(id || crypto.randomUUID(), userId, time, label || 'Réveil étude', isActive ? 1 : 0, daysJson || '["Tous les jours"]').run();
           return jsonResponse({ success: true }, 201, origin);
         }
+        if (method === 'DELETE') {
+          const id = url.searchParams.get('id');
+          if (id) await env.DB.prepare('DELETE FROM alarms WHERE id = ?').bind(id).run();
+          return jsonResponse({ success: true, message: 'Alarme supprimée' }, 200, origin);
+        }
+      }
+
+      if (path.startsWith('/api/alarms/') && method === 'DELETE') {
+        const id = path.split('/')[3];
+        await env.DB.prepare('DELETE FROM alarms WHERE id = ?').bind(id).run();
+        return jsonResponse({ success: true, message: 'Alarme supprimée' }, 200, origin);
       }
 
       if (path === '/api/study-sessions') {
@@ -3125,9 +3200,25 @@ export default {
           await env.DB.prepare(`
             INSERT INTO products (id, seller_id, title, description, price, category, image_urls_json, is_boosted, boost_formula, boost_views_target, boost_end_date)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            ON CONFLICT(id) DO UPDATE SET
+              title = excluded.title,
+              description = excluded.description,
+              price = excluded.price,
+              category = excluded.category,
+              image_urls_json = excluded.image_urls_json,
+              is_boosted = excluded.is_boosted,
+              boost_formula = excluded.boost_formula,
+              boost_views_target = excluded.boost_views_target,
+              boost_end_date = excluded.boost_end_date
           `).bind(id || crypto.randomUUID(), sellerId, title, description || '', price, category || 'Électronique', imageUrlsJson || '[]', isBoosted ? 1 : 0, boostFormula || null, boostViewsTarget || 0, boostEndDate || null).run();
           return jsonResponse({ success: true }, 201, origin);
         }
+      }
+
+      if (path.startsWith('/api/products/') && method === 'DELETE') {
+        const id = path.split('/')[3];
+        await env.DB.prepare('DELETE FROM products WHERE id = ?').bind(id).run();
+        return jsonResponse({ success: true, message: 'Produit supprimé' }, 200, origin);
       }
 
       if (path === '/api/cart') {
@@ -3151,6 +3242,16 @@ export default {
             VALUES (?, ?, ?, ?)
           `).bind(crypto.randomUUID(), userId, productId, quantity || 1).run();
           return jsonResponse({ success: true }, 201, origin);
+        }
+        if (method === 'DELETE') {
+          const productId = url.searchParams.get('productId');
+          const cartItemId = url.searchParams.get('id');
+          if (userId && productId) {
+            await env.DB.prepare('DELETE FROM cart_items WHERE user_id = ? AND product_id = ?').bind(userId, productId).run();
+          } else if (cartItemId) {
+            await env.DB.prepare('DELETE FROM cart_items WHERE id = ?').bind(cartItemId).run();
+          }
+          return jsonResponse({ success: true, message: 'Article retiré du panier' }, 200, origin);
         }
       }
 

@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { ArrowLeft, Plus, Trash2, Edit2, Award, BookOpen, Check, X, Calculator, Sparkles } from 'lucide-react';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
+import { StudyCloudAPI } from '../services/api';
 
 interface GradeItem {
   id: string;
@@ -99,7 +100,52 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
       localStorage.setItem('user_grades_trimesters_data', JSON.stringify(trimestersData));
       triggerDebouncedCloudBackup();
     } catch (e) {}
+
+    // Synchronisation automatique vers Cloudflare D1
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const timer = setTimeout(() => {
+      Object.entries(trimestersData).forEach(([trim, items]) => {
+        items.forEach((item) => {
+          StudyCloudAPI.saveGrade({
+            id: item.id,
+            userId,
+            trimester: Number(trim) || 1,
+            subjectName: item.subject,
+            coefficient: item.coefficient,
+            subGradesJson: JSON.stringify(item.subGrades || []),
+            average: item.grade
+          }).catch(() => {});
+        });
+      });
+    }, 1500);
+    return () => clearTimeout(timer);
   }, [trimestersData]);
+
+  // Récupération des notes depuis Cloudflare D1 au montage
+  useEffect(() => {
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.getGrades(userId)
+      .then((res: any) => {
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const mapped: Record<string, GradeItem[]> = { '1': [], '2': [], '3': [] };
+          for (const row of res.data) {
+            const trimKey = String(row.trimester || '1');
+            if (!mapped[trimKey]) mapped[trimKey] = [];
+            mapped[trimKey].push({
+              id: row.id,
+              subject: row.subject_name,
+              coefficient: Number(row.coefficient) || 1.0,
+              grade: Number(row.average) || 0,
+              subGrades: row.sub_grades_json ? JSON.parse(row.sub_grades_json) : [],
+            });
+          }
+          if (mapped['1'].length > 0 || mapped['2'].length > 0 || mapped['3'].length > 0) {
+            setTrimestersData(mapped);
+          }
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     try {
@@ -368,6 +414,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
       ...prev,
       [activeTrimestre]: updatedList
     }));
+    StudyCloudAPI.deleteGrade(deleteId).catch(() => {});
     setDeleteId(null);
     setSuccessMessage('Matière supprimée avec succès !');
     setTimeout(() => setSuccessMessage(null), 3000);

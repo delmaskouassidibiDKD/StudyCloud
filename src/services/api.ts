@@ -333,6 +333,16 @@ export const StudyCloudAPI = {
     return request('/api/schedule/slots', { method: 'POST', body: JSON.stringify(slot) });
   },
 
+  async deleteScheduleSlot(options: { id?: string; userId?: string; day?: string; hourSlot?: string }) {
+    let endpoint = '/api/schedule/slots?';
+    if (options.id) {
+      endpoint += `id=${encodeURIComponent(options.id)}`;
+    } else if (options.userId && options.day && options.hourSlot) {
+      endpoint += `userId=${encodeURIComponent(options.userId)}&day=${encodeURIComponent(options.day)}&hourSlot=${encodeURIComponent(options.hourSlot)}`;
+    }
+    return request(endpoint, { method: 'DELETE' });
+  },
+
   // --------------------------------------------------------------------------
   // Notes & Bulletins
   // --------------------------------------------------------------------------
@@ -342,6 +352,10 @@ export const StudyCloudAPI = {
 
   async saveGrade(grade: any) {
     return request('/api/grades', { method: 'POST', body: JSON.stringify(grade) });
+  },
+
+  async deleteGrade(id: string) {
+    return request(`/api/grades/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 
   // --------------------------------------------------------------------------
@@ -370,6 +384,10 @@ export const StudyCloudAPI = {
     return request('/api/calendar', { method: 'POST', body: JSON.stringify(event) });
   },
 
+  async deleteCalendarEvent(id: string) {
+    return request(`/api/calendar/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
   // --------------------------------------------------------------------------
   // Alarmes & Minuteur d'étude
   // --------------------------------------------------------------------------
@@ -379,6 +397,10 @@ export const StudyCloudAPI = {
 
   async createAlarm(alarm: any) {
     return request('/api/alarms', { method: 'POST', body: JSON.stringify(alarm) });
+  },
+
+  async deleteAlarm(id: string) {
+    return request(`/api/alarms/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 
   async recordStudySession(session: { id?: string; userId: string; durationSeconds: number; matiereName?: string }) {
@@ -406,12 +428,20 @@ export const StudyCloudAPI = {
     return request('/api/products', { method: 'POST', body: JSON.stringify(product) });
   },
 
+  async deleteProduct(id: string) {
+    return request(`/api/products/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
   async getCart(userId: string) {
     return request<{ success: boolean; data: any[] }>(`/api/cart?userId=${encodeURIComponent(userId)}`);
   },
 
   async addToCart(userId: string, productId: string, quantity = 1) {
     return request('/api/cart', { method: 'POST', body: JSON.stringify({ userId, productId, quantity }) });
+  },
+
+  async removeFromCart(userId: string, productId: string) {
+    return request(`/api/cart?userId=${encodeURIComponent(userId)}&productId=${encodeURIComponent(productId)}`, { method: 'DELETE' });
   },
 
   // --------------------------------------------------------------------------

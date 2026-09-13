@@ -155,12 +155,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   }, [cartItemIds]);
 
   const toggleCartItem = (productId: string, productTitle: string) => {
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
     if (cartItemIds.includes(productId)) {
       setCartItemIds(prev => prev.filter(id => id !== productId));
       triggerToast(`"${productTitle}" retiré du panier`);
+      StudyCloudAPI.removeFromCart(userId, productId).catch(() => {});
     } else {
       setCartItemIds(prev => [...prev, productId]);
       triggerToast(`"${productTitle}" ajouté au panier !`);
+      StudyCloudAPI.addToCart(userId, productId, 1).catch(() => {});
     }
   };
 
@@ -176,6 +179,46 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3000);
   };
+
+  useEffect(() => {
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    // 1. Charger les produits réels depuis Cloudflare D1
+    StudyCloudAPI.getProducts()
+      .then((res) => {
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const mapped: ProductItem[] = res.data.map((row: any) => ({
+            id: String(row.id),
+            title: row.title,
+            description: row.description || '',
+            price: row.price || '0 FCFA',
+            category: row.category || 'Cours',
+            date: row.created_at ? new Date(row.created_at).toLocaleDateString('fr-FR') : '01/09/2026',
+            views: row.views || 0,
+            sales: row.sales || 0,
+            imageUrl: row.image_urls_json ? (JSON.parse(row.image_urls_json)[0] || undefined) : undefined,
+            imageUrls: row.image_urls_json ? JSON.parse(row.image_urls_json) : [],
+            isBoosted: Boolean(row.is_boosted),
+            boostStatus: row.is_boosted ? 'active' : undefined,
+            boostFormula: row.boost_formula || undefined,
+            boostViewsTarget: row.boost_views_target || undefined,
+            boostViewsCurrent: row.views || 0,
+            boostEndDate: row.boost_end_date || undefined,
+          }));
+          setProductsList(mapped);
+        }
+      })
+      .catch(() => {});
+
+    // 2. Charger le panier depuis D1
+    StudyCloudAPI.getCart(userId)
+      .then((res) => {
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const ids = res.data.map((item: any) => String(item.product_id || item.id));
+          setCartItemIds(ids);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handleStorageChange = () => {

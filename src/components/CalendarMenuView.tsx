@@ -5,6 +5,7 @@ import dayGridPlugin from '@fullcalendar/daygrid';
 import timeGridPlugin from '@fullcalendar/timegrid';
 import interactionPlugin from '@fullcalendar/interaction';
 import frLocale from '@fullcalendar/core/locales/fr';
+import { StudyCloudAPI } from '../services/api';
 
 interface CalendarEventItem {
   id: string;
@@ -49,6 +50,28 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
   useEffect(() => {
     localStorage.setItem('unifolder_calendar_data', JSON.stringify(events));
   }, [events]);
+
+  // Synchronisation avec Cloudflare D1
+  useEffect(() => {
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.getCalendarEvents(userId)
+      .then((res: any) => {
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const mapped: CalendarEventItem[] = res.data.map((row: any) => ({
+            id: row.id,
+            title: row.title,
+            start: row.start_date,
+            end: row.end_date || undefined,
+            allDay: Boolean(row.all_day),
+            color: row.color || '#2563EB',
+            description: row.description || undefined,
+            location: row.location || undefined,
+          }));
+          setEvents(mapped);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   // Modal State for New Event
   const [isAddModalOpen, setIsAddModalOpen] = useState(false);
@@ -123,6 +146,18 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
     };
 
     setEvents(prev => [...prev, created]);
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.createCalendarEvent({
+      id: created.id,
+      userId,
+      title: created.title,
+      startDate: created.start,
+      endDate: created.end || null,
+      allDay: created.allDay ? 1 : 0,
+      color: created.color,
+      description: created.description || '',
+      location: created.location || '',
+    }).catch(() => {});
 
     // Reset Form
     setNewEventTitle('');
@@ -133,6 +168,7 @@ export const CalendarMenuView: React.FC<CalendarMenuViewProps> = ({ onBack }) =>
 
   const handleDeleteEvent = (id: string) => {
     setEvents(prev => prev.filter(e => e.id !== id));
+    StudyCloudAPI.deleteCalendarEvent(id).catch(() => {});
     setSelectedEvent(null);
   };
 

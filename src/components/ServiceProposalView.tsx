@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Menu, X, Package, List, Megaphone, BarChart2, Plus, Trash2, Check, DollarSign, Eye, Upload, Loader2, Share2, Search, ChevronDown, Store, Phone, MessageCircle, User, Camera, Edit3, Zap } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { StudyCloudAPI } from '../services/api';
 
 interface ProductItem {
   id: string;
@@ -79,20 +80,38 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
   const handleApplyFieldEdit = (e: React.FormEvent) => {
     e.preventDefault();
     if (!isFieldModified) return;
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    let nextName = shopName;
+    let nextPhone = shopPhone;
+    let nextWhatsapp = shopWhatsapp;
+    let nextAvatar = shopAvatarUrl;
+
     if (editingField === 'name') {
-      setShopName(tempFieldValue.trim() || 'DKD Technologies');
+      nextName = tempFieldValue.trim() || 'DKD Technologies';
+      setShopName(nextName);
       triggerToast("Nom de la boutique mis à jour !");
     } else if (editingField === 'phone') {
-      setShopPhone(tempFieldValue.trim() || '+225 07 00 00 00 00');
+      nextPhone = tempFieldValue.trim() || '+225 07 00 00 00 00';
+      setShopPhone(nextPhone);
       triggerToast("Numéro de téléphone mis à jour !");
     } else if (editingField === 'whatsapp') {
-      setShopWhatsapp(tempFieldValue.trim() || '+225 07 00 00 00 00');
+      nextWhatsapp = tempFieldValue.trim() || '+225 07 00 00 00 00';
+      setShopWhatsapp(nextWhatsapp);
       triggerToast("Numéro WhatsApp mis à jour !");
     } else if (editingField === 'avatar') {
-      setShopAvatarUrl(tempFieldValue);
+      nextAvatar = tempFieldValue;
+      setShopAvatarUrl(nextAvatar);
       triggerToast("Photo de profil mise à jour !");
     }
     setEditingField(null);
+
+    StudyCloudAPI.updateShopProfile({
+      userId,
+      shopName: nextName,
+      shopPhone: nextPhone,
+      shopWhatsapp: nextWhatsapp,
+      shopAvatarUrl: nextAvatar
+    }).catch(() => {});
   };
 
   const isFieldModified = (() => {
@@ -182,6 +201,48 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
     localStorage.setItem('unifolder_published_products', JSON.stringify(products));
   }, [products]);
 
+  useEffect(() => {
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    // 1. Récupérer le profil de la boutique depuis D1
+    StudyCloudAPI.getShopProfile(userId)
+      .then((res) => {
+        if (res.success && res.data) {
+          if (res.data.shop_name) setShopName(res.data.shop_name);
+          if (res.data.shop_phone || res.data.phone) setShopPhone(res.data.shop_phone || res.data.phone);
+          if (res.data.shop_whatsapp || res.data.whatsapp) setShopWhatsapp(res.data.shop_whatsapp || res.data.whatsapp);
+          if (res.data.shop_avatar_url || res.data.avatar_url) setShopAvatarUrl(res.data.shop_avatar_url || res.data.avatar_url);
+        }
+      })
+      .catch((e) => console.warn('D1 Shop profile fetch:', e));
+
+    // 2. Récupérer les produits réels depuis D1
+    StudyCloudAPI.getProducts()
+      .then((res) => {
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const mapped: ProductItem[] = res.data.map((row: any) => ({
+            id: String(row.id),
+            title: row.title,
+            description: row.description || '',
+            price: row.price || '0 FCFA',
+            category: row.category || 'Cours',
+            date: row.created_at ? new Date(row.created_at).toLocaleDateString('fr-FR') : '01/09/2026',
+            views: row.views || 0,
+            sales: row.sales || 0,
+            imageUrl: row.image_urls_json ? (JSON.parse(row.image_urls_json)[0] || undefined) : undefined,
+            imageUrls: row.image_urls_json ? JSON.parse(row.image_urls_json) : [],
+            isBoosted: Boolean(row.is_boosted),
+            boostStatus: row.is_boosted ? 'active' : undefined,
+            boostFormula: row.boost_formula || undefined,
+            boostViewsTarget: row.boost_views_target || undefined,
+            boostViewsCurrent: row.views || 0,
+            boostEndDate: row.boost_end_date || undefined
+          }));
+          setProducts(mapped);
+        }
+      })
+      .catch((e) => console.warn('D1 Products fetch:', e));
+  }, []);
+
   const triggerToast = (msg: string) => {
     setToastMessage(msg);
     setTimeout(() => setToastMessage(null), 2500);
@@ -233,6 +294,18 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
       };
 
       setProducts((prev) => [newItem, ...prev]);
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      StudyCloudAPI.createProduct({
+        id: newItem.id,
+        sellerId: userId,
+        title: newItem.title,
+        description: newItem.description,
+        price: newItem.price,
+        category: newItem.category,
+        imageUrlsJson: JSON.stringify(newItem.imageUrls || []),
+        isBoosted: false
+      }).catch((e) => console.warn('Sync product to D1:', e));
+
       setNewTitle('');
       setNewDesc('');
       setNewPrice('');
@@ -262,6 +335,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
         setDeleteSuccess(true);
         setTimeout(() => {
           setProducts(products.filter(p => p.id !== productToDelete.id));
+          StudyCloudAPI.deleteProduct(productToDelete.id).catch(() => {});
           triggerToast("Produit supprimé avec succès.");
           setDeleteSuccess(false);
           setProductToDelete(null);

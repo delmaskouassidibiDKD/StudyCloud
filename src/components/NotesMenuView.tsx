@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Plus, X, Trash2, Image as ImageIcon, Pin, Check } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
+import { StudyCloudAPI } from '../services/api';
 
 interface NotesMenuViewProps {
   onBack: () => void;
@@ -124,6 +125,27 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     localStorage.setItem('unifolder_keep_notes', JSON.stringify(notes));
     triggerDebouncedCloudBackup();
   }, [notes]);
+
+  // Synchronisation avec Cloudflare D1
+  useEffect(() => {
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.getNotes(userId)
+      .then((res: any) => {
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const mapped: NoteItem[] = res.data.map((row: any) => ({
+            id: row.id,
+            title: row.title || '',
+            content: row.content || '',
+            color: row.color && row.color !== '#FDFBF7' ? row.color : '#25272C',
+            isPinned: Boolean(row.is_pinned),
+            imageUrl: row.image_url || undefined,
+            createdAt: row.created_at || new Date().toISOString(),
+          }));
+          setNotes(mapped);
+        }
+      })
+      .catch(() => {});
+  }, []);
 
   useEffect(() => {
     const handleRestore = () => {
@@ -363,16 +385,27 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
 
   const handleSaveAndBack = () => {
     if (editorTitle.trim() || editorContent.trim() || editorImage) {
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
       if (activeNote) {
         // Update existing note
-        setNotes(prev => prev.map(n => n.id === activeNote.id ? {
-          ...n,
+        const updatedNote = {
+          ...activeNote,
           title: editorTitle,
           content: editorContent,
           color: editorColor,
           isPinned: editorPinned,
           imageUrl: editorImage
-        } : n));
+        };
+        setNotes(prev => prev.map(n => n.id === activeNote.id ? updatedNote : n));
+        StudyCloudAPI.saveNote({
+          id: updatedNote.id,
+          userId,
+          title: updatedNote.title,
+          content: updatedNote.content,
+          color: updatedNote.color,
+          isPinned: updatedNote.isPinned,
+          imageUrl: updatedNote.imageUrl
+        }).catch(() => {});
       } else {
         // Create new note
         const newNote: NoteItem = {
@@ -385,6 +418,15 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
           createdAt: new Date().toISOString()
         };
         setNotes(prev => [newNote, ...prev]);
+        StudyCloudAPI.saveNote({
+          id: newNote.id,
+          userId,
+          title: newNote.title,
+          content: newNote.content,
+          color: newNote.color,
+          isPinned: newNote.isPinned,
+          imageUrl: newNote.imageUrl
+        }).catch(() => {});
       }
     }
     setViewMode('list');
@@ -392,6 +434,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
 
   const handleDeleteNote = (id: string) => {
     setNotes(prev => prev.filter(n => n.id !== id));
+    StudyCloudAPI.deleteNote(id).catch(() => {});
     setViewMode('list');
   };
 
@@ -471,6 +514,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
                   onClick={() => {
                     if (activeNote) {
                       setNotes(prev => prev.filter(n => n.id !== activeNote.id));
+                      StudyCloudAPI.deleteNote(activeNote.id).catch(() => {});
                     }
                     setShowDeleteConfirm(false);
                     setViewMode('list');

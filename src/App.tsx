@@ -132,6 +132,13 @@ export default function App() {
 
   // Tous les useState ci-dessous (nécessaires avant tout return conditionnel)
   const [folders, setFolders] = useState<SharedFolder[]>(() => {
+    const saved = localStorage.getItem('unifolder_shares');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+      } catch (e) {}
+    }
     return INITIAL_FOLDERS.map((f) => ({ ...f, isPasswordProtected: true }));
   });
 
@@ -638,6 +645,46 @@ export default function App() {
   }, [folders]);
 
   useEffect(() => {
+    if (!isAuthenticated || !user?.id) return;
+    StudyCloudAPI.getShares(user.id)
+      .then((res) => {
+        if (res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const mapped: SharedFolder[] = res.data.map((row: any) => ({
+            id: row.id,
+            title: row.title,
+            description: row.description || '',
+            category: row.category || 'Cours',
+            author: row.author_name || user.name || 'Étudiant',
+            school: row.school || user.school || '',
+            country: row.country || user.country || "Côte d'Ivoire",
+            createdAt: row.created_at || new Date().toISOString(),
+            files: Array.isArray(row.files)
+              ? row.files.map((f: any) => ({
+                  id: f.id || f.file_id || crypto.randomUUID(),
+                  name: f.name,
+                  size: f.size || 0,
+                  type: f.type || 'file',
+                  url: f.file_url || f.url || '',
+                }))
+              : [],
+            totalSize: row.total_size || 0,
+            downloadsCount: row.downloads_count || 0,
+            isPasswordProtected: Boolean(row.is_password_protected),
+            password: row.password_hash || undefined,
+            viewsCount: row.views_count || 0,
+            shareCode: row.share_code,
+            shareUrl: row.share_url,
+            qrCodeData: row.qr_code_data,
+            isPublic: Boolean(row.is_public),
+            allowDownload: Boolean(row.allow_download),
+          }));
+          setFolders(mapped);
+        }
+      })
+      .catch((err) => console.warn('Failed to load user shares from D1:', err));
+  }, [isAuthenticated, user?.id]);
+
+  useEffect(() => {
     const handleRestore = () => {
       const saved = localStorage.getItem('unifolder_shares');
       if (saved) {
@@ -653,7 +700,7 @@ export default function App() {
   const handleAddFolder = (newFolder: SharedFolder) => {
     setFolders((prev) => [newFolder, ...prev]);
     setCurrentTab('folders');
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userId = user?.id || localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.createShare({
       id: newFolder.id,
       userId,
@@ -662,10 +709,14 @@ export default function App() {
       category: newFolder.category,
       authorName: newFolder.author,
       school: newFolder.school,
-      isPublic: true,
+      country: newFolder.country,
+      isPublic: newFolder.isPublic !== undefined ? newFolder.isPublic : true,
       isPasswordProtected: newFolder.isPasswordProtected,
       totalSize: newFolder.totalSize,
       files: newFolder.files,
+      shareCode: newFolder.shareCode,
+      shareUrl: newFolder.shareUrl,
+      qrCodeData: newFolder.qrCodeData,
     }).catch((e) => console.warn('Sync share to cloud:', e));
   };
 
