@@ -112,7 +112,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       console.error('[AssistantChat] Erreur appel IA:', err);
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
-        text: `⚠️ Erreur de connexion avec l'IA (${err.message || 'Serveur indisponible'}).\n\nVérifiez que le code du fichier 'worker/CODE_A_COLLER_DANS_CLOUDFLARE_AI.js' est bien déployé sur Cloudflare et que la liaison 'AI' est bien ajoutée dans les paramètres de votre Worker.`,
+        text: `⚠️ Erreur IA : ${err.message || 'Impossible de joindre le serveur'}.`,
         sender: 'ai',
       };
       setMessages(prev => [...prev, errorMsg]);

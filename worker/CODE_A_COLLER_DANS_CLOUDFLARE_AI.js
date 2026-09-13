@@ -3,7 +3,7 @@
 // ============================================================================
 // Domaine de déploiement : https://studycloud-ai.delmaskouassidibi.workers.dev
 // Liaison Workers AI supportée : STUDYCLOUD-IA ou AI
-// Modèle IA : @cf/meta/llama-3-8b-instruct
+// Modèle IA principal : @cf/meta/llama-3.1-8b-instruct (remplace l'ancien llama-3 déprécié)
 //
 // POUR METTRE À JOUR DANS CLOUDFLARE :
 // 1. Allez sur votre Cloudflare Dashboard > Workers & Pages > studycloud-ai.
@@ -45,7 +45,7 @@ export default {
       return new Response(JSON.stringify({
         service: "StudyCloud Workers AI Assistant (DKD Technologies)",
         status: hasAi ? "ready" : "missing_ai_binding",
-        model: "@cf/meta/llama-3-8b-instruct",
+        model: "@cf/meta/llama-3.1-8b-instruct",
         ai_binding_detected: hasAi,
         detected_bindings: availableBindings,
         message: hasAi 
@@ -98,13 +98,37 @@ export default {
         });
       }
 
-      // 3. Exécution du modèle LLaMA 3 8B Instruct de Cloudflare Workers AI
-      const model = "@cf/meta/llama-3-8b-instruct";
-      const aiResult = await ai.run(model, {
-        messages: messages,
-        max_tokens: 1200,
-        temperature: 0.65,
-      });
+      // 3. Exécution avec les modèles LLaMA 3.1 / 3.2 récents de Cloudflare
+      const candidateModels = [
+        "@cf/meta/llama-3.1-8b-instruct",
+        "@cf/meta/llama-3.2-3b-instruct",
+        "@cf/meta/llama-3.1-8b-instruct-fast",
+        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "@cf/mistral/mistral-7b-instruct-v0.2"
+      ];
+
+      let aiResult = null;
+      let usedModel = "";
+      let lastError = null;
+
+      for (const m of candidateModels) {
+        try {
+          aiResult = await ai.run(m, {
+            messages: messages,
+            max_tokens: 1200,
+            temperature: 0.65,
+          });
+          usedModel = m;
+          break;
+        } catch (err) {
+          lastError = err;
+          console.warn(`Modèle ${m} a échoué:`, err?.message || err);
+        }
+      }
+
+      if (!aiResult) {
+        throw lastError || new Error("Aucun modèle IA n'a pu répondre");
+      }
 
       // Extraction du texte de réponse
       let replyText = "";
@@ -119,7 +143,7 @@ export default {
       return new Response(JSON.stringify({
         success: true,
         response: replyText,
-        model: model,
+        model: usedModel,
         timestamp: new Date().toISOString()
       }), {
         status: 200,
