@@ -246,13 +246,20 @@ export function CenterMenu({
   const isPpt = ['PPTX', 'PPT'].includes(ext);
   const isText = ['TXT', 'MD', 'JSON', 'JS', 'TS', 'PY', 'HTML', 'CSS', 'SQL', 'XML', 'LOG', 'JAVA', 'C', 'CPP', 'SH', 'ENV'].includes(ext);
 
+  // Le zoom applicatif StudyCloud doit apparaître UNIQUEMENT dans la partie lecture automatique et soulignement (surlignage)
+  const isLectureEtSoulignement = Boolean(
+    isPdf
+      ? (pdfViewerMode === 'interactive' || previewScrollMode === 'horizontal' || speechState === 'playing' || speechState === 'paused')
+      : (speechState === 'playing' || speechState === 'paused')
+  );
+
   useEffect(() => {
-    if (!isCenterFullscreen) {
+    if (!isLectureEtSoulignement) {
       setDocZoom(100);
     }
-  }, [isCenterFullscreen]);
+  }, [isLectureEtSoulignement]);
 
-  const effectiveZoom = isCenterFullscreen ? docZoom : 100;
+  const effectiveZoom = isLectureEtSoulignement ? docZoom : 100;
 
   // Listen to external speech toggle from header
   useEffect(() => {
@@ -869,8 +876,8 @@ export function CenterMenu({
               </button>
             )}
 
-            {/* Application Zoom Controls : Apparaît UNIQUEMENT en mode agrandi (plein écran) */}
-            {isCenterFullscreen && (
+            {/* Application Zoom Controls : Apparaît UNIQUEMENT dans la partie lecture automatique et soulignement (surlignage) */}
+            {isLectureEtSoulignement && (
               <div className="flex items-center bg-white dark:bg-stone-800 rounded-lg border border-stone-200 dark:border-stone-700 p-0.5 shadow-sm animate-fadeIn">
                 <button
                   onClick={() => setDocZoom(prev => Math.max(40, prev - 15))}
@@ -1099,12 +1106,10 @@ export function CenterMenu({
               <div className="w-full h-full flex flex-col items-center overflow-auto bg-stone-100 dark:bg-stone-900">
                 {currentUrl ? (
                   <div 
-                    className="transition-all duration-150 ease-out origin-top flex-1 w-full flex flex-col"
+                    className="flex-1 w-full h-full flex flex-col"
                     style={{
-                      width: `${Math.max(40, effectiveZoom)}%`,
-                      height: `${Math.max(100, effectiveZoom)}%`,
-                      minWidth: '100%',
-                      minHeight: '100%'
+                      width: '100%',
+                      height: '100%'
                     }}
                   >
                     <object
