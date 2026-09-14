@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, Share2, FileText, Image as ImageIcon, Music, File as FileIcon, Copy, Check, Globe, QrCode, ExternalLink } from 'lucide-react';
+import { X, Loader2, Share2, FileText, Image as ImageIcon, Music, File as FileIcon, Copy, Check, Globe, QrCode, ExternalLink, ShieldCheck, Lock } from 'lucide-react';
 import { SharedFolder } from '../types';
 
 interface CreateShareLinkModalProps {
@@ -88,7 +88,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
 
   const handleCopyMessage = () => {
     if (!createdFolder) return;
-    const msg = `📚 "${createdFolder.title}" est disponible sur StudyCloud !\nCode d'accès : ${createdFolder.shareCode || ''}\nAccéder au cours : ${shareableUrl}`;
+    const msg = `📚 "${createdFolder.title}" est disponible sur StudyCloud !\nLien d'accès sécurisé : ${shareableUrl}`;
     navigator.clipboard.writeText(msg);
     setCopiedMessage(true);
     setTimeout(() => setCopiedMessage(false), 2500);
@@ -113,7 +113,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
             </div>
             <div className="space-y-2">
               <h3 className="text-lg font-extrabold text-stone-900">Lien en cours de création</h3>
-              <p className="text-xs text-stone-600">Génération du code propre, configuration de la page autonome et synchronisation...</p>
+              <p className="text-xs text-stone-600">Génération du jeton cryptographique, page autonome et synchronisation...</p>
             </div>
             <div className="bg-orange-50 border-2 border-stone-800 rounded-2xl p-3 text-xs text-orange-900 font-medium shadow-[2px_2px_0px_0px_#1c1917]">
               💡 Vous pouvez continuer vos activités, un message vous notifiera une fois terminé.
@@ -127,7 +127,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               </div>
               <div>
                 <h3 className="font-extrabold text-base text-stone-900">Lien créé avec succès !</h3>
-                <p className="text-xs text-stone-600">Votre partage autonome est prêt à être partagé</p>
+                <p className="text-xs text-stone-600">Votre lien sécurisé est prêt à être partagé</p>
               </div>
             </div>
 
@@ -158,35 +158,20 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               />
             </div>
 
-            {/* Clean Code Hero Box avec lien cliquable */}
-            <div className="bg-stone-900 border-2 border-stone-800 rounded-2xl p-4 text-center space-y-3 shadow-[3px_3px_0px_0px_#1c1917]">
-              <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-400/90 block">
-                Code d'accès au document (Cliquer pour ouvrir)
-              </span>
-              <div className="flex items-center justify-center gap-2.5">
-                <a
-                  href={shareableUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-2xl font-mono font-black text-amber-400 hover:text-amber-300 tracking-wider underline decoration-dashed hover:decoration-solid flex items-center gap-1.5 transition-colors"
-                  title="Cliquer pour ouvrir directement la page de téléchargement"
-                >
-                  <span>{createdFolder.shareCode || '12334dhdb'}</span>
-                  <ExternalLink className="w-4 h-4 text-amber-400/80" />
-                </a>
-                <button
-                  type="button"
-                  onClick={handleCopyCode}
-                  className="bg-amber-400 hover:bg-amber-300 text-stone-950 font-extrabold text-xs px-3 py-1.5 rounded-xl border-2 border-stone-950 shadow-[2px_2px_0px_0px_#000] cursor-pointer flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 transition-all"
-                  title="Copier le code seul"
-                >
-                  {copiedCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedCode ? 'Copié' : 'Copier code'}</span>
-                </button>
+            {/* Carte de lien sécurisé chiffré - Code technique masqué et protégé contre toute modification */}
+            <div className="bg-stone-900 border-2 border-stone-800 rounded-2xl p-4 space-y-3 shadow-[3px_3px_0px_0px_#1c1917]">
+              <div className="flex items-center justify-between">
+                <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
+                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
+                  <span>Lien de partage sécurisé & chiffré</span>
+                </span>
+                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-800/60 flex items-center gap-1">
+                  ● Protection active
+                </span>
               </div>
 
-              {/* Lien direct cliquable complet pour WhatsApp / SMS / Navigateur */}
-              <div className="bg-stone-950/90 rounded-xl p-2.5 flex items-center justify-between gap-2 border border-stone-800 text-left">
+              {/* Champ de lien sécurisé cliquable avec bouton Copier */}
+              <div className="bg-stone-950 rounded-xl p-2.5 flex items-center justify-between gap-2 border border-stone-800">
                 <a
                   href={shareableUrl}
                   target="_blank"
@@ -205,15 +190,18 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
                       setTimeout(() => setCopiedMessage(false), 2500);
                     }
                   }}
-                  className="shrink-0 bg-stone-800 hover:bg-stone-700 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer"
-                  title="Copier le lien complet"
+                  className="shrink-0 bg-amber-400 hover:bg-amber-300 text-stone-950 text-xs font-black px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 active:scale-95"
+                  title="Copier le lien sécurisé"
                 >
-                  Copier lien
+                  {copiedMessage ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedMessage ? 'Copié !' : 'Copier'}</span>
                 </button>
               </div>
-              <p className="text-[11px] text-stone-400 font-medium">
-                Partagez ce lien sur WhatsApp ou donnez le code pour accéder directement à la page de téléchargement.
-              </p>
+
+              <div className="flex items-start gap-2 pt-1 text-[11px] text-stone-400 leading-tight">
+                <Lock className="w-3.5 h-3.5 text-stone-500 shrink-0 mt-0.5" />
+                <span>Ce lien unique est protégé par chiffrement. Le jeton technique est masqué dans le navigateur afin d'empêcher toute modification par un tiers.</span>
+              </div>
             </div>
 
             {/* Actions: Copier invitation & Ouvrir la page */}

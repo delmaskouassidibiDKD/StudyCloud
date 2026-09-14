@@ -19,21 +19,12 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
   onClose,
 }) => {
   const [copied, setCopied] = React.useState(false);
-  const [copiedCode, setCopiedCode] = React.useState(false);
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(shareUrl)}&margin=8`;
 
   const handleCopy = () => {
     navigator.clipboard.writeText(shareUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
-  };
-
-  const handleCopyCode = () => {
-    if (shareCode) {
-      navigator.clipboard.writeText(shareCode);
-      setCopiedCode(true);
-      setTimeout(() => setCopiedCode(false), 2000);
-    }
   };
 
   const handleDownloadQR = () => {
@@ -64,11 +55,9 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
           <p className="text-xs text-stone-600 mt-1 line-clamp-1 px-2 font-medium">{folderTitle}</p>
 
           <div className="flex items-center justify-center gap-2 mt-2.5">
-            {shareCode && (
-              <span className="text-[10px] font-mono font-black bg-stone-900 text-amber-400 px-2.5 py-1 rounded-lg border border-stone-800">
-                Code : {shareCode}
-              </span>
-            )}
+            <span className="text-[10px] font-bold bg-emerald-100 text-emerald-900 px-2.5 py-1 rounded-lg border border-emerald-400 flex items-center gap-1">
+              <span>🔒</span> Lien sécurisé
+            </span>
             <span className="text-[10px] font-bold bg-white text-stone-700 px-2 py-0.5 rounded-lg border border-stone-400 flex items-center gap-1">
               <span>📍</span> {country}
             </span>
@@ -99,30 +88,6 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
         </div>
 
         <div className="space-y-3">
-          {shareCode && (
-            <div className="flex items-center justify-between bg-stone-900 border-2 border-stone-800 rounded-xl px-3 py-2 shadow-[2px_2px_0px_0px_#1c1917]">
-              <div className="flex items-center gap-2">
-                <span className="text-[10px] uppercase font-bold text-stone-400">Code d'accès :</span>
-                <a
-                  href={shareUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-sm font-mono font-black text-amber-400 hover:text-amber-300 underline decoration-dashed transition-colors"
-                  title="Ouvrir la page de téléchargement"
-                >
-                  {shareCode}
-                </a>
-              </div>
-              <button
-                type="button"
-                onClick={handleCopyCode}
-                className="bg-amber-400 hover:bg-amber-300 text-stone-950 text-[11px] font-extrabold px-2.5 py-1 rounded-lg border border-stone-900 flex items-center gap-1 transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
-              >
-                {copiedCode ? <Check className="w-3 h-3" /> : <Copy className="w-3 h-3" />}
-                <span>{copiedCode ? 'Copié' : 'Copier le code'}</span>
-              </button>
-            </div>
-          )}
 
           <div className="flex items-center gap-2 bg-stone-100 border-2 border-stone-800 rounded-xl p-2.5 shadow-[2px_2px_0px_0px_#1c1917]">
             <input

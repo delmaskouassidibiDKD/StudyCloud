@@ -229,8 +229,8 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
                 {folder.title}
               </span>
               {folder.shareCode && (
-                <span className="text-[10px] font-mono font-black px-2 py-0.5 bg-stone-900 text-amber-400 border border-stone-800 dark:border-white/10 rounded-lg shadow-xs" title={`Code unique : ${folder.shareCode}`}>
-                  {folder.shareCode}
+                <span className="text-[10px] font-bold px-2 py-0.5 bg-stone-900 text-emerald-400 border border-stone-800 dark:border-white/10 rounded-lg shadow-xs flex items-center gap-1" title="Lien d'accès protégé et chiffré">
+                  <span>🔒</span> Sécurisé
                 </span>
               )}
             </div>

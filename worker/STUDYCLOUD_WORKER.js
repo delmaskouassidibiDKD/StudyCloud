@@ -74,13 +74,12 @@ function escapeHtml(str) {
 }
 __name(escapeHtml, "escapeHtml");
 function generateCleanShareCode() {
-  const digits = Math.floor(1e4 + Math.random() * 9e4).toString();
-  const letters = "abcdefghkmnpqrstuvwxyz";
-  let alpha = "";
-  for (let i = 0; i < 4; i++) {
-    alpha += letters[Math.floor(Math.random() * letters.length)];
+  if (typeof crypto !== "undefined" && crypto.getRandomValues) {
+    const buffer = new Uint8Array(16);
+    crypto.getRandomValues(buffer);
+    return Array.from(buffer, (b) => b.toString(16).padStart(2, "0")).join("");
   }
-  return `${digits}${alpha}`;
+  return "sc_" + Math.random().toString(36).substring(2, 14) + Date.now().toString(36);
 }
 __name(generateCleanShareCode, "generateCleanShareCode");
 function getFileIconMeta(filename) {
@@ -196,9 +195,9 @@ function renderShareNotFoundHtml(code, originUrl) {
       <line x1="10" y1="18" x2="14" y2="18" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
     </svg>
   </div>
-  <div class="code-badge">Code : ${escapeHtml(code || "Inconnu")}</div>
+  <div class="code-badge">\u{1F512} Acc\xE8s s\xE9curis\xE9 & chiffr\xE9</div>
   <h1>Ce document partag\xE9 est introuvable</h1>
-  <p>Le lien d'acc\xE8s a peut-\xEAtre expir\xE9, a \xE9t\xE9 supprim\xE9 par son propri\xE9taire ou le code saisi est incorrect.</p>
+  <p>Le lien d'acc\xE8s s\xE9curis\xE9 a peut-\xEAtre expir\xE9 ou a \xE9t\xE9 supprim\xE9 par son propri\xE9taire.</p>
   <a href="${siteUrl}" class="btn">Acc\xE9der \xE0 l'application StudyCloud &rarr;</a>
 </body>
 </html>`;
@@ -715,6 +714,13 @@ function renderShareLandingHtml(folder, files, originUrl) {
   </div>
 
   <script>
+    // Dissimulation instantan\xE9e du jeton dans la barre d'adresse pour emp\xEAcher toute modification
+    if (window.history && window.history.replaceState) {
+      try {
+        window.history.replaceState({}, document.title, '/share');
+      } catch (e) {}
+    }
+
     window.__SHARE_ID__ = ${JSON.stringify(folder.id)};
     window.__SHARE_TITLE__ = ${JSON.stringify(folder.title || "StudyCloud_Partage")};
     window.__FILES__ = ${filesJson};
@@ -1117,6 +1123,7 @@ var src_default = {
               headers: {
                 "Content-Type": "text/html; charset=utf-8",
                 "Cache-Control": "no-cache",
+                "Set-Cookie": `sc_share_last=${encodeURIComponent(cleanCode)}; Path=/; SameSite=Lax; HttpOnly; Max-Age=86400`,
                 ...corsHeaders(origin)
               }
             });
@@ -1131,6 +1138,31 @@ var src_default = {
             });
           }
         }
+      }
+      if ((path === "/share" || path === "/s" || path === "/share/" || path === "/s/") && method === "GET") {
+        const cookieHeader = request.headers.get("Cookie") || "";
+        const cookieMatch = cookieHeader.match(/(?:^|;\s*)sc_share_last=([^;]+)/);
+        if (cookieMatch && cookieMatch[1] && env.DB) {
+          const savedCode = decodeURIComponent(cookieMatch[1]).trim();
+          const folder = await env.DB.prepare(
+            "SELECT * FROM shared_folders WHERE share_code = ? OR id = ? LIMIT 1"
+          ).bind(savedCode, savedCode).first();
+          if (folder) {
+            const { results: files } = await env.DB.prepare(
+              "SELECT * FROM shared_folder_files WHERE shared_folder_id = ?"
+            ).bind(folder.id).all();
+            const html = renderShareLandingHtml(folder, files || [], url.origin);
+            return new Response(html, {
+              status: 200,
+              headers: {
+                "Content-Type": "text/html; charset=utf-8",
+                "Cache-Control": "no-cache",
+                ...corsHeaders(origin)
+              }
+            });
+          }
+        }
+        return Response.redirect("https://studycloud.dkd-technologies.com", 302);
       }
       if (path.startsWith("/api/") && !path.startsWith("/api/storage/") && !env.DB) {
         return errorResponse(

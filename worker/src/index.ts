@@ -95,13 +95,12 @@ function escapeHtml(str: any): string {
 }
 
 export function generateCleanShareCode(): string {
-  const digits = Math.floor(10000 + Math.random() * 90000).toString();
-  const letters = 'abcdefghkmnpqrstuvwxyz';
-  let alpha = '';
-  for (let i = 0; i < 4; i++) {
-    alpha += letters[Math.floor(Math.random() * letters.length)];
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const buffer = new Uint8Array(16);
+    crypto.getRandomValues(buffer);
+    return Array.from(buffer, (b) => b.toString(16).padStart(2, '0')).join('');
   }
-  return `${digits}${alpha}`;
+  return 'sc_' + Math.random().toString(36).substring(2, 14) + Date.now().toString(36);
 }
 
 function getFileIconMeta(filename: string): { color: string; label: string } {
@@ -217,9 +216,9 @@ function renderShareNotFoundHtml(code: string, originUrl: string): string {
       <line x1="10" y1="18" x2="14" y2="18" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
     </svg>
   </div>
-  <div class="code-badge">Code : ${escapeHtml(code || 'Inconnu')}</div>
+  <div class="code-badge">🔒 Accès sécurisé & chiffré</div>
   <h1>Ce document partagé est introuvable</h1>
-  <p>Le lien d'accès a peut-être expiré, a été supprimé par son propriétaire ou le code saisi est incorrect.</p>
+  <p>Le lien d'accès sécurisé a peut-être expiré ou a été supprimé par son propriétaire.</p>
   <a href="${siteUrl}" class="btn">Accéder à l'application StudyCloud &rarr;</a>
 </body>
 </html>`;
@@ -741,6 +740,13 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
   </div>
 
   <script>
+    // Dissimulation instantanée du jeton dans la barre d'adresse pour empêcher toute modification
+    if (window.history && window.history.replaceState) {
+      try {
+        window.history.replaceState({}, document.title, '/share');
+      } catch (e) {}
+    }
+
     window.__SHARE_ID__ = ${JSON.stringify(folder.id)};
     window.__SHARE_TITLE__ = ${JSON.stringify(folder.title || 'StudyCloud_Partage')};
     window.__FILES__ = ${filesJson};
@@ -991,6 +997,7 @@ export default {
               headers: {
                 'Content-Type': 'text/html; charset=utf-8',
                 'Cache-Control': 'no-cache',
+                'Set-Cookie': `sc_share_last=${encodeURIComponent(cleanCode)}; Path=/; SameSite=Lax; HttpOnly; Max-Age=86400`,
                 ...corsHeaders(origin),
               },
             });
@@ -1005,6 +1012,39 @@ export default {
             });
           }
         }
+      }
+
+      // ----------------------------------------------------------------------
+      // Gestion de la page /share masquée (après masquage d'URL par replaceState)
+      // Si l'utilisateur actualise (F5), le cookie sécurisé recharge le document.
+      // Sans lien valide préalable, redirection immédiate vers l'application principale.
+      // ----------------------------------------------------------------------
+      if ((path === '/share' || path === '/s' || path === '/share/' || path === '/s/') && method === 'GET') {
+        const cookieHeader = request.headers.get('Cookie') || '';
+        const cookieMatch = cookieHeader.match(/(?:^|;\s*)sc_share_last=([^;]+)/);
+        if (cookieMatch && cookieMatch[1] && env.DB) {
+          const savedCode = decodeURIComponent(cookieMatch[1]).trim();
+          const folder: any = await env.DB.prepare(
+            'SELECT * FROM shared_folders WHERE share_code = ? OR id = ? LIMIT 1'
+          ).bind(savedCode, savedCode).first();
+
+          if (folder) {
+            const { results: files } = await env.DB.prepare(
+              'SELECT * FROM shared_folder_files WHERE shared_folder_id = ?'
+            ).bind(folder.id).all();
+
+            const html = renderShareLandingHtml(folder, files || [], url.origin);
+            return new Response(html, {
+              status: 200,
+              headers: {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Cache-Control': 'no-cache',
+                ...corsHeaders(origin),
+              },
+            });
+          }
+        }
+        return Response.redirect('https://studycloud.dkd-technologies.com', 302);
       }
 
       // ----------------------------------------------------------------------

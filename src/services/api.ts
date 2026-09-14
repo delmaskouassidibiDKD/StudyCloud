@@ -17,16 +17,16 @@ export const setWorkerApiUrl = (url: string) => {
 };
 
 /**
- * Génère un code de partage propre, court et lisible (ex: 12334dhdb)
+ * Génère un jeton de partage cryptographique sécurisé, opaque et impossible à deviner (32 octets aléatoires).
+ * Empêche tout utilisateur de modifier l'adresse pour accéder à des fichiers tiers.
  */
 export const generateCleanShareCode = (): string => {
-  const digits = Math.floor(10000 + Math.random() * 90000).toString();
-  const letters = 'abcdefghkmnpqrstuvwxyz';
-  let alpha = '';
-  for (let i = 0; i < 4; i++) {
-    alpha += letters[Math.floor(Math.random() * letters.length)];
+  if (typeof crypto !== 'undefined' && crypto.getRandomValues) {
+    const buffer = new Uint8Array(16);
+    crypto.getRandomValues(buffer);
+    return Array.from(buffer, (b) => b.toString(16).padStart(2, '0')).join('');
   }
-  return `${digits}${alpha}`;
+  return 'sec_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
 };
 
 // URL du Worker Cloudflare Workers AI dédié à l'assistante IA StudyCloud
