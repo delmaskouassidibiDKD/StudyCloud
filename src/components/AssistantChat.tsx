@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers } from 'lucide-react';
+import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { FileIconBadge } from './FileIconBadge';
 import { MathText } from './MathText';
@@ -16,6 +16,8 @@ interface Message {
   reaction?: 'like' | 'dislike' | null;
   attachedFileName?: string;
   createdAt?: string;
+  model?: string;
+  isPowerMode?: boolean;
 }
 
 interface ConversationItem {
@@ -184,6 +186,15 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   
   // Création active suivie pour modification et itération continue
   const [activeCreation, setActiveCreation] = useState<AiCreation | null>(null);
+
+  // Mode Puissance (Délégation à Google Gemini sur studycloud-gemini)
+  const [isPowerMode, setIsPowerMode] = useState<boolean>(() => {
+    return localStorage.getItem('studycloud_ai_power_mode') === 'true';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('studycloud_ai_power_mode', String(isPowerMode));
+  }, [isPowerMode]);
   
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -539,7 +550,7 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
         })),
       ];
 
-      // 5. Appel à l'IA Cloudflare Workers AI avec session persistante & Neurone
+      // 5. Appel à l'IA Cloudflare Workers AI avec session persistante & Neurone (ou Gemini en Mode Puissance)
       const aiResult = await sendChatMessageToAi({
         messages: chatHistory,
         prompt: userText,
@@ -558,6 +569,8 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
         documentText: attachedFileContent,
         file_name: attachedFileName,
         fileName: attachedFileName,
+        powerMode: isPowerMode,
+        engine: isPowerMode ? 'gemini' : 'standard',
       });
 
       const rawResponseText = aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";
@@ -612,6 +625,8 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
         sender: 'ai',
         isStreaming: true,
         attachedFileName: attachedFileName || undefined,
+        model: aiResult.model,
+        isPowerMode: isPowerMode,
       };
       setMessages(prev => [...prev, initialAiMsg]);
 
@@ -742,6 +757,26 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
         </div>
 
         <div className="flex items-center gap-1.5">
+          {/* BOUTON PUISSANCE (DÉLÉGATION À GOOGLE GEMINI) */}
+          <button
+            type="button"
+            onClick={() => setIsPowerMode(prev => !prev)}
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border active:scale-95 ${
+              isPowerMode
+                ? 'bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white border-purple-300/60 shadow-lg shadow-purple-500/25 ring-2 ring-purple-500/30'
+                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border-zinc-700'
+            }`}
+            title={isPowerMode ? "Mode Puissance ACTIF (Google Gemini) - Cliquez pour repasser en mode standard" : "Activer le Mode Puissance (Délégation à Google Gemini sur studycloud-gemini)"}
+          >
+            <Zap className={`w-3.5 h-3.5 ${isPowerMode ? 'text-amber-300 fill-amber-300 animate-bounce' : 'text-zinc-400'}`} />
+            <span className="tracking-tight">{isPowerMode ? 'Puissance MAX' : 'Puissance'}</span>
+            <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-black uppercase ${
+              isPowerMode ? 'bg-white/25 text-white' : 'bg-zinc-700 text-zinc-400'
+            }`}>
+              {isPowerMode ? 'GEMINI' : 'OFF'}
+            </span>
+          </button>
+
           <button
             type="button"
             onClick={handleStartNewConversation}
@@ -889,6 +924,12 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
                     <div className="flex items-center gap-2">
                       <DnaLogo className="w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)] text-orange-500" glow={true} />
                       <span className="text-xs font-bold text-orange-500/90 tracking-wide uppercase">Assistant StudyCloud</span>
+                      {msg.isPowerMode && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 to-purple-500/20 border border-purple-500/40 text-[10px] font-black text-amber-300 shadow-sm" title="Réponse générée avec la puissance de Google Gemini (studycloud-gemini)">
+                          <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
+                          <span>Gemini Puissance</span>
+                        </span>
+                      )}
                     </div>
                     {msg.attachedFileName && (
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -1044,14 +1085,34 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
             e.preventDefault();
             handleSend();
           }}
-          className="flex flex-col gap-2 bg-[#282a2f] border border-zinc-700/60 rounded-3xl p-3 sm:p-3.5 focus-within:border-[#70a5ff]/70 transition-all shadow-lg mx-2 md:mx-4"
+          className={`flex flex-col gap-2 bg-[#282a2f] border rounded-3xl p-3 sm:p-3.5 transition-all shadow-lg mx-2 md:mx-4 ${
+            isPowerMode
+              ? 'border-purple-500/60 shadow-[0_0_20px_rgba(168,85,247,0.18)] focus-within:border-purple-400'
+              : 'border-zinc-700/60 focus-within:border-[#70a5ff]/70'
+          }`}
         >
+          {isPowerMode && (
+            <div className="flex items-center justify-between px-1 py-1 text-[11px] font-bold text-amber-300 border-b border-purple-500/25 mb-0.5">
+              <span className="flex items-center gap-1.5">
+                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400 animate-pulse" />
+                <span>Mode Puissance actif (Requêtes traitées par Google Gemini)</span>
+              </span>
+              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-purple-500/30 text-purple-200 uppercase font-black tracking-wider">
+                studycloud-gemini
+              </span>
+            </div>
+          )}
+
           <textarea
             ref={textareaRef}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder="Posez une question ou demandez une création (ex: 'fais-moi un quiz', 'ajoute 2 questions')..."
+            placeholder={
+              isPowerMode
+                ? "⚡ Mode Puissance (Google Gemini) : Posez votre question ou collez votre cours complexe..."
+                : "Posez une question ou demandez une création (ex: 'fais-moi un quiz', 'ajoute 2 questions')..."
+            }
             rows={3}
             className="w-full bg-transparent text-white placeholder-zinc-400 text-sm outline-none resize-none overflow-y-auto"
           />
@@ -1105,10 +1166,14 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
             <button
               type="submit"
               disabled={!inputValue.trim() || isTyping}
-              className="self-end p-2.5 bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0"
-              title="Envoyer"
+              className={`self-end p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 ${
+                isPowerMode
+                  ? 'bg-gradient-to-r from-amber-400 to-purple-500 hover:from-amber-500 hover:to-purple-600 text-white shadow-purple-500/30'
+                  : 'bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950'
+              }`}
+              title={isPowerMode ? "Envoyer avec Google Gemini (Mode Puissance)" : "Envoyer"}
             >
-              <Send className="w-4 h-4" />
+              {isPowerMode ? <Zap className="w-4 h-4 text-white fill-white" /> : <Send className="w-4 h-4" />}
             </button>
           </div>
         </form>

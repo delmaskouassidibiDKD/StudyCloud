@@ -29,6 +29,19 @@ export const setAiWorkerUrl = (url: string) => {
   localStorage.setItem('studycloud_ai_worker_url', url.trim());
 };
 
+// URL du Worker Cloudflare connecté à Google Gemini (Mode Puissance)
+export const getGeminiWorkerUrl = (): string => {
+  return (
+    (import.meta as any).env?.VITE_GEMINI_WORKER_URL ||
+    localStorage.getItem('studycloud_gemini_worker_url') ||
+    'https://studycloud-gemini.delmaskouassidibi.workers.dev'
+  );
+};
+
+export const setGeminiWorkerUrl = (url: string) => {
+  localStorage.setItem('studycloud_gemini_worker_url', url.trim());
+};
+
 export async function sendChatMessageToAi(params: {
   messages: Array<{ role: string; content: string }>;
   prompt?: string;
@@ -49,16 +62,22 @@ export async function sendChatMessageToAi(params: {
   documentText?: string;
   file_name?: string;
   fileName?: string;
+  powerMode?: boolean;
+  engine?: 'gemini' | 'standard' | string;
   [key: string]: any;
 }): Promise<{ response: string; success: boolean; model?: string; type?: string }> {
-  const mainWorkerChatUrl = `${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/chat`;
+  const isPowerMode = Boolean(params.powerMode || params.engine === 'gemini');
+  const geminiWorkerUrl = getGeminiWorkerUrl().replace(/\/+$/, '');
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
+  const mainWorkerChatUrl = `${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/chat`;
 
   const extractedDoc = params.attachedFileContent || params.file_content || params.fileContent || params.documentContent || params.documentText || '';
   const extractedDocName = params.attachedFileName || params.file_name || params.fileName || '';
 
   const payload = {
     ...params,
+    powerMode: isPowerMode,
+    engine: isPowerMode ? 'gemini' : (params.engine || 'standard'),
     message: params.prompt || params.message || '',
     prompt: params.prompt || params.message || '',
     conversation_id: params.conversationId || params.conversation_id || params.sessionId,
@@ -74,7 +93,50 @@ export async function sendChatMessageToAi(params: {
     fileName: extractedDocName,
   };
 
-  // 1. Appel en priorité absolue au Worker IA dédié (studycloud-ai / CODE_A_COLLER_DANS_CLOUDFLARE_AI.js)
+  // 1. SI LE MODE PUISSANCE EST ACTIVÉ : Appel en priorité absolue à Google Gemini (studycloud-gemini)
+  if (isPowerMode) {
+    try {
+      const geminiResponse = await fetch(geminiWorkerUrl, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(payload),
+      });
+
+      if (geminiResponse.ok) {
+        const data = await geminiResponse.json();
+        let text = '';
+        if (typeof data.response === 'string') {
+          text = data.response;
+        } else if (data.response?.response) {
+          text = data.response.response;
+        } else if (data.text) {
+          text = data.text;
+        } else if (data.message?.content) {
+          text = data.message.content;
+        } else if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
+          text = data.candidates[0].content.parts[0].text;
+        } else if (Array.isArray(data) && data[0]?.response?.response) {
+          text = data[0].response.response;
+        } else if (typeof data === 'string') {
+          text = data;
+        } else {
+          text = JSON.stringify(data);
+        }
+        return {
+          response: text,
+          success: true,
+          model: data.model || 'Google Gemini (studycloud-gemini)',
+          type: data.type
+        };
+      }
+    } catch (geminiErr) {
+      console.warn('Appel direct à studycloud-gemini indisponible, repli vers le Worker IA...', geminiErr);
+    }
+  }
+
+  // 2. Appel au Worker IA dédié (studycloud-ai / CODE_A_COLLER_DANS_CLOUDFLARE_AI.js)
   try {
     const aiResponse = await fetch(dedicatedAiUrl, {
       method: 'POST',

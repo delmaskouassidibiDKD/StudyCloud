@@ -375,6 +375,50 @@ export default {
       const requestedType = (body.requested_type || body.toolType || body.type || "").toLowerCase().trim();
       const userId = body.userId;
       const sessionId = body.sessionId || conversationId;
+      const isPowerMode = Boolean(body.powerMode || body.engine === "gemini");
+
+      // ------------------------------------------------------------------------
+      // MODE PUISSANCE : DÉLÉGATION À GOOGLE GEMINI (studycloud-gemini)
+      // ------------------------------------------------------------------------
+      if (isPowerMode) {
+        // 1. Détection liaison de service Cloudflare 'studycloud-gemini'
+        const geminiBinding = env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.GEMINI;
+        if (geminiBinding && typeof geminiBinding.fetch === "function") {
+          try {
+            const geminiRes = await geminiBinding.fetch(new Request(request.url, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body)
+            }));
+            if (geminiRes.ok) {
+              const resData = await geminiRes.json();
+              return new Response(JSON.stringify(resData), {
+                headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+              });
+            }
+          } catch (bindErr) {
+            console.warn("[Puissance] Erreur liaison service studycloud-gemini:", bindErr);
+          }
+        }
+
+        // 2. Appel direct par URL vers le worker studycloud-gemini
+        try {
+          const geminiExternalUrl = env?.GEMINI_WORKER_URL || "https://studycloud-gemini.delmaskouassidibi.workers.dev";
+          const extRes = await fetch(geminiExternalUrl, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body)
+          });
+          if (extRes.ok) {
+            const extData = await extRes.json();
+            return new Response(JSON.stringify(extData), {
+              headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+            });
+          }
+        } catch (extErr) {
+          console.warn("[Puissance] Erreur appel HTTP studycloud-gemini:", extErr);
+        }
+      }
 
       // 1. SYSTEM PROMPT MAÎTRE ("Le Méga-Neurone" de StudyCloud / DKDSCHOOL-NUMÉRIQUE)
       const masterSystemPrompt = `Tu es le tuteur pédagogique personnel d'élite de StudyCloud / DKDSCHOOL-NUMÉRIQUE, développé par DKD Technologies.
