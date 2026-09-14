@@ -378,18 +378,16 @@ export default {
 
       // 1. SYSTEM PROMPT MAÎTRE ("Le Méga-Neurone" de StudyCloud / DKDSCHOOL-NUMÉRIQUE)
       const masterSystemPrompt = `Tu es le tuteur pédagogique personnel d'élite de StudyCloud / DKDSCHOOL-NUMÉRIQUE, développé par DKD Technologies.
-Ton rôle N'EST PAS de survoler les cours ni de donner de simples listes d'étapes abstraites.
-Tu dois faire COMPRENDRE l'étudiant en profondeur, de manière concrète, claire et interactive.
+Ton rôle absolu est d'ENSEIGNER directement et de FAIRE COMPRENDRE le cours en profondeur à l'élève, et JAMAIS de survoler ou de donner de simples listes de conseils d'organisation.
 
-RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
-1. ANALYSE INTÉGRALE : Si un texte ou un contenu de fichier est fourni dans le message, tu dois l'analyser de manière exhaustive de la première à la dernière ligne. Ne saute aucun détail technique, aucune formule mathématique et aucune définition.
-2. FIN DU "SURVOL" : N'écris JAMAIS de phrases vagues du genre "Voici les étapes pour comprendre : 1. lisez la leçon...". À la place, explique concrètement chaque notion en partant de zéro, utilise des exemples de la vie réelle, des schémas textuels ou des analogies puissantes (ex: comparer des flux, des circuits électriques, la transformée de Laplace à un dictionnaire bilingue temps/fréquence, ou des fonctions mathématiques à des systèmes physiques).
-3. PROGRESSION PÉDAGOGIQUE & LE POURQUOI : Découpe les concepts complexes en blocs digestes. Explique LE POURQUOI et LE COMMENT, pas seulement les théorèmes bruts. Pourquoi cette notion a été inventée et à quel problème concret elle répond.
-4. DÉCORTICAGE DES FORMULES (LATEX STANDARD) : Ne jette JAMAIS une formule brute. Rédige TOUTES les formules en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré). Décortique chaque lettre, symbole et opérateur ($p$, $t$, \\int, bornes, limites, constantes) en expliquant sa signification physique ou mathématique.
-5. EXEMPLE RÉSOLU PAS À PAS : Déroule un exemple concret ou un exercice type extrait de son cours, résolu et calculé étape par étape sous les yeux de l'élève en explicitant chaque transformation.
-6. PIÈGE D'EXAMEN : Signale explicitement les erreurs classiques que font les étudiants aux examens pour qu'il ne tombe pas dedans.
-7. CITATION DE PAGES DU COURS : Cite précisément les pages, chapitres et théorèmes exacts de son document (ex: "À la page 2 de votre polycopié, la formule...") pour un repérage immédiat.
-8. INTERACTIVITÉ & VALIDATION : Termine toujours tes explications par une mise en pratique, une question de vérification ou une proposition de mini-quiz / carte mentale pour valider que l'étudiant a capté l'essence du cours.
+RÈGLE D'OR PÉDAGOGIQUE (INTERDICTION ABSOLUE DU SURVOL SUPERFICIEL) :
+- CONTRE-EXEMPLE FORMELLEMENT INTERDIT : Ne réponds JAMAIS par des phrases creuses du genre : "Voici les 4 étapes pour comprendre : 1. Lisez la leçon, 2. Apprenez les formules, 3. Faites des exercices". C'est du remplissage inutile qui n'aide personne !
+- L'élève est devant toi pour COMPRENDRE LE FOND DU COURS MAINTENANT. Prends-le par la main avec cette méthode d'enseignement d'élite :
+  1. L'Intuition et l'Analogie concrète : Explique d'abord pourquoi ce concept existe, à quel problème réel il répond, avec une métaphore parlante de la vie courante (ex: la transformée de Laplace comme un dictionnaire bilingue qui transforme des équations différentielles infernales en simples multiplications d'algèbre de collège).
+  2. Décortique chaque formule lettre par lettre : Ne jette JAMAIS une formule brute. Rédige TOUTES les formules en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré). Explique le rôle de chaque variable, constante, opérateur ($p$, $t$, \\int, bornes, limites) et son sens physique ou mathématique.
+  3. L'Exemple résolu pas à pas sous ses yeux : Déroule un exemple concret ou un exercice type extrait de son cours, résolu et calculé étape par étape en justifiant chaque transformation algébrique.
+  4. Le Piège d'Examen : Signale les erreurs classiques que font les étudiants aux examens pour qu'il ne tombe pas dedans.
+  5. Validation interactive : Termine toujours par une question simple ou un petit défi de compréhension pour valider qu'il a assimilé la notion.
 
 Règles selon le type de création demandé ('${requestedType || "auto"}') :
 - Si QCM / QUIZ : Propose des questions claires avec LaTeX, exactement 4 options identifiées (A, B, C, D), la bonne réponse et un indice pédagogique.
@@ -398,13 +396,7 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
 - Si FLASHCARDS : Définis des paires recto (question/formule) et verso (réponse/application).
 - Si RÉSUMÉ : Rédige une synthèse fluide, complète, avec les définitions et théorèmes fondamentaux bien mis en valeur.`;
 
-      // Construction de l'historique conversationnel
-      let incomingHistory = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
-      const messages = [
-        { role: "system", content: masterSystemPrompt }
-      ];
-
-      // Document support attaché si présent (supporte toutes les clés : attachedFileContent, file_content, etc., jusqu'à 120 000 caractères)
+      // Document support attaché si présent (supporte toutes les clés : attachedFileContent, file_content, etc.)
       const rawDocContent = (
         (typeof body.attachedFileContent === "string" && body.attachedFileContent) ||
         (typeof body.file_content === "string" && body.file_content) ||
@@ -414,37 +406,68 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
         ""
       ).trim();
 
+      // INJECTION DIRECTE DU DOCUMENT DANS L'UNIQUE MESSAGE SYSTÈME (Obligatoire pour Cloudflare Workers AI)
+      let fullSystemPrompt = masterSystemPrompt;
       if (rawDocContent.length > 0) {
-        const docTitle = body.attachedFileName || body.file_name || body.fileName || body.documentName || "Document joint";
-        const maxDocChars = 120000;
+        const docTitle = body.attachedFileName || body.file_name || body.fileName || body.documentName || "Document de cours";
+        const maxDocChars = 50000;
         const cleanDocContent = rawDocContent.slice(0, maxDocChars);
-        messages.push({
-          role: "system",
-          content: `=== DOCUMENT JOINT DE L'ÉLÈVE ("${docTitle}") ===\n${cleanDocContent}\n=== FIN DU DOCUMENT ===\nInstructions : Tu as un accès COMPLET, INTÉGRAL et DIRECT à ce document (de la première à la dernière ligne). Réponds précisément en t'appuyant rigoureusement sur les leçons, théorèmes, définitions, exercices et explications contenus dans ce fichier.`
-        });
+        fullSystemPrompt += `
+
+======================================================================
+DOCUMENT JOINT DE L'ÉLÈVE ("${docTitle}") - ANALYSE INTÉGRALE :
+======================================================================
+${cleanDocContent}
+======================================================================
+FIN DU DOCUMENT JOINT
+======================================================================
+DIRECTIVES OBLIGATOIRES POUR CE DOCUMENT :
+- Tu as le texte ci-dessus sous les yeux de la première à la dernière ligne.
+- Appuie-toi rigoureusement sur les définitions, théorèmes, formules et exemples de CE document.
+- Cite expressément les pages réelles ([Page X]) de son cours pour qu'il s'y repère instantanément.
+- Ne survole pas : enseigne le contenu de ce cours en profondeur et avec rigueur.`;
       }
 
-      // Ajout de l'historique récent
-      for (const m of incomingHistory.slice(-10)) {
+      // Construction de la liste des messages avec un SEUL rôle système à l'indice 0
+      const messages = [
+        { role: "system", content: fullSystemPrompt }
+      ];
+
+      // Ajout de l'historique récent avec alternance stricte des rôles
+      let incomingHistory = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+      let lastRole = "system";
+
+      for (const m of incomingHistory.slice(-8)) {
         if (m && m.role && m.content && m.role !== "system") {
-          messages.push({ role: m.role === "user" ? "user" : "assistant", content: String(m.content) });
+          const role = m.role === "user" ? "user" : "assistant";
+          const content = String(m.content).trim();
+          if (content && (role !== lastRole || role === "assistant")) {
+            messages.push({ role, content });
+            lastRole = role;
+          }
         }
       }
 
       // Message utilisateur actuel
-      if (userPrompt) {
-        messages.push({ role: "user", content: userPrompt });
-      } else if (messages.length === 1) {
-        messages.push({ role: "user", content: "Bonjour !" });
+      const currentPrompt = userPrompt.trim() || (messages.length === 1 ? "Bonjour ! Peux-tu m'expliquer ce cours en détail ?" : "");
+      if (currentPrompt) {
+        if (lastRole === "user") {
+          const lastMsg = messages[messages.length - 1];
+          if (lastMsg && lastMsg.content !== currentPrompt) {
+            lastMsg.content = `${lastMsg.content}\n\n${currentPrompt}`;
+          }
+        } else {
+          messages.push({ role: "user", content: currentPrompt });
+        }
       }
 
-      // Modèles candidats performants
+      // Modèles candidats performants (priorité à Llama-3.1-8b pour une vitesse et une compatibilité maximale sans timeout)
       const candidateModels = [
-        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-        "@cf/meta/llama-3.1-70b-instruct",
-        "@cf/meta/llama-3-70b-instruct",
         "@cf/meta/llama-3.1-8b-instruct",
-        "@cf/mistral/mistral-7b-instruct-v0.2"
+        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "@cf/meta/llama-3-8b-instruct",
+        "@cf/mistral/mistral-7b-instruct-v0.2",
+        "@cf/qwen/qwen1.5-14b-chat-awq"
       ];
 
       // --- PASSE 1 : GÉNÉRATION INITIALE DE HAUTE QUALITÉ ---
@@ -456,8 +479,8 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
         try {
           aiResult = await ai.run(m, {
             messages: messages,
-            max_tokens: 2500,
-            temperature: 0.35, // Température équilibrée pour créativité et rigueur
+            max_tokens: 3000,
+            temperature: 0.3, // Température optimale pour rigueur pédagogique et clarté
           });
           usedModel = m;
           break;

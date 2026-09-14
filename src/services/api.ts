@@ -74,9 +74,9 @@ export async function sendChatMessageToAi(params: {
     fileName: extractedDocName,
   };
 
-  // 1. Tenter en priorité la route /api/ai/chat sur le Worker principal de l'application
+  // 1. Appel en priorité absolue au Worker IA dédié (studycloud-ai / CODE_A_COLLER_DANS_CLOUDFLARE_AI.js)
   try {
-    const mainResponse = await fetch(mainWorkerChatUrl, {
+    const aiResponse = await fetch(dedicatedAiUrl, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -84,8 +84,8 @@ export async function sendChatMessageToAi(params: {
       body: JSON.stringify(payload),
     });
 
-    if (mainResponse.ok) {
-      const data = await mainResponse.json();
+    if (aiResponse.ok) {
+      const data = await aiResponse.json();
       let text = '';
       if (typeof data.response === 'string') {
         text = data.response;
@@ -102,12 +102,12 @@ export async function sendChatMessageToAi(params: {
       }
       return { response: text, success: true, model: data.model, type: data.type };
     }
-  } catch (mainErr) {
-    console.warn('Appel au Worker principal /api/ai/chat indisponible, tentative sur le Worker IA dédié...', mainErr);
+  } catch (aiErr) {
+    console.warn('Appel au Worker IA dédié indisponible, tentative sur le Worker principal...', aiErr);
   }
 
-  // 2. Repli direct sur le Worker IA dédié (studycloud-ai)
-  const response = await fetch(dedicatedAiUrl, {
+  // 2. Repli de secours sur le Worker principal de l'application
+  const response = await fetch(mainWorkerChatUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -136,7 +136,7 @@ export async function sendChatMessageToAi(params: {
     text = JSON.stringify(data);
   }
 
-  return { response: text, success: true, model: data.model };
+  return { response: text, success: true, model: data.model, type: data.type };
 }
 
 /**
