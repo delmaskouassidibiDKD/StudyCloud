@@ -398,20 +398,43 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
 - Si RÉSUMÉ : Rédige une synthèse fluide, complète, avec les définitions et théorèmes fondamentaux bien mis en valeur.`;
 
       // ------------------------------------------------------------------------
-      // MODE PUISSANCE : DÉLÉGATION À GOOGLE GEMINI (Priorité absolue)
+      // CONDITIONS SELON LE CHOIX DE L'UTILISATEUR (BOUTON PUISSANT)
+      // ------------------------------------------------------------------------
+      // Condition 1 : Si l'utilisateur a choisi PUISSANT (bouton actif) :
+      //   -> On appelle la clé dont le nom de variable est 'StudyCloud-gemini'
+      //   -> On délègue la requête à Google Gemini 2.0 Flash
+      // Condition 2 : Si l'utilisateur n'a PAS choisi puissant (bouton inactif) :
+      //   -> On n'utilise PAS la clé StudyCloud-gemini, on n'appelle pas Gemini
+      //   -> On utilise l'IA principale (Cloudflare Workers AI Llama)
       // ------------------------------------------------------------------------
       if (isPowerMode) {
-        const rawGeminiBinding = env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.["studycloud_gemini"] || env?.GEMINI;
-        let geminiApiKey = body.geminiApiKey || body.gemini_api_key || env?.GEMINI_API_KEY || env?.GOOGLE_API_KEY || env?.GEMINI_KEY || env?.GEMINI_TOKEN;
+        // Recherche de la clé API avec le nom de variable 'StudyCloud-gemini'
+        let geminiApiKey = env?.["StudyCloud-gemini"] || 
+                           env?.["studycloud-gemini"] || 
+                           env?.["STUDYCLOUD_GEMINI"] || 
+                           env?.["StudyCloud_gemini"] || 
+                           env?.StudyCloud_gemini || 
+                           env?.GEMINI_API_KEY || 
+                           env?.GOOGLE_API_KEY || 
+                           body.geminiApiKey;
 
-        // Si la variable 'studycloud-gemini' est une chaîne de caractères (clé API directe ou token)
-        if (!geminiApiKey && typeof rawGeminiBinding === "string" && !rawGeminiBinding.startsWith("http")) {
-          geminiApiKey = rawGeminiBinding.trim();
+        // Si le nom exact dans Cloudflare a une casse légèrement différente
+        if (!geminiApiKey && env && typeof env === "object") {
+          for (const [k, v] of Object.entries(env)) {
+            if (typeof v === "string" && /studycloud[-_]?gemini/i.test(k) && !v.startsWith("http")) {
+              geminiApiKey = v.trim();
+              break;
+            }
+          }
+        }
+
+        if (typeof geminiApiKey === "string") {
+          geminiApiKey = geminiApiKey.trim();
         }
 
         let lastGoogleError = "";
 
-        // 1. Appel direct API Google Gemini (si clé disponible)
+        // 1. Appel direct API Google Gemini 2.0 Flash avec la clé StudyCloud-gemini
         if (geminiApiKey) {
           try {
             const rawDocForGemini = (
@@ -465,7 +488,7 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
                 return new Response(JSON.stringify({
                   success: true,
                   response: ansText.trim(),
-                  model: "Google Gemini 2.0 Flash (Puissance MAX)",
+                  model: "Google Gemini 2.0 Flash (Mode Puissant)",
                   type: requestedType || "text"
                 }), {
                   headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
@@ -482,7 +505,8 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
           }
         }
 
-        // 2. Détection liaison de service Cloudflare 'studycloud-gemini'
+        // 2. Détection d'un service binding Cloudflare nommé 'StudyCloud-gemini' ou 'studycloud-gemini'
+        const rawGeminiBinding = env?.["StudyCloud-gemini"] || env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI;
         if (rawGeminiBinding && typeof rawGeminiBinding.fetch === "function") {
           try {
             const geminiRes = await rawGeminiBinding.fetch(new Request("https://studycloud-gemini/", {
@@ -503,7 +527,7 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
                   return new Response(JSON.stringify({
                     success: true,
                     response: resText.trim(),
-                    model: "Google Gemini 2.0 Flash (Service Binding studycloud-gemini)",
+                    model: "Google Gemini 2.0 Flash (Mode Puissant)",
                     type: requestedType || "text"
                   }), {
                     headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
@@ -512,52 +536,16 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
               }
             }
           } catch (bindErr) {
-            console.warn("[Puissance] Erreur liaison service studycloud-gemini:", bindErr);
+            console.warn("[Puissance] Erreur liaison service StudyCloud-gemini:", bindErr);
           }
         }
 
-        // 3. Appel URL externe
-        const geminiExternalUrl = (typeof rawGeminiBinding === "string" && rawGeminiBinding.startsWith("http"))
-          ? rawGeminiBinding.trim()
-          : (env?.GEMINI_WORKER_URL || "https://studycloud-gemini.delmaskouassidibi.workers.dev");
-
-        try {
-          const extRes = await fetch(geminiExternalUrl, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(body)
-          });
-          if (extRes.ok) {
-            const ct = extRes.headers.get("content-type") || "";
-            if (ct.includes("application/json")) {
-              const extData = await extRes.json();
-              return new Response(JSON.stringify(extData), {
-                headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
-              });
-            } else {
-              const extText = await extRes.text();
-              if (extText && extText.trim()) {
-                return new Response(JSON.stringify({
-                  success: true,
-                  response: extText.trim(),
-                  model: "Google Gemini (Worker studycloud-gemini)",
-                  type: requestedType || "text"
-                }), {
-                  headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
-                });
-              }
-            }
-          }
-        } catch (extErr) {
-          console.warn("[Puissance] Erreur appel HTTP studycloud-gemini:", extErr);
-        }
-
-        // 4. Si Mode Puissance actif mais aucune clé configurée, NE JAMAIS APPELER LLAMA
+        // Si la clé n'a pas pu répondre ou est manquante
         if (lastGoogleError) {
           return new Response(JSON.stringify({
             success: false,
-            model: "Google Gemini (Erreur API Google)",
-            response: `⚡ **Mode Puissance (Google Gemini) : Erreur API**\n\nGoogle Gemini a renvoyé l'erreur suivante :\n> *${lastGoogleError}*\n\n👉 Vérifiez votre clé API Google Gemini dans vos variables Cloudflare ou sur [aistudio.google.com](https://aistudio.google.com/app/apikey).`
+            model: "Google Gemini (Erreur API)",
+            response: `⚡ **Mode Puissant : Erreur API**\n\nGoogle Gemini a renvoyé l'erreur suivante :\n> *${lastGoogleError}*\n\n👉 Vérifiez la valeur de votre variable \`StudyCloud-gemini\` dans votre Cloudflare Worker.`
           }), {
             headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
           });
@@ -565,12 +553,17 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
 
         return new Response(JSON.stringify({
           success: false,
-          model: "Google Gemini (Clé requise)",
-          response: "⚡ **Mode Puissance (Google Gemini) : Clé requise**\n\nPour que Google Gemini 2.0 Flash vous réponde directement à la place de l'autre IA (Llama) :\n\n👉 **Ajoutez `GEMINI_API_KEY` dans votre Worker Cloudflare** > Settings > Variables and Secrets.\n\n*(Vous pouvez obtenir une clé gratuite en 30 secondes sur [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))*\n\nVous pouvez également renseigner votre clé directement dans l'application en cliquant sur l'icône ⚙️ à côté du bouton 'Puissance MAX'."
+          model: "Google Gemini (Variable StudyCloud-gemini requise)",
+          response: "⚡ **Mode Puissant : Variable StudyCloud-gemini introuvable**\n\nPour utiliser le Mode Puissant, ajoutez la variable de secret **`StudyCloud-gemini`** dans votre Worker Cloudflare :\n\n👉 Rendez-vous dans **Cloudflare Dashboard > Workers & Pages > studycloud-ai > Settings > Variables and Secrets**,\npuis ajoutez un secret nommé **`StudyCloud-gemini`** contenant votre clé API Google Gemini."
         }), {
           headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
         });
       }
+
+      // ========================================================================
+      // CAS OÙ L'UTILISATEUR N'A PAS CHOISI PUISSANT :
+      // On n'utilise PAS StudyCloud-gemini. On utilise l'IA principale (Workers AI).
+      // ========================================================================
 
       // Document support attaché si présent (supporte toutes les clés : attachedFileContent, file_content, etc.)
       const rawDocContent = (

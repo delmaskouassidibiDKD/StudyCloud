@@ -3477,10 +3477,10 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
 
         // DÉLÉGATION MODE PUISSANCE (Google Gemini 2.0 Flash)
         if (isPowerMode) {
-          const rawGeminiBinding = env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.["studycloud_gemini"] || env?.GEMINI;
-          let geminiApiKey = body.geminiApiKey || body.gemini_api_key || env?.GEMINI_API_KEY || env?.GOOGLE_API_KEY || env?.GEMINI_KEY || env?.GEMINI_TOKEN;
+          const rawGeminiBinding = env?.["StudyCloud-gemini"] || env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.["studycloud_gemini"] || env?.GEMINI;
+          let geminiApiKey = env?.["StudyCloud-gemini"] || env?.["studycloud-gemini"] || env?.["STUDYCLOUD_GEMINI"] || env?.["StudyCloud_gemini"] || body.geminiApiKey || body.gemini_api_key || env?.GEMINI_API_KEY || env?.GOOGLE_API_KEY || env?.GEMINI_KEY || env?.GEMINI_TOKEN;
 
-          // Si la variable 'studycloud-gemini' est une chaîne de caractères (clé API directe ou token)
+          // Si la variable 'StudyCloud-gemini' est une chaîne de caractères (clé API directe ou token)
           if (!geminiApiKey && typeof rawGeminiBinding === "string" && !rawGeminiBinding.startsWith("http")) {
             geminiApiKey = rawGeminiBinding.trim();
           }

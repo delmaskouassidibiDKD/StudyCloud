@@ -100,9 +100,7 @@ export async function sendChatMessageToAi(params: {
 }): Promise<{ response: string; success: boolean; model?: string; type?: string }> {
   const isPowerMode = Boolean(params.powerMode || params.engine === 'gemini');
   const userGeminiApiKey = (params.geminiApiKey || getGeminiApiKey()).trim();
-  const geminiWorkerUrl = getGeminiWorkerUrl().replace(/\/+$/, '');
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
-  const mainWorkerChatUrl = `${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/chat`;
 
   const extractedDoc = params.attachedFileContent || params.file_content || params.fileContent || params.documentContent || params.documentText || '';
   const extractedDocName = params.attachedFileName || params.file_name || params.fileName || '';
@@ -110,6 +108,7 @@ export async function sendChatMessageToAi(params: {
   const payload = {
     ...params,
     powerMode: isPowerMode,
+    isPowerMode: isPowerMode,
     engine: isPowerMode ? 'gemini' : (params.engine || 'standard'),
     geminiApiKey: userGeminiApiKey,
     message: params.prompt || params.message || '',
@@ -127,148 +126,11 @@ export async function sendChatMessageToAi(params: {
     fileName: extractedDocName,
   };
 
-  // 1. SI LE MODE PUISSANCE EST ACTIVÉ : Exécution ultra-rapide en direct de Google Gemini 2.0 Flash
-  if (isPowerMode) {
-    if (userGeminiApiKey) {
-      try {
-        let systemInstructionText = MASTER_PEDAGOGICAL_PROMPT;
-        if (extractedDoc && extractedDoc.trim().length > 0) {
-          systemInstructionText += `\n\nCONTENU DU DOCUMENT JOINT ("${extractedDocName || 'Document de cours'}") :\n${extractedDoc.slice(0, 80000)}\nFIN DU DOCUMENT.`;
-        }
-
-        const geminiContents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
-        const hist = params.history || params.messages || [];
-        for (const m of hist.slice(-8)) {
-          if (m && m.role && m.content && m.role !== 'system') {
-            geminiContents.push({
-              role: m.role === 'assistant' ? 'model' : 'user',
-              parts: [{ text: String(m.content) }]
-            });
-          }
-        }
-        geminiContents.push({
-          role: 'user',
-          parts: [{ text: params.prompt || params.message || 'Bonjour !' }]
-        });
-
-        const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${userGeminiApiKey}`;
-        const gResponse = await fetch(geminiEndpoint, {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemInstructionText }] },
-            contents: geminiContents,
-            generationConfig: {
-              temperature: 0.3,
-              maxOutputTokens: 3500,
-            }
-          })
-        });
-
-        if (gResponse.ok) {
-          const gData = await gResponse.json();
-          const ansText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (ansText && ansText.trim()) {
-            return {
-              response: ansText.trim(),
-              success: true,
-              model: 'Google Gemini 2.0 Flash (Puissance MAX)',
-              type: params.requested_type || 'text'
-            };
-          }
-        } else {
-          const errText = await gResponse.text();
-          console.warn('[Gemini Direct] Erreur Google API:', gResponse.status, errText);
-        }
-      } catch (geminiDirectErr) {
-        console.warn('[Gemini Direct] Exception:', geminiDirectErr);
-      }
-    }
-
-    // Tentative sur le worker studycloud-gemini
-    try {
-      const geminiResponse = await fetch(geminiWorkerUrl, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(payload),
-      });
-
-      if (geminiResponse.ok) {
-        const data = await geminiResponse.json();
-        let text = '';
-        if (typeof data.response === 'string') {
-          text = data.response;
-        } else if (data.response?.response) {
-          text = data.response.response;
-        } else if (data.text) {
-          text = data.text;
-        } else if (data.message?.content) {
-          text = data.message.content;
-        } else if (data.candidates?.[0]?.content?.parts?.[0]?.text) {
-          text = data.candidates[0].content.parts[0].text;
-        } else if (Array.isArray(data) && data[0]?.response?.response) {
-          text = data[0].response.response;
-        } else if (typeof data === 'string') {
-          text = data;
-        } else {
-          text = JSON.stringify(data);
-        }
-        return {
-          response: text,
-          success: true,
-          model: data.model || 'Google Gemini (studycloud-gemini)',
-          type: data.type
-        };
-      }
-    } catch (geminiErr) {
-      console.warn('Appel direct à studycloud-gemini indisponible, repli vers le Worker IA...', geminiErr);
-    }
-  }
-
-  // 2. Appel au Worker IA dédié (studycloud-ai / CODE_A_COLLER_DANS_CLOUDFLARE_AI.js)
-  try {
-    const aiResponse = await fetch(dedicatedAiUrl, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-      },
-      body: JSON.stringify(payload),
-    });
-
-    if (aiResponse.ok) {
-      const data = await aiResponse.json();
-      if (isPowerMode && (!data.model || !data.model.toLowerCase().includes('gemini'))) {
-        return {
-          response: "⚡ **Mode Puissance (Google Gemini) : Clé requise**\n\nPour que Google Gemini 2.0 Flash vous réponde directement au lieu de l'autre IA (Llama) :\n\n👉 **Cliquez sur l'icône ⚙️ à côté du bouton 'Puissance MAX'** en haut du chat pour renseigner votre clé API Google Gemini.\n\n*(Vous pouvez obtenir une clé 100% gratuite en 30 secondes sur [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))*\n\nDès que vous collez votre clé, Gemini répondra instantanément avec toute son intelligence !",
-          success: false,
-          model: 'Google Gemini (Clé requise)',
-          type: data.type
-        };
-      }
-      let text = '';
-      if (typeof data.response === 'string') {
-        text = data.response;
-      } else if (data.response?.response) {
-        text = data.response.response;
-      } else if (Array.isArray(data) && data[0]?.response?.response) {
-        text = data[0].response.response;
-      } else if (data.message?.content) {
-        text = data.message.content;
-      } else if (typeof data === 'string') {
-        text = data;
-      } else {
-        text = JSON.stringify(data);
-      }
-      return { response: text, success: true, model: data.model, type: data.type };
-    }
-  } catch (aiErr) {
-    console.warn('Appel au Worker IA dédié indisponible, tentative sur le Worker principal...', aiErr);
-  }
-
-  // 2. Repli de secours sur le Worker principal de l'application
-  const response = await fetch(mainWorkerChatUrl, {
+  // Le Worker IA dédié (studycloud-ai) gère tout en interne :
+  // - Si Mode Puissant actif : il utilise la clé StudyCloud-gemini pour Google Gemini 2.0 Flash
+  // - Si Mode Puissant inactif : il utilise l'IA principale (Workers AI Llama)
+  // Le Worker principal n'est pas interrogé.
+  const response = await fetch(dedicatedAiUrl, {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
@@ -278,19 +140,10 @@ export async function sendChatMessageToAi(params: {
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: response.statusText }));
-    throw new Error(err.error || `Erreur API IA (${response.status})`);
+    throw new Error(err.error || `Erreur API Worker IA (${response.status})`);
   }
 
   const data = await response.json();
-  if (isPowerMode && (!data.model || !data.model.toLowerCase().includes('gemini'))) {
-    return {
-      response: "⚡ **Mode Puissance (Google Gemini) : Clé requise**\n\nPour que Google Gemini 2.0 Flash vous réponde directement au lieu de l'autre IA (Llama) :\n\n👉 **Cliquez sur l'icône ⚙️ à côté du bouton 'Puissance MAX'** en haut du chat pour renseigner votre clé API Google Gemini.\n\n*(Vous pouvez obtenir une clé 100% gratuite en 30 secondes sur [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))*\n\nDès que vous collez votre clé, Gemini répondra instantanément avec toute son intelligence !",
-      success: false,
-      model: 'Google Gemini (Clé requise)',
-      type: data.type
-    };
-  }
-
   let text = '';
   if (typeof data.response === 'string') {
     text = data.response;
@@ -300,13 +153,15 @@ export async function sendChatMessageToAi(params: {
     text = data[0].response.response;
   } else if (data.message?.content) {
     text = data.message.content;
+  } else if (data.text) {
+    text = data.text;
   } else if (typeof data === 'string') {
     text = data;
   } else {
     text = JSON.stringify(data);
   }
 
-  return { response: text, success: true, model: data.model, type: data.type };
+  return { response: text, success: data.success !== false, model: data.model, type: data.type };
 }
 
 /**
