@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Maximize, Minimize, Menu, X, AlignLeft, Brain, Copy, MessageSquare, Presentation, Clock, ArrowLeft, Loader2, Sparkles, Pin, CheckSquare, Square, Trash2, FileText, Check } from 'lucide-react';
+import { Maximize, Minimize, Menu, X, AlignLeft, Brain, Copy, MessageSquare, Presentation, Clock, Loader2, Sparkles, Pin, CheckSquare, Square, Trash2, FileText, Check, Plus } from 'lucide-react';
 import { StudyCloudAPI } from '../services/api';
 import { DnaLogo } from './DnaLogo';
 import { AiCreation, AiCreationType } from './ai-creations/types';
@@ -268,29 +268,47 @@ export function RightMenu({
   };
 
   return (
-    <div className={`w-full h-full pointer-events-auto relative bg-[#1e2024] overflow-x-hidden overflow-y-auto ${isCenterFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 2 || isRightFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
-      {/* Fullscreen Toggle Button for Right Area */}
-      {(!isRightSidebarOpen || isRightFullscreen) && (
-        <button
-          onClick={() => setIsRightFullscreen(!isRightFullscreen)}
-          className="hidden md:flex absolute top-[72px] md:top-[76px] left-2 md:left-3 z-50 p-1.5 bg-yellow-400 rounded-lg border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-yellow-300 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900"
-          title={isRightFullscreen ? "Réduire" : "Plein écran"}
-        >
-          {isRightFullscreen ? <Minimize className="w-3.5 h-3.5" /> : <Maximize className="w-3.5 h-3.5" />}
-        </button>
-      )}
+    <div className={`w-full h-full pointer-events-auto relative bg-[#1e2024] flex flex-col overflow-hidden ${isCenterFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 2 || isRightFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
+      {/* Barre supérieure en haut dans le creux : Bouton Zoom (jaune) + Bouton + (Retour aux actions) + Bouton Historique (horloge) */}
+      <div className="w-full flex items-center justify-between px-3 py-2 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-50 shadow-sm">
+        <div className="flex items-center gap-2">
+          {/* Bouton Zoom jaune */}
+          <button
+            type="button"
+            onClick={() => setIsRightFullscreen(!isRightFullscreen)}
+            className="p-1.5 bg-yellow-400 rounded-lg border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-yellow-300 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900 flex items-center justify-center"
+            title={isRightFullscreen ? "Réduire" : "Plein écran"}
+          >
+            {isRightFullscreen ? <Minimize className="w-4 h-4" /> : <Maximize className="w-4 h-4" />}
+          </button>
 
-      {/* Right Sidebar Toggle / Close Button */}
-      <button
-        onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
-        className={`${isRightFullscreen ? 'fixed' : 'absolute'} top-[72px] md:top-[76px] right-2 md:right-4 z-[99999] p-1.5 bg-white rounded-lg border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-stone-100 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900 flex items-center justify-center`}
-        title={isRightSidebarOpen ? "Fermer l'historique" : "Historique des créations"}
-      >
-        {isRightSidebarOpen ? <X className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
-      </button>
+          {/* Bouton + placé derrière le bouton zoom jaune (retour aux actions sans aucun texte) */}
+          <button
+            type="button"
+            onClick={() => {
+              setActiveCreation(null);
+              setIsGenerating(false);
+            }}
+            className="p-1.5 bg-zinc-800 hover:bg-zinc-700 text-white rounded-lg border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
+            title="Nouvelle création / Retour aux actions"
+          >
+            <Plus className="w-4 h-4 text-orange-400 font-black" />
+          </button>
+        </div>
+
+        {/* Bouton Horloge (Historique des créations) */}
+        <button
+          type="button"
+          onClick={() => setIsRightSidebarOpen(!isRightSidebarOpen)}
+          className="p-1.5 bg-white rounded-lg border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-stone-100 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer text-stone-900 flex items-center justify-center"
+          title={isRightSidebarOpen ? "Fermer l'historique" : "Historique des créations"}
+        >
+          {isRightSidebarOpen ? <X className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
+        </button>
+      </div>
 
       {/* Main Creation Area */}
-      <div className="flex-1 w-full pt-[90px] px-3 sm:px-6 pb-6 h-full flex flex-col items-center justify-start min-h-0">
+      <div className="flex-1 w-full p-3 sm:p-5 overflow-y-auto custom-scrollbar flex flex-col items-center justify-start min-h-0">
         {/* ÉTAT 1 : ANIMATION ADN PENDANT LA CRÉATION */}
         {isGenerating ? (
           <div className="flex flex-col items-center justify-center gap-6 animate-fadeIn h-full my-auto text-center px-4 max-w-sm">
@@ -320,20 +338,6 @@ export function RightMenu({
         ) : activeCreation ? (
           /* ÉTAT 2 : CRÉATION ACTIVE INTERACTIVE (RÉSUMÉ, QUIZ, MINDMAP, INFOGRAPHIE, DOCUMENT) */
           <div className="w-full h-full flex flex-col animate-fadeIn min-h-0">
-            <div className="w-full flex justify-between items-center mb-3">
-              <button 
-                onClick={() => setActiveCreation(null)} 
-                className="flex items-center gap-1.5 text-zinc-400 hover:text-white transition-colors cursor-pointer text-xs font-bold px-2 py-1 rounded-lg hover:bg-zinc-800"
-              >
-                <ArrowLeft className="w-3.5 h-3.5" />
-                <span>Retour aux actions</span>
-              </button>
-
-              <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30">
-                Espace Création IA
-              </span>
-            </div>
-
             <div className="flex-1 w-full overflow-y-auto custom-scrollbar scroll-smooth min-h-0 pr-1">
               {renderActiveCreation()}
             </div>
@@ -342,9 +346,6 @@ export function RightMenu({
           /* ÉTAT 3 : MENU DES PROPOSITIONS D'ACTION INITIALES */
           <div className="w-full h-full max-w-sm mx-auto flex flex-col items-center justify-center my-auto">
             <div className="text-center mb-6">
-              <span className="text-[11px] font-black uppercase tracking-widest text-orange-400 block mb-1">
-                Espace de Création IA
-              </span>
               <h2 className="text-base sm:text-lg font-bold text-white">
                 Que souhaitez-vous concevoir ?
               </h2>
@@ -380,7 +381,7 @@ export function RightMenu({
 
       {/* Right History Sidebar */}
       <div 
-        className={`absolute top-0 right-0 bottom-0 z-40 bg-[#1e2024] border-l border-zinc-800 pt-[100px] text-white flex flex-col p-5 transition-transform duration-300 ease-in-out ${
+        className={`absolute top-[44px] right-0 bottom-0 z-40 bg-[#1e2024] border-l border-zinc-800 text-white flex flex-col p-4 transition-transform duration-300 ease-in-out ${
           isRightFullscreen ? 'w-full md:w-[360px] shadow-2xl' : 'w-full'
         } ${isRightSidebarOpen ? 'translate-x-0' : 'translate-x-full'}`}
       >
