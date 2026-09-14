@@ -490,8 +490,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         setShowProposalBar(true);
       }
 
-      const isIteration = Boolean(activeCreation && /(ajoute|modifie|change|supprime|remplace|am[eé]liore|corrige|mets? à jour|rajoute|plus de questions|simplifie|d[eé]taille|r[eé]duis|compl[eé]te)/i.test(userText));
-      const isCreation = !isIteration && /(cr[eé]e|g[eé]n[eé]re|fais(-moi)?|pr[eé]pare|[eé]labore|con[çc]ois|r[eé]sume|synth[eé]tise|questionnaire|quiz|qcm|carte mentale|mind ?map|infographie|exporte? (en )?(pdf|word)|fiche)/i.test(userText);
+      const isQuestionOrMeta = /^(pourquoi|comment|qu'est|est-ce|aide-moi|explique|quelles?|dis-moi)/i.test(userText.trim()) || /(dans le chat|dans la cr[eé]ation|dans l'interface|pourquoi l'ia)/i.test(userText);
+      const isIteration = !isQuestionOrMeta && Boolean(activeCreation && /(ajoute\s+(une?|\d+)|modifie\s+(le|la|cette|mon|ma)|supprime\s+(la|le|cette)|am[eé]liore\s+(le|la|ce)|corrige\s+(la|le)|mets?\s+à\s+jour|plus\s+de\s+questions|d[eé]taille\s+(le|la|ce))/i.test(userText));
+      const isCreation = !isIteration && !isQuestionOrMeta && /(cr[eé]e|g[eé]n[eé]re|fais(-moi)?|pr[eé]pare|[eé]labore|con[çc]ois|r[eé]sume|synth[eé]tise|questionnaire|quiz|qcm|carte mentale|mind ?map|infographie|exporte? (en )?(pdf|word)|fiche)/i.test(userText);
 
       let targetToolType: AiCreationType = 'summary';
       if (/quiz|qcm|questionnaire|q\.c\.m|questions/i.test(userText)) {
@@ -531,9 +532,75 @@ Tu réponds avec un raisonnement approfondi, rigoureux et naturel, exactement co
       }
 
       if (isCreation) {
-        systemContent += `\n\nL'UTILISATEUR SOUHAITE UNE CRÉATION : "${targetToolType}". Conçois-la avec ton intelligence naturelle, ta clarté et ta rigueur habituelle, de manière riche, variée et stimulante.`;
+        systemContent += `\n\nL'UTILISATEUR SOUHAITE UNE CRÉATION DE TYPE : "${targetToolType}".
+INSTRUCTION TECHNIQUE POUR L'AFFICHAGE DANS L'ESPACE CRÉATION :
+Rédige une courte phrase d'accueil pour le chat, puis génère impérativement le contenu structuré au format JSON dans un bloc \`\`\`json ... \`\`\` respectant ce schéma pour alimenter l'interface :
+${
+  targetToolType === 'quiz' ?
+  `- Pour un quiz :
+\`\`\`json
+{
+  "title": "Titre du Quiz",
+  "difficulty": "Moyen",
+  "questions": [
+    {
+      "id": "q-1",
+      "question": "Énoncé de la question",
+      "options": ["Choix A", "Choix B", "Choix C", "Choix D"],
+      "answerIndex": 0,
+      "explanation": "Explication complète de la réponse"
+    }
+  ]
+}
+\`\`\`` :
+  targetToolType === 'mindmap' ?
+  `- Pour une carte mentale :
+\`\`\`json
+{
+  "root": {
+    "label": "Concept Principal",
+    "details": "Description",
+    "children": [
+      {
+        "label": "Branche 1",
+        "children": [{ "label": "Sous-notion A" }, { "label": "Sous-notion B" }]
+      }
+    ]
+  }
+}
+\`\`\`` :
+  targetToolType === 'summary' ?
+  `- Pour un résumé :
+\`\`\`json
+{
+  "title": "Titre de la Synthèse",
+  "overview": "Synthèse globale et approfondie...",
+  "keyPoints": ["Point clé 1", "Point clé 2"],
+  "definitions": [{"term": "Terme", "definition": "Définition"}],
+  "rules": ["Règle ou formule importante"]
+}
+\`\`\`` :
+  targetToolType === 'infographic' ?
+  `- Pour une infographie :
+\`\`\`json
+{
+  "mainTitle": "Titre de l'infographie",
+  "subtitle": "Sous-titre descriptif",
+  "metrics": [{"value": "100%", "label": "Indicateur clé"}],
+  "keyConcepts": [{"title": "Concept", "desc": "Description concise", "badge": "Notion"}],
+  "highlights": [{"type": "tip", "title": "Conseil clé", "text": "Détail"}]
+}
+\`\`\`` :
+  `- Pour une fiche d'étude :
+\`\`\`json
+{
+  "title": "Titre de la fiche",
+  "sections": [{"heading": "Titre de la section", "body": "Contenu complet...", "bulletPoints": ["Point clé"]}]
+}
+\`\`\``
+}`;
       } else if (isIteration && activeCreation) {
-        systemContent += `\n\nL'UTILISATEUR SOUHAITE MODIFIER LA CRÉATION EXISTANTE ("${activeCreation.title}"). Voici son contenu actuel : ${JSON.stringify(activeCreation.content)}. Applique scrupuleusement la modification demandée : "${userText}".`;
+        systemContent += `\n\nL'UTILISATEUR SOUHAITE MODIFIER LA CRÉATION EXISTANTE ("${activeCreation.title}"). Voici son contenu actuel : ${JSON.stringify(activeCreation.content)}. Applique scrupuleusement la modification demandée : "${userText}". Fournis la version mise à jour au format JSON dans un bloc \`\`\`json ... \`\`\`.`;
       }
 
       // 4. Préparation de l'historique complet pour alimenter le RAG conversationnel
@@ -591,9 +658,18 @@ Tu réponds avec un raisonnement approfondi, rigoureux et naturel, exactement co
 
         setActiveCreation(newCreation);
         window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
+        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
 
-        // On conserve la réponse complète dans le chat tout en confirmant la création à droite
-        fullResponseText = `${rawResponseText}\n\n*(✨ Retrouvez également ce contenu interactif dans votre espace de création à droite !)*`;
+        // Nettoyage du bloc JSON du chat pour un rendu visuel impeccable
+        const introText = rawResponseText
+          .replace(/```json[\s\S]*?```/gi, '')
+          .replace(/```[\s\S]*?```/gi, '')
+          .replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '')
+          .trim();
+
+        fullResponseText = `${introText ? introText + '\n\n' : ''}✨ J'ai généré votre **${parsed.title}** directement dans votre espace **Création** !
+
+${targetToolType === 'quiz' && parsed.content?.questions?.length ? `📝 **${parsed.content.questions.length} questions interactives** ont été préparées avec succès.\n` : ''}👉 *Retrouvez et testez votre création dans le volet de droite (ou l'onglet Création sur mobile).*`;
       } else if (isIteration && activeCreation) {
         const parsed = parseOrBuildAiCreation(activeCreation.toolType, rawResponseText, mainDocName, userText);
         const updatedCreation: AiCreation = {
@@ -608,8 +684,15 @@ Tu réponds avec un raisonnement approfondi, rigoureux et naturel, exactement co
         window.dispatchEvent(new CustomEvent('ai-creation-update', {
           detail: { updatedContent: parsed.content, title: parsed.title }
         }));
+        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
 
-        fullResponseText = `${rawResponseText}\n\n*(✅ Votre création a été mise à jour dans votre espace à droite.)*`;
+        const introText = rawResponseText
+          .replace(/```json[\s\S]*?```/gi, '')
+          .replace(/```[\s\S]*?```/gi, '')
+          .replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '')
+          .trim();
+
+        fullResponseText = `${introText ? introText + '\n\n' : ''}✅ Votre création a été mise à jour dans votre espace **Création** !`;
       } else if (isHesitating) {
         fullResponseText = `${rawResponseText}\n\n👉 Vous pouvez choisir une des actions recommandées juste au-dessus de votre champ de saisie pour que je la prépare immédiatement !`;
       }

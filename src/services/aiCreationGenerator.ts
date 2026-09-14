@@ -73,11 +73,11 @@ function parseQuizFromText(rawText: string, safeDocName: string): QuizContent {
     // Détection d'une nouvelle question
     // Ex: "1. Question ...", "Question 1 : ...", "**1.** ...", "### 1. ...", "Q1: ..."
     const qMatch = line.match(/^(?:(?:\*{1,2}|#{1,4}\s*)?(?:Question\s*)?(\d+)[.:\)]\s*(?:\*{1,2})?|Q(\d+)[:\.-])\s*(.*)/i);
-    // Détection d'une option A, B, C, D ou 1, 2, 3, 4
-    const optMatch = line.match(/^(?:[-*•]\s*)?(?:(?:\*{1,2})?([A-D])[.:\)\-]\s*(?:\*{1,2})?|\(([A-D])\))\s*(.*)/i);
+    // Détection d'une option A, B, C, D ou 1, 2, 3, 4 ou a, b, c, d
+    const optMatch = line.match(/^(?:[-*•]\s*)?(?:(?:\*{1,2})?([A-Da-d1-4])[.:\)\-]\s*(?:\*{1,2})?|\(([A-Da-d1-4])\)|\[([A-Da-d1-4])\])\s*(.*)/i);
     // Détection de la réponse / explication
-    const ansMatch = line.match(/(?:bonne\s+)?r[eé]ponse(?:\s+correcte)?\s*[:=]\s*([A-D])/i);
-    const explMatch = line.match(/(?:explication|justification|pourquoi)\s*[:=]\s*(.*)/i);
+    const ansMatch = line.match(/(?:(?:bonne|correcte?)\s+)?r[eé]ponse(?:\s+correcte)?\s*[:=]\s*[*_`]*([A-Da-d1-4])/i) || line.match(/Answer\s*[:=]\s*[*_`]*([A-Da-d1-4])/i);
+    const explMatch = line.match(/(?:explication|justification|pourquoi|note|remarque)\s*[:=]\s*(.*)/i);
 
     if (qMatch && !optMatch) {
       if (currentQ && currentQ.options.length >= 2) {
@@ -92,13 +92,17 @@ function parseQuizFromText(rawText: string, safeDocName: string): QuizContent {
         explanation: '',
       };
     } else if (optMatch && currentQ) {
-      const optText = (optMatch[3] || '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim();
+      const optText = (optMatch[4] || optMatch[3] || optMatch[2] || optMatch[1] || '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim();
       if (optText) {
         currentQ.options.push(optText);
       }
     } else if (ansMatch && currentQ) {
-      const letter = ansMatch[1].toUpperCase();
-      currentQ.answerIndex = letter.charCodeAt(0) - 65;
+      const char = (ansMatch[1] || '').toUpperCase();
+      if (char >= 'A' && char <= 'D') {
+        currentQ.answerIndex = char.charCodeAt(0) - 65;
+      } else if (char >= '1' && char <= '4') {
+        currentQ.answerIndex = parseInt(char, 10) - 1;
+      }
     } else if (explMatch && currentQ) {
       currentQ.explanation = explMatch[1].trim();
     } else if (currentQ && currentQ.options.length >= 2 && !currentQ.explanation && /^(?:Remarque|Note|Détail)/i.test(line)) {
@@ -360,72 +364,102 @@ export function parseOrBuildAiCreation(
   const safeDocName = docName || 'Document d\'étude';
   const cleanText = (rawAiText || '').trim();
 
-  // 1. Tenter un parsing JSON direct si l'IA a renvoyé un bloc ```json ... ``` ou un objet JSON valide
-  const jsonMatch = cleanText.match(/```json\s*([\s\S]*?)\s*```/) || cleanText.match(/(\{[\s\S]*\})/);
-  if (jsonMatch) {
+  // 1. Tenter une extraction par balise <creation> ou bloc ```json ou JSON brut
+  let rawJsonCandidate = '';
+  const tagMatch = cleanText.match(/<creation[^>]*>([\s\S]*?)<\/creation>/i);
+  if (tagMatch) {
+    rawJsonCandidate = tagMatch[1].trim();
+  } else {
+    const jsonBlockMatch = cleanText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+    if (jsonBlockMatch) {
+      rawJsonCandidate = jsonBlockMatch[1].trim();
+    } else {
+      const objMatch = cleanText.match(/(\{[\s\S]*\})/);
+      if (objMatch) {
+        rawJsonCandidate = objMatch[1].trim();
+      }
+    }
+  }
+
+  if (rawJsonCandidate) {
+    let parsed: any = null;
     try {
-      const parsed = JSON.parse(jsonMatch[1] || jsonMatch[0]);
-      if (parsed && typeof parsed === 'object') {
-        switch (toolType) {
-          case 'quiz': {
-            const corrected = autoCorrectQuiz(parsed, safeDocName);
-            if (corrected.questions && corrected.questions.length > 0) {
-              return { title: corrected.title, content: corrected };
+      parsed = JSON.parse(rawJsonCandidate);
+    } catch {
+      try {
+        // Correction des virgules traînantes fréquentes chez les LLMs
+        const sanitized = rawJsonCandidate.replace(/,\s*([\]}])/g, '$1');
+        parsed = JSON.parse(sanitized);
+      } catch {
+        parsed = null;
+      }
+    }
+
+    if (parsed && typeof parsed === 'object') {
+      // Détection automatique du type si la structure le prouve formellement
+      let effectiveType = toolType;
+      if (Array.isArray(parsed.questions)) effectiveType = 'quiz';
+      else if (parsed.root && (parsed.root.label || parsed.root.children)) effectiveType = 'mindmap';
+      else if (Array.isArray(parsed.metrics) || Array.isArray(parsed.keyConcepts)) effectiveType = 'infographic';
+      else if (parsed.overview || Array.isArray(parsed.keyPoints)) effectiveType = 'summary';
+
+      switch (effectiveType) {
+        case 'quiz': {
+          const corrected = autoCorrectQuiz(parsed, safeDocName);
+          if (corrected.questions && corrected.questions.length > 0) {
+            return { title: corrected.title, content: corrected };
+          }
+          break;
+        }
+        case 'summary': {
+          return {
+            title: sanitizeText(parsed.title) || `Fiche de Résumé : ${safeDocName}`,
+            content: {
+              overview: sanitizeText(parsed.overview || parsed.summary || cleanText.slice(0, 300)),
+              keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints.map(sanitizeText) : [],
+              definitions: Array.isArray(parsed.definitions) ? parsed.definitions : [],
+              rules: Array.isArray(parsed.rules) ? parsed.rules.map(sanitizeText) : [],
+              tags: Array.isArray(parsed.tags) ? parsed.tags.map(sanitizeText) : ['Révision', safeDocName],
             }
-            break;
-          }
-          case 'summary': {
+          };
+        }
+        case 'mindmap': {
+          const root = parsed.root || parsed;
+          if (root && (root.label || root.children)) {
             return {
-              title: sanitizeText(parsed.title) || `Fiche de Résumé : ${safeDocName}`,
+              title: `Carte Mentale : ${safeDocName}`,
               content: {
-                overview: sanitizeText(parsed.overview || parsed.summary || cleanText.slice(0, 300)),
-                keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints.map(sanitizeText) : [],
-                definitions: Array.isArray(parsed.definitions) ? parsed.definitions : [],
-                rules: Array.isArray(parsed.rules) ? parsed.rules.map(sanitizeText) : [],
-                tags: Array.isArray(parsed.tags) ? parsed.tags.map(sanitizeText) : ['Révision', safeDocName],
-              }
-            };
-          }
-          case 'mindmap': {
-            const root = parsed.root || parsed;
-            if (root && (root.label || root.children)) {
-              return {
-                title: `Carte Mentale : ${safeDocName}`,
-                content: {
-                  root: {
-                    id: sanitizeText(root.id) || 'root-node',
-                    label: sanitizeText(root.label || root.title || safeDocName),
-                    details: sanitizeText(root.details),
-                    children: Array.isArray(root.children) ? root.children : []
-                  }
+                root: {
+                  id: sanitizeText(root.id) || 'root-node',
+                  label: sanitizeText(root.label || root.title || safeDocName),
+                  details: sanitizeText(root.details),
+                  children: Array.isArray(root.children) ? root.children : []
                 }
-              };
-            }
-            break;
-          }
-          case 'infographic': {
-            return {
-              title: sanitizeText(parsed.mainTitle || parsed.title) || `Infographie : ${safeDocName}`,
-              content: {
-                mainTitle: sanitizeText(parsed.mainTitle || parsed.title) || `Infographie : ${safeDocName}`,
-                subtitle: sanitizeText(parsed.subtitle) || 'Repères visuels',
-                metrics: Array.isArray(parsed.metrics) ? parsed.metrics : [],
-                keyConcepts: Array.isArray(parsed.keyConcepts) ? parsed.keyConcepts : [],
-                highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
-                conclusion: sanitizeText(parsed.conclusion) || '',
               }
             };
           }
-          case 'document': {
-            return {
-              title: sanitizeText(parsed.title) || `Fiche d'Étude : ${safeDocName}`,
-              content: parsed
-            };
-          }
+          break;
+        }
+        case 'infographic': {
+          return {
+            title: sanitizeText(parsed.mainTitle || parsed.title) || `Infographie : ${safeDocName}`,
+            content: {
+              mainTitle: sanitizeText(parsed.mainTitle || parsed.title) || `Infographie : ${safeDocName}`,
+              subtitle: sanitizeText(parsed.subtitle) || 'Repères visuels',
+              metrics: Array.isArray(parsed.metrics) ? parsed.metrics : [],
+              keyConcepts: Array.isArray(parsed.keyConcepts) ? parsed.keyConcepts : [],
+              highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
+              conclusion: sanitizeText(parsed.conclusion) || '',
+            }
+          };
+        }
+        case 'document': {
+          return {
+            title: sanitizeText(parsed.title) || `Fiche d'Étude : ${safeDocName}`,
+            content: parsed
+          };
         }
       }
-    } catch (_err) {
-      // Si le JSON n'est pas valide, extraction textuelle
     }
   }
 

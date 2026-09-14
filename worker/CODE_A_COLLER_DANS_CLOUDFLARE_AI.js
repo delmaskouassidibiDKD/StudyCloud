@@ -400,7 +400,10 @@ Tu réponds avec un raisonnement approfondi, rigoureux et naturel, exactement co
 - Pas de blabla inutile, pas de formules toutes faites ni de structures artificielles ou rigides imposées.
 - Réponds avec précision, créativité et pertinence à la demande exacte de l'utilisateur (questions, explications, synthèses, QCM, quiz, cartes mentales, infographies, résumés, fiches, etc.).
 - Si un document est fourni, appuie-toi fidèlement et en profondeur sur son contenu réel.
-- Pour toutes les notations et formules scientifiques ou mathématiques, utilise la syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré).`;
+- Pour toutes les notations et formules scientifiques ou mathématiques, utilise la syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré).
+${
+  requestedType ? `\n- INSTRUCTION POUR LA CRÉATION DEMANDÉE ('${requestedType}') : Rédige une brève introduction amicale, puis fournis impérativement le contenu structuré dans un bloc \`\`\`json ... \`\`\` (par exemple avec un objet JSON contenant les questions, options et explanations pour un quiz/QCM, ou overview/keyPoints pour un résumé, ou root/children pour une carte mentale) afin qu'il s'injecte directement dans l'interface utilisateur.` : ""
+}`;
 
       // ------------------------------------------------------------------------
       // CONDITIONS SELON LE CHOIX DE L'UTILISATEUR (BOUTON PUISSANT)
