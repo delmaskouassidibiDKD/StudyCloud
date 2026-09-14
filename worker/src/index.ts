@@ -301,10 +301,11 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
       top: 0;
       z-index: 50;
       background: #ffffff;
-      padding: 14px 20px;
+      padding: 12px 16px;
+      border-bottom: 1px solid #f1f5f9;
     }
     .header-container {
-      max-width: 960px;
+      max-width: 760px;
       margin: 0 auto;
       display: flex;
       align-items: center;
@@ -314,18 +315,13 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
     .header-left {
       display: flex;
       align-items: center;
-      gap: 12px;
+      gap: 10px;
       text-decoration: none;
     }
-    .brand-logo-badge {
-      width: 38px;
-      height: 38px;
-      border-radius: 12px;
-      background: #070a13;
+    .brand-logo-wrap {
       display: flex;
       align-items: center;
       justify-content: center;
-      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
       flex-shrink: 0;
     }
     .brand-titles {
@@ -335,7 +331,6 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
     .brand-title-row {
       display: flex;
       align-items: center;
-      gap: 0;
       font-size: 19px;
       font-weight: 900;
       letter-spacing: -0.02em;
@@ -344,82 +339,77 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
     .brand-study { color: #ea580c; }
     .brand-cloud { color: #2563eb; }
     .brand-tagline {
-      font-size: 9px;
-      color: #f59e0b;
-      font-weight: 800;
-      text-transform: uppercase;
-      letter-spacing: 0.12em;
+      font-size: 10.5px;
+      color: #64748b;
+      font-weight: 600;
       margin-top: 1px;
     }
 
-    /* Bouton Aller sur le site */
+    /* Bouton Accéder à l'application */
     .btn-top-site {
       display: inline-flex;
       align-items: center;
-      gap: 7px;
+      gap: 6px;
       background: #0f172a;
       color: #ffffff;
       text-decoration: none;
       font-size: 12.5px;
       font-weight: 700;
-      padding: 9px 16px;
+      padding: 9px 14px;
       border-radius: 12px;
       transition: all 0.2s;
+      flex-shrink: 0;
+      white-space: nowrap;
     }
     .btn-top-site:hover {
       background: #1e293b;
-      transform: translateY(-1px);
     }
 
-    /* MAIN CONTAINER - Directement sur fond blanc, sans blocs ni lignes de cadre */
+    /* MAIN CONTAINER */
     main {
       flex: 1;
-      max-width: 960px;
+      max-width: 760px;
       width: 100%;
       margin: 0 auto;
-      padding: 16px 20px 140px; /* Espace respirant pour la barre fixe du bas */
+      padding: 16px 16px 110px;
       display: flex;
       flex-direction: column;
-      gap: 20px;
+      gap: 16px;
     }
 
-    /* INFORMATIONS SUR LE FICHIER / COURS (EN BAS DE L'EN-TÊTE, DIRECTEMENT SUR LE FOND) */
+    /* INFORMATIONS SUR LE DOSSIER */
     .info-section {
       display: flex;
       flex-direction: column;
-      gap: 8px;
+      gap: 4px;
     }
-    .info-badges-row {
-      display: flex;
-      align-items: center;
-      flex-wrap: wrap;
-      gap: 10px;
-    }
-    .pill-meta-text {
-      font-size: 13px;
-      font-weight: 700;
+    .meta-stats {
+      font-size: 13.5px;
+      font-weight: 600;
       color: #64748b;
     }
-    .info-title {
+    .folder-title {
       font-size: 28px;
       font-weight: 900;
       color: #0f172a;
       letter-spacing: -0.02em;
       line-height: 1.2;
-      margin-top: 4px;
+      margin-top: 2px;
     }
-    .info-desc {
+    .folder-desc {
       font-size: 14px;
-      color: #475569;
-      line-height: 1.6;
+      color: #64748b;
+      line-height: 1.5;
+      font-weight: 500;
+      margin-top: 2px;
     }
 
-    /* SECTION DES FICHIERS (IMAGE 2 STYLE, DÉFILABLE) */
+    /* SECTION DES FICHIERS */
     .files-section {
-      margin-top: 10px;
+      margin-top: 6px;
       display: flex;
       flex-direction: column;
-      gap: 14px;
+      gap: 12px;
     }
     .files-section-header {
       display: flex;
@@ -427,7 +417,7 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
       justify-content: space-between;
     }
     .files-section-title {
-      font-size: 14px;
+      font-size: 13px;
       font-weight: 800;
       text-transform: uppercase;
       letter-spacing: 0.05em;
@@ -436,88 +426,78 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
     .btn-toggle-all {
       background: none;
       border: none;
-      font-size: 12.5px;
+      font-size: 13px;
       font-weight: 700;
       color: #ea580c;
       cursor: pointer;
-      padding: 4px 8px;
+      padding: 4px 6px;
     }
 
-    /* GRILLE DE FICHIERS */
+    /* GRILLE DE FICHIERS (3 PAR LIGNE SUR MOBILE) */
     .files-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 20px 14px;
-    }
-    @media (max-width: 640px) {
-      .files-grid {
-        grid-template-columns: repeat(3, 1fr);
-        gap: 16px 10px;
-      }
-    }
-    @media (max-width: 400px) {
-      .files-grid {
-        grid-template-columns: repeat(2, 1fr);
-      }
+      gap: 12px;
+      width: 100%;
     }
 
-    /* FICHIER INDIVIDUEL */
+    /* CARTE DE FICHIER (CADRE ORANGE, FOND BLANC, COCHÉ EN HAUT À DROITE) */
     .file-grid-item {
       position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
       text-align: center;
-      padding: 12px 8px 10px;
+      padding: 14px 8px 12px;
       border-radius: 18px;
       cursor: pointer;
       user-select: none;
-      transition: transform 0.15s, opacity 0.2s;
-      border: 2.5px solid transparent;
-      background: transparent;
+      transition: all 0.15s ease-in-out;
+      border: 2px solid #ea580c;
+      background: #ffffff;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
     }
     .file-grid-item:active {
-      transform: scale(0.97);
-    }
-    .file-grid-item.selected {
-      border-color: #ea580c;
-      background: rgba(234, 88, 12, 0.04);
+      transform: scale(0.96);
     }
     .file-grid-item:not(.selected) {
-      opacity: 0.45;
+      border-color: #e2e8f0;
+      background: #fafafa;
+      opacity: 0.65;
     }
     .file-select-badge {
       position: absolute;
-      top: 6px;
-      right: 6px;
+      top: 8px;
+      right: 8px;
       width: 20px;
       height: 20px;
       border-radius: 50%;
       display: flex;
       align-items: center;
       justify-content: center;
-      background: #e2e8f0;
+      background: #ea580c;
       transition: all 0.2s;
     }
-    .file-grid-item.selected .file-select-badge {
-      background: #ea580c;
+    .file-grid-item:not(.selected) .file-select-badge {
+      background: #cbd5e1;
     }
     .file-grid-item:not(.selected) .check-icon {
       display: none;
     }
+
+    /* ICÔNE DE FICHIER */
     .file-icon-wrapper {
-      width: 52px;
-      height: 64px;
+      width: 44px;
+      height: 56px;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 6px;
-      margin-top: 2px;
+      margin: 8px auto 10px;
     }
     .doc-icon-svg {
       width: 100%;
       height: 100%;
-      filter: drop-shadow(0 4px 8px rgba(0,0,0,0.08));
+      filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.08));
     }
     .file-meta {
       width: 100%;
@@ -527,8 +507,8 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
       gap: 2px;
     }
     .file-name {
-      font-size: 12px;
-      font-weight: 700;
+      font-size: 11.5px;
+      font-weight: 800;
       color: #0f172a;
       line-height: 1.35;
       display: -webkit-box;
@@ -544,67 +524,75 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
       color: #94a3b8;
     }
 
-    /* BARRE FIXE EN BAS (PARFAITEMENT ADAPTÉE À TOUS LES ÉCRANS & ENCOCHES) */
+    /* BARRE FIXE EN BAS - 100% RESPONSIVE ET JAMAIS COUPÉE SUR AUCUN APPAREIL */
     .bottom-bar {
       position: fixed;
       bottom: 0;
       left: 0;
       right: 0;
       background: #ffffff;
-      padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
-      box-shadow: 0 -8px 25px rgba(0, 0, 0, 0.07);
+      border-top: 1px solid #f1f5f9;
+      box-shadow: 0 -4px 20px rgba(0, 0, 0, 0.08);
+      padding: 10px 14px calc(10px + env(safe-area-inset-bottom, 10px));
       z-index: 100;
     }
     .bottom-bar-inner {
-      max-width: 680px;
+      max-width: 600px;
       margin: 0 auto;
-      display: grid;
-      grid-template-columns: 1fr 1fr;
+      display: flex;
+      align-items: center;
       gap: 10px;
       width: 100%;
+      box-sizing: border-box;
     }
     .btn-bottom {
-      width: 100%;
+      flex: 1 1 0;
       min-width: 0;
-      height: 50px;
+      height: 48px;
       border-radius: 14px;
-      font-size: 13.5px;
       font-weight: 800;
+      font-size: clamp(11px, 2.7vw, 13.5px);
       display: flex;
       align-items: center;
       justify-content: center;
       gap: 6px;
-      cursor: pointer;
-      border: none;
-      transition: all 0.2s;
-      text-decoration: none;
       padding: 0 8px;
-      text-align: center;
-      line-height: 1.25;
+      cursor: pointer;
+      user-select: none;
       box-sizing: border-box;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+      text-decoration: none;
+    }
+    .btn-bottom:active {
+      transform: scale(0.97);
     }
     .btn-bottom svg {
       flex-shrink: 0;
+      width: 17px;
+      height: 17px;
     }
-    .btn-bottom:active {
-      transform: scale(0.98);
+    .btn-bottom span {
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
     }
     .btn-bottom-zip {
       background: #f8fafc;
+      border: 1.5px solid #cbd5e1;
       color: #0f172a;
-      border: 1.5px solid #e2e8f0;
     }
     .btn-bottom-zip:hover {
       background: #f1f5f9;
-      border-color: #cbd5e1;
     }
     .btn-bottom-action {
-      background: linear-gradient(135deg, #ea580c, #f38020);
+      background: #ea580c;
+      border: none;
       color: #ffffff;
       box-shadow: 0 4px 14px rgba(234, 88, 12, 0.3);
     }
     .btn-bottom-action:hover {
-      filter: brightness(1.06);
+      background: #c2410c;
     }
     .btn-bottom-action:disabled {
       opacity: 0.5;
@@ -612,43 +600,39 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
       box-shadow: none;
     }
 
-    @media (max-width: 520px) {
-      .bottom-bar {
-        padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 8px));
+    @media (max-width: 440px) {
+      .files-grid {
+        gap: 8px;
+      }
+      .file-grid-item {
+        padding: 12px 4px 10px;
+        border-radius: 16px;
+      }
+      .file-icon-wrapper {
+        width: 38px;
+        height: 50px;
+        margin: 6px auto 8px;
+      }
+      .file-name {
+        font-size: 11px;
+      }
+      .file-size {
+        font-size: 10px;
       }
       .bottom-bar-inner {
         gap: 8px;
       }
       .btn-bottom {
-        height: 48px;
-        font-size: 12px;
-        padding: 0 5px;
-        gap: 4px;
-        border-radius: 12px;
+        height: 46px;
+        padding: 0 4px;
+        font-size: 11.5px;
       }
-      .btn-bottom svg {
-        width: 15px;
-        height: 15px;
-      }
-      .file-icon-wrapper {
-        width: 44px;
-        height: 54px;
-      }
+      .btn-zip-full { display: none; }
+      .btn-zip-short { display: inline; }
     }
-    @media (max-width: 380px) {
-      .btn-bottom {
-        font-size: 11px;
-        padding: 0 3px;
-        gap: 3px;
-      }
-      .btn-bottom svg {
-        width: 13px;
-        height: 13px;
-      }
-      .file-icon-wrapper {
-        width: 38px;
-        height: 48px;
-      }
+    @media (min-width: 441px) {
+      .btn-zip-short { display: none; }
+      .btn-zip-full { display: inline; }
     }
 
     /* TOAST */
@@ -684,11 +668,10 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
   <!-- HEADER -->
   <header>
     <div class="header-container">
-      <!-- Logo StudyCloud ADN + Titres -->
       <a href="${siteUrl}" target="_blank" class="header-left">
-        <!-- Logo ADN Officiel StudyCloud (identique au composant DnaLogo de l'application) -->
-        <div class="brand-logo-badge">
-          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 6px rgba(243, 128, 32, 0.75));">
+        <!-- Logo ADN Officiel StudyCloud issu de Sidebar.tsx / DnaLogo.tsx -->
+        <div class="brand-logo-wrap">
+          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 4px rgba(243, 128, 32, 0.8));">
             <defs>
               <linearGradient id="scDnaGradStatic" x1="0%" y1="0%" x2="0%" y2="100%">
                 <stop offset="0%" stopColor="#FFFFFF" />
@@ -698,22 +681,22 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
             </defs>
             <path d="M8 3C8 3 8 10 12 12C16 14 16 21 16 21" stroke="#F38020" stroke-width="2.5" stroke-linecap="round" style="stroke: url(#scDnaGradStatic);" />
             <path d="M16 3C16 3 16 10 12 12C8 14 8 21 8 21" stroke="#F38020" stroke-width="2.5" stroke-linecap="round" style="stroke: url(#scDnaGradStatic);" />
-            <line x1="10" y1="6" x2="14" y2="6" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" opacity="0.8" />
-            <line x1="10.5" y1="9" x2="13.5" y2="9" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" opacity="0.9" />
+            <line x1="10" y1="6" x2="14" y2="6" stroke="#F38020" stroke-width="1.5" stroke-linecap="round" opacity="0.8" />
+            <line x1="10.5" y1="9" x2="13.5" y2="9" stroke="#F38020" stroke-width="1.5" stroke-linecap="round" opacity="0.9" />
             <line x1="11" y1="12" x2="13" y2="12" stroke="#F38020" stroke-width="3" stroke-linecap="round" />
-            <line x1="10.5" y1="15" x2="13.5" y2="15" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" opacity="0.9" />
-            <line x1="10" y1="18" x2="14" y2="18" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" opacity="0.8" />
+            <line x1="10.5" y1="15" x2="13.5" y2="15" stroke="#F38020" stroke-width="1.5" stroke-linecap="round" opacity="0.9" />
+            <line x1="10" y1="18" x2="14" y2="18" stroke="#F38020" stroke-width="1.5" stroke-linecap="round" opacity="0.8" />
           </svg>
         </div>
         <div class="brand-titles notranslate">
           <div class="brand-title-row">
             <span class="brand-study">Study</span><span class="brand-cloud">Cloud</span>
           </div>
-          <span class="brand-tagline">DKD TECHNOLOGIES</span>
+          <span class="brand-tagline">Portail de téléchargement direct étudiant</span>
         </div>
       </a>
 
-      <!-- Bouton Aller sur le site -->
+      <!-- Bouton Accéder à l'application -->
       <a href="${siteUrl}" target="_blank" class="btn-top-site">
         <span>Accéder à l'application</span>
         <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
@@ -721,23 +704,19 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
     </div>
   </header>
 
-  <!-- MAIN (Directement sur fond blanc, sans blocs encadrés ni lignes de bordures) -->
+  <!-- MAIN -->
   <main>
-    <!-- INFORMATIONS SUR LE FICHIER (En bas de l'en-tête, sans bouton zip orange au milieu) -->
+    <!-- INFORMATIONS SUR LE DOSSIER -->
     <div class="info-section">
-      <div class="info-badges-row">
-        <span class="pill-meta-text">${formattedSize} • ${totalFiles} fichier(s)</span>
-      </div>
-
-      <h1 class="info-title">${title}</h1>
-
-      ${description ? `<p class="info-desc">${description}</p>` : ''}
+      <span class="meta-stats">${formattedSize} • ${totalFiles} fichier(s)</span>
+      <h1 class="folder-title">${title}</h1>
+      <p class="folder-desc">${description || ('Dossier partagé contenant ' + totalFiles + ' élément(s).')}</p>
     </div>
 
-    <!-- GRILLE DES FICHIERS (IMAGE 2 STYLE, COCHÉS PAR DÉFAUT, DÉFILABLE) -->
+    <!-- FICHIERS DISPONIBLES -->
     <div class="files-section">
       <div class="files-section-header">
-        <span class="files-section-title">Fichiers disponibles (${totalFiles})</span>
+        <span class="files-section-title">FICHIERS DISPONIBLES (${totalFiles})</span>
         <button type="button" class="btn-toggle-all" onclick="toggleSelectAll()">Tout cocher / décocher</button>
       </div>
 
@@ -747,18 +726,17 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
     </div>
   </main>
 
-  <!-- BARRE FIXE EN BAS (2 BOUTONS DYNAMIQUES PARFAITEMENT VISIBLES SUR TOUS LES APPAREILS) -->
+  <!-- BARRE EN BAS : PARFAITEMENT VISIBLE SUR TOUS LES APPAREILS SANS AUCUNE COUPURE -->
   <div class="bottom-bar">
     <div class="bottom-bar-inner">
-      <!-- Bouton 1: Télécharger en fichier zip -->
       <button type="button" id="btnDownloadZip" onclick="handleDownloadZip()" class="btn-bottom btn-bottom-zip" title="Tout télécharger en fichier zip">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-        <span>Télécharger en ZIP</span>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        <span class="btn-zip-full">Tout télécharger en fichier zip</span>
+        <span class="btn-zip-short">Télécharger en ZIP</span>
       </button>
 
-      <!-- Bouton 2: Tout télécharger / Télécharger (selon sélection) -->
       <button type="button" id="btnDownloadAction" onclick="handleDownloadAction()" class="btn-bottom btn-bottom-action">
-        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
         <span id="btnDownloadActionText">Tout télécharger</span>
       </button>
     </div>
