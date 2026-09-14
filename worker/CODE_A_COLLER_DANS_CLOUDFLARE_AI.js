@@ -204,6 +204,152 @@ export default {
       });
     }
 
+    // ------------------------------------------------------------------------
+    // GESTION DES CONVERSATIONS (SESSIONS DE CHAT STYLE GEMINI)
+    // ------------------------------------------------------------------------
+    if (request.method === "GET" && path === "/api/ai/conversations") {
+      const userId = url.searchParams.get("userId");
+      if (!userId) return new Response(JSON.stringify({ error: "userId requis" }), { status: 400, headers: corsHeaders });
+      if (!db) return new Response(JSON.stringify({ success: true, data: [] }), { headers: corsHeaders });
+
+      try {
+        const { results } = await db.prepare("SELECT * FROM conversations WHERE user_id = ? ORDER BY updated_at DESC").bind(userId).all();
+        return new Response(JSON.stringify({ success: true, data: results || [] }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ success: false, error: e.message, data: [] }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+    }
+
+    if (request.method === "POST" && path === "/api/ai/conversations") {
+      const body = await request.json().catch(() => ({}));
+      const { id, userId, title } = body;
+      if (!userId) return new Response(JSON.stringify({ error: "userId requis" }), { status: 400, headers: corsHeaders });
+      if (!db) return new Response(JSON.stringify({ success: true, data: { id: id || crypto.randomUUID() } }), { headers: corsHeaders });
+
+      const convId = id || crypto.randomUUID();
+      const convTitle = title || "Nouvelle discussion";
+
+      try {
+        await db.prepare(`
+          INSERT INTO conversations (id, user_id, title, created_at, updated_at)
+          VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated_at = CURRENT_TIMESTAMP
+        `).bind(convId, userId, convTitle).run();
+
+        return new Response(JSON.stringify({ success: true, data: { id: convId, title: convTitle } }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ success: false, error: e.message }), {
+          status: 500, headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+    }
+
+    if (request.method === "DELETE" && path === "/api/ai/conversations") {
+      const convId = url.searchParams.get("id");
+      if (!convId) return new Response(JSON.stringify({ error: "id requis" }), { status: 400, headers: corsHeaders });
+      if (db) {
+        try {
+          await db.prepare("DELETE FROM messages WHERE conversation_id = ?").bind(convId).run();
+          await db.prepare("DELETE FROM ai_creations WHERE conversation_id = ?").bind(convId).run();
+          await db.prepare("DELETE FROM conversations WHERE id = ?").bind(convId).run();
+        } catch (e) {}
+      }
+      return new Response(JSON.stringify({ success: true, message: "Conversation supprimée" }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
+    // ------------------------------------------------------------------------
+    // GESTION DES MESSAGES DE CONVERSATION (MÉMOIRE PERSISTANTE)
+    // ------------------------------------------------------------------------
+    if (request.method === "GET" && path === "/api/ai/messages") {
+      const conversationId = url.searchParams.get("conversationId");
+      if (!conversationId) return new Response(JSON.stringify({ error: "conversationId requis" }), { status: 400, headers: corsHeaders });
+      if (!db) return new Response(JSON.stringify({ success: true, data: [] }), { headers: corsHeaders });
+
+      try {
+        const { results } = await db.prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC").bind(conversationId).all();
+        return new Response(JSON.stringify({ success: true, data: results || [] }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ success: false, error: e.message, data: [] }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+    }
+
+    if (request.method === "POST" && path === "/api/ai/messages") {
+      const body = await request.json().catch(() => ({}));
+      const { id, conversationId, role, content, metadata } = body;
+      if (!conversationId || !role || !content) {
+        return new Response(JSON.stringify({ error: "conversationId, role et content requis" }), { status: 400, headers: corsHeaders });
+      }
+      if (db) {
+        const msgId = id || crypto.randomUUID();
+        const metaStr = typeof metadata === "string" ? metadata : JSON.stringify(metadata || {});
+        try {
+          await db.prepare(`
+            INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
+            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          `).bind(msgId, conversationId, role, content, metaStr).run();
+
+          await db.prepare("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(conversationId).run();
+        } catch (e) {}
+      }
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
+    // ------------------------------------------------------------------------
+    // GESTION DES CRÉATIONS IA ASSOCIÉES (TABLE ai_creations)
+    // ------------------------------------------------------------------------
+    if (request.method === "GET" && path === "/api/ai/creations") {
+      const conversationId = url.searchParams.get("conversationId");
+      if (!conversationId) return new Response(JSON.stringify({ error: "conversationId requis" }), { status: 400, headers: corsHeaders });
+      if (!db) return new Response(JSON.stringify({ success: true, data: [] }), { headers: corsHeaders });
+
+      try {
+        const { results } = await db.prepare("SELECT * FROM ai_creations WHERE conversation_id = ? ORDER BY created_at DESC").bind(conversationId).all();
+        return new Response(JSON.stringify({ success: true, data: results || [] }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ success: false, error: e.message, data: [] }), {
+          headers: { "Content-Type": "application/json", ...corsHeaders }
+        });
+      }
+    }
+
+    if (request.method === "POST" && path === "/api/ai/creations") {
+      const body = await request.json().catch(() => ({}));
+      const { id, conversationId, messageId, type, title, content } = body;
+      if (!conversationId || !type || !content) {
+        return new Response(JSON.stringify({ error: "conversationId, type et content requis" }), { status: 400, headers: corsHeaders });
+      }
+      if (db) {
+        const creationId = id || crypto.randomUUID();
+        const contentStr = typeof content === "string" ? content : JSON.stringify(content);
+        try {
+          await db.prepare(`
+            INSERT INTO ai_creations (id, conversation_id, message_id, type, title, content, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET title = excluded.title, content = excluded.content
+          `).bind(creationId, conversationId, messageId || null, type, title || null, contentStr).run();
+        } catch (e) {}
+      }
+      return new Response(JSON.stringify({ success: true }), {
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
     if (request.method !== "POST") {
       return new Response(JSON.stringify({ error: "Méthode non autorisée." }), {
         status: 405,
@@ -294,37 +440,60 @@ export default {
         replyText = aiResult.response || aiResult.text || JSON.stringify(aiResult);
       }
 
-      // Sauvegarde sécurisée isolée par utilisateur dans D1 si connecté
-      if (userId && db) {
-        try {
-          const userMsgId = crypto.randomUUID();
-          const aiMsgId = crypto.randomUUID();
+      // Sauvegarde sécurisée persistante dans D1 (tables messages et user_ai_workspace)
+      if (db) {
+        const convId = body.conversationId || sessionId;
+        const userMsgId = crypto.randomUUID();
+        const aiMsgId = crypto.randomUUID();
 
-          await db.prepare(`
-            INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, attached_file_id, attached_file_name, attached_file_r2_key, attached_file_content)
-            VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?)
-          `).bind(
-            userMsgId,
-            userId,
-            sessionId,
-            userPrompt,
-            body.attachedFileId || null,
-            body.attachedFileName || null,
-            body.attachedFileR2Key || null,
-            body.attachedFileContent || null
-          ).run();
+        // 1. Sauvegarde dans la table messages pour l'historique style Gemini
+        if (convId) {
+          try {
+            await db.prepare(`
+              INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
+              VALUES (?, ?, 'user', ?, ?, CURRENT_TIMESTAMP)
+            `).bind(userMsgId, convId, userPrompt, JSON.stringify({ attachedFileName: body.attachedFileName || null })).run();
 
-          await db.prepare(`
-            INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text)
-            VALUES (?, ?, ?, 'assistant', ?)
-          `).bind(
-            aiMsgId,
-            userId,
-            sessionId,
-            replyText
-          ).run();
-        } catch (dbSaveErr) {
-          console.warn("[Workspace AI] Erreur sauvegarde D1:", dbSaveErr);
+            await db.prepare(`
+              INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
+              VALUES (?, ?, 'assistant', ?, ?, CURRENT_TIMESTAMP)
+            `).bind(aiMsgId, convId, replyText, JSON.stringify({ model: usedModel })).run();
+
+            await db.prepare("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(convId).run();
+          } catch (msgErr) {
+            console.warn("[Workspace AI] Erreur insertion messages D1:", msgErr);
+          }
+        }
+
+        // 2. Sauvegarde dans user_ai_workspace si userId fourni
+        if (userId) {
+          try {
+            await db.prepare(`
+              INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, attached_file_id, attached_file_name, attached_file_r2_key, attached_file_content)
+              VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?)
+            `).bind(
+              userMsgId,
+              userId,
+              sessionId,
+              userPrompt,
+              body.attachedFileId || null,
+              body.attachedFileName || null,
+              body.attachedFileR2Key || null,
+              body.attachedFileContent || null
+            ).run();
+
+            await db.prepare(`
+              INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text)
+              VALUES (?, ?, ?, 'assistant', ?)
+            `).bind(
+              aiMsgId,
+              userId,
+              sessionId,
+              replyText
+            ).run();
+          } catch (dbSaveErr) {
+            console.warn("[Workspace AI] Erreur sauvegarde D1:", dbSaveErr);
+          }
         }
       }
 

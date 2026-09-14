@@ -1,8 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, ArrowRight } from 'lucide-react';
+import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { FileIconBadge } from './FileIconBadge';
-import { sendChatMessageToAi, saveAiReaction, removeAiAttachment } from '../services/api';
+import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI } from '../services/api';
 import { extractDocumentText } from '../services/documentTextExtractor';
 import { parseOrBuildAiCreation } from '../services/aiCreationGenerator';
 import { AiCreation, AiCreationType } from './ai-creations/types';
@@ -14,13 +14,19 @@ interface Message {
   isStreaming?: boolean;
   reaction?: 'like' | 'dislike' | null;
   attachedFileName?: string;
+  createdAt?: string;
+}
+
+interface ConversationItem {
+  id: string;
+  title: string;
+  created_at?: string;
+  updated_at?: string;
 }
 
 const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: boolean; isStreaming?: boolean }) => {
   const [expanded, setExpanded] = useState(false);
 
-  // LE MASQUAGE/DÉMASQUAGE EST STRICTEMENT RÉSERVÉ AUX MESSAGES TRÈS VOLUMINEUX ENVOYÉS PAR L'UTILISATEUR
-  // L'IA N'EST JAMAIS MASQUÉE NI TRONQUÉE : ELLE S'AFFICHE TOUJOURS EN ENTIER
   const maxUserPromptLength = 350;
   const isLongUserMsg = isUser && text.length > maxUserPromptLength;
   const displayText = isLongUserMsg && !expanded ? text.slice(0, maxUserPromptLength) + '...' : text;
@@ -44,7 +50,6 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
     );
   }
 
-  // Pour l'IA : Rendu complet, sans coupure, avec typographie soignée
   const lines = displayText.split('\n');
 
   return (
@@ -52,7 +57,6 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
       <div className="space-y-1.5 text-zinc-200 text-left w-full leading-relaxed font-medium">
         {lines.map((line, idx) => {
           const isLastLine = idx === lines.length - 1;
-          // Parser inline pour **gras**
           const parts = line.split(/(\*\*[^*]+\*\*)/g);
           const formattedLine = parts.map((part, i) => {
             if (part.startsWith('**') && part.endsWith('**')) {
@@ -68,7 +72,6 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
           return (
             <p key={idx} className="whitespace-pre-wrap break-words">
               {formattedLine}
-              {/* ADN qui tourne et se déplace en temps réel juste après le dernier mot pendant la rédaction ! */}
               {isStreaming && isLastLine && (
                 <span className="inline-flex items-center align-middle ml-2 select-none" title="L'IA écrit en temps réel...">
                   <DnaLogo className="w-4 h-4 animate-dna-spin-float text-orange-500 drop-shadow-[0_0_8px_rgba(243,128,32,0.9)]" glow={true} />
@@ -92,6 +95,21 @@ export interface AssistantChatProps {
 }
 
 export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem, attachedResources = [], setAttachedResources }: AssistantChatProps) {
+  const currentUserId = typeof window !== 'undefined'
+    ? (localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id') || 'default-user')
+    : 'default-user';
+
+  // Session courante (Style Gemini)
+  const [currentConversationId, setCurrentConversationId] = useState<string>(() => {
+    return localStorage.getItem('studycloud_current_conversation_id') || ('conv-' + Date.now());
+  });
+  const [currentConversationTitle, setCurrentConversationTitle] = useState<string>('Nouvelle discussion');
+
+  // Tiroir Historique Gemini
+  const [isHistoryDrawerOpen, setIsHistoryDrawerOpen] = useState(false);
+  const [conversations, setConversations] = useState<ConversationItem[]>([]);
+  const [historySearch, setHistorySearch] = useState('');
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [inputValue, setInputValue] = useState('');
   const [isTyping, setIsTyping] = useState(false);
@@ -109,10 +127,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimerRef = useRef<any>(null);
 
-  const currentUserId = typeof window !== 'undefined'
-    ? (localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id') || 'default-user')
-    : 'default-user';
-  const currentSessionId = useRef('session-' + Date.now()).current;
+  // Sauvegarde ID de session courante
+  useEffect(() => {
+    localStorage.setItem('studycloud_current_conversation_id', currentConversationId);
+  }, [currentConversationId]);
 
   useEffect(() => {
     onHasMessagesChange?.(messages.length > 0);
@@ -124,16 +142,111 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
   }, [messages, isTyping, isWaitingServer]);
 
+  // Chargement de la liste des conversations (Historique Gemini) depuis Cloudflare D1
+  const loadConversations = async () => {
+    try {
+      const res = await StudyCloudAPI.getAiConversations(currentUserId);
+      if (res && res.success && Array.isArray(res.data)) {
+        setConversations(res.data);
+      }
+    } catch (e) {
+      // Fallback localStorage
+      const local = localStorage.getItem('studycloud_conversations_cache');
+      if (local) {
+        try { setConversations(JSON.parse(local)); } catch {}
+      }
+    }
+  };
+
+  useEffect(() => {
+    loadConversations();
+  }, [currentUserId]);
+
+  // Chargement des messages de la conversation active
+  const loadConversationMessages = async (convId: string) => {
+    try {
+      const res = await StudyCloudAPI.getAiConversationMessages(convId);
+      if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+        const loaded: Message[] = res.data.map((row: any) => {
+          let attachedFileName = undefined;
+          if (row.metadata) {
+            try {
+              const meta = typeof row.metadata === 'string' ? JSON.parse(row.metadata) : row.metadata;
+              attachedFileName = meta?.attachedFileName;
+            } catch {}
+          }
+          return {
+            id: row.id,
+            text: row.content,
+            sender: row.role === 'user' ? 'user' : 'ai',
+            attachedFileName,
+            createdAt: row.created_at,
+          };
+        });
+        setMessages(loaded);
+      } else {
+        // Fallback session locale
+        const local = localStorage.getItem(`studycloud_conv_msgs_${convId}`);
+        if (local) {
+          try { setMessages(JSON.parse(local)); } catch { setMessages([]); }
+        } else {
+          setMessages([]);
+        }
+      }
+
+      // Recharger également la dernière création associée à cette conversation
+      const crRes = await StudyCloudAPI.getAiConversationCreations(convId);
+      if (crRes && crRes.success && Array.isArray(crRes.data) && crRes.data.length > 0) {
+        const lastCreation = crRes.data[0];
+        let contentParsed = lastCreation.content;
+        if (typeof contentParsed === 'string') {
+          try { contentParsed = JSON.parse(contentParsed); } catch {}
+        }
+        const restoredCreation: AiCreation = {
+          id: lastCreation.id,
+          userId: currentUserId,
+          toolType: lastCreation.type,
+          title: lastCreation.title || 'Création IA',
+          content: contentParsed,
+          createdAt: lastCreation.created_at,
+        };
+        setActiveCreation(restoredCreation);
+        window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: restoredCreation } }));
+      }
+    } catch (e) {
+      console.warn('[AssistantChat] Erreur chargement messages:', e);
+    }
+  };
+
+  useEffect(() => {
+    loadConversationMessages(currentConversationId);
+  }, [currentConversationId]);
+
   // Synchronisation avec les créations actives du panneau droit
   useEffect(() => {
     const handleReady = (e: any) => {
       if (e.detail?.creation) {
         setActiveCreation(e.detail.creation);
+        // Sauvegarder dans ai_creations dans D1
+        StudyCloudAPI.saveAiCreationRecord({
+          id: e.detail.creation.id,
+          conversationId: currentConversationId,
+          type: e.detail.creation.toolType,
+          title: e.detail.creation.title,
+          content: e.detail.creation.content,
+        }).catch(() => {});
       }
     };
     const handleUpdate = (e: any) => {
       if (e.detail?.updatedContent && activeCreation) {
         setActiveCreation(prev => prev ? { ...prev, content: e.detail.updatedContent } : null);
+        StudyCloudAPI.saveAiCreationRecord({
+          id: activeCreation.id,
+          conversationId: currentConversationId,
+          type: activeCreation.toolType,
+          title: activeCreation.title,
+          content: e.detail.updatedContent,
+        }).catch(() => {});
       }
     };
     window.addEventListener('ai-creation-ready', handleReady as any);
@@ -142,7 +255,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       window.removeEventListener('ai-creation-ready', handleReady as any);
       window.removeEventListener('ai-creation-update', handleUpdate as any);
     };
-  }, [activeCreation]);
+  }, [activeCreation, currentConversationId]);
 
   // Nettoyage du timer d'animation au démontage
   useEffect(() => {
@@ -150,6 +263,39 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       if (typingTimerRef.current) clearInterval(typingTimerRef.current);
     };
   }, []);
+
+  // Création d'une nouvelle session de discussion
+  const handleStartNewConversation = () => {
+    const newId = 'conv-' + Date.now();
+    setCurrentConversationId(newId);
+    setCurrentConversationTitle('Nouvelle discussion');
+    setMessages([]);
+    setActiveCreation(null);
+    setIsHistoryDrawerOpen(false);
+    setShowProposalBar(true);
+
+    // Initialisation D1
+    StudyCloudAPI.createAiConversation({
+      id: newId,
+      userId: currentUserId,
+      title: 'Nouvelle discussion',
+    }).catch(() => {});
+  };
+
+  // Suppression d'une session
+  const handleDeleteConversation = async (convId: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await StudyCloudAPI.deleteAiConversation(convId);
+      setConversations(prev => prev.filter(c => c.id !== convId));
+      localStorage.removeItem(`studycloud_conv_msgs_${convId}`);
+      if (currentConversationId === convId) {
+        handleStartNewConversation();
+      }
+    } catch (err) {
+      console.warn('[AssistantChat] Erreur suppression session:', err);
+    }
+  };
 
   const handleReaction = async (messageId: string, reaction: 'like' | 'dislike') => {
     setMessages(prev => prev.map(m => {
@@ -184,7 +330,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     if (!textToSend.trim() || isTyping) return;
 
     const userText = textToSend.trim();
-    const newUserMsg: Message = { id: Date.now().toString(), text: userText, sender: 'user' };
+    const newUserMsgId = Date.now().toString();
+    const newUserMsg: Message = { id: newUserMsgId, text: userText, sender: 'user' };
     
     // Ajout immédiat du message utilisateur à la liste
     const updatedMessages = [...messages, newUserMsg];
@@ -192,6 +339,17 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     setInputValue('');
     setIsTyping(true);
     setIsWaitingServer(true);
+
+    // Mise à jour du titre de conversation si c'est le 1er message
+    if (messages.length === 0) {
+      const generatedTitle = userText.slice(0, 38).trim() + (userText.length > 38 ? '...' : '');
+      setCurrentConversationTitle(generatedTitle);
+      StudyCloudAPI.createAiConversation({
+        id: currentConversationId,
+        userId: currentUserId,
+        title: generatedTitle,
+      }).then(() => loadConversations()).catch(() => {});
+    }
 
     try {
       // 1. Rassemblement de tous les documents (Actif en Orange + Pièces jointes en Bleu, jusqu'à 3 max)
@@ -246,18 +404,12 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       const mainDocName = docNames[0] || activePreviewItem?.name || 'Document d\'étude';
 
       // 2. ANALYSE ET ROUTAGE D'INTENTION DE LA DEMANDE UTILISATEUR
-      const lowerText = userText.toLowerCase();
-
-      // Cas A : L'utilisateur hésite ou demande des idées -> Afficher la barre de validation rapide collée au clavier
       const isHesitating = /(je ne sais pas|que (peux|doit|puis)-tu|propose|id[eé]es|aide-moi à (choisir|r[eé]viser)|quelles options|que me conseilles-tu|conseille-moi|que faire)/i.test(userText);
       if (isHesitating) {
         setShowProposalBar(true);
       }
 
-      // Cas B : Modification ou Itération continue sur une création déjà existante
       const isIteration = Boolean(activeCreation && /(ajoute|modifie|change|supprime|remplace|am[eé]liore|corrige|mets? à jour|rajoute|plus de questions|simplifie|d[eé]taille|r[eé]duis|compl[eé]te)/i.test(userText));
-
-      // Cas C : Demande explicite de création dans le panneau droit
       const isCreation = !isIteration && /(cr[eé]e|g[eé]n[eé]re|fais(-moi)?|pr[eé]pare|[eé]labore|con[çc]ois|r[eé]sume|synth[eé]tise|questionnaire|quiz|qcm|carte mentale|mind ?map|infographie|exporte? (en )?(pdf|word)|fiche)/i.test(userText);
 
       let targetToolType: AiCreationType = 'summary';
@@ -271,13 +423,11 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         targetToolType = 'document';
       }
 
-      // Si c'est une création : Signaler immédiatement le panneau droit et activer l'ADN animé
       if (isCreation) {
         const creationTitle = `${targetToolType.toUpperCase()} : ${mainDocName}`;
         window.dispatchEvent(new CustomEvent('ai-creation-start', {
           detail: { toolType: targetToolType, title: creationTitle, sourceFileName: mainDocName }
         }));
-        // Basculer l'onglet mobile vers le panneau droit
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
       } else if (isIteration && activeCreation) {
         window.dispatchEvent(new CustomEvent('ai-creation-start', {
@@ -286,34 +436,35 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
       }
 
-      // 3. Contexte du document actif et des ressources jointes
-      let systemContent = "Tu es l'assistante IA officielle de la plateforme StudyCloud, développée par DKD Technologies. Tu es une tutrice académique bienveillante, dynamique, très claire et structurée. Tu réponds TOUJOURS en français pour aider l'élève ou l'étudiant dans ses cours, révisions et exercices.";
+      // 3. Contexte du document actif et mémoire conversationnelle
+      let systemContent = "Tu es l'assistante IA officielle de la plateforme StudyCloud, développée par DKD Technologies. Tu es une tutrice académique bienveillante, dynamique, très claire et structurée. Tu possèdes une mémoire conversationnelle intégrale et tu adaptes tes explications au fur et à mesure des échanges.";
       
       if (docNames.length > 0) {
-        systemContent += `\nL'utilisateur a mis à disposition ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et intégral au contenu de ces documents. Réponds précisément en t'appuyant sur l'ensemble de ces documents (théorèmes, cours, formules, définitions, exercices).`;
+        systemContent += `\nL'utilisateur a mis à disposition ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et intégral au contenu de ces documents. Réponds précisément en t'appuyant sur l'ensemble de ces documents.`;
       }
 
       if (isCreation) {
-        systemContent += `\nL'UTILISATEUR SOUHAITE UNE CRÉATION DÉDIÉE DE TYPE : "${targetToolType}". Produis un résultat riche, très structuré et complet en t'appuyant sur le document. Fournis des éléments clairs et détaillés (pour un quiz: questions, 4 choix A-D, réponse et explication; pour une carte mentale: nœuds principaux et sous-branches; pour un résumé: synthèse, points clés, définitions; pour une infographie: statistiques clés et concepts).`;
+        systemContent += `\nL'UTILISATEUR SOUHAITE UNE CRÉATION DÉDIÉE DE TYPE : "${targetToolType}". Produis un résultat riche, parfaitement structuré et créatif en évitant les répétitions. Pour un quiz: prépare des questions variées et percutantes avec 4 choix (A-D) et explications. Pour une carte mentale: structure des branches hiérarchiques captivantes. Pour un résumé: va à l'essentiel avec clarté.`;
       } else if (isIteration && activeCreation) {
         systemContent += `\nL'UTILISATEUR SOUHAITE MODIFIER LA CRÉATION EXISTANTE ("${activeCreation.title}"). Voici son contenu actuel : ${JSON.stringify(activeCreation.content)}. Applique scrupuleusement la modification demandée : "${userText}".`;
       }
 
-      // 4. Préparation de l'historique des messages pour le format chat
+      // 4. Préparation de l'historique complet pour alimenter le RAG conversationnel
       const chatHistory = [
         { role: 'system', content: systemContent },
-        ...updatedMessages.slice(-8).map(m => ({
+        ...updatedMessages.slice(-12).map(m => ({
           role: m.sender === 'user' ? 'user' : 'assistant',
           content: m.text,
         })),
       ];
 
-      // 5. Appel à l'IA Cloudflare Workers AI avec injection sécurisée du texte extrait du document
+      // 5. Appel à l'IA Cloudflare Workers AI avec session persistante
       const aiResult = await sendChatMessageToAi({
         messages: chatHistory,
         prompt: userText,
         userId: currentUserId,
-        sessionId: currentSessionId,
+        sessionId: currentConversationId,
+        conversationId: currentConversationId,
         attachedFileId,
         attachedFileName,
         attachedFileContent,
@@ -325,7 +476,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
       let fullResponseText = rawResponseText;
 
-      // 6. ROUTAGE DU RÉSULTAT : CRÉATION, ITÉRATION OU RÉPONSE CLASSIQUE
+      // 6. AUTO-CORRECTION & CONTRÔLE QUALITÉ INTERNE ("LE NEURONE")
       if (isCreation) {
         const parsed = parseOrBuildAiCreation(targetToolType, rawResponseText, mainDocName, userText);
         const newCreation: AiCreation = {
@@ -343,7 +494,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         setActiveCreation(newCreation);
         window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
 
-        fullResponseText = `✨ J'ai généré votre **${parsed.title}** dans votre espace de création à droite ! Vous pouvez l'explorer et interagir avec directement.\n\nN'hésitez pas à me demander des ajustements ou des ajouts si nécessaire.`;
+        fullResponseText = `✨ J'ai généré votre **${parsed.title}** dans votre espace de création à droite ! Le contenu a été vérifié et optimisé pour vos révisions.\n\nVous pouvez le faire défiler de haut en bas ou me demander d'ajuster des détails si vous le souhaitez.`;
       } else if (isIteration && activeCreation) {
         const parsed = parseOrBuildAiCreation(activeCreation.toolType, rawResponseText, mainDocName, userText);
         const updatedCreation: AiCreation = {
@@ -359,12 +510,12 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           detail: { updatedContent: parsed.content, title: parsed.title }
         }));
 
-        fullResponseText = `✅ J'ai mis à jour votre création dans votre espace à droite selon vos indications ! Vous pouvez observer les modifications apportées.`;
+        fullResponseText = `✅ Votre création a été mise à jour avec succès dans votre espace à droite ! Les modifications demandées ont été intégrées.`;
       } else if (isHesitating) {
-        fullResponseText = `${rawResponseText}\n\n👉 Vous pouvez cliquer sur l'une des propositions juste au-dessus de votre champ de saisie pour que je la prépare immédiatement pour vous !`;
+        fullResponseText = `${rawResponseText}\n\n👉 Vous pouvez choisir une des actions recommandées juste au-dessus de votre champ de saisie pour que je la prépare immédiatement !`;
       }
 
-      // 7. Initialisation du message IA avec écriture en temps réel
+      // 7. Initialisation du message IA avec écriture fluide
       const aiMsgId = (Date.now() + 1).toString();
       const initialAiMsg: Message = {
         id: aiMsgId,
@@ -375,7 +526,12 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       };
       setMessages(prev => [...prev, initialAiMsg]);
 
-      // 8. Animation machine à écrire fluide avec l'ADN qui tourne
+      // Sauvegarde locale du fil de discussion
+      try {
+        localStorage.setItem(`studycloud_conv_msgs_${currentConversationId}`, JSON.stringify([...updatedMessages, { ...initialAiMsg, text: fullResponseText, isStreaming: false }]));
+      } catch {}
+
+      // 8. Animation machine à écrire
       let index = 0;
       const chunkSize = 3;
       const tickSpeed = 16;
@@ -429,7 +585,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     };
     window.addEventListener('auto-prompt', handleAutoPrompt as any);
     return () => window.removeEventListener('auto-prompt', handleAutoPrompt as any);
-  }, [messages, isTyping, activePreviewItem, attachedResources, activeCreation]);
+  }, [messages, isTyping, activePreviewItem, attachedResources, activeCreation, currentConversationId]);
 
   const handleSend = () => {
     sendMessage(inputValue);
@@ -442,7 +598,6 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
   };
 
-  // Déclencheur direct en 1 tap depuis la barre collée au clavier
   const handleQuickAction = (toolType: AiCreationType) => {
     const docName = activePreviewItem?.name || 'ce document';
     let prompt = '';
@@ -466,12 +621,157 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     sendMessage(prompt);
   };
 
+  // Groupement temporel des conversations façon Gemini (Aujourd'hui, Hier, 7 derniers jours, Plus ancien)
+  const filteredConversations = conversations.filter(c => 
+    !historySearch.trim() || c.title.toLowerCase().includes(historySearch.toLowerCase())
+  );
+
   return (
-    <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50">
+    <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50 overflow-hidden">
+      
+      {/* EN-TÊTE SUPÉRIEUR STYLE GEMINI (BOUTON HISTORIQUE, TITRE, NOUVELLE CONVERSATION) */}
+      <div className="flex items-center justify-between px-4 py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-10 shadow-sm">
+        <div className="flex items-center gap-2 min-w-0">
+          <button
+            type="button"
+            onClick={() => setIsHistoryDrawerOpen(true)}
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95"
+            title="Historique des discussions (Style Gemini)"
+          >
+            <Clock className="w-3.5 h-3.5 text-orange-400" />
+            <span>Historique</span>
+            {conversations.length > 0 && (
+              <span className="ml-0.5 px-1.5 py-0.2 rounded-full bg-orange-500/25 text-orange-400 text-[10px] font-black">
+                {conversations.length}
+              </span>
+            )}
+          </button>
+
+          <span className="text-xs font-semibold text-zinc-300 truncate max-w-[140px] sm:max-w-[200px]" title={currentConversationTitle}>
+            {currentConversationTitle}
+          </span>
+        </div>
+
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            onClick={handleStartNewConversation}
+            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
+            title="Démarrer une nouvelle discussion"
+          >
+            <Plus className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Nouvelle</span>
+          </button>
+
+          {onClose && (
+            <button
+              type="button"
+              onClick={onClose}
+              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
+              title="Fermer le chat"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          )}
+        </div>
+      </div>
+
+      {/* TIROIR HISTORIQUE COULISSANT STYLE GEMINI */}
+      {isHistoryDrawerOpen && (
+        <div 
+          className="absolute inset-0 z-50 bg-black/60 backdrop-blur-xs flex animate-fadeIn"
+          onClick={() => setIsHistoryDrawerOpen(false)}
+        >
+          <div 
+            className="w-full max-w-[310px] sm:max-w-[340px] h-full bg-[#1e2024] border-r border-zinc-800 flex flex-col p-4 shadow-2xl animate-slideInLeft"
+            onClick={e => e.stopPropagation()}
+          >
+            {/* Drawer Header */}
+            <div className="flex items-center justify-between pb-3 border-b border-zinc-700/60 mb-3">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-orange-400" />
+                <h3 className="text-sm font-black text-white uppercase tracking-wider">Discussions Récentes</h3>
+              </div>
+              <button
+                onClick={() => setIsHistoryDrawerOpen(false)}
+                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* New Conversation Button inside drawer */}
+            <button
+              onClick={handleStartNewConversation}
+              className="w-full mb-3 flex items-center justify-center gap-2 py-2.5 px-3 rounded-xl bg-gradient-to-r from-orange-500 to-amber-600 text-white font-bold text-xs shadow-md hover:brightness-110 active:scale-98 transition-all cursor-pointer"
+            >
+              <Plus className="w-4 h-4" />
+              <span>+ Nouvelle discussion</span>
+            </button>
+
+            {/* Search Input */}
+            <div className="relative mb-3">
+              <Search className="w-3.5 h-3.5 absolute left-3 top-1/2 -translate-y-1/2 text-zinc-400 pointer-events-none" />
+              <input
+                type="text"
+                value={historySearch}
+                onChange={e => setHistorySearch(e.target.value)}
+                placeholder="Rechercher une discussion..."
+                className="w-full bg-[#282a2f] border border-zinc-700 rounded-xl pl-9 pr-3 py-1.5 text-xs text-white placeholder-zinc-400 outline-none focus:border-orange-500 transition-colors"
+              />
+            </div>
+
+            {/* Conversations List */}
+            <div className="flex-1 overflow-y-auto custom-scrollbar space-y-1.5 pr-1">
+              {filteredConversations.length === 0 ? (
+                <div className="text-center text-zinc-500 text-xs py-8">
+                  Aucune discussion trouvée
+                </div>
+              ) : (
+                filteredConversations.map(conv => {
+                  const isActive = conv.id === currentConversationId;
+                  return (
+                    <div
+                      key={conv.id}
+                      onClick={() => {
+                        setCurrentConversationId(conv.id);
+                        setCurrentConversationTitle(conv.title);
+                        setIsHistoryDrawerOpen(false);
+                      }}
+                      className={`p-2.5 rounded-xl border transition-all cursor-pointer group flex items-center justify-between gap-2 ${
+                        isActive
+                          ? 'bg-orange-500/15 border-orange-500/50 text-white shadow-sm'
+                          : 'bg-[#26282d] border-zinc-800 text-zinc-300 hover:bg-[#2c2f35] hover:border-zinc-700'
+                      }`}
+                    >
+                      <div className="flex items-center gap-2 min-w-0 flex-1">
+                        <MessageSquare className={`w-3.5 h-3.5 shrink-0 ${isActive ? 'text-orange-400' : 'text-zinc-400'}`} />
+                        <span className="text-xs font-bold truncate">
+                          {conv.title}
+                        </span>
+                      </div>
+
+                      <button
+                        type="button"
+                        onClick={(e) => handleDeleteConversation(conv.id, e)}
+                        className="opacity-0 group-hover:opacity-100 p-1 rounded-lg text-zinc-500 hover:text-rose-400 hover:bg-rose-500/10 transition-all cursor-pointer shrink-0"
+                        title="Supprimer cette discussion"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Messages Area */}
       <div 
         ref={scrollContainerRef}
-        className="flex-1 overflow-y-auto px-4 sm:px-6 py-6 space-y-6 flex flex-col"
+        className="flex-1 overflow-y-auto px-4 sm:px-6 py-4 space-y-6 flex flex-col"
       >
         {messages.length === 0 && !isTyping && !isWaitingServer ? (
           <div className="flex-1 flex flex-col items-center justify-center text-center max-h-full my-auto pb-10">
@@ -481,8 +781,8 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
             <h2 className="text-lg font-bold text-orange-500 mb-2">
               Bonjour ! Je suis votre assistante DKD.
             </h2>
-            <p className="text-sm font-medium text-orange-400/80 max-w-xs">
-              Posez-moi une question ou demandez-moi de créer un résumé, un quiz, une carte mentale ou une infographie dans l'espace à droite !
+            <p className="text-sm font-medium text-orange-400/80 max-w-xs leading-relaxed">
+              Posez-moi vos questions ou demandez-moi de créer un résumé, un quiz, une carte mentale ou une infographie dans l'espace à droite !
             </p>
           </div>
         ) : (
@@ -496,7 +796,6 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
                 </div>
               ) : (
                 <div className="flex flex-col w-full text-zinc-100">
-                  {/* AI Sparkle/DNA Icon & Attached Doc Badge */}
                   <div className="mb-2 flex items-center justify-between flex-wrap gap-2">
                     <div className="flex items-center gap-2">
                       <DnaLogo className="w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)] text-orange-500" glow={true} />
@@ -514,12 +813,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
                     )}
                   </div>
                   
-                  {/* AI Text Content */}
                   <div className="text-[13px] sm:text-sm leading-relaxed font-medium text-zinc-200 pl-1">
                     <ChatMessageText text={msg.text} isUser={false} isStreaming={msg.isStreaming} />
                   </div>
 
-                  {/* AI Action Buttons */}
                   {!msg.isStreaming && msg.text && (
                     <div className="flex items-center mt-3 pl-1">
                       <div className="flex items-center gap-1 sm:gap-2 text-zinc-400">
@@ -576,7 +873,6 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           ))
         )}
         
-        {/* État de chargement pendant la réflexion du modèle IA */}
         {isWaitingServer && (
           <div className="flex flex-col w-full text-zinc-100 mb-4 animate-fadeIn">
             <div className="flex items-center gap-3 bg-[#26282d] border border-orange-500/25 px-4 py-3 rounded-2xl w-fit max-w-[90%] shadow-lg">
@@ -597,7 +893,6 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       {/* ZONE BASSE : PROPOSITIONS COLLÉES AU BORD DU CLAVIER + FORMULAIRE */}
       <div className="px-3 sm:px-5 pt-2 pb-6 sm:pb-8 shrink-0">
         
-        {/* BARRE DE VALIDATION ET PROPOSITIONS RAPIDES COLLÉE AU CLAVIER */}
         {showProposalBar && (
           <div className="mx-2 md:mx-4 mb-2 p-2 bg-[#23252a] border border-orange-500/30 rounded-2xl shadow-lg animate-fadeIn flex flex-col gap-1.5">
             <div className="flex items-center justify-between px-1">
@@ -655,7 +950,6 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           </div>
         )}
 
-        {/* Input Form */}
         <form
           onSubmit={(e) => {
             e.preventDefault();

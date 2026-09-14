@@ -34,6 +34,7 @@ export async function sendChatMessageToAi(params: {
   prompt?: string;
   userId?: string;
   sessionId?: string;
+  conversationId?: string;
   attachedFileId?: string;
   attachedFileName?: string;
   attachedFileContent?: string;
@@ -751,6 +752,48 @@ export const StudyCloudAPI = {
     return request(`/api/ai-contents/${id}/pin`, {
       method: 'PUT',
       body: JSON.stringify({ isPinned }),
+    });
+  },
+
+  // --------------------------------------------------------------------------
+  // Conversations et Historique de Chat (Style Gemini)
+  // --------------------------------------------------------------------------
+  async getAiConversations(userId: string) {
+    return request<{ success: boolean; data: any[] }>(`/api/ai/conversations?userId=${encodeURIComponent(userId)}`);
+  },
+
+  async createAiConversation(data: { id?: string; userId: string; title: string }) {
+    return request<{ success: boolean; data: { id: string; title: string } }>('/api/ai/conversations', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async deleteAiConversation(id: string) {
+    return request<{ success: boolean; message: string }>(`/api/ai/conversations?id=${encodeURIComponent(id)}`, {
+      method: 'DELETE',
+    });
+  },
+
+  async getAiConversationMessages(conversationId: string) {
+    return request<{ success: boolean; data: any[] }>(`/api/ai/messages?conversationId=${encodeURIComponent(conversationId)}`);
+  },
+
+  async saveAiMessage(data: { id?: string; conversationId: string; role: 'user' | 'assistant' | 'system'; content: string; metadata?: any }) {
+    return request<{ success: boolean }>('/api/ai/messages', {
+      method: 'POST',
+      body: JSON.stringify(data),
+    });
+  },
+
+  async getAiConversationCreations(conversationId: string) {
+    return request<{ success: boolean; data: any[] }>(`/api/ai/creations?conversationId=${encodeURIComponent(conversationId)}`);
+  },
+
+  async saveAiCreationRecord(data: { id?: string; conversationId: string; messageId?: string; type: string; title?: string; content: any }) {
+    return request<{ success: boolean }>('/api/ai/creations', {
+      method: 'POST',
+      body: JSON.stringify(data),
     });
   },
 

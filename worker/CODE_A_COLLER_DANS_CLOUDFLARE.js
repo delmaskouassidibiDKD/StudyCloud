@@ -3560,13 +3560,143 @@ Instructions : L'\xE9l\xE8ve t'a transmis ce document pour que tu travailles ave
           } catch (dbSaveErr) {
             console.warn("[Workspace] Erreur sauvegarde conversation D1:", dbSaveErr);
           }
+        // Sauvegarde dans la table messages pour l'historique Gemini
+        if (env.DB) {
+          const convId = body.conversationId || sessionId;
+          const userMsgId = crypto.randomUUID();
+          const aiMsgId = crypto.randomUUID();
+          if (convId) {
+            try {
+              await env.DB.prepare(`
+                INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
+                VALUES (?, ?, 'user', ?, ?, CURRENT_TIMESTAMP)
+              `).bind(userMsgId, convId, userPrompt, JSON.stringify({ attachedFileName: body.attachedFileName || null })).run();
+
+              await env.DB.prepare(`
+                INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
+                VALUES (?, ?, 'assistant', ?, ?, CURRENT_TIMESTAMP)
+              `).bind(aiMsgId, convId, replyText, JSON.stringify({ model: usedModel })).run();
+
+              await env.DB.prepare("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(convId).run();
+            } catch (msgErr) {
+              console.warn("[Workspace] Erreur insertion messages D1:", msgErr);
+            }
+          }
         }
+
         return jsonResponse({
           success: true,
           response: replyText,
           model: usedModel,
           source: "studycloud_ai"
         }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
+      // GESTION DES CONVERSATIONS & MESSAGES (STYLE GEMINI)
+      // ----------------------------------------------------------------------
+      if (path === "/api/ai/conversations" && method === "GET") {
+        const userId = url.searchParams.get("userId");
+        if (!userId) return errorResponse("userId requis", 400, origin);
+        if (!env.DB) return jsonResponse({ success: true, data: [] }, 200, origin);
+        try {
+          const { results } = await env.DB.prepare("SELECT * FROM conversations WHERE user_id = ? ORDER BY updated_at DESC").bind(userId).all();
+          return jsonResponse({ success: true, data: results || [] }, 200, origin);
+        } catch (e) {
+          return jsonResponse({ success: false, error: e.message, data: [] }, 200, origin);
+        }
+      }
+
+      if (path === "/api/ai/conversations" && method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const { id, userId, title } = body;
+        if (!userId) return errorResponse("userId requis", 400, origin);
+        const convId = id || crypto.randomUUID();
+        const convTitle = title || "Nouvelle discussion";
+        if (env.DB) {
+          try {
+            await env.DB.prepare(`
+              INSERT INTO conversations (id, user_id, title, created_at, updated_at)
+              VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET title = excluded.title, updated_at = CURRENT_TIMESTAMP
+            `).bind(convId, userId, convTitle).run();
+          } catch (e) {}
+        }
+        return jsonResponse({ success: true, data: { id: convId, title: convTitle } }, 200, origin);
+      }
+
+      if (path === "/api/ai/conversations" && method === "DELETE") {
+        const convId = url.searchParams.get("id");
+        if (!convId) return errorResponse("id requis", 400, origin);
+        if (env.DB) {
+          try {
+            await env.DB.prepare("DELETE FROM messages WHERE conversation_id = ?").bind(convId).run();
+            await env.DB.prepare("DELETE FROM ai_creations WHERE conversation_id = ?").bind(convId).run();
+            await env.DB.prepare("DELETE FROM conversations WHERE id = ?").bind(convId).run();
+          } catch (e) {}
+        }
+        return jsonResponse({ success: true, message: "Conversation supprimée" }, 200, origin);
+      }
+
+      if (path === "/api/ai/messages" && method === "GET") {
+        const conversationId = url.searchParams.get("conversationId");
+        if (!conversationId) return errorResponse("conversationId requis", 400, origin);
+        if (!env.DB) return jsonResponse({ success: true, data: [] }, 200, origin);
+        try {
+          const { results } = await env.DB.prepare("SELECT * FROM messages WHERE conversation_id = ? ORDER BY created_at ASC").bind(conversationId).all();
+          return jsonResponse({ success: true, data: results || [] }, 200, origin);
+        } catch (e) {
+          return jsonResponse({ success: false, error: e.message, data: [] }, 200, origin);
+        }
+      }
+
+      if (path === "/api/ai/messages" && method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const { id, conversationId, role, content, metadata } = body;
+        if (!conversationId || !role || !content) return errorResponse("conversationId, role et content requis", 400, origin);
+        if (env.DB) {
+          const msgId = id || crypto.randomUUID();
+          const metaStr = typeof metadata === "string" ? metadata : JSON.stringify(metadata || {});
+          try {
+            await env.DB.prepare(`
+              INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
+              VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(msgId, conversationId, role, content, metaStr).run();
+
+            await env.DB.prepare("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(conversationId).run();
+          } catch (e) {}
+        }
+        return jsonResponse({ success: true }, 200, origin);
+      }
+
+      if (path === "/api/ai/creations" && method === "GET") {
+        const conversationId = url.searchParams.get("conversationId");
+        if (!conversationId) return errorResponse("conversationId requis", 400, origin);
+        if (!env.DB) return jsonResponse({ success: true, data: [] }, 200, origin);
+        try {
+          const { results } = await env.DB.prepare("SELECT * FROM ai_creations WHERE conversation_id = ? ORDER BY created_at DESC").bind(conversationId).all();
+          return jsonResponse({ success: true, data: results || [] }, 200, origin);
+        } catch (e) {
+          return jsonResponse({ success: false, error: e.message, data: [] }, 200, origin);
+        }
+      }
+
+      if (path === "/api/ai/creations" && method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const { id, conversationId, messageId, type, title, content } = body;
+        if (!conversationId || !type || !content) return errorResponse("conversationId, type et content requis", 400, origin);
+        if (env.DB) {
+          const creationId = id || crypto.randomUUID();
+          const contentStr = typeof content === "string" ? content : JSON.stringify(content);
+          try {
+            await env.DB.prepare(`
+              INSERT INTO ai_creations (id, conversation_id, message_id, type, title, content, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET title = excluded.title, content = excluded.content
+            `).bind(creationId, conversationId, messageId || null, type, title || null, contentStr).run();
+          } catch (e) {}
+        }
+        return jsonResponse({ success: true }, 200, origin);
       }
       if (path === "/api/ai/workspace" && method === "GET") {
         const userId = url.searchParams.get("userId");

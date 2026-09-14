@@ -334,7 +334,7 @@ export function RightMenu({
               </span>
             </div>
 
-            <div className="flex-1 w-full overflow-y-auto custom-scrollbar min-h-0 pr-1">
+            <div className="flex-1 w-full overflow-y-auto custom-scrollbar scroll-smooth min-h-0 pr-1">
               {renderActiveCreation()}
             </div>
           </div>
