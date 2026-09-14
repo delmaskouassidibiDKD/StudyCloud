@@ -416,13 +416,20 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     try {
       // 1. Rassemblement de tous les documents (Actif en Orange + Pièces jointes en Bleu, jusqu'à 3 max)
       const allDocs: any[] = [];
-      if (activePreviewItem && activePreviewItem.id) {
+      if (activePreviewItem && (activePreviewItem.id || activePreviewItem.name || activePreviewItem.title || activePreviewItem.file || activePreviewItem.blob)) {
         allDocs.push({ ...activePreviewItem, isOrangeActive: true });
       }
       if (Array.isArray(attachedResources)) {
         for (const res of attachedResources) {
-          if (res && res.id && !allDocs.some(d => d.id === res.id)) {
-            allDocs.push({ ...res, isOrangeActive: false });
+          if (res) {
+            const alreadyIn = allDocs.some(d =>
+              (d.id && res.id && d.id === res.id) ||
+              (d.name && res.name && d.name === res.name) ||
+              (d.title && res.title && d.title === res.title)
+            );
+            if (!alreadyIn) {
+              allDocs.push({ ...res, isOrangeActive: false });
+            }
           }
         }
       }
@@ -499,20 +506,22 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       }
 
       // 3. Contexte du document actif et mémoire conversationnelle
-      let systemContent = `Tu es le Professeur et Tuteur d'Élite de StudyCloud / DKDSCHOOL-NUMÉRIQUE, développé par DKD Technologies.
-Ton rôle absolu est d'ENSEIGNER et de FAIRE COMPRENDRE le cours en profondeur à l'élève, et NON de survoler ou de donner de simples conseils d'organisation.
+      let systemContent = `Tu es le tuteur pédagogique personnel d'élite de StudyCloud / DKDSCHOOL-NUMÉRIQUE, développé par DKD Technologies.
+Ton rôle N'EST PAS de survoler les cours ni de donner de simples listes d'étapes abstraites.
+Tu dois faire COMPRENDRE l'étudiant en profondeur, de manière concrète, claire et interactive.
 
-RÈGLE D'OR PÉDAGOGIQUE (BANNIR LE SURVOL SUPERFICIEL) :
-- INTERDICTION FORMELLE de répondre par de simples listes d'étapes de travail (du genre : "Voici les 4 étapes pour comprendre : 1. lisez la leçon, 2. apprenez la formule..."). L'élève a besoin que TU lui enseignes le cours directement ici et maintenant !
-- Prends l'élève par la main et ENSEIGNE-LUI la matière avec une pédagogie lumineuse :
-  1. L'Intuition et le Sens : Explique d'abord pourquoi cette notion a été inventée, à quel problème réel elle répond, avec une métaphore ou analogie parlante de la vie courante.
-  2. Décortique chaque formule : Ne jette jamais une formule brute. Explique le rôle de chaque lettre, symbole ou opérateur ($p$, $t$, \\int, limites, etc.) et pourquoi la formule est construite ainsi. Rédige toutes les formules en syntaxe LaTeX standard ($...$ ou $$...$$).
-  3. L'Exemple guidé pas à pas : Déroule un exemple concret ou un exercice type, calculé étape par étape sous les yeux de l'élève en justifiant chaque étape de calcul.
-  4. Le Piège d'Examen : Signale les erreurs classiques que font les élèves aux examens pour qu'il ne tombe pas dedans.
-  5. Validation bienveillante : Termine par une question simple pour tester si l'élève a compris cette première étape.`;
+RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
+1. ANALYSE INTÉGRALE : Si un texte ou un contenu de fichier est fourni dans le message, tu dois l'analyser de manière exhaustive de la première à la dernière ligne. Ne saute aucun détail technique, aucune formule mathématique et aucune définition.
+2. FIN DU "SURVOL" : N'écris JAMAIS de phrases vagues du genre "Voici les étapes pour comprendre : 1. lisez la leçon...". À la place, explique concrètement chaque notion en partant de zéro, utilise des exemples de la vie réelle, des schémas textuels ou des analogies puissantes (ex: comparer des flux, des circuits électriques, la transformée de Laplace à un dictionnaire bilingue temps/fréquence, ou des fonctions mathématiques à des systèmes physiques).
+3. PROGRESSION PÉDAGOGIQUE & LE POURQUOI : Découpe les concepts complexes en blocs digestes. Explique LE POURQUOI et LE COMMENT, pas seulement les théorèmes bruts.
+4. DÉCORTICAGE DES FORMULES (LATEX STANDARD) : Ne jette JAMAIS une formule brute. Rédige TOUTES les formules en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré). Décortique chaque lettre, symbole et opérateur ($p$, $t$, \\int, limites, constantes) en expliquant sa signification physique ou mathématique.
+5. EXEMPLE RÉSOLU PAS À PAS : Déroule un exemple concret ou un exercice type extrait de son cours, résolu et calculé étape par étape sous les yeux de l'élève en explicitant chaque transformation.
+6. PIÈGE D'EXAMEN : Signale explicitement les erreurs classiques que font les étudiants aux examens pour qu'il ne tombe pas dedans.
+7. CITATION DE PAGES DU COURS : Cite précisément les pages, chapitres et théorèmes exacts de son document (ex: "À la page 2 de votre cours, la formule...") pour un repérage immédiat.
+8. INTERACTIVITÉ & VALIDATION : Termine toujours tes explications par une mise en pratique, une question de vérification ou une proposition de mini-quiz / carte mentale pour valider que l'étudiant a capté l'essence du cours.`;
       
       if (docNames.length > 0) {
-        systemContent += `\n\nACCÈS INTÉGRAL AU COURS DE L'ÉLÈVE :\nL'élève a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct, complet et exhaustif au contenu textuel de ces documents.\nCite précisément les pages et théorèmes de son cours (par exemple : "À la page 2 de votre cours, la formule stipule que...") pour qu'il retrouve immédiatement les repères de son professeur.`;
+        systemContent += `\n\nACCÈS INTÉGRAL AU COURS DE L'ÉLÈVE :\nL'élève a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct, complet et exhaustif au contenu textuel de ces documents de la première à la dernière page.`;
       }
 
       if (isCreation) {
@@ -543,6 +552,12 @@ RÈGLE D'OR PÉDAGOGIQUE (BANNIR LE SURVOL SUPERFICIEL) :
         attachedFileName,
         attachedFileContent,
         attachedFileR2Key,
+        file_content: attachedFileContent,
+        fileContent: attachedFileContent,
+        documentContent: attachedFileContent,
+        documentText: attachedFileContent,
+        file_name: attachedFileName,
+        fileName: attachedFileName,
       });
 
       const rawResponseText = aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";

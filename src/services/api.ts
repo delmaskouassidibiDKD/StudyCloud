@@ -43,9 +43,19 @@ export async function sendChatMessageToAi(params: {
   attachedFileName?: string;
   attachedFileContent?: string;
   attachedFileR2Key?: string;
+  file_content?: string;
+  fileContent?: string;
+  documentContent?: string;
+  documentText?: string;
+  file_name?: string;
+  fileName?: string;
+  [key: string]: any;
 }): Promise<{ response: string; success: boolean; model?: string; type?: string }> {
   const mainWorkerChatUrl = `${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/chat`;
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
+
+  const extractedDoc = params.attachedFileContent || params.file_content || params.fileContent || params.documentContent || params.documentText || '';
+  const extractedDocName = params.attachedFileName || params.file_name || params.fileName || '';
 
   const payload = {
     ...params,
@@ -54,6 +64,14 @@ export async function sendChatMessageToAi(params: {
     conversation_id: params.conversationId || params.conversation_id || params.sessionId,
     conversationId: params.conversationId || params.conversation_id || params.sessionId,
     history: params.history || params.messages,
+    attachedFileContent: extractedDoc,
+    file_content: extractedDoc,
+    fileContent: extractedDoc,
+    documentContent: extractedDoc,
+    documentText: extractedDoc,
+    attachedFileName: extractedDocName,
+    file_name: extractedDocName,
+    fileName: extractedDocName,
   };
 
   // 1. Tenter en priorité la route /api/ai/chat sur le Worker principal de l'application

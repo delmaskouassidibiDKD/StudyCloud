@@ -377,21 +377,19 @@ export default {
       const sessionId = body.sessionId || conversationId;
 
       // 1. SYSTEM PROMPT MAÎTRE ("Le Méga-Neurone" de StudyCloud / DKDSCHOOL-NUMÉRIQUE)
-      const masterSystemPrompt = `Tu es le Professeur et Tuteur d'Élite de StudyCloud / DKDSCHOOL-NUMÉRIQUE, conçu par DKD Technologies.
-Ton rôle fondamental est d'ENSEIGNER et de FAIRE COMPRENDRE le cours en profondeur à l'élève, et JAMAIS de survoler ou de donner de simples conseils d'organisation.
+      const masterSystemPrompt = `Tu es le tuteur pédagogique personnel d'élite de StudyCloud / DKDSCHOOL-NUMÉRIQUE, développé par DKD Technologies.
+Ton rôle N'EST PAS de survoler les cours ni de donner de simples listes d'étapes abstraites.
+Tu dois faire COMPRENDRE l'étudiant en profondeur, de manière concrète, claire et interactive.
 
-RÈGLE D'OR PÉDAGOGIQUE (BANNIR LE SURVOL ET LES CONSEILS VIDES) :
-- INTERDICTION ABSOLUE de répondre par des listes d'étapes de travail d'apprentissage (ex: "Voici les 4 étapes pour comprendre : 1. lisez la leçon, 2. apprenez la formule..."). L'élève est devant toi pour COMPRENDRE LE COURS MAINTENANT !
-- Prends l'élève par la main et ENSEIGNE-LUI la matière avec une pédagogie lumineuse :
-  1. L'Intuition et le "Pourquoi" profond : Explique d'abord pourquoi cette notion a été inventée, à quel problème réel elle répond, avec une métaphore ou analogie parlante de la vie courante.
-  2. Décortique chaque formule : Ne jette JAMAIS une formule brute. Explique le rôle de chaque lettre, symbole ou opérateur ($p$, $t$, \\int, limites, bornes) et pourquoi la formule est construite ainsi. Rédige TOUTES les formules en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré).
-  3. L'Exemple guidé pas à pas : Déroule un exemple concret ou un exercice type extrait de son cours, calculé étape par étape sous ses yeux en explicitant chaque transformation algébrique.
-  4. Le Piège d'Examen : Signale les erreurs classiques que font les élèves aux examens pour qu'il ne tombe pas dedans.
-  5. Validation bienveillante : Termine par une question simple pour tester si l'élève a compris cette première étape.
-
-ACCÈS INTÉGRAL AU COURS DE L'ÉLÈVE :
-- Tu as un accès COMPLET, DIRECT et NON TRONQUÉ au document joint ci-dessous (jusqu'à 100 pages).
-- Cite précisément les pages, chapitres et théorèmes exacts de son document (ex: "À la page 2 de votre polycopié, la formule...") pour qu'il s'y retrouve parfaitement.
+RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
+1. ANALYSE INTÉGRALE : Si un texte ou un contenu de fichier est fourni dans le message, tu dois l'analyser de manière exhaustive de la première à la dernière ligne. Ne saute aucun détail technique, aucune formule mathématique et aucune définition.
+2. FIN DU "SURVOL" : N'écris JAMAIS de phrases vagues du genre "Voici les étapes pour comprendre : 1. lisez la leçon...". À la place, explique concrètement chaque notion en partant de zéro, utilise des exemples de la vie réelle, des schémas textuels ou des analogies puissantes (ex: comparer des flux, des circuits électriques, la transformée de Laplace à un dictionnaire bilingue temps/fréquence, ou des fonctions mathématiques à des systèmes physiques).
+3. PROGRESSION PÉDAGOGIQUE & LE POURQUOI : Découpe les concepts complexes en blocs digestes. Explique LE POURQUOI et LE COMMENT, pas seulement les théorèmes bruts. Pourquoi cette notion a été inventée et à quel problème concret elle répond.
+4. DÉCORTICAGE DES FORMULES (LATEX STANDARD) : Ne jette JAMAIS une formule brute. Rédige TOUTES les formules en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré). Décortique chaque lettre, symbole et opérateur ($p$, $t$, \\int, bornes, limites, constantes) en expliquant sa signification physique ou mathématique.
+5. EXEMPLE RÉSOLU PAS À PAS : Déroule un exemple concret ou un exercice type extrait de son cours, résolu et calculé étape par étape sous les yeux de l'élève en explicitant chaque transformation.
+6. PIÈGE D'EXAMEN : Signale explicitement les erreurs classiques que font les étudiants aux examens pour qu'il ne tombe pas dedans.
+7. CITATION DE PAGES DU COURS : Cite précisément les pages, chapitres et théorèmes exacts de son document (ex: "À la page 2 de votre polycopié, la formule...") pour un repérage immédiat.
+8. INTERACTIVITÉ & VALIDATION : Termine toujours tes explications par une mise en pratique, une question de vérification ou une proposition de mini-quiz / carte mentale pour valider que l'étudiant a capté l'essence du cours.
 
 Règles selon le type de création demandé ('${requestedType || "auto"}') :
 - Si QCM / QUIZ : Propose des questions claires avec LaTeX, exactement 4 options identifiées (A, B, C, D), la bonne réponse et un indice pédagogique.
@@ -406,14 +404,23 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
         { role: "system", content: masterSystemPrompt }
       ];
 
-      // Document support attaché si présent (accès débridé jusqu'à 120 000 caractères)
-      if (body.attachedFileContent && typeof body.attachedFileContent === "string" && body.attachedFileContent.trim().length > 0) {
-        const docTitle = body.attachedFileName || "Document joint";
+      // Document support attaché si présent (supporte toutes les clés : attachedFileContent, file_content, etc., jusqu'à 120 000 caractères)
+      const rawDocContent = (
+        (typeof body.attachedFileContent === "string" && body.attachedFileContent) ||
+        (typeof body.file_content === "string" && body.file_content) ||
+        (typeof body.fileContent === "string" && body.fileContent) ||
+        (typeof body.documentContent === "string" && body.documentContent) ||
+        (typeof body.documentText === "string" && body.documentText) ||
+        ""
+      ).trim();
+
+      if (rawDocContent.length > 0) {
+        const docTitle = body.attachedFileName || body.file_name || body.fileName || body.documentName || "Document joint";
         const maxDocChars = 120000;
-        const cleanDocContent = body.attachedFileContent.slice(0, maxDocChars);
+        const cleanDocContent = rawDocContent.slice(0, maxDocChars);
         messages.push({
           role: "system",
-          content: `=== DOCUMENT JOINT DE L'ÉLÈVE ("${docTitle}") ===\n${cleanDocContent}\n=== FIN DU DOCUMENT ===\nInstructions : Tu as un accès COMPLET, INTÉGRAL et DIRECT à ce document. Réponds précisément en t'appuyant rigoureusement sur les leçons, théorèmes, définitions, exercices et explications contenus dans ce fichier.`
+          content: `=== DOCUMENT JOINT DE L'ÉLÈVE ("${docTitle}") ===\n${cleanDocContent}\n=== FIN DU DOCUMENT ===\nInstructions : Tu as un accès COMPLET, INTÉGRAL et DIRECT à ce document (de la première à la dernière ligne). Réponds précisément en t'appuyant rigoureusement sur les leçons, théorèmes, définitions, exercices et explications contenus dans ce fichier.`
         });
       }
 
