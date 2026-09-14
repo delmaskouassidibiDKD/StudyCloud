@@ -42,6 +42,37 @@ export const setGeminiWorkerUrl = (url: string) => {
   localStorage.setItem('studycloud_gemini_worker_url', url.trim());
 };
 
+// Clé API Google Gemini (Google AI Studio) pour le Mode Puissance
+export const getGeminiApiKey = (): string => {
+  return (
+    (import.meta as any).env?.VITE_GEMINI_API_KEY ||
+    localStorage.getItem('studycloud_gemini_api_key') ||
+    localStorage.getItem('gemini_api_key') ||
+    ''
+  ).trim();
+};
+
+export const setGeminiApiKey = (key: string) => {
+  if (!key || !key.trim()) {
+    localStorage.removeItem('studycloud_gemini_api_key');
+    localStorage.removeItem('gemini_api_key');
+  } else {
+    localStorage.setItem('studycloud_gemini_api_key', key.trim());
+    localStorage.setItem('gemini_api_key', key.trim());
+  }
+};
+
+const MASTER_PEDAGOGICAL_PROMPT = `Tu es le tuteur pédagogique personnel d'élite de StudyCloud / DKDSCHOOL-NUMÉRIQUE, développé par DKD Technologies.
+Ton rôle absolu est d'ENSEIGNER directement et de FAIRE COMPRENDRE le cours en profondeur à l'élève, et JAMAIS de survoler ou de donner de simples listes de conseils d'organisation.
+
+RÈGLES D'OR PÉDAGOGIQUES :
+1. ANALYSE INTÉGRALE : Si un document ou polycopié est joint, analyse-le exhaustivement de la première à la dernière page. Ne saute aucun théorème, définition ou calcul.
+2. FIN DU SURVOL : Ne réponds JAMAIS par des phrases creuses du genre "Voici les étapes pour comprendre...". Explique concrètement chaque notion avec des exemples de la vie réelle et des analogies fortes.
+3. DÉCORTICAGE DES FORMULES : Rédige TOUTES les formules mathématiques et physiques en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré). Décortique chaque lettre, symbole et opérateur avec son sens concret.
+4. EXEMPLE RÉSOLU PAS À PAS : Déroule des calculs et applications étape par étape sous les yeux de l'élève.
+5. PIÈGES D'EXAMEN : Signale les erreurs classiques que font les élèves pour les éviter.
+6. VALIDATION INTERACTIVE : Termine toujours par une question de vérification ou un mini-quiz pour valider la compréhension.`;
+
 export async function sendChatMessageToAi(params: {
   messages: Array<{ role: string; content: string }>;
   prompt?: string;
@@ -64,9 +95,11 @@ export async function sendChatMessageToAi(params: {
   fileName?: string;
   powerMode?: boolean;
   engine?: 'gemini' | 'standard' | string;
+  geminiApiKey?: string;
   [key: string]: any;
 }): Promise<{ response: string; success: boolean; model?: string; type?: string }> {
   const isPowerMode = Boolean(params.powerMode || params.engine === 'gemini');
+  const userGeminiApiKey = (params.geminiApiKey || getGeminiApiKey()).trim();
   const geminiWorkerUrl = getGeminiWorkerUrl().replace(/\/+$/, '');
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
   const mainWorkerChatUrl = `${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/chat`;
@@ -78,6 +111,7 @@ export async function sendChatMessageToAi(params: {
     ...params,
     powerMode: isPowerMode,
     engine: isPowerMode ? 'gemini' : (params.engine || 'standard'),
+    geminiApiKey: userGeminiApiKey,
     message: params.prompt || params.message || '',
     prompt: params.prompt || params.message || '',
     conversation_id: params.conversationId || params.conversation_id || params.sessionId,
@@ -93,8 +127,65 @@ export async function sendChatMessageToAi(params: {
     fileName: extractedDocName,
   };
 
-  // 1. SI LE MODE PUISSANCE EST ACTIVÉ : Appel en priorité absolue à Google Gemini (studycloud-gemini)
+  // 1. SI LE MODE PUISSANCE EST ACTIVÉ : Exécution ultra-rapide en direct de Google Gemini 2.0 Flash
   if (isPowerMode) {
+    if (userGeminiApiKey) {
+      try {
+        let systemInstructionText = MASTER_PEDAGOGICAL_PROMPT;
+        if (extractedDoc && extractedDoc.trim().length > 0) {
+          systemInstructionText += `\n\nCONTENU DU DOCUMENT JOINT ("${extractedDocName || 'Document de cours'}") :\n${extractedDoc.slice(0, 80000)}\nFIN DU DOCUMENT.`;
+        }
+
+        const geminiContents: Array<{ role: string; parts: Array<{ text: string }> }> = [];
+        const hist = params.history || params.messages || [];
+        for (const m of hist.slice(-8)) {
+          if (m && m.role && m.content && m.role !== 'system') {
+            geminiContents.push({
+              role: m.role === 'assistant' ? 'model' : 'user',
+              parts: [{ text: String(m.content) }]
+            });
+          }
+        }
+        geminiContents.push({
+          role: 'user',
+          parts: [{ text: params.prompt || params.message || 'Bonjour !' }]
+        });
+
+        const geminiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${userGeminiApiKey}`;
+        const gResponse = await fetch(geminiEndpoint, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            system_instruction: { parts: [{ text: systemInstructionText }] },
+            contents: geminiContents,
+            generationConfig: {
+              temperature: 0.3,
+              maxOutputTokens: 3500,
+            }
+          })
+        });
+
+        if (gResponse.ok) {
+          const gData = await gResponse.json();
+          const ansText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+          if (ansText && ansText.trim()) {
+            return {
+              response: ansText.trim(),
+              success: true,
+              model: 'Google Gemini 2.0 Flash (Puissance MAX)',
+              type: params.requested_type || 'text'
+            };
+          }
+        } else {
+          const errText = await gResponse.text();
+          console.warn('[Gemini Direct] Erreur Google API:', gResponse.status, errText);
+        }
+      } catch (geminiDirectErr) {
+        console.warn('[Gemini Direct] Exception:', geminiDirectErr);
+      }
+    }
+
+    // Tentative sur le worker studycloud-gemini
     try {
       const geminiResponse = await fetch(geminiWorkerUrl, {
         method: 'POST',
@@ -148,6 +239,14 @@ export async function sendChatMessageToAi(params: {
 
     if (aiResponse.ok) {
       const data = await aiResponse.json();
+      if (isPowerMode && (!data.model || !data.model.toLowerCase().includes('gemini'))) {
+        return {
+          response: "⚡ **Mode Puissance (Google Gemini) : Clé requise**\n\nPour que Google Gemini 2.0 Flash vous réponde directement au lieu de l'autre IA (Llama) :\n\n👉 **Cliquez sur l'icône ⚙️ à côté du bouton 'Puissance MAX'** en haut du chat pour renseigner votre clé API Google Gemini.\n\n*(Vous pouvez obtenir une clé 100% gratuite en 30 secondes sur [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))*\n\nDès que vous collez votre clé, Gemini répondra instantanément avec toute son intelligence !",
+          success: false,
+          model: 'Google Gemini (Clé requise)',
+          type: data.type
+        };
+      }
       let text = '';
       if (typeof data.response === 'string') {
         text = data.response;
@@ -183,6 +282,15 @@ export async function sendChatMessageToAi(params: {
   }
 
   const data = await response.json();
+  if (isPowerMode && (!data.model || !data.model.toLowerCase().includes('gemini'))) {
+    return {
+      response: "⚡ **Mode Puissance (Google Gemini) : Clé requise**\n\nPour que Google Gemini 2.0 Flash vous réponde directement au lieu de l'autre IA (Llama) :\n\n👉 **Cliquez sur l'icône ⚙️ à côté du bouton 'Puissance MAX'** en haut du chat pour renseigner votre clé API Google Gemini.\n\n*(Vous pouvez obtenir une clé 100% gratuite en 30 secondes sur [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))*\n\nDès que vous collez votre clé, Gemini répondra instantanément avec toute son intelligence !",
+      success: false,
+      model: 'Google Gemini (Clé requise)',
+      type: data.type
+    };
+  }
+
   let text = '';
   if (typeof data.response === 'string') {
     text = data.response;

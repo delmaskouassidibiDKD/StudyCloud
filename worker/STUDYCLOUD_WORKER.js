@@ -3446,41 +3446,6 @@ var src_default = {
         const sessionId = body.sessionId || conversationId;
         const isPowerMode = Boolean(body.powerMode || body.engine === "gemini");
 
-        // DÉLÉGATION MODE PUISSANCE (Google Gemini via studycloud-gemini)
-        if (isPowerMode) {
-          const geminiBinding = env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.GEMINI;
-          if (geminiBinding && typeof geminiBinding.fetch === "function") {
-            try {
-              const geminiRes = await geminiBinding.fetch(new Request(request.url, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify(body)
-              }));
-              if (geminiRes.ok) {
-                const resData = await geminiRes.json();
-                return jsonResponse(resData, 200, origin);
-              }
-            } catch (bindErr) {
-              console.warn("[Puissance] Erreur service binding gemini:", bindErr);
-            }
-          }
-
-          try {
-            const geminiExternalUrl = env?.GEMINI_WORKER_URL || "https://studycloud-gemini.delmaskouassidibi.workers.dev";
-            const extRes = await fetch(geminiExternalUrl, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(body)
-            });
-            if (extRes.ok) {
-              const extData = await extRes.json();
-              return jsonResponse(extData, 200, origin);
-            }
-          } catch (extErr) {
-            console.warn("[Puissance] Erreur HTTP studycloud-gemini:", extErr);
-          }
-        }
-
         // 1. SYSTEM PROMPT MAÎTRE ("Le Méga-Neurone" de StudyCloud / DKDSCHOOL-NUMÉRIQUE)
         const masterSystemPrompt = `Tu es le tuteur pédagogique personnel d'élite de StudyCloud / DKDSCHOOL-NUMÉRIQUE, développé par DKD Technologies.
 Ton rôle N'EST PAS de survoler les cours ni de donner de simples listes d'étapes abstraites.
@@ -3502,6 +3467,118 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
 - Si INFOGRAPHIE / DIAPORAMA : Structure en blocs étagés et étapes séquentielles avec des repères visuels clairs.
 - Si FLASHCARDS : Définis des paires recto (question/formule) et verso (réponse/application).
 - Si RÉSUMÉ : Rédige une synthèse fluide, complète, avec les définitions et théorèmes fondamentaux bien mis en valeur.`;
+
+        // DÉLÉGATION MODE PUISSANCE (Google Gemini 2.0 Flash)
+        if (isPowerMode) {
+          // 1. Clé Google Gemini directe (depuis payload ou secret d'environnement)
+          const geminiApiKey = body.geminiApiKey || body.gemini_api_key || env?.GEMINI_API_KEY || env?.GOOGLE_API_KEY || env?.GEMINI_KEY || env?.GEMINI_TOKEN;
+          if (geminiApiKey) {
+            try {
+              const rawDocForGemini = (
+                (typeof body.attachedFileContent === "string" && body.attachedFileContent) ||
+                (typeof body.file_content === "string" && body.file_content) ||
+                (typeof body.fileContent === "string" && body.fileContent) ||
+                (typeof body.documentContent === "string" && body.documentContent) ||
+                (typeof body.documentText === "string" && body.documentText) ||
+                ""
+              ).trim();
+
+              let geminiSystemText = masterSystemPrompt;
+              if (rawDocForGemini.length > 0) {
+                const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";
+                geminiSystemText += `\n\nCONTENU DU DOCUMENT JOINT ("${docTitle}") :\n${rawDocForGemini.slice(0, 80000)}\nFIN DU DOCUMENT.`;
+              }
+
+              const geminiContents = [];
+              const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+              for (const m of incomingHist.slice(-8)) {
+                if (m && m.role && m.content && m.role !== "system") {
+                  geminiContents.push({
+                    role: m.role === "assistant" ? "model" : "user",
+                    parts: [{ text: String(m.content) }]
+                  });
+                }
+              }
+              geminiContents.push({
+                role: "user",
+                parts: [{ text: userPrompt || "Bonjour !" }]
+              });
+
+              const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
+              const gResponse = await fetch(geminiApiEndpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  system_instruction: { parts: [{ text: geminiSystemText }] },
+                  contents: geminiContents,
+                  generationConfig: {
+                    temperature: 0.3,
+                    maxOutputTokens: 3500,
+                  }
+                })
+              });
+
+              if (gResponse.ok) {
+                const gData = await gResponse.json();
+                const ansText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (ansText && ansText.trim()) {
+                  return jsonResponse({
+                    success: true,
+                    response: ansText.trim(),
+                    model: "Google Gemini 2.0 Flash (Puissance MAX)",
+                    type: requestedType || "text"
+                  }, 200, origin);
+                }
+              } else {
+                const errBody = await gResponse.text();
+                console.warn("[Gemini Direct Main Worker] Erreur:", gResponse.status, errBody);
+              }
+            } catch (geminiApiErr) {
+              console.warn("[Gemini Direct Main Worker] Exception:", geminiApiErr);
+            }
+          }
+
+          // 2. Service Binding
+          const geminiBinding = env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.GEMINI;
+          if (geminiBinding && typeof geminiBinding.fetch === "function") {
+            try {
+              const geminiRes = await geminiBinding.fetch(new Request(request.url, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(body)
+              }));
+              if (geminiRes.ok) {
+                const resData = await geminiRes.json();
+                return jsonResponse(resData, 200, origin);
+              }
+            } catch (bindErr) {
+              console.warn("[Puissance] Erreur service binding gemini:", bindErr);
+            }
+          }
+
+          // 3. Appel URL externe
+          try {
+            const geminiExternalUrl = env?.GEMINI_WORKER_URL || "https://studycloud-gemini.delmaskouassidibi.workers.dev";
+            const extRes = await fetch(geminiExternalUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(body)
+            });
+            if (extRes.ok) {
+              const extData = await extRes.json();
+              return jsonResponse(extData, 200, origin);
+            }
+          } catch (extErr) {
+            console.warn("[Puissance] Erreur HTTP studycloud-gemini:", extErr);
+          }
+
+          // 4. Si isPowerMode est activé mais qu'aucune clé ou route Gemini n'a fonctionné, NE JAMAIS APPELER LLAMA !
+          return jsonResponse({
+            success: false,
+            model: "Google Gemini (Clé requise)",
+            response: "⚡ **Mode Puissance (Google Gemini) : Clé requise**\n\nPour que Google Gemini vous réponde directement à la place de l'autre IA (Llama) :\n\n👉 **Cliquez sur l'icône ⚙️ à côté du bouton 'Puissance MAX'** dans le chat pour renseigner votre clé API Google Gemini.\n\n*(Vous pouvez obtenir une clé gratuite en 30 secondes sur [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))*\n\nOu ajoutez `GEMINI_API_KEY` dans votre Worker Cloudflare > Settings > Variables and Secrets."
+          }, 200, origin);
+        }
 
         let incomingHistory = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
         const messages = [

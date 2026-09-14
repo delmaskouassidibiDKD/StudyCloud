@@ -377,12 +377,32 @@ export default {
       const sessionId = body.sessionId || conversationId;
       const isPowerMode = Boolean(body.powerMode || body.engine === "gemini");
 
+      // 1. SYSTEM PROMPT MAÎTRE ("Le Méga-Neurone" de StudyCloud / DKDSCHOOL-NUMÉRIQUE)
+      const masterSystemPrompt = `Tu es le tuteur pédagogique personnel d'élite de StudyCloud / DKDSCHOOL-NUMÉRIQUE, développé par DKD Technologies.
+Ton rôle absolu est d'ENSEIGNER directement et de FAIRE COMPRENDRE le cours en profondeur à l'élève, et JAMAIS de survoler ou de donner de simples listes de conseils d'organisation.
+
+RÈGLE D'OR PÉDAGOGIQUE (INTERDICTION ABSOLUE DU SURVOL SUPERFICIEL) :
+- CONTRE-EXEMPLE FORMELLEMENT INTERDIT : Ne réponds JAMAIS par des phrases creuses du genre : "Voici les 4 étapes pour comprendre : 1. Lisez la leçon, 2. Apprenez les formules, 3. Faites des exercices". C'est du remplissage inutile qui n'aide personne !
+- L'élève est devant toi pour COMPRENDRE LE FOND DU COURS MAINTENANT. Prends-le par la main avec cette méthode d'enseignement d'élite :
+  1. L'Intuition et l'Analogie concrète : Explique d'abord pourquoi ce concept existe, à quel problème réel il répond, avec une métaphore parlante de la vie courante (ex: la transformée de Laplace comme un dictionnaire bilingue qui transforme des équations différentielles infernales en simples multiplications d'algèbre de collège).
+  2. Décortique chaque formule lettre par lettre : Ne jette JAMAIS une formule brute. Rédige TOUTES les formules en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré). Explique le rôle de chaque variable, constante, opérateur ($p$, $t$, \\int, bornes, limites) et son sens physique ou mathématique.
+  3. L'Exemple résolu pas à pas sous ses yeux : Déroule un exemple concret ou un exercice type extrait de son cours, résolu et calculé étape par étape en justifiant chaque transformation algébrique.
+  4. Le Piège d'Examen : Signale les erreurs classiques que font les étudiants aux examens pour qu'il ne tombe pas dedans.
+  5. Validation interactive : Termine toujours par une question simple ou un petit défi de compréhension pour valider qu'il a assimilé la notion.
+
+Règles selon le type de création demandé ('${requestedType || "auto"}') :
+- Si QCM / QUIZ : Propose des questions claires avec LaTeX, exactement 4 options identifiées (A, B, C, D), la bonne réponse et un indice pédagogique.
+- Si CARTE MENTALE (Mindmap) : Définis un concept central et des branches hiérarchiques nettes (Définitions, Propriétés clés, Applications, Méthodes de calcul).
+- Si INFOGRAPHIE / DIAPORAMA : Structure en blocs étagés et étapes séquentielles avec des repères visuels clairs.
+- Si FLASHCARDS : Définis des paires recto (question/formule) et verso (réponse/application).
+- Si RÉSUMÉ : Rédige une synthèse fluide, complète, avec les définitions et théorèmes fondamentaux bien mis en valeur.`;
+
       // ------------------------------------------------------------------------
-      // MODE PUISSANCE : DÉLÉGATION À GOOGLE GEMINI
+      // MODE PUISSANCE : DÉLÉGATION À GOOGLE GEMINI (Priorité absolue)
       // ------------------------------------------------------------------------
       if (isPowerMode) {
-        // 1. Appel direct API Google Gemini si la clé secrète GEMINI_API_KEY est configurée dans ce Worker
-        const geminiApiKey = env?.GEMINI_API_KEY || env?.GOOGLE_API_KEY || env?.GEMINI_KEY || env?.GEMINI_TOKEN;
+        // 1. Appel direct API Google Gemini (clé dans body ou env)
+        const geminiApiKey = body.geminiApiKey || body.gemini_api_key || env?.GEMINI_API_KEY || env?.GOOGLE_API_KEY || env?.GEMINI_KEY || env?.GEMINI_TOKEN;
         if (geminiApiKey) {
           try {
             const rawDocForGemini = (
@@ -436,12 +456,15 @@ export default {
                 return new Response(JSON.stringify({
                   success: true,
                   response: ansText.trim(),
-                  model: "Google Gemini 2.0 Flash (API Direct)",
+                  model: "Google Gemini 2.0 Flash (Puissance MAX)",
                   type: requestedType || "text"
                 }), {
                   headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
                 });
               }
+            } else {
+              const errBody = await gResponse.text();
+              console.warn("[Gemini API Direct] Erreur Google API:", gResponse.status, errBody);
             }
           } catch (geminiApiErr) {
             console.warn("[Gemini API Direct] Erreur:", geminiApiErr);
@@ -485,27 +508,16 @@ export default {
         } catch (extErr) {
           console.warn("[Puissance] Erreur appel HTTP studycloud-gemini:", extErr);
         }
+
+        // 4. Si Mode Puissance actif mais aucune clé configurée, NE JAMAIS APPELER LLAMA
+        return new Response(JSON.stringify({
+          success: false,
+          model: "Google Gemini (Clé requise)",
+          response: "⚡ **Mode Puissance (Google Gemini) : Clé requise**\n\nPour que Google Gemini vous réponde directement à la place de l'autre IA (Llama) :\n\n👉 **Cliquez sur l'icône ⚙️ à côté du bouton 'Puissance MAX'** dans le chat pour renseigner votre clé API Google Gemini.\n\n*(Vous pouvez obtenir une clé gratuite en 30 secondes sur [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))*\n\nOu ajoutez `GEMINI_API_KEY` dans votre Worker Cloudflare > Settings > Variables and Secrets."
+        }), {
+          headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+        });
       }
-
-      // 1. SYSTEM PROMPT MAÎTRE ("Le Méga-Neurone" de StudyCloud / DKDSCHOOL-NUMÉRIQUE)
-      const masterSystemPrompt = `Tu es le tuteur pédagogique personnel d'élite de StudyCloud / DKDSCHOOL-NUMÉRIQUE, développé par DKD Technologies.
-Ton rôle absolu est d'ENSEIGNER directement et de FAIRE COMPRENDRE le cours en profondeur à l'élève, et JAMAIS de survoler ou de donner de simples listes de conseils d'organisation.
-
-RÈGLE D'OR PÉDAGOGIQUE (INTERDICTION ABSOLUE DU SURVOL SUPERFICIEL) :
-- CONTRE-EXEMPLE FORMELLEMENT INTERDIT : Ne réponds JAMAIS par des phrases creuses du genre : "Voici les 4 étapes pour comprendre : 1. Lisez la leçon, 2. Apprenez les formules, 3. Faites des exercices". C'est du remplissage inutile qui n'aide personne !
-- L'élève est devant toi pour COMPRENDRE LE FOND DU COURS MAINTENANT. Prends-le par la main avec cette méthode d'enseignement d'élite :
-  1. L'Intuition et l'Analogie concrète : Explique d'abord pourquoi ce concept existe, à quel problème réel il répond, avec une métaphore parlante de la vie courante (ex: la transformée de Laplace comme un dictionnaire bilingue qui transforme des équations différentielles infernales en simples multiplications d'algèbre de collège).
-  2. Décortique chaque formule lettre par lettre : Ne jette JAMAIS une formule brute. Rédige TOUTES les formules en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré). Explique le rôle de chaque variable, constante, opérateur ($p$, $t$, \\int, bornes, limites) et son sens physique ou mathématique.
-  3. L'Exemple résolu pas à pas sous ses yeux : Déroule un exemple concret ou un exercice type extrait de son cours, résolu et calculé étape par étape en justifiant chaque transformation algébrique.
-  4. Le Piège d'Examen : Signale les erreurs classiques que font les étudiants aux examens pour qu'il ne tombe pas dedans.
-  5. Validation interactive : Termine toujours par une question simple ou un petit défi de compréhension pour valider qu'il a assimilé la notion.
-
-Règles selon le type de création demandé ('${requestedType || "auto"}') :
-- Si QCM / QUIZ : Propose des questions claires avec LaTeX, exactement 4 options identifiées (A, B, C, D), la bonne réponse et un indice pédagogique.
-- Si CARTE MENTALE (Mindmap) : Définis un concept central et des branches hiérarchiques nettes (Définitions, Propriétés clés, Applications, Méthodes de calcul).
-- Si INFOGRAPHIE / DIAPORAMA : Structure en blocs étagés et étapes séquentielles avec des repères visuels clairs.
-- Si FLASHCARDS : Définis des paires recto (question/formule) et verso (réponse/application).
-- Si RÉSUMÉ : Rédige une synthèse fluide, complète, avec les définitions et théorèmes fondamentaux bien mis en valeur.`;
 
       // Document support attaché si présent (supporte toutes les clés : attachedFileContent, file_content, etc.)
       const rawDocContent = (
