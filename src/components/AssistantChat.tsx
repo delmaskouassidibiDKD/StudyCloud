@@ -735,7 +735,7 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
   return (
     <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50 overflow-hidden">
       
-      {/* EN-TÊTE SUPÉRIEUR (BOUTON HISTORIQUE, NOUVELLE CONVERSATION, PUISSANT, FERMER) */}
+      {/* EN-TÊTE SUPÉRIEUR (BOUTON HISTORIQUE, NOUVELLE CONVERSATION, PUISSANT/MOYEN, FERMER) */}
       <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-10 shadow-sm">
         <div className="flex items-center gap-1.5 min-w-0">
           {/* Bouton Historique */}
@@ -754,7 +754,7 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
             )}
           </button>
 
-          {/* Bouton + (Nouvelle discussion) juste derrière lui */}
+          {/* Bouton + (Nouvelle discussion) */}
           <button
             type="button"
             onClick={handleStartNewConversation}
@@ -764,30 +764,23 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
             <Plus className="w-4 h-4 text-orange-400" />
           </button>
 
-          <span className="text-xs font-semibold text-zinc-400 truncate hidden md:inline max-w-[140px] ml-1" title={currentConversationTitle}>
-            {currentConversationTitle}
-          </span>
-        </div>
-
-        <div className="flex items-center gap-2 shrink-0">
-          {/* Bouton Noir Puissant (simple, sans mention de Gemini) */}
+          {/* Bouton Puissant / Moyen placé près du bouton + (sans clignotement) */}
           <button
             type="button"
             onClick={() => setIsPowerMode(prev => !prev)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border active:scale-95 ${
+            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border active:scale-95 shrink-0 ${
               isPowerMode
                 ? 'bg-black hover:bg-zinc-950 text-white border-zinc-600 shadow-sm'
-                : 'bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border-zinc-800'
+                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white border-zinc-700'
             }`}
-            title={isPowerMode ? "Mode Puissant actif - Cliquez pour désactiver" : "Activer le Mode Puissant"}
+            title={isPowerMode ? "Mode Puissant actif - Cliquez pour passer en mode Moyen" : "Mode Moyen actif - Cliquez pour passer en mode Puissant"}
           >
-            <Zap className={`w-3.5 h-3.5 ${isPowerMode ? 'text-amber-400 fill-amber-400' : 'text-zinc-500'}`} />
-            <span>Puissant</span>
-            {isPowerMode && (
-              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
-            )}
+            <Zap className={`w-3.5 h-3.5 ${isPowerMode ? 'text-amber-400 fill-amber-400' : 'text-zinc-400'}`} />
+            <span>{isPowerMode ? 'Puissant' : 'Moyen'}</span>
           </button>
+        </div>
 
+        <div className="flex items-center gap-2 shrink-0">
           {/* Bouton Fermer */}
           {onClose && (
             <button
