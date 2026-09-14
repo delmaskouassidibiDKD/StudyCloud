@@ -173,7 +173,7 @@ export async function saveAiReaction(params: {
   reaction: 'like' | 'dislike' | null;
 }): Promise<boolean> {
   try {
-    const res = await fetch(`${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/workspace/reaction`, {
+    const res = await fetch(`${getAiWorkerUrl().replace(/\/+$/, '')}/api/ai/workspace/reaction`, {
       method: 'PUT',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
@@ -194,7 +194,7 @@ export async function removeAiAttachment(params: {
   r2Key?: string;
 }): Promise<boolean> {
   try {
-    const res = await fetch(`${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/workspace/attachment`, {
+    const res = await fetch(`${getAiWorkerUrl().replace(/\/+$/, '')}/api/ai/workspace/attachment`, {
       method: 'DELETE',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(params),
@@ -211,7 +211,7 @@ export async function removeAiAttachment(params: {
  */
 export async function getAiWorkspaceHistory(userId: string, sessionId?: string): Promise<any[]> {
   try {
-    const url = new URL(`${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/workspace`);
+    const url = new URL(`${getAiWorkerUrl().replace(/\/+$/, '')}/api/ai/workspace`);
     url.searchParams.set('userId', userId);
     if (sessionId) url.searchParams.set('sessionId', sessionId);
     const res = await fetch(url.toString());
@@ -251,6 +251,33 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
   }
 
   return response.json();
+}
+
+// Helper dédié pour les requêtes à l'IA (Worker IA uniquement)
+async function aiRequest<T>(endpoint: string, options: RequestInit = {}): Promise<T> {
+  const baseUrl = getAiWorkerUrl().replace(/\/+$/, '');
+  const url = `${baseUrl}${endpoint}`;
+
+  const defaultHeaders: Record<string, string> = {
+    'Content-Type': 'application/json',
+  };
+
+  const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+  defaultHeaders['x-user-id'] = userId;
+
+  const response = await fetch(url, {
+    ...options,
+    headers: {
+      ...defaultHeaders,
+      ...options.headers,
+    },
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: response.statusText }));
+    throw new Error(err.error || `Erreur API IA: ${response.status}`);
+  }
+
 }
 
 // Helper spécialement pour les routes d'auth (utilise Authorization Bearer)
@@ -775,13 +802,13 @@ export const StudyCloudAPI = {
   },
 
   // --------------------------------------------------------------------------
-  // Contenus Générés par l'IA (Résumés, Cartes, Quiz, etc.)
+  // Contenus Générés par l'IA (Résumés, Cartes, Quiz, etc. - Worker IA Dédié)
   // --------------------------------------------------------------------------
   async getAiContents(userId: string, toolType?: string, fileId?: string) {
     let endpoint = `/api/ai-contents?userId=${encodeURIComponent(userId)}`;
     if (toolType) endpoint += `&toolType=${encodeURIComponent(toolType)}`;
     if (fileId) endpoint += `&fileId=${encodeURIComponent(fileId)}`;
-    return request<{ success: boolean; data: any[] }>(endpoint);
+    return aiRequest<{ success: boolean; data: any[] }>(endpoint);
   },
 
   async saveAiContent(data: {
@@ -794,60 +821,60 @@ export const StudyCloudAPI = {
     sourceFileName?: string;
     isPinned?: boolean;
   }) {
-    return request<{ success: boolean; data: { id: string } }>('/api/ai-contents', {
+    return aiRequest<{ success: boolean; data: { id: string } }>('/api/ai-contents', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
   async deleteAiContent(id: string) {
-    return request(`/api/ai-contents/${id}`, { method: 'DELETE' });
+    return aiRequest(`/api/ai-contents/${id}`, { method: 'DELETE' });
   },
 
   async togglePinAiContent(id: string, isPinned: boolean) {
-    return request(`/api/ai-contents/${id}/pin`, {
+    return aiRequest(`/api/ai-contents/${id}/pin`, {
       method: 'PUT',
       body: JSON.stringify({ isPinned }),
     });
   },
 
   // --------------------------------------------------------------------------
-  // Conversations et Historique de Chat (Style Gemini)
+  // Conversations et Historique de Chat (Style Gemini - Worker IA Dédié)
   // --------------------------------------------------------------------------
   async getAiConversations(userId: string) {
-    return request<{ success: boolean; data: any[] }>(`/api/ai/conversations?userId=${encodeURIComponent(userId)}`);
+    return aiRequest<{ success: boolean; data: any[] }>(`/api/ai/conversations?userId=${encodeURIComponent(userId)}`);
   },
 
   async createAiConversation(data: { id?: string; userId: string; title: string }) {
-    return request<{ success: boolean; data: { id: string; title: string } }>('/api/ai/conversations', {
+    return aiRequest<{ success: boolean; data: { id: string; title: string } }>('/api/ai/conversations', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
   async deleteAiConversation(id: string) {
-    return request<{ success: boolean; message: string }>(`/api/ai/conversations?id=${encodeURIComponent(id)}`, {
+    return aiRequest<{ success: boolean; message: string }>(`/api/ai/conversations?id=${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
   },
 
   async getAiConversationMessages(conversationId: string) {
-    return request<{ success: boolean; data: any[] }>(`/api/ai/messages?conversationId=${encodeURIComponent(conversationId)}`);
+    return aiRequest<{ success: boolean; data: any[] }>(`/api/ai/messages?conversationId=${encodeURIComponent(conversationId)}`);
   },
 
   async saveAiMessage(data: { id?: string; conversationId: string; role: 'user' | 'assistant' | 'system'; content: string; metadata?: any }) {
-    return request<{ success: boolean }>('/api/ai/messages', {
+    return aiRequest<{ success: boolean }>('/api/ai/messages', {
       method: 'POST',
       body: JSON.stringify(data),
     });
   },
 
   async getAiConversationCreations(conversationId: string) {
-    return request<{ success: boolean; data: any[] }>(`/api/ai/creations?conversationId=${encodeURIComponent(conversationId)}`);
+    return aiRequest<{ success: boolean; data: any[] }>(`/api/ai/creations?conversationId=${encodeURIComponent(conversationId)}`);
   },
 
   async saveAiCreationRecord(data: { id?: string; conversationId: string; messageId?: string; type: string; title?: string; content: any }) {
-    return request<{ success: boolean }>('/api/ai/creations', {
+    return aiRequest<{ success: boolean }>('/api/ai/creations', {
       method: 'POST',
       body: JSON.stringify(data),
     });

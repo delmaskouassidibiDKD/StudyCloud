@@ -537,7 +537,7 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
       }
 
       if (isCreation) {
-        systemContent += `\n\nL'UTILISATEUR SOUHAITE UNE CRÉATION DÉDIÉE DE TYPE : "${targetToolType}". Produis un résultat riche, parfaitement structuré et créatif en évitant les répétitions. Pour un quiz: prépare des questions variées et percutantes avec 4 choix (A-D) et explications. Pour une carte mentale: structure des branches hiérarchiques captivantes. Pour un résumé: va à l'essentiel avec clarté.`;
+        systemContent += `\n\nL'UTILISATEUR SOUHAITE UNE CRÉATION PÉDAGOGIQUE DE TYPE : "${targetToolType}". Tu as une LIBERTÉ TOTALE pour la concevoir : adapte-toi entièrement au sujet et au document fourni, imagine des angles stimulants, variés et pertinents en évitant tout modèle répétitif ou générique. Déploie toute ton intelligence et ta pédagogie exactement comme dans le chat où tu raisonnes et aides avec brio.`;
       } else if (isIteration && activeCreation) {
         systemContent += `\n\nL'UTILISATEUR SOUHAITE MODIFIER LA CRÉATION EXISTANTE ("${activeCreation.title}"). Voici son contenu actuel : ${JSON.stringify(activeCreation.content)}. Applique scrupuleusement la modification demandée : "${userText}".`;
       }

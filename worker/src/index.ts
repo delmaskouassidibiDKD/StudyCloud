@@ -90,25 +90,14 @@ export default {
     const method = request.method;
     const origin = request.headers.get('Origin') || '*';
 
-    // Normalisation des liaisons D1, R2 & Workers AI
+    // Normalisation des liaisons D1 & R2 (Le Worker Principal gère l'Auth, les Données et le Stockage R2)
     const dbInstance = rawEnv['MON_D1-STUDYCLOUD'] || rawEnv.MON_D1_STUDYCLOUD || rawEnv.DB;
     const bucketInstance = rawEnv['MON_R2-STUDYCLOUD'] || rawEnv.MON_R2_STUDYCLOUD || rawEnv.BUCKET;
-    const aiInstance = rawEnv['MON-STUDYCLOUD-ia'] || 
-                       rawEnv.MON_STUDYCLOUD_IA || 
-                       rawEnv['MON-STUDYCLOUD-IA'] || 
-                       rawEnv['STUDYCLOUD-IA'] || 
-                       rawEnv.STUDYCLOUD_IA || 
-                       rawEnv['STUDYCLOUD-AI'] || 
-                       rawEnv.STUDYCLOUD_AI || 
-                       rawEnv.AI || 
-                       rawEnv.ai ||
-                       (rawEnv && typeof rawEnv === 'object' ? Object.values(rawEnv).find((v: any) => v && typeof v.run === 'function') : null);
 
-    const env: { DB: D1Database; BUCKET: R2Bucket; AI: any } = {
+    const env: { DB: D1Database; BUCKET: R2Bucket } = {
       ...rawEnv,
       DB: dbInstance as D1Database,
       BUCKET: bucketInstance as R2Bucket,
-      AI: aiInstance,
     };
 
     // Gestion du Preflight CORS
@@ -152,15 +141,14 @@ export default {
       if (path === '/' || path === '/api/health') {
         return jsonResponse({
           success: true,
-          service: 'StudyCloud Cloudflare Worker API',
+          service: 'StudyCloud Cloudflare Worker API (Auth, Files & Database)',
           status: 'online',
           database: dbInstance ? 'Connecté (D1: d1-studycloud)' : 'Non lié',
           storage: bucketInstance ? 'Connecté (R2: r2-studycloud)' : 'Non lié',
-          ai: aiInstance ? 'Connecté (Workers AI: MON-STUDYCLOUD-ia)' : 'Délégué vers studycloud-ai.delmaskouassidibi.workers.dev',
+          ai: 'Géré exclusivement par le Worker IA dédié (studycloud-ai.delmaskouassidibi.workers.dev)',
           bindings: {
             d1: !!dbInstance,
             r2: !!bucketInstance,
-            ai: !!aiInstance,
           },
           timestamp: new Date().toISOString(),
         }, 200, origin);
@@ -169,7 +157,7 @@ export default {
       // ----------------------------------------------------------------------
       // Vérification de sécurité des liaisons D1 & R2
       // ----------------------------------------------------------------------
-      if (path.startsWith('/api/') && !path.startsWith('/api/storage/') && !path.startsWith('/api/ai') && !env.DB) {
+      if (path.startsWith('/api/') && !path.startsWith('/api/storage/') && !env.DB) {
         return errorResponse(
           "Base de données D1 non accessible. Veuillez lier votre base 'd1-studycloud' avec le nom de variable 'MON_D1_STUDYCLOUD' (ou 'MON_D1-STUDYCLOUD') dans Cloudflare Workers > Settings > Variables and Bindings > D1 Database Bindings.",
           503,
@@ -3533,375 +3521,14 @@ export default {
       }
 
       // ----------------------------------------------------------------------
-      // 16. CONTENUS GÉNÉRÉS PAR L'IA (Résumés, Cartes, Quiz, etc.)
+      // 16. DÉLÉGATION TOTALE DE L'IA VERS LE WORKER IA DÉDIÉ
       // ----------------------------------------------------------------------
-      if (path === '/api/ai-contents') {
-        const userId = url.searchParams.get('userId');
-        const toolType = url.searchParams.get('toolType');
-        const fileId = url.searchParams.get('fileId');
-
-        if (method === 'GET') {
-          if (!userId) return errorResponse('userId requis', 400, origin);
-          let query = 'SELECT * FROM ai_generated_contents WHERE user_id = ?';
-          const params: any[] = [userId];
-
-          if (toolType && toolType !== 'all') {
-            query += ' AND tool_type = ?';
-            params.push(toolType);
-          }
-          if (fileId) {
-            query += ' AND file_id = ?';
-            params.push(fileId);
-          }
-
-          query += ' ORDER BY is_pinned DESC, updated_at DESC, created_at DESC';
-          const { results } = await env.DB.prepare(query).bind(...params).all();
-          return jsonResponse({ success: true, data: results }, 200, origin);
-        }
-
-        if (method === 'POST') {
-          const body: any = await request.json();
-          const { id, userId, fileId, toolType, title, contentJson, sourceFileName, isPinned } = body;
-          if (!userId || !toolType || !title) return errorResponse('userId, toolType et title requis', 400, origin);
-
-          const contentId = id || crypto.randomUUID();
-          await env.DB.prepare(`
-            INSERT INTO ai_generated_contents (id, user_id, file_id, tool_type, title, content_json, source_file_name, is_pinned, updated_at)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(id) DO UPDATE SET
-              title = excluded.title,
-              content_json = excluded.content_json,
-              source_file_name = excluded.source_file_name,
-              is_pinned = excluded.is_pinned,
-              updated_at = CURRENT_TIMESTAMP
-          `).bind(
-            contentId,
-            userId,
-            fileId || null,
-            toolType,
-            title,
-            typeof contentJson === 'string' ? contentJson : JSON.stringify(contentJson || {}),
-            sourceFileName || '',
-            isPinned ? 1 : 0
-          ).run();
-
-          return jsonResponse({ success: true, data: { id: contentId } }, 201, origin);
-        }
-      }
-
-      if (path.startsWith('/api/ai-contents/') && method === 'DELETE') {
-        const id = path.split('/')[3];
-        await env.DB.prepare('DELETE FROM ai_generated_contents WHERE id = ?').bind(id).run();
-        return jsonResponse({ success: true, message: 'Élément IA supprimé' }, 200, origin);
-      }
-
-      if (path.startsWith('/api/ai-contents/') && path.endsWith('/pin') && method === 'PUT') {
-        const id = path.split('/')[3];
-        const body: any = await request.json().catch(() => ({}));
-        await env.DB.prepare('UPDATE ai_generated_contents SET is_pinned = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?')
-          .bind(body.isPinned ? 1 : 0, id).run();
-        return jsonResponse({ success: true }, 200, origin);
-      }
-
-      // ----------------------------------------------------------------------
-      // ASSISTANTE IA (CLOUDFLARE WORKERS AI - Meta LLaMA 3.1)
-      // ----------------------------------------------------------------------
-      if ((path === '/api/ai/chat' || path === '/api/ai') && (method === 'POST' || method === 'GET')) {
-        if (method === 'GET') {
-          return jsonResponse({
-            success: true,
-            service: 'StudyCloud AI Assistant (DKD Technologies)',
-            ai_binding_detected: Boolean(aiInstance && typeof aiInstance.run === 'function'),
-            model: '@cf/meta/llama-3.1-8b-instruct',
-            status: 'ready',
-            timestamp: new Date().toISOString()
-          }, 200, origin);
-        }
-
-        const body: any = await request.json().catch(() => ({}));
-        let messages = Array.isArray(body.messages) ? body.messages : [];
-        const userPrompt = body.prompt || body.text || '';
-        const userId = body.userId;
-        const sessionId = body.sessionId || 'default-session';
-
-        if (messages.length === 0) {
-          messages = [
-            { role: 'user', content: userPrompt || 'Bonjour !' }
-          ];
-        }
-
-        // Si un document PDF ou texte est joint, l'injecter au premier plan dans le contexte
-        if (body.attachedFileContent && typeof body.attachedFileContent === 'string' && body.attachedFileContent.trim().length > 0) {
-          const docTitle = body.attachedFileName || 'Document joint';
-          const maxDocChars = 32000;
-          const cleanDocContent = body.attachedFileContent.slice(0, maxDocChars);
-          messages.unshift({
-            role: 'system',
-            content: `=== DOCUMENT JOINT DE L'ÉLÈVE ("${docTitle}") ===\n${cleanDocContent}\n=== FIN DU DOCUMENT ===\nInstructions : L'élève t'a transmis ce document pour que tu travailles avec lui dessus. Tu as un accès COMPLET et DIRECT à son texte. Réponds précisément à ses questions en t'appuyant rigoureusement sur les leçons, théorèmes, définitions, exercices et explications contenus dans ce fichier.`
-          });
-        }
-
-        const hasSystemMessage = messages.some((m: any) => m.role === 'system');
-        if (!hasSystemMessage) {
-          messages.unshift({
-            role: 'system',
-            content: "Tu es l'assistante IA officielle de la plateforme StudyCloud, créée par DKD Technologies. Tu es une tutrice académique et pédagogique bienveillante, dynamique, très claire et structurée. Tu réponds TOUJOURS en français avec des explications simples, complètes et faciles à comprendre pour aider l'élève ou l'étudiant dans ses révisions, ses devoirs et sa compréhension des documents."
-          });
-        }
-
-        let replyText = '';
-        let usedModel = '';
-
-        // 1. Si la liaison Workers AI est présente localement sur ce Worker
-        if (aiInstance && typeof aiInstance.run === 'function') {
-          const candidateModels = [
-            '@cf/meta/llama-3.1-8b-instruct',
-            '@cf/meta/llama-3.2-3b-instruct',
-            '@cf/meta/llama-3.1-8b-instruct-fast',
-            '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
-            '@cf/mistral/mistral-7b-instruct-v0.2'
-          ];
-
-          let aiResult: any = null;
-          let lastError: any = null;
-
-          for (const m of candidateModels) {
-            try {
-              aiResult = await aiInstance.run(m, {
-                messages: messages,
-                max_tokens: 1500,
-                temperature: 0.65,
-              });
-              usedModel = m;
-              break;
-            } catch (err: any) {
-              lastError = err;
-              console.warn(`Modèle ${m} a échoué:`, err?.message || err);
-            }
-          }
-
-          if (aiResult) {
-            if (typeof aiResult?.response === 'string') {
-              replyText = aiResult.response;
-            } else if (typeof aiResult === 'string') {
-              replyText = aiResult;
-            } else if (aiResult && typeof aiResult === 'object') {
-              replyText = aiResult.response || aiResult.text || JSON.stringify(aiResult);
-            }
-          }
-        }
-
-        // 2. Délégation / proxy automatique vers le Worker IA dédié (studycloud-ai) si pas encore de réponse
-        if (!replyText) {
-          try {
-            const aiWorkerRes = await fetch('https://studycloud-ai.delmaskouassidibi.workers.dev', {
-              method: 'POST',
-              headers: { 'Content-Type': 'application/json' },
-              body: JSON.stringify({
-                messages,
-                prompt: userPrompt,
-                attachedFileContent: body.attachedFileContent,
-                attachedFileName: body.attachedFileName
-              })
-            });
-
-            if (aiWorkerRes.ok) {
-              const aiData: any = await aiWorkerRes.json();
-              replyText = aiData.response || '';
-              usedModel = aiData.model || 'studycloud-ai-worker';
-            }
-          } catch (fetchErr: any) {
-            console.warn('Proxy vers studycloud-ai a échoué:', fetchErr?.message || fetchErr);
-          }
-        }
-
-        if (!replyText) {
-          return errorResponse(
-            "L'IA StudyCloud n'a pas pu répondre. Vérifiez que la liaison Workers AI 'MON-STUDYCLOUD-ia' est configurée dans Cloudflare (Settings > Variables and Bindings > Workers AI), ou que votre Worker IA 'studycloud-ai' est bien déployé.",
-            500,
-            origin
-          );
-        }
-
-        // 3. Sauvegarde sécurisée et isolée dans la table D1 de l'utilisateur
-        if (userId && env.DB) {
-          try {
-            const userMsgId = crypto.randomUUID();
-            const aiMsgId = crypto.randomUUID();
-
-            await env.DB.prepare(`
-              INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, attached_file_id, attached_file_name, attached_file_r2_key, attached_file_content)
-              VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?)
-            `).bind(
-              userMsgId,
-              userId,
-              sessionId,
-              userPrompt,
-              body.attachedFileId || null,
-              body.attachedFileName || null,
-              body.attachedFileR2Key || null,
-              body.attachedFileContent || null
-            ).run();
-
-            await env.DB.prepare(`
-              INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text)
-              VALUES (?, ?, ?, 'assistant', ?)
-            `).bind(
-              aiMsgId,
-              userId,
-              sessionId,
-              replyText
-            ).run();
-          } catch (dbSaveErr) {
-            console.warn('[Workspace] Erreur sauvegarde conversation D1:', dbSaveErr);
-          }
-        }
-
-        return jsonResponse({
-          success: true,
-          response: replyText,
-          model: usedModel,
-          source: 'studycloud_ai'
-        }, 200, origin);
-      }
-
-      // ----------------------------------------------------------------------
-      // ESPACE & MÉMOIRE PRIVÉE DE L'IA (ISOLATION STRICTE PAR UTILISATEUR)
-      // ----------------------------------------------------------------------
-      if (path === '/api/ai/workspace' && method === 'GET') {
-        const userId = url.searchParams.get('userId');
-        const sessionId = url.searchParams.get('sessionId');
-        if (!userId) return errorResponse('userId requis', 400, origin);
-        if (!env.DB) return jsonResponse({ success: true, data: [] }, 200, origin);
-
-        let q = 'SELECT * FROM user_ai_workspace WHERE user_id = ?';
-        const params: any[] = [userId];
-        if (sessionId) {
-          q += ' AND session_id = ?';
-          params.push(sessionId);
-        }
-        q += ' ORDER BY created_at ASC';
-        const { results } = await env.DB.prepare(q).bind(...params).all();
-        return jsonResponse({ success: true, data: results || [] }, 200, origin);
-      }
-
-      // Enregistrer une réaction (j'aime / pouce)
-      if (path === '/api/ai/workspace/reaction' && method === 'PUT') {
-        const body: any = await request.json().catch(() => ({}));
-        const { userId, messageId, reaction } = body;
-        if (!userId || !messageId) return errorResponse('userId et messageId requis', 400, origin);
-        if (env.DB) {
-          await env.DB.prepare(`
-            UPDATE user_ai_workspace
-            SET reaction = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ? AND user_id = ?
-          `).bind(reaction || null, messageId, userId).run();
-        }
-        return jsonResponse({ success: true, message: 'Réaction enregistrée avec succès' }, 200, origin);
-      }
-
-      // Supprimer un document joint du contexte IA (D1 & R2)
-      if (path === '/api/ai/workspace/attachment' && method === 'DELETE') {
-        const body: any = await request.json().catch(() => ({}));
-        const { userId, fileId, r2Key } = body;
-        if (!userId || !fileId) return errorResponse('userId et fileId requis', 400, origin);
-        if (env.DB) {
-          await env.DB.prepare(`
-            UPDATE user_ai_workspace
-            SET attached_file_id = NULL, attached_file_name = NULL, attached_file_content = NULL, attached_file_r2_key = NULL, updated_at = CURRENT_TIMESTAMP
-            WHERE user_id = ? AND attached_file_id = ?
-          `).bind(userId, fileId).run();
-        }
-        if (r2Key && env.BUCKET) {
-          try {
-            await env.BUCKET.delete(r2Key);
-          } catch (e) {}
-        }
-        return jsonResponse({ success: true, message: 'Pièce jointe retirée et purgée avec succès' }, 200, origin);
-      }
-
-      // ----------------------------------------------------------------------
-      // CRÉATIONS IA PASSÉES (FICHES, RÉSUMÉS, CARTES MENTALES, QUIZ)
-      // ----------------------------------------------------------------------
-      if (path === '/api/ai-contents' && method === 'GET') {
-        const userId = url.searchParams.get('userId');
-        const toolType = url.searchParams.get('toolType');
-        const fileId = url.searchParams.get('fileId');
-        if (!userId) return errorResponse('userId requis', 400, origin);
-        if (!env.DB) return jsonResponse({ success: true, data: [] }, 200, origin);
-
-        let q = 'SELECT * FROM ai_generated_contents WHERE user_id = ?';
-        const params: any[] = [userId];
-        if (toolType) {
-          q += ' AND tool_type = ?';
-          params.push(toolType);
-        }
-        if (fileId) {
-          q += ' AND file_id = ?';
-          params.push(fileId);
-        }
-        q += ' ORDER BY is_pinned DESC, created_at DESC';
-        const { results } = await env.DB.prepare(q).bind(...params).all();
-        const formatted = (results || []).map((r: any) => ({
-          ...r,
-          contentJson: typeof r.content_json === 'string' ? JSON.parse(r.content_json || '{}') : r.content_json
-        }));
-        return jsonResponse({ success: true, data: formatted }, 200, origin);
-      }
-
-      if (path === '/api/ai-contents' && method === 'POST') {
-        const body: any = await request.json().catch(() => ({}));
-        const { id, userId, fileId, toolType, title, contentJson, sourceFileName, isPinned } = body;
-        if (!userId || !toolType || !title) {
-          return errorResponse('userId, toolType et title requis', 400, origin);
-        }
-        if (!env.DB) return errorResponse('Base de données non disponible', 500, origin);
-
-        const contentId = id || crypto.randomUUID();
-        const jsonStr = typeof contentJson === 'string' ? contentJson : JSON.stringify(contentJson || {});
-        await env.DB.prepare(`
-          INSERT INTO ai_generated_contents (id, user_id, file_id, tool_type, title, content_json, source_file_name, is_pinned)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-          ON CONFLICT(id) DO UPDATE SET
-            title = excluded.title,
-            content_json = excluded.content_json,
-            source_file_name = excluded.source_file_name,
-            is_pinned = excluded.is_pinned,
-            updated_at = CURRENT_TIMESTAMP
-        `).bind(
-          contentId,
-          userId,
-          fileId || null,
-          toolType,
-          title,
-          jsonStr,
-          sourceFileName || null,
-          isPinned ? 1 : 0
-        ).run();
-
-        return jsonResponse({ success: true, data: { id: contentId } }, 200, origin);
-      }
-
-      if (path.startsWith('/api/ai-contents/') && path.endsWith('/pin') && method === 'PUT') {
-        const id = path.replace('/api/ai-contents/', '').replace('/pin', '');
-        const body: any = await request.json().catch(() => ({}));
-        const { isPinned } = body;
-        if (env.DB) {
-          await env.DB.prepare(`
-            UPDATE ai_generated_contents
-            SET is_pinned = ?, updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).bind(isPinned ? 1 : 0, id).run();
-        }
-        return jsonResponse({ success: true, message: 'Statut épinglé mis à jour' }, 200, origin);
-      }
-
-      if (path.startsWith('/api/ai-contents/') && method === 'DELETE') {
-        const id = path.replace('/api/ai-contents/', '');
-        if (env.DB) {
-          await env.DB.prepare('DELETE FROM ai_generated_contents WHERE id = ?').bind(id).run();
-        }
-        return jsonResponse({ success: true, message: 'Contenu supprimé avec succès' }, 200, origin);
+      if (path.startsWith('/api/ai') || path.startsWith('/api/ai-contents')) {
+        return errorResponse(
+          "Toutes les fonctionnalités de l'IA StudyCloud sont désormais gérées exclusivement par le Worker IA dédié (https://studycloud-ai.delmaskouassidibi.workers.dev).",
+          404,
+          origin
+        );
       }
 
       // ----------------------------------------------------------------------

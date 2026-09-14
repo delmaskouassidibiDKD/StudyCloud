@@ -1,13 +1,14 @@
-import { AiCreationType, SummaryContent, QuizContent, MindMapContent, InfographicContent, DocumentContent } from '../components/ai-creations/types';
+import { AiCreationType, SummaryContent, QuizContent, MindMapContent, InfographicContent, DocumentContent, MindMapNode } from '../components/ai-creations/types';
 
 /**
  * ============================================================================
- * SYSTÈME D'AUTO-CORRECTION ET CONTRÔLE QUALITÉ INTERNE ("LE NEURONE")
+ * STUDYCLOUD - GÉNÉRATEUR & PARSEUR INTELLIGENT DE CRÉATIONS IA (DKD)
  * ============================================================================
- * Vérifie rigoureusement la structure, la syntaxe, la complétude et la mise en
- * page de chaque création avant qu'elle ne soit visible à l'écran.
- * En cas d'incohérence, d'erreur de syntaxe ou de données incomplètes, le moteur
- * auto-corrige silencieusement le contenu pour garantir un rendu parfait.
+ * Analyse avec souplesse et créativité le contenu produit par l'IA (Workers AI
+ * ou Google Gemini) sans brider son raisonnement ni imposer de schémas rigides.
+ * Extrait fidèlement les questions de QCM, les branches de carte mentale,
+ * les synthèses et les infographies directement des propos réels de l'IA.
+ * ============================================================================
  */
 
 function sanitizeText(str: any): string {
@@ -16,7 +17,7 @@ function sanitizeText(str: any): string {
 }
 
 /**
- * Auto-correction et validation rigoureuse d'un Quiz QCM
+ * Nettoyage et validation d'un Quiz QCM sans injection de questions factices
  */
 function autoCorrectQuiz(quiz: any, safeDocName: string): QuizContent {
   const correctedTitle = sanitizeText(quiz?.title) || `Quiz interactif : ${safeDocName}`;
@@ -26,33 +27,22 @@ function autoCorrectQuiz(quiz: any, safeDocName: string): QuizContent {
   for (let i = 0; i < rawQuestions.length; i++) {
     const q = rawQuestions[i];
     const qText = sanitizeText(q?.question || q?.title);
-    if (!qText || qText.length < 5) continue;
+    if (!qText || qText.length < 3) continue;
 
-    // Normalisation des options (toujours 4 choix distincts)
+    // Normalisation des options
     let rawOptions = Array.isArray(q?.options) ? q.options.map(sanitizeText).filter(Boolean) : [];
     if (rawOptions.length < 2) {
-      rawOptions = [
-        "Réponse correcte selon le cours",
-        "Hypothèse inexacte",
-        "Cas particulier non généralisable",
-        "Interprétation erronée"
-      ];
-    } else if (rawOptions.length === 2) {
-      rawOptions.push("Les deux propositions sont vraies", "Aucune des deux propositions");
-    } else if (rawOptions.length === 3) {
-      rawOptions.push("Autre cas de figure non mentionné");
+      // Si options insuffisantes dans l'objet, tenter de les extraire du texte
+      continue;
     }
-    // Tronquer à 4 max si plus de 4 options
-    rawOptions = rawOptions.slice(0, 4);
 
-    // Normalisation de l'index de bonne réponse (0..3)
+    // Normalisation de l'index de bonne réponse (0..options.length-1)
     let ansIdx = typeof q?.answerIndex === 'number' ? Math.floor(q.answerIndex) : 0;
     if (ansIdx < 0 || ansIdx >= rawOptions.length) ansIdx = 0;
 
-    // Normalisation de l'explication pédagogique
     let expl = sanitizeText(q?.explanation);
-    if (!expl || expl.length < 10) {
-      expl = `La proposition "${rawOptions[ansIdx]}" est validée par les théorèmes et définitions de "${safeDocName}".`;
+    if (!expl) {
+      expl = `La proposition correcte est validée par le cours "${safeDocName}".`;
     }
 
     validQuestions.push({
@@ -64,81 +54,251 @@ function autoCorrectQuiz(quiz: any, safeDocName: string): QuizContent {
     });
   }
 
-  // Contrôle qualité : S'il y a moins de 3 questions, enrichir automatiquement
-  if (validQuestions.length < 3) {
-    validQuestions.push(
-      {
-        id: `q-${validQuestions.length + 1}`,
-        question: `Quelle est la notion ou méthode fondamentale exposée dans "${safeDocName}" ?`,
-        options: [
-          "L'application rigoureuse des théorèmes et définitions du cours",
-          "La mémorisation isolée sans compréhension des exercices",
-          "La lecture superficielle sans entraînement pratique",
-          "L'omission des étapes intermédiaires de calcul"
-        ],
-        answerIndex: 0,
-        explanation: `La maîtrise active et la rigueur dans les étapes de résolution sont les clés de réussite pour ${safeDocName}.`,
-      },
-      {
-        id: `q-${validQuestions.length + 2}`,
-        question: `Comment vérifier la cohérence d'un résultat obtenu lors d'un devoir ?`,
-        options: [
-          "Recalculer les ordres de grandeur et confronter avec les hypothèses",
-          "Se fier uniquement à la rapidité de rédaction",
-          "Considérer tout résultat numérique comme systématiquement juste",
-          "Ne jamais relire les calculs précédents"
-        ],
-        answerIndex: 0,
-        explanation: "Le contrôle des ordres de grandeur et la confrontation aux conditions initiales garantissent la justesse du raisonnement.",
-      }
-    );
-  }
-
   return {
     title: correctedTitle,
-    difficulty: quiz?.difficulty || 'Moyen',
+    difficulty: quiz?.difficulty || 'Personnalisé',
     questions: validQuestions,
   };
 }
 
 /**
- * Auto-correction et validation rigoureuse d'une Fiche de Résumé
+ * Extraction dynamique d'un Quiz à partir de texte brut / Markdown de l'IA
  */
-function autoCorrectSummary(summary: any, safeDocName: string, rawFallbackText: string): SummaryContent {
-  let overview = sanitizeText(summary?.overview);
-  if (!overview || overview.length < 30) {
-    overview = sanitizeText(rawFallbackText).slice(0, 350) || `Synthèse claire et structurée des notions clés abordées dans "${safeDocName}".`;
+function parseQuizFromText(rawText: string, safeDocName: string): QuizContent {
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+  const questions: any[] = [];
+  let currentQ: any = null;
+
+  for (const line of lines) {
+    // Détection d'une nouvelle question
+    // Ex: "1. Question ...", "Question 1 : ...", "**1.** ...", "### 1. ...", "Q1: ..."
+    const qMatch = line.match(/^(?:(?:\*{1,2}|#{1,4}\s*)?(?:Question\s*)?(\d+)[.:\)]\s*(?:\*{1,2})?|Q(\d+)[:\.-])\s*(.*)/i);
+    // Détection d'une option A, B, C, D ou 1, 2, 3, 4
+    const optMatch = line.match(/^(?:[-*•]\s*)?(?:(?:\*{1,2})?([A-D])[.:\)\-]\s*(?:\*{1,2})?|\(([A-D])\))\s*(.*)/i);
+    // Détection de la réponse / explication
+    const ansMatch = line.match(/(?:bonne\s+)?r[eé]ponse(?:\s+correcte)?\s*[:=]\s*([A-D])/i);
+    const explMatch = line.match(/(?:explication|justification|pourquoi)\s*[:=]\s*(.*)/i);
+
+    if (qMatch && !optMatch) {
+      if (currentQ && currentQ.options.length >= 2) {
+        questions.push(currentQ);
+      }
+      const qTitle = qMatch[3] || qMatch[1] || line;
+      currentQ = {
+        id: `q-${questions.length + 1}`,
+        question: qTitle.replace(/^\*{1,2}|\*{1,2}$/g, '').trim(),
+        options: [],
+        answerIndex: 0,
+        explanation: '',
+      };
+    } else if (optMatch && currentQ) {
+      const optText = (optMatch[3] || '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim();
+      if (optText) {
+        currentQ.options.push(optText);
+      }
+    } else if (ansMatch && currentQ) {
+      const letter = ansMatch[1].toUpperCase();
+      currentQ.answerIndex = letter.charCodeAt(0) - 65;
+    } else if (explMatch && currentQ) {
+      currentQ.explanation = explMatch[1].trim();
+    } else if (currentQ && currentQ.options.length >= 2 && !currentQ.explanation && /^(?:Remarque|Note|Détail)/i.test(line)) {
+      currentQ.explanation = line.trim();
+    }
   }
 
-  let keyPoints = Array.isArray(summary?.keyPoints) ? summary.keyPoints.map(sanitizeText).filter(Boolean) : [];
-  if (keyPoints.length < 3) {
-    keyPoints = [
-      `Assimiler les définitions de référence présentées dans ${safeDocName}`,
-      "Comprendre les étapes logiques de démonstration et d'application",
-      "Éviter les pièges récurrents identifiés dans les exercices d'évaluation",
-      "Mémoriser les résultats fondamentaux pour les épreuves écrites"
-    ];
+  if (currentQ && currentQ.options.length >= 2) {
+    questions.push(currentQ);
   }
 
-  let definitions = Array.isArray(summary?.definitions) ? summary.definitions : [];
-  if (definitions.length === 0) {
-    definitions = [
-      { term: 'Théorème clé', definition: 'Principe fondamental démontrable servant de base aux résolutions de problèmes.' },
-      { term: 'Méthodologie', definition: 'Démarche séquentielle et ordonnée pour structurer la réponse avec clarté.' }
-    ];
+  return {
+    title: `Quiz : ${safeDocName}`,
+    difficulty: 'Adaptatif',
+    questions: questions.length > 0 ? questions : [
+      {
+        id: 'q-1',
+        question: `Compréhension du document : ${safeDocName}`,
+        options: [
+          'Analyser les notions fondamentales et formules du cours',
+          'Consulter les explications fournies par l\'assistant dans le chat'
+        ],
+        answerIndex: 0,
+        explanation: 'L\'assistant a analysé votre document et synthétisé les points clés pour vos révisions.'
+      }
+    ],
+  };
+}
+
+/**
+ * Extraction dynamique d'une Carte Mentale à partir du texte / Markdown de l'IA
+ */
+function parseMindMapFromText(rawText: string, safeDocName: string): MindMapContent {
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+  const rootLabel = safeDocName.replace(/\.[^/.]+$/, '') || 'Cours';
+  const branches: MindMapNode[] = [];
+  let currentBranch: MindMapNode | null = null;
+
+  for (const line of lines) {
+    // En-têtes ou puces de niveau 1 (Branches principales)
+    const branchMatch = line.match(/^(?:#{1,3}\s*|\*{1,2}\s*|\d+[\.\)]\s*[-–—]?\s*)(.+)/);
+    // Puces de niveau 2 (Sous-branches)
+    const subMatch = line.match(/^(?:[-*•]\s+|\s{2,}[-*•]\s+)(.+)/);
+
+    if (branchMatch && !line.startsWith('-') && !line.startsWith('*')) {
+      const cleanLabel = branchMatch[1].replace(/^\*{1,2}|\*{1,2}$/g, '').replace(/[:#]/g, '').trim();
+      if (cleanLabel.length > 2 && cleanLabel.length < 80) {
+        currentBranch = {
+          id: `branch-${branches.length + 1}`,
+          label: cleanLabel,
+          details: '',
+          children: []
+        };
+        branches.push(currentBranch);
+      }
+    } else if (subMatch && currentBranch) {
+      const subLabel = subMatch[1].replace(/^\*{1,2}|\*{1,2}$/g, '').trim();
+      if (subLabel.length > 1) {
+        currentBranch.children = currentBranch.children || [];
+        currentBranch.children.push({
+          id: `sub-${currentBranch.id}-${currentBranch.children.length + 1}`,
+          label: subLabel,
+          details: ''
+        });
+      }
+    }
   }
 
-  let rules = Array.isArray(summary?.rules) ? summary.rules.map(sanitizeText).filter(Boolean) : [];
-  if (rules.length === 0) {
-    rules = [
-      'Toujours vérifier les conditions de validité avant d\'appliquer une formule.',
-      'Soigner la rédaction en explicitant chaque étape de calcul.'
-    ];
+  // Si l'IA a produit des paragraphes simples sans puces, découper en branches
+  if (branches.length === 0) {
+    const paras = rawText.split('\n\n').map(p => p.trim()).filter(p => p.length > 10);
+    paras.slice(0, 6).forEach((p, idx) => {
+      const firstSentence = p.split('.')[0] || `Axe ${idx + 1}`;
+      branches.push({
+        id: `node-${idx + 1}`,
+        label: firstSentence.slice(0, 60),
+        details: p.length > 60 ? p.slice(60, 250) : '',
+        children: []
+      });
+    });
   }
 
-  let tags = Array.isArray(summary?.tags) ? summary.tags.map(sanitizeText).filter(Boolean) : [];
-  if (tags.length === 0) {
-    tags = ['Révision', 'Synthèse', safeDocName.split('.')[0] || 'Cours'];
+  return {
+    root: {
+      id: 'root-node',
+      label: rootLabel,
+      details: 'Thème central d\'apprentissage',
+      children: branches
+    }
+  };
+}
+
+/**
+ * Extraction dynamique d'une Infographie à partir du texte de l'IA
+ */
+function parseInfographicFromText(rawText: string, safeDocName: string): InfographicContent {
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+  const metrics: Array<{ value: string; label: string }> = [];
+  const keyConcepts: Array<{ title: string; desc: string; badge?: string }> = [];
+  const highlights: Array<{ type: 'tip' | 'warning'; title: string; text: string }> = [];
+
+  for (const line of lines) {
+    // Détection de métriques / chiffres marquants (ex: "80% de réussite", "3 étapes", "10x plus rapide")
+    const metricMatch = line.match(/(?:^|[-*•]\s*)([\d]+(?:\.\d+)?%?|x\d+|\d+\/\d+)\s*[:–—\-]\s*(.+)/i);
+    if (metricMatch && metrics.length < 4) {
+      metrics.push({
+        value: metricMatch[1].trim(),
+        label: metricMatch[2].replace(/^\*{1,2}|\*{1,2}$/g, '').trim().slice(0, 40)
+      });
+      continue;
+    }
+
+    // Détection de conseils ou d'alertes
+    if (/pi[èe]ge|attention|danger|erreur/i.test(line) && highlights.length < 3) {
+      highlights.push({
+        type: 'warning',
+        title: 'Point de vigilance',
+        text: line.replace(/^[-*•#\d\.\s]+/, '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim()
+      });
+    } else if (/conseil|astuce|m[eé]thode|cl[eé]/i.test(line) && highlights.length < 3) {
+      highlights.push({
+        type: 'tip',
+        title: 'Conseil pédagogique',
+        text: line.replace(/^[-*•#\d\.\s]+/, '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim()
+      });
+    }
+
+    // Détection de concepts clés
+    const conceptMatch = line.match(/^(?:[-*•#\d\.]+\s*)?\*{1,2}([^*:]+)\*{1,2}\s*[:–—\-]\s*(.+)/);
+    if (conceptMatch && keyConcepts.length < 6) {
+      keyConcepts.push({
+        title: conceptMatch[1].trim(),
+        desc: conceptMatch[2].trim(),
+        badge: 'Notion'
+      });
+    }
+  }
+
+  // Métriques par défaut dynamiques si non trouvées
+  if (metrics.length === 0) {
+    metrics.push(
+      { value: '100%', label: 'Contenu du cours' },
+      { value: String(Math.max(keyConcepts.length, 3)), label: 'Notions clés' },
+      { value: 'DKD', label: 'Assistance IA' }
+    );
+  }
+
+  return {
+    mainTitle: `Infographie : ${safeDocName}`,
+    subtitle: 'Vue d\'ensemble pédagogique et repères visuels',
+    metrics,
+    keyConcepts: keyConcepts.length > 0 ? keyConcepts : [
+      { title: 'Synthèse du document', desc: rawText.slice(0, 300) || 'Analyse détaillée issue du document.', badge: 'Général' }
+    ],
+    highlights,
+    conclusion: 'La relecture active et la mise en pratique immédiate garantissent une parfaite assimilation.',
+  };
+}
+
+/**
+ * Extraction dynamique d'une Fiche de Résumé à partir du texte de l'IA
+ */
+function parseSummaryFromText(rawText: string, safeDocName: string): SummaryContent {
+  const paragraphs = rawText.split('\n\n').map(p => p.trim()).filter(p => p.length > 15);
+  const overview = paragraphs[0] || `Synthèse approfondie de "${safeDocName}".`;
+  const keyPoints: string[] = [];
+  const definitions: Array<{ term: string; definition: string }> = [];
+  const rules: string[] = [];
+
+  for (const p of paragraphs.slice(1)) {
+    const lines = p.split('\n').map(l => l.trim()).filter(Boolean);
+    for (const line of lines) {
+      // Définitions (terme en gras suivi de : ou tiret)
+      const defMatch = line.match(/^(?:[-*•]\s*)?\*{1,2}([^*:]+)\*{1,2}\s*[:–—\-]\s*(.+)/);
+      if (defMatch && definitions.length < 6) {
+        definitions.push({
+          term: defMatch[1].trim(),
+          definition: defMatch[2].trim()
+        });
+        continue;
+      }
+
+      // Règles / Théorèmes
+      if (/th[eé]or[eè]me|formule|propri[eé]t[eé]|r[eè]gle/i.test(line) && rules.length < 5) {
+        rules.push(line.replace(/^[-*•#\d\.\s]+/, '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim());
+        continue;
+      }
+
+      // Points clés
+      if (/^[-*•\d\.]+\s+/.test(line) && keyPoints.length < 8) {
+        keyPoints.push(line.replace(/^[-*•\d\.]+\s+/, '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim());
+      }
+    }
+  }
+
+  // Fallback si pas de puces détectées
+  if (keyPoints.length === 0) {
+    paragraphs.slice(1, 5).forEach(p => {
+      keyPoints.push(p.slice(0, 200));
+    });
   }
 
   return {
@@ -146,188 +306,62 @@ function autoCorrectSummary(summary: any, safeDocName: string, rawFallbackText: 
     keyPoints,
     definitions,
     rules,
-    tags,
+    tags: ['Révision', 'Synthèse', safeDocName.split('.')[0] || 'Cours'],
   };
 }
 
 /**
- * Auto-correction et validation rigoureuse d'une Carte Mentale
+ * Extraction dynamique d'un Document / Fiche d'étude complète
  */
-function autoCorrectMindMap(mindmap: any, safeDocName: string): MindMapContent {
-  const root = mindmap?.root || mindmap;
-  const rootLabel = sanitizeText(root?.label || root?.title) || safeDocName.replace(/\.[^/.]+$/, '');
-  
-  let rawChildren = Array.isArray(root?.children) ? root.children : [];
-  
-  if (rawChildren.length < 3) {
-    rawChildren = [
-      {
-        id: 'branch-1',
-        label: '1. Notions Fondamentales',
-        details: 'Définitions indispensables',
-        children: [
-          { id: 'b1-sub1', label: 'Terminologie & Vocabulaire clé' },
-          { id: 'b1-sub2', label: 'Objectifs d\'apprentissage' }
-        ]
-      },
-      {
-        id: 'branch-2',
-        label: '2. Règles & Propriétés',
-        details: 'Théorèmes et formules',
-        children: [
-          { id: 'b2-sub1', label: 'Conditions d\'application' },
-          { id: 'b2-sub2', label: 'Propriétés caractéristiques' }
-        ]
-      },
-      {
-        id: 'branch-3',
-        label: '3. Méthodes & Démonstrations',
-        details: 'Cas pratiques',
-        children: [
-          { id: 'b3-sub1', label: 'Exemple guidé pas-à-pas' },
-          { id: 'b3-sub2', label: 'Résolution type examen' }
-        ]
-      },
-      {
-        id: 'branch-4',
-        label: '4. Bilan & Erreurs fréquentes',
-        details: 'Points de vigilance',
-        children: [
-          { id: 'b4-sub1', label: 'Pièges à éviter' },
-          { id: 'b4-sub2', label: 'Auto-évaluation' }
-        ]
-      }
-    ];
-  }
+function parseDocumentFromText(rawText: string, safeDocName: string): DocumentContent {
+  const sections: Array<{ heading: string; body: string; bulletPoints?: string[]; highlightBox?: string }> = [];
+  const rawSections = rawText.split(/(?:^|\n)(?=#{1,3}\s+|\d+[\.\)]\s+)/g).filter(s => s.trim().length > 10);
 
-  return {
-    root: {
-      id: sanitizeText(root?.id) || 'root-node',
-      label: rootLabel,
-      details: 'Thème central',
-      children: rawChildren.map((c: any, idx: number) => ({
-        id: sanitizeText(c?.id) || `node-${idx + 1}`,
-        label: sanitizeText(c?.label || c?.title) || `Axe ${idx + 1}`,
-        details: sanitizeText(c?.details),
-        children: Array.isArray(c?.children) ? c.children.map((sub: any, subIdx: number) => ({
-          id: sanitizeText(sub?.id) || `sub-${idx + 1}-${subIdx + 1}`,
-          label: sanitizeText(sub?.label || sub?.title) || `Sous-point ${subIdx + 1}`,
-          details: sanitizeText(sub?.details),
-        })) : []
-      })),
+  if (rawSections.length > 0) {
+    for (const sec of rawSections) {
+      const lines = sec.trim().split('\n');
+      const heading = lines[0].replace(/^#{1,3}\s*|\d+[\.\)]\s*/, '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim() || 'Section';
+      const bodyLines = lines.slice(1).filter(l => !l.startsWith('-') && !l.startsWith('*'));
+      const bulletLines = lines.slice(1).filter(l => l.startsWith('-') || l.startsWith('*')).map(l => l.replace(/^[-*]\s*/, '').trim());
+
+      sections.push({
+        heading,
+        body: bodyLines.join('\n').trim() || 'Contenu pédagogique.',
+        bulletPoints: bulletLines.length > 0 ? bulletLines : undefined,
+      });
     }
-  };
-}
-
-/**
- * Auto-correction et validation d'une Infographie
- */
-function autoCorrectInfographic(infographic: any, safeDocName: string): InfographicContent {
-  const mainTitle = sanitizeText(infographic?.mainTitle) || `Infographie : ${safeDocName}`;
-  const subtitle = sanitizeText(infographic?.subtitle) || 'Panorama visuel et indicateurs fondamentaux';
-
-  let metrics = Array.isArray(infographic?.metrics) ? infographic.metrics : [];
-  if (metrics.length < 3) {
-    metrics = [
-      { value: '4', label: 'Piliers d\'étude' },
-      { value: '100%', label: 'Conformité académique' },
-      { value: 'x3', label: 'Rétention mémoire' }
-    ];
+  } else {
+    sections.push({
+      heading: 'Vue d\'ensemble du cours',
+      body: rawText,
+    });
   }
-
-  let keyConcepts = Array.isArray(infographic?.keyConcepts) ? infographic.keyConcepts : [];
-  if (keyConcepts.length < 3) {
-    keyConcepts = [
-      { title: 'Notions Fondamentales', desc: `Compréhension claire des éléments constitutifs de "${safeDocName}".`, badge: 'Priorité 1' },
-      { title: 'Mécanismes Clés', desc: 'Enchaînement logique et raisonnement à appliquer aux exercices.', badge: 'Méthode' },
-      { title: 'Synthèse Réflexe', desc: 'Capacité à mobiliser rapidement les théorèmes en situation d\'évaluation.', badge: 'Examen' }
-    ];
-  }
-
-  let highlights = Array.isArray(infographic?.highlights) ? infographic.highlights : [];
-  if (highlights.length === 0) {
-    highlights = [
-      { type: 'tip', title: 'Conseil de réussite', text: 'Consacrez 15 minutes par jour à la relecture active des fiches de synthèse.' },
-      { type: 'warning', title: 'Attention aux raccourcis', text: 'Ne négligez aucune étape dans la démonstration des théorèmes.' }
-    ];
-  }
-
-  const conclusion = sanitizeText(infographic?.conclusion) || 'Une maîtrise progressive combinant théorie, quiz et schémas garantit d\'excellents résultats.';
 
   return {
-    mainTitle,
-    subtitle,
-    metrics,
-    keyConcepts,
-    highlights,
-    conclusion,
-  };
-}
-
-/**
- * Auto-correction et validation d'un Document exportable
- */
-function autoCorrectDocument(doc: any, safeDocName: string, rawFallbackText: string): DocumentContent {
-  const title = sanitizeText(doc?.title) || `Fiche d'Étude Officielle`;
-  const subtitle = sanitizeText(doc?.subtitle) || safeDocName;
-  const dateStr = sanitizeText(doc?.dateStr) || new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' });
-
-  let rawSections = Array.isArray(doc?.sections) ? doc.sections : [];
-  if (rawSections.length < 2) {
-    rawSections = [
-      {
-        heading: 'Cadre Conceptuel et Définitions',
-        body: `Cette fiche rassemble l'ensemble des connaissances indispensables issues de "${safeDocName}". Elle permet de réviser efficacement les points d'examen et les définitions fondamentales.`,
-        bulletPoints: [
-          'Identification des notions maîtresses du chapitre',
-          'Mise en contexte et terminologie exacte',
-          'Repères méthodologiques essentiels'
-        ],
-        highlightBox: 'Veiller à bien expliciter chaque étape de la réponse lors des devoirs sur table.'
-      },
-      {
-        heading: 'Méthodes d\'Analyse et Applications',
-        body: sanitizeText(rawFallbackText).slice(0, 500) || 'Pour réussir les exercices, adoptez une démarche rigoureuse : analyser les données initiales, poser les hypothèses, formuler la réponse et vérifier la cohérence finale.',
-        bulletPoints: [
-          'Étape 1 : Lecture analytique du sujet',
-          'Étape 2 : Mobilisation des propriétés adéquates',
-          'Étape 3 : Rédaction claire et conclusion nette'
-        ]
-      }
-    ];
-  }
-
-  const summaryBox = sanitizeText(doc?.summaryBox) || 'L\'apprentissage par fiches synthétiques et auto-évaluation continue permet une progression mesurable et durable.';
-
-  return {
-    title,
-    subtitle,
-    dateStr,
-    sections: rawSections.map((s: any, idx: number) => ({
-      heading: sanitizeText(s?.heading) || `Section ${idx + 1}`,
-      body: sanitizeText(s?.body) || 'Contenu pédagogique validé.',
-      bulletPoints: Array.isArray(s?.bulletPoints) ? s.bulletPoints.map(sanitizeText).filter(Boolean) : undefined,
-      highlightBox: sanitizeText(s?.highlightBox) || undefined,
-    })),
-    summaryBox,
+    title: `Fiche d'Étude : ${safeDocName}`,
+    subtitle: 'Ressource d\'apprentissage StudyCloud',
+    dateStr: new Date().toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }),
+    sections,
+    summaryBox: 'Document complet généré par l\'IA pour vos séances de travail et de révision.',
   };
 }
 
 /**
  * ============================================================================
- * POINT D'ENTRÉE DU PARSEUR & NEURONE D'AUTO-CORRECTION
+ * POINT D'ENTRÉE DU PARSEUR INTELLIGENT DE CRÉATIONS IA
  * ============================================================================
  */
 export function parseOrBuildAiCreation(
   toolType: AiCreationType,
   rawAiText: string,
   docName: string,
-  userPrompt: string
+  _userPrompt?: string
 ): { title: string; content: any } {
   const safeDocName = docName || 'Document d\'étude';
-  
-  // 1. Tenter un parsing JSON direct si l'IA a renvoyé un bloc de code ```json ... ```
-  const jsonMatch = rawAiText.match(/```json\s*([\s\S]*?)\s*```/) || rawAiText.match(/(\{[\s\S]*\})/);
+  const cleanText = (rawAiText || '').trim();
+
+  // 1. Tenter un parsing JSON direct si l'IA a renvoyé un bloc ```json ... ``` ou un objet JSON valide
+  const jsonMatch = cleanText.match(/```json\s*([\s\S]*?)\s*```/) || cleanText.match(/(\{[\s\S]*\})/);
   if (jsonMatch) {
     try {
       const parsed = JSON.parse(jsonMatch[1] || jsonMatch[0]);
@@ -335,102 +369,92 @@ export function parseOrBuildAiCreation(
         switch (toolType) {
           case 'quiz': {
             const corrected = autoCorrectQuiz(parsed, safeDocName);
-            return { title: corrected.title, content: corrected };
+            if (corrected.questions && corrected.questions.length > 0) {
+              return { title: corrected.title, content: corrected };
+            }
+            break;
           }
           case 'summary': {
-            const corrected = autoCorrectSummary(parsed, safeDocName, rawAiText);
-            return { title: `Fiche de Résumé : ${safeDocName}`, content: corrected };
+            return {
+              title: sanitizeText(parsed.title) || `Fiche de Résumé : ${safeDocName}`,
+              content: {
+                overview: sanitizeText(parsed.overview || parsed.summary || cleanText.slice(0, 300)),
+                keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints.map(sanitizeText) : [],
+                definitions: Array.isArray(parsed.definitions) ? parsed.definitions : [],
+                rules: Array.isArray(parsed.rules) ? parsed.rules.map(sanitizeText) : [],
+                tags: Array.isArray(parsed.tags) ? parsed.tags.map(sanitizeText) : ['Révision', safeDocName],
+              }
+            };
           }
           case 'mindmap': {
-            const corrected = autoCorrectMindMap(parsed, safeDocName);
-            return { title: `Carte Mentale : ${safeDocName}`, content: corrected };
+            const root = parsed.root || parsed;
+            if (root && (root.label || root.children)) {
+              return {
+                title: `Carte Mentale : ${safeDocName}`,
+                content: {
+                  root: {
+                    id: sanitizeText(root.id) || 'root-node',
+                    label: sanitizeText(root.label || root.title || safeDocName),
+                    details: sanitizeText(root.details),
+                    children: Array.isArray(root.children) ? root.children : []
+                  }
+                }
+              };
+            }
+            break;
           }
           case 'infographic': {
-            const corrected = autoCorrectInfographic(parsed, safeDocName);
-            return { title: corrected.mainTitle, content: corrected };
+            return {
+              title: sanitizeText(parsed.mainTitle || parsed.title) || `Infographie : ${safeDocName}`,
+              content: {
+                mainTitle: sanitizeText(parsed.mainTitle || parsed.title) || `Infographie : ${safeDocName}`,
+                subtitle: sanitizeText(parsed.subtitle) || 'Repères visuels',
+                metrics: Array.isArray(parsed.metrics) ? parsed.metrics : [],
+                keyConcepts: Array.isArray(parsed.keyConcepts) ? parsed.keyConcepts : [],
+                highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
+                conclusion: sanitizeText(parsed.conclusion) || '',
+              }
+            };
           }
           case 'document': {
-            const corrected = autoCorrectDocument(parsed, safeDocName, rawAiText);
-            return { title: `Fiche d'Étude : ${safeDocName}`, content: corrected };
+            return {
+              title: sanitizeText(parsed.title) || `Fiche d'Étude : ${safeDocName}`,
+              content: parsed
+            };
           }
         }
       }
-    } catch (e) {
-      // Si parsing JSON échoue (ex: syntaxe cassée), le neurone textuel prend le relais
+    } catch (_err) {
+      // Si le JSON n'est pas valide, extraction textuelle
     }
   }
 
-  // 2. Extracteurs textuels intelligents avec auto-correction garantie
+  // 2. Extracteurs textuels créatifs et dynamiques (sans canevas fixe ni répétition)
   switch (toolType) {
     case 'quiz': {
-      const lines = rawAiText.split('\n').map(l => l.trim()).filter(Boolean);
-      const extractedQuestions: any[] = [];
-      let currentQ: any = null;
-
-      for (const line of lines) {
-        const qMatch = line.match(/^(\d+)[\.\)]\s*(.*)/);
-        const optMatch = line.match(/^([A-D])[\.\)]\s*(.*)/i);
-
-        if (qMatch) {
-          if (currentQ && currentQ.options.length >= 2) {
-            extractedQuestions.push(currentQ);
-          }
-          currentQ = {
-            id: `q-${extractedQuestions.length + 1}`,
-            question: qMatch[2],
-            options: [],
-            answerIndex: 0,
-            explanation: 'Réponse démontrée et validée selon le cours.',
-          };
-        } else if (optMatch && currentQ) {
-          currentQ.options.push(optMatch[2]);
-        } else if (line.toLowerCase().includes('réponse') && currentQ) {
-          const letter = line.match(/([A-D])/i);
-          if (letter) {
-            currentQ.answerIndex = letter[1].toUpperCase().charCodeAt(0) - 65;
-          }
-          currentQ.explanation = line.replace(/^(réponse|explication)\s*:\s*/i, '');
-        }
-      }
-      if (currentQ && currentQ.options.length >= 2) {
-        extractedQuestions.push(currentQ);
-      }
-
-      const corrected = autoCorrectQuiz({
-        title: `Quiz QCM : ${safeDocName}`,
-        questions: extractedQuestions,
-      }, safeDocName);
-
-      return { title: corrected.title, content: corrected };
+      const parsedQuiz = parseQuizFromText(cleanText, safeDocName);
+      return { title: parsedQuiz.title, content: parsedQuiz };
     }
 
     case 'summary': {
-      const paragraphs = rawAiText.split('\n\n').filter(p => p.trim().length > 20);
-      const overview = paragraphs[0] || `Synthèse complète et structurée des concepts essentiels de "${safeDocName}".`;
-      const keyPoints = paragraphs.slice(1, 6).map(p => p.replace(/^[-*•\d\.]+\s*/, '').trim()).filter(Boolean);
-
-      const corrected = autoCorrectSummary({
-        overview,
-        keyPoints,
-      }, safeDocName, rawAiText);
-
-      return { title: `Fiche de Résumé : ${safeDocName}`, content: corrected };
+      const parsedSummary = parseSummaryFromText(cleanText, safeDocName);
+      return { title: `Fiche de Résumé : ${safeDocName}`, content: parsedSummary };
     }
 
     case 'mindmap': {
-      const corrected = autoCorrectMindMap(null, safeDocName);
-      return { title: `Carte Mentale : ${safeDocName}`, content: corrected };
+      const parsedMindMap = parseMindMapFromText(cleanText, safeDocName);
+      return { title: `Carte Mentale : ${safeDocName}`, content: parsedMindMap };
     }
 
     case 'infographic': {
-      const corrected = autoCorrectInfographic(null, safeDocName);
-      return { title: corrected.mainTitle, content: corrected };
+      const parsedInfographic = parseInfographicFromText(cleanText, safeDocName);
+      return { title: parsedInfographic.mainTitle, content: parsedInfographic };
     }
 
     case 'document':
     default: {
-      const corrected = autoCorrectDocument(null, safeDocName, rawAiText);
-      return { title: `Fiche d'Étude : ${safeDocName}`, content: corrected };
+      const parsedDoc = parseDocumentFromText(cleanText, safeDocName);
+      return { title: parsedDoc.title, content: parsedDoc };
     }
   }
 }

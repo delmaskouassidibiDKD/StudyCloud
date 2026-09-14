@@ -53,6 +53,22 @@ export default {
     const db = env?.MON_D1_STUDYCLOUD || env?.["MON_D1-STUDYCLOUD"] || env?.DB;
     const bucket = env?.MON_R2_STUDYCLOUD || env?.["MON_R2-STUDYCLOUD"] || env?.BUCKET;
 
+    // Initialisation automatique des tables D1 pour le Worker IA
+    if (db && !globalThis._aiSchemaInit) {
+      try {
+        await db.batch([
+          db.prepare(`CREATE TABLE IF NOT EXISTS conversations (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, title TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`),
+          db.prepare(`CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, metadata TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`),
+          db.prepare(`CREATE TABLE IF NOT EXISTS ai_creations (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, message_id TEXT, type TEXT NOT NULL, title TEXT, content TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`),
+          db.prepare(`CREATE TABLE IF NOT EXISTS ai_generated_contents (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, file_id TEXT, tool_type TEXT NOT NULL, title TEXT NOT NULL, content_json TEXT NOT NULL DEFAULT '{}', source_file_name TEXT, is_pinned INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`),
+          db.prepare(`CREATE TABLE IF NOT EXISTS user_ai_workspace (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT NOT NULL, role TEXT NOT NULL, message_text TEXT NOT NULL, reaction TEXT DEFAULT NULL, attached_file_id TEXT, attached_file_name TEXT, attached_file_r2_key TEXT, attached_file_content TEXT, user_notes TEXT, is_pinned INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`)
+        ]);
+        globalThis._aiSchemaInit = true;
+      } catch (schemaErr) {
+        console.warn("[AI D1 Init]", schemaErr);
+      }
+    }
+
 
     // Requête GET : Test de santé et d'état du Worker IA
     if (request.method === "GET" && (path === "/" || path === "/health")) {
@@ -390,12 +406,14 @@ RÈGLE D'OR PÉDAGOGIQUE (INTERDICTION ABSOLUE DU SURVOL SUPERFICIEL) :
   4. Le Piège d'Examen : Signale les erreurs classiques que font les étudiants aux examens pour qu'il ne tombe pas dedans.
   5. Validation interactive : Termine toujours par une question simple ou un petit défi de compréhension pour valider qu'il a assimilé la notion.
 
-Règles selon le type de création demandé ('${requestedType || "auto"}') :
-- Si QCM / QUIZ : Propose des questions claires avec LaTeX, exactement 4 options identifiées (A, B, C, D), la bonne réponse et un indice pédagogique.
-- Si CARTE MENTALE (Mindmap) : Définis un concept central et des branches hiérarchiques nettes (Définitions, Propriétés clés, Applications, Méthodes de calcul).
-- Si INFOGRAPHIE / DIAPORAMA : Structure en blocs étagés et étapes séquentielles avec des repères visuels clairs.
-- Si FLASHCARDS : Définis des paires recto (question/formule) et verso (réponse/application).
-- Si RÉSUMÉ : Rédige une synthèse fluide, complète, avec les définitions et théorèmes fondamentaux bien mis en valeur.`;
+LIBERTÉ ET RICHESSE PÉDAGOGIQUE POUR LES CRÉATIONS ('${requestedType || "auto"}') :
+- Dans tes créations (QCM, Quiz, Carte Mentale, Résumé, Infographie, Fiches d'étude, Flashcards), tu disposes d'une TOTALE LIBERTÉ de conception et d'exploration pédagogique.
+- Ne t'enferme JAMAIS dans des canevas répétitifs, rigides ou préconçus. N'impose pas artificiellement toujours les mêmes branches ou les mêmes types de questions.
+- Fais exactement comme dans le chat où tu réfléchis avec nuance et discernement : mobilise toute ta profondeur d'analyse pour concevoir des créations pertinentes, captivantes, variées, et authentiquement sur-mesure pour le document de l'élève.
+- Si c'est un QCM / Quiz : imagine des questions intelligentes (concepts clés, cas pratiques, pièges d'examen, calculs), formule clairement les options et apporte une explication riche et formative qui éclaire la réponse.
+- Si c'est une Carte Mentale : structure les branches de façon vivante, intuitive et naturelle selon la logique propre à la matière enseignée.
+- Si c'est un Résumé / Synthèse / Infographie : va au fond des choses avec clarté, rigueur et pertinence.
+- Formules scientifiques : Utilise toujours la syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré).`;
 
       // ------------------------------------------------------------------------
       // CONDITIONS SELON LE CHOIX DE L'UTILISATEUR (BOUTON PUISSANT)
@@ -693,39 +711,6 @@ DIRECTIVES OBLIGATOIRES POUR CE DOCUMENT :
         generatedContent = aiResult.response || aiResult.text || aiResult.result || JSON.stringify(aiResult);
       }
 
-      // --- PASSE 2 : LE NEURONE DE VÉRIFICATION & D'AUTO-CORRECTION ---
-      // Si une création structurée est demandée, on applique un contrôle qualité strict à basse température
-      if (requestedType && requestedType !== "text" && generatedContent.trim().length > 20) {
-        const critiquePrompt = `Tu es le module de contrôle qualité, de vérification mathématique et d'auto-correction du Méga-Neurone StudyCloud.
-Analyse le contenu généré ci-dessous pour le format "${requestedType}".
-Vérifications obligatoires :
-1. Formules mathématiques : Vérifie l'exactitude des calculs, intégrales, dérivées, limites et la syntaxe LaTeX standard ($...$ ou $$...$$).
-2. Structure :
-   - Si QCM : Vérifie que chaque question a 4 choix (A, B, C, D) clairs, la bonne réponse et une explication pédagogique.
-   - Si Carte Mentale : Vérifie la cohérence du nœud central et des branches hiérarchiques.
-   - Si Infographie / Diaporama : Vérifie que les étapes ou blocs sont progressifs et percutants.
-   - Si Résumé / Flashcard : Vérifie la clarté et la concision.
-3. Si une coquille, une formule tronquée ou une incohérence est détectée, corrige-la immédiatement.
-Renvoie UNIQUEMENT le contenu final vérifié, corrigé et prêt à l'emploi pour l'application, sans aucun commentaire méta ni préambule.
-
-CONTENU À CONTRÔLER ET CORRIGER :
-${generatedContent}`;
-
-        try {
-          const critiqueResult = await ai.run(usedModel || "@cf/meta/llama-3.1-8b-instruct", {
-            messages: [{ role: "system", content: critiquePrompt }],
-            temperature: 0.1, // Contrôle strict et déterministe
-            max_tokens: 2500,
-          });
-
-          const refined = critiqueResult?.response || critiqueResult?.result || critiqueResult?.text || (typeof critiqueResult === "string" ? critiqueResult : "");
-          if (refined && refined.trim().length > 30) {
-            generatedContent = refined.trim();
-          }
-        } catch (critiqueErr) {
-          console.warn("[Neurone] Vérification échouée, conservation de la passe 1:", critiqueErr?.message || critiqueErr);
-        }
-      }
 
       // --- ÉTAPE 3 : SAUVEGARDE PERSISTANTE DANS D1 ---
       if (db) {
