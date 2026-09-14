@@ -190,7 +190,7 @@ export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBack
           </div>
           <div>
             <h1 className="font-extrabold text-stone-900 text-lg">StudyCloud Share</h1>
-            <p className="text-xs text-stone-600">Portail de téléchargement direct étudiant</p>
+            <p className="text-xs text-stone-600">Portail de téléchargement direct</p>
           </div>
         </div>
 

@@ -199,22 +199,7 @@ function renderShareNotFoundHtml(code: string, originUrl: string): string {
 <body>
   <!-- Logo ADN StudyCloud -->
   <div style="margin-bottom: 20px;">
-    <svg width="44" height="44" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-      <defs>
-        <linearGradient id="scDnaGradErr" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#EA580C" />
-          <stop offset="50%" stopColor="#F38020" />
-          <stop offset="100%" stopColor="#EA580C" />
-        </linearGradient>
-      </defs>
-      <path d="M8 3C8 3 8 10 12 12C16 14 16 21 16 21" stroke="url(#scDnaGradErr)" stroke-width="2.5" stroke-linecap="round"/>
-      <path d="M16 3C16 3 16 10 12 12C8 14 8 21 8 21" stroke="url(#scDnaGradErr)" stroke-width="2.5" stroke-linecap="round"/>
-      <line x1="10" y1="6" x2="14" y2="6" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
-      <line x1="10.5" y1="9" x2="13.5" y2="9" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
-      <line x1="11" y1="12" x2="13" y2="12" stroke="#F38020" stroke-width="3" stroke-linecap="round"/>
-      <line x1="10.5" y1="15" x2="13.5" y2="15" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
-      <line x1="10" y1="18" x2="14" y2="18" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
-    </svg>
+    <img src="https://studycloud.dkd-technologies.com/assets/dna-logo.png" width="48" height="48" alt="Logo StudyCloud" style="display:inline-block;border:0;width:48px;height:48px;object-fit:contain;margin:0;" onerror="this.onerror=null;this.src='data:image/png;base64,${DNA_LOGO_PNG_B64}'" />
   </div>
   <div class="code-badge">🔒 Accès sécurisé & chiffré</div>
   <h1>Ce document partagé est introuvable</h1>
@@ -669,30 +654,15 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
   <header>
     <div class="header-container">
       <a href="${siteUrl}" target="_blank" class="header-left">
-        <!-- Logo ADN Officiel StudyCloud issu de Sidebar.tsx / DnaLogo.tsx -->
+        <!-- Logo ADN Officiel StudyCloud (identique aux emails envoyés aux utilisateurs et à l'application) -->
         <div class="brand-logo-wrap">
-          <svg width="28" height="28" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 4px rgba(243, 128, 32, 0.8));">
-            <defs>
-              <linearGradient id="scDnaGradStatic" x1="0%" y1="0%" x2="0%" y2="100%">
-                <stop offset="0%" stopColor="#FFFFFF" />
-                <stop offset="50%" stopColor="#F38020" />
-                <stop offset="100%" stopColor="#FFFFFF" />
-              </linearGradient>
-            </defs>
-            <path d="M8 3C8 3 8 10 12 12C16 14 16 21 16 21" stroke="#F38020" stroke-width="2.5" stroke-linecap="round" style="stroke: url(#scDnaGradStatic);" />
-            <path d="M16 3C16 3 16 10 12 12C8 14 8 21 8 21" stroke="#F38020" stroke-width="2.5" stroke-linecap="round" style="stroke: url(#scDnaGradStatic);" />
-            <line x1="10" y1="6" x2="14" y2="6" stroke="#F38020" stroke-width="1.5" stroke-linecap="round" opacity="0.8" />
-            <line x1="10.5" y1="9" x2="13.5" y2="9" stroke="#F38020" stroke-width="1.5" stroke-linecap="round" opacity="0.9" />
-            <line x1="11" y1="12" x2="13" y2="12" stroke="#F38020" stroke-width="3" stroke-linecap="round" />
-            <line x1="10.5" y1="15" x2="13.5" y2="15" stroke="#F38020" stroke-width="1.5" stroke-linecap="round" opacity="0.9" />
-            <line x1="10" y1="18" x2="14" y2="18" stroke="#F38020" stroke-width="1.5" stroke-linecap="round" opacity="0.8" />
-          </svg>
+          <img src="https://studycloud.dkd-technologies.com/assets/dna-logo.png" width="34" height="34" alt="Logo StudyCloud" style="display:block;border:0;width:34px;height:34px;object-fit:contain;margin:0;" onerror="this.onerror=null;this.src='data:image/png;base64,${DNA_LOGO_PNG_B64}'" />
         </div>
         <div class="brand-titles notranslate">
           <div class="brand-title-row">
             <span class="brand-study">Study</span><span class="brand-cloud">Cloud</span>
           </div>
-          <span class="brand-tagline">Portail de téléchargement direct étudiant</span>
+          <span class="brand-tagline">Portail de téléchargement direct</span>
         </div>
       </a>
 
