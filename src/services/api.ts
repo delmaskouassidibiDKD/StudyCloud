@@ -613,14 +613,21 @@ export const StudyCloudAPI = {
     return request<{ success: boolean; data: any }>(`/api/shares/code/${encodeURIComponent(shareCode)}`);
   },
 
-  async toggleSharePublic(shareId: string, isPublic: boolean, allowDownload = true) {
+  async toggleSharePublic(shareId: string, isPublic: boolean, description?: string, allowDownload = true) {
     return request<{ success: boolean; message: string; isPublic: boolean; allowDownload: boolean }>(
       `/api/shares/${encodeURIComponent(shareId)}/public`,
       {
         method: 'PUT',
-        body: JSON.stringify({ isPublic, allowDownload }),
+        body: JSON.stringify({ isPublic, description, allowDownload }),
       }
     );
+  },
+
+  async trackShareDownload(shareId: string) {
+    return request<{ success: boolean; message: string }>(
+      `/api/shares/${encodeURIComponent(shareId)}/track-download`,
+      { method: 'POST' }
+    ).catch(() => {});
   },
 
   async deleteShare(shareId: string) {

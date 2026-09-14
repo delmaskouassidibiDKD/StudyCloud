@@ -1834,7 +1834,7 @@ var src_default = {
             author_name TEXT,
             school TEXT,
             country TEXT DEFAULT 'C\xF4te d''Ivoire',
-            is_public INTEGER DEFAULT 1,
+            is_public INTEGER DEFAULT 0,
             is_password_protected INTEGER DEFAULT 0,
             password_hash TEXT,
             allow_download INTEGER DEFAULT 1,
@@ -1856,6 +1856,13 @@ var src_default = {
             file_url TEXT,
             created_at TEXT DEFAULT CURRENT_TIMESTAMP
           )`,
+          `CREATE TABLE IF NOT EXISTS shared_folder_downloads (
+            id TEXT PRIMARY KEY,
+            shared_folder_id TEXT NOT NULL,
+            ip_address TEXT,
+            created_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )`,
+          `CREATE INDEX IF NOT EXISTS idx_shared_folder_downloads_folder ON shared_folder_downloads(shared_folder_id)`,
           `CREATE TABLE IF NOT EXISTS schedule_config (
             user_id TEXT PRIMARY KEY,
             days_json TEXT DEFAULT '["Lundi","Mardi","Mercredi","Jeudi","Vendredi","Samedi"]',
@@ -3439,7 +3446,7 @@ var src_default = {
           const finalShareUrl = shareUrl || `${url.origin}/s/${finalShareCode}`;
           const finalQrCodeData = qrCodeData || finalShareUrl;
           const finalCountry = country || "C\xF4te d'Ivoire";
-          const finalIsPublic = isPublic !== void 0 ? isPublic ? 1 : 0 : 1;
+          const finalIsPublic = isPublic ? 1 : 0;
           const finalAllowDownload = allowDownload !== void 0 ? allowDownload ? 1 : 0 : 1;
           await env.DB.prepare(`
             INSERT INTO shared_folders (
@@ -3522,13 +3529,22 @@ var src_default = {
       if (path.startsWith("/api/shares/") && path.endsWith("/public") && method === "PUT") {
         const shareId = path.split("/")[3];
         const body = await request.json();
-        const isPublic = body.isPublic !== void 0 ? body.isPublic ? 1 : 0 : 1;
+        const isPublic = body.isPublic ? 1 : 0;
         const allowDownload = body.allowDownload !== void 0 ? body.allowDownload ? 1 : 0 : 1;
-        await env.DB.prepare(`
-          UPDATE shared_folders 
-          SET is_public = ?, allow_download = ?, updated_at = CURRENT_TIMESTAMP 
-          WHERE id = ?
-        `).bind(isPublic, allowDownload, shareId).run();
+        const description = body.description !== void 0 ? body.description : null;
+        if (description !== null) {
+          await env.DB.prepare(`
+            UPDATE shared_folders 
+            SET is_public = ?, allow_download = ?, description = ?, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+          `).bind(isPublic, allowDownload, description, shareId).run();
+        } else {
+          await env.DB.prepare(`
+            UPDATE shared_folders 
+            SET is_public = ?, allow_download = ?, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = ?
+          `).bind(isPublic, allowDownload, shareId).run();
+        }
         return jsonResponse({
           success: true,
           message: "Visibilit\xE9 mise \xE0 jour",
@@ -3538,9 +3554,25 @@ var src_default = {
       }
       if (path.startsWith("/api/shares/") && method === "DELETE") {
         const shareId = path.split("/")[3];
+        try {
+          const { results: filesToDelete } = await env.DB.prepare("SELECT r2_key FROM shared_folder_files WHERE shared_folder_id = ?").bind(shareId).all();
+          if (env.BUCKET && filesToDelete && filesToDelete.length > 0) {
+            for (const f of filesToDelete) {
+              if (f.r2_key) {
+                await env.BUCKET.delete(f.r2_key).catch(() => {
+                });
+              }
+            }
+          }
+        } catch (e) {
+        }
         await env.DB.prepare("DELETE FROM shared_folder_files WHERE shared_folder_id = ?").bind(shareId).run();
         await env.DB.prepare("DELETE FROM shared_folders WHERE id = ?").bind(shareId).run();
-        return jsonResponse({ success: true, message: "Dossier partag\xE9 supprim\xE9" }, 200, origin);
+        try {
+          await env.DB.prepare("DELETE FROM shared_folder_downloads WHERE shared_folder_id = ?").bind(shareId).run();
+        } catch (e) {
+        }
+        return jsonResponse({ success: true, message: "Dossier partag\xE9 et fichiers supprim\xE9s" }, 200, origin);
       }
       if (path.startsWith("/api/shares/") && method === "GET") {
         const shareId = path.split("/")[3];
@@ -3682,8 +3714,22 @@ var src_default = {
       }
       if (path.startsWith("/api/shares/") && path.endsWith("/track-download") && method === "POST") {
         const shareId = path.split("/")[3];
-        await env.DB.prepare("UPDATE shared_folders SET downloads_count = downloads_count + 1 WHERE id = ?").bind(shareId).run();
-        return jsonResponse({ success: true, message: "T\xE9l\xE9chargement comptabilis\xE9" }, 200, origin);
+        await env.DB.prepare("UPDATE shared_folders SET downloads_count = downloads_count + 1 WHERE id = ? OR share_code = ?").bind(shareId, shareId).run();
+        try {
+          const dlId = "dl-" + generateId2();
+          const clientIp = request.headers.get("cf-connecting-ip") || "unknown";
+          await env.DB.prepare(`
+            INSERT INTO shared_folder_downloads (id, shared_folder_id, ip_address, created_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+          `).bind(dlId, shareId, clientIp).run();
+        } catch (e) {
+        }
+        const updatedFolder = await env.DB.prepare("SELECT downloads_count FROM shared_folders WHERE id = ? OR share_code = ?").bind(shareId, shareId).first();
+        return jsonResponse({
+          success: true,
+          message: "T\xE9l\xE9chargement comptabilis\xE9",
+          downloadsCount: updatedFolder?.downloads_count || 1
+        }, 200, origin);
       }
       if (path === "/api/schedule/config") {
         const userId = url.searchParams.get("userId");

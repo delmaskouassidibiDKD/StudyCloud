@@ -219,7 +219,7 @@ export default function App() {
     comment: string,
     items: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[],
     onComplete?: (folder: SharedFolder) => void,
-    isPublic: boolean = true
+    isPublic: boolean = false
   ) => {
     setTimeout(async () => {
       const folderId = 'folder-' + Math.random().toString(36).substring(2, 9);

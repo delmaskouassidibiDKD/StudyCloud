@@ -27,7 +27,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
     return '';
   });
   const [comment, setComment] = useState('');
-  const [isPublic, setIsPublic] = useState(true);
+  const [isPublic, setIsPublic] = useState(false);
   const [isCreating, setIsCreating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [createdFolder, setCreatedFolder] = useState<SharedFolder | null>(null);
@@ -289,13 +289,15 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               />
             </div>
 
-            {/* Public Toggle Checkbox */}
+            {/* Public Toggle Checkbox (Privé par défaut) */}
             <label className="flex items-center justify-between p-3 bg-white hover:bg-stone-50 border-2 border-stone-800 rounded-xl shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer transition-colors">
               <div className="flex items-center gap-2.5">
-                <Globe className="w-4 h-4 text-emerald-600 shrink-0" />
+                <Globe className={`w-4 h-4 shrink-0 ${isPublic ? 'text-emerald-600' : 'text-stone-400'}`} />
                 <div>
                   <span className="block text-xs font-extrabold text-stone-900">Rendre ce lien public à tous</span>
-                  <span className="block text-[10px] text-stone-500 font-medium">Visible par tous les étudiants ({country})</span>
+                  <span className="block text-[10px] text-stone-500 font-medium">
+                    {isPublic ? `Visible publiquement par tous (${country})` : 'Par défaut, le lien reste privé dans vos Liens Actifs'}
+                  </span>
                 </div>
               </div>
               <input

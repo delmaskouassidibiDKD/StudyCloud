@@ -84,6 +84,59 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     }
   }, [activeSubTab, loadPublishedDocs]);
 
+  // ---- Liens publics partagés de la communauté (onglet Liens publics) ----
+  const [remotePublicFolders, setRemotePublicFolders] = useState<SharedFolder[]>([]);
+  const [isLoadingPublicFolders, setIsLoadingPublicFolders] = useState(false);
+
+  const loadPublicFolders = useCallback(async () => {
+    setIsLoadingPublicFolders(true);
+    try {
+      const res = await StudyCloudAPI.getShares(undefined, true);
+      if (res.success && Array.isArray(res.data)) {
+        const mapped: SharedFolder[] = res.data.map((row: any) => ({
+          id: row.id,
+          title: row.title,
+          description: row.description || '',
+          category: row.category || 'Cours',
+          author: row.author_name || 'Étudiant',
+          school: row.school || '',
+          country: row.country || "Côte d'Ivoire",
+          createdAt: row.created_at || new Date().toISOString(),
+          files: Array.isArray(row.files)
+            ? row.files.map((f: any) => ({
+                id: f.id || f.file_id || crypto.randomUUID(),
+                name: f.name,
+                size: f.size || 0,
+                type: f.type || 'file',
+                url: f.file_url || f.url || '',
+              }))
+            : [],
+          totalSize: row.total_size || 0,
+          downloadsCount: row.downloads_count || 0,
+          isPasswordProtected: Boolean(row.is_password_protected),
+          password: row.password_hash || undefined,
+          viewsCount: row.views_count || 0,
+          shareCode: row.share_code,
+          shareUrl: row.share_url,
+          qrCodeData: row.qr_code_data,
+          isPublic: Boolean(row.is_public),
+          allowDownload: Boolean(row.allow_download),
+        }));
+        setRemotePublicFolders(mapped);
+      }
+    } catch (e) {
+      console.warn('Erreur chargement liens publics D1:', e);
+    } finally {
+      setIsLoadingPublicFolders(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    if (activeSubTab === 'liens') {
+      loadPublicFolders();
+    }
+  }, [activeSubTab, loadPublicFolders]);
+
   // Products state for Librairie tab
   const [productsList, setProductsList] = useState<ProductItem[]>(() => {
     try {
@@ -234,6 +287,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           handleDownloadSingle(file, folder.title);
         }, index * 250);
       });
+      StudyCloudAPI.trackShareDownload(folder.id).catch(() => {});
+      folder.downloadsCount = (folder.downloadsCount || 0) + 1;
+      setRemotePublicFolders(prev => prev.map(f => f.id === folder.id ? { ...f, downloadsCount: (f.downloadsCount || 0) + 1 } : f));
     }
 
     if (choice === 'studycloud' || choice === 'both') {
@@ -243,6 +299,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         url: f.url,
         type: f.type,
       })));
+      StudyCloudAPI.trackShareDownload(folder.id).catch(() => {});
+      folder.downloadsCount = (folder.downloadsCount || 0) + 1;
+      setRemotePublicFolders(prev => prev.map(f => f.id === folder.id ? { ...f, downloadsCount: (f.downloadsCount || 0) + 1 } : f));
     }
 
     if (choice === 'device') {
@@ -1104,7 +1163,30 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
         {/* ONGLET LIENS PUBLICS */}
         {activeSubTab === 'liens' && (() => {
-          const filteredPublicFolders = folders.filter((folder) => {
+          // Fusionner les dossiers locaux marqués explicitement publics et les liens distants D1
+          const localFolderMap = new Map(folders.map((f) => [f.id, f]));
+          const combinedPublicMap = new Map<string, SharedFolder>();
+
+          // 1. Dossiers de l'utilisateur qui sont publics
+          folders.forEach((f) => {
+            if (Boolean(f.isPublic)) {
+              combinedPublicMap.set(f.id, f);
+            }
+          });
+
+          // 2. Dossiers publics distants D1 (sauf si l'utilisateur local l'a explicitement repassé en privé)
+          remotePublicFolders.forEach((rf) => {
+            const localMatch = localFolderMap.get(rf.id);
+            if (localMatch && !localMatch.isPublic) return; // Repassé en privé localement
+            if (Boolean(rf.isPublic) && !combinedPublicMap.has(rf.id)) {
+              combinedPublicMap.set(rf.id, rf);
+            }
+          });
+
+          const allPublicFolders = Array.from(combinedPublicMap.values());
+
+          const filteredPublicFolders = allPublicFolders.filter((folder) => {
+            if (!Boolean(folder.isPublic)) return false;
             if (!searchQuery.trim()) return true;
             const q = searchQuery.toLowerCase();
             return (
@@ -1118,7 +1200,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
           return (
             <div className="space-y-4">
-              {filteredPublicFolders.length === 0 ? (
+              {isLoadingPublicFolders && filteredPublicFolders.length === 0 ? (
+                <div className="bg-[#FDFBF7] dark:bg-slate-900/70 border-3 border-stone-800 dark:border-white/10 rounded-2xl p-12 text-center shadow-[4px_4px_0px_0px_#1c1917] flex flex-col items-center justify-center">
+                  <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                  <p className="text-xs font-bold text-stone-600 dark:text-slate-400">Chargement des liens publics...</p>
+                </div>
+              ) : filteredPublicFolders.length === 0 ? (
                 <div className="bg-[#FDFBF7] border-3 border-stone-800 rounded-2xl p-12 text-center shadow-[4px_4px_0px_0px_#1c1917]">
                   <div className="w-12 h-12 bg-blue-100 border-2 border-stone-800 rounded-2xl flex items-center justify-center text-blue-600 mx-auto mb-3 shadow-[2px_2px_0px_0px_#1c1917]">
                     <Sparkles className="w-6 h-6" />
@@ -1127,7 +1214,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     {searchQuery ? "Aucun lien ne correspond à la recherche" : "Aucun lien public disponible"}
                   </h3>
                   <p className="text-xs text-stone-600 mt-1">
-                    {searchQuery ? "Essayez avec d'autres termes de recherche." : "Créez un dossier partagé pour générer un lien public."}
+                    {searchQuery ? "Essayez avec d'autres termes de recherche." : "Pour rendre un lien public, cliquez sur le cadenas dans vos Liens Actifs et ajoutez une description."}
                   </p>
                 </div>
               ) : (
@@ -1136,7 +1223,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     const isCopied = copiedLinkId === folder.id;
                     const totalBytes = folder.totalSize || folder.files.reduce((acc, f) => acc + (f.size || 0), 0);
                     const totalSizeStr = formatSize(totalBytes);
-                    const downloadsCount = (folder.files.length * 9 + 12);
+                    const downloadsCount = folder.downloadsCount || 0;
 
                     return (
                       <div
@@ -1159,7 +1246,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             {folder.description || (folder.school ? `Cours, TDs corrigés, codes sources et ressources d'études (${folder.school}).` : 'Cours, TDs corrigés, codes sources TP et rapport de projet.')}
                           </p>
 
-                          {/* Folder Files Box (Boîte sombre sans fond blanc avec texte parfaitement lisible) */}
+                          {/* Folder Files Box */}
                           <div
                             onClick={() => onSelectFolder(folder)}
                             className="bg-stone-100/90 dark:bg-slate-950/70 dark:hover:bg-slate-950/90 border-2 border-stone-800 dark:border-white/10 rounded-xl p-3 flex items-center gap-3 my-2 cursor-pointer hover:bg-stone-200/70 transition-colors shadow-[1.5px_1.5px_0px_0px_#1c1917] dark:shadow-none group/box"
@@ -1180,10 +1267,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           {/* Dotted Divider */}
                           <div className="border-b-2 border-dashed border-stone-300 dark:border-white/10 my-3" />
 
-                          {/* Downloads Counter */}
+                          {/* Downloads Counter (Vrai nombre de téléchargements) */}
                           <div className="text-xs font-bold text-stone-600 dark:text-slate-400 flex items-center justify-center gap-1.5 mb-3">
                             <Download className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
-                            <span>{downloadsCount} téléchargements</span>
+                            <span>{downloadsCount} téléchargement{downloadsCount > 1 ? 's' : ''}</span>
                           </div>
                         </div>
 

@@ -66,14 +66,14 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
         if (onUpdateFolder) {
           onUpdateFolder(updated);
         }
-        StudyCloudAPI.toggleSharePublic(folder.id, true).catch(() => {});
+        StudyCloudAPI.toggleSharePublic(folder.id, true, commentInput.trim()).catch(() => {});
         setPublishingState('idle');
         setShowPublishModal(false);
       }, 1000);
     }, 1500);
   };
 
-  const isPublic = folder.isPublic !== undefined ? folder.isPublic : !folder.isPasswordProtected;
+  const isPublic = Boolean(folder.isPublic);
 
   return (
     <div
@@ -304,7 +304,7 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
         <div className="flex items-center justify-center text-xs text-stone-600 dark:text-slate-400 pt-3 border-t-2 border-dashed border-stone-300 dark:border-white/10 mb-3">
           <div className="flex items-center gap-1.5 font-medium">
             <Download className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
-            <span>{folder.downloadsCount} téléchargements</span>
+            <span>{folder.downloadsCount || 0} téléchargement{(folder.downloadsCount || 0) > 1 ? 's' : ''}</span>
           </div>
         </div>
 
