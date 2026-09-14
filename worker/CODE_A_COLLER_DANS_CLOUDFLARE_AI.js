@@ -396,7 +396,7 @@ export default {
       // Fonction helper : formate la réponse IA en routant intelligemment vers le Chat et/ou l'Espace Création
       function formatAiResponsePayload(rawText, defaultType) {
         let mode = "chat";
-        let chat_response = rawText;
+        let chat_response = "";
         let creation_type = null;
         let creation_title = null;
         let creation_data = null;
@@ -405,58 +405,97 @@ export default {
           rawText = String(rawText || "");
         }
 
+        const protectLatex = (str) => {
+          return str.replace(/(\$\$?)([\s\S]*?)(\$\$?)/g, (_match, open, math, close) => {
+            return open + math.replace(/\\/g, '\\\\') + close;
+          });
+        };
+
         const jsonBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
         const tagMatch = rawText.match(/<creation[^>]*>([\s\S]*?)<\/creation>/i);
         const jsonRawCandidate = tagMatch ? tagMatch[1].trim() : (jsonBlockMatch ? jsonBlockMatch[1].trim() : (rawText.match(/(\{[\s\S]*\})/)?.[1]?.trim() || ""));
 
+        let parsed = null;
+
         if (jsonRawCandidate) {
           try {
             let sanitized = jsonRawCandidate.replace(/,\s*([\]}])/g, '$1');
-            let parsed = JSON.parse(sanitized);
-            if (parsed && typeof parsed === "object") {
-              if (parsed.mode === "creation" || parsed.creation_type || parsed.creation_data) {
-                mode = "creation";
-                chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ J'ai généré votre création directement dans votre espace à droite !");
-                creation_type = parsed.creation_type || defaultType || "quiz";
-                creation_title = parsed.creation_title || "Création";
-                creation_data = parsed.creation_data || parsed;
-              } else if (Array.isArray(parsed.questions)) {
-                mode = "creation";
-                creation_type = "quiz";
-                creation_title = parsed.title || "Quiz interactif";
-                creation_data = parsed;
-                chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici votre questionnaire interactif préparé à droite !");
-              } else if (parsed.root && (parsed.root.label || parsed.root.children)) {
-                mode = "creation";
-                creation_type = "mindmap";
-                creation_title = parsed.root.label || "Carte mentale";
-                creation_data = parsed;
-                chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici votre carte mentale à droite !");
-              } else if (parsed.overview || Array.isArray(parsed.keyPoints)) {
-                mode = "creation";
-                creation_type = "summary";
-                creation_title = parsed.title || "Fiche de synthèse";
-                creation_data = parsed;
-                chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici votre résumé détaillé à droite !");
-              } else if (Array.isArray(parsed.metrics) || Array.isArray(parsed.keyConcepts)) {
-                mode = "creation";
-                creation_type = "infographic";
-                creation_title = parsed.mainTitle || "Infographie";
-                creation_data = parsed;
-                chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici vos repères visuels à droite !");
-              } else if (Array.isArray(parsed.sections)) {
-                mode = "creation";
-                creation_type = "document";
-                creation_title = parsed.title || "Fiche d'étude";
-                creation_data = parsed;
-                chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici votre fiche d'étude à droite !");
-              } else if (parsed.mode === "chat") {
-                mode = "chat";
-                chat_response = parsed.chat_response || rawText;
+            parsed = JSON.parse(sanitized);
+          } catch {
+            try {
+              let fixed = protectLatex(jsonRawCandidate)
+                .replace(/\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})/g, '\\\\')
+                .replace(/,\s*([\]}])/g, '$1');
+              parsed = JSON.parse(fixed);
+            } catch {
+              // Extraction regex chirurgicale du champ chat_response
+              const chatMatch = jsonRawCandidate.match(/"chat_response"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+              if (chatMatch) {
+                try {
+                  chat_response = JSON.parse(`"${protectLatex(chatMatch[1])}"`);
+                } catch {
+                  chat_response = chatMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+                }
               }
             }
-          } catch {
-            // Ignorer l'erreur JSON et conserver mode chat
+          }
+        }
+
+        if (parsed && typeof parsed === "object") {
+          if (parsed.mode === "creation" || parsed.creation_type || parsed.creation_data) {
+            mode = "creation";
+            chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ J'ai généré votre création directement dans votre espace à droite !");
+            creation_type = parsed.creation_type || defaultType || "quiz";
+            creation_title = parsed.creation_title || "Création";
+            creation_data = parsed.creation_data || parsed;
+          } else if (Array.isArray(parsed.questions)) {
+            mode = "creation";
+            creation_type = "quiz";
+            creation_title = parsed.title || "Quiz interactif";
+            creation_data = parsed;
+            chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici votre questionnaire interactif préparé à droite !");
+          } else if (parsed.root && (parsed.root.label || parsed.root.children)) {
+            mode = "creation";
+            creation_type = "mindmap";
+            creation_title = parsed.root.label || "Carte mentale";
+            creation_data = parsed;
+            chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici votre carte mentale à droite !");
+          } else if (parsed.overview || Array.isArray(parsed.keyPoints)) {
+            mode = "creation";
+            creation_type = "summary";
+            creation_title = parsed.title || "Fiche de synthèse";
+            creation_data = parsed;
+            chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici votre résumé détaillé à droite !");
+          } else if (Array.isArray(parsed.metrics) || Array.isArray(parsed.keyConcepts)) {
+            mode = "creation";
+            creation_type = "infographic";
+            creation_title = parsed.mainTitle || "Infographie";
+            creation_data = parsed;
+            chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici vos repères visuels à droite !");
+          } else if (Array.isArray(parsed.sections)) {
+            mode = "creation";
+            creation_type = "document";
+            creation_title = parsed.title || "Fiche d'étude";
+            creation_data = parsed;
+            chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici votre fiche d'étude à droite !");
+          } else if (parsed.mode === "chat" || parsed.chat_response) {
+            mode = "chat";
+            chat_response = parsed.chat_response || "";
+          }
+        }
+
+        if (!chat_response) {
+          const directRegex = /"chat_response"\s*:\s*"((?:[^"\\]|\\.)*)"/s.exec(rawText);
+          if (directRegex) {
+            try {
+              chat_response = JSON.parse(`"${protectLatex(directRegex[1])}"`);
+            } catch {
+              chat_response = directRegex[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+            }
+          } else if (rawText.trim().startsWith('{') && rawText.trim().endsWith('}')) {
+            chat_response = rawText;
+          } else {
+            chat_response = rawText;
           }
         }
 
@@ -483,24 +522,20 @@ Tu es directement connectée à deux espaces distincts de l'interface utilisateu
 
 TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
 - Analyse précisément l'intention de l'étudiant :
-  * Si l'étudiant pose une question simple, demande une explication ou discute : ton mode est "chat".
-  * Si l'étudiant demande de créer ou générer un outil (QCM, quiz, carte mentale, résumé, infographie, fiche), OU si un type de création est demandé ('${requestedType || ""}'), OU s'il clique sur une action de création : ton mode est "creation".
-
-Pour que l'application sache directement où afficher chaque élément, structure TOUJOURS ta réponse sous le format JSON suivant (dans un bloc \`\`\`json ... \`\`\` ou en objet JSON) :
-{
-  "mode": "chat" ou "creation",
-  "chat_response": "Ton message textuel pour le fil de chat (explication détaillée si mode chat, ou courte phrase d'accueil amicale si mode creation)",
-  "creation_type": "quiz" | "mindmap" | "summary" | "infographic" | "document" | null,
-  "creation_title": "Titre explicite de la création (ou null si mode chat)",
-  "creation_data": {
-    // Si quiz : { "questions": [ { "id": "q-1", "question": "...", "options": ["A", "B", "C", "D"], "answerIndex": 0, "explanation": "..." } ] }
-    // Si mindmap : { "root": { "label": "Concept", "children": [ { "label": "Branche 1", "children": [] } ] } }
-    // Si summary : { "overview": "...", "keyPoints": ["..."], "definitions": [ { "term": "...", "definition": "..." } ], "rules": ["..."] }
-    // Si infographic : { "mainTitle": "...", "metrics": [ { "value": "100%", "label": "..." } ], "keyConcepts": [ { "title": "...", "desc": "..." } ] }
-    // Si document : { "title": "...", "sections": [ { "heading": "...", "body": "...", "bulletPoints": [] } ] }
-    // null si mode chat
-  }
-}
+  * MODE CHAT (question simple, explication, calcul, salutation ou dialogue général) :
+    -> Réponds DIRECTEMENT ET NATURELLEMENT en texte Markdown fluide (avec formules LaTeX syntaxe $...$ ou $$...$$ si pertinent).
+    -> RÈGLE CRUCIALE : NE METS AUCUN CODE JSON, PAS D'ACCOLADES {} NI DE BALISES JSON pour les réponses de chat ! Parle directement comme un tuteur bienveillant et pédagogue.
+  * MODE CRÉATION (demande explicite de créer ou générer un QCM/quiz, carte mentale, résumé, infographie ou fiche d'étude) :
+    -> Génère obligatoirement un objet JSON structuré (dans un bloc \`\`\`json ... \`\`\`) avec ce format exact :
+    {
+      "mode": "creation",
+      "chat_response": "Court message amical d'accompagnement pour le fil de discussion",
+      "creation_type": "quiz" | "mindmap" | "summary" | "infographic" | "document",
+      "creation_title": "Titre explicite de la création",
+      "creation_data": {
+        // Données complètes selon l'outil (questions pour quiz, root pour mindmap, etc.)
+      }
+    }
 
 RÈGLES D'EXCELLENCE :
 - Pas de blabla inutile ni de règles artificielles.

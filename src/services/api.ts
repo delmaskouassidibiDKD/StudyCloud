@@ -161,16 +161,49 @@ export async function sendChatMessageToAi(params: {
     text = JSON.stringify(data);
   }
 
+  // Extraction robuste pour éviter tout affichage de JSON brut dans le chat
+  let extractedChatResponse = data.chat_response;
+  let extractedMode = data.mode;
+  let extractedCreationType = data.creation_type;
+  let extractedCreationTitle = data.creation_title;
+  let extractedCreationData = data.creation_data;
+
+  if (!extractedChatResponse && typeof text === 'string') {
+    // 1. Détection regex de chat_response avec protection des formules LaTeX
+    const inlineMatch = text.match(/"chat_response"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+    if (inlineMatch) {
+      const candidate = inlineMatch[1].replace(/(\$\$?)([\s\S]*?)(\$\$?)/g, (_m, op, ma, cl) => op + ma.replace(/\\/g, '\\\\') + cl);
+      try {
+        extractedChatResponse = JSON.parse(`"${candidate}"`);
+      } catch {
+        extractedChatResponse = inlineMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+      }
+    }
+
+    const modeMatch = text.match(/"mode"\s*:\s*"(chat|creation)"/i);
+    if (modeMatch) {
+      extractedMode = modeMatch[1].toLowerCase() as any;
+    }
+    const typeMatch = text.match(/"creation_type"\s*:\s*"([a-zA-Z0-9_-]+)"/i);
+    if (typeMatch) {
+      extractedCreationType = typeMatch[1];
+    }
+    const titleMatch = text.match(/"creation_title"\s*:\s*"([^"]+)"/i);
+    if (titleMatch) {
+      extractedCreationTitle = titleMatch[1];
+    }
+  }
+
   return {
-    response: data.chat_response || text,
+    response: extractedChatResponse || data.chat_response || text,
     success: data.success !== false,
     model: data.model,
-    type: data.type,
-    mode: data.mode,
-    chat_response: data.chat_response,
-    creation_type: data.creation_type,
-    creation_title: data.creation_title,
-    creation_data: data.creation_data,
+    type: data.type || extractedCreationType,
+    mode: extractedMode || data.mode,
+    chat_response: extractedChatResponse || data.chat_response,
+    creation_type: extractedCreationType || data.creation_type,
+    creation_title: extractedCreationTitle || data.creation_title,
+    creation_data: extractedCreationData || data.creation_data,
   };
 }
 

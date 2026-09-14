@@ -28,6 +28,45 @@ interface ConversationItem {
   updated_at?: string;
 }
 
+// Helper robuste pour nettoyer tout résidu JSON du chat et garantir un texte pur avec LaTeX intact
+function cleanChatText(text: string): string {
+  if (!text) return '';
+  let clean = text.trim();
+
+  // Protège les commandes LaTeX dans $...$ ou $$...$$ avant parsing pour éviter que \notin devienne un saut de ligne
+  const protectLatex = (str: string) => {
+    return str.replace(/(\$\$?)([\s\S]*?)(\$\$?)/g, (_match, open, math, close) => {
+      return open + math.replace(/\\/g, '\\\\') + close;
+    });
+  };
+
+  // 1. Détection chat_response par regex résistant aux échappements LaTeX
+  const inlineMatch = clean.match(/"chat_response"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+  if (inlineMatch) {
+    const candidate = inlineMatch[1];
+    try {
+      return JSON.parse(`"${protectLatex(candidate)}"`);
+    } catch {
+      return candidate.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+    }
+  }
+
+  // 2. Si un bloc ```json ... ``` ou ``` ... ``` existe sans être une création
+  const jsonBlock = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+  if (jsonBlock) {
+    try {
+      const fixed = protectLatex(jsonBlock[1])
+        .replace(/\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})/g, '\\\\')
+        .replace(/,\s*([\]}])/g, '$1');
+      const obj = JSON.parse(fixed);
+      if (obj.chat_response) return obj.chat_response;
+      if (obj.response) return obj.response;
+    } catch {}
+  }
+
+  return clean.replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '').trim();
+}
+
 const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: boolean; isStreaming?: boolean }) => {
   const [expanded, setExpanded] = useState(false);
 
@@ -530,30 +569,26 @@ Tu es directement connectée à deux espaces distincts de l'interface de l'étud
    - 'document' : Fiches d'étude complètes et polycopiés
 
 TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
-- Analyse précisément l'intention de l'étudiant :
-  * Si l'étudiant pose une question simple, demande une explication ou discute : ton mode est "chat". Tu réponds de façon approfondie, directe et naturelle.
-  * Si l'étudiant demande de créer ou générer un outil (QCM, quiz, carte mentale, résumé, infographie, fiche), OU si un type de création est demandé ('${isCreation ? targetToolType : ""}'), OU s'il clique sur une action de création : ton mode est "creation".
+      - Analyse précisément l'intention de l'étudiant :
+        * MODE CHAT (question simple, explication, calcul, salutation ou dialogue général) :
+          -> Réponds DIRECTEMENT ET NATURELLEMENT en texte Markdown fluide (avec formules LaTeX $...$ ou $$...$$ si pertinent).
+          -> IMPORTANT : NE METS AUCUN CODE JSON, PAS D'ACCOLADES {} NI DE BALISES JSON pour les réponses de chat ! Parle directement comme un tuteur bienveillant.
+        * MODE CRÉATION (demande de QCM/quiz, carte mentale, résumé synthétique, infographie ou fiche d'étude) :
+          -> Génère obligatoirement un objet JSON structuré (dans un bloc \`\`\`json ... \`\`\`) avec ce format :
+          {
+            "mode": "creation",
+            "chat_response": "Court message amical d'accompagnement pour le fil de discussion",
+            "creation_type": "quiz" | "mindmap" | "summary" | "infographic" | "document",
+            "creation_title": "Titre explicite",
+            "creation_data": {
+              // Données détaillées selon l'outil (questions pour quiz, root pour mindmap, etc.)
+            }
+          }
 
-Pour que l'application sache directement où afficher chaque élément, structure TOUJOURS ta réponse sous le format JSON suivant (dans un bloc \`\`\`json ... \`\`\` ou directement en objet JSON) :
-{
-  "mode": "chat" ou "creation",
-  "chat_response": "Ton message textuel rédigé pour le chat (explication détaillée en mode chat, ou courte phrase d'accueil amicale en mode creation)",
-  "creation_type": "quiz" | "mindmap" | "summary" | "infographic" | "document" | null,
-  "creation_title": "Titre explicite de la création (ou null si mode chat)",
-  "creation_data": {
-    // Les données détaillées de la création si mode creation (ou null si mode chat) :
-    // - Pour 'quiz' : { "title": "...", "questions": [ { "id": "q-1", "question": "...", "options": ["A", "B", "C", "D"], "answerIndex": 0, "explanation": "..." } ] }
-    // - Pour 'mindmap' : { "root": { "label": "Concept", "children": [ { "label": "Branche 1", "children": [] } ] } }
-    // - Pour 'summary' : { "title": "...", "overview": "...", "keyPoints": ["..."], "definitions": [ { "term": "...", "definition": "..." } ], "rules": ["..."] }
-    // - Pour 'infographic' : { "mainTitle": "...", "metrics": [ { "value": "100%", "label": "..." } ], "keyConcepts": [ { "title": "...", "desc": "..." } ] }
-    // - Pour 'document' : { "title": "...", "sections": [ { "heading": "...", "body": "...", "bulletPoints": [] } ] }
-  }
-}
-
-RÈGLES D'EXCELLENCE :
-- Pas de blabla inutile ni de règles artificielles.
-- Si un document est fourni, exploite fidèlement ses notions réelles.
-- Rédige toutes les formules scientifiques en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).`;
+      RÈGLES D'EXCELLENCE :
+      - Pas de blabla inutile ni de règles artificielles.
+      - Si un document est fourni, exploite fidèlement ses notions réelles.
+      - Rédige toutes les formules scientifiques en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).`;
       
       if (docNames.length > 0) {
         systemContent += `\n\nDOCUMENTS DISPONIBLES :\nL'utilisateur a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et complet au contenu textuel de ces documents.`;
@@ -645,7 +680,7 @@ RÈGLES D'EXCELLENCE :
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
 
         // Nettoyage du bloc JSON du chat pour un affichage textuel impeccable
-        const introText = (aiResult.chat_response || rawResponseText)
+        const introText = cleanChatText(aiResult.chat_response || rawResponseText)
           .replace(/```json[\s\S]*?```/gi, '')
           .replace(/```[\s\S]*?```/gi, '')
           .replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '')
@@ -670,7 +705,7 @@ ${effectiveToolType === 'quiz' && newCreation.content?.questions?.length ? `📝
         }));
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
 
-        const introText = (aiResult.chat_response || rawResponseText)
+        const introText = cleanChatText(aiResult.chat_response || rawResponseText)
           .replace(/```json[\s\S]*?```/gi, '')
           .replace(/```[\s\S]*?```/gi, '')
           .replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '')
@@ -678,7 +713,7 @@ ${effectiveToolType === 'quiz' && newCreation.content?.questions?.length ? `📝
 
         fullResponseText = `${introText ? introText + '\n\n' : ''}✅ Votre création a été mise à jour dans votre espace **Création** !`;
       } else {
-        fullResponseText = aiResult.chat_response || rawResponseText;
+        fullResponseText = cleanChatText(aiResult.chat_response || rawResponseText);
       }
 
       // 7. Initialisation du message IA avec écriture fluide
