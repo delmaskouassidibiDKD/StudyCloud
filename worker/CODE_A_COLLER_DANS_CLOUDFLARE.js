@@ -1138,6 +1138,8 @@ var src_default = {
       if ((path.startsWith("/s/") || path.startsWith("/share/") || path.startsWith("/d/")) && method === "GET") {
         const code = path.split("/")[2];
         if (code && env.DB) {
+          if (!isSchemaInitialized)
+            await ensureDatabaseSchema(env.DB);
           const cleanCode = decodeURIComponent(code).trim();
           const folder = await env.DB.prepare(
             "SELECT * FROM shared_folders WHERE share_code = ? OR id = ? LIMIT 1"
@@ -1173,6 +1175,8 @@ var src_default = {
         const cookieHeader = request.headers.get("Cookie") || "";
         const cookieMatch = cookieHeader.match(/(?:^|;\s*)sc_share_last=([^;]+)/);
         if (cookieMatch && cookieMatch[1] && env.DB) {
+          if (!isSchemaInitialized)
+            await ensureDatabaseSchema(env.DB);
           const savedCode = decodeURIComponent(cookieMatch[1]).trim();
           const folder = await env.DB.prepare(
             "SELECT * FROM shared_folders WHERE share_code = ? OR id = ? LIMIT 1"
@@ -2055,6 +2059,52 @@ var src_default = {
         for (const query of tableQueries) {
           try {
             await db.prepare(query).run();
+          } catch (e) {
+          }
+        }
+        const shareColumns = [
+          "ALTER TABLE shared_folders ADD COLUMN is_public INTEGER DEFAULT 0",
+          "ALTER TABLE shared_folders ADD COLUMN downloads_count INTEGER DEFAULT 0",
+          "ALTER TABLE shared_folders ADD COLUMN views_count INTEGER DEFAULT 0",
+          "ALTER TABLE shared_folders ADD COLUMN description TEXT",
+          "ALTER TABLE shared_folders ADD COLUMN allow_download INTEGER DEFAULT 1",
+          "ALTER TABLE shared_folders ADD COLUMN category TEXT DEFAULT 'Cours'",
+          "ALTER TABLE shared_folders ADD COLUMN author_name TEXT",
+          "ALTER TABLE shared_folders ADD COLUMN school TEXT",
+          "ALTER TABLE shared_folders ADD COLUMN country TEXT DEFAULT 'C\xF4te d''Ivoire'",
+          "ALTER TABLE shared_folders ADD COLUMN is_password_protected INTEGER DEFAULT 0",
+          "ALTER TABLE shared_folders ADD COLUMN password_hash TEXT",
+          "ALTER TABLE shared_folders ADD COLUMN total_size INTEGER DEFAULT 0",
+          "ALTER TABLE shared_folders ADD COLUMN share_code TEXT",
+          "ALTER TABLE shared_folders ADD COLUMN share_url TEXT",
+          "ALTER TABLE shared_folders ADD COLUMN qr_code_data TEXT",
+          "ALTER TABLE shared_folders ADD COLUMN expires_at TEXT",
+          "ALTER TABLE shared_folders ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP",
+          "ALTER TABLE shared_folder_files ADD COLUMN file_id TEXT",
+          "ALTER TABLE shared_folder_files ADD COLUMN size INTEGER DEFAULT 0",
+          "ALTER TABLE shared_folder_files ADD COLUMN type TEXT",
+          "ALTER TABLE shared_folder_files ADD COLUMN r2_key TEXT",
+          "ALTER TABLE shared_folder_files ADD COLUMN file_url TEXT",
+          "ALTER TABLE shared_folder_downloads ADD COLUMN shared_folder_id TEXT",
+          "ALTER TABLE shared_folder_downloads ADD COLUMN ip_address TEXT",
+          "ALTER TABLE shared_folder_downloads ADD COLUMN created_at TEXT DEFAULT CURRENT_TIMESTAMP"
+        ];
+        for (const colSql of shareColumns) {
+          try {
+            await db.prepare(colSql).run();
+          } catch (e) {
+          }
+        }
+        const shareIndices = [
+          "CREATE INDEX IF NOT EXISTS idx_shared_folders_user ON shared_folders(user_id)",
+          "CREATE INDEX IF NOT EXISTS idx_shared_folders_code ON shared_folders(share_code)",
+          "CREATE INDEX IF NOT EXISTS idx_shared_folders_public ON shared_folders(is_public)",
+          "CREATE INDEX IF NOT EXISTS idx_shared_folder_files_folder ON shared_folder_files(shared_folder_id)",
+          "CREATE INDEX IF NOT EXISTS idx_shared_folder_downloads_folder ON shared_folder_downloads(shared_folder_id)"
+        ];
+        for (const idxSql of shareIndices) {
+          try {
+            await db.prepare(idxSql).run();
           } catch (e) {
           }
         }
@@ -3393,6 +3443,9 @@ var src_default = {
         headers.set("etag", object.httpEtag);
         headers.set("Access-Control-Allow-Origin", origin);
         return new Response(object.body, { headers });
+      }
+      if (path.startsWith("/api/shares") && env.DB && !isSchemaInitialized) {
+        await ensureDatabaseSchema(env.DB);
       }
       if (path === "/api/shares") {
         if (method === "GET") {
