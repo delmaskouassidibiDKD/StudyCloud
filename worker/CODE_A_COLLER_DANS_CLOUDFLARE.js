@@ -95,13 +95,13 @@ function getFileIconMeta(filename) {
   } else if (/\.(js|jsx|ts|tsx)$/i.test(lower)) {
     return { color: "#D97706", label: "JS" };
   } else if (/\.(xls|xlsx|csv)$/i.test(lower)) {
-    return { color: "#10B981", label: "EXCEL" };
+    return { color: "#059669", label: "EXCEL" };
   } else if (/\.(ppt|pptx)$/i.test(lower)) {
     return { color: "#EA580C", label: "PPT" };
   } else if (/\.(zip|rar|7z|tar|gz)$/i.test(lower)) {
     return { color: "#8B5CF6", label: "ZIP" };
-  } else if (/\.(png|jpg|jpeg|webp|gif|svg)$/i.test(lower)) {
-    return { color: "#EC4899", label: "IMG" };
+  } else if (/\.(png|jpg|jpeg|webp|gif|svg|bmp|ico|heic|tiff)$/i.test(lower)) {
+    return { color: "#10B981", label: "IMG" };
   } else if (/\.(mp3|wav|ogg|m4a|aac)$/i.test(lower)) {
     return { color: "#06B6D4", label: "AUDIO" };
   } else if (/\.(mp4|mkv|mov|avi)$/i.test(lower)) {
@@ -291,6 +291,17 @@ function renderShareLandingHtml(folder, files, originUrl) {
       gap: 12px;
       text-decoration: none;
     }
+    .brand-logo-badge {
+      width: 38px;
+      height: 38px;
+      border-radius: 12px;
+      background: #070a13;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 3px 8px rgba(0, 0, 0, 0.16);
+      flex-shrink: 0;
+    }
     .brand-titles {
       display: flex;
       flex-direction: column;
@@ -298,24 +309,21 @@ function renderShareLandingHtml(folder, files, originUrl) {
     .brand-title-row {
       display: flex;
       align-items: center;
-      gap: 5px;
-      font-size: 18px;
+      gap: 0;
+      font-size: 19px;
       font-weight: 900;
       letter-spacing: -0.02em;
-      line-height: 1.2;
+      line-height: 1.15;
     }
     .brand-study { color: #ea580c; }
     .brand-cloud { color: #2563eb; }
-    .brand-share-badge {
-      font-size: 13px;
+    .brand-tagline {
+      font-size: 9px;
+      color: #f59e0b;
       font-weight: 800;
-      color: #0f172a;
-      margin-left: 2px;
-    }
-    .brand-subtitle {
-      font-size: 11px;
-      color: #64748b;
-      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.12em;
+      margin-top: 1px;
     }
 
     /* Bouton Aller sur le site */
@@ -361,16 +369,6 @@ function renderShareLandingHtml(folder, files, originUrl) {
       flex-wrap: wrap;
       gap: 10px;
     }
-    .pill-category {
-      display: inline-block;
-      background: #ffedd5;
-      color: #c2410c;
-      font-size: 11.5px;
-      font-weight: 800;
-      padding: 4px 12px;
-      border-radius: 9999px;
-      text-transform: capitalize;
-    }
     .pill-meta-text {
       font-size: 13px;
       font-weight: 700;
@@ -388,15 +386,6 @@ function renderShareLandingHtml(folder, files, originUrl) {
       font-size: 14px;
       color: #475569;
       line-height: 1.6;
-    }
-    .info-verified {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      font-size: 12.5px;
-      font-weight: 700;
-      color: #059669;
-      margin-top: 2px;
     }
 
     /* SECTION DES FICHIERS (IMAGE 2 STYLE, D\xC9FILABLE) */
@@ -491,13 +480,13 @@ function renderShareLandingHtml(folder, files, originUrl) {
       display: none;
     }
     .file-icon-wrapper {
-      width: 72px;
-      height: 88px;
+      width: 52px;
+      height: 64px;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin-bottom: 8px;
-      margin-top: 4px;
+      margin-bottom: 6px;
+      margin-top: 2px;
     }
     .doc-icon-svg {
       width: 100%;
@@ -529,40 +518,47 @@ function renderShareLandingHtml(folder, files, originUrl) {
       color: #94a3b8;
     }
 
-    /* BARRE FIXE EN BAS (FIXED BOTTOM BAR AVEC 2 BOUTONS) */
+    /* BARRE FIXE EN BAS (PARFAITEMENT ADAPT\xC9E \xC0 TOUS LES \xC9CRANS & ENCOCHES) */
     .bottom-bar {
       position: fixed;
       bottom: 0;
       left: 0;
       right: 0;
       background: #ffffff;
-      padding: 14px 20px;
+      padding: 12px 16px calc(12px + env(safe-area-inset-bottom, 0px));
       box-shadow: 0 -8px 25px rgba(0, 0, 0, 0.07);
       z-index: 100;
     }
     .bottom-bar-inner {
       max-width: 680px;
       margin: 0 auto;
-      display: flex;
-      align-items: center;
-      gap: 12px;
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 10px;
+      width: 100%;
     }
     .btn-bottom {
-      flex: 1;
-      height: 52px;
+      width: 100%;
+      min-width: 0;
+      height: 50px;
       border-radius: 14px;
-      font-size: 14px;
+      font-size: 13.5px;
       font-weight: 800;
       display: flex;
       align-items: center;
       justify-content: center;
-      gap: 8px;
+      gap: 6px;
       cursor: pointer;
       border: none;
       transition: all 0.2s;
       text-decoration: none;
-      white-space: nowrap;
-      padding: 0 16px;
+      padding: 0 8px;
+      text-align: center;
+      line-height: 1.25;
+      box-sizing: border-box;
+    }
+    .btn-bottom svg {
+      flex-shrink: 0;
     }
     .btn-bottom:active {
       transform: scale(0.98);
@@ -588,6 +584,45 @@ function renderShareLandingHtml(folder, files, originUrl) {
       opacity: 0.5;
       cursor: not-allowed;
       box-shadow: none;
+    }
+
+    @media (max-width: 520px) {
+      .bottom-bar {
+        padding: 10px 10px calc(10px + env(safe-area-inset-bottom, 8px));
+      }
+      .bottom-bar-inner {
+        gap: 8px;
+      }
+      .btn-bottom {
+        height: 48px;
+        font-size: 12px;
+        padding: 0 5px;
+        gap: 4px;
+        border-radius: 12px;
+      }
+      .btn-bottom svg {
+        width: 15px;
+        height: 15px;
+      }
+      .file-icon-wrapper {
+        width: 44px;
+        height: 54px;
+      }
+    }
+    @media (max-width: 380px) {
+      .btn-bottom {
+        font-size: 11px;
+        padding: 0 3px;
+        gap: 3px;
+      }
+      .btn-bottom svg {
+        width: 13px;
+        height: 13px;
+      }
+      .file-icon-wrapper {
+        width: 38px;
+        height: 48px;
+      }
     }
 
     /* TOAST */
@@ -625,29 +660,30 @@ function renderShareLandingHtml(folder, files, originUrl) {
     <div class="header-container">
       <!-- Logo StudyCloud ADN + Titres -->
       <a href="${siteUrl}" target="_blank" class="header-left">
-        <!-- Logo ADN Officiel StudyCloud -->
-        <svg width="34" height="34" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
-          <defs>
-            <linearGradient id="scDnaGradStatic" x1="0%" y1="0%" x2="0%" y2="100%">
-              <stop offset="0%" stopColor="#EA580C" />
-              <stop offset="50%" stopColor="#F38020" />
-              <stop offset="100%" stopColor="#EA580C" />
-            </linearGradient>
-          </defs>
-          <path d="M8 3C8 3 8 10 12 12C16 14 16 21 16 21" stroke="url(#scDnaGradStatic)" stroke-width="2.5" stroke-linecap="round"/>
-          <path d="M16 3C16 3 16 10 12 12C8 14 8 21 8 21" stroke="url(#scDnaGradStatic)" stroke-width="2.5" stroke-linecap="round"/>
-          <line x1="10" y1="6" x2="14" y2="6" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
-          <line x1="10.5" y1="9" x2="13.5" y2="9" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
-          <line x1="11" y1="12" x2="13" y2="12" stroke="#F38020" stroke-width="3" stroke-linecap="round"/>
-          <line x1="10.5" y1="15" x2="13.5" y2="15" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.9"/>
-          <line x1="10" y1="18" x2="14" y2="18" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round" opacity="0.8"/>
-        </svg>
-        <div class="brand-titles">
+        <!-- Logo ADN Officiel StudyCloud (identique au composant DnaLogo de l'application) -->
+        <div class="brand-logo-badge">
+          <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" style="filter: drop-shadow(0 0 6px rgba(243, 128, 32, 0.75));">
+            <defs>
+              <linearGradient id="scDnaGradStatic" x1="0%" y1="0%" x2="0%" y2="100%">
+                <stop offset="0%" stopColor="#FFFFFF" />
+                <stop offset="50%" stopColor="#F38020" />
+                <stop offset="100%" stopColor="#FFFFFF" />
+              </linearGradient>
+            </defs>
+            <path d="M8 3C8 3 8 10 12 12C16 14 16 21 16 21" stroke="#F38020" stroke-width="2.5" stroke-linecap="round" style="stroke: url(#scDnaGradStatic);" />
+            <path d="M16 3C16 3 16 10 12 12C8 14 8 21 8 21" stroke="#F38020" stroke-width="2.5" stroke-linecap="round" style="stroke: url(#scDnaGradStatic);" />
+            <line x1="10" y1="6" x2="14" y2="6" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" opacity="0.8" />
+            <line x1="10.5" y1="9" x2="13.5" y2="9" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" opacity="0.9" />
+            <line x1="11" y1="12" x2="13" y2="12" stroke="#F38020" stroke-width="3" stroke-linecap="round" />
+            <line x1="10.5" y1="15" x2="13.5" y2="15" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" opacity="0.9" />
+            <line x1="10" y1="18" x2="14" y2="18" stroke="#FFFFFF" stroke-width="1.5" stroke-linecap="round" opacity="0.8" />
+          </svg>
+        </div>
+        <div class="brand-titles notranslate">
           <div class="brand-title-row">
             <span class="brand-study">Study</span><span class="brand-cloud">Cloud</span>
-            <span class="brand-share-badge">Share</span>
           </div>
-          <span class="brand-subtitle">Portail de t\xE9l\xE9chargement direct \xE9tudiant</span>
+          <span class="brand-tagline">DKD TECHNOLOGIES</span>
         </div>
       </a>
 
@@ -664,18 +700,12 @@ function renderShareLandingHtml(folder, files, originUrl) {
     <!-- INFORMATIONS SUR LE FICHIER (En bas de l'en-t\xEAte, sans bouton zip orange au milieu) -->
     <div class="info-section">
       <div class="info-badges-row">
-        <span class="pill-category">${category}</span>
         <span class="pill-meta-text">${formattedSize} \u2022 ${totalFiles} fichier(s)</span>
       </div>
 
       <h1 class="info-title">${title}</h1>
 
       ${description ? `<p class="info-desc">${description}</p>` : ""}
-
-      <div class="info-verified">
-        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"></path></svg>
-        <span>Partag\xE9 par <strong>${authorName}</strong> \u2022 S\xE9curis\xE9 et v\xE9rifi\xE9</span>
-      </div>
     </div>
 
     <!-- GRILLE DES FICHIERS (IMAGE 2 STYLE, COCH\xC9S PAR D\xC9FAUT, D\xC9FILABLE) -->
@@ -691,13 +721,13 @@ function renderShareLandingHtml(folder, files, originUrl) {
     </div>
   </main>
 
-  <!-- BARRE FIXE EN BAS (2 BOUTONS DYNAMIQUES) -->
+  <!-- BARRE FIXE EN BAS (2 BOUTONS DYNAMIQUES PARFAITEMENT VISIBLES SUR TOUS LES APPAREILS) -->
   <div class="bottom-bar">
     <div class="bottom-bar-inner">
-      <!-- Bouton 1: Tout t\xE9l\xE9charger en fichier zip -->
-      <button type="button" id="btnDownloadZip" onclick="handleDownloadZip()" class="btn-bottom btn-bottom-zip">
+      <!-- Bouton 1: T\xE9l\xE9charger en fichier zip -->
+      <button type="button" id="btnDownloadZip" onclick="handleDownloadZip()" class="btn-bottom btn-bottom-zip" title="Tout t\xE9l\xE9charger en fichier zip">
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
-        <span>Tout t\xE9l\xE9charger en fichier zip</span>
+        <span>T\xE9l\xE9charger en ZIP</span>
       </button>
 
       <!-- Bouton 2: Tout t\xE9l\xE9charger / T\xE9l\xE9charger (selon s\xE9lection) -->
@@ -745,7 +775,7 @@ function renderShareLandingHtml(folder, files, originUrl) {
       const btnText = document.getElementById('btnDownloadActionText');
 
       if (selectedCount === 0) {
-        btnText.textContent = 'S\xE9lectionner un fichier';
+        btnText.textContent = 'S\xE9lectionner';
         btnAction.disabled = true;
       } else if (selectedCount === total) {
         // TOUT EST COCH\xC9 -> Tout t\xE9l\xE9charger
