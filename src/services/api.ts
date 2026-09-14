@@ -32,16 +32,29 @@ export const setAiWorkerUrl = (url: string) => {
 export async function sendChatMessageToAi(params: {
   messages: Array<{ role: string; content: string }>;
   prompt?: string;
+  message?: string;
   userId?: string;
   sessionId?: string;
   conversationId?: string;
+  conversation_id?: string;
+  requested_type?: string;
+  history?: Array<{ role: string; content: string }>;
   attachedFileId?: string;
   attachedFileName?: string;
   attachedFileContent?: string;
   attachedFileR2Key?: string;
-}): Promise<{ response: string; success: boolean; model?: string }> {
+}): Promise<{ response: string; success: boolean; model?: string; type?: string }> {
   const mainWorkerChatUrl = `${getWorkerApiUrl().replace(/\/+$/, '')}/api/ai/chat`;
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
+
+  const payload = {
+    ...params,
+    message: params.prompt || params.message || '',
+    prompt: params.prompt || params.message || '',
+    conversation_id: params.conversationId || params.conversation_id || params.sessionId,
+    conversationId: params.conversationId || params.conversation_id || params.sessionId,
+    history: params.history || params.messages,
+  };
 
   // 1. Tenter en priorité la route /api/ai/chat sur le Worker principal de l'application
   try {
@@ -50,7 +63,7 @@ export async function sendChatMessageToAi(params: {
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify(params),
+      body: JSON.stringify(payload),
     });
 
     if (mainResponse.ok) {
@@ -69,7 +82,7 @@ export async function sendChatMessageToAi(params: {
       } else {
         text = JSON.stringify(data);
       }
-      return { response: text, success: true, model: data.model };
+      return { response: text, success: true, model: data.model, type: data.type };
     }
   } catch (mainErr) {
     console.warn('Appel au Worker principal /api/ai/chat indisponible, tentative sur le Worker IA dédié...', mainErr);
@@ -81,7 +94,7 @@ export async function sendChatMessageToAi(params: {
     headers: {
       'Content-Type': 'application/json',
     },
-    body: JSON.stringify(params),
+    body: JSON.stringify(payload),
   });
 
   if (!response.ok) {

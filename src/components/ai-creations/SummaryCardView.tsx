@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { AlignLeft, CheckCircle2, Bookmark, Lightbulb, BookOpen, Copy, Check, Sparkles } from 'lucide-react';
 import { SummaryContent } from './types';
+import { MathText } from '../MathText';
 
 interface SummaryCardViewProps {
   title: string;
@@ -97,9 +98,9 @@ export const SummaryCardView: React.FC<SummaryCardViewProps> = ({
             <Sparkles className="w-4 h-4" />
             <span>Synthèse essentielle</span>
           </div>
-          <p className="text-sm text-zinc-200 leading-relaxed font-normal">
-            {content.overview}
-          </p>
+          <div className="text-sm text-zinc-200 leading-relaxed font-normal">
+            <MathText text={content.overview} />
+          </div>
         </div>
       )}
 
@@ -128,9 +129,9 @@ export const SummaryCardView: React.FC<SummaryCardViewProps> = ({
                   }`}>
                     {isChecked ? '✓' : idx + 1}
                   </span>
-                  <p className="text-xs sm:text-sm leading-snug font-medium flex-1">
-                    {pt}
-                  </p>
+                  <div className="text-xs sm:text-sm leading-snug font-medium flex-1">
+                    <MathText text={pt} inline={true} />
+                  </div>
                 </div>
               );
             })}
@@ -149,11 +150,11 @@ export const SummaryCardView: React.FC<SummaryCardViewProps> = ({
             {content.definitions.map((def, idx) => (
               <div key={idx} className="bg-[#24262b] border border-violet-500/25 rounded-xl p-3.5 hover:border-violet-500/50 transition-colors">
                 <span className="text-xs font-bold text-violet-300 block mb-1">
-                  {def.term}
+                  <MathText text={def.term} inline={true} />
                 </span>
-                <p className="text-[12px] text-zinc-300 leading-relaxed">
-                  {def.definition}
-                </p>
+                <div className="text-[12px] text-zinc-300 leading-relaxed">
+                  <MathText text={def.definition} />
+                </div>
               </div>
             ))}
           </div>
@@ -171,7 +172,9 @@ export const SummaryCardView: React.FC<SummaryCardViewProps> = ({
             {content.rules.map((rule, idx) => (
               <div key={idx} className="flex items-start gap-2 text-xs sm:text-sm text-amber-200 font-medium">
                 <span className="text-amber-400 font-bold">•</span>
-                <span>{rule}</span>
+                <div className="flex-1">
+                  <MathText text={rule} inline={true} />
+                </div>
               </div>
             ))}
           </div>

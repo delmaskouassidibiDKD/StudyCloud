@@ -2,6 +2,7 @@ import React, { Component, ReactNode } from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
 import './index.css';
+import 'katex/dist/katex.min.css';
 import { AuthProvider } from './context/AuthContext';
 
 class ErrorBoundary extends React.Component {

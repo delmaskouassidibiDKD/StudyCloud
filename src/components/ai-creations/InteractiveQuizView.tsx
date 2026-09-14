@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { MessageSquare, CheckCircle2, XCircle, RotateCcw, Award, HelpCircle, ArrowRight } from 'lucide-react';
 import { QuizContent } from './types';
+import { MathText } from '../MathText';
 
 interface InteractiveQuizViewProps {
   title: string;
@@ -115,7 +116,7 @@ export const InteractiveQuizView: React.FC<InteractiveQuizViewProps> = ({
             >
               <div className="flex items-start justify-between gap-3 mb-4">
                 <span className="text-xs font-black px-2.5 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-zinc-300">
-                  Question {qIdx + 1}
+                  Question {qIdx + 1} / {questions.length}
                 </span>
                 {hasAnswered && (
                   <span className={`text-xs font-bold px-2.5 py-1 rounded-lg flex items-center gap-1 ${
@@ -127,9 +128,9 @@ export const InteractiveQuizView: React.FC<InteractiveQuizViewProps> = ({
                 )}
               </div>
 
-              <h3 className="text-sm sm:text-base font-bold text-white mb-4 leading-relaxed">
-                {q.question}
-              </h3>
+              <div className="text-sm sm:text-base font-bold text-white mb-4 leading-relaxed">
+                <MathText text={q.question} />
+              </div>
 
               {/* Options */}
               <div className="grid grid-cols-1 gap-2.5">
@@ -165,8 +166,8 @@ export const InteractiveQuizView: React.FC<InteractiveQuizViewProps> = ({
                       <span className={`w-6 h-6 rounded-lg flex items-center justify-center text-xs font-black shrink-0 border ${badgeClasses}`}>
                         {letter}
                       </span>
-                      <span className="text-xs sm:text-sm font-medium flex-1">
-                        {opt}
+                      <span className="text-xs sm:text-sm font-medium flex-1 overflow-x-auto">
+                        <MathText text={opt} inline={true} />
                       </span>
                     </button>
                   );
@@ -177,9 +178,9 @@ export const InteractiveQuizView: React.FC<InteractiveQuizViewProps> = ({
               {hasAnswered && q.explanation && (
                 <div className="mt-4 pt-3 border-t border-zinc-700/50 flex items-start gap-2.5 text-xs text-zinc-300 animate-fadeIn">
                   <HelpCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
-                  <div>
+                  <div className="flex-1">
                     <span className="font-bold text-emerald-300 block mb-0.5">Explication pédagogique :</span>
-                    <p className="leading-relaxed font-normal">{q.explanation}</p>
+                    <MathText text={q.explanation} />
                   </div>
                 </div>
               )}

@@ -3439,42 +3439,65 @@ var src_default = {
           }, 200, origin);
         }
         const body = await request.json().catch(() => ({}));
-        let messages = Array.isArray(body.messages) ? body.messages : [];
-        const userPrompt = body.prompt || body.text || "";
+        const userPrompt = body.message || body.prompt || body.text || "";
+        const conversationId = body.conversation_id || body.conversationId || body.sessionId || "default-session";
+        const requestedType = (body.requested_type || body.toolType || body.type || "").toLowerCase().trim();
         const userId = body.userId;
-        const sessionId = body.sessionId || "default-session";
-        if (messages.length === 0) {
-          messages = [
-            { role: "user", content: userPrompt || "Bonjour !" }
-          ];
-        }
+        const sessionId = body.sessionId || conversationId;
+
+        // 1. SYSTEM PROMPT MAÎTRE ("Le Méga-Neurone" de StudyCloud / DKDSCHOOL-NUMÉRIQUE)
+        const masterSystemPrompt = `Tu es le "Méga-Neurone" central et ultra-performant de StudyCloud / DKDSCHOOL-NUMÉRIQUE, conçu par DKD Technologies.
+Ton rôle est de générer des contenus pédagogiques d'une rigueur absolue, parfaitement adaptés aux programmes scolaires et universitaires (du secondaire jusqu'au supérieur et écoles d'ingénieurs).
+Tu disposes d'une grande variété de formats créatifs : Cartes mentales interactives, QCM structurés, Infographies de synthèse, Diaporamas pédagogiques, Fiches de révision (flashcards) et Résumés exhaustifs.
+
+RÈGLES D'OR ABSOLUES :
+1. Rigueur scientifique et mathématique totale : Ne JAMAIS inventer de fausses données, de théorèmes erronés ou de formules inexactes.
+2. Formules mathématiques en LaTeX standard : Rédige TOUTES les formules mathématiques et scientifiques en syntaxe LaTeX standard entourées de dollars ($...$ pour les formules en ligne, $$...$$ pour les blocs centrés).
+   Exemples : $r(t) = a t \\cdot u(t)$, $R(p) = \\frac{a}{p^2}$, $\\lim_{t \\to \\infty} f(t) = \\lim_{p \\to 0} p F(p)$, $\\mathcal{L}[a \\cdot f(t) + b \\cdot g(t)] = a \\cdot F(p) + b \\cdot G(p)$.
+3. Clarté et pédagogie : Sois dynamique, captivant, utilise des analogies parlantes (ex: métaphore du traducteur temporel/fréquentiel) et des étapes numérotées claires.
+4. Règles selon le type de création demandé ('${requestedType || "auto"}') :
+   - Si QCM / QUIZ : Propose des questions claires, exactement 4 options identifiées (A, B, C, D) avec formules propres, la bonne réponse et un indice pédagogique pertinent.
+   - Si CARTE MENTALE (Mindmap) : Définis un concept central et des branches hiérarchiques nettes (Définitions, Propriétés clés, Applications, Méthodes de calcul).
+   - Si INFOGRAPHIE / DIAPORAMA : Structure en blocs étagés et étapes séquentielles avec des repères visuels clairs (Étape 1, Étape 2, etc.).
+   - Si FLASHCARDS (Fiches de révision) : Définis des paires recto (question/formule) et verso (réponse/application) percutantes.
+   - Si RÉSUMÉ : Rédige une synthèse fluide, complète, avec les définitions et théorèmes fondamentaux bien mis en valeur.`;
+
+        let incomingHistory = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+        const messages = [
+          { role: "system", content: masterSystemPrompt }
+        ];
+
         if (body.attachedFileContent && typeof body.attachedFileContent === "string" && body.attachedFileContent.trim().length > 0) {
           const docTitle = body.attachedFileName || "Document joint";
           const maxDocChars = 32e3;
           const cleanDocContent = body.attachedFileContent.slice(0, maxDocChars);
-          messages.unshift({
+          messages.push({
             role: "system",
-            content: `=== DOCUMENT JOINT DE L'\xC9L\xC8VE ("${docTitle}") ===
-${cleanDocContent}
-=== FIN DU DOCUMENT ===
-Instructions : L'\xE9l\xE8ve t'a transmis ce document pour que tu travailles avec lui dessus. Tu as un acc\xE8s COMPLET et DIRECT \xE0 son texte. R\xE9ponds pr\xE9cis\xE9ment \xE0 ses questions en t'appuyant rigoureusement sur les le\xE7ons, th\xE9or\xE8mes, d\xE9finitions, exercices et explications contenus dans ce fichier.`
+            content: `=== DOCUMENT JOINT DE L'ÉLÈVE ("${docTitle}") ===\n${cleanDocContent}\n=== FIN DU DOCUMENT ===\nInstructions : Tu as un accès COMPLET et DIRECT à ce document. Réponds précisément en t'appuyant rigoureusement sur les leçons, théorèmes, définitions, exercices et explications contenus dans ce fichier.`
           });
         }
-        const hasSystemMessage = messages.some((m) => m.role === "system");
-        if (!hasSystemMessage) {
-          messages.unshift({
-            role: "system",
-            content: "Tu es l'assistante IA officielle de la plateforme StudyCloud, cr\xE9\xE9e par DKD Technologies. Tu es une tutrice acad\xE9mique et p\xE9dagogique bienveillante, dynamique, tr\xE8s claire et structur\xE9e. Tu r\xE9ponds TOUJOURS en fran\xE7ais avec des explications simples, compl\xE8tes et faciles \xE0 comprendre pour aider l'\xE9l\xE8ve ou l'\xE9tudiant dans ses r\xE9visions, ses devoirs et sa compr\xE9hension des documents."
-          });
+
+        for (const m of incomingHistory.slice(-10)) {
+          if (m && m.role && m.content && m.role !== "system") {
+            messages.push({ role: m.role === "user" ? "user" : "assistant", content: String(m.content) });
+          }
         }
+
+        if (userPrompt) {
+          messages.push({ role: "user", content: userPrompt });
+        } else if (messages.length === 1) {
+          messages.push({ role: "user", content: "Bonjour !" });
+        }
+
         let replyText = "";
         let usedModel = "";
+
         if (aiInstance && typeof aiInstance.run === "function") {
           const candidateModels = [
-            "@cf/meta/llama-3.1-8b-instruct",
-            "@cf/meta/llama-3.2-3b-instruct",
-            "@cf/meta/llama-3.1-8b-instruct-fast",
             "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+            "@cf/meta/llama-3.1-70b-instruct",
+            "@cf/meta/llama-3-70b-instruct",
+            "@cf/meta/llama-3.1-8b-instruct",
             "@cf/mistral/mistral-7b-instruct-v0.2"
           ];
           let aiResult = null;
@@ -3483,14 +3506,14 @@ Instructions : L'\xE9l\xE8ve t'a transmis ce document pour que tu travailles ave
             try {
               aiResult = await aiInstance.run(m, {
                 messages,
-                max_tokens: 1500,
-                temperature: 0.65
+                max_tokens: 2500,
+                temperature: 0.35
               });
               usedModel = m;
               break;
             } catch (err) {
               lastError = err;
-              console.warn(`Mod\xE8le ${m} a \xE9chou\xE9:`, err?.message || err);
+              console.warn(`Modèle ${m} a échoué:`, err?.message || err);
             }
           }
           if (aiResult) {
@@ -3499,10 +3522,44 @@ Instructions : L'\xE9l\xE8ve t'a transmis ce document pour que tu travailles ave
             } else if (typeof aiResult === "string") {
               replyText = aiResult;
             } else if (aiResult && typeof aiResult === "object") {
-              replyText = aiResult.response || aiResult.text || JSON.stringify(aiResult);
+              replyText = aiResult.response || aiResult.text || aiResult.result || JSON.stringify(aiResult);
+            }
+          }
+
+          // --- PASSE 2 : LE NEURONE DE VÉRIFICATION & D'AUTO-CORRECTION ---
+          if (requestedType && requestedType !== "text" && replyText.trim().length > 20) {
+            const critiquePrompt = `Tu es le module de contrôle qualité, de vérification mathématique et d'auto-correction du Méga-Neurone StudyCloud.
+Analyse le contenu généré ci-dessous pour le format "${requestedType}".
+Vérifications obligatoires :
+1. Formules mathématiques : Vérifie l'exactitude des calculs, intégrales, dérivées, limites et la syntaxe LaTeX standard ($...$ ou $$...$$).
+2. Structure :
+   - Si QCM : Vérifie que chaque question a 4 choix (A, B, C, D) clairs, la bonne réponse et une explication pédagogique.
+   - Si Carte Mentale : Vérifie la cohérence du nœud central et des branches hiérarchiques.
+   - Si Infographie / Diaporama : Vérifie que les étapes ou blocs sont progressifs et percutants.
+   - Si Résumé / Flashcard : Vérifie la clarté et la concision.
+3. Si une coquille, une formule tronquée ou une incohérence est détectée, corrige-la immédiatement.
+Renvoie UNIQUEMENT le contenu final vérifié, corrigé et prêt à l'emploi pour l'application, sans aucun commentaire méta ni préambule.
+
+CONTENU À CONTRÔLER ET CORRIGER :
+${replyText}`;
+
+            try {
+              const critiqueResult = await aiInstance.run(usedModel || "@cf/meta/llama-3.1-8b-instruct", {
+                messages: [{ role: "system", content: critiquePrompt }],
+                temperature: 0.1,
+                max_tokens: 2500,
+              });
+              const refined = critiqueResult?.response || critiqueResult?.result || critiqueResult?.text || (typeof critiqueResult === "string" ? critiqueResult : "");
+              if (refined && refined.trim().length > 30) {
+                replyText = refined.trim();
+              }
+            } catch (critiqueErr) {
+              console.warn("[Neurone] Vérification échouée, conservation de la passe 1:", critiqueErr?.message || critiqueErr);
             }
           }
         }
+
+        // Repli sur le Worker IA dédié si nécessaire
         if (!replyText) {
           try {
             const aiWorkerRes = await fetch("https://studycloud-ai.delmaskouassidibi.workers.dev", {
@@ -3511,6 +3568,10 @@ Instructions : L'\xE9l\xE8ve t'a transmis ce document pour que tu travailles ave
               body: JSON.stringify({
                 messages,
                 prompt: userPrompt,
+                message: userPrompt,
+                conversation_id: conversationId,
+                requested_type: requestedType,
+                history: incomingHistory,
                 attachedFileContent: body.attachedFileContent,
                 attachedFileName: body.attachedFileName
               })
@@ -3521,67 +3582,85 @@ Instructions : L'\xE9l\xE8ve t'a transmis ce document pour que tu travailles ave
               usedModel = aiData.model || "studycloud-ai-worker";
             }
           } catch (fetchErr) {
-            console.warn("Proxy vers studycloud-ai a \xE9chou\xE9:", fetchErr?.message || fetchErr);
+            console.warn("Proxy vers studycloud-ai a échoué:", fetchErr?.message || fetchErr);
           }
         }
+
         if (!replyText) {
           return errorResponse(
-            "L'IA StudyCloud n'a pas pu r\xE9pondre. V\xE9rifiez que la liaison Workers AI 'MON-STUDYCLOUD-ia' est configur\xE9e dans Cloudflare (Settings > Variables and Bindings > Workers AI), ou que votre Worker IA 'studycloud-ai' est bien d\xE9ploy\xE9.",
+            "L'IA StudyCloud n'a pas pu répondre. Vérifiez que la liaison Workers AI 'MON-STUDYCLOUD-ia' est configurée dans Cloudflare, ou que votre Worker IA 'studycloud-ai' est bien déployé.",
             500,
             origin
           );
         }
-        if (userId && env.DB) {
-          try {
-            const userMsgId = crypto.randomUUID();
-            const aiMsgId = crypto.randomUUID();
-            await env.DB.prepare(`
-              INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, attached_file_id, attached_file_name, attached_file_r2_key, attached_file_content)
-              VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?)
-            `).bind(
-              userMsgId,
-              userId,
-              sessionId,
-              userPrompt,
-              body.attachedFileId || null,
-              body.attachedFileName || null,
-              body.attachedFileR2Key || null,
-              body.attachedFileContent || null
-            ).run();
-            await env.DB.prepare(`
-              INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text)
-              VALUES (?, ?, ?, 'assistant', ?)
-            `).bind(
-              aiMsgId,
-              userId,
-              sessionId,
-              replyText
-            ).run();
-          } catch (dbSaveErr) {
-            console.warn("[Workspace] Erreur sauvegarde conversation D1:", dbSaveErr);
-          }
-        }
 
-        // Sauvegarde dans la table messages pour l'historique Gemini
+        // Sauvegarde dans D1
         if (env.DB) {
-          const convId = body.conversationId || sessionId;
           const userMsgId = crypto.randomUUID();
           const aiMsgId = crypto.randomUUID();
-          if (convId) {
+
+          // 1. Table messages
+          if (conversationId) {
             try {
               await env.DB.prepare(`
                 INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
                 VALUES (?, ?, 'user', ?, ?, CURRENT_TIMESTAMP)
-              `).bind(userMsgId, convId, userPrompt, JSON.stringify({ attachedFileName: body.attachedFileName || null })).run();
+              `).bind(userMsgId, conversationId, userPrompt, JSON.stringify({ attachedFileName: body.attachedFileName || null })).run();
 
               await env.DB.prepare(`
                 INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
                 VALUES (?, ?, 'assistant', ?, ?, CURRENT_TIMESTAMP)
-              `).bind(aiMsgId, convId, replyText, JSON.stringify({ model: usedModel })).run();
+              `).bind(aiMsgId, conversationId, replyText, JSON.stringify({ model: usedModel, type: requestedType || "text" })).run();
 
-              await env.DB.prepare("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(convId).run();
+              await env.DB.prepare("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(conversationId).run();
             } catch (msgErr) {
               console.warn("[Workspace] Erreur insertion messages D1:", msgErr);
+            }
+          }
+
+          // 2. Table ai_creations
+          if (requestedType && requestedType !== "text" && conversationId) {
+            try {
+              const creationId = body.creationId || crypto.randomUUID();
+              const creationTitle = `${requestedType.toUpperCase()} : ${(userPrompt || body.attachedFileName || "Création").slice(0, 50)}`;
+              await env.DB.prepare(`
+                INSERT INTO ai_creations (id, conversation_id, message_id, type, title, content, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET title = excluded.title, content = excluded.content
+              `).bind(creationId, conversationId, aiMsgId, requestedType, creationTitle, replyText).run();
+            } catch (creatErr) {
+              console.warn("[Workspace] Erreur insertion ai_creations D1:", creatErr);
+            }
+          }
+
+          // 3. Rétro-compatibilité user_ai_workspace
+          if (userId) {
+            try {
+              await env.DB.prepare(`
+                INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, attached_file_id, attached_file_name, attached_file_r2_key, attached_file_content)
+                VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?)
+              `).bind(
+                userMsgId,
+                userId,
+                sessionId,
+                userPrompt,
+                body.attachedFileId || null,
+                body.attachedFileName || null,
+                body.attachedFileR2Key || null,
+                body.attachedFileContent || null
+              ).run();
+
+              await env.DB.prepare(`
+                INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text)
+                VALUES (?, ?, ?, 'assistant', ?)
+              `).bind(
+                aiMsgId,
+                userId,
+                sessionId,
+                replyText
+              ).run();
+            } catch (dbSaveErr) {
+              console.warn("[Workspace] Erreur sauvegarde conversation D1:", dbSaveErr);
             }
           }
         }
@@ -3589,6 +3668,7 @@ Instructions : L'\xE9l\xE8ve t'a transmis ce document pour que tu travailles ave
         return jsonResponse({
           success: true,
           response: replyText,
+          type: requestedType || "text",
           model: usedModel,
           source: "studycloud_ai"
         }, 200, origin);

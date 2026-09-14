@@ -370,44 +370,70 @@ export default {
       }
 
       const body = await request.json().catch(() => ({}));
-      let messages = Array.isArray(body.messages) ? body.messages : [];
-      const userPrompt = body.prompt || body.text || "";
+      const userPrompt = body.message || body.prompt || body.text || "";
+      const conversationId = body.conversation_id || body.conversationId || body.sessionId || "default-session";
+      const requestedType = (body.requested_type || body.toolType || body.type || "").toLowerCase().trim();
       const userId = body.userId;
-      const sessionId = body.sessionId || "default-session";
+      const sessionId = body.sessionId || conversationId;
 
-      if (messages.length === 0) {
-        messages = [
-          { role: "user", content: userPrompt || "Bonjour !" }
-        ];
-      }
+      // 1. SYSTEM PROMPT MAÎTRE ("Le Méga-Neurone" de StudyCloud / DKDSCHOOL-NUMÉRIQUE)
+      const masterSystemPrompt = `Tu es le "Méga-Neurone" central et ultra-performant de StudyCloud / DKDSCHOOL-NUMÉRIQUE, conçu par DKD Technologies.
+Ton rôle est de générer des contenus pédagogiques d'une rigueur absolue, parfaitement adaptés aux programmes scolaires et universitaires (du secondaire jusqu'au supérieur et écoles d'ingénieurs).
+Tu disposes d'une grande variété de formats créatifs : Cartes mentales interactives, QCM structurés, Infographies de synthèse, Diaporamas pédagogiques, Fiches de révision (flashcards) et Résumés exhaustifs.
 
-      // Si un document PDF ou texte est joint, l'intégrer au contexte prioritaire
+RÈGLES D'OR ABSOLUES :
+1. Rigueur scientifique et mathématique totale : Ne JAMAIS inventer de fausses données, de théorèmes erronés ou de formules inexactes.
+2. Formules mathématiques en LaTeX standard : Rédige TOUTES les formules mathématiques et scientifiques en syntaxe LaTeX standard entourées de dollars ($...$ pour les formules en ligne, $$...$$ pour les blocs centrés).
+   Exemples : $r(t) = a t \\cdot u(t)$, $R(p) = \\frac{a}{p^2}$, $\\lim_{t \\to \\infty} f(t) = \\lim_{p \\to 0} p F(p)$, $\\mathcal{L}[a \\cdot f(t) + b \\cdot g(t)] = a \\cdot F(p) + b \\cdot G(p)$.
+3. Clarté et pédagogie : Sois dynamique, captivant, utilise des analogies parlantes (ex: métaphore du traducteur temporel/fréquentiel) et des étapes numérotées claires.
+4. Règles selon le type de création demandé ('${requestedType || "auto"}') :
+   - Si QCM / QUIZ : Propose des questions claires, exactement 4 options identifiées (A, B, C, D) avec formules propres, la bonne réponse et un indice pédagogique pertinent.
+   - Si CARTE MENTALE (Mindmap) : Définis un concept central et des branches hiérarchiques nettes (Définitions, Propriétés clés, Applications, Méthodes de calcul).
+   - Si INFOGRAPHIE / DIAPORAMA : Structure en blocs étagés et étapes séquentielles avec des repères visuels clairs (Étape 1, Étape 2, etc.).
+   - Si FLASHCARDS (Fiches de révision) : Définis des paires recto (question/formule) et verso (réponse/application) percutantes.
+   - Si RÉSUMÉ : Rédige une synthèse fluide, complète, avec les définitions et théorèmes fondamentaux bien mis en valeur.`;
+
+      // Construction de l'historique conversationnel
+      let incomingHistory = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+      const messages = [
+        { role: "system", content: masterSystemPrompt }
+      ];
+
+      // Document support attaché si présent
       if (body.attachedFileContent && typeof body.attachedFileContent === "string" && body.attachedFileContent.trim().length > 0) {
         const docTitle = body.attachedFileName || "Document joint";
         const maxDocChars = 32000;
         const cleanDocContent = body.attachedFileContent.slice(0, maxDocChars);
-        messages.unshift({
+        messages.push({
           role: "system",
-          content: `=== DOCUMENT JOINT DE L'ÉLÈVE ("${docTitle}") ===\n${cleanDocContent}\n=== FIN DU DOCUMENT ===\nInstructions : Tu as un accès COMPLET et DIRECT à ce document. Réponds précisément aux questions de l'élève en t'appuyant rigoureusement sur les leçons, théorèmes, exercices et explications contenus dans ce fichier.`
+          content: `=== DOCUMENT JOINT DE L'ÉLÈVE ("${docTitle}") ===\n${cleanDocContent}\n=== FIN DU DOCUMENT ===\nInstructions : Tu as un accès COMPLET et DIRECT à ce document. Réponds précisément en t'appuyant rigoureusement sur les leçons, théorèmes, définitions, exercices et explications contenus dans ce fichier.`
         });
       }
 
-      const hasSystemMessage = messages.some(m => m.role === "system");
-      if (!hasSystemMessage) {
-        messages.unshift({
-          role: "system",
-          content: "Tu es l'assistante IA officielle de la plateforme StudyCloud, créée par DKD Technologies. Tu es une tutrice académique et pédagogique bienveillante, dynamique, très claire et structurée. Tu réponds TOUJOURS en français avec des explications simples, complètes et faciles à comprendre pour aider l'élève ou l'étudiant dans ses révisions, ses devoirs et sa compréhension des documents."
-        });
+      // Ajout de l'historique récent
+      for (const m of incomingHistory.slice(-10)) {
+        if (m && m.role && m.content && m.role !== "system") {
+          messages.push({ role: m.role === "user" ? "user" : "assistant", content: String(m.content) });
+        }
       }
 
+      // Message utilisateur actuel
+      if (userPrompt) {
+        messages.push({ role: "user", content: userPrompt });
+      } else if (messages.length === 1) {
+        messages.push({ role: "user", content: "Bonjour !" });
+      }
+
+      // Modèles candidats performants
       const candidateModels = [
-        "@cf/meta/llama-3.1-8b-instruct",
-        "@cf/meta/llama-3.2-3b-instruct",
-        "@cf/meta/llama-3.1-8b-instruct-fast",
         "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+        "@cf/meta/llama-3.1-70b-instruct",
+        "@cf/meta/llama-3-70b-instruct",
+        "@cf/meta/llama-3.1-8b-instruct",
         "@cf/mistral/mistral-7b-instruct-v0.2"
       ];
 
+      // --- PASSE 1 : GÉNÉRATION INITIALE DE HAUTE QUALITÉ ---
       let aiResult = null;
       let usedModel = "";
       let lastError = null;
@@ -417,7 +443,7 @@ export default {
           aiResult = await ai.run(m, {
             messages: messages,
             max_tokens: 2500,
-            temperature: 0.65,
+            temperature: 0.35, // Température équilibrée pour créativité et rigueur
           });
           usedModel = m;
           break;
@@ -431,41 +457,89 @@ export default {
         throw lastError || new Error("Aucun modèle IA n'a pu répondre");
       }
 
-      let replyText = "";
+      let generatedContent = "";
       if (typeof aiResult?.response === "string") {
-        replyText = aiResult.response;
+        generatedContent = aiResult.response;
       } else if (typeof aiResult === "string") {
-        replyText = aiResult;
+        generatedContent = aiResult;
       } else if (aiResult && typeof aiResult === "object") {
-        replyText = aiResult.response || aiResult.text || JSON.stringify(aiResult);
+        generatedContent = aiResult.response || aiResult.text || aiResult.result || JSON.stringify(aiResult);
       }
 
-      // Sauvegarde sécurisée persistante dans D1 (tables messages et user_ai_workspace)
+      // --- PASSE 2 : LE NEURONE DE VÉRIFICATION & D'AUTO-CORRECTION ---
+      // Si une création structurée est demandée, on applique un contrôle qualité strict à basse température
+      if (requestedType && requestedType !== "text" && generatedContent.trim().length > 20) {
+        const critiquePrompt = `Tu es le module de contrôle qualité, de vérification mathématique et d'auto-correction du Méga-Neurone StudyCloud.
+Analyse le contenu généré ci-dessous pour le format "${requestedType}".
+Vérifications obligatoires :
+1. Formules mathématiques : Vérifie l'exactitude des calculs, intégrales, dérivées, limites et la syntaxe LaTeX standard ($...$ ou $$...$$).
+2. Structure :
+   - Si QCM : Vérifie que chaque question a 4 choix (A, B, C, D) clairs, la bonne réponse et une explication pédagogique.
+   - Si Carte Mentale : Vérifie la cohérence du nœud central et des branches hiérarchiques.
+   - Si Infographie / Diaporama : Vérifie que les étapes ou blocs sont progressifs et percutants.
+   - Si Résumé / Flashcard : Vérifie la clarté et la concision.
+3. Si une coquille, une formule tronquée ou une incohérence est détectée, corrige-la immédiatement.
+Renvoie UNIQUEMENT le contenu final vérifié, corrigé et prêt à l'emploi pour l'application, sans aucun commentaire méta ni préambule.
+
+CONTENU À CONTRÔLER ET CORRIGER :
+${generatedContent}`;
+
+        try {
+          const critiqueResult = await ai.run(usedModel || "@cf/meta/llama-3.1-8b-instruct", {
+            messages: [{ role: "system", content: critiquePrompt }],
+            temperature: 0.1, // Contrôle strict et déterministe
+            max_tokens: 2500,
+          });
+
+          const refined = critiqueResult?.response || critiqueResult?.result || critiqueResult?.text || (typeof critiqueResult === "string" ? critiqueResult : "");
+          if (refined && refined.trim().length > 30) {
+            generatedContent = refined.trim();
+          }
+        } catch (critiqueErr) {
+          console.warn("[Neurone] Vérification échouée, conservation de la passe 1:", critiqueErr?.message || critiqueErr);
+        }
+      }
+
+      // --- ÉTAPE 3 : SAUVEGARDE PERSISTANTE DANS D1 ---
       if (db) {
-        const convId = body.conversationId || sessionId;
         const userMsgId = crypto.randomUUID();
         const aiMsgId = crypto.randomUUID();
 
-        // 1. Sauvegarde dans la table messages pour l'historique style Gemini
-        if (convId) {
+        // 1. Sauvegarde dans la table messages pour l'historique Gemini
+        if (conversationId) {
           try {
             await db.prepare(`
               INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
               VALUES (?, ?, 'user', ?, ?, CURRENT_TIMESTAMP)
-            `).bind(userMsgId, convId, userPrompt, JSON.stringify({ attachedFileName: body.attachedFileName || null })).run();
+            `).bind(userMsgId, conversationId, userPrompt, JSON.stringify({ attachedFileName: body.attachedFileName || null })).run();
 
             await db.prepare(`
               INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
               VALUES (?, ?, 'assistant', ?, ?, CURRENT_TIMESTAMP)
-            `).bind(aiMsgId, convId, replyText, JSON.stringify({ model: usedModel })).run();
+            `).bind(aiMsgId, conversationId, generatedContent, JSON.stringify({ model: usedModel, type: requestedType || "text" })).run();
 
-            await db.prepare("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(convId).run();
+            await db.prepare("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(conversationId).run();
           } catch (msgErr) {
             console.warn("[Workspace AI] Erreur insertion messages D1:", msgErr);
           }
         }
 
-        // 2. Sauvegarde dans user_ai_workspace si userId fourni
+        // 2. Si c'est une création dédiée, sauvegarde dans la table ai_creations
+        if (requestedType && requestedType !== "text" && conversationId) {
+          try {
+            const creationId = body.creationId || crypto.randomUUID();
+            const creationTitle = `${requestedType.toUpperCase()} : ${(userPrompt || body.attachedFileName || "Création").slice(0, 50)}`;
+            await db.prepare(`
+              INSERT INTO ai_creations (id, conversation_id, message_id, type, title, content, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET title = excluded.title, content = excluded.content
+            `).bind(creationId, conversationId, aiMsgId, requestedType, creationTitle, generatedContent).run();
+          } catch (creatErr) {
+            console.warn("[Workspace AI] Erreur insertion ai_creations D1:", creatErr);
+          }
+        }
+
+        // 3. Sauvegarde de rétro-compatibilité dans user_ai_workspace
         if (userId) {
           try {
             await db.prepare(`
@@ -489,17 +563,19 @@ export default {
               aiMsgId,
               userId,
               sessionId,
-              replyText
+              generatedContent
             ).run();
           } catch (dbSaveErr) {
-            console.warn("[Workspace AI] Erreur sauvegarde D1:", dbSaveErr);
+            console.warn("[Workspace AI] Erreur sauvegarde user_ai_workspace D1:", dbSaveErr);
           }
         }
       }
 
+      // --- 4. RETOUR AU FRONT-END ---
       return new Response(JSON.stringify({
         success: true,
-        response: replyText,
+        response: generatedContent,
+        type: requestedType || "text",
         model: usedModel,
         timestamp: new Date().toISOString()
       }), {

@@ -1,7 +1,8 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight } from 'lucide-react';
+import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { FileIconBadge } from './FileIconBadge';
+import { MathText } from './MathText';
 import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI } from '../services/api';
 import { extractDocumentText } from '../services/documentTextExtractor';
 import { parseOrBuildAiCreation } from '../services/aiCreationGenerator';
@@ -54,30 +55,91 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
 
   return (
     <div className="flex flex-col w-full items-start">
-      <div className="space-y-1.5 text-zinc-200 text-left w-full leading-relaxed font-medium">
+      <div className="space-y-2 text-zinc-200 text-left w-full leading-relaxed font-medium">
         {lines.map((line, idx) => {
           const isLastLine = idx === lines.length - 1;
-          const parts = line.split(/(\*\*[^*]+\*\*)/g);
-          const formattedLine = parts.map((part, i) => {
-            if (part.startsWith('**') && part.endsWith('**')) {
-              return (
-                <strong key={i} className="font-bold text-white">
-                  {part.slice(2, -2)}
-                </strong>
-              );
-            }
-            return part;
-          });
+          const trimmed = line.trim();
 
+          // Détection d'une carte de recommandation interactive (ex: Recommandé : flashcards)
+          const recoMatch = trimmed.match(/^(?:\[?💡?\s*Recommand[ée]\s*:\s*([a-zA-ZÀ-ÿ\s]+)\]?)/i);
+          if (recoMatch) {
+            const recoType = recoMatch[1].trim().toLowerCase();
+            let cardTitle = `Fiches & exercices de révision`;
+            let cardDesc = `Un ensemble interactif optimisé pour mémoriser rapidement les concepts clés de ce chapitre.`;
+            if (recoType.includes('flashcard') || recoType.includes('carte')) {
+              cardTitle = `Flashcards & cartes mémoire`;
+              cardDesc = `Un jeu de cartes interactif pour associer rapidement chaque formule et notion essentielle.`;
+            } else if (recoType.includes('diaporama') || recoType.includes('présentation')) {
+              cardTitle = `Guide visuel & diaporama`;
+              cardDesc = `Une présentation pas-à-pas illustrant les propriétés fondamentales et la méthode de résolution.`;
+            } else if (recoType.includes('quiz') || recoType.includes('qcm')) {
+              cardTitle = `Quiz d'entraînement interactif`;
+              cardDesc = `Testez vos connaissances avec 10 questions corrigées pas à pas.`;
+            } else if (recoType.includes('mindmap') || recoType.includes('mentale')) {
+              cardTitle = `Carte mentale synthétique`;
+              cardDesc = `Une vue arborescente pour visualiser toutes les connexions entre les théorèmes.`;
+            }
+
+            return (
+              <div key={idx} className="my-3 p-4 rounded-2xl bg-[#23262d] border border-zinc-700/80 shadow-md flex flex-col gap-2 w-full">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-[11px] font-bold text-zinc-300">
+                    <Layers className="w-3.5 h-3.5 text-orange-400" />
+                    <span className="capitalize">Recommandé : {recoType}</span>
+                  </div>
+                </div>
+                <h4 className="text-sm font-bold text-white leading-tight">{cardTitle}</h4>
+                <p className="text-xs text-zinc-400 leading-relaxed">{cardDesc}</p>
+                <div className="pt-1">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      window.dispatchEvent(new CustomEvent('auto-prompt', {
+                        detail: { prompt: `Crée une création de type ${recoType} sur ce cours` }
+                      }));
+                    }}
+                    className="px-4 py-1.5 rounded-full bg-white text-zinc-900 hover:bg-zinc-200 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer"
+                  >
+                    Ajouter
+                  </button>
+                </div>
+              </div>
+            );
+          }
+
+          // Rendu des titres Markdown (H1, H2, H3)
+          if (trimmed.startsWith('### ')) {
+            return (
+              <h3 key={idx} className="text-base font-bold text-white pt-2 pb-1 border-b border-zinc-800">
+                <MathText text={trimmed.slice(4)} inline={true} />
+              </h3>
+            );
+          }
+          if (trimmed.startsWith('## ')) {
+            return (
+              <h2 key={idx} className="text-lg font-black text-white pt-3 pb-1 border-b border-zinc-800">
+                <MathText text={trimmed.slice(3)} inline={true} />
+              </h2>
+            );
+          }
+          if (trimmed.startsWith('# ')) {
+            return (
+              <h1 key={idx} className="text-xl font-black text-orange-400 pt-3 pb-1">
+                <MathText text={trimmed.slice(2)} inline={true} />
+              </h1>
+            );
+          }
+
+          // Ligne normale avec formules mathématiques KaTeX
           return (
-            <p key={idx} className="whitespace-pre-wrap break-words">
-              {formattedLine}
+            <div key={idx} className="whitespace-pre-wrap break-words">
+              <MathText text={line} inline={true} />
               {isStreaming && isLastLine && (
                 <span className="inline-flex items-center align-middle ml-2 select-none" title="L'IA écrit en temps réel...">
                   <DnaLogo className="w-4 h-4 animate-dna-spin-float text-orange-500 drop-shadow-[0_0_8px_rgba(243,128,32,0.9)]" glow={true} />
                 </span>
               )}
-            </p>
+            </div>
           );
         })}
       </div>
@@ -458,13 +520,15 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         })),
       ];
 
-      // 5. Appel à l'IA Cloudflare Workers AI avec session persistante
+      // 5. Appel à l'IA Cloudflare Workers AI avec session persistante & Neurone
       const aiResult = await sendChatMessageToAi({
         messages: chatHistory,
         prompt: userText,
+        message: userText,
         userId: currentUserId,
         sessionId: currentConversationId,
         conversationId: currentConversationId,
+        requested_type: isCreation ? targetToolType : (isIteration && activeCreation ? activeCreation.toolType : undefined),
         attachedFileId,
         attachedFileName,
         attachedFileContent,
