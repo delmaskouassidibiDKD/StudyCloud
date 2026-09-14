@@ -3560,6 +3560,8 @@ Instructions : L'\xE9l\xE8ve t'a transmis ce document pour que tu travailles ave
           } catch (dbSaveErr) {
             console.warn("[Workspace] Erreur sauvegarde conversation D1:", dbSaveErr);
           }
+        }
+
         // Sauvegarde dans la table messages pour l'historique Gemini
         if (env.DB) {
           const convId = body.conversationId || sessionId;
@@ -3992,13 +3994,4 @@ Instructions : L'\xE9l\xE8ve t'a transmis ce document pour que tu travailles ave
     }
   }
 };
-var MyWorkflow = class {
-  async run(event, step) {
-    return;
-  }
-};
-__name(MyWorkflow, "MyWorkflow");
-export {
-  MyWorkflow,
-  src_default as default
-};
+export default src_default;
