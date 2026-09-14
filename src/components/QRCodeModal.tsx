@@ -103,7 +103,15 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
             <div className="flex items-center justify-between bg-stone-900 border-2 border-stone-800 rounded-xl px-3 py-2 shadow-[2px_2px_0px_0px_#1c1917]">
               <div className="flex items-center gap-2">
                 <span className="text-[10px] uppercase font-bold text-stone-400">Code d'accès :</span>
-                <span className="text-sm font-mono font-black text-amber-400 select-all">{shareCode}</span>
+                <a
+                  href={shareUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-sm font-mono font-black text-amber-400 hover:text-amber-300 underline decoration-dashed transition-colors"
+                  title="Ouvrir la page de téléchargement"
+                >
+                  {shareCode}
+                </a>
               </div>
               <button
                 type="button"

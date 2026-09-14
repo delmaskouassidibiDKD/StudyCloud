@@ -158,31 +158,65 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               />
             </div>
 
-            {/* Clean Code Hero Box */}
-            <div className="bg-stone-900 border-2 border-stone-800 rounded-2xl p-4 text-center space-y-2 shadow-[3px_3px_0px_0px_#1c1917]">
+            {/* Clean Code Hero Box avec lien cliquable */}
+            <div className="bg-stone-900 border-2 border-stone-800 rounded-2xl p-4 text-center space-y-3 shadow-[3px_3px_0px_0px_#1c1917]">
               <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-400/90 block">
-                Code d'accès au document
+                Code d'accès au document (Cliquer pour ouvrir)
               </span>
               <div className="flex items-center justify-center gap-2.5">
-                <span className="text-2xl font-mono font-black text-amber-400 tracking-wider select-all">
-                  {createdFolder.shareCode || '12334dhdb'}
-                </span>
+                <a
+                  href={shareableUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-2xl font-mono font-black text-amber-400 hover:text-amber-300 tracking-wider underline decoration-dashed hover:decoration-solid flex items-center gap-1.5 transition-colors"
+                  title="Cliquer pour ouvrir directement la page de téléchargement"
+                >
+                  <span>{createdFolder.shareCode || '12334dhdb'}</span>
+                  <ExternalLink className="w-4 h-4 text-amber-400/80" />
+                </a>
                 <button
                   type="button"
                   onClick={handleCopyCode}
                   className="bg-amber-400 hover:bg-amber-300 text-stone-950 font-extrabold text-xs px-3 py-1.5 rounded-xl border-2 border-stone-950 shadow-[2px_2px_0px_0px_#000] cursor-pointer flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 transition-all"
-                  title="Copier le code"
+                  title="Copier le code seul"
                 >
                   {copiedCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedCode ? 'Copié' : 'Copier'}</span>
+                  <span>{copiedCode ? 'Copié' : 'Copier code'}</span>
+                </button>
+              </div>
+
+              {/* Lien direct cliquable complet pour WhatsApp / SMS / Navigateur */}
+              <div className="bg-stone-950/90 rounded-xl p-2.5 flex items-center justify-between gap-2 border border-stone-800 text-left">
+                <a
+                  href={shareableUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="text-xs text-blue-400 hover:text-blue-300 font-mono font-semibold truncate hover:underline flex-1"
+                  title={shareableUrl}
+                >
+                  {shareableUrl}
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    if (shareableUrl) {
+                      navigator.clipboard.writeText(shareableUrl);
+                      setCopiedMessage(true);
+                      setTimeout(() => setCopiedMessage(false), 2500);
+                    }
+                  }}
+                  className="shrink-0 bg-stone-800 hover:bg-stone-700 text-white text-[11px] font-bold px-2.5 py-1 rounded-lg transition-all cursor-pointer"
+                  title="Copier le lien complet"
+                >
+                  Copier lien
                 </button>
               </div>
               <p className="text-[11px] text-stone-400 font-medium">
-                Le lien d'accès est attaché à ce code pour un partage propre sans URL brute.
+                Partagez ce lien sur WhatsApp ou donnez le code pour accéder directement à la page de téléchargement.
               </p>
             </div>
 
-            {/* Actions: Copier invitation & Tester la page */}
+            {/* Actions: Copier invitation & Ouvrir la page */}
             <div className="space-y-2 pt-1">
               <button
                 type="button"
@@ -190,7 +224,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
                 className="w-full bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-xs py-3 rounded-xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center justify-center gap-2"
               >
                 {copiedMessage ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
-                <span>{copiedMessage ? 'Message d\'accès copié !' : 'Partager / Copier le message d\'accès'}</span>
+                <span>{copiedMessage ? 'Lien d\'accès copié !' : 'Partager le lien cliquable'}</span>
               </button>
 
               <a

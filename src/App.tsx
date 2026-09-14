@@ -1049,10 +1049,12 @@ export default function App() {
 
   // Filter folders
   const filteredFolders = folders.filter((f) => {
+    const q = searchQuery.toLowerCase().trim();
     const matchesSearch =
-      f.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      f.description.toLowerCase().includes(searchQuery.toLowerCase()) ||
-      f.files.some((file) => file.name.toLowerCase().includes(searchQuery.toLowerCase()));
+      f.title.toLowerCase().includes(q) ||
+      f.description.toLowerCase().includes(q) ||
+      (f.shareCode && f.shareCode.toLowerCase().includes(q)) ||
+      f.files.some((file) => file.name.toLowerCase().includes(q));
     const matchesCategory = selectedCategory === 'Tous' || f.category === selectedCategory;
     return matchesSearch && matchesCategory;
   });
