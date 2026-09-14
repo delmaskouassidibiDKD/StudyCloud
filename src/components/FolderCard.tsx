@@ -2,7 +2,7 @@ import React, { useState } from 'react';
 import { Folder, FileText, Download, Share2, QrCode, Copy, Check, Lock, Unlock, Globe, Eye, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
 import { SharedFolder } from '../types';
 import { FileIconBadge } from './FileIconBadge';
-import { StudyCloudAPI } from '../services/api';
+import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
 
 interface FolderCardProps {
   folder: SharedFolder;
@@ -21,7 +21,8 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
   const [commentError, setCommentError] = useState(false);
   const [publishingState, setPublishingState] = useState<'idle' | 'loading' | 'success'>('idle');
 
-  const shareUrl = `${window.location.origin}/#share=${folder.id}`;
+  const workerBase = getWorkerApiUrl().replace(/\/+$/, '');
+  const shareUrl = `${workerBase}/s/${folder.shareCode || folder.id}`;
 
   const handleCopyLink = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -322,7 +323,7 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
           <button
             onClick={(e) => {
               e.stopPropagation();
-              onOpenQR(folder);
+              onOpenQR({ ...folder, shareUrl });
             }}
             className="bg-white dark:bg-white/10 hover:bg-stone-100 dark:hover:bg-white/15 text-stone-800 dark:text-white text-xs font-bold py-2 px-2 rounded-xl border-2 border-stone-800 dark:border-white/15 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none flex items-center justify-center gap-1 active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
             title="Générer QR Code mobile"

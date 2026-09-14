@@ -692,12 +692,7 @@ function renderShareLandingHtml(folder, files, originUrl) {
   </div>
 
   <script>
-    // Dissimulation instantan\xE9e du jeton dans la barre d'adresse pour emp\xEAcher toute modification
-    if (window.history && window.history.replaceState) {
-      try {
-        window.history.replaceState({}, document.title, '/share');
-      } catch (e) {}
-    }
+    // URL r\xE9elle de t\xE9l\xE9chargement direct pr\xE9serv\xE9e dans la barre d'adresse
 
     window.__SHARE_ID__ = ${JSON.stringify(folder.id)};
     window.__SHARE_TITLE__ = ${JSON.stringify(folder.title || "StudyCloud_Partage")};

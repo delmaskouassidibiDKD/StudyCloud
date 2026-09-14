@@ -275,7 +275,7 @@ export default function App() {
         files,
         totalSize,
         downloadsCount: 0,
-        isPasswordProtected: !isPublic,
+        isPasswordProtected: false,
         viewsCount: 0,
         shareCode,
         shareUrl,
@@ -288,7 +288,7 @@ export default function App() {
       if (!shareModalTargetItems) {
         setUploadedItems([]);
       }
-      showToast(`✨ Votre lien sécurisé "${linkName.trim()}" a été créé avec succès (${userCountry}) ! Retrouvez-le dans Partagés.`);
+      showToast(`✨ Votre lien "${linkName.trim()}" a été créé avec succès (${userCountry}) ! Retrouvez-le dans Partagés.`);
 
       try {
         await StudyCloudAPI.createShare({
@@ -301,7 +301,7 @@ export default function App() {
           school: userSchool,
           country: userCountry,
           isPublic,
-          isPasswordProtected: !isPublic,
+          isPasswordProtected: false,
           allowDownload: true,
           shareCode,
           shareUrl,
@@ -783,7 +783,10 @@ export default function App() {
   const [shareId, setShareId] = useState<string | null>(() => {
     const hash = window.location.hash;
     if (hash.startsWith('#share=')) {
-      return hash.replace('#share=', '');
+      const id = hash.replace('#share=', '');
+      const workerUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      window.location.replace(`${workerUrl}/s/${id}`);
+      return null;
     }
     return null;
   });
@@ -796,7 +799,9 @@ export default function App() {
     const handleHashChange = () => {
       const hash = window.location.hash;
       if (hash.startsWith('#share=')) {
-        setShareId(hash.replace('#share=', ''));
+        const id = hash.replace('#share=', '');
+        const workerUrl = getWorkerApiUrl().replace(/\/+$/, '');
+        window.location.replace(`${workerUrl}/s/${id}`);
       } else {
         setShareId(null);
       }
@@ -846,11 +851,11 @@ export default function App() {
               : [],
             totalSize: row.total_size || 0,
             downloadsCount: row.downloads_count || 0,
-            isPasswordProtected: Boolean(row.is_password_protected),
+            isPasswordProtected: false,
             password: row.password_hash || undefined,
             viewsCount: row.views_count || 0,
             shareCode: row.share_code,
-            shareUrl: row.share_url || `${window.location.origin}/#share=${row.id}`,
+            shareUrl: `${getWorkerApiUrl().replace(/\/+$/, '')}/s/${row.share_code || row.id}`,
             qrCodeData: row.qr_code_data,
             isPublic: Boolean(row.is_public),
             allowDownload: Boolean(row.allow_download),
@@ -898,11 +903,11 @@ export default function App() {
               : [],
             totalSize: row.total_size || 0,
             downloadsCount: row.downloads_count || 0,
-            isPasswordProtected: Boolean(row.is_password_protected),
+            isPasswordProtected: false,
             password: row.password_hash || undefined,
             viewsCount: row.views_count || 0,
             shareCode: row.share_code,
-            shareUrl: row.share_url,
+            shareUrl: `${getWorkerApiUrl().replace(/\/+$/, '')}/s/${row.share_code || row.id}`,
             qrCodeData: row.qr_code_data,
             isPublic: Boolean(row.is_public),
             allowDownload: Boolean(row.allow_download),
@@ -1311,7 +1316,7 @@ export default function App() {
       {activeQRCodeFolder && (
         <QRCodeModal
           folderTitle={activeQRCodeFolder.title}
-          shareUrl={activeQRCodeFolder.shareUrl || `${window.location.origin}/#share=${activeQRCodeFolder.id}`}
+          shareUrl={activeQRCodeFolder.shareUrl || `${getWorkerApiUrl().replace(/\/+$/, '')}/s/${activeQRCodeFolder.shareCode || activeQRCodeFolder.id}`}
           shareCode={activeQRCodeFolder.shareCode}
           country={activeQRCodeFolder.country}
           isPublic={activeQRCodeFolder.isPublic}

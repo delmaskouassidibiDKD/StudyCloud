@@ -1,5 +1,6 @@
 import React from 'react';
 import { X, Copy, Check, Download, Smartphone, Globe, Lock, QrCode } from 'lucide-react';
+import { getWorkerApiUrl } from '../services/api';
 
 interface QRCodeModalProps {
   folderTitle: string;
@@ -19,10 +20,15 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
   onClose,
 }) => {
   const [copied, setCopied] = React.useState(false);
-  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(shareUrl)}&margin=8`;
+  const workerBase = getWorkerApiUrl().replace(/\/+$/, '');
+  const realDirectUrl = (shareCode || shareUrl?.includes('/s/'))
+    ? (shareUrl?.includes('/s/') ? shareUrl : `${workerBase}/s/${shareCode}`)
+    : (shareUrl || `${workerBase}/s/share`);
+
+  const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(realDirectUrl)}&margin=8`;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(shareUrl);
+    navigator.clipboard.writeText(realDirectUrl);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };
@@ -93,7 +99,7 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
             <input
               type="text"
               readOnly
-              value={shareUrl}
+              value={realDirectUrl}
               className="bg-transparent text-xs text-stone-800 flex-1 px-1 outline-none font-mono truncate font-medium"
             />
             <button

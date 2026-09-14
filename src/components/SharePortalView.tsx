@@ -13,11 +13,18 @@ interface SharePortalViewProps {
 }
 
 export const SharePortalView: React.FC<SharePortalViewProps> = ({ folder, onBackToApp, onIncrementDownload }) => {
-  const [unlocked, setUnlocked] = useState(!folder.isPasswordProtected);
+  const [unlocked, setUnlocked] = useState(true);
   const [inputPassword, setInputPassword] = useState('');
   const [errorMsg, setErrorMsg] = useState('');
   const [zipping, setZipping] = useState(false);
   const [toastMsg, setToastMsg] = useState<string | null>(null);
+
+  React.useEffect(() => {
+    if (folder?.shareCode || folder?.id) {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      window.location.replace(`${baseUrl}/s/${folder.shareCode || folder.id}`);
+    }
+  }, [folder]);
 
   // Modal de choix de destination
   const [pendingDownload, setPendingDownload] = useState<{

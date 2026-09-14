@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { X, Loader2, Share2, FileText, Image as ImageIcon, Music, File as FileIcon, Copy, Check, Globe, QrCode, ExternalLink, ShieldCheck, Lock } from 'lucide-react';
 import { SharedFolder } from '../types';
+import { getWorkerApiUrl } from '../services/api';
 
 interface CreateShareLinkModalProps {
   uploadedItems: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[];
@@ -76,7 +77,10 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
     }, isPublic);
   };
 
-  const shareableUrl = createdFolder?.shareUrl || (createdFolder ? `${window.location.origin}/s/${createdFolder.shareCode || createdFolder.id}` : '');
+  const workerBase = getWorkerApiUrl().replace(/\/+$/, '');
+  const shareableUrl = createdFolder
+    ? `${workerBase}/s/${createdFolder.shareCode || createdFolder.id}`
+    : '';
 
   const handleCopyCode = () => {
     if (createdFolder?.shareCode) {
@@ -87,9 +91,8 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
   };
 
   const handleCopyMessage = () => {
-    if (!createdFolder) return;
-    const msg = `📚 "${createdFolder.title}" est disponible sur StudyCloud !\nLien d'accès sécurisé : ${shareableUrl}`;
-    navigator.clipboard.writeText(msg);
+    if (!createdFolder || !shareableUrl) return;
+    navigator.clipboard.writeText(shareableUrl);
     setCopiedMessage(true);
     setTimeout(() => setCopiedMessage(false), 2500);
   };
@@ -158,29 +161,16 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               />
             </div>
 
-            {/* Carte de lien sécurisé chiffré - Code technique masqué et protégé contre toute modification */}
-            <div className="bg-stone-900 border-2 border-stone-800 rounded-2xl p-4 space-y-3 shadow-[3px_3px_0px_0px_#1c1917]">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] font-extrabold uppercase tracking-wider text-amber-400 flex items-center gap-1.5">
-                  <ShieldCheck className="w-4 h-4 text-emerald-400" />
-                  <span>Lien de partage sécurisé & chiffré</span>
-                </span>
-                <span className="text-[10px] font-bold text-emerald-400 bg-emerald-950/80 px-2 py-0.5 rounded-full border border-emerald-800/60 flex items-center gap-1">
-                  ● Protection active
-                </span>
-              </div>
-
-              {/* Champ de lien sécurisé cliquable avec bouton Copier */}
-              <div className="bg-stone-950 rounded-xl p-2.5 flex items-center justify-between gap-2 border border-stone-800">
-                <a
-                  href={shareableUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="text-xs text-blue-400 hover:text-blue-300 font-mono font-semibold truncate hover:underline flex-1"
-                  title={shareableUrl}
-                >
-                  {shareableUrl}
-                </a>
+            {/* Lien direct de téléchargement */}
+            <div className="bg-white border-2 border-stone-800 rounded-2xl p-3.5 space-y-2 shadow-[2px_2px_0px_0px_#1c1917]">
+              <span className="text-xs font-extrabold text-stone-800 block">Lien direct de téléchargement :</span>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  readOnly
+                  value={shareableUrl}
+                  className="flex-1 bg-stone-100 border border-stone-300 rounded-xl px-3 py-2 text-xs font-mono font-bold text-orange-600 outline-none select-all truncate"
+                />
                 <button
                   type="button"
                   onClick={() => {
@@ -190,17 +180,12 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
                       setTimeout(() => setCopiedMessage(false), 2500);
                     }
                   }}
-                  className="shrink-0 bg-amber-400 hover:bg-amber-300 text-stone-950 text-xs font-black px-3 py-1.5 rounded-lg transition-all cursor-pointer flex items-center gap-1 active:scale-95"
-                  title="Copier le lien sécurisé"
+                  className="shrink-0 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center gap-1 active:translate-x-0.5 active:translate-y-0.5"
+                  title="Copier le lien direct"
                 >
                   {copiedMessage ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                   <span>{copiedMessage ? 'Copié !' : 'Copier'}</span>
                 </button>
-              </div>
-
-              <div className="flex items-start gap-2 pt-1 text-[11px] text-stone-400 leading-tight">
-                <Lock className="w-3.5 h-3.5 text-stone-500 shrink-0 mt-0.5" />
-                <span>Ce lien unique est protégé par chiffrement. Le jeton technique est masqué dans le navigateur afin d'empêcher toute modification par un tiers.</span>
               </div>
             </div>
 
@@ -212,7 +197,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
                 className="w-full bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-xs py-3 rounded-xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center justify-center gap-2"
               >
                 {copiedMessage ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
-                <span>{copiedMessage ? 'Lien d\'accès copié !' : 'Partager le lien cliquable'}</span>
+                <span>{copiedMessage ? 'Lien copié !' : 'Partager le lien cliquable'}</span>
               </button>
 
               <a
@@ -222,7 +207,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
                 className="w-full bg-white hover:bg-stone-100 text-stone-800 font-extrabold text-xs py-2.5 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center gap-1.5 text-center no-underline"
               >
                 <span>Ouvrir la page de téléchargement</span>
-                <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+                <ExternalLink className="w-3.5 h-3.5 text-orange-600" />
               </a>
             </div>
 

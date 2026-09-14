@@ -2,7 +2,7 @@ import React, { useState, useEffect, useCallback } from 'react';
 import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart, RefreshCw, Globe, Hash } from 'lucide-react';
 import { SharedFolder, SharedFile } from '../types';
 import { FileIconBadge } from './FileIconBadge';
-import { StudyCloudAPI } from '../services/api';
+import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
 import { DownloadDestinationModal, DownloadDestinationChoice } from './DownloadDestinationModal';
 import { importFilesToMesFichiers } from '../services/userSync';
 
@@ -316,7 +316,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   };
 
   const handleCopyLink = (folder: SharedFolder) => {
-    const url = `${window.location.origin}/#share=${folder.id}`;
+    const workerBase = getWorkerApiUrl().replace(/\/+$/, '');
+    const url = `${workerBase}/s/${folder.shareCode || folder.id}`;
     navigator.clipboard.writeText(url).then(() => {
       setCopiedLinkId(folder.id);
       setTimeout(() => setCopiedLinkId(null), 2000);
