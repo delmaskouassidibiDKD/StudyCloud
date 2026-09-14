@@ -82,6 +82,10 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
     ? `${workerBase}/s/${createdFolder.shareCode || createdFolder.id}`
     : '';
 
+  const formattedShareMessage = createdFolder
+    ? `StudyCloud (DKD Technologies) : Plateforme cloud de stockage sécurisé pour les élèves, les étudiants, les entreprises et les professionnels.\n\nTéléchargez les fichiers en cliquant sur le lien ci-dessous :\n${shareableUrl}`
+    : shareableUrl;
+
   const handleCopyCode = () => {
     if (createdFolder?.shareCode) {
       navigator.clipboard.writeText(createdFolder.shareCode);
@@ -90,9 +94,30 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
     }
   };
 
-  const handleCopyMessage = () => {
-    if (!createdFolder || !shareableUrl) return;
+  const [copiedDirect, setCopiedDirect] = useState(false);
+
+  const handleCopyDirect = () => {
+    if (!shareableUrl) return;
     navigator.clipboard.writeText(shareableUrl);
+    setCopiedDirect(true);
+    setTimeout(() => setCopiedDirect(false), 2500);
+  };
+
+  const handleShareClickable = async () => {
+    if (!createdFolder || !shareableUrl) return;
+    if (typeof navigator !== 'undefined' && navigator.share) {
+      try {
+        await navigator.share({
+          title: `${createdFolder.title || 'Document'} • StudyCloud`,
+          text: `StudyCloud (DKD Technologies) : Plateforme cloud de stockage sécurisé pour les élèves, les étudiants, les entreprises et les professionnels.\n\nTéléchargez les fichiers en cliquant sur le lien ci-dessous :`,
+          url: shareableUrl,
+        });
+        return;
+      } catch (e) {
+        // Fallback to clipboard
+      }
+    }
+    navigator.clipboard.writeText(formattedShareMessage);
     setCopiedMessage(true);
     setTimeout(() => setCopiedMessage(false), 2500);
   };
@@ -173,31 +198,25 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
                 />
                 <button
                   type="button"
-                  onClick={() => {
-                    if (shareableUrl) {
-                      navigator.clipboard.writeText(shareableUrl);
-                      setCopiedMessage(true);
-                      setTimeout(() => setCopiedMessage(false), 2500);
-                    }
-                  }}
+                  onClick={handleCopyDirect}
                   className="shrink-0 bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold px-3.5 py-2 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center gap-1 active:translate-x-0.5 active:translate-y-0.5"
                   title="Copier le lien direct"
                 >
-                  {copiedMessage ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                  <span>{copiedMessage ? 'Copié !' : 'Copier'}</span>
+                  {copiedDirect ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedDirect ? 'Copié !' : 'Copier'}</span>
                 </button>
               </div>
             </div>
 
-            {/* Actions: Copier invitation & Ouvrir la page */}
+            {/* Actions: Partager invitation & Ouvrir la page */}
             <div className="space-y-2 pt-1">
               <button
                 type="button"
-                onClick={handleCopyMessage}
+                onClick={handleShareClickable}
                 className="w-full bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-xs py-3 rounded-xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center justify-center gap-2"
               >
                 {copiedMessage ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
-                <span>{copiedMessage ? 'Lien copié !' : 'Partager le lien cliquable'}</span>
+                <span>{copiedMessage ? 'Message & Lien prêts !' : 'Partager le lien cliquable'}</span>
               </button>
 
               <a
