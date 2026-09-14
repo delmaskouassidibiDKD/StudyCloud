@@ -903,30 +903,7 @@ export function LeftMenu({
             </div>
           )}
         </div>
-      ) : (
-        /* Top Header when Assistant Chat is Open */
-        <div className="w-full px-3 py-2 shrink-0 bg-[#1e2024] border-b border-stone-700 flex items-center justify-between z-30">
-          {hasChatMessages ? (
-            <button
-              onClick={() => setChatKey(prev => prev + 1)}
-              className="px-2 py-1 bg-[#2a2d33] rounded border border-stone-600 shadow-xs hover:bg-[#343840] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-zinc-300"
-              title="Réinitialiser la discussion"
-            >
-              <RotateCcw className="w-3.5 h-3.5 text-orange-400" />
-              <span className="text-[9px] font-extrabold uppercase tracking-widest">Nouvelle disc.</span>
-            </button>
-          ) : <div />}
-
-          <button
-            onClick={() => setIsAssistantOpen(false)}
-            className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-500/20 border border-orange-500/50 text-orange-400 text-[10px] font-black cursor-pointer hover:bg-orange-500/30 transition-colors"
-            title="Fermer l'Assistante DKD"
-          >
-            <DelmasRobot size={22} />
-            <span>Fermer</span>
-          </button>
-        </div>
-      )}
+      ) : null}
 
       {/* Main Content: Files List OR Assistant Chat in natural flex flow */}
       {!isAssistantOpen ? (

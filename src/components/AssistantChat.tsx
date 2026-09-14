@@ -1,9 +1,10 @@
 import React, { useState, useRef, useEffect } from 'react';
-import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap, Key, ExternalLink, ShieldCheck, Eye, EyeOff } from 'lucide-react';
+import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
+import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
 import { MathText } from './MathText';
-import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, setGeminiApiKey } from '../services/api';
+import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey } from '../services/api';
 import { extractDocumentText } from '../services/documentTextExtractor';
 import { parseOrBuildAiCreation } from '../services/aiCreationGenerator';
 import { AiCreation, AiCreationType } from './ai-creations/types';
@@ -187,15 +188,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   // Création active suivie pour modification et itération continue
   const [activeCreation, setActiveCreation] = useState<AiCreation | null>(null);
 
-  // Mode Puissance (Délégation directe à Google Gemini 2.0 Flash)
+  // Mode Puissant
   const [isPowerMode, setIsPowerMode] = useState<boolean>(() => {
     return localStorage.getItem('studycloud_ai_power_mode') === 'true';
   });
-
-  const [geminiApiKey, setGeminiApiKeyState] = useState<string>(() => getGeminiApiKey());
-  const [isGeminiModalOpen, setIsGeminiModalOpen] = useState<boolean>(false);
-  const [tempGeminiKey, setTempGeminiKey] = useState<string>('');
-  const [showKeyPassword, setShowKeyPassword] = useState<boolean>(false);
 
   useEffect(() => {
     localStorage.setItem('studycloud_ai_power_mode', String(isPowerMode));
@@ -576,7 +572,7 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
         fileName: attachedFileName,
         powerMode: isPowerMode,
         engine: isPowerMode ? 'gemini' : 'standard',
-        geminiApiKey: geminiApiKey || undefined,
+        geminiApiKey: getGeminiApiKey() || undefined,
       });
 
       const rawResponseText = aiResult.response || "Désolé, je n'ai pas pu obtenir de réponse.";
@@ -739,14 +735,15 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
   return (
     <div className="flex flex-col h-full bg-[#1e2024] font-nunito relative z-50 overflow-hidden">
       
-      {/* EN-TÊTE SUPÉRIEUR STYLE GEMINI (BOUTON HISTORIQUE, TITRE, NOUVELLE CONVERSATION) */}
-      <div className="flex items-center justify-between px-4 py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-10 shadow-sm">
-        <div className="flex items-center gap-2 min-w-0">
+      {/* EN-TÊTE SUPÉRIEUR (BOUTON HISTORIQUE, NOUVELLE CONVERSATION, PUISSANT, FERMER) */}
+      <div className="flex items-center justify-between px-3 sm:px-4 py-2.5 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-10 shadow-sm">
+        <div className="flex items-center gap-1.5 min-w-0">
+          {/* Bouton Historique */}
           <button
             type="button"
             onClick={() => setIsHistoryDrawerOpen(true)}
-            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95"
-            title="Historique des discussions (Style Gemini)"
+            className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white text-xs font-bold transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0"
+            title="Historique des discussions"
           >
             <Clock className="w-3.5 h-3.5 text-orange-400" />
             <span>Historique</span>
@@ -757,74 +754,50 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
             )}
           </button>
 
-          <span className="text-xs font-semibold text-zinc-300 truncate max-w-[140px] sm:max-w-[200px]" title={currentConversationTitle}>
+          {/* Bouton + (Nouvelle discussion) juste derrière lui */}
+          <button
+            type="button"
+            onClick={handleStartNewConversation}
+            className="p-1.5 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all cursor-pointer border border-zinc-700 active:scale-95 shrink-0 flex items-center justify-center"
+            title="Nouvelle discussion"
+          >
+            <Plus className="w-4 h-4 text-orange-400" />
+          </button>
+
+          <span className="text-xs font-semibold text-zinc-400 truncate hidden md:inline max-w-[140px] ml-1" title={currentConversationTitle}>
             {currentConversationTitle}
           </span>
         </div>
 
-        <div className="flex items-center gap-1.5">
-          {/* BOUTON PUISSANCE (DÉLÉGATION DIRECTE GOOGLE GEMINI 2.0 FLASH) */}
+        <div className="flex items-center gap-2 shrink-0">
+          {/* Bouton Noir Puissant (simple, sans mention de Gemini) */}
           <button
             type="button"
-            onClick={() => {
-              if (!isPowerMode && !geminiApiKey) {
-                setTempGeminiKey('');
-                setIsGeminiModalOpen(true);
-              } else {
-                setIsPowerMode(prev => !prev);
-              }
-            }}
-            className={`flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-black transition-all cursor-pointer border active:scale-95 ${
+            onClick={() => setIsPowerMode(prev => !prev)}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition-all cursor-pointer border active:scale-95 ${
               isPowerMode
-                ? 'bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-white border-purple-300/60 shadow-lg shadow-purple-500/25 ring-2 ring-purple-500/30'
-                : 'bg-zinc-800 hover:bg-zinc-700 text-zinc-400 hover:text-zinc-200 border-zinc-700'
+                ? 'bg-black hover:bg-zinc-950 text-white border-zinc-600 shadow-sm'
+                : 'bg-zinc-900/80 hover:bg-zinc-800 text-zinc-400 hover:text-zinc-200 border-zinc-800'
             }`}
-            title={isPowerMode ? "Mode Puissance ACTIF (Google Gemini 2.0 Flash) - Cliquez pour repasser en mode standard" : "Activer le Mode Puissance (Google Gemini 2.0 Flash)"}
+            title={isPowerMode ? "Mode Puissant actif - Cliquez pour désactiver" : "Activer le Mode Puissant"}
           >
-            <Zap className={`w-3.5 h-3.5 ${isPowerMode ? 'text-amber-300 fill-amber-300 animate-bounce' : 'text-zinc-400'}`} />
-            <span className="tracking-tight">{isPowerMode ? 'Puissance MAX' : 'Puissance'}</span>
-            <span className={`text-[9px] px-1.5 py-0.2 rounded-full font-black uppercase ${
-              isPowerMode ? 'bg-white/25 text-white' : 'bg-zinc-700 text-zinc-400'
-            }`}>
-              {isPowerMode ? 'GEMINI' : 'OFF'}
-            </span>
+            <Zap className={`w-3.5 h-3.5 ${isPowerMode ? 'text-amber-400 fill-amber-400' : 'text-zinc-500'}`} />
+            <span>Puissant</span>
+            {isPowerMode && (
+              <span className="w-1.5 h-1.5 rounded-full bg-amber-400 animate-pulse" />
+            )}
           </button>
 
-          {/* Bouton Paramètres Clé Gemini */}
-          <button
-            type="button"
-            onClick={() => {
-              setTempGeminiKey(geminiApiKey);
-              setIsGeminiModalOpen(true);
-            }}
-            className={`p-1.5 rounded-xl border transition-all cursor-pointer active:scale-95 ${
-              geminiApiKey
-                ? 'bg-purple-950/40 border-purple-500/50 text-purple-300 hover:bg-purple-900/60 shadow-xs'
-                : 'bg-zinc-800 border-zinc-700 text-zinc-400 hover:text-white hover:bg-zinc-700'
-            }`}
-            title={geminiApiKey ? "Clé API Gemini configurée - Cliquez pour modifier" : "Configurer la clé API Google Gemini (Google AI Studio)"}
-          >
-            <Key className={`w-3.5 h-3.5 ${geminiApiKey ? 'text-amber-400' : 'text-zinc-400'}`} />
-          </button>
-
-          <button
-            type="button"
-            onClick={handleStartNewConversation}
-            className="flex items-center gap-1 px-2.5 py-1.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white text-xs font-bold transition-all cursor-pointer shadow-sm active:scale-95"
-            title="Démarrer une nouvelle discussion"
-          >
-            <Plus className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Nouvelle</span>
-          </button>
-
+          {/* Bouton Fermer */}
           {onClose && (
             <button
               type="button"
               onClick={onClose}
-              className="p-1.5 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-              title="Fermer le chat"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-orange-500/20 border border-orange-500/50 text-orange-400 text-[10px] font-black cursor-pointer hover:bg-orange-500/30 transition-colors"
+              title="Fermer l'Assistante DKD"
             >
-              <X className="w-4 h-4" />
+              <DelmasRobot size={20} />
+              <span>Fermer</span>
             </button>
           )}
         </div>
@@ -954,25 +927,12 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
                     <div className="flex items-center gap-2">
                       <DnaLogo className="w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)] text-orange-500" glow={true} />
                       <span className="text-xs font-bold text-orange-500/90 tracking-wide uppercase">Assistant StudyCloud</span>
-                      {msg.model && msg.model.toLowerCase().includes('gemini') ? (
-                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-gradient-to-r from-amber-500/20 to-purple-500/20 border border-purple-500/40 text-[10px] font-black text-amber-300 shadow-sm" title={msg.model}>
-                          <Zap className="w-3 h-3 text-amber-400 fill-amber-400" />
-                          <span>Google Gemini 2.0 Flash</span>
+                      {msg.isPowerMode && (
+                        <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-zinc-800 border border-zinc-700 text-[10px] font-bold text-zinc-300 shadow-xs">
+                          <Zap className="w-3 h-3 text-amber-400" />
+                          <span>Puissant</span>
                         </span>
-                      ) : msg.isPowerMode ? (
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setTempGeminiKey(geminiApiKey);
-                            setIsGeminiModalOpen(true);
-                          }}
-                          className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full bg-amber-500/20 hover:bg-amber-500/30 border border-amber-500/40 text-[10px] font-black text-amber-300 shadow-sm cursor-pointer"
-                          title="Cliquez pour renseigner votre clé Gemini"
-                        >
-                          <Key className="w-3 h-3 text-amber-400" />
-                          <span>Configurer clé Gemini</span>
-                        </button>
-                      ) : null}
+                      )}
                     </div>
                     {msg.attachedFileName && (
                       <div className="flex items-center gap-1.5 flex-wrap">
@@ -1128,34 +1088,14 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
             e.preventDefault();
             handleSend();
           }}
-          className={`flex flex-col gap-2 bg-[#282a2f] border rounded-3xl p-3 sm:p-3.5 transition-all shadow-lg mx-2 md:mx-4 ${
-            isPowerMode
-              ? 'border-purple-500/60 shadow-[0_0_20px_rgba(168,85,247,0.18)] focus-within:border-purple-400'
-              : 'border-zinc-700/60 focus-within:border-[#70a5ff]/70'
-          }`}
+          className="flex flex-col gap-2 bg-[#282a2f] border border-zinc-700/60 focus-within:border-zinc-500 rounded-3xl p-3 sm:p-3.5 transition-all shadow-lg mx-2 md:mx-4"
         >
-          {isPowerMode && (
-            <div className="flex items-center justify-between px-1 py-1 text-[11px] font-bold text-amber-300 border-b border-purple-500/25 mb-0.5">
-              <span className="flex items-center gap-1.5">
-                <Zap className="w-3.5 h-3.5 text-amber-400 fill-amber-400 animate-pulse" />
-                <span>Mode Puissance actif (Requêtes traitées par Google Gemini)</span>
-              </span>
-              <span className="text-[9px] px-1.5 py-0.2 rounded-full bg-purple-500/30 text-purple-200 uppercase font-black tracking-wider">
-                studycloud-gemini
-              </span>
-            </div>
-          )}
-
           <textarea
             ref={textareaRef}
             value={inputValue}
             onChange={(e) => setInputValue(e.target.value)}
             onKeyDown={handleKeyDown}
-            placeholder={
-              isPowerMode
-                ? "⚡ Mode Puissance (Google Gemini) : Posez votre question ou collez votre cours complexe..."
-                : "Posez une question ou demandez une création (ex: 'fais-moi un quiz', 'ajoute 2 questions')..."
-            }
+            placeholder="Posez votre question ou collez votre cours..."
             rows={3}
             className="w-full bg-transparent text-white placeholder-zinc-400 text-sm outline-none resize-none overflow-y-auto"
           />
@@ -1209,136 +1149,16 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
             <button
               type="submit"
               disabled={!inputValue.trim() || isTyping}
-              className={`self-end p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 ${
-                isPowerMode
-                  ? 'bg-gradient-to-r from-amber-400 to-purple-500 hover:from-amber-500 hover:to-purple-600 text-white shadow-purple-500/30'
-                  : 'bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950'
-              }`}
-              title={isPowerMode ? "Envoyer avec Google Gemini (Mode Puissance)" : "Envoyer"}
+              className="self-end p-2.5 font-bold rounded-full flex items-center justify-center transition-all shadow-md active:scale-95 cursor-pointer disabled:cursor-not-allowed shrink-0 bg-[#70a5ff] hover:bg-blue-400 disabled:bg-zinc-700 disabled:text-zinc-500 text-slate-950"
+              title="Envoyer"
             >
-              {isPowerMode ? <Zap className="w-4 h-4 text-white fill-white" /> : <Send className="w-4 h-4" />}
+              <Send className="w-4 h-4" />
             </button>
           </div>
         </form>
       </div>
 
-      {/* MODAL CONFIGURATION CLÉ GOOGLE GEMINI */}
-      {isGeminiModalOpen && (
-        <div 
-          className="absolute inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 animate-fadeIn"
-          onClick={() => setIsGeminiModalOpen(false)}
-        >
-          <div 
-            className="w-full max-w-md bg-[#1e2024] border border-purple-500/40 rounded-2xl p-5 shadow-2xl flex flex-col gap-4 text-white animate-scaleUp"
-            onClick={e => e.stopPropagation()}
-          >
-            <div className="flex items-center justify-between pb-3 border-b border-zinc-800">
-              <div className="flex items-center gap-2.5">
-                <div className="p-2 rounded-xl bg-gradient-to-br from-amber-500/20 to-purple-600/30 border border-purple-500/40 text-amber-300">
-                  <Zap className="w-5 h-5 fill-amber-300" />
-                </div>
-                <div>
-                  <h3 className="text-sm font-black tracking-wide">Mode Puissance | Google Gemini</h3>
-                  <p className="text-[11px] text-zinc-400 font-medium">Modèle d'élite Google Gemini 2.0 Flash</p>
-                </div>
-              </div>
-              <button
-                type="button"
-                onClick={() => setIsGeminiModalOpen(false)}
-                className="p-1 rounded-lg text-zinc-400 hover:text-white hover:bg-zinc-800 transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            <p className="text-xs text-zinc-300 leading-relaxed">
-              En fournissant votre clé API Gemini, vos questions et documents seront traités en direct par le modèle <strong>Google Gemini 2.0 Flash</strong> avec une vitesse fulgurante et des explications mathématiques approfondies.
-            </p>
-
-            <div className="space-y-1.5">
-              <label className="text-xs font-bold text-zinc-300 flex items-center justify-between">
-                <span>Clé API Gemini (Google AI Studio) :</span>
-                {geminiApiKey && (
-                  <span className="text-[10px] text-emerald-400 font-semibold flex items-center gap-1">
-                    <ShieldCheck className="w-3 h-3" /> Clé active
-                  </span>
-                )}
-              </label>
-              <div className="relative">
-                <input
-                  type={showKeyPassword ? 'text' : 'password'}
-                  value={tempGeminiKey}
-                  onChange={e => setTempGeminiKey(e.target.value)}
-                  placeholder="Collez votre clé API (ex: AIzaSy...)"
-                  className="w-full bg-[#282a2f] border border-zinc-700 focus:border-purple-500 rounded-xl px-3.5 py-2.5 text-xs text-white placeholder-zinc-500 outline-none pr-10 font-mono"
-                  autoFocus
-                />
-                <button
-                  type="button"
-                  onClick={() => setShowKeyPassword(prev => !prev)}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-zinc-400 hover:text-white p-0.5 cursor-pointer"
-                  title={showKeyPassword ? "Masquer la clé" : "Afficher la clé"}
-                >
-                  {showKeyPassword ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
-                </button>
-              </div>
-            </div>
-
-            <a
-              href="https://aistudio.google.com/app/apikey"
-              target="_blank"
-              rel="noopener noreferrer"
-              className="inline-flex items-center gap-1.5 text-xs text-orange-400 hover:text-orange-300 underline font-semibold transition-colors"
-            >
-              <span>Obtenir une clé API gratuite sur Google AI Studio</span>
-              <ExternalLink className="w-3 h-3" />
-            </a>
-
-            <div className="flex items-center justify-between gap-2 pt-2 border-t border-zinc-800/80">
-              {geminiApiKey ? (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setGeminiApiKey('');
-                    setGeminiApiKeyState('');
-                    setTempGeminiKey('');
-                    setIsPowerMode(false);
-                    setIsGeminiModalOpen(false);
-                  }}
-                  className="px-3 py-2 rounded-xl text-xs font-bold text-rose-400 hover:bg-rose-500/10 transition-colors cursor-pointer"
-                >
-                  Supprimer
-                </button>
-              ) : <div />}
-
-              <div className="flex items-center gap-2">
-                <button
-                  type="button"
-                  onClick={() => setIsGeminiModalOpen(false)}
-                  className="px-3 py-2 rounded-xl bg-zinc-800 hover:bg-zinc-700 text-xs font-bold text-zinc-300 transition-colors cursor-pointer"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="button"
-                  onClick={() => {
-                    const trimmed = tempGeminiKey.trim();
-                    setGeminiApiKey(trimmed);
-                    setGeminiApiKeyState(trimmed);
-                    if (trimmed) {
-                      setIsPowerMode(true);
-                    }
-                    setIsGeminiModalOpen(false);
-                  }}
-                  className="px-4 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-purple-600 to-indigo-600 hover:from-amber-600 hover:to-indigo-700 text-xs font-black text-white shadow-md hover:brightness-110 active:scale-95 transition-all cursor-pointer"
-                >
-                  Enregistrer & Activer
-                </button>
-              </div>
-            </div>
-          </div>
-        </div>
-      )}
     </div>
   );
 }
