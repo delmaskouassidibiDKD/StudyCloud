@@ -434,10 +434,9 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
 
         let lastGoogleError = "";
 
-        // 1. Appel direct API Google Gemini 2.0 Flash avec la clé StudyCloud-gemini
+        // 1. Appel direct API Google Gemini avec la clé StudyCloud-gemini
         if (geminiApiKey) {
-          try {
-            const rawDocForGemini = (
+          const rawDocForGemini = (
               (typeof body.attachedFileContent === "string" && body.attachedFileContent) ||
               (typeof body.file_content === "string" && body.file_content) ||
               (typeof body.fileContent === "string" && body.fileContent) ||
@@ -467,42 +466,64 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
               parts: [{ text: userPrompt || "Bonjour !" }]
             });
 
-            const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
-            const gResponse = await fetch(geminiApiEndpoint, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                system_instruction: { parts: [{ text: geminiSystemText }] },
-                contents: geminiContents,
-                generationConfig: {
-                  temperature: 0.3,
-                  maxOutputTokens: 3500,
-                }
-              })
-            });
+            let ansText = "";
+            let usedGeminiModel = "";
+            const candidateGeminiModels = [
+              "gemini-3.6-flash",
+              "gemini-3.5-flash",
+              "gemini-2.5-flash",
+              "gemini-1.5-flash",
+              "gemini-2.0-flash"
+            ];
 
-            if (gResponse.ok) {
-              const gData = await gResponse.json();
-              const ansText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (ansText && ansText.trim()) {
-                return new Response(JSON.stringify({
-                  success: true,
-                  response: ansText.trim(),
-                  model: "Google Gemini 2.0 Flash (Mode Puissant)",
-                  type: requestedType || "text"
-                }), {
-                  headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+            for (const mod of candidateGeminiModels) {
+              try {
+                const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${geminiApiKey}`;
+                const gResponse = await fetch(geminiApiEndpoint, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    system_instruction: { parts: [{ text: geminiSystemText }] },
+                    contents: geminiContents,
+                    generationConfig: {
+                      temperature: 0.3,
+                      maxOutputTokens: 3500,
+                    }
+                  })
                 });
+
+                if (gResponse.ok) {
+                  const gData = await gResponse.json();
+                  const candidateText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+                  if (candidateText && candidateText.trim()) {
+                    ansText = candidateText.trim();
+                    usedGeminiModel = mod;
+                    break;
+                  }
+                } else {
+                  const errData = await gResponse.json().catch(() => ({}));
+                  lastGoogleError = errData?.error?.message || `Erreur HTTP ${gResponse.status}`;
+                  console.warn(`[Gemini API Direct ${mod}] Erreur:`, gResponse.status, lastGoogleError);
+                  if (gResponse.status === 404 || lastGoogleError.includes("no longer available") || lastGoogleError.includes("not found")) {
+                    continue;
+                  }
+                }
+              } catch (geminiApiErr) {
+                lastGoogleError = geminiApiErr?.message || String(geminiApiErr);
+                console.warn(`[Gemini API Direct ${mod}] Exception:`, geminiApiErr);
               }
-            } else {
-              const errData = await gResponse.json().catch(() => ({}));
-              lastGoogleError = errData?.error?.message || `Erreur HTTP ${gResponse.status}`;
-              console.warn("[Gemini API Direct] Erreur Google API:", gResponse.status, lastGoogleError);
             }
-          } catch (geminiApiErr) {
-            lastGoogleError = geminiApiErr?.message || String(geminiApiErr);
-            console.warn("[Gemini API Direct] Erreur:", geminiApiErr);
-          }
+
+            if (ansText) {
+              return new Response(JSON.stringify({
+                success: true,
+                response: ansText,
+                model: `Google Gemini (${usedGeminiModel})`,
+                type: requestedType || "text"
+              }), {
+                headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+              });
+            }
         }
 
         // 2. Détection d'un service binding Cloudflare nommé 'StudyCloud-gemini' ou 'studycloud-gemini'

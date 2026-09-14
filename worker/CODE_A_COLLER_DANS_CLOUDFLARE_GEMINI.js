@@ -126,39 +126,63 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
           parts: [{ text: userPrompt || "Bonjour !" }]
         });
 
-        // Appel direct à Google Gemini 2.0 Flash
-        const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${effectiveApiKey}`;
-        const gResponse = await fetch(geminiApiEndpoint, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            system_instruction: { parts: [{ text: systemInstructionText }] },
-            contents: geminiContents,
-            generationConfig: {
-              temperature: 0.3,
-              maxOutputTokens: 4000,
-            }
-          })
-        });
+        let ansText = "";
+        let usedGeminiModel = "";
+        let googleError = "";
+        const candidateGeminiModels = [
+          "gemini-3.6-flash",
+          "gemini-3.5-flash",
+          "gemini-2.5-flash",
+          "gemini-1.5-flash",
+          "gemini-2.0-flash"
+        ];
 
-        if (gResponse.ok) {
-          const gData = await gResponse.json();
-          const ansText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-          if (ansText && ansText.trim()) {
-            return new Response(JSON.stringify({
-              success: true,
-              response: ansText.trim(),
-              model: "Google Gemini 2.0 Flash",
-              type: requestedType || "text"
-            }), {
-              headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+        for (const mod of candidateGeminiModels) {
+          try {
+            const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${effectiveApiKey}`;
+            const gResponse = await fetch(geminiApiEndpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                system_instruction: { parts: [{ text: systemInstructionText }] },
+                contents: geminiContents,
+                generationConfig: {
+                  temperature: 0.3,
+                  maxOutputTokens: 4000,
+                }
+              })
             });
+
+            if (gResponse.ok) {
+              const gData = await gResponse.json();
+              const candidateText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (candidateText && candidateText.trim()) {
+                ansText = candidateText.trim();
+                usedGeminiModel = mod;
+                break;
+              }
+            } else {
+              const errData = await gResponse.json().catch(() => ({}));
+              googleError = errData?.error?.message || `Erreur HTTP ${gResponse.status}`;
+              if (gResponse.status === 404 || googleError.includes("no longer available") || googleError.includes("not found")) {
+                continue;
+              }
+            }
+          } catch (e) {
+            googleError = e?.message || String(e);
           }
         }
 
-        // Gestion des erreurs Google API
-        const errData = await gResponse.json().catch(() => ({}));
-        const googleError = errData?.error?.message || `Erreur HTTP ${gResponse.status}`;
+        if (ansText) {
+          return new Response(JSON.stringify({
+            success: true,
+            response: ansText,
+            model: `Google Gemini (${usedGeminiModel})`,
+            type: requestedType || "text"
+          }), {
+            headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+          });
+        }
 
         return new Response(JSON.stringify({
           success: false,
