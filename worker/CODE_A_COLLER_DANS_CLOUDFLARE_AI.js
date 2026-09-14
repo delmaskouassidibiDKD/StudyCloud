@@ -378,10 +378,77 @@ export default {
       const isPowerMode = Boolean(body.powerMode || body.engine === "gemini");
 
       // ------------------------------------------------------------------------
-      // MODE PUISSANCE : DÉLÉGATION À GOOGLE GEMINI (studycloud-gemini)
+      // MODE PUISSANCE : DÉLÉGATION À GOOGLE GEMINI
       // ------------------------------------------------------------------------
       if (isPowerMode) {
-        // 1. Détection liaison de service Cloudflare 'studycloud-gemini'
+        // 1. Appel direct API Google Gemini si la clé secrète GEMINI_API_KEY est configurée dans ce Worker
+        const geminiApiKey = env?.GEMINI_API_KEY || env?.GOOGLE_API_KEY || env?.GEMINI_KEY || env?.GEMINI_TOKEN;
+        if (geminiApiKey) {
+          try {
+            const rawDocForGemini = (
+              (typeof body.attachedFileContent === "string" && body.attachedFileContent) ||
+              (typeof body.file_content === "string" && body.file_content) ||
+              (typeof body.fileContent === "string" && body.fileContent) ||
+              (typeof body.documentContent === "string" && body.documentContent) ||
+              (typeof body.documentText === "string" && body.documentText) ||
+              ""
+            ).trim();
+
+            let geminiSystemText = masterSystemPrompt;
+            if (rawDocForGemini.length > 0) {
+              const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";
+              geminiSystemText += `\n\nCONTENU DU DOCUMENT JOINT ("${docTitle}") :\n${rawDocForGemini.slice(0, 80000)}\nFIN DU DOCUMENT.`;
+            }
+
+            const geminiContents = [];
+            const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+            for (const m of incomingHist.slice(-8)) {
+              if (m && m.role && m.content && m.role !== "system") {
+                geminiContents.push({
+                  role: m.role === "assistant" ? "model" : "user",
+                  parts: [{ text: String(m.content) }]
+                });
+              }
+            }
+            geminiContents.push({
+              role: "user",
+              parts: [{ text: userPrompt || "Bonjour !" }]
+            });
+
+            const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`;
+            const gResponse = await fetch(geminiApiEndpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                system_instruction: { parts: [{ text: geminiSystemText }] },
+                contents: geminiContents,
+                generationConfig: {
+                  temperature: 0.3,
+                  maxOutputTokens: 3500,
+                }
+              })
+            });
+
+            if (gResponse.ok) {
+              const gData = await gResponse.json();
+              const ansText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (ansText && ansText.trim()) {
+                return new Response(JSON.stringify({
+                  success: true,
+                  response: ansText.trim(),
+                  model: "Google Gemini 2.0 Flash (API Direct)",
+                  type: requestedType || "text"
+                }), {
+                  headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+                });
+              }
+            }
+          } catch (geminiApiErr) {
+            console.warn("[Gemini API Direct] Erreur:", geminiApiErr);
+          }
+        }
+
+        // 2. Détection liaison de service Cloudflare 'studycloud-gemini'
         const geminiBinding = env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.GEMINI;
         if (geminiBinding && typeof geminiBinding.fetch === "function") {
           try {
@@ -401,7 +468,7 @@ export default {
           }
         }
 
-        // 2. Appel direct par URL vers le worker studycloud-gemini
+        // 3. Appel direct par URL vers le worker studycloud-gemini
         try {
           const geminiExternalUrl = env?.GEMINI_WORKER_URL || "https://studycloud-gemini.delmaskouassidibi.workers.dev";
           const extRes = await fetch(geminiExternalUrl, {
