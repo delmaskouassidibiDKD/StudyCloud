@@ -3444,7 +3444,14 @@ var src_default = {
         const requestedType = (body.requested_type || body.toolType || body.type || "").toLowerCase().trim();
         const userId = body.userId;
         const sessionId = body.sessionId || conversationId;
-        const isPowerMode = Boolean(body.powerMode || body.engine === "gemini");
+        const isPowerMode = Boolean(
+          body.powerMode || 
+          body.engine === "gemini" || 
+          body.model?.toLowerCase()?.includes("gemini") || 
+          path.includes("gemini") ||
+          url.searchParams.get("engine") === "gemini" || 
+          url.searchParams.get("powerMode") === "true"
+        );
 
         // 1. SYSTEM PROMPT MAÎTRE ("Le Méga-Neurone" de StudyCloud / DKDSCHOOL-NUMÉRIQUE)
         const masterSystemPrompt = `Tu es le tuteur pédagogique personnel d'élite de StudyCloud / DKDSCHOOL-NUMÉRIQUE, développé par DKD Technologies.
@@ -3470,8 +3477,17 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
 
         // DÉLÉGATION MODE PUISSANCE (Google Gemini 2.0 Flash)
         if (isPowerMode) {
-          // 1. Clé Google Gemini directe (depuis payload ou secret d'environnement)
-          const geminiApiKey = body.geminiApiKey || body.gemini_api_key || env?.GEMINI_API_KEY || env?.GOOGLE_API_KEY || env?.GEMINI_KEY || env?.GEMINI_TOKEN;
+          const rawGeminiBinding = env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.["studycloud_gemini"] || env?.GEMINI;
+          let geminiApiKey = body.geminiApiKey || body.gemini_api_key || env?.GEMINI_API_KEY || env?.GOOGLE_API_KEY || env?.GEMINI_KEY || env?.GEMINI_TOKEN;
+
+          // Si la variable 'studycloud-gemini' est une chaîne de caractères (clé API directe ou token)
+          if (!geminiApiKey && typeof rawGeminiBinding === "string" && !rawGeminiBinding.startsWith("http")) {
+            geminiApiKey = rawGeminiBinding.trim();
+          }
+
+          let lastGoogleError = "";
+
+          // 1. Clé Google Gemini directe (Google AI Studio)
           if (geminiApiKey) {
             try {
               const rawDocForGemini = (
@@ -3530,53 +3546,91 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
                   }, 200, origin);
                 }
               } else {
-                const errBody = await gResponse.text();
-                console.warn("[Gemini Direct Main Worker] Erreur:", gResponse.status, errBody);
+                const errData = await gResponse.json().catch(() => ({}));
+                lastGoogleError = errData?.error?.message || `Erreur HTTP ${gResponse.status}`;
+                console.warn("[Gemini Direct Main Worker] Erreur API Google:", gResponse.status, lastGoogleError);
               }
             } catch (geminiApiErr) {
+              lastGoogleError = geminiApiErr?.message || String(geminiApiErr);
               console.warn("[Gemini Direct Main Worker] Exception:", geminiApiErr);
             }
           }
 
-          // 2. Service Binding
-          const geminiBinding = env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.GEMINI;
-          if (geminiBinding && typeof geminiBinding.fetch === "function") {
+          // 2. Service Binding 'studycloud-gemini' (Worker à Worker Cloudflare)
+          if (rawGeminiBinding && typeof rawGeminiBinding.fetch === "function") {
             try {
-              const geminiRes = await geminiBinding.fetch(new Request(request.url, {
+              const geminiRes = await rawGeminiBinding.fetch(new Request("https://studycloud-gemini/", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(body)
               }));
               if (geminiRes.ok) {
-                const resData = await geminiRes.json();
-                return jsonResponse(resData, 200, origin);
+                const ct = geminiRes.headers.get("content-type") || "";
+                if (ct.includes("application/json")) {
+                  const resData = await geminiRes.json();
+                  return jsonResponse(resData, 200, origin);
+                } else {
+                  const resText = await geminiRes.text();
+                  if (resText && resText.trim()) {
+                    return jsonResponse({
+                      success: true,
+                      response: resText.trim(),
+                      model: "Google Gemini 2.0 Flash (Service Binding studycloud-gemini)",
+                      type: requestedType || "text"
+                    }, 200, origin);
+                  }
+                }
               }
             } catch (bindErr) {
-              console.warn("[Puissance] Erreur service binding gemini:", bindErr);
+              console.warn("[Puissance] Erreur service binding studycloud-gemini:", bindErr);
             }
           }
 
           // 3. Appel URL externe
+          const geminiExternalUrl = (typeof rawGeminiBinding === "string" && rawGeminiBinding.startsWith("http"))
+            ? rawGeminiBinding.trim()
+            : (env?.GEMINI_WORKER_URL || "https://studycloud-gemini.delmaskouassidibi.workers.dev");
+
           try {
-            const geminiExternalUrl = env?.GEMINI_WORKER_URL || "https://studycloud-gemini.delmaskouassidibi.workers.dev";
             const extRes = await fetch(geminiExternalUrl, {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(body)
             });
             if (extRes.ok) {
-              const extData = await extRes.json();
-              return jsonResponse(extData, 200, origin);
+              const ct = extRes.headers.get("content-type") || "";
+              if (ct.includes("application/json")) {
+                const extData = await extRes.json();
+                return jsonResponse(extData, 200, origin);
+              } else {
+                const extText = await extRes.text();
+                if (extText && extText.trim()) {
+                  return jsonResponse({
+                    success: true,
+                    response: extText.trim(),
+                    model: "Google Gemini (Worker studycloud-gemini)",
+                    type: requestedType || "text"
+                  }, 200, origin);
+                }
+              }
             }
           } catch (extErr) {
             console.warn("[Puissance] Erreur HTTP studycloud-gemini:", extErr);
           }
 
-          // 4. Si isPowerMode est activé mais qu'aucune clé ou route Gemini n'a fonctionné, NE JAMAIS APPELER LLAMA !
+          // 4. Si Mode Puissance est activé mais que Gemini n'a pas répondu : NE JAMAIS BASCULER SUR LLAMA !
+          if (lastGoogleError) {
+            return jsonResponse({
+              success: false,
+              model: "Google Gemini (Erreur API Google)",
+              response: `⚡ **Mode Puissance (Google Gemini) : Erreur API**\n\nGoogle Gemini a renvoyé l'erreur suivante :\n> *${lastGoogleError}*\n\n👉 Vérifiez votre clé API Google Gemini dans vos variables Cloudflare ou sur [aistudio.google.com](https://aistudio.google.com/app/apikey).`
+            }, 200, origin);
+          }
+
           return jsonResponse({
             success: false,
             model: "Google Gemini (Clé requise)",
-            response: "⚡ **Mode Puissance (Google Gemini) : Clé requise**\n\nPour que Google Gemini vous réponde directement à la place de l'autre IA (Llama) :\n\n👉 **Cliquez sur l'icône ⚙️ à côté du bouton 'Puissance MAX'** dans le chat pour renseigner votre clé API Google Gemini.\n\n*(Vous pouvez obtenir une clé gratuite en 30 secondes sur [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))*\n\nOu ajoutez `GEMINI_API_KEY` dans votre Worker Cloudflare > Settings > Variables and Secrets."
+            response: "⚡ **Mode Puissance (Google Gemini) : Clé requise**\n\nPour que Google Gemini 2.0 Flash vous réponde directement à la place de l'autre IA (Llama) :\n\n👉 **Ajoutez `GEMINI_API_KEY` dans votre Worker Cloudflare** > Settings > Variables and Secrets.\n\n*(Vous pouvez obtenir une clé 100% gratuite en 30 secondes sur [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))*\n\nVous pouvez également renseigner votre clé directement dans l'application en cliquant sur l'icône ⚙️ à côté du bouton 'Puissance MAX'."
           }, 200, origin);
         }
 
@@ -3597,12 +3651,10 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
 
         if (rawDocContent.length > 0) {
           const docTitle = body.attachedFileName || body.file_name || body.fileName || body.documentName || "Document joint";
-          const maxDocChars = 120000;
+          const maxDocChars = 100000;
           const cleanDocContent = rawDocContent.slice(0, maxDocChars);
-          messages.push({
-            role: "system",
-            content: `=== DOCUMENT JOINT DE L'ÉLÈVE ("${docTitle}") ===\n${cleanDocContent}\n=== FIN DU DOCUMENT ===\nInstructions : Tu as un accès COMPLET, INTÉGRAL et DIRECT à ce document (de la première à la dernière ligne). Réponds précisément en t'appuyant rigoureusement sur les leçons, théorèmes, définitions, exercices et explications contenus dans ce fichier.`
-          });
+          // FUSION DANS L'UNIQUE MESSAGE SYSTEME (Obligatoire pour Cloudflare Workers AI / Llama)
+          messages[0].content += `\n\n=== DOCUMENT JOINT DE L'ÉLÈVE ("${docTitle}") ===\n${cleanDocContent}\n=== FIN DU DOCUMENT ===\nInstructions : Tu as un accès COMPLET, INTÉGRAL et DIRECT à ce document (de la première à la dernière ligne). Réponds précisément en t'appuyant rigoureusement sur les leçons, théorèmes, définitions, exercices et explications contenus dans ce fichier.`;
         }
 
         for (const m of incomingHistory.slice(-10)) {

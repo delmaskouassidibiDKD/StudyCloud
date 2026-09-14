@@ -401,8 +401,17 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
       // MODE PUISSANCE : DÉLÉGATION À GOOGLE GEMINI (Priorité absolue)
       // ------------------------------------------------------------------------
       if (isPowerMode) {
-        // 1. Appel direct API Google Gemini (clé dans body ou env)
-        const geminiApiKey = body.geminiApiKey || body.gemini_api_key || env?.GEMINI_API_KEY || env?.GOOGLE_API_KEY || env?.GEMINI_KEY || env?.GEMINI_TOKEN;
+        const rawGeminiBinding = env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.["studycloud_gemini"] || env?.GEMINI;
+        let geminiApiKey = body.geminiApiKey || body.gemini_api_key || env?.GEMINI_API_KEY || env?.GOOGLE_API_KEY || env?.GEMINI_KEY || env?.GEMINI_TOKEN;
+
+        // Si la variable 'studycloud-gemini' est une chaîne de caractères (clé API directe ou token)
+        if (!geminiApiKey && typeof rawGeminiBinding === "string" && !rawGeminiBinding.startsWith("http")) {
+          geminiApiKey = rawGeminiBinding.trim();
+        }
+
+        let lastGoogleError = "";
+
+        // 1. Appel direct API Google Gemini (si clé disponible)
         if (geminiApiKey) {
           try {
             const rawDocForGemini = (
@@ -463,57 +472,101 @@ Règles selon le type de création demandé ('${requestedType || "auto"}') :
                 });
               }
             } else {
-              const errBody = await gResponse.text();
-              console.warn("[Gemini API Direct] Erreur Google API:", gResponse.status, errBody);
+              const errData = await gResponse.json().catch(() => ({}));
+              lastGoogleError = errData?.error?.message || `Erreur HTTP ${gResponse.status}`;
+              console.warn("[Gemini API Direct] Erreur Google API:", gResponse.status, lastGoogleError);
             }
           } catch (geminiApiErr) {
+            lastGoogleError = geminiApiErr?.message || String(geminiApiErr);
             console.warn("[Gemini API Direct] Erreur:", geminiApiErr);
           }
         }
 
         // 2. Détection liaison de service Cloudflare 'studycloud-gemini'
-        const geminiBinding = env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.GEMINI;
-        if (geminiBinding && typeof geminiBinding.fetch === "function") {
+        if (rawGeminiBinding && typeof rawGeminiBinding.fetch === "function") {
           try {
-            const geminiRes = await geminiBinding.fetch(new Request(request.url, {
+            const geminiRes = await rawGeminiBinding.fetch(new Request("https://studycloud-gemini/", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
               body: JSON.stringify(body)
             }));
             if (geminiRes.ok) {
-              const resData = await geminiRes.json();
-              return new Response(JSON.stringify(resData), {
-                headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
-              });
+              const ct = geminiRes.headers.get("content-type") || "";
+              if (ct.includes("application/json")) {
+                const resData = await geminiRes.json();
+                return new Response(JSON.stringify(resData), {
+                  headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+                });
+              } else {
+                const resText = await geminiRes.text();
+                if (resText && resText.trim()) {
+                  return new Response(JSON.stringify({
+                    success: true,
+                    response: resText.trim(),
+                    model: "Google Gemini 2.0 Flash (Service Binding studycloud-gemini)",
+                    type: requestedType || "text"
+                  }), {
+                    headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+                  });
+                }
+              }
             }
           } catch (bindErr) {
             console.warn("[Puissance] Erreur liaison service studycloud-gemini:", bindErr);
           }
         }
 
-        // 3. Appel direct par URL vers le worker studycloud-gemini
+        // 3. Appel URL externe
+        const geminiExternalUrl = (typeof rawGeminiBinding === "string" && rawGeminiBinding.startsWith("http"))
+          ? rawGeminiBinding.trim()
+          : (env?.GEMINI_WORKER_URL || "https://studycloud-gemini.delmaskouassidibi.workers.dev");
+
         try {
-          const geminiExternalUrl = env?.GEMINI_WORKER_URL || "https://studycloud-gemini.delmaskouassidibi.workers.dev";
           const extRes = await fetch(geminiExternalUrl, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify(body)
           });
           if (extRes.ok) {
-            const extData = await extRes.json();
-            return new Response(JSON.stringify(extData), {
-              headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
-            });
+            const ct = extRes.headers.get("content-type") || "";
+            if (ct.includes("application/json")) {
+              const extData = await extRes.json();
+              return new Response(JSON.stringify(extData), {
+                headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+              });
+            } else {
+              const extText = await extRes.text();
+              if (extText && extText.trim()) {
+                return new Response(JSON.stringify({
+                  success: true,
+                  response: extText.trim(),
+                  model: "Google Gemini (Worker studycloud-gemini)",
+                  type: requestedType || "text"
+                }), {
+                  headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+                });
+              }
+            }
           }
         } catch (extErr) {
           console.warn("[Puissance] Erreur appel HTTP studycloud-gemini:", extErr);
         }
 
         // 4. Si Mode Puissance actif mais aucune clé configurée, NE JAMAIS APPELER LLAMA
+        if (lastGoogleError) {
+          return new Response(JSON.stringify({
+            success: false,
+            model: "Google Gemini (Erreur API Google)",
+            response: `⚡ **Mode Puissance (Google Gemini) : Erreur API**\n\nGoogle Gemini a renvoyé l'erreur suivante :\n> *${lastGoogleError}*\n\n👉 Vérifiez votre clé API Google Gemini dans vos variables Cloudflare ou sur [aistudio.google.com](https://aistudio.google.com/app/apikey).`
+          }), {
+            headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+          });
+        }
+
         return new Response(JSON.stringify({
           success: false,
           model: "Google Gemini (Clé requise)",
-          response: "⚡ **Mode Puissance (Google Gemini) : Clé requise**\n\nPour que Google Gemini vous réponde directement à la place de l'autre IA (Llama) :\n\n👉 **Cliquez sur l'icône ⚙️ à côté du bouton 'Puissance MAX'** dans le chat pour renseigner votre clé API Google Gemini.\n\n*(Vous pouvez obtenir une clé gratuite en 30 secondes sur [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))*\n\nOu ajoutez `GEMINI_API_KEY` dans votre Worker Cloudflare > Settings > Variables and Secrets."
+          response: "⚡ **Mode Puissance (Google Gemini) : Clé requise**\n\nPour que Google Gemini 2.0 Flash vous réponde directement à la place de l'autre IA (Llama) :\n\n👉 **Ajoutez `GEMINI_API_KEY` dans votre Worker Cloudflare** > Settings > Variables and Secrets.\n\n*(Vous pouvez obtenir une clé gratuite en 30 secondes sur [aistudio.google.com/app/apikey](https://aistudio.google.com/app/apikey))*\n\nVous pouvez également renseigner votre clé directement dans l'application en cliquant sur l'icône ⚙️ à côté du bouton 'Puissance MAX'."
         }), {
           headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
         });
