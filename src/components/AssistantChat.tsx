@@ -518,89 +518,49 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
       }
 
-      // 3. Contexte du document actif et instructions de l'IA
-      let systemContent = `Tu es l'assistant d'intelligence artificielle d'élite de StudyCloud (développé par DKD Technologies).
-Tu es extrêmement intelligent, direct, clair et efficace.
-Tu réponds avec un raisonnement approfondi, rigoureux et naturel, exactement comme dans le chat et les conversations de haut niveau.
-- Pas de blabla inutile, pas de formules toutes faites ni de structures artificielles imposées.
-- Réponds avec précision, créativité et pertinence à la demande exacte de l'utilisateur (questions, explications, synthèses, QCM, quiz, cartes mentales, infographies, résumés, fiches, etc.).
-- Si un document est fourni, appuie-toi fidèlement et en profondeur sur son contenu réel.
-- Pour toutes les notations et formules scientifiques ou mathématiques, utilise la syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré).`;
+      // 3. Contexte du document actif et prompt autonome de routage Chat / Création
+      let systemContent = `Tu es l'intelligence centrale autonome de l'application de cours StudyCloud (DKD Technologies).
+Tu es directement connectée à deux espaces distincts de l'interface de l'étudiant :
+1. LE CHAT (Fil de discussion textuel) : Pour les questions simples, les explications, les calculs et le dialogue général.
+2. L'ESPACE DE CRÉATION (Panneau droit interactif) : Réservé pour concevoir et afficher les outils interactifs :
+   - 'quiz' : Questionnaires QCM interactifs (questions, choix A/B/C/D, réponse, explication)
+   - 'mindmap' : Cartes mentales arborescentes (thème central, branches, sous-branches)
+   - 'summary' : Fiches de résumé et synthèses structurées (vue d'ensemble, points clés, définitions, règles)
+   - 'infographic' : Infographies, chiffres clés, repères visuels et notions
+   - 'document' : Fiches d'étude complètes et polycopiés
+
+TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
+- Analyse précisément l'intention de l'étudiant :
+  * Si l'étudiant pose une question simple, demande une explication ou discute : ton mode est "chat". Tu réponds de façon approfondie, directe et naturelle.
+  * Si l'étudiant demande de créer ou générer un outil (QCM, quiz, carte mentale, résumé, infographie, fiche), OU si un type de création est demandé ('${isCreation ? targetToolType : ""}'), OU s'il clique sur une action de création : ton mode est "creation".
+
+Pour que l'application sache directement où afficher chaque élément, structure TOUJOURS ta réponse sous le format JSON suivant (dans un bloc \`\`\`json ... \`\`\` ou directement en objet JSON) :
+{
+  "mode": "chat" ou "creation",
+  "chat_response": "Ton message textuel rédigé pour le chat (explication détaillée en mode chat, ou courte phrase d'accueil amicale en mode creation)",
+  "creation_type": "quiz" | "mindmap" | "summary" | "infographic" | "document" | null,
+  "creation_title": "Titre explicite de la création (ou null si mode chat)",
+  "creation_data": {
+    // Les données détaillées de la création si mode creation (ou null si mode chat) :
+    // - Pour 'quiz' : { "title": "...", "questions": [ { "id": "q-1", "question": "...", "options": ["A", "B", "C", "D"], "answerIndex": 0, "explanation": "..." } ] }
+    // - Pour 'mindmap' : { "root": { "label": "Concept", "children": [ { "label": "Branche 1", "children": [] } ] } }
+    // - Pour 'summary' : { "title": "...", "overview": "...", "keyPoints": ["..."], "definitions": [ { "term": "...", "definition": "..." } ], "rules": ["..."] }
+    // - Pour 'infographic' : { "mainTitle": "...", "metrics": [ { "value": "100%", "label": "..." } ], "keyConcepts": [ { "title": "...", "desc": "..." } ] }
+    // - Pour 'document' : { "title": "...", "sections": [ { "heading": "...", "body": "...", "bulletPoints": [] } ] }
+  }
+}
+
+RÈGLES D'EXCELLENCE :
+- Pas de blabla inutile ni de règles artificielles.
+- Si un document est fourni, exploite fidèlement ses notions réelles.
+- Rédige toutes les formules scientifiques en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).`;
       
       if (docNames.length > 0) {
         systemContent += `\n\nDOCUMENTS DISPONIBLES :\nL'utilisateur a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et complet au contenu textuel de ces documents.`;
       }
 
-      if (isCreation) {
-        systemContent += `\n\nL'UTILISATEUR SOUHAITE UNE CRÉATION DE TYPE : "${targetToolType}".
-INSTRUCTION TECHNIQUE POUR L'AFFICHAGE DANS L'ESPACE CRÉATION :
-Rédige une courte phrase d'accueil pour le chat, puis génère impérativement le contenu structuré au format JSON dans un bloc \`\`\`json ... \`\`\` respectant ce schéma pour alimenter l'interface :
-${
-  targetToolType === 'quiz' ?
-  `- Pour un quiz :
-\`\`\`json
-{
-  "title": "Titre du Quiz",
-  "difficulty": "Moyen",
-  "questions": [
-    {
-      "id": "q-1",
-      "question": "Énoncé de la question",
-      "options": ["Choix A", "Choix B", "Choix C", "Choix D"],
-      "answerIndex": 0,
-      "explanation": "Explication complète de la réponse"
-    }
-  ]
-}
-\`\`\`` :
-  targetToolType === 'mindmap' ?
-  `- Pour une carte mentale :
-\`\`\`json
-{
-  "root": {
-    "label": "Concept Principal",
-    "details": "Description",
-    "children": [
-      {
-        "label": "Branche 1",
-        "children": [{ "label": "Sous-notion A" }, { "label": "Sous-notion B" }]
-      }
-    ]
-  }
-}
-\`\`\`` :
-  targetToolType === 'summary' ?
-  `- Pour un résumé :
-\`\`\`json
-{
-  "title": "Titre de la Synthèse",
-  "overview": "Synthèse globale et approfondie...",
-  "keyPoints": ["Point clé 1", "Point clé 2"],
-  "definitions": [{"term": "Terme", "definition": "Définition"}],
-  "rules": ["Règle ou formule importante"]
-}
-\`\`\`` :
-  targetToolType === 'infographic' ?
-  `- Pour une infographie :
-\`\`\`json
-{
-  "mainTitle": "Titre de l'infographie",
-  "subtitle": "Sous-titre descriptif",
-  "metrics": [{"value": "100%", "label": "Indicateur clé"}],
-  "keyConcepts": [{"title": "Concept", "desc": "Description concise", "badge": "Notion"}],
-  "highlights": [{"type": "tip", "title": "Conseil clé", "text": "Détail"}]
-}
-\`\`\`` :
-  `- Pour une fiche d'étude :
-\`\`\`json
-{
-  "title": "Titre de la fiche",
-  "sections": [{"heading": "Titre de la section", "body": "Contenu complet...", "bulletPoints": ["Point clé"]}]
-}
-\`\`\``
-}`;
-      } else if (isIteration && activeCreation) {
-        systemContent += `\n\nL'UTILISATEUR SOUHAITE MODIFIER LA CRÉATION EXISTANTE ("${activeCreation.title}"). Voici son contenu actuel : ${JSON.stringify(activeCreation.content)}. Applique scrupuleusement la modification demandée : "${userText}". Fournis la version mise à jour au format JSON dans un bloc \`\`\`json ... \`\`\`.`;
+      if (isIteration && activeCreation) {
+        systemContent += `\n\nL'UTILISATEUR SOUHAITE MODIFIER LA CRÉATION EXISTANTE ("${activeCreation.title}"). Voici son contenu actuel : ${JSON.stringify(activeCreation.content)}. Applique scrupuleusement la modification demandée : "${userText}". Fournis la version mise à jour en format JSON structuré.`;
       }
 
       // 4. Préparation de l'historique complet pour alimenter le RAG conversationnel
@@ -641,16 +601,40 @@ ${
 
       let fullResponseText = rawResponseText;
 
-      // 6. AUTO-CORRECTION & CONTRÔLE QUALITÉ INTERNE ("LE NEURONE")
-      if (isCreation) {
-        const parsed = parseOrBuildAiCreation(targetToolType, rawResponseText, mainDocName, userText);
+      // 6. L'IA CHEF D'ORCHESTRE AUTONOME : DÉTECTION DU MODE CRÉATION OU MODE CHAT
+      const isAiAutonomousCreation = Boolean(
+        aiResult.mode === 'creation' ||
+        (aiResult.creation_type && aiResult.creation_data) ||
+        isCreation
+      );
+
+      let creationParsed: any = null;
+      if (aiResult.creation_data && aiResult.creation_type) {
+        creationParsed = {
+          title: aiResult.creation_title || `${aiResult.creation_type.toUpperCase()} : ${mainDocName}`,
+          content: aiResult.creation_data,
+          toolType: (aiResult.creation_type === 'qcm' ? 'quiz' : aiResult.creation_type) as AiCreationType,
+        };
+      } else if (isAiAutonomousCreation) {
+        const p = parseOrBuildAiCreation(targetToolType, rawResponseText, mainDocName, userText);
+        if (p.content && (p.content.questions?.length > 0 || p.content.overview || p.content.root || p.content.metrics || p.content.sections)) {
+          creationParsed = {
+            title: p.title,
+            content: p.content,
+            toolType: targetToolType,
+          };
+        }
+      }
+
+      if (creationParsed && creationParsed.content) {
+        const effectiveToolType = creationParsed.toolType || targetToolType;
         const newCreation: AiCreation = {
           id: 'ai-' + Date.now(),
           userId: currentUserId,
           fileId: activePreviewItem?.id,
-          toolType: targetToolType,
-          title: parsed.title,
-          content: parsed.content,
+          toolType: effectiveToolType,
+          title: creationParsed.title,
+          content: creationParsed.content,
           sourceFileName: mainDocName,
           createdAt: new Date().toISOString(),
           version: 1,
@@ -660,16 +644,16 @@ ${
         window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
 
-        // Nettoyage du bloc JSON du chat pour un rendu visuel impeccable
-        const introText = rawResponseText
+        // Nettoyage du bloc JSON du chat pour un affichage textuel impeccable
+        const introText = (aiResult.chat_response || rawResponseText)
           .replace(/```json[\s\S]*?```/gi, '')
           .replace(/```[\s\S]*?```/gi, '')
           .replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '')
           .trim();
 
-        fullResponseText = `${introText ? introText + '\n\n' : ''}✨ J'ai généré votre **${parsed.title}** directement dans votre espace **Création** !
+        fullResponseText = `${introText ? introText + '\n\n' : ''}✨ J'ai généré votre **${newCreation.title}** directement dans votre espace **Création** !
 
-${targetToolType === 'quiz' && parsed.content?.questions?.length ? `📝 **${parsed.content.questions.length} questions interactives** ont été préparées avec succès.\n` : ''}👉 *Retrouvez et testez votre création dans le volet de droite (ou l'onglet Création sur mobile).*`;
+${effectiveToolType === 'quiz' && newCreation.content?.questions?.length ? `📝 **${newCreation.content.questions.length} questions interactives** ont été préparées avec succès.\n` : ''}👉 *Retrouvez et testez votre création dans le volet de droite (ou l'onglet Création sur mobile).*`;
       } else if (isIteration && activeCreation) {
         const parsed = parseOrBuildAiCreation(activeCreation.toolType, rawResponseText, mainDocName, userText);
         const updatedCreation: AiCreation = {
@@ -686,15 +670,15 @@ ${targetToolType === 'quiz' && parsed.content?.questions?.length ? `📝 **${par
         }));
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
 
-        const introText = rawResponseText
+        const introText = (aiResult.chat_response || rawResponseText)
           .replace(/```json[\s\S]*?```/gi, '')
           .replace(/```[\s\S]*?```/gi, '')
           .replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '')
           .trim();
 
         fullResponseText = `${introText ? introText + '\n\n' : ''}✅ Votre création a été mise à jour dans votre espace **Création** !`;
-      } else if (isHesitating) {
-        fullResponseText = `${rawResponseText}\n\n👉 Vous pouvez choisir une des actions recommandées juste au-dessus de votre champ de saisie pour que je la prépare immédiatement !`;
+      } else {
+        fullResponseText = aiResult.chat_response || rawResponseText;
       }
 
       // 7. Initialisation du message IA avec écriture fluide

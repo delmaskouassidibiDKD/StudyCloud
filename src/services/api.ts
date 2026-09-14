@@ -87,7 +87,17 @@ export async function sendChatMessageToAi(params: {
   engine?: 'gemini' | 'standard' | string;
   geminiApiKey?: string;
   [key: string]: any;
-}): Promise<{ response: string; success: boolean; model?: string; type?: string }> {
+}): Promise<{
+  response: string;
+  success: boolean;
+  model?: string;
+  type?: string;
+  mode?: 'chat' | 'creation';
+  chat_response?: string;
+  creation_type?: string;
+  creation_title?: string;
+  creation_data?: any;
+}> {
   const isPowerMode = Boolean(params.powerMode || params.engine === 'gemini');
   const userGeminiApiKey = (params.geminiApiKey || getGeminiApiKey()).trim();
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
@@ -151,7 +161,17 @@ export async function sendChatMessageToAi(params: {
     text = JSON.stringify(data);
   }
 
-  return { response: text, success: data.success !== false, model: data.model, type: data.type };
+  return {
+    response: data.chat_response || text,
+    success: data.success !== false,
+    model: data.model,
+    type: data.type,
+    mode: data.mode,
+    chat_response: data.chat_response,
+    creation_type: data.creation_type,
+    creation_title: data.creation_title,
+    creation_data: data.creation_data,
+  };
 }
 
 /**
