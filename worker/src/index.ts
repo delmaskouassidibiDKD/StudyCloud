@@ -143,11 +143,27 @@ function renderFileDocIconSvg(color: string, label: string): string {
 function renderShareNotFoundHtml(code: string, originUrl: string): string {
   const siteUrl = 'https://studycloud.dkd-technologies.com';
   return `<!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" prefix="og: https://ogp.me/ns#">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>Partage introuvable - StudyCloud</title>
+  <title>StudyCloud • Stockage & Partage Sécurisé</title>
+  <meta name="description" content="StudyCloud : Plateforme cloud de stockage sécurisé de données importantes, cours et documents professionnels pour les élèves, les étudiants, les entreprises et les professionnels. Conçu par DKD Technologies.">
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="StudyCloud">
+  <meta property="og:title" content="StudyCloud • Stockage & Partage Sécurisé">
+  <meta property="og:description" content="StudyCloud : Plateforme cloud de stockage sécurisé de données importantes, cours et documents professionnels pour les élèves, les étudiants, les entreprises et les professionnels. Conçu par DKD Technologies.">
+  <meta property="og:image" content="https://studycloud.dkd-technologies.com/assets/dna-logo.png">
+  <meta property="og:image:secure_url" content="https://studycloud.dkd-technologies.com/assets/dna-logo.png">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="300">
+  <meta property="og:image:height" content="300">
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="StudyCloud • Stockage & Partage Sécurisé">
+  <meta name="twitter:description" content="StudyCloud : Plateforme cloud de stockage sécurisé de données importantes pour élèves, étudiants, professionnels et entreprises.">
+  <meta name="twitter:image" content="https://studycloud.dkd-technologies.com/assets/dna-logo.png">
+  <link rel="icon" type="image/png" href="https://studycloud.dkd-technologies.com/assets/dna-logo.png">
+  <link rel="apple-touch-icon" href="https://studycloud.dkd-technologies.com/assets/dna-logo.png">
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800;900&display=swap" rel="stylesheet">
@@ -219,6 +235,12 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
   const totalSize = files ? files.reduce((acc, f) => acc + (f.size || 0), 0) : (folder.total_size || 0);
   const formattedSize = formatBytes(totalSize);
   const siteUrl = 'https://studycloud.dkd-technologies.com';
+  const logoUrl = 'https://studycloud.dkd-technologies.com/assets/dna-logo.png';
+  const shareUrl = `${originUrl}/s/${encodeURIComponent(folder.share_code || folder.id)}`;
+  const ogTitle = escapeHtml(`${title} • StudyCloud`);
+  const appDesc = escapeHtml(
+    `StudyCloud est la plateforme cloud de stockage sécurisé de données importantes, cours et documents professionnels pour les élèves, les étudiants, les entreprises et les professionnels. Fichiers protégés par DKD Technologies.`
+  );
 
   const filesJson = JSON.stringify((files || []).map((f: any) => ({
     id: f.id,
@@ -251,11 +273,41 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
     : '<div style="padding: 32px; text-align: center; color: #94a3b8; font-size: 14px; grid-column: 1 / -1;">Aucun fichier disponible dans ce partage.</div>';
 
   return `<!DOCTYPE html>
-<html lang="fr">
+<html lang="fr" prefix="og: https://ogp.me/ns#">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <title>${title} • StudyCloud</title>
+  <title>${ogTitle}</title>
+
+  <!-- Métadonnées de l'application & Aperçu WhatsApp / Réseaux Sociaux -->
+  <meta name="description" content="${appDesc}">
+  <meta name="author" content="DKD Technologies">
+  <meta name="application-name" content="StudyCloud">
+  <meta name="robots" content="index, follow">
+
+  <!-- Open Graph / WhatsApp / Facebook / LinkedIn / Telegram -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="StudyCloud">
+  <meta property="og:title" content="${ogTitle}">
+  <meta property="og:description" content="${appDesc}">
+  <meta property="og:url" content="${shareUrl}">
+  <meta property="og:image" content="${logoUrl}">
+  <meta property="og:image:secure_url" content="${logoUrl}">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="300">
+  <meta property="og:image:height" content="300">
+  <meta property="og:image:alt" content="Logo StudyCloud - Stockage et Partage Sécurisé">
+
+  <!-- Twitter Cards -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="${ogTitle}">
+  <meta name="twitter:description" content="${appDesc}">
+  <meta name="twitter:image" content="${logoUrl}">
+
+  <!-- Favicon / Icônes -->
+  <link rel="icon" type="image/png" href="${logoUrl}">
+  <link rel="apple-touch-icon" href="${logoUrl}">
+
   <link rel="preconnect" href="https://fonts.googleapis.com">
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
   <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
