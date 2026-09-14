@@ -16,6 +16,19 @@ export const setWorkerApiUrl = (url: string) => {
   localStorage.setItem('studycloud_worker_url', url.trim());
 };
 
+/**
+ * Génère un code de partage propre, court et lisible (ex: 12334dhdb)
+ */
+export const generateCleanShareCode = (): string => {
+  const digits = Math.floor(10000 + Math.random() * 90000).toString();
+  const letters = 'abcdefghkmnpqrstuvwxyz';
+  let alpha = '';
+  for (let i = 0; i < 4; i++) {
+    alpha += letters[Math.floor(Math.random() * letters.length)];
+  }
+  return `${digits}${alpha}`;
+};
+
 // URL du Worker Cloudflare Workers AI dédié à l'assistante IA StudyCloud
 export const getAiWorkerUrl = (): string => {
   return (

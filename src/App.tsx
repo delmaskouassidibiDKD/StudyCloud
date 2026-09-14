@@ -22,7 +22,7 @@ import { LeftMenu } from './components/LeftMenu';
 import { CenterMenu } from './components/CenterMenu';
 import { RightMenu } from './components/RightMenu';
 import { StudyTimerModal, formatTimerDisplay } from './components/StudyTimerModal';
-import { StudyCloudAPI } from './services/api';
+import { StudyCloudAPI, generateCleanShareCode, getWorkerApiUrl } from './services/api';
 import { getFileBlob } from './services/localFileStorage';
 import { useAuth } from './context/AuthContext';
 import { AuthPage } from './components/auth/AuthPage';
@@ -223,12 +223,13 @@ export default function App() {
   ) => {
     setTimeout(async () => {
       const folderId = 'folder-' + Math.random().toString(36).substring(2, 9);
-      const shareCode = 'DKD-' + Math.random().toString(36).substring(2, 8).toUpperCase();
+      const shareCode = generateCleanShareCode();
       const userCountry = localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire";
       const userName = localStorage.getItem('unifolder_user_name') || 'Alexandre K.';
       const userSchool = localStorage.getItem('unifolder_user_school') || 'CME';
       const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-      const shareUrl = `${window.location.origin}/#share=${folderId}`;
+      const workerUrl = getWorkerApiUrl();
+      const shareUrl = `${workerUrl}/s/${shareCode}`;
       const qrCodeData = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(shareUrl)}`;
 
       // Résoudre ou uploader vers Cloudflare R2 les fichiers locaux (blobs) pour garantir le téléchargement par tous

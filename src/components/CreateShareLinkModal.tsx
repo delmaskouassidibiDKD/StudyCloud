@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, Share2, FileText, Image as ImageIcon, Music, File as FileIcon, Copy, Check, Globe, QrCode } from 'lucide-react';
+import { X, Loader2, Share2, FileText, Image as ImageIcon, Music, File as FileIcon, Copy, Check, Globe, QrCode, ExternalLink } from 'lucide-react';
 import { SharedFolder } from '../types';
 
 interface CreateShareLinkModalProps {
@@ -31,7 +31,8 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
   const [isCreating, setIsCreating] = useState(false);
   const [errorMsg, setErrorMsg] = useState('');
   const [createdFolder, setCreatedFolder] = useState<SharedFolder | null>(null);
-  const [copied, setCopied] = useState(false);
+  const [copiedCode, setCopiedCode] = useState(false);
+  const [copiedMessage, setCopiedMessage] = useState(false);
 
   const country = localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire";
 
@@ -75,24 +76,23 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
     }, isPublic);
   };
 
-  const shareableUrl = createdFolder?.shareUrl || (createdFolder ? `${window.location.origin}/#share=${createdFolder.id}` : '');
+  const shareableUrl = createdFolder?.shareUrl || (createdFolder ? `${window.location.origin}/s/${createdFolder.shareCode || createdFolder.id}` : '');
 
-  const handleCopy = () => {
-    if (shareableUrl) {
-      navigator.clipboard.writeText(shareableUrl);
-      setCopied(true);
-      setTimeout(() => setCopied(false), 2500);
+  const handleCopyCode = () => {
+    if (createdFolder?.shareCode) {
+      navigator.clipboard.writeText(createdFolder.shareCode);
+      setCopiedCode(true);
+      setTimeout(() => setCopiedCode(false), 2500);
     }
   };
 
-  useEffect(() => {
-    if (createdFolder?.shareUrl) {
-      navigator.clipboard.writeText(createdFolder.shareUrl).then(() => {
-        setCopied(true);
-        setTimeout(() => setCopied(false), 3000);
-      }).catch(() => {});
-    }
-  }, [createdFolder?.shareUrl]);
+  const handleCopyMessage = () => {
+    if (!createdFolder) return;
+    const msg = `📚 "${createdFolder.title}" est disponible sur StudyCloud !\nCode d'accès : ${createdFolder.shareCode || ''}\nAccéder au cours : ${shareableUrl}`;
+    navigator.clipboard.writeText(msg);
+    setCopiedMessage(true);
+    setTimeout(() => setCopiedMessage(false), 2500);
+  };
 
   return (
     <div className="fixed inset-0 z-[100000] overflow-y-auto p-4 flex items-start sm:items-center justify-center bg-black/60 backdrop-blur-xs animate-fadeIn">
@@ -113,7 +113,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
             </div>
             <div className="space-y-2">
               <h3 className="text-lg font-extrabold text-stone-900">Lien en cours de création</h3>
-              <p className="text-xs text-stone-600">Génération du lien unique, code QR et configuration de l'accès...</p>
+              <p className="text-xs text-stone-600">Génération du code propre, configuration de la page autonome et synchronisation...</p>
             </div>
             <div className="bg-orange-50 border-2 border-stone-800 rounded-2xl p-3 text-xs text-orange-900 font-medium shadow-[2px_2px_0px_0px_#1c1917]">
               💡 Vous pouvez continuer vos activités, un message vous notifiera une fois terminé.
@@ -127,15 +127,12 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               </div>
               <div>
                 <h3 className="font-extrabold text-base text-stone-900">Lien créé avec succès !</h3>
-                <p className="text-xs text-stone-600">Votre partage est rattaché à votre compte</p>
+                <p className="text-xs text-stone-600">Votre partage autonome est prêt à être partagé</p>
               </div>
             </div>
 
-            {/* Badges: Unique code + Country + Public */}
+            {/* Badges: Country + Public */}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-mono font-black bg-stone-900 text-amber-400 px-2.5 py-1 rounded-xl border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917]">
-                Code : {createdFolder.shareCode || 'DKD-SHARE'}
-              </span>
               <span className="text-xs font-bold bg-white text-stone-800 px-2.5 py-1 rounded-xl border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1">
                 <span>📍</span> {createdFolder.country || country}
               </span>
@@ -151,7 +148,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
             {/* Non-editable link name */}
             <div className="space-y-1">
               <label className="block text-xs font-bold uppercase tracking-wider text-stone-800">
-                Nom du lien
+                Document partagé
               </label>
               <input
                 type="text"
@@ -161,39 +158,63 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               />
             </div>
 
-            {/* Link URL with copy */}
-            <div className="space-y-1">
-              <label className="block text-xs font-bold uppercase tracking-wider text-stone-800">
-                Lien de partage unique
-              </label>
-              <div className="flex items-center gap-2">
-                <input
-                  type="text"
-                  value={shareableUrl}
-                  readOnly
-                  className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-2 text-xs font-medium text-stone-700 outline-none select-all"
-                />
+            {/* Clean Code Hero Box */}
+            <div className="bg-stone-900 border-2 border-stone-800 rounded-2xl p-4 text-center space-y-2 shadow-[3px_3px_0px_0px_#1c1917]">
+              <span className="text-[10px] font-extrabold uppercase tracking-widest text-amber-400/90 block">
+                Code d'accès au document
+              </span>
+              <div className="flex items-center justify-center gap-2.5">
+                <span className="text-2xl font-mono font-black text-amber-400 tracking-wider select-all">
+                  {createdFolder.shareCode || '12334dhdb'}
+                </span>
                 <button
-                  onClick={handleCopy}
-                  className="bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-3.5 py-2 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer shrink-0 flex items-center gap-1.5"
+                  type="button"
+                  onClick={handleCopyCode}
+                  className="bg-amber-400 hover:bg-amber-300 text-stone-950 font-extrabold text-xs px-3 py-1.5 rounded-xl border-2 border-stone-950 shadow-[2px_2px_0px_0px_#000] cursor-pointer flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 transition-all"
+                  title="Copier le code"
                 >
-                  {copied ? <Check className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
-                  <span>{copied ? 'Copié' : 'Copier'}</span>
+                  {copiedCode ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedCode ? 'Copié' : 'Copier'}</span>
                 </button>
               </div>
+              <p className="text-[11px] text-stone-400 font-medium">
+                Le lien d'accès est attaché à ce code pour un partage propre sans URL brute.
+              </p>
+            </div>
+
+            {/* Actions: Copier invitation & Tester la page */}
+            <div className="space-y-2 pt-1">
+              <button
+                type="button"
+                onClick={handleCopyMessage}
+                className="w-full bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-xs py-3 rounded-xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer flex items-center justify-center gap-2"
+              >
+                {copiedMessage ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
+                <span>{copiedMessage ? 'Message d\'accès copié !' : 'Partager / Copier le message d\'accès'}</span>
+              </button>
+
+              <a
+                href={shareableUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="w-full bg-white hover:bg-stone-100 text-stone-800 font-extrabold text-xs py-2.5 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center gap-1.5 text-center no-underline"
+              >
+                <span>Ouvrir la page de téléchargement</span>
+                <ExternalLink className="w-3.5 h-3.5 text-blue-600" />
+              </a>
             </div>
 
             {/* Footer Information */}
             <div className="bg-[#F5F1E9] border-2 border-stone-800 rounded-2xl p-3 text-xs text-stone-700 shadow-[2px_2px_0px_0px_#1c1917] flex items-center gap-2">
               <QrCode className="w-5 h-5 text-orange-600 shrink-0" />
-              <span>Retrouvez ce lien et son <strong>Code QR</strong> dans le menu <strong>Partagés (stock de liens)</strong>.</span>
+              <span>Retrouvez ce document et son <strong>Code QR</strong> dans le menu <strong>Partagés</strong>.</span>
             </div>
 
             <button
               onClick={onClose}
-              className="w-full bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs py-3 rounded-xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
+              className="w-full bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs py-2.5 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
             >
-              Terminer
+              Fermer
             </button>
           </div>
         ) : (

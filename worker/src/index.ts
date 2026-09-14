@@ -76,6 +76,1133 @@ function errorResponse(error: string, status = 400, origin = '*') {
   return jsonResponse({ success: false, error }, status, origin);
 }
 
+function formatBytes(bytes: number): string {
+  if (!bytes || bytes === 0) return '0 o';
+  const k = 1024;
+  const sizes = ['o', 'Ko', 'Mo', 'Go'];
+  const i = Math.floor(Math.log(bytes) / Math.log(k));
+  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+}
+
+function escapeHtml(str: any): string {
+  if (str === null || str === undefined) return '';
+  return String(str)
+    .replace(/&/g, '&amp;')
+    .replace(/</g, '&lt;')
+    .replace(/>/g, '&gt;')
+    .replace(/"/g, '&quot;')
+    .replace(/'/g, '&#039;');
+}
+
+export function generateCleanShareCode(): string {
+  const digits = Math.floor(10000 + Math.random() * 90000).toString();
+  const letters = 'abcdefghkmnpqrstuvwxyz';
+  let alpha = '';
+  for (let i = 0; i < 4; i++) {
+    alpha += letters[Math.floor(Math.random() * letters.length)];
+  }
+  return `${digits}${alpha}`;
+}
+
+function renderShareNotFoundHtml(code: string, originUrl: string): string {
+  const siteUrl = 'https://studycloud.dkd-technologies.com';
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Partage introuvable - StudyCloud</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;600;700;800&display=swap" rel="stylesheet">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, sans-serif;
+      background: #070a13;
+      color: #f8fafc;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      padding: 24px;
+      text-align: center;
+    }
+    .card {
+      background: #0f1629;
+      border: 1px solid #1e293b;
+      border-radius: 24px;
+      padding: 40px 32px;
+      max-width: 480px;
+      width: 100%;
+      box-shadow: 0 20px 40px rgba(0,0,0,0.5);
+    }
+    .code-badge {
+      display: inline-block;
+      background: #1e293b;
+      color: #f59e0b;
+      padding: 6px 14px;
+      border-radius: 9999px;
+      font-family: ui-monospace, monospace;
+      font-weight: 800;
+      font-size: 14px;
+      margin-bottom: 20px;
+      border: 1px solid rgba(245,158,11,0.25);
+    }
+    h1 { font-size: 22px; font-weight: 800; margin-bottom: 12px; }
+    p { color: #94a3b8; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+    .btn {
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      background: #2563eb;
+      color: white;
+      text-decoration: none;
+      font-weight: 700;
+      font-size: 14px;
+      padding: 12px 24px;
+      border-radius: 14px;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #1d4ed8; }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <div class="code-badge">Code : ${escapeHtml(code || 'Inconnu')}</div>
+    <h1>Ce document partagé est introuvable</h1>
+    <p>Le lien d'accès a peut-être expiré, a été supprimé par son propriétaire ou le code saisi est incorrect.</p>
+    <a href="${siteUrl}" class="btn">Aller sur le site StudyCloud &rarr;</a>
+  </div>
+</body>
+</html>`;
+}
+
+function renderShareLandingHtml(folder: any, files: any[], originUrl: string): string {
+  const shareCode = escapeHtml(folder.share_code || 'DKD-SHARE');
+  const title = escapeHtml(folder.title || 'Document Partagé');
+  const description = escapeHtml(folder.description || '');
+  const authorName = escapeHtml(folder.author_name || 'Étudiant');
+  const school = escapeHtml(folder.school || '');
+  const country = escapeHtml(folder.country || "Côte d'Ivoire");
+  const category = escapeHtml(folder.category || 'Cours');
+  const dateStr = folder.created_at ? new Date(folder.created_at).toLocaleDateString('fr-FR', { day: 'numeric', month: 'long', year: 'numeric' }) : '';
+  const totalFiles = files ? files.length : 0;
+  const totalSize = files ? files.reduce((acc, f) => acc + (f.size || 0), 0) : (folder.total_size || 0);
+  const formattedSize = formatBytes(totalSize);
+  const siteUrl = 'https://studycloud.dkd-technologies.com';
+
+  const filesJson = JSON.stringify((files || []).map((f: any) => ({
+    id: f.id,
+    name: f.name,
+    size: f.size || 0,
+    type: f.type || 'application/octet-stream',
+    url: f.file_url || f.url || ''
+  })));
+
+  const filesListHtml = (files && files.length > 0)
+    ? files.map((f: any) => {
+        const lower = (f.name || '').toLowerCase();
+        let iconColor = '#2563EB';
+        let typeBadge = 'DOC';
+        if (lower.endsWith('.pdf')) { iconColor = '#EF4444'; typeBadge = 'PDF'; }
+        else if (/\.(jpg|jpeg|png|webp|gif|svg)$/i.test(lower)) { iconColor = '#10B981'; typeBadge = 'IMG'; }
+        else if (/\.(mp3|wav|ogg|m4a|aac)$/i.test(lower)) { iconColor = '#A855F7'; typeBadge = 'AUDIO'; }
+        
+        return `
+        <div class="file-row">
+          <div class="file-left">
+            <span class="file-badge" style="background: ${iconColor}20; color: ${iconColor}; border: 1px solid ${iconColor}40;">${typeBadge}</span>
+            <span class="file-name" title="${escapeHtml(f.name)}">${escapeHtml(f.name)}</span>
+          </div>
+          <div class="file-right">
+            <span class="file-size">${formatBytes(f.size || 0)}</span>
+            ${f.file_url ? `<button onclick="downloadDirectFile('${encodeURI(f.file_url)}', '${escapeHtml(f.name)}')" class="btn-sm-download" title="Télécharger ce fichier">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+            </button>` : ''}
+          </div>
+        </div>`;
+      }).join('')
+    : '<div style="padding: 16px; text-align: center; color: #94a3b8; font-size: 13px;">Aucun fichier joint à ce partage</div>';
+
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>${title} • StudyCloud Partage</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #070a13;
+      --card-bg: #0f1629;
+      --card-border: #1e293b;
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --blue: #2563eb;
+      --blue-hover: #1d4ed8;
+      --orange: #ea580c;
+      --amber: #f59e0b;
+      --emerald: #10b981;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: var(--bg);
+      color: var(--text);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* HEADER */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(11, 15, 25, 0.92);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid var(--card-border);
+      padding: 12px 20px;
+    }
+    .header-container {
+      max-width: 960px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .brand-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .brand-title {
+      font-size: 20px;
+      font-weight: 900;
+      letter-spacing: -0.03em;
+    }
+    .brand-study { color: var(--orange); }
+    .brand-cloud { color: var(--blue); }
+
+    /* Creux / Badge DKD Technologies */
+    .brand-creux {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #131b2e;
+      color: var(--amber);
+      border: 1px solid rgba(245, 158, 11, 0.35);
+      padding: 4px 10px;
+      border-radius: 9999px;
+      font-size: 10px;
+      font-weight: 800;
+      letter-spacing: 0.08em;
+      text-transform: uppercase;
+      box-shadow: 0 2px 8px rgba(0,0,0,0.3);
+    }
+    .creux-dot {
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: var(--amber);
+      box-shadow: 0 0 8px var(--amber);
+    }
+
+    /* Top button "Aller sur le site" */
+    .btn-top-site {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      background: #1e293b;
+      color: #ffffff;
+      text-decoration: none;
+      font-size: 12px;
+      font-weight: 700;
+      padding: 8px 14px;
+      border-radius: 12px;
+      border: 1px solid rgba(255,255,255,0.1);
+      transition: all 0.2s;
+    }
+    .btn-top-site:hover {
+      background: #334155;
+      border-color: rgba(255,255,255,0.25);
+    }
+
+    /* MAIN WRAPPER */
+    main {
+      flex: 1;
+      max-width: 820px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 32px 16px 64px;
+      display: flex;
+      flex-direction: column;
+      gap: 24px;
+    }
+
+    /* DOCUMENT CARD */
+    .doc-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 24px;
+      padding: 28px 24px;
+      box-shadow: 0 10px 30px -10px rgba(0,0,0,0.5);
+      display: flex;
+      flex-direction: column;
+      gap: 16px;
+    }
+
+    /* Badges Row */
+    .badges-row {
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 8px;
+    }
+    .code-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      background: #090d16;
+      border: 1px solid rgba(245, 158, 11, 0.4);
+      color: var(--amber);
+      padding: 5px 12px;
+      border-radius: 10px;
+      font-family: ui-monospace, SFMono-Regular, monospace;
+      font-size: 13px;
+      font-weight: 800;
+      letter-spacing: 0.04em;
+    }
+    .btn-copy-code {
+      background: rgba(245, 158, 11, 0.15);
+      border: none;
+      color: var(--amber);
+      font-size: 11px;
+      font-weight: 700;
+      padding: 2px 7px;
+      border-radius: 6px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-copy-code:hover { background: rgba(245, 158, 11, 0.3); }
+
+    .tag-pill {
+      font-size: 11px;
+      font-weight: 700;
+      padding: 5px 10px;
+      border-radius: 10px;
+      background: #1e293b;
+      color: #e2e8f0;
+      border: 1px solid rgba(255,255,255,0.05);
+    }
+    .tag-country {
+      background: #162338;
+      color: #93c5fd;
+      border-color: rgba(147,197,253,0.2);
+    }
+
+    .doc-title {
+      font-size: 24px;
+      font-weight: 800;
+      line-height: 1.3;
+      color: #ffffff;
+    }
+
+    .doc-desc {
+      background: #080c18;
+      border: 1px solid var(--card-border);
+      border-radius: 14px;
+      padding: 12px 16px;
+      color: var(--text-muted);
+      font-size: 13.5px;
+      line-height: 1.6;
+    }
+
+    /* Meta stats bar */
+    .meta-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
+      gap: 10px;
+      background: #090d18;
+      border: 1px solid rgba(255,255,255,0.05);
+      border-radius: 16px;
+      padding: 14px 16px;
+    }
+    .meta-item {
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+    }
+    .meta-label {
+      font-size: 10px;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      color: var(--text-muted);
+    }
+    .meta-val {
+      font-size: 13px;
+      font-weight: 700;
+      color: #f1f5f9;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+
+    /* FILES SECTION */
+    .section-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 8px;
+    }
+    .section-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: #f1f5f9;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+    }
+    .files-card {
+      background: var(--card-bg);
+      border: 1px solid var(--card-border);
+      border-radius: 20px;
+      padding: 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+    }
+    .file-row {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      padding: 10px 14px;
+      background: #090d18;
+      border: 1px solid rgba(255,255,255,0.04);
+      border-radius: 12px;
+      gap: 12px;
+    }
+    .file-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      min-width: 0;
+      flex: 1;
+    }
+    .file-badge {
+      font-size: 9.5px;
+      font-weight: 800;
+      padding: 3px 6px;
+      border-radius: 6px;
+      letter-spacing: 0.05em;
+      flex-shrink: 0;
+    }
+    .file-name {
+      font-size: 13px;
+      font-weight: 600;
+      color: #e2e8f0;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      white-space: nowrap;
+    }
+    .file-right {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      flex-shrink: 0;
+    }
+    .file-size {
+      font-size: 11px;
+      color: var(--text-muted);
+      font-weight: 600;
+    }
+    .btn-sm-download {
+      background: #1e293b;
+      border: 1px solid rgba(255,255,255,0.1);
+      color: #94a3b8;
+      width: 28px;
+      height: 28px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .btn-sm-download:hover {
+      background: var(--blue);
+      color: white;
+    }
+
+    /* 3 ACTION CARDS */
+    .actions-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fit, minmax(230px, 1fr));
+      gap: 16px;
+    }
+    .action-card {
+      background: var(--card-bg);
+      border: 1.5px solid var(--card-border);
+      border-radius: 20px;
+      padding: 22px 18px;
+      display: flex;
+      flex-direction: column;
+      justify-content: space-between;
+      gap: 16px;
+      position: relative;
+      transition: transform 0.2s, border-color 0.2s;
+    }
+    .action-card:hover {
+      transform: translateY(-2px);
+      border-color: rgba(255,255,255,0.2);
+    }
+    .action-card.featured {
+      background: linear-gradient(180deg, #121c38 0%, #0d1529 100%);
+      border-color: #2563eb;
+      box-shadow: 0 8px 24px rgba(37, 99, 235, 0.15);
+    }
+    .featured-badge {
+      position: absolute;
+      top: -11px;
+      right: 18px;
+      background: var(--blue);
+      color: white;
+      font-size: 10px;
+      font-weight: 800;
+      padding: 3px 10px;
+      border-radius: 9999px;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+    }
+    .action-top {
+      display: flex;
+      flex-direction: column;
+      gap: 8px;
+    }
+    .action-icon-wrap {
+      width: 44px;
+      height: 44px;
+      border-radius: 12px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 4px;
+    }
+    .icon-device { background: #1e293b; color: #38bdf8; }
+    .icon-cloud { background: #18223c; color: #60a5fa; }
+    .icon-both { background: #222019; color: var(--amber); }
+
+    .action-title {
+      font-size: 16px;
+      font-weight: 800;
+      color: #ffffff;
+    }
+    .action-desc {
+      font-size: 12px;
+      color: var(--text-muted);
+      line-height: 1.5;
+    }
+    .btn-action {
+      width: 100%;
+      padding: 12px 14px;
+      border-radius: 12px;
+      font-size: 13px;
+      font-weight: 800;
+      border: none;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      transition: all 0.2s;
+    }
+    .btn-device {
+      background: #1e293b;
+      color: #ffffff;
+      border: 1px solid rgba(255,255,255,0.1);
+    }
+    .btn-device:hover { background: #334155; }
+    .btn-cloud {
+      background: #1d4ed8;
+      color: #ffffff;
+    }
+    .btn-cloud:hover { background: #1e40af; }
+    .btn-both {
+      background: linear-gradient(135deg, #ea580c, #f59e0b);
+      color: #ffffff;
+      box-shadow: 0 4px 14px rgba(234, 88, 12, 0.35);
+    }
+    .btn-both:hover {
+      filter: brightness(1.1);
+    }
+
+    /* QUICK AUTH MODAL */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.75);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 100;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .modal-box {
+      background: #0f1629;
+      border: 1.5px solid #1e293b;
+      border-radius: 24px;
+      max-width: 420px;
+      width: 100%;
+      padding: 28px 24px;
+      box-shadow: 0 25px 50px -12px rgba(0,0,0,0.7);
+      position: relative;
+    }
+    .btn-close-modal {
+      position: absolute;
+      top: 18px;
+      right: 18px;
+      background: #1e293b;
+      border: none;
+      color: #94a3b8;
+      width: 30px;
+      height: 30px;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 16px;
+    }
+    .modal-title {
+      font-size: 18px;
+      font-weight: 800;
+      color: #ffffff;
+      margin-bottom: 6px;
+    }
+    .modal-subtitle {
+      font-size: 12.5px;
+      color: var(--text-muted);
+      line-height: 1.5;
+      margin-bottom: 20px;
+    }
+    .modal-tabs {
+      display: flex;
+      background: #090d18;
+      border: 1px solid var(--card-border);
+      border-radius: 12px;
+      padding: 3px;
+      margin-bottom: 20px;
+      gap: 4px;
+    }
+    .modal-tab {
+      flex: 1;
+      padding: 8px;
+      border: none;
+      background: transparent;
+      color: var(--text-muted);
+      font-size: 12px;
+      font-weight: 700;
+      border-radius: 9px;
+      cursor: pointer;
+      transition: all 0.15s;
+    }
+    .modal-tab.active {
+      background: #1e293b;
+      color: #ffffff;
+    }
+    .form-group {
+      display: flex;
+      flex-direction: column;
+      gap: 6px;
+      margin-bottom: 14px;
+    }
+    .form-label {
+      font-size: 11px;
+      font-weight: 700;
+      text-transform: uppercase;
+      color: var(--text-muted);
+      letter-spacing: 0.05em;
+    }
+    .form-input {
+      background: #090d18;
+      border: 1px solid #1e293b;
+      border-radius: 12px;
+      padding: 10px 14px;
+      color: #ffffff;
+      font-size: 13.5px;
+      outline: none;
+      transition: border-color 0.2s;
+    }
+    .form-input:focus { border-color: var(--blue); }
+    .form-error {
+      background: rgba(239, 68, 68, 0.15);
+      border: 1px solid rgba(239, 68, 68, 0.3);
+      color: #f87171;
+      font-size: 12px;
+      font-weight: 600;
+      padding: 8px 12px;
+      border-radius: 10px;
+      margin-bottom: 14px;
+      display: none;
+    }
+    .btn-submit-modal {
+      width: 100%;
+      background: var(--blue);
+      color: white;
+      border: none;
+      padding: 13px;
+      border-radius: 12px;
+      font-size: 13.5px;
+      font-weight: 800;
+      cursor: pointer;
+      margin-top: 6px;
+      transition: background 0.2s;
+    }
+    .btn-submit-modal:hover { background: var(--blue-hover); }
+
+    /* TOAST */
+    .toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #090d18;
+      border: 1.5px solid var(--amber);
+      color: #ffffff;
+      padding: 12px 20px;
+      border-radius: 14px;
+      font-size: 13px;
+      font-weight: 700;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+      z-index: 200;
+      opacity: 0;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      max-width: 90%;
+    }
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-container">
+      <!-- Logo gauche: StudyCloud -->
+      <a href="${siteUrl}" target="_blank" class="brand-left">
+        <svg width="32" height="32" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+          <defs>
+            <linearGradient id="scDnaHeader" x1="0%" y1="0%" x2="100%" y2="100%">
+              <stop offset="0%" stop-color="#EA580C"/>
+              <stop offset="100%" stop-color="#2563EB"/>
+            </linearGradient>
+          </defs>
+          <path d="M8 3C8 3 8 10 12 12C16 14 16 21 16 21" stroke="url(#scDnaHeader)" stroke-width="2.5" stroke-linecap="round"/>
+          <path d="M16 3C16 3 16 10 12 12C8 14 8 21 8 21" stroke="url(#scDnaHeader)" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="10" y1="6" x2="14" y2="6" stroke="#2563EB" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="10.5" y1="9" x2="13.5" y2="9" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="11" y1="12" x2="13" y2="12" stroke="#EA580C" stroke-width="2.5" stroke-linecap="round"/>
+          <line x1="10.5" y1="15" x2="13.5" y2="15" stroke="#2563EB" stroke-width="1.5" stroke-linecap="round"/>
+          <line x1="10" y1="18" x2="14" y2="18" stroke="#EA580C" stroke-width="1.5" stroke-linecap="round"/>
+        </svg>
+        <span class="brand-title">
+          <span class="brand-study">Study</span><span class="brand-cloud">Cloud</span>
+        </span>
+      </a>
+
+      <!-- Logo droite dans le creux: DKD Technologies -->
+      <div class="brand-creux" title="Propulsé par DKD Technologies">
+        <span class="creux-dot"></span>
+        <span>DKD Technologies</span>
+      </div>
+
+      <!-- Bouton en haut: Aller sur le site -->
+      <a href="${siteUrl}" target="_blank" class="btn-top-site">
+        <span>Aller sur le site</span>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path><polyline points="15 3 21 3 21 9"></polyline><line x1="10" y1="14" x2="21" y2="3"></line></svg>
+      </a>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main>
+    <!-- Document Overview Card -->
+    <div class="doc-card">
+      <div class="badges-row">
+        <div class="code-pill">
+          <span>Code : ${shareCode}</span>
+          <button class="btn-copy-code" onclick="copyText('${shareCode}', 'Code copié dans le presse-papier !')">Copier</button>
+        </div>
+        <span class="tag-pill tag-country">📍 ${country}</span>
+        <span class="tag-pill">📚 ${category}</span>
+        <span class="tag-pill">🌐 Public</span>
+      </div>
+
+      <h1 class="doc-title">${title}</h1>
+
+      ${description ? `<div class="doc-desc">${description}</div>` : ''}
+
+      <div class="meta-grid">
+        <div class="meta-item">
+          <span class="meta-label">Auteur</span>
+          <span class="meta-val">${authorName} ${school ? `(${school})` : ''}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Date</span>
+          <span class="meta-val">${dateStr || 'Récemment'}</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Contenu</span>
+          <span class="meta-val">${totalFiles} document(s)</span>
+        </div>
+        <div class="meta-item">
+          <span class="meta-label">Taille totale</span>
+          <span class="meta-val">${formattedSize}</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3 Action Options -->
+    <div class="section-header">
+      <h2 class="section-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+        <span>Options de récupération</span>
+      </h2>
+    </div>
+
+    <div class="actions-grid">
+      <!-- Option 1: Télécharger dans son appareil -->
+      <div class="action-card">
+        <div class="action-top">
+          <div class="action-icon-wrap icon-device">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect><line x1="8" y1="21" x2="16" y2="21"></line><line x1="12" y1="17" x2="12" y2="21"></line></svg>
+          </div>
+          <h3 class="action-title">Télécharger dans l'appareil</h3>
+          <p class="action-desc">Enregistre directement les fichiers dans votre stockage local (smartphone, tablette ou PC).</p>
+        </div>
+        <button onclick="handleSelectOption('device')" class="btn-action btn-device">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          <span>Télécharger sur l'appareil</span>
+        </button>
+      </div>
+
+      <!-- Option 2: Enregistrer sur StudyCloud -->
+      <div class="action-card">
+        <div class="action-top">
+          <div class="action-icon-wrap icon-cloud">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M17.5 19H9a7 7 0 1 1 6.71-9h1.79a4.5 4.5 0 1 1 0 9Z"></path></svg>
+          </div>
+          <h3 class="action-title">Enregistrer sur StudyCloud</h3>
+          <p class="action-desc">Ajoute automatiquement ces cours à votre espace Cloud pour réviser et interagir avec l'IA.</p>
+        </div>
+        <button onclick="handleSelectOption('cloud')" class="btn-action btn-cloud">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"></path><polyline points="17 21 17 13 7 13 7 21"></polyline><polyline points="7 3 7 8 15 8"></polyline></svg>
+          <span>Enregistrer sur StudyCloud</span>
+        </button>
+      </div>
+
+      <!-- Option 3: Les deux (Appareil & StudyCloud) -->
+      <div class="action-card featured">
+        <span class="featured-badge">Recommandé</span>
+        <div class="action-top">
+          <div class="action-icon-wrap icon-both">
+            <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="20 6 9 17 4 12"></polyline></svg>
+          </div>
+          <h3 class="action-title">Les deux</h3>
+          <p class="action-desc">Télécharge les fichiers sur votre appareil ET les conserve en toute sécurité dans votre Cloud.</p>
+        </div>
+        <button onclick="handleSelectOption('both')" class="btn-action btn-both">
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><polyline points="7 10 12 15 17 10"></polyline><line x1="12" y1="15" x2="12" y2="3"></line></svg>
+          <span>Télécharger & Enregistrer les deux</span>
+        </button>
+      </div>
+    </div>
+
+    <!-- Files List -->
+    <div class="section-header" style="margin-top: 12px;">
+      <h2 class="section-title">
+        <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path><polyline points="14 2 14 8 20 8"></polyline></svg>
+        <span>Fichiers inclus (${totalFiles})</span>
+      </h2>
+    </div>
+
+    <div class="files-card">
+      ${filesListHtml}
+    </div>
+  </main>
+
+  <!-- QUICK AUTH MODAL -->
+  <div id="authModal" class="modal-overlay">
+    <div class="modal-box">
+      <button class="btn-close-modal" onclick="closeAuthModal()">&times;</button>
+      <h3 class="modal-title">Vérification de compte</h3>
+      <p class="modal-subtitle">Pour télécharger ou enregistrer ces cours, connectez-vous ou créez votre compte en 10 secondes.</p>
+
+      <div class="modal-tabs">
+        <button id="tabRegister" class="modal-tab active" onclick="switchTab('register')">Créer un compte</button>
+        <button id="tabLogin" class="modal-tab" onclick="switchTab('login')">Se connecter</button>
+      </div>
+
+      <div id="authError" class="form-error"></div>
+
+      <!-- Inscription -->
+      <form id="formRegister" onsubmit="handleAuthSubmit(event, 'register')">
+        <div class="form-group">
+          <label class="form-label">Nom complet</label>
+          <input type="text" id="regName" class="form-input" placeholder="Ex: Kouassi Alexandre" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Adresse Email</label>
+          <input type="email" id="regEmail" class="form-input" placeholder="etudiant@domaine.com" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mot de passe</label>
+          <input type="password" id="regPassword" class="form-input" placeholder="Au moins 6 caractères" required minlength="6">
+        </div>
+        <button type="submit" id="btnSubmitRegister" class="btn-submit-modal">Créer mon compte et continuer</button>
+      </form>
+
+      <!-- Connexion -->
+      <form id="formLogin" style="display: none;" onsubmit="handleAuthSubmit(event, 'login')">
+        <div class="form-group">
+          <label class="form-label">Adresse Email</label>
+          <input type="email" id="logEmail" class="form-input" placeholder="etudiant@domaine.com" required>
+        </div>
+        <div class="form-group">
+          <label class="form-label">Mot de passe</label>
+          <input type="password" id="logPassword" class="form-input" placeholder="Votre mot de passe" required>
+        </div>
+        <button type="submit" id="btnSubmitLogin" class="btn-submit-modal">Se connecter et continuer</button>
+      </form>
+    </div>
+  </div>
+
+  <!-- FLOATING TOAST -->
+  <div id="toast" class="toast">
+    <span id="toastMsg">Notification</span>
+  </div>
+
+  <!-- SCRIPT LOGIQUE CLIENT -->
+  <script>
+    window.__SHARE_ID__ = ${JSON.stringify(folder.id)};
+    window.__SHARE_CODE__ = ${JSON.stringify(folder.share_code)};
+    window.__FILES__ = ${filesJson};
+    window.__PENDING_ACTION__ = null;
+
+    function showToast(msg, duration) {
+      const dur = duration || 3500;
+      const t = document.getElementById('toast');
+      const tm = document.getElementById('toastMsg');
+      if (!t || !tm) return;
+      tm.textContent = msg;
+      t.classList.add('show');
+      clearTimeout(window.__toastTimeout);
+      window.__toastTimeout = setTimeout(() => t.classList.remove('show'), dur);
+    }
+
+    function copyText(txt, successMsg) {
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(txt).then(() => showToast(successMsg || 'Copié !')).catch(() => {});
+      }
+    }
+
+    function downloadDirectFile(url, name) {
+      if (!url) return;
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = name || 'fichier';
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+    }
+
+    function openAuthModal() {
+      document.getElementById('authModal').style.display = 'flex';
+      document.getElementById('authError').style.display = 'none';
+    }
+
+    function closeAuthModal() {
+      document.getElementById('authModal').style.display = 'none';
+    }
+
+    function switchTab(mode) {
+      const regTab = document.getElementById('tabRegister');
+      const logTab = document.getElementById('tabLogin');
+      const regForm = document.getElementById('formRegister');
+      const logForm = document.getElementById('formLogin');
+      const err = document.getElementById('authError');
+      err.style.display = 'none';
+
+      if (mode === 'register') {
+        regTab.classList.add('active');
+        logTab.classList.remove('active');
+        regForm.style.display = 'block';
+        logForm.style.display = 'none';
+      } else {
+        logTab.classList.add('active');
+        regTab.classList.remove('active');
+        logForm.style.display = 'block';
+        regForm.style.display = 'none';
+      }
+    }
+
+    // CLIC SUR UNE DES 3 OPTIONS
+    async function handleSelectOption(action) {
+      window.__PENDING_ACTION__ = action;
+      const storedUserId = localStorage.getItem('unifolder_user_id') || localStorage.getItem('studycloud_user_id');
+
+      if (storedUserId) {
+        showToast('Vérification de votre compte...', 2000);
+        try {
+          const res = await fetch('/api/shares/check-user', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: storedUserId })
+          });
+          const data = await res.json();
+          if (data.success && data.exists) {
+            executeAction(action, storedUserId);
+            return;
+          }
+        } catch (e) {
+          console.warn('Erreur vérification compte:', e);
+        }
+      }
+
+      openAuthModal();
+    }
+
+    // SOUMISSION CONNEXION / INSCRIPTION RAPIDE
+    async function handleAuthSubmit(e, mode) {
+      e.preventDefault();
+      const errBox = document.getElementById('authError');
+      errBox.style.display = 'none';
+
+      let payload = { mode: mode };
+      if (mode === 'register') {
+        payload.name = document.getElementById('regName').value.trim();
+        payload.email = document.getElementById('regEmail').value.trim();
+        payload.password = document.getElementById('regPassword').value;
+      } else {
+        payload.email = document.getElementById('logEmail').value.trim();
+        payload.password = document.getElementById('logPassword').value;
+      }
+
+      const btn = mode === 'register' ? document.getElementById('btnSubmitRegister') : document.getElementById('btnSubmitLogin');
+      const origText = btn.textContent;
+      btn.disabled = true;
+      btn.textContent = 'Patientez...';
+
+      try {
+        const res = await fetch('/api/shares/quick-auth', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const data = await res.json();
+
+        if (!data.success) {
+          errBox.textContent = data.error || 'Une erreur est survenue';
+          errBox.style.display = 'block';
+          btn.disabled = false;
+          btn.textContent = origText;
+          return;
+        }
+
+        localStorage.setItem('unifolder_user_id', data.userId);
+        if (data.name) localStorage.setItem('unifolder_user_name', data.name);
+        if (data.email) localStorage.setItem('unifolder_user_email', data.email);
+
+        closeAuthModal();
+        showToast('Compte vérifié avec succès ! Exécution de votre choix...');
+
+        const pending = window.__PENDING_ACTION__ || 'both';
+        executeAction(pending, data.userId);
+      } catch (err) {
+        errBox.textContent = 'Erreur réseau, veuillez réessayer.';
+        errBox.style.display = 'block';
+      } finally {
+        btn.disabled = false;
+        btn.textContent = origText;
+      }
+    }
+
+    // EXÉCUTION DE L'ACTION CHOISIE
+    async function executeAction(action, userId) {
+      const shareId = window.__SHARE_ID__;
+      const files = window.__FILES__ || [];
+
+      if (action === 'device') {
+        showToast('Téléchargement en cours dans votre appareil...');
+        fetch('/api/shares/' + encodeURIComponent(shareId) + '/track-download', { method: 'POST' }).catch(() => {});
+        triggerFilesDownload(files);
+      } else if (action === 'cloud') {
+        showToast('Enregistrement dans votre espace StudyCloud...');
+        try {
+          const res = await fetch('/api/shares/' + encodeURIComponent(shareId) + '/save-to-cloud', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: userId })
+          });
+          const data = await res.json();
+          if (data.success) {
+            showToast('Dossier enregistré avec succès dans votre espace StudyCloud !', 5000);
+          } else {
+            showToast('Erreur: ' + (data.error || 'Échec de la sauvegarde'));
+          }
+        } catch (e) {
+          showToast('Erreur de connexion au serveur.');
+        }
+      } else if (action === 'both') {
+        showToast('Enregistrement sur StudyCloud et téléchargement appareil...');
+        try {
+          await fetch('/api/shares/' + encodeURIComponent(shareId) + '/save-to-cloud', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId: userId })
+          });
+          showToast('Enregistré dans StudyCloud ! Téléchargement sur l appareil...', 3000);
+        } catch (e) {}
+        triggerFilesDownload(files);
+      }
+    }
+
+    function triggerFilesDownload(files) {
+      if (!files || files.length === 0) {
+        showToast('Aucun fichier à télécharger.');
+        return;
+      }
+      files.forEach((file, index) => {
+        if (!file.url) return;
+        setTimeout(() => {
+          downloadDirectFile(file.url, file.name);
+        }, index * 400);
+      });
+    }
+  </script>
+</body>
+</html>`;
+}
+
 // Cache en mémoire pour éviter d'exécuter des dizaines de requêtes DDL à chaque requête HTTP
 let isSchemaInitialized = false;
 let isEmailVerifTableInitialized = false;
@@ -152,6 +1279,46 @@ export default {
           },
           timestamp: new Date().toISOString(),
         }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
+      // Page autonome de téléchargement et consultation de partage
+      // (Servie directement en HTML par le Worker - Pas de redirection SPA)
+      // ----------------------------------------------------------------------
+      if ((path.startsWith('/s/') || path.startsWith('/share/') || path.startsWith('/d/')) && method === 'GET') {
+        const code = path.split('/')[2];
+        if (code && env.DB) {
+          const cleanCode = decodeURIComponent(code).trim();
+          const folder: any = await env.DB.prepare(
+            'SELECT * FROM shared_folders WHERE share_code = ? OR id = ? LIMIT 1'
+          ).bind(cleanCode, cleanCode).first();
+
+          if (folder) {
+            await env.DB.prepare('UPDATE shared_folders SET views_count = views_count + 1 WHERE id = ?').bind(folder.id).run();
+            const { results: files } = await env.DB.prepare(
+              'SELECT * FROM shared_folder_files WHERE shared_folder_id = ?'
+            ).bind(folder.id).all();
+
+            const html = renderShareLandingHtml(folder, files || [], url.origin);
+            return new Response(html, {
+              status: 200,
+              headers: {
+                'Content-Type': 'text/html; charset=utf-8',
+                'Cache-Control': 'no-cache',
+                ...corsHeaders(origin),
+              },
+            });
+          } else {
+            const notFoundHtml = renderShareNotFoundHtml(cleanCode, url.origin);
+            return new Response(notFoundHtml, {
+              status: 404,
+              headers: {
+                'Content-Type': 'text/html; charset=utf-8',
+                ...corsHeaders(origin),
+              },
+            });
+          }
+        }
       }
 
       // ----------------------------------------------------------------------
@@ -2819,8 +3986,8 @@ export default {
           } = body;
           if (!id || !userId || !title) return errorResponse('id, userId et title requis', 400, origin);
 
-          const finalShareCode = shareCode || `DKD-${crypto.randomUUID().substring(0, 6).toUpperCase()}`;
-          const finalShareUrl = shareUrl || `${url.origin}/share/${finalShareCode}`;
+          const finalShareCode = shareCode || generateCleanShareCode();
+          const finalShareUrl = shareUrl || `${url.origin}/s/${finalShareCode}`;
           const finalQrCodeData = qrCodeData || finalShareUrl;
           const finalCountry = country || "Côte d'Ivoire";
           const finalIsPublic = isPublic !== undefined ? (isPublic ? 1 : 0) : 1;
@@ -2971,6 +4138,133 @@ export default {
 
         const { results: files } = await env.DB.prepare('SELECT * FROM shared_folder_files WHERE shared_folder_id = ?').bind(shareId).all();
         return jsonResponse({ success: true, data: { ...folder, files } }, 200, origin);
+      }
+
+      // Vérifier si un utilisateur a déjà un compte pour le téléchargement / enregistrement
+      if (path === '/api/shares/check-user' && method === 'POST') {
+        const body: any = await request.json().catch(() => ({}));
+        const { userId } = body;
+        if (!userId || !env.DB) return jsonResponse({ success: true, exists: false }, 200, origin);
+        const user: any = await env.DB.prepare('SELECT id, name, email FROM users WHERE id = ?').bind(userId).first();
+        return jsonResponse({
+          success: true,
+          exists: !!user,
+          user: user ? { id: user.id, name: user.name, email: user.email } : null
+        }, 200, origin);
+      }
+
+      // Connexion / Inscription rapide depuis la page autonome de partage
+      if (path === '/api/shares/quick-auth' && method === 'POST') {
+        const body: any = await request.json().catch(() => ({}));
+        const { mode, email, password, name, school, country } = body;
+        if (!email || !password) return errorResponse('Email et mot de passe requis', 400, origin);
+
+        const cleanEmail = email.toLowerCase().trim();
+
+        if (mode === 'login') {
+          const user: any = await env.DB.prepare('SELECT * FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
+          if (!user) return errorResponse('Aucun compte associé à cet email', 404, origin);
+          const valid = user.password_hash ? await verifyPassword(password, user.password_hash) : false;
+          if (!valid) return errorResponse('Mot de passe incorrect', 401, origin);
+          return jsonResponse({
+            success: true,
+            message: 'Connexion réussie',
+            userId: user.id,
+            name: user.name,
+            email: user.email
+          }, 200, origin);
+        } else {
+          const existing: any = await env.DB.prepare('SELECT id FROM users WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).first();
+          if (existing) return errorResponse('Un compte existe déjà avec cet email. Veuillez vous connecter.', 409, origin);
+
+          const newUserId = generateId();
+          const pwdHash = await hashPassword(password);
+          const cleanName = (name || cleanEmail.split('@')[0] || 'Étudiant').trim();
+          const cleanCountry = country || "Côte d'Ivoire";
+          const cleanSchool = school || 'CME';
+
+          await env.DB.prepare(`
+            INSERT INTO users (id, name, email, password_hash, school, country, email_verified, is_onboarded, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, 1, 1, CURRENT_TIMESTAMP)
+          `).bind(newUserId, cleanName, cleanEmail, pwdHash, cleanSchool, cleanCountry).run();
+
+          await env.DB.prepare('INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)').bind(newUserId).run();
+
+          return jsonResponse({
+            success: true,
+            message: 'Compte créé avec succès',
+            userId: newUserId,
+            name: cleanName,
+            email: cleanEmail
+          }, 201, origin);
+        }
+      }
+
+      // Enregistrer directement les fichiers d'un partage dans l'espace StudyCloud de l'utilisateur
+      if (path.startsWith('/api/shares/') && path.endsWith('/save-to-cloud') && method === 'POST') {
+        const shareId = path.split('/')[3];
+        const body: any = await request.json().catch(() => ({}));
+        const { userId } = body;
+        if (!userId) return errorResponse('userId requis', 400, origin);
+
+        const folder: any = await env.DB.prepare('SELECT * FROM shared_folders WHERE id = ?').bind(shareId).first();
+        if (!folder) return errorResponse('Dossier partagé introuvable', 404, origin);
+
+        const { results: sharedFiles } = await env.DB.prepare('SELECT * FROM shared_folder_files WHERE shared_folder_id = ?').bind(shareId).all<any>();
+        if (!sharedFiles || sharedFiles.length === 0) {
+          return errorResponse('Aucun fichier associé à ce partage', 400, origin);
+        }
+
+        const folderTitle = folder.title || 'Partages reçus';
+        let matiere: any = await env.DB.prepare('SELECT id FROM matieres WHERE user_id = ? AND name = ?').bind(userId, folderTitle).first();
+        if (!matiere) {
+          const matiereId = 'mat-' + generateId().substring(0, 8);
+          await env.DB.prepare(`
+            INSERT INTO matieres (id, user_id, name, color, icon, updated_at)
+            VALUES (?, ?, ?, '#2563eb', 'Folder', CURRENT_TIMESTAMP)
+          `).bind(matiereId, userId, folderTitle).run();
+          matiere = { id: matiereId };
+        }
+
+        let copiedCount = 0;
+        for (const sf of sharedFiles) {
+          const newFileId = 'file-' + generateId();
+          const ext = sf.name && sf.name.includes('.') ? sf.name.split('.').pop() || '' : '';
+          await env.DB.prepare(`
+            INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 1, 0, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            newFileId,
+            userId,
+            matiere.id,
+            sf.name,
+            sf.size || 0,
+            sf.type || 'application/octet-stream',
+            ext,
+            sf.r2_key || null,
+            sf.file_url || '',
+            Date.now()
+          ).run();
+          copiedCount++;
+        }
+
+        await env.DB.prepare('UPDATE shared_folders SET downloads_count = downloads_count + 1 WHERE id = ?').bind(shareId).run();
+
+        return jsonResponse({
+          success: true,
+          message: `${copiedCount} fichier(s) enregistrés dans votre StudyCloud sous "${folderTitle}"`,
+          copiedCount,
+          matiereName: folderTitle,
+          matiereId: matiere.id
+        }, 200, origin);
+      }
+
+      // Comptabiliser un téléchargement d'appareil
+      if (path.startsWith('/api/shares/') && path.endsWith('/track-download') && method === 'POST') {
+        const shareId = path.split('/')[3];
+        await env.DB.prepare('UPDATE shared_folders SET downloads_count = downloads_count + 1 WHERE id = ?').bind(shareId).run();
+        return jsonResponse({ success: true, message: 'Téléchargement comptabilisé' }, 200, origin);
       }
 
       // ----------------------------------------------------------------------
