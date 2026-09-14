@@ -517,27 +517,21 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
       }
 
-      // 3. Contexte du document actif et mémoire conversationnelle
-      let systemContent = `Tu es le tuteur pédagogique personnel d'élite de StudyCloud / DKDSCHOOL-NUMÉRIQUE, développé par DKD Technologies.
-Ton rôle N'EST PAS de survoler les cours ni de donner de simples listes d'étapes abstraites.
-Tu dois faire COMPRENDRE l'étudiant en profondeur, de manière concrète, claire et interactive.
-
-RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
-1. ANALYSE INTÉGRALE : Si un texte ou un contenu de fichier est fourni dans le message, tu dois l'analyser de manière exhaustive de la première à la dernière ligne. Ne saute aucun détail technique, aucune formule mathématique et aucune définition.
-2. FIN DU "SURVOL" : N'écris JAMAIS de phrases vagues du genre "Voici les étapes pour comprendre : 1. lisez la leçon...". À la place, explique concrètement chaque notion en partant de zéro, utilise des exemples de la vie réelle, des schémas textuels ou des analogies puissantes (ex: comparer des flux, des circuits électriques, la transformée de Laplace à un dictionnaire bilingue temps/fréquence, ou des fonctions mathématiques à des systèmes physiques).
-3. PROGRESSION PÉDAGOGIQUE & LE POURQUOI : Découpe les concepts complexes en blocs digestes. Explique LE POURQUOI et LE COMMENT, pas seulement les théorèmes bruts.
-4. DÉCORTICAGE DES FORMULES (LATEX STANDARD) : Ne jette JAMAIS une formule brute. Rédige TOUTES les formules en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré). Décortique chaque lettre, symbole et opérateur ($p$, $t$, \\int, limites, constantes) en expliquant sa signification physique ou mathématique.
-5. EXEMPLE RÉSOLU PAS À PAS : Déroule un exemple concret ou un exercice type extrait de son cours, résolu et calculé étape par étape sous les yeux de l'élève en explicitant chaque transformation.
-6. PIÈGE D'EXAMEN : Signale explicitement les erreurs classiques que font les étudiants aux examens pour qu'il ne tombe pas dedans.
-7. CITATION DE PAGES DU COURS : Cite précisément les pages, chapitres et théorèmes exacts de son document (ex: "À la page 2 de votre cours, la formule...") pour un repérage immédiat.
-8. INTERACTIVITÉ & VALIDATION : Termine toujours tes explications par une mise en pratique, une question de vérification ou une proposition de mini-quiz / carte mentale pour valider que l'étudiant a capté l'essence du cours.`;
+      // 3. Contexte du document actif et instructions de l'IA
+      let systemContent = `Tu es l'assistant d'intelligence artificielle d'élite de StudyCloud (développé par DKD Technologies).
+Tu es extrêmement intelligent, direct, clair et efficace.
+Tu réponds avec un raisonnement approfondi, rigoureux et naturel, exactement comme dans le chat et les conversations de haut niveau.
+- Pas de blabla inutile, pas de formules toutes faites ni de structures artificielles imposées.
+- Réponds avec précision, créativité et pertinence à la demande exacte de l'utilisateur (questions, explications, synthèses, QCM, quiz, cartes mentales, infographies, résumés, fiches, etc.).
+- Si un document est fourni, appuie-toi fidèlement et en profondeur sur son contenu réel.
+- Pour toutes les notations et formules scientifiques ou mathématiques, utilise la syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré).`;
       
       if (docNames.length > 0) {
-        systemContent += `\n\nACCÈS INTÉGRAL AU COURS DE L'ÉLÈVE :\nL'élève a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct, complet et exhaustif au contenu textuel de ces documents de la première à la dernière page.`;
+        systemContent += `\n\nDOCUMENTS DISPONIBLES :\nL'utilisateur a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et complet au contenu textuel de ces documents.`;
       }
 
       if (isCreation) {
-        systemContent += `\n\nL'UTILISATEUR SOUHAITE UNE CRÉATION PÉDAGOGIQUE DE TYPE : "${targetToolType}". Tu as une LIBERTÉ TOTALE pour la concevoir : adapte-toi entièrement au sujet et au document fourni, imagine des angles stimulants, variés et pertinents en évitant tout modèle répétitif ou générique. Déploie toute ton intelligence et ta pédagogie exactement comme dans le chat où tu raisonnes et aides avec brio.`;
+        systemContent += `\n\nL'UTILISATEUR SOUHAITE UNE CRÉATION : "${targetToolType}". Conçois-la avec ton intelligence naturelle, ta clarté et ta rigueur habituelle, de manière riche, variée et stimulante.`;
       } else if (isIteration && activeCreation) {
         systemContent += `\n\nL'UTILISATEUR SOUHAITE MODIFIER LA CRÉATION EXISTANTE ("${activeCreation.title}"). Voici son contenu actuel : ${JSON.stringify(activeCreation.content)}. Applique scrupuleusement la modification demandée : "${userText}".`;
       }
@@ -598,7 +592,8 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
         setActiveCreation(newCreation);
         window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
 
-        fullResponseText = `✨ J'ai généré votre **${parsed.title}** dans votre espace de création à droite ! Le contenu a été vérifié et optimisé pour vos révisions.\n\nVous pouvez le faire défiler de haut en bas ou me demander d'ajuster des détails si vous le souhaitez.`;
+        // On conserve la réponse complète dans le chat tout en confirmant la création à droite
+        fullResponseText = `${rawResponseText}\n\n*(✨ Retrouvez également ce contenu interactif dans votre espace de création à droite !)*`;
       } else if (isIteration && activeCreation) {
         const parsed = parseOrBuildAiCreation(activeCreation.toolType, rawResponseText, mainDocName, userText);
         const updatedCreation: AiCreation = {
@@ -614,7 +609,7 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
           detail: { updatedContent: parsed.content, title: parsed.title }
         }));
 
-        fullResponseText = `✅ Votre création a été mise à jour avec succès dans votre espace à droite ! Les modifications demandées ont été intégrées.`;
+        fullResponseText = `${rawResponseText}\n\n*(✅ Votre création a été mise à jour dans votre espace à droite.)*`;
       } else if (isHesitating) {
         fullResponseText = `${rawResponseText}\n\n👉 Vous pouvez choisir une des actions recommandées juste au-dessus de votre champ de saisie pour que je la prépare immédiatement !`;
       }
@@ -1008,7 +1003,7 @@ RÈGLES ABSOLUES POUR L'ANALYSE DE DOCUMENTS ET COURS :
                   L'IA formule votre réponse...
                 </span>
                 <span className="text-[11px] text-zinc-400">
-                  Recherche et analyse pédagogique
+                  Raisonnement et analyse approfondie
                 </span>
               </div>
             </div>

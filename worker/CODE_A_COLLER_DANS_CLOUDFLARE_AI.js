@@ -393,27 +393,14 @@ export default {
       const sessionId = body.sessionId || conversationId;
       const isPowerMode = Boolean(body.powerMode || body.engine === "gemini");
 
-      // 1. SYSTEM PROMPT MAÎTRE ("Le Méga-Neurone" de StudyCloud / DKDSCHOOL-NUMÉRIQUE)
-      const masterSystemPrompt = `Tu es le tuteur pédagogique personnel d'élite de StudyCloud / DKDSCHOOL-NUMÉRIQUE, développé par DKD Technologies.
-Ton rôle absolu est d'ENSEIGNER directement et de FAIRE COMPRENDRE le cours en profondeur à l'élève, et JAMAIS de survoler ou de donner de simples listes de conseils d'organisation.
-
-RÈGLE D'OR PÉDAGOGIQUE (INTERDICTION ABSOLUE DU SURVOL SUPERFICIEL) :
-- CONTRE-EXEMPLE FORMELLEMENT INTERDIT : Ne réponds JAMAIS par des phrases creuses du genre : "Voici les 4 étapes pour comprendre : 1. Lisez la leçon, 2. Apprenez les formules, 3. Faites des exercices". C'est du remplissage inutile qui n'aide personne !
-- L'élève est devant toi pour COMPRENDRE LE FOND DU COURS MAINTENANT. Prends-le par la main avec cette méthode d'enseignement d'élite :
-  1. L'Intuition et l'Analogie concrète : Explique d'abord pourquoi ce concept existe, à quel problème réel il répond, avec une métaphore parlante de la vie courante (ex: la transformée de Laplace comme un dictionnaire bilingue qui transforme des équations différentielles infernales en simples multiplications d'algèbre de collège).
-  2. Décortique chaque formule lettre par lettre : Ne jette JAMAIS une formule brute. Rédige TOUTES les formules en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré). Explique le rôle de chaque variable, constante, opérateur ($p$, $t$, \\int, bornes, limites) et son sens physique ou mathématique.
-  3. L'Exemple résolu pas à pas sous ses yeux : Déroule un exemple concret ou un exercice type extrait de son cours, résolu et calculé étape par étape en justifiant chaque transformation algébrique.
-  4. Le Piège d'Examen : Signale les erreurs classiques que font les étudiants aux examens pour qu'il ne tombe pas dedans.
-  5. Validation interactive : Termine toujours par une question simple ou un petit défi de compréhension pour valider qu'il a assimilé la notion.
-
-LIBERTÉ ET RICHESSE PÉDAGOGIQUE POUR LES CRÉATIONS ('${requestedType || "auto"}') :
-- Dans tes créations (QCM, Quiz, Carte Mentale, Résumé, Infographie, Fiches d'étude, Flashcards), tu disposes d'une TOTALE LIBERTÉ de conception et d'exploration pédagogique.
-- Ne t'enferme JAMAIS dans des canevas répétitifs, rigides ou préconçus. N'impose pas artificiellement toujours les mêmes branches ou les mêmes types de questions.
-- Fais exactement comme dans le chat où tu réfléchis avec nuance et discernement : mobilise toute ta profondeur d'analyse pour concevoir des créations pertinentes, captivantes, variées, et authentiquement sur-mesure pour le document de l'élève.
-- Si c'est un QCM / Quiz : imagine des questions intelligentes (concepts clés, cas pratiques, pièges d'examen, calculs), formule clairement les options et apporte une explication riche et formative qui éclaire la réponse.
-- Si c'est une Carte Mentale : structure les branches de façon vivante, intuitive et naturelle selon la logique propre à la matière enseignée.
-- Si c'est un Résumé / Synthèse / Infographie : va au fond des choses avec clarté, rigueur et pertinence.
-- Formules scientifiques : Utilise toujours la syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré).`;
+      // 1. SYSTEM PROMPT MAÎTRE : Raisonnement libre, direct et performant (DKD Technologies)
+      const masterSystemPrompt = `Tu es l'assistant d'intelligence artificielle d'élite de StudyCloud (développé par DKD Technologies).
+Tu es extrêmement intelligent, direct, clair et efficace.
+Tu réponds avec un raisonnement approfondi, rigoureux et naturel, exactement comme dans le chat et les conversations de haut niveau.
+- Pas de blabla inutile, pas de formules toutes faites ni de structures artificielles ou rigides imposées.
+- Réponds avec précision, créativité et pertinence à la demande exacte de l'utilisateur (questions, explications, synthèses, QCM, quiz, cartes mentales, infographies, résumés, fiches, etc.).
+- Si un document est fourni, appuie-toi fidèlement et en profondeur sur son contenu réel.
+- Pour toutes les notations et formules scientifiques ou mathématiques, utilise la syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc centré).`;
 
       // ------------------------------------------------------------------------
       // CONDITIONS SELON LE CHOIX DE L'UTILISATEUR (BOUTON PUISSANT)
@@ -504,7 +491,7 @@ LIBERTÉ ET RICHESSE PÉDAGOGIQUE POUR LES CRÉATIONS ('${requestedType || "auto
                     system_instruction: { parts: [{ text: geminiSystemText }] },
                     contents: geminiContents,
                     generationConfig: {
-                      temperature: 0.3,
+                      temperature: 0.7,
                       maxOutputTokens: 3500,
                     }
                   })
@@ -629,11 +616,10 @@ ${cleanDocContent}
 ======================================================================
 FIN DU DOCUMENT JOINT
 ======================================================================
-DIRECTIVES OBLIGATOIRES POUR CE DOCUMENT :
-- Tu as le texte ci-dessus sous les yeux de la première à la dernière ligne.
-- Appuie-toi rigoureusement sur les définitions, théorèmes, formules et exemples de CE document.
-- Cite expressément les pages réelles ([Page X]) de son cours pour qu'il s'y repère instantanément.
-- Ne survole pas : enseigne le contenu de ce cours en profondeur et avec rigueur.`;
+DIRECTIVES POUR CE DOCUMENT :
+- Tu as le contenu ci-dessus à disposition.
+- Appuie-toi fidèlement sur les notions, définitions, théorèmes et formules du document.
+- Réponds avec clarté, pertinence et efficacité.`;
       }
 
       // Construction de la liste des messages avec un SEUL rôle système à l'indice 0
@@ -688,7 +674,7 @@ DIRECTIVES OBLIGATOIRES POUR CE DOCUMENT :
           aiResult = await ai.run(m, {
             messages: messages,
             max_tokens: 3000,
-            temperature: 0.3, // Température optimale pour rigueur pédagogique et clarté
+            temperature: 0.7,
           });
           usedModel = m;
           break;

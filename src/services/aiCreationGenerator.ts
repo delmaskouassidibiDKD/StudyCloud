@@ -221,7 +221,7 @@ function parseInfographicFromText(rawText: string, safeDocName: string): Infogra
     } else if (/conseil|astuce|m[eé]thode|cl[eé]/i.test(line) && highlights.length < 3) {
       highlights.push({
         type: 'tip',
-        title: 'Conseil pédagogique',
+        title: 'Conseil clé',
         text: line.replace(/^[-*•#\d\.\s]+/, '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim()
       });
     }
@@ -248,7 +248,7 @@ function parseInfographicFromText(rawText: string, safeDocName: string): Infogra
 
   return {
     mainTitle: `Infographie : ${safeDocName}`,
-    subtitle: 'Vue d\'ensemble pédagogique et repères visuels',
+    subtitle: 'Vue d\'ensemble et repères visuels',
     metrics,
     keyConcepts: keyConcepts.length > 0 ? keyConcepts : [
       { title: 'Synthèse du document', desc: rawText.slice(0, 300) || 'Analyse détaillée issue du document.', badge: 'Général' }
@@ -326,7 +326,7 @@ function parseDocumentFromText(rawText: string, safeDocName: string): DocumentCo
 
       sections.push({
         heading,
-        body: bodyLines.join('\n').trim() || 'Contenu pédagogique.',
+        body: bodyLines.join('\n').trim() || 'Contenu de synthèse.',
         bulletPoints: bulletLines.length > 0 ? bulletLines : undefined,
       });
     }

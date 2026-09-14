@@ -328,7 +328,7 @@ export function RightMenu({
                 Je suis en train de créer...
               </span>
               <span className="text-xs sm:text-sm font-semibold text-zinc-300">
-                {generatingInfo?.title || "Génération du contenu pédagogique"}
+                {generatingInfo?.title || "Génération de votre contenu"}
               </span>
               <span className="text-[11px] text-zinc-500 font-medium">
                 {generatingInfo?.subtitle || "Structuration des données en temps réel"}

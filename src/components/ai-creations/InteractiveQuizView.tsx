@@ -179,7 +179,7 @@ export const InteractiveQuizView: React.FC<InteractiveQuizViewProps> = ({
                 <div className="mt-4 pt-3 border-t border-zinc-700/50 flex items-start gap-2.5 text-xs text-zinc-300 animate-fadeIn">
                   <HelpCircle className="w-4 h-4 text-emerald-400 shrink-0 mt-0.5" />
                   <div className="flex-1">
-                    <span className="font-bold text-emerald-300 block mb-0.5">Explication pédagogique :</span>
+                    <span className="font-bold text-emerald-300 block mb-0.5">Explication détaillée :</span>
                     <MathText text={q.explanation} />
                   </div>
                 </div>
