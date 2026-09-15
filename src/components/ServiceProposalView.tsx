@@ -5,9 +5,26 @@ import { StudyCloudAPI } from '../services/api';
 
 interface ProductItem {
   id: string;
+  sellerId?: string;
+  seller_id?: string;
+  sellerName?: string;
+  seller_name?: string;
+  sellerSchool?: string;
+  seller_school?: string;
+  sellerFiliere?: string;
+  seller_filiere?: string;
+  sellerCountry?: string;
+  seller_country?: string;
+  sellerPhone?: string;
+  seller_phone?: string;
+  sellerWhatsapp?: string;
+  seller_whatsapp?: string;
+  sellerAvatarUrl?: string;
+  seller_avatar_url?: string;
   title: string;
   description: string;
   price: string;
+  currency?: string;
   category: string;
   date: string;
   views?: number;
@@ -246,11 +263,29 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
     if (publishingTimerRef.current) clearTimeout(publishingTimerRef.current);
     publishingTimerRef.current = setTimeout(() => {
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      const sellerName = shopName || localStorage.getItem('unifolder_user_name') || 'Étudiant';
+      const sellerSchool = localStorage.getItem('unifolder_user_school') || '';
+      const sellerFiliere = localStorage.getItem('unifolder_user_filiere') || '';
+      const sellerCountry = localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire";
+      const sellerPhone = shopPhone || localStorage.getItem('unifolder_user_phone') || '';
+      const sellerWhatsapp = shopWhatsapp || localStorage.getItem('unifolder_user_phone') || '';
+      const sellerAvatarUrl = shopAvatarUrl || localStorage.getItem('unifolder_user_avatar') || '';
+
       const newItem: ProductItem = {
         id: Date.now().toString(),
+        sellerId: userId,
+        sellerName,
+        sellerSchool,
+        sellerFiliere,
+        sellerCountry,
+        sellerPhone,
+        sellerWhatsapp,
+        sellerAvatarUrl,
         title: newTitle.trim(),
         description: newDesc.trim(),
         price: `${newPrice.trim()} ${newCurrency}`,
+        currency: newCurrency,
         category: finalCategory,
         date: new Date().toLocaleDateString('fr-FR'),
         views: 0,
@@ -260,13 +295,21 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
       };
 
       setProducts((prev) => [newItem, ...prev]);
-      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+
       StudyCloudAPI.createProduct({
         id: newItem.id,
         sellerId: userId,
+        sellerName,
+        sellerSchool,
+        sellerFiliere,
+        sellerCountry,
+        sellerPhone,
+        sellerWhatsapp,
+        sellerAvatarUrl,
         title: newItem.title,
         description: newItem.description,
         price: newItem.price,
+        currency: newCurrency,
         category: newItem.category,
         imageUrlsJson: JSON.stringify(newItem.imageUrls || []),
         isBoosted: false

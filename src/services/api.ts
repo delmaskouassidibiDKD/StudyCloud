@@ -752,10 +752,22 @@ export const StudyCloudAPI = {
     return request('/api/shop/profile', { method: 'PUT', body: JSON.stringify(profile) });
   },
 
-  async getProducts(category?: string) {
+  async getProducts(params?: string | { category?: string; search?: string; userId?: string; sellerId?: string; page?: number; limit?: number }) {
     let endpoint = '/api/products';
-    if (category) endpoint += `?category=${encodeURIComponent(category)}`;
-    return request<{ success: boolean; data: any[] }>(endpoint);
+    if (typeof params === 'string') {
+      if (params) endpoint += `?category=${encodeURIComponent(params)}`;
+    } else if (params && typeof params === 'object') {
+      const q = new URLSearchParams();
+      if (params.category && params.category !== 'Tous') q.set('category', params.category);
+      if (params.search && params.search.trim()) q.set('search', params.search.trim());
+      if (params.userId) q.set('userId', params.userId);
+      if (params.sellerId) q.set('sellerId', params.sellerId);
+      if (params.page !== undefined && params.page !== null) q.set('page', String(params.page));
+      if (params.limit !== undefined && params.limit !== null) q.set('limit', String(params.limit));
+      const str = q.toString();
+      if (str) endpoint += `?${str}`;
+    }
+    return request<{ success: boolean; data: any[]; pagination?: { page: number; limit: number; total: number; hasMore: boolean } }>(endpoint);
   },
 
   async createProduct(product: any) {
@@ -764,6 +776,24 @@ export const StudyCloudAPI = {
 
   async deleteProduct(id: string) {
     return request(`/api/products/${encodeURIComponent(id)}`, { method: 'DELETE' });
+  },
+
+  async getSellerFollows(userId: string) {
+    return request<{ success: boolean; followedSellerIds: string[] }>(`/api/seller-follows?userId=${encodeURIComponent(userId)}`);
+  },
+
+  async toggleSellerFollow(userId: string, sellerId: string, action?: 'follow' | 'unfollow') {
+    return request<{ success: boolean; isFollowing: boolean }>('/api/seller-follows', {
+      method: 'POST',
+      body: JSON.stringify({ userId, sellerId, action }),
+    });
+  },
+
+  async trackProductInteraction(userId: string, productId: string, type = 'view') {
+    return request<{ success: boolean }>(`/api/products/${encodeURIComponent(productId)}/interact`, {
+      method: 'POST',
+      body: JSON.stringify({ userId, type }),
+    });
   },
 
   async getCart(userId: string) {

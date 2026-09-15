@@ -8,15 +8,40 @@ import { importFilesToMesFichiers } from '../services/userSync';
 
 interface ProductItem {
   id: string;
+  sellerId?: string;
+  seller_id?: string;
+  sellerName?: string;
+  seller_name?: string;
+  sellerSchool?: string;
+  seller_school?: string;
+  sellerFiliere?: string;
+  seller_filiere?: string;
+  sellerCountry?: string;
+  seller_country?: string;
+  sellerPhone?: string;
+  seller_phone?: string;
+  sellerWhatsapp?: string;
+  seller_whatsapp?: string;
+  sellerAvatarUrl?: string;
+  seller_avatar_url?: string;
   title: string;
   description: string;
   price: string;
+  currency?: string;
   category: string;
   date: string;
   views?: number;
   sales?: number;
   imageUrl?: string;
   imageUrls?: string[];
+  isBoosted?: boolean;
+  is_boosted?: boolean;
+  boostStatus?: 'active' | 'completed';
+  boostFormula?: string;
+  boostViewsTarget?: number;
+  boostViewsCurrent?: number;
+  boostEndDate?: string;
+  _relevance_score?: number;
 }
 
 interface LibraryViewProps {
@@ -255,42 +280,150 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [shopAvatarUrl, setShopAvatarUrl] = useState(() => localStorage.getItem('unifolder_shop_avatar') || '');
   const [isSubscribed, setIsSubscribed] = useState(false);
 
+  const [followedSellerIds, setFollowedSellerIds] = useState<string[]>([]);
+  const [productsPage, setProductsPage] = useState(1);
+  const [hasMoreProducts, setHasMoreProducts] = useState(false);
+  const [isLoadingProducts, setIsLoadingProducts] = useState(false);
+  const [isLoadingMoreProducts, setIsLoadingMoreProducts] = useState(false);
+  const infiniteProductsSentinelRef = useRef<HTMLDivElement>(null);
+
   const triggerToast = (msg: string) => {
     setToastMsg(msg);
     setTimeout(() => setToastMsg(null), 3000);
   };
 
+  const mapRowToProduct = useCallback((row: any): ProductItem => ({
+    id: String(row.id),
+    sellerId: row.seller_id,
+    seller_id: row.seller_id,
+    sellerName: row.seller_name || 'Étudiant',
+    seller_name: row.seller_name || 'Étudiant',
+    sellerSchool: row.seller_school || '',
+    seller_school: row.seller_school || '',
+    sellerFiliere: row.seller_filiere || '',
+    seller_filiere: row.seller_filiere || '',
+    sellerCountry: row.seller_country || "Côte d'Ivoire",
+    seller_country: row.seller_country || "Côte d'Ivoire",
+    sellerPhone: row.seller_phone || '',
+    seller_phone: row.seller_phone || '',
+    sellerWhatsapp: row.seller_whatsapp || '',
+    seller_whatsapp: row.seller_whatsapp || '',
+    sellerAvatarUrl: row.seller_avatar_url || '',
+    seller_avatar_url: row.seller_avatar_url || '',
+    title: row.title,
+    description: row.description || '',
+    price: row.price || '0 FCFA',
+    currency: row.currency || 'FCFA',
+    category: row.category || 'Vente digital (PDF)',
+    date: row.created_at ? new Date(row.created_at).toLocaleDateString('fr-FR') : '01/09/2026',
+    views: row.views || 0,
+    sales: row.sales || 0,
+    imageUrl: row.image_urls_json ? (JSON.parse(row.image_urls_json)[0] || undefined) : undefined,
+    imageUrls: row.image_urls_json ? JSON.parse(row.image_urls_json) : [],
+    isBoosted: Boolean(row.is_boosted),
+    is_boosted: Boolean(row.is_boosted),
+    boostStatus: row.is_boosted ? 'active' : undefined,
+    boostFormula: row.boost_formula || undefined,
+    boostViewsTarget: row.boost_views_target || undefined,
+    boostViewsCurrent: row.views || 0,
+    boostEndDate: row.boost_end_date || undefined,
+    _relevance_score: row._relevance_score,
+  }), []);
+
+  const loadProducts = useCallback(async () => {
+    setIsLoadingProducts(true);
+    setProductsPage(1);
+    try {
+      const currentUserId = localStorage.getItem('unifolder_user_id') || undefined;
+      const res = await StudyCloudAPI.getProducts({
+        userId: currentUserId,
+        category: selectedCategory !== 'Tous' ? selectedCategory : undefined,
+        search: searchQuery.trim() || undefined,
+        page: 1,
+        limit: 24,
+      });
+      if (res && res.success && Array.isArray(res.data)) {
+        const mapped = res.data.map(mapRowToProduct);
+        setProductsList(mapped);
+        setHasMoreProducts(Boolean(res.pagination?.hasMore));
+        try {
+          localStorage.setItem('unifolder_published_products', JSON.stringify(mapped));
+        } catch (e) {}
+      }
+    } catch (e) {
+      console.warn('Erreur chargement produits librairie:', e);
+    } finally {
+      setIsLoadingProducts(false);
+    }
+  }, [selectedCategory, searchQuery, mapRowToProduct]);
+
+  const loadMoreProducts = useCallback(async () => {
+    if (isLoadingProducts || isLoadingMoreProducts || !hasMoreProducts) return;
+    setIsLoadingMoreProducts(true);
+    const nextPage = productsPage + 1;
+    try {
+      const currentUserId = localStorage.getItem('unifolder_user_id') || undefined;
+      const res = await StudyCloudAPI.getProducts({
+        userId: currentUserId,
+        category: selectedCategory !== 'Tous' ? selectedCategory : undefined,
+        search: searchQuery.trim() || undefined,
+        page: nextPage,
+        limit: 24,
+      });
+      if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+        const mapped = res.data.map(mapRowToProduct);
+        setProductsList((prev: ProductItem[]) => {
+          const existingIds = new Set(prev.map((p: ProductItem) => p.id));
+          const newItems = mapped.filter((p: ProductItem) => !existingIds.has(p.id));
+          return [...prev, ...newItems];
+        });
+        setProductsPage(nextPage);
+        setHasMoreProducts(Boolean(res.pagination?.hasMore));
+      } else {
+        setHasMoreProducts(false);
+      }
+    } catch (e) {
+      console.warn('Erreur défilement infini produits:', e);
+    } finally {
+      setIsLoadingMoreProducts(false);
+    }
+  }, [isLoadingProducts, isLoadingMoreProducts, hasMoreProducts, productsPage, selectedCategory, searchQuery, mapRowToProduct]);
+
+  // Observer pour défilement infini automatique des produits
+  useEffect(() => {
+    if (!infiniteProductsSentinelRef.current || !hasMoreProducts || isLoadingMoreProducts || isLoadingProducts) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMoreProducts();
+        }
+      },
+      { threshold: 0.1, rootMargin: '250px' }
+    );
+    observer.observe(infiniteProductsSentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMoreProducts, isLoadingMoreProducts, isLoadingProducts, loadMoreProducts]);
+
+  useEffect(() => {
+    if (activeSubTab === 'librairie') {
+      loadProducts();
+    }
+  }, [activeSubTab, loadProducts]);
+
+  // Charger les abonnements vendeurs et le panier
   useEffect(() => {
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-    // 1. Charger les produits réels depuis Cloudflare D1
-    StudyCloudAPI.getProducts()
-      .then((res) => {
-        if (res.success && Array.isArray(res.data)) {
-          const mapped: ProductItem[] = res.data.map((row: any) => ({
-            id: String(row.id),
-            title: row.title,
-            description: row.description || '',
-            price: row.price || '0 FCFA',
-            category: row.category || 'Cours',
-            date: row.created_at ? new Date(row.created_at).toLocaleDateString('fr-FR') : '01/09/2026',
-            views: row.views || 0,
-            sales: row.sales || 0,
-            imageUrl: row.image_urls_json ? (JSON.parse(row.image_urls_json)[0] || undefined) : undefined,
-            imageUrls: row.image_urls_json ? JSON.parse(row.image_urls_json) : [],
-            isBoosted: Boolean(row.is_boosted),
-            boostStatus: row.is_boosted ? 'active' : undefined,
-            boostFormula: row.boost_formula || undefined,
-            boostViewsTarget: row.boost_views_target || undefined,
-            boostViewsCurrent: row.views || 0,
-            boostEndDate: row.boost_end_date || undefined,
-          }));
-          setProductsList(mapped);
-          localStorage.setItem('unifolder_published_products', JSON.stringify(mapped));
+    
+    // Abonnements vendeurs
+    StudyCloudAPI.getSellerFollows(userId)
+      .then(res => {
+        if (res.success && Array.isArray(res.followedSellerIds)) {
+          setFollowedSellerIds(res.followedSellerIds);
         }
       })
       .catch(() => {});
 
-    // 2. Charger le panier depuis D1
+    // Charger le panier depuis D1
     StudyCloudAPI.getCart(userId)
       .then((res) => {
         if (res.success && Array.isArray(res.data)) {
@@ -878,11 +1011,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </div>
             ) : (
               /* Vue standard des produits */
-              productsList.filter(item => 
-                item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
-              ).length === 0 ? (
+              isLoadingProducts && productsList.length === 0 ? (
+                <div className="py-20 text-center flex flex-col items-center justify-center gap-3">
+                  <RefreshCw className="w-8 h-8 animate-spin text-orange-600" />
+                  <p className="text-xs font-bold text-stone-500">Sélection personnalisée selon votre profil...</p>
+                </div>
+              ) : productsList.length === 0 ? (
                 <div className="bg-[#FDFBF7] border-2 border-stone-300 rounded-2xl p-12 text-center shadow-xs">
                   <div className="w-12 h-12 bg-orange-100 border-2 border-stone-800 rounded-2xl flex items-center justify-center text-orange-600 mx-auto mb-3 shadow-[2px_2px_0px_0px_#1c1917]">
                     <Package className="w-6 h-6" />
@@ -891,14 +1025,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   <p className="text-xs text-stone-600 mt-1">Aucun produit ne correspond à votre recherche.</p>
                 </div>
               ) : (
-                <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 w-full">
-                  {productsList
-                    .filter(item => 
-                      item.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-                      (item.description && item.description.toLowerCase().includes(searchQuery.toLowerCase())) ||
-                      (item.category && item.category.toLowerCase().includes(searchQuery.toLowerCase()))
-                    )
-                    .map((item) => {
+                <div className="space-y-4">
+                  <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 w-full">
+                    {productsList.map((item) => {
                       const displayImages = item.imageUrls && item.imageUrls.length > 0
                         ? item.imageUrls
                         : (item.imageUrl ? [item.imageUrl] : []);
@@ -910,6 +1039,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             setSelectedDetailProduct(item);
                             setActiveDetailImageIndex(0);
                             setIsDescriptionExpanded(false);
+                            const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+                            StudyCloudAPI.trackProductInteraction(userId, item.id, 'view').catch(() => {});
                           }}
                           className="bg-white rounded-2xl border border-stone-200/80 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between text-left cursor-pointer group"
                         >
@@ -983,6 +1114,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         </div>
                       );
                     })}
+                  </div>
+
+                  {/* Sentinelle pour chargement continu & défilement infini des produits */}
+                  <div ref={infiniteProductsSentinelRef} className="w-full py-4 flex items-center justify-center">
+                    {isLoadingMoreProducts && (
+                      <div className="flex items-center gap-2 text-stone-600 text-xs font-bold bg-white px-4 py-2 rounded-xl shadow-xs border border-stone-200">
+                        <RefreshCw className="w-4 h-4 animate-spin text-orange-600" />
+                        <span>Chargement d'autres produits...</span>
+                      </div>
+                    )}
+                  </div>
                 </div>
               )
             )}
@@ -1547,48 +1689,83 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               
               {/* Shop Profile Card */}
               <div className="px-4 pt-4 md:px-0 md:pt-0">
-                <div className="bg-white rounded-3xl border border-stone-200/90 p-4 shadow-sm space-y-3.5 text-left">
-                <div className="flex items-center gap-3.5">
-                  <div className="w-14 h-14 rounded-full bg-amber-100/90 border-2 border-stone-800 overflow-hidden shrink-0 shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center font-black text-amber-900 text-base">
-                    {shopAvatarUrl ? (
-                      <img src={shopAvatarUrl} alt={shopName} className="w-full h-full object-cover" />
-                    ) : (
-                      shopName ? shopName.substring(0, 2).toUpperCase() : 'DK'
-                    )}
-                  </div>
-                  <div className="overflow-hidden space-y-0.5">
-                    <h3 className="font-extrabold text-base text-stone-900 truncate">{shopName}</h3>
-                    <p className="text-xs text-stone-500 font-bold truncate">{shopPhone}</p>
-                  </div>
-                </div>
+                {(() => {
+                  const currentSellerId = selectedDetailProduct.sellerId || selectedDetailProduct.seller_id;
+                  const isCurrentSellerSubscribed = currentSellerId ? followedSellerIds.includes(currentSellerId) : isSubscribed;
+                  const currentSellerName = selectedDetailProduct.sellerName || selectedDetailProduct.seller_name || shopName;
+                  const currentSellerPhone = selectedDetailProduct.sellerPhone || selectedDetailProduct.seller_phone || shopPhone;
+                  const currentSellerAvatar = selectedDetailProduct.sellerAvatarUrl || selectedDetailProduct.seller_avatar_url || shopAvatarUrl;
+                  const currentSellerSchool = selectedDetailProduct.sellerSchool || selectedDetailProduct.seller_school;
+                  const currentSellerFiliere = selectedDetailProduct.sellerFiliere || selectedDetailProduct.seller_filiere;
 
-                <div className="flex items-center gap-2.5 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setIsSubscribed(!isSubscribed);
-                      triggerToast(isSubscribed ? "Vous êtes désabonné de la boutique." : "Vous êtes abonné à la boutique !");
-                    }}
-                    className={`flex-1 py-2.5 font-extrabold text-xs sm:text-sm rounded-2xl border-2 transition-all cursor-pointer ${
-                      isSubscribed
-                        ? 'bg-stone-100 text-stone-800 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
-                        : 'bg-blue-600 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-blue-700'
-                    }`}
-                  >
-                    {isSubscribed ? "Abonné ✓" : "S'abonner"}
-                  </button>
+                  const handleToggleFollow = async () => {
+                    const currentUserId = localStorage.getItem('unifolder_user_id') || 'default-user';
+                    const targetSellerId = currentSellerId || 'default-seller';
+                    const willFollow = !isCurrentSellerSubscribed;
 
-                  <button
-                    type="button"
-                    onClick={() => triggerToast("Lien de la boutique copié dans le presse-papier !")}
-                    className="flex-1 py-2.5 bg-white text-stone-800 font-extrabold text-xs sm:text-sm rounded-2xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-stone-50 cursor-pointer transition-all flex items-center justify-center gap-1.5"
-                  >
-                    <Share2 className="w-4 h-4 text-stone-800" />
-                    <span>Partager</span>
-                  </button>
-                </div>
+                    setIsSubscribed(willFollow);
+                    if (willFollow) {
+                      setFollowedSellerIds(prev => [...new Set([...prev, targetSellerId])]);
+                      triggerToast(`Vous êtes maintenant abonné à ${currentSellerName} ! Ses produits vous seront recommandés en priorité.`);
+                    } else {
+                      setFollowedSellerIds(prev => prev.filter(id => id !== targetSellerId));
+                      triggerToast(`Désabonné de ${currentSellerName}.`);
+                    }
+
+                    try {
+                      await StudyCloudAPI.toggleSellerFollow(currentUserId, targetSellerId, willFollow ? 'follow' : 'unfollow');
+                    } catch (e) {
+                      console.warn('Erreur toggle follow seller:', e);
+                    }
+                  };
+
+                  return (
+                    <div className="bg-white rounded-3xl border border-stone-200/90 p-4 shadow-sm space-y-3.5 text-left">
+                      <div className="flex items-center gap-3.5">
+                        <div className="w-14 h-14 rounded-full bg-amber-100/90 border-2 border-stone-800 overflow-hidden shrink-0 shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center font-black text-amber-900 text-base">
+                          {currentSellerAvatar ? (
+                            <img src={currentSellerAvatar} alt={currentSellerName} className="w-full h-full object-cover" />
+                          ) : (
+                            currentSellerName ? currentSellerName.substring(0, 2).toUpperCase() : 'DK'
+                          )}
+                        </div>
+                        <div className="overflow-hidden space-y-0.5">
+                          <h3 className="font-extrabold text-base text-stone-900 truncate">{currentSellerName}</h3>
+                          <p className="text-xs text-stone-500 font-bold truncate">{currentSellerPhone}</p>
+                          {(currentSellerSchool || currentSellerFiliere) && (
+                            <p className="text-[10px] text-stone-400 font-medium truncate">
+                              {[currentSellerSchool, currentSellerFiliere].filter(Boolean).join(' • ')}
+                            </p>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="flex items-center gap-2.5 pt-0.5">
+                        <button
+                          type="button"
+                          onClick={handleToggleFollow}
+                          className={`flex-1 py-2.5 font-extrabold text-xs sm:text-sm rounded-2xl border-2 transition-all cursor-pointer ${
+                            isCurrentSellerSubscribed
+                              ? 'bg-stone-100 text-stone-800 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
+                              : 'bg-blue-600 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-blue-700'
+                          }`}
+                        >
+                          {isCurrentSellerSubscribed ? "Abonné ✓" : "S'abonner"}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => triggerToast("Lien de la boutique copié dans le presse-papier !")}
+                          className="flex-1 py-2.5 bg-white text-stone-800 font-extrabold text-xs sm:text-sm rounded-2xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-stone-50 cursor-pointer transition-all flex items-center justify-center gap-1.5"
+                        >
+                          <Share2 className="w-4 h-4 text-stone-800" />
+                          <span>Partager</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })()}
               </div>
-            </div>
 
             {/* Related Products displayed when scrolling down */}
             <div className="px-4 pt-4 pb-8 space-y-3">

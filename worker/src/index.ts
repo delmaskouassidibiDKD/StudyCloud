@@ -2513,6 +2513,8 @@ export default {
           'cart_items',
           'shop_profiles',
           'shop_items',
+          'seller_follows',
+          'user_product_interactions',
           'support_tickets',
           'notifications',
           'chat_messages',
@@ -2527,6 +2529,11 @@ export default {
             await db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(userId).run();
           } catch (e) {}
         }
+
+        // Nettoyer aussi les abonnements reçus en tant que vendeur
+        try {
+          await db.prepare('DELETE FROM seller_follows WHERE seller_id = ?').bind(userId).run();
+        } catch (e) {}
 
         // 3. Cas spécifiques de tables avec colonnes ou relations différentes
         try {
@@ -4745,37 +4752,351 @@ export default {
         }
       }
 
+      async function ensureShopAndProductTables(db: any) {
+        try {
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS products (
+              id TEXT PRIMARY KEY,
+              seller_id TEXT NOT NULL,
+              seller_name TEXT DEFAULT 'Étudiant',
+              seller_school TEXT DEFAULT '',
+              seller_filiere TEXT DEFAULT '',
+              seller_country TEXT DEFAULT "Côte d'Ivoire",
+              seller_phone TEXT DEFAULT '',
+              seller_whatsapp TEXT DEFAULT '',
+              seller_avatar_url TEXT,
+              title TEXT NOT NULL,
+              description TEXT DEFAULT '',
+              price TEXT NOT NULL,
+              currency TEXT DEFAULT 'FCFA',
+              category TEXT DEFAULT 'Vente digital (PDF)',
+              image_urls_json TEXT DEFAULT '[]',
+              views INTEGER DEFAULT 0,
+              sales INTEGER DEFAULT 0,
+              is_boosted INTEGER DEFAULT 0,
+              boost_formula TEXT,
+              boost_views_target INTEGER DEFAULT 0,
+              boost_end_date TEXT,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+
+          // Migrations non-bloquantes si la table existait avec moins de colonnes
+          const addCols = [
+            "ALTER TABLE products ADD COLUMN seller_name TEXT DEFAULT 'Étudiant'",
+            "ALTER TABLE products ADD COLUMN seller_school TEXT DEFAULT ''",
+            "ALTER TABLE products ADD COLUMN seller_filiere TEXT DEFAULT ''",
+            "ALTER TABLE products ADD COLUMN seller_country TEXT DEFAULT \"Côte d'Ivoire\"",
+            "ALTER TABLE products ADD COLUMN seller_phone TEXT DEFAULT ''",
+            "ALTER TABLE products ADD COLUMN seller_whatsapp TEXT DEFAULT ''",
+            "ALTER TABLE products ADD COLUMN seller_avatar_url TEXT",
+            "ALTER TABLE products ADD COLUMN currency TEXT DEFAULT 'FCFA'",
+            "ALTER TABLE products ADD COLUMN views INTEGER DEFAULT 0",
+            "ALTER TABLE products ADD COLUMN sales INTEGER DEFAULT 0",
+            "ALTER TABLE products ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+          ];
+          for (const stmt of addCols) {
+            try { await db.prepare(stmt).run(); } catch(e) {}
+          }
+
+          // Table des abonnements aux comptes vendeurs (seller_follows)
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS seller_follows (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              seller_id TEXT NOT NULL,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              UNIQUE(user_id, seller_id)
+            )
+          `).run();
+
+          // Table des interactions sur les produits (user_product_interactions)
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS user_product_interactions (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              product_id TEXT NOT NULL,
+              interaction_type TEXT DEFAULT 'view',
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+        } catch (e) {
+          console.warn('[ensureShopAndProductTables warning]', e);
+        }
+      }
+
       if (path === '/api/products') {
         if (method === 'GET') {
+          await ensureShopAndProductTables(env.DB);
           const category = url.searchParams.get('category');
-          let query = 'SELECT * FROM products';
+          const search = url.searchParams.get('search');
+          const userId = url.searchParams.get('userId');
+          const sellerId = url.searchParams.get('sellerId');
+          const pageParam = url.searchParams.get('page');
+          const limitParam = url.searchParams.get('limit');
+          const page = pageParam ? Math.max(1, parseInt(pageParam, 10)) : null;
+          const limit = limitParam ? Math.max(1, Math.min(100, parseInt(limitParam, 10))) : 24;
+
+          let query = 'SELECT * FROM products WHERE 1=1';
           const params: any[] = [];
           if (category && category !== 'Tous') {
-            query += ' WHERE category = ?';
+            query += ' AND category = ?';
             params.push(category);
           }
-          query += ' ORDER BY is_boosted DESC, created_at DESC';
+          if (sellerId) {
+            query += ' AND seller_id = ?';
+            params.push(sellerId);
+          }
+          if (search) {
+            query += ' AND (title LIKE ? OR description LIKE ? OR category LIKE ? OR seller_name LIKE ? OR seller_school LIKE ? OR seller_filiere LIKE ?)';
+            const s = `%${search}%`;
+            params.push(s, s, s, s, s, s);
+          }
+          query += ' ORDER BY created_at DESC';
           const { results } = await env.DB.prepare(query).bind(...params).all();
-          return jsonResponse({ success: true, data: results }, 200, origin);
+          let productsList: any[] = results || [];
+
+          // ALGORITHME DE RECOMMANDATION INTELLIGENT PERSONNALISÉ POUR PRODUITS & LIBRAIRIE
+          if (userId && productsList.length > 0) {
+            try {
+              // Récupérer le profil étudiant (pays, filière, école), ses matières, ses fichiers et ses abonnements vendeurs
+              const [userRes, matieresRes, filesRes, docInteractionsRes, prodInteractionsRes, followsRes] = await Promise.all([
+                env.DB.prepare('SELECT school, filiere, country FROM users WHERE id = ?').bind(userId).first<any>(),
+                env.DB.prepare('SELECT name FROM matieres WHERE user_id = ?').bind(userId).all(),
+                env.DB.prepare('SELECT name, matiere_id FROM files WHERE user_id = ? ORDER BY created_at DESC LIMIT 60').bind(userId).all(),
+                env.DB.prepare('SELECT document_id FROM user_document_interactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').bind(userId).all().catch(() => ({ results: [] })),
+                env.DB.prepare('SELECT product_id FROM user_product_interactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').bind(userId).all().catch(() => ({ results: [] })),
+                env.DB.prepare('SELECT seller_id FROM seller_follows WHERE user_id = ?').bind(userId).all().catch(() => ({ results: [] }))
+              ]);
+
+              const userSchool = (userRes?.school || '').toLowerCase().trim();
+              const userFiliere = (userRes?.filiere || '').toLowerCase().trim();
+              const userCountry = (userRes?.country || '').toLowerCase().trim();
+
+              const userMatiereNames: string[] = (matieresRes?.results || [])
+                .map((m: any) => (m.name || '').toLowerCase().trim())
+                .filter(Boolean);
+
+              const userKeywords: string[] = [];
+              (filesRes?.results || []).forEach((f: any) => {
+                const combined = `${f.name || ''} ${f.matiere_id || ''}`.toLowerCase();
+                const words = combined.replace(/[^a-z0-9à-ÿ]/gi, ' ').split(/\s+/).filter((w: string) => w.length >= 3);
+                userKeywords.push(...words);
+              });
+              const uniqueUserKeywords = Array.from(new Set(userKeywords)).slice(0, 40);
+
+              const followedSellerIds = new Set((followsRes?.results || []).map((f: any) => f.seller_id));
+              const interactedProductIds = new Set((prodInteractionsRes?.results || []).map((p: any) => p.product_id));
+
+              // Calcul du score de pertinence décroissant pour chaque produit
+              const scoredProducts = productsList.map((prod: any) => {
+                let score = 0;
+                const pSchool = (prod.seller_school || '').toLowerCase().trim();
+                const pFiliere = (prod.seller_filiere || '').toLowerCase().trim();
+                const pCountry = (prod.seller_country || '').toLowerCase().trim();
+                const pCategory = (prod.category || '').toLowerCase().trim();
+                const pTitle = (prod.title || '').toLowerCase().trim();
+                const pDesc = (prod.description || '').toLowerCase().trim();
+
+                // 1. Abonné au compte du vendeur (+100 points - Boost prioritaire)
+                if (followedSellerIds.has(prod.seller_id)) {
+                  score += 100;
+                }
+
+                // 2. Produit boosté / sponsorisé (+60)
+                if (prod.is_boosted) {
+                  score += 60;
+                }
+
+                // 3. Même filière ou filière mentionnée dans titre/description (+50)
+                if (userFiliere && (pFiliere.includes(userFiliere) || userFiliere.includes(pFiliere) || pTitle.includes(userFiliere) || pDesc.includes(userFiliere) || pCategory.includes(userFiliere))) {
+                  score += 50;
+                }
+
+                // 4. Même école ou université (+40)
+                if (userSchool && (pSchool.includes(userSchool) || userSchool.includes(pSchool) || pTitle.includes(userSchool) || pDesc.includes(userSchool))) {
+                  score += 40;
+                }
+
+                // 5. Matières créées par l'étudiant en commun (+35)
+                if (userMatiereNames.some(m => m && (pTitle.includes(m) || pDesc.includes(m) || pCategory.includes(m) || m.includes(pCategory)))) {
+                  score += 35;
+                }
+
+                // 6. Même pays (+25)
+                if (userCountry && pCountry && (pCountry.includes(userCountry) || userCountry.includes(pCountry))) {
+                  score += 25;
+                }
+
+                // 7. Produit déjà consulté ou cliqué (+20)
+                if (interactedProductIds.has(prod.id)) {
+                  score += 20;
+                }
+
+                // 8. Mots-clés en commun avec les fichiers présents dans ses dossiers (+10 par mot-clé, max +30)
+                let matchedKws = 0;
+                for (const kw of uniqueUserKeywords) {
+                  if (pTitle.includes(kw) || pDesc.includes(kw) || pCategory.includes(kw)) {
+                    matchedKws++;
+                    if (matchedKws >= 3) break;
+                  }
+                }
+                score += matchedKws * 10;
+
+                // 9. Récence et fraîcheur du produit (nouveaux produits mis en avant)
+                const ageDays = (Date.now() - new Date(prod.created_at || Date.now()).getTime()) / (1000 * 60 * 60 * 24);
+                const recencyBonus = ageDays < 1 ? 20 : (ageDays < 7 ? 10 : (ageDays < 30 ? 5 : 0));
+                score += recencyBonus;
+
+                // 10. Popularité (ventes et vues)
+                const popBonus = Math.min(15, (prod.sales || 0) * 3 + (prod.views || 0) * 0.2);
+                score += popBonus;
+
+                return { ...prod, _relevance_score: Math.round(score) };
+              });
+
+              // Tri décroissant : les produits les plus pertinents et de vendeurs suivis en premier,
+              // puis décroissance continue vers les produits moins corrélés
+              scoredProducts.sort((a, b) => {
+                if (b._relevance_score !== a._relevance_score) {
+                  return b._relevance_score - a._relevance_score;
+                }
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+              });
+
+              productsList = scoredProducts;
+            } catch (algoErr) {
+              console.warn('[Products Recommendation Algorithm Error]', algoErr);
+            }
+          }
+
+          if (page !== null) {
+            const total = productsList.length;
+            const offset = (page - 1) * limit;
+            const paginatedData = productsList.slice(offset, offset + limit);
+            const hasMore = offset + limit < total;
+            return jsonResponse({
+              success: true,
+              data: paginatedData,
+              pagination: {
+                page,
+                limit,
+                total,
+                hasMore
+              }
+            }, 200, origin);
+          }
+
+          return jsonResponse({ success: true, data: productsList }, 200, origin);
         }
+
         if (method === 'POST') {
+          await ensureShopAndProductTables(env.DB);
           const body: any = await request.json();
-          const { id, sellerId, title, description, price, category, imageUrlsJson, isBoosted, boostFormula, boostViewsTarget, boostEndDate } = body;
+          const {
+            id,
+            sellerId,
+            sellerName,
+            sellerSchool,
+            sellerFiliere,
+            sellerCountry,
+            sellerPhone,
+            sellerWhatsapp,
+            sellerAvatarUrl,
+            title,
+            description,
+            price,
+            currency,
+            category,
+            imageUrlsJson,
+            isBoosted,
+            boostFormula,
+            boostViewsTarget,
+            boostEndDate
+          } = body;
+
+          if (!sellerId || !title || !price) {
+            return errorResponse('sellerId, title et price sont obligatoires', 400, origin);
+          }
+
+          let finalSellerName = sellerName;
+          let finalSellerSchool = sellerSchool;
+          let finalSellerFiliere = sellerFiliere;
+          let finalSellerCountry = sellerCountry;
+          let finalSellerPhone = sellerPhone;
+          let finalSellerWhatsapp = sellerWhatsapp;
+          let finalSellerAvatar = sellerAvatarUrl;
+
+          // Auto-enrichissement depuis users et shop_profiles si manquant
+          if (!finalSellerName || !finalSellerSchool || !finalSellerFiliere) {
+            try {
+              const [userRow, shopRow] = await Promise.all([
+                env.DB.prepare('SELECT name, school, filiere, country, phone, avatar_url FROM users WHERE id = ?').bind(sellerId).first<any>(),
+                env.DB.prepare('SELECT shop_name, shop_phone, shop_whatsapp, shop_avatar_url FROM shop_profiles WHERE user_id = ?').bind(sellerId).first<any>()
+              ]);
+              finalSellerName = finalSellerName || shopRow?.shop_name || userRow?.name || 'Étudiant';
+              finalSellerSchool = finalSellerSchool || userRow?.school || '';
+              finalSellerFiliere = finalSellerFiliere || userRow?.filiere || '';
+              finalSellerCountry = finalSellerCountry || userRow?.country || "Côte d'Ivoire";
+              finalSellerPhone = finalSellerPhone || shopRow?.shop_phone || userRow?.phone || '';
+              finalSellerWhatsapp = finalSellerWhatsapp || shopRow?.shop_whatsapp || userRow?.phone || '';
+              finalSellerAvatar = finalSellerAvatar || shopRow?.shop_avatar_url || userRow?.avatar_url || null;
+            } catch (e) {}
+          }
+
+          const productId = id || crypto.randomUUID();
+
           await env.DB.prepare(`
-            INSERT INTO products (id, seller_id, title, description, price, category, image_urls_json, is_boosted, boost_formula, boost_views_target, boost_end_date)
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            INSERT INTO products (
+              id, seller_id, seller_name, seller_school, seller_filiere, seller_country,
+              seller_phone, seller_whatsapp, seller_avatar_url, title, description,
+              price, currency, category, image_urls_json, is_boosted, boost_formula,
+              boost_views_target, boost_end_date, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
+              seller_name = excluded.seller_name,
+              seller_school = excluded.seller_school,
+              seller_filiere = excluded.seller_filiere,
+              seller_country = excluded.seller_country,
+              seller_phone = excluded.seller_phone,
+              seller_whatsapp = excluded.seller_whatsapp,
+              seller_avatar_url = excluded.seller_avatar_url,
               title = excluded.title,
               description = excluded.description,
               price = excluded.price,
+              currency = excluded.currency,
               category = excluded.category,
               image_urls_json = excluded.image_urls_json,
               is_boosted = excluded.is_boosted,
               boost_formula = excluded.boost_formula,
               boost_views_target = excluded.boost_views_target,
-              boost_end_date = excluded.boost_end_date
-          `).bind(id || crypto.randomUUID(), sellerId, title, description || '', price, category || 'Électronique', imageUrlsJson || '[]', isBoosted ? 1 : 0, boostFormula || null, boostViewsTarget || 0, boostEndDate || null).run();
-          return jsonResponse({ success: true }, 201, origin);
+              boost_end_date = excluded.boost_end_date,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            productId,
+            sellerId,
+            finalSellerName || 'Étudiant',
+            finalSellerSchool || '',
+            finalSellerFiliere || '',
+            finalSellerCountry || "Côte d'Ivoire",
+            finalSellerPhone || '',
+            finalSellerWhatsapp || '',
+            finalSellerAvatar || null,
+            title,
+            description || '',
+            price,
+            currency || 'FCFA',
+            category || 'Vente digital (PDF)',
+            imageUrlsJson || '[]',
+            isBoosted ? 1 : 0,
+            boostFormula || null,
+            boostViewsTarget || 0,
+            boostEndDate || null
+          ).run();
+
+          return jsonResponse({ success: true, id: productId, message: 'Produit publié avec succès' }, 201, origin);
         }
       }
 
@@ -4783,6 +5104,63 @@ export default {
         const id = path.split('/')[3];
         await env.DB.prepare('DELETE FROM products WHERE id = ?').bind(id).run();
         return jsonResponse({ success: true, message: 'Produit supprimé' }, 200, origin);
+      }
+
+      if (path === '/api/seller-follows') {
+        await ensureShopAndProductTables(env.DB);
+        if (method === 'GET') {
+          const userId = url.searchParams.get('userId');
+          if (!userId) return errorResponse('userId requis', 400, origin);
+          const { results } = await env.DB.prepare('SELECT seller_id FROM seller_follows WHERE user_id = ?').bind(userId).all();
+          const followedSellerIds = (results || []).map((r: any) => r.seller_id);
+          return jsonResponse({ success: true, followedSellerIds }, 200, origin);
+        }
+        if (method === 'POST') {
+          const body: any = await request.json();
+          const { userId, sellerId, action } = body;
+          if (!userId || !sellerId) return errorResponse('userId et sellerId requis', 400, origin);
+
+          const existing = await env.DB.prepare('SELECT id FROM seller_follows WHERE user_id = ? AND seller_id = ?').bind(userId, sellerId).first();
+          let isFollowing = false;
+
+          if (action === 'unfollow' || (action !== 'follow' && existing)) {
+            await env.DB.prepare('DELETE FROM seller_follows WHERE user_id = ? AND seller_id = ?').bind(userId, sellerId).run();
+            isFollowing = false;
+          } else {
+            await env.DB.prepare('INSERT OR IGNORE INTO seller_follows (id, user_id, seller_id, created_at) VALUES (?, ?, ?, CURRENT_TIMESTAMP)').bind(crypto.randomUUID(), userId, sellerId).run();
+            isFollowing = true;
+          }
+          return jsonResponse({ success: true, isFollowing }, 200, origin);
+        }
+      }
+
+      if (path.startsWith('/api/products/') && path.endsWith('/interact') && method === 'POST') {
+        await ensureShopAndProductTables(env.DB);
+        const id = path.split('/')[3];
+        const body: any = await request.json().catch(() => ({}));
+        const { userId, type } = body;
+        const interactionType = type || 'view';
+
+        if (userId && id) {
+          try {
+            await env.DB.prepare(`
+              INSERT INTO user_product_interactions (id, user_id, product_id, interaction_type, created_at)
+              VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(crypto.randomUUID(), userId, id, interactionType).run();
+
+            // Purge auto des interactions de plus de 30 jours
+            await env.DB.prepare(`
+              DELETE FROM user_product_interactions 
+              WHERE created_at < datetime('now', '-30 days')
+            `).run();
+          } catch (e) {}
+        }
+
+        try {
+          await env.DB.prepare('UPDATE products SET views = views + 1 WHERE id = ?').bind(id).run();
+        } catch (e) {}
+
+        return jsonResponse({ success: true, message: 'Interaction produit enregistrée' }, 200, origin);
       }
 
       if (path === '/api/cart') {
