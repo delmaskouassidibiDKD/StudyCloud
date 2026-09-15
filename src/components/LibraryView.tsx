@@ -53,30 +53,94 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     return () => document.removeEventListener('click', handleDocumentClick);
   }, []);
 
-  // ---- Published Documents (onglet Ressources) ----
+  // ---- Published Documents (onglet Ressources avec Recommandation Personnalisée & Défilement Infini) ----
   const [publishedDocs, setPublishedDocs] = useState<any[]>([]);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
+  const [isLoadingMoreDocs, setIsLoadingMoreDocs] = useState(false);
+  const [docsPage, setDocsPage] = useState(1);
+  const [hasMoreDocs, setHasMoreDocs] = useState(false);
   const [docsError, setDocsError] = useState<string | null>(null);
+  const infiniteSentinelRef = useRef<HTMLDivElement>(null);
 
   const loadPublishedDocs = useCallback(async () => {
     setIsLoadingDocs(true);
     setDocsError(null);
+    setDocsPage(1);
     try {
-      const filters: any = {};
+      const currentUserId = localStorage.getItem('unifolder_user_id') || undefined;
+      const filters: any = {
+        page: 1,
+        limit: 24,
+        isPublic: true,
+      };
+      if (currentUserId) filters.userId = currentUserId;
       if (selectedSchoolFilter) filters.school = selectedSchoolFilter;
       if (selectedFiliereFilter) filters.filiere = selectedFiliereFilter;
       if (selectedCategory !== 'Tous') filters.category = selectedCategory;
       if (searchQuery.trim()) filters.search = searchQuery.trim();
-      filters.isPublic = true;
+
       const res = await StudyCloudAPI.getPublishedDocuments(filters);
       setPublishedDocs(res.data || []);
+      setHasMoreDocs(Boolean(res.pagination?.hasMore));
     } catch (err: any) {
       setDocsError(err.message || 'Erreur de chargement');
       setPublishedDocs([]);
+      setHasMoreDocs(false);
     } finally {
       setIsLoadingDocs(false);
     }
   }, [selectedSchoolFilter, selectedFiliereFilter, selectedCategory, searchQuery]);
+
+  const loadMorePublishedDocs = useCallback(async () => {
+    if (isLoadingDocs || isLoadingMoreDocs || !hasMoreDocs) return;
+    setIsLoadingMoreDocs(true);
+    const nextPage = docsPage + 1;
+    try {
+      const currentUserId = localStorage.getItem('unifolder_user_id') || undefined;
+      const filters: any = {
+        page: nextPage,
+        limit: 24,
+        isPublic: true,
+      };
+      if (currentUserId) filters.userId = currentUserId;
+      if (selectedSchoolFilter) filters.school = selectedSchoolFilter;
+      if (selectedFiliereFilter) filters.filiere = selectedFiliereFilter;
+      if (selectedCategory !== 'Tous') filters.category = selectedCategory;
+      if (searchQuery.trim()) filters.search = searchQuery.trim();
+
+      const res = await StudyCloudAPI.getPublishedDocuments(filters);
+      if (res && Array.isArray(res.data) && res.data.length > 0) {
+        setPublishedDocs((prev) => {
+          const existingIds = new Set(prev.map((d) => d.id));
+          const newItems = res.data.filter((d) => !existingIds.has(d.id));
+          return [...prev, ...newItems];
+        });
+        setDocsPage(nextPage);
+        setHasMoreDocs(Boolean(res.pagination?.hasMore));
+      } else {
+        setHasMoreDocs(false);
+      }
+    } catch (err) {
+      console.warn('Erreur chargement page suivante ressources:', err);
+    } finally {
+      setIsLoadingMoreDocs(false);
+    }
+  }, [docsPage, hasMoreDocs, isLoadingDocs, isLoadingMoreDocs, selectedSchoolFilter, selectedFiliereFilter, selectedCategory, searchQuery]);
+
+  // Observer pour défilement infini automatique
+  useEffect(() => {
+    if (!infiniteSentinelRef.current || !hasMoreDocs || isLoadingMoreDocs || isLoadingDocs) return;
+    const observer = new IntersectionObserver(
+      (entries) => {
+        if (entries[0].isIntersecting) {
+          loadMorePublishedDocs();
+        }
+      },
+      { threshold: 0.1, rootMargin: '200px' }
+    );
+    observer.observe(infiniteSentinelRef.current);
+    return () => observer.disconnect();
+  }, [hasMoreDocs, isLoadingMoreDocs, isLoadingDocs, loadMorePublishedDocs]);
 
   useEffect(() => {
     if (activeSubTab === 'ressources') {
@@ -1116,7 +1180,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               href={doc.file_url}
                               target="_blank"
                               rel="noopener noreferrer"
-                              onClick={() => StudyCloudAPI.incrementDocumentView(doc.id).catch(() => {})}
+                              onClick={() => {
+                                const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
+                                StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'view').catch(() => {});
+                              }}
                               className="p-1 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1 transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
                               title="Visualiser"
                             >
@@ -1125,7 +1192,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             </a>
                           ) : (
                             <button
-                              onClick={() => setActivePreviewItem({ name: doc.file_name || doc.title, url: doc.file_url || '', folderName: doc.school || '', lockFullscreen: true })}
+                              onClick={() => {
+                                const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
+                                StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'click').catch(() => {});
+                                setActivePreviewItem({ name: doc.file_name || doc.title, url: doc.file_url || '', folderName: doc.school || '', lockFullscreen: true });
+                              }}
                               className="p-1 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1 transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
                               title="Visualiser"
                             >
@@ -1137,7 +1208,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             <a
                               href={doc.file_url}
                               download={doc.file_name || doc.title}
-                              onClick={() => StudyCloudAPI.incrementDocumentDownload(doc.id).catch(() => {})}
+                              onClick={() => {
+                                const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
+                                StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'download').catch(() => {});
+                              }}
                               className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5"
                               title="Télécharger"
                             >
@@ -1157,6 +1231,18 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     </div>
                   );
                 })}
+              </div>
+            )}
+
+            {/* Sentinelle pour le défilement infini et indicateur de chargement */}
+            {hasMoreDocs && (
+              <div ref={infiniteSentinelRef} className="py-6 flex flex-col items-center justify-center gap-2">
+                {isLoadingMoreDocs && (
+                  <div className="inline-flex items-center gap-2 px-4 py-2 bg-white border-2 border-stone-800 rounded-xl shadow-[2px_2px_0px_0px_#1c1917] text-xs font-bold text-stone-800">
+                    <RefreshCw className="w-3.5 h-3.5 text-orange-600 animate-spin" />
+                    <span>Chargement de nouvelles ressources...</span>
+                  </div>
+                )}
               </div>
             )}
           </div>

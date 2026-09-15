@@ -341,6 +341,18 @@ CREATE INDEX IF NOT EXISTS idx_published_country ON published_documents(country)
 CREATE INDEX IF NOT EXISTS idx_published_matiere ON published_documents(matiere_name);
 CREATE INDEX IF NOT EXISTS idx_published_public ON published_documents(is_public);
 
+CREATE TABLE IF NOT EXISTS user_document_interactions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    document_id TEXT NOT NULL,
+    interaction_type TEXT DEFAULT 'view',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (document_id) REFERENCES published_documents(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_doc_interactions ON user_document_interactions(user_id, document_id);
+
 CREATE TABLE IF NOT EXISTS notifications (
     id TEXT PRIMARY KEY,
     user_id TEXT NOT NULL,

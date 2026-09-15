@@ -3988,6 +3988,24 @@ export default {
           const level = url.searchParams.get('level');
           const search = url.searchParams.get('search');
           const isPublicParam = url.searchParams.get('isPublic');
+          const userId = url.searchParams.get('userId');
+          const pageParam = url.searchParams.get('page');
+          const limitParam = url.searchParams.get('limit');
+          const page = pageParam ? Math.max(1, parseInt(pageParam, 10)) : null;
+          const limit = limitParam ? Math.max(1, Math.min(100, parseInt(limitParam, 10))) : 30;
+
+          // Assurer l'existence de la table d'interactions
+          try {
+            await env.DB.prepare(`
+              CREATE TABLE IF NOT EXISTS user_document_interactions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                document_id TEXT NOT NULL,
+                interaction_type TEXT DEFAULT 'view',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+              )
+            `).run();
+          } catch (e) {}
 
           let query = 'SELECT * FROM published_documents WHERE 1=1';
           const params: any[] = [];
@@ -4014,7 +4032,124 @@ export default {
 
           query += ' ORDER BY created_at DESC';
           const { results } = await env.DB.prepare(query).bind(...params).all();
-          return jsonResponse({ success: true, data: results }, 200, origin);
+          let docsList: any[] = results || [];
+
+          // ALGORITHME DE RECOMMANDATION INTELLIGENT PERSONNALISÉ
+          if (userId && docsList.length > 0) {
+            try {
+              // Récupérer le profil étudiant, ses matières créées, ses fichiers et son historique de clics
+              const [userRes, matieresRes, filesRes, interactionsRes] = await Promise.all([
+                env.DB.prepare('SELECT school, filiere, country FROM users WHERE id = ?').bind(userId).first<any>(),
+                env.DB.prepare('SELECT name FROM matieres WHERE user_id = ?').bind(userId).all(),
+                env.DB.prepare('SELECT name, matiere_id FROM files WHERE user_id = ? ORDER BY created_at DESC LIMIT 60').bind(userId).all(),
+                env.DB.prepare('SELECT document_id, interaction_type FROM user_document_interactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').bind(userId).all()
+              ]);
+
+              const userSchool = (userRes?.school || '').toLowerCase().trim();
+              const userFiliere = (userRes?.filiere || '').toLowerCase().trim();
+              const userCountry = (userRes?.country || '').toLowerCase().trim();
+
+              const userMatiereNames: string[] = (matieresRes?.results || [])
+                .map((m: any) => (m.name || '').toLowerCase().trim())
+                .filter(Boolean);
+
+              const userKeywords: string[] = [];
+              (filesRes?.results || []).forEach((f: any) => {
+                const combined = `${f.name || ''} ${f.matiere_id || ''}`.toLowerCase();
+                const words = combined.replace(/[^a-z0-9à-ÿ]/gi, ' ').split(/\s+/).filter((w: string) => w.length >= 3);
+                userKeywords.push(...words);
+              });
+              const uniqueUserKeywords = Array.from(new Set(userKeywords)).slice(0, 40);
+
+              const interactedDocIds = new Set((interactionsRes?.results || []).map((i: any) => i.document_id));
+
+              // Calcul du score de pertinence décroissant pour chaque document
+              const scoredDocs = docsList.map((doc: any) => {
+                let score = 0;
+                const dSchool = (doc.school || '').toLowerCase().trim();
+                const dFiliere = (doc.filiere || '').toLowerCase().trim();
+                const dCountry = (doc.country || '').toLowerCase().trim();
+                const dMatiere = (doc.matiere_name || '').toLowerCase().trim();
+                const dTitle = (doc.title || '').toLowerCase().trim();
+                const dDesc = (doc.description || '').toLowerCase().trim();
+                const dTags = (doc.tags_json || '').toLowerCase().trim();
+
+                // 1. Même filière (+50)
+                if (userFiliere && dFiliere && (dFiliere.includes(userFiliere) || userFiliere.includes(dFiliere))) {
+                  score += 50;
+                }
+
+                // 2. Même école (+40)
+                if (userSchool && dSchool && (dSchool.includes(userSchool) || userSchool.includes(dSchool))) {
+                  score += 40;
+                }
+
+                // 3. Correspondance avec les matières créées par l'étudiant (+35)
+                if (userMatiereNames.some(m => m && (dMatiere.includes(m) || dTitle.includes(m) || m.includes(dMatiere)))) {
+                  score += 35;
+                }
+
+                // 4. Documents déjà consultés ou cliqués par l'étudiant (+20)
+                if (interactedDocIds.has(doc.id)) {
+                  score += 20;
+                }
+
+                // 5. Mots-clés en commun avec les fichiers présents dans ses dossiers (+10 par mot-clé, max +30)
+                let matchedKws = 0;
+                for (const kw of uniqueUserKeywords) {
+                  if (dTitle.includes(kw) || dDesc.includes(kw) || dTags.includes(kw) || dMatiere.includes(kw)) {
+                    matchedKws++;
+                    if (matchedKws >= 3) break;
+                  }
+                }
+                score += matchedKws * 10;
+
+                // 6. Même pays (+15)
+                if (userCountry && dCountry && (dCountry.includes(userCountry) || userCountry.includes(dCountry))) {
+                  score += 15;
+                }
+
+                // 7. Popularité et récence (bonus jusqu'à +15)
+                const popBonus = Math.min(10, (doc.downloads_count || 0) * 1.5 + (doc.views_count || 0) * 0.3);
+                const ageDays = (Date.now() - new Date(doc.created_at || Date.now()).getTime()) / (1000 * 60 * 60 * 24);
+                const recencyBonus = ageDays < 7 ? 5 : (ageDays < 30 ? 2 : 0);
+                score += popBonus + recencyBonus;
+
+                return { ...doc, _relevance_score: Math.round(score) };
+              });
+
+              // Tri décroissant : les ressources les plus pertinentes en premier,
+              // puis au fur et à mesure celles qui n'ont rien à voir
+              scoredDocs.sort((a, b) => {
+                if (b._relevance_score !== a._relevance_score) {
+                  return b._relevance_score - a._relevance_score;
+                }
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+              });
+
+              docsList = scoredDocs;
+            } catch (algoErr) {
+              console.warn('[Recommendation Algorithm Error]', algoErr);
+            }
+          }
+
+          // Support de la pagination / défilement infini
+          if (page !== null) {
+            const startIndex = (page - 1) * limit;
+            const paginatedData = docsList.slice(startIndex, startIndex + limit);
+            return jsonResponse({
+              success: true,
+              data: paginatedData,
+              pagination: {
+                page,
+                limit,
+                total: docsList.length,
+                hasMore: startIndex + limit < docsList.length
+              }
+            }, 200, origin);
+          }
+
+          return jsonResponse({ success: true, data: docsList }, 200, origin);
         }
 
         if (method === 'POST') {
@@ -4105,6 +4240,40 @@ export default {
             isPublic: finalIsPublic === 1
           }, 201, origin);
         }
+      }
+
+      if (path.startsWith('/api/published-documents/') && path.endsWith('/interact') && method === 'POST') {
+        const id = path.split('/')[3];
+        const body: any = await request.json().catch(() => ({}));
+        const { userId, type } = body;
+        const interactionType = type || 'view';
+
+        if (userId && id) {
+          try {
+            await env.DB.prepare(`
+              CREATE TABLE IF NOT EXISTS user_document_interactions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                document_id TEXT NOT NULL,
+                interaction_type TEXT DEFAULT 'view',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+              )
+            `).run();
+
+            await env.DB.prepare(`
+              INSERT INTO user_document_interactions (id, user_id, document_id, interaction_type, created_at)
+              VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(crypto.randomUUID(), userId, id, interactionType).run();
+          } catch (e) {}
+        }
+
+        if (interactionType === 'download') {
+          await env.DB.prepare('UPDATE published_documents SET downloads_count = downloads_count + 1 WHERE id = ?').bind(id).run();
+        } else {
+          await env.DB.prepare('UPDATE published_documents SET views_count = views_count + 1 WHERE id = ?').bind(id).run();
+        }
+
+        return jsonResponse({ success: true, message: 'Interaction enregistrée' }, 200, origin);
       }
 
       if (path.startsWith('/api/published-documents/') && path.endsWith('/view') && method === 'POST') {

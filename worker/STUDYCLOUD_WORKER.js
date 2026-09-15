@@ -962,7 +962,7 @@ var src_default = {
       });
     }
     try {
-      let sanitizeUser2 = function (user) {
+      let sanitizeUser2 = function(user) {
         if (!user)
           return null;
         const { password_hash: _ph, security_answer_1_hash: _s1, security_answer_2_hash: _s2, ...rest } = user;
@@ -973,14 +973,14 @@ var src_default = {
             user.security_answer_1_hash && typeof user.security_answer_1_hash === "string" && user.security_answer_1_hash.trim().length > 0 && user.security_answer_2_hash && typeof user.security_answer_2_hash === "string" && user.security_answer_2_hash.trim().length > 0
           )
         };
-      }, generateId2 = function () {
+      }, generateId2 = function() {
         return crypto.randomUUID();
-      }, isValidEmail2 = function (email) {
+      }, isValidEmail2 = function(email) {
         if (!email || typeof email !== "string")
           return false;
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
         return emailRegex.test(email.trim());
-      }, validatePasswordFormat2 = function (pwd) {
+      }, validatePasswordFormat2 = function(pwd) {
         if (!pwd || typeof pwd !== "string")
           return { valid: false, error: "Mot de passe requis" };
         if (pwd.length < 6)
@@ -992,7 +992,7 @@ var src_default = {
         if (!/[^a-zA-Z0-9]/.test(pwd))
           return { valid: false, error: "Le mot de passe doit contenir au moins un caract\xE8re sp\xE9cial (ex: @, #, $, !, etc.)" };
         return { valid: true };
-      }, generateEmailAvatar2 = function (email, name) {
+      }, generateEmailAvatar2 = function(email, name) {
         const cleanEmail = (email || "").trim().toLowerCase();
         const cleanName = (name || "").trim();
         let initials = "SC";
@@ -1011,7 +1011,7 @@ var src_default = {
         const color = colors[Math.abs(hash) % colors.length];
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"><rect width="128" height="128" rx="28" fill="${color}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="${initials.length > 1 ? "48" : "58"}" font-weight="700">${initials}</text></svg>`;
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-      }, htmlResponse2 = function (title, message, success, userId, token) {
+      }, htmlResponse2 = function(title, message, success, userId, token) {
         const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -3627,6 +3627,23 @@ var src_default = {
           const level = url.searchParams.get("level");
           const search = url.searchParams.get("search");
           const isPublicParam = url.searchParams.get("isPublic");
+          const userId = url.searchParams.get("userId");
+          const pageParam = url.searchParams.get("page");
+          const limitParam = url.searchParams.get("limit");
+          const page = pageParam ? Math.max(1, parseInt(pageParam, 10)) : null;
+          const limit = limitParam ? Math.max(1, Math.min(100, parseInt(limitParam, 10))) : 30;
+          try {
+            await env.DB.prepare(`
+              CREATE TABLE IF NOT EXISTS user_document_interactions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                document_id TEXT NOT NULL,
+                interaction_type TEXT DEFAULT 'view',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+              )
+            `).run();
+          } catch (e) {
+          }
           let query = "SELECT * FROM published_documents WHERE 1=1";
           const params = [];
           if (school) {
@@ -3666,7 +3683,92 @@ var src_default = {
           }
           query += " ORDER BY created_at DESC";
           const { results } = await env.DB.prepare(query).bind(...params).all();
-          return jsonResponse({ success: true, data: results }, 200, origin);
+          let docsList = results || [];
+          if (userId && docsList.length > 0) {
+            try {
+              const [userRes, matieresRes, filesRes, interactionsRes] = await Promise.all([
+                env.DB.prepare("SELECT school, filiere, country FROM users WHERE id = ?").bind(userId).first(),
+                env.DB.prepare("SELECT name FROM matieres WHERE user_id = ?").bind(userId).all(),
+                env.DB.prepare("SELECT name, matiere_id FROM files WHERE user_id = ? ORDER BY created_at DESC LIMIT 60").bind(userId).all(),
+                env.DB.prepare("SELECT document_id, interaction_type FROM user_document_interactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").bind(userId).all()
+              ]);
+              const userSchool = (userRes?.school || "").toLowerCase().trim();
+              const userFiliere = (userRes?.filiere || "").toLowerCase().trim();
+              const userCountry = (userRes?.country || "").toLowerCase().trim();
+              const userMatiereNames = (matieresRes?.results || []).map((m) => (m.name || "").toLowerCase().trim()).filter(Boolean);
+              const userKeywords = [];
+              (filesRes?.results || []).forEach((f) => {
+                const combined = `${f.name || ""} ${f.matiere_id || ""}`.toLowerCase();
+                const words = combined.replace(/[^a-z0-9à-ÿ]/gi, " ").split(/\s+/).filter((w) => w.length >= 3);
+                userKeywords.push(...words);
+              });
+              const uniqueUserKeywords = Array.from(new Set(userKeywords)).slice(0, 40);
+              const interactedDocIds = new Set((interactionsRes?.results || []).map((i) => i.document_id));
+              const scoredDocs = docsList.map((doc) => {
+                let score = 0;
+                const dSchool = (doc.school || "").toLowerCase().trim();
+                const dFiliere = (doc.filiere || "").toLowerCase().trim();
+                const dCountry = (doc.country || "").toLowerCase().trim();
+                const dMatiere = (doc.matiere_name || "").toLowerCase().trim();
+                const dTitle = (doc.title || "").toLowerCase().trim();
+                const dDesc = (doc.description || "").toLowerCase().trim();
+                const dTags = (doc.tags_json || "").toLowerCase().trim();
+                if (userFiliere && dFiliere && (dFiliere.includes(userFiliere) || userFiliere.includes(dFiliere))) {
+                  score += 50;
+                }
+                if (userSchool && dSchool && (dSchool.includes(userSchool) || userSchool.includes(dSchool))) {
+                  score += 40;
+                }
+                if (userMatiereNames.some((m) => m && (dMatiere.includes(m) || dTitle.includes(m) || m.includes(dMatiere)))) {
+                  score += 35;
+                }
+                if (interactedDocIds.has(doc.id)) {
+                  score += 20;
+                }
+                let matchedKws = 0;
+                for (const kw of uniqueUserKeywords) {
+                  if (dTitle.includes(kw) || dDesc.includes(kw) || dTags.includes(kw) || dMatiere.includes(kw)) {
+                    matchedKws++;
+                    if (matchedKws >= 3)
+                      break;
+                  }
+                }
+                score += matchedKws * 10;
+                if (userCountry && dCountry && (dCountry.includes(userCountry) || userCountry.includes(dCountry))) {
+                  score += 15;
+                }
+                const popBonus = Math.min(10, (doc.downloads_count || 0) * 1.5 + (doc.views_count || 0) * 0.3);
+                const ageDays = (Date.now() - new Date(doc.created_at || Date.now()).getTime()) / (1e3 * 60 * 60 * 24);
+                const recencyBonus = ageDays < 7 ? 5 : ageDays < 30 ? 2 : 0;
+                score += popBonus + recencyBonus;
+                return { ...doc, _relevance_score: Math.round(score) };
+              });
+              scoredDocs.sort((a, b) => {
+                if (b._relevance_score !== a._relevance_score) {
+                  return b._relevance_score - a._relevance_score;
+                }
+                return new Date(b.created_at).getTime() - new Date(a.created_at).getTime();
+              });
+              docsList = scoredDocs;
+            } catch (algoErr) {
+              console.warn("[Recommendation Algorithm Error]", algoErr);
+            }
+          }
+          if (page !== null) {
+            const startIndex = (page - 1) * limit;
+            const paginatedData = docsList.slice(startIndex, startIndex + limit);
+            return jsonResponse({
+              success: true,
+              data: paginatedData,
+              pagination: {
+                page,
+                limit,
+                total: docsList.length,
+                hasMore: startIndex + limit < docsList.length
+              }
+            }, 200, origin);
+          }
+          return jsonResponse({ success: true, data: docsList }, 200, origin);
         }
         if (method === "POST") {
           const body = await request.json();
@@ -3752,6 +3854,36 @@ var src_default = {
             isPublic: finalIsPublic === 1
           }, 201, origin);
         }
+      }
+      if (path.startsWith("/api/published-documents/") && path.endsWith("/interact") && method === "POST") {
+        const id = path.split("/")[3];
+        const body = await request.json().catch(() => ({}));
+        const { userId, type } = body;
+        const interactionType = type || "view";
+        if (userId && id) {
+          try {
+            await env.DB.prepare(`
+              CREATE TABLE IF NOT EXISTS user_document_interactions (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                document_id TEXT NOT NULL,
+                interaction_type TEXT DEFAULT 'view',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP
+              )
+            `).run();
+            await env.DB.prepare(`
+              INSERT INTO user_document_interactions (id, user_id, document_id, interaction_type, created_at)
+              VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(crypto.randomUUID(), userId, id, interactionType).run();
+          } catch (e) {
+          }
+        }
+        if (interactionType === "download") {
+          await env.DB.prepare("UPDATE published_documents SET downloads_count = downloads_count + 1 WHERE id = ?").bind(id).run();
+        } else {
+          await env.DB.prepare("UPDATE published_documents SET views_count = views_count + 1 WHERE id = ?").bind(id).run();
+        }
+        return jsonResponse({ success: true, message: "Interaction enregistr\xE9e" }, 200, origin);
       }
       if (path.startsWith("/api/published-documents/") && path.endsWith("/view") && method === "POST") {
         const id = path.split("/")[3];

@@ -788,6 +788,9 @@ export const StudyCloudAPI = {
     level?: string;
     search?: string;
     isPublic?: boolean;
+    userId?: string;
+    page?: number;
+    limit?: number;
   }) {
     let endpoint = '/api/published-documents';
     const params: string[] = [];
@@ -799,8 +802,11 @@ export const StudyCloudAPI = {
     if (filters?.level) params.push(`level=${encodeURIComponent(filters.level)}`);
     if (filters?.search) params.push(`search=${encodeURIComponent(filters.search)}`);
     if (filters?.isPublic !== undefined) params.push(`isPublic=${filters.isPublic ? '1' : '0'}`);
+    if (filters?.userId) params.push(`userId=${encodeURIComponent(filters.userId)}`);
+    if (filters?.page) params.push(`page=${filters.page}`);
+    if (filters?.limit) params.push(`limit=${filters.limit}`);
     if (params.length > 0) endpoint += `?${params.join('&')}`;
-    return request<{ success: boolean; data: any[] }>(endpoint);
+    return request<{ success: boolean; data: any[]; pagination?: { page: number; limit: number; total: number; hasMore: boolean } }>(endpoint);
   },
 
   async publishDocument(doc: {
@@ -825,6 +831,13 @@ export const StudyCloudAPI = {
     tagsJson?: string;
   }) {
     return request('/api/published-documents', { method: 'POST', body: JSON.stringify(doc) });
+  },
+
+  async trackDocumentInteraction(id: string, userId: string, type: 'view' | 'click' | 'download' = 'view') {
+    return request(`/api/published-documents/${encodeURIComponent(id)}/interact`, {
+      method: 'POST',
+      body: JSON.stringify({ userId, type }),
+    });
   },
 
   async incrementDocumentView(id: string) {
