@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Mail, Lock, Eye, EyeOff, ArrowLeft, AlertCircle, CheckCircle2, User, ShieldCheck, KeyRound, UserPlus, X, Sparkles } from 'lucide-react';
+import { Mail, Lock, Eye, EyeOff, ArrowLeft, AlertCircle, CheckCircle2, User, ShieldCheck, KeyRound, UserPlus, X, Sparkles, Gift } from 'lucide-react';
 import { StudyCloudAPI } from '../../services/api';
 import { useAuth } from '../../context/AuthContext';
 import { DnaLogo } from '../DnaLogo';
@@ -209,10 +209,12 @@ export function AuthPage({ onBack }: AuthPageProps) {
     try {
       let res: any;
       if (mode === 'register') {
+        const savedReferral = localStorage.getItem('sc_referral_code') || undefined;
         res = await StudyCloudAPI.register({
           name: name.trim(),
           email: email.trim(),
           password,
+          referralCode: savedReferral,
           securityQuestion1,
           securityAnswer1: securityAnswer1.trim(),
           securityQuestion2,
@@ -609,6 +611,33 @@ export function AuthPage({ onBack }: AuthPageProps) {
                 ? 'Créez votre espace Cloud sécurisé pour vos études, cours et dossiers professionnels'
                 : 'Accédez à vos cours, documents et dossiers sauvegardés en toute sécurité'}
             </p>
+
+            {/* Bannière de parrainage actif */}
+            {mode === 'register' && localStorage.getItem('sc_referral_code') && (
+              <div
+                className="mb-6 p-3.5 sm:p-4 rounded-2xl flex items-center justify-between gap-3 border transition-all animate-fadeIn"
+                style={{
+                  background: 'linear-gradient(135deg, rgba(234, 88, 12, 0.16) 0%, rgba(245, 158, 11, 0.12) 100%)',
+                  borderColor: 'rgba(249, 115, 22, 0.4)',
+                  boxShadow: '0 6px 20px rgba(234, 88, 12, 0.12)',
+                }}
+              >
+                <div className="flex items-center gap-3 min-w-0">
+                  <div className="w-8 h-8 rounded-xl bg-orange-500/25 border border-orange-500/40 flex items-center justify-center shrink-0 text-orange-400 shadow-sm">
+                    <Gift className="w-4 h-4" />
+                  </div>
+                  <div className="text-left min-w-0">
+                    <p className="text-xs font-black text-orange-300 uppercase tracking-wider">Invitation Étudiante Appliquée</p>
+                    <p className="text-xs text-white/90 truncate">
+                      Code parrain : <span className="font-mono font-bold text-orange-400">{localStorage.getItem('sc_referral_code')}</span>
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-500/30 shrink-0">
+                  Avantages inclus
+                </span>
+              </div>
+            )}
 
             {/* Bannière professionnelle d'information quand aucun compte n'est trouvé */}
             {accountNotFoundNotice && mode === 'register' && (

@@ -50,12 +50,21 @@ export default function App() {
     const verified = urlParams.get('verified');
     const authToken = urlParams.get('token');
 
+    // Détection d'un lien d'invitation / parrainage (?ref=171765542 ou hash #register)
+    const refParam = urlParams.get('ref') || urlParams.get('referral') || urlParams.get('code_parrainage');
+    if (refParam) {
+      localStorage.setItem('sc_referral_code', refParam.trim());
+      localStorage.setItem('sc_auth_redirect_mode', 'register');
+      window.dispatchEvent(new Event('studycloud_auth_redirect'));
+    }
+
     if (googleCode && !isAuthenticated) {
       const redirectUri = `${window.location.origin}${window.location.pathname}`;
       const action = urlParams.get('state') || localStorage.getItem('sc_google_auth_mode') || 'login';
+      const savedReferral = localStorage.getItem('sc_referral_code') || undefined;
       localStorage.removeItem('sc_google_auth_mode');
       window.history.replaceState({}, '', window.location.pathname);
-      StudyCloudAPI.googleAuth({ code: googleCode, redirectUri, action })
+      StudyCloudAPI.googleAuth({ code: googleCode, redirectUri, action, referralCode: savedReferral })
         .then((res: any) => {
           if (res.success && res.token && res.user) {
             loginWithToken(res.token, res.user);

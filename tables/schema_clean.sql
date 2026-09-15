@@ -19,6 +19,10 @@ CREATE TABLE IF NOT EXISTS users (
     security_answer_1_hash TEXT DEFAULT '',
     security_question_2 TEXT DEFAULT 'Quel est le prénom de votre mère ?',
     security_answer_2_hash TEXT DEFAULT '',
+    referral_code TEXT UNIQUE,
+    referred_by TEXT DEFAULT '',
+    referrals_count INTEGER DEFAULT 0,
+    ad_free_days_earned INTEGER DEFAULT 0,
     created_at TEXT DEFAULT CURRENT_TIMESTAMP,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
@@ -411,3 +415,24 @@ CREATE TABLE IF NOT EXISTS ai_generated_contents (
 CREATE INDEX IF NOT EXISTS idx_ai_contents_user ON ai_generated_contents(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_contents_tool ON ai_generated_contents(user_id, tool_type);
 CREATE INDEX IF NOT EXISTS idx_ai_contents_file ON ai_generated_contents(file_id);
+
+CREATE TABLE IF NOT EXISTS referrals (
+    id TEXT PRIMARY KEY,
+    referrer_id TEXT NOT NULL,
+    referred_user_id TEXT NOT NULL UNIQUE,
+    referred_user_name TEXT,
+    referred_user_email TEXT,
+    reward_days INTEGER DEFAULT 5,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (referrer_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (referred_user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_referrals_referrer_id ON referrals(referrer_id);
+
+CREATE TABLE IF NOT EXISTS referral_rewards_config (
+    id TEXT PRIMARY KEY DEFAULT 'default',
+    days_per_referral INTEGER DEFAULT 5,
+    milestones_json TEXT,
+    rules_text_json TEXT,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);

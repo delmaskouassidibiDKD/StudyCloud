@@ -370,6 +370,7 @@ export const StudyCloudAPI = {
     name: string;
     email: string;
     password: string;
+    referralCode?: string;
     securityQuestion1?: string;
     securityAnswer1?: string;
     securityQuestion2?: string;
@@ -410,7 +411,7 @@ export const StudyCloudAPI = {
     return requestAuth('/api/auth/reset-password', { method: 'POST', body: JSON.stringify(data) });
   },
 
-  async googleAuth(data: { code: string; redirectUri: string; action?: 'login' | 'register' | string }) {
+  async googleAuth(data: { code: string; redirectUri: string; action?: 'login' | 'register' | string; referralCode?: string }) {
     return requestAuth('/api/auth/google', { method: 'POST', body: JSON.stringify(data) });
   },
 
@@ -1008,6 +1009,20 @@ export const StudyCloudAPI = {
     return request<{ success: boolean; message: string }>(`/api/timer-presets/${encodeURIComponent(id)}`, {
       method: 'DELETE',
     });
+  },
+
+  // --------------------------------------------------------------------------
+  // Parrainage & Promotion (Système de parrainage et récompenses D1)
+  // --------------------------------------------------------------------------
+  async getReferralStatus(userId?: string) {
+    const token = localStorage.getItem('unifolder_auth_token') || localStorage.getItem('auth_token') || '';
+    const query = userId ? `?userId=${encodeURIComponent(userId)}` : '';
+    return requestAuth(`/api/referrals/my-status${query}`, { method: 'GET' }, token);
+  },
+
+  async updateReferralConfig(config: { daysPerReferral?: number; milestones?: any[]; rules?: string[] }) {
+    const token = localStorage.getItem('unifolder_auth_token') || localStorage.getItem('auth_token') || '';
+    return requestAuth('/api/referrals/config', { method: 'PUT', body: JSON.stringify(config) }, token);
   },
 
   async restoreCloud(userId: string) {

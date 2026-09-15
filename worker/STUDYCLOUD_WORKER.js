@@ -204,6 +204,435 @@ function renderShareNotFoundHtml(code, originUrl) {
 </html>`;
 }
 __name(renderShareNotFoundHtml, "renderShareNotFoundHtml");
+function renderReferralLandingHtml(code, referrerName, originUrl) {
+  const safeCode = escapeHtml(code || "STUDYCLOUD");
+  const safeName = escapeHtml(referrerName || "Un membre de la communaut\xE9");
+  const siteUrl = "https://studycloud.dkd-technologies.com";
+  const logoUrl = "https://studycloud.dkd-technologies.com/assets/studycloud-brand-logo.png";
+  const faviconUrl = "https://studycloud.dkd-technologies.com/assets/dna-logo.png";
+  const registerUrl = `${siteUrl}/?ref=${encodeURIComponent(code)}#register`;
+  const loginUrl = `${siteUrl}/?ref=${encodeURIComponent(code)}#login`;
+  const invitePageUrl = `${originUrl}/invite/${encodeURIComponent(code)}`;
+  const ogTitle = escapeHtml(`${safeName} vous invite \xE0 rejoindre StudyCloud !`);
+  const ogDesc = escapeHtml(`Rejoignez la plateforme \xE9tudiante tout-en-un StudyCloud. Vos cours, fiches de r\xE9visions, sujets d'examens et assistant IA officiel.`);
+  return `<!DOCTYPE html>
+<html lang="fr" prefix="og: https://ogp.me/ns#">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>${ogTitle}</title>
+
+  <!-- M\xE9tadonn\xE9es & Aper\xE7u WhatsApp / R\xE9seaux Sociaux -->
+  <meta name="description" content="${ogDesc}">
+  <meta name="author" content="DKD Technologies">
+  <meta name="application-name" content="StudyCloud">
+  <meta name="robots" content="index, follow">
+
+  <!-- Open Graph / WhatsApp / Facebook / LinkedIn / Telegram -->
+  <meta property="og:type" content="website">
+  <meta property="og:site_name" content="StudyCloud">
+  <meta property="og:title" content="${ogTitle}">
+  <meta property="og:description" content="${ogDesc}">
+  <meta property="og:url" content="${invitePageUrl}">
+  <meta property="og:image" content="${logoUrl}">
+  <meta property="og:image:secure_url" content="${logoUrl}">
+  <meta property="og:image:type" content="image/png">
+  <meta property="og:image:width" content="300">
+  <meta property="og:image:height" content="300">
+  <meta property="og:image:alt" content="Logo StudyCloud - Invitation">
+
+  <!-- Twitter Cards -->
+  <meta name="twitter:card" content="summary">
+  <meta name="twitter:title" content="${ogTitle}">
+  <meta name="twitter:description" content="${ogDesc}">
+  <meta name="twitter:image" content="${logoUrl}">
+
+  <!-- Favicon / Ic\xF4nes -->
+  <link rel="icon" type="image/png" href="${faviconUrl}">
+  <link rel="apple-touch-icon" href="${faviconUrl}">
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    :root {
+      --bg: #ffffff;
+      --text-main: #0f172a;
+      --text-muted: #64748b;
+      --primary-orange: #ea580c;
+      --primary-blue: #2563eb;
+    }
+    * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background: #f8fafc;
+      color: var(--text-main);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      line-height: 1.5;
+      -webkit-font-smoothing: antialiased;
+    }
+
+    /* HEADER */
+    header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: #ffffff;
+      padding: 12px 16px;
+      border-bottom: 1px solid #e2e8f0;
+    }
+    .header-container {
+      max-width: 760px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 12px;
+    }
+    .header-left {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      text-decoration: none;
+    }
+    .brand-logo-wrap {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      flex-shrink: 0;
+    }
+    .brand-titles {
+      display: flex;
+      flex-direction: column;
+    }
+    .brand-title-row {
+      display: flex;
+      align-items: center;
+      font-size: 19px;
+      font-weight: 900;
+      letter-spacing: -0.02em;
+      line-height: 1.15;
+    }
+    .brand-study { color: #ea580c; }
+    .brand-cloud { color: #2563eb; }
+    .brand-tagline {
+      font-size: 10.5px;
+      color: #64748b;
+      font-weight: 600;
+      margin-top: 1px;
+    }
+
+    .btn-top-site {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 8px 14px;
+      background: #f1f5f9;
+      color: #334155;
+      font-size: 12.5px;
+      font-weight: 700;
+      border-radius: 10px;
+      text-decoration: none;
+      transition: all 0.15s ease;
+    }
+    .btn-top-site:hover {
+      background: #e2e8f0;
+      color: #0f172a;
+    }
+
+    /* MAIN CONTAINER */
+    main {
+      flex: 1;
+      max-width: 620px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 28px 16px 40px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .invite-card {
+      width: 100%;
+      background: #ffffff;
+      border: 2px solid #1c1917;
+      border-radius: 24px;
+      padding: 32px 24px;
+      box-shadow: 6px 6px 0px 0px #1c1917;
+      text-align: center;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+
+    .logo-hero {
+      width: 64px;
+      height: 64px;
+      border-radius: 18px;
+      border: 2px solid #1c1917;
+      background: #fff7ed;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 16px;
+      box-shadow: 3px 3px 0px 0px #1c1917;
+    }
+    .logo-hero img {
+      width: 44px;
+      height: 44px;
+      object-fit: contain;
+    }
+
+    .badge-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      background: #fff7ed;
+      color: #ea580c;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 5px 12px;
+      border-radius: 9999px;
+      border: 1.5px solid #fed7aa;
+      margin-bottom: 14px;
+      letter-spacing: 0.02em;
+    }
+
+    h1.title {
+      font-size: 26px;
+      font-weight: 900;
+      color: #0f172a;
+      letter-spacing: -0.02em;
+      margin-bottom: 10px;
+      line-height: 1.25;
+    }
+
+    p.subtitle {
+      font-size: 14.5px;
+      color: #475569;
+      line-height: 1.55;
+      margin-bottom: 22px;
+    }
+
+    .inviter-name {
+      color: #ea580c;
+      font-weight: 800;
+    }
+
+    /* CODE BOX */
+    .code-box {
+      width: 100%;
+      background: #f8fafc;
+      border: 2px dashed #cbd5e1;
+      border-radius: 16px;
+      padding: 14px;
+      margin-bottom: 24px;
+    }
+    .code-label {
+      font-size: 11px;
+      font-weight: 700;
+      color: #64748b;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 4px;
+    }
+    .code-value {
+      font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, monospace;
+      font-size: 24px;
+      font-weight: 900;
+      color: #ea580c;
+      letter-spacing: 0.1em;
+    }
+
+    /* FEATURES GRID */
+    .features-list {
+      width: 100%;
+      text-align: left;
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+      margin-bottom: 28px;
+    }
+    .feature-item {
+      display: flex;
+      align-items: flex-start;
+      gap: 12px;
+      padding: 12px;
+      background: #f8fafc;
+      border-radius: 14px;
+      border: 1px solid #e2e8f0;
+    }
+    .feature-icon {
+      font-size: 20px;
+      line-height: 1;
+      flex-shrink: 0;
+      margin-top: 2px;
+    }
+    .feature-text {
+      font-size: 13px;
+      color: #334155;
+      line-height: 1.45;
+    }
+    .feature-text strong {
+      color: #0f172a;
+      display: block;
+      font-size: 13.5px;
+      margin-bottom: 1px;
+    }
+
+    /* CTA BUTTONS */
+    .btn-register {
+      width: 100%;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 10px;
+      background: #ea580c;
+      color: #ffffff;
+      font-size: 16px;
+      font-weight: 800;
+      padding: 15px 24px;
+      border-radius: 16px;
+      border: 2px solid #1c1917;
+      box-shadow: 4px 4px 0px 0px #1c1917;
+      text-decoration: none;
+      transition: all 0.15s ease;
+      cursor: pointer;
+    }
+    .btn-register:hover {
+      background: #c2410c;
+      transform: translate(-1px, -1px);
+      box-shadow: 5px 5px 0px 0px #1c1917;
+    }
+    .btn-register:active {
+      transform: translate(2px, 2px);
+      box-shadow: 1px 1px 0px 0px #1c1917;
+    }
+
+    .login-link {
+      margin-top: 14px;
+      font-size: 13.5px;
+      color: #64748b;
+      text-decoration: none;
+      font-weight: 600;
+      display: inline-block;
+    }
+    .login-link strong {
+      color: #2563eb;
+      text-decoration: underline;
+    }
+    .login-link:hover strong {
+      color: #1d4ed8;
+    }
+
+    /* FOOTER */
+    footer {
+      padding: 20px 16px;
+      text-align: center;
+      font-size: 12px;
+      color: #94a3b8;
+      border-top: 1px solid #e2e8f0;
+      background: #ffffff;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- HEADER -->
+  <header>
+    <div class="header-container">
+      <a href="${siteUrl}" class="header-left">
+        <div class="brand-logo-wrap">
+          <img src="${faviconUrl}" width="34" height="34" alt="Logo StudyCloud" style="display:block;border:0;width:34px;height:34px;object-fit:contain;margin:0;" onerror="this.onerror=null;this.src='data:image/png;base64,${DNA_LOGO_PNG_B64}'" />
+        </div>
+        <div class="brand-titles">
+          <div class="brand-title-row">
+            <span class="brand-study">Study</span><span class="brand-cloud">Cloud</span>
+          </div>
+          <span class="brand-tagline">Plateforme acad\xE9mique & cloud</span>
+        </div>
+      </a>
+      <a href="${loginUrl}" class="btn-top-site">Se connecter &rarr;</a>
+    </div>
+  </header>
+
+  <!-- MAIN -->
+  <main>
+    <div class="invite-card">
+      <div class="logo-hero">
+        <img src="${faviconUrl}" alt="StudyCloud Logo" onerror="this.onerror=null;this.src='data:image/png;base64,${DNA_LOGO_PNG_B64}'" />
+      </div>
+
+      <div class="badge-pill">
+        <span>\u{1F393}</span>
+        <span>Invitation Officielle</span>
+      </div>
+
+      <h1 class="title">Rejoignez StudyCloud</h1>
+      <p class="subtitle">
+        L'\xE9tudiant <span class="inviter-name">${safeName}</span> vous invite \xE0 cr\xE9er votre compte gratuit sur la plateforme \xE9tudiante n\xB01.
+      </p>
+
+      <div class="code-box">
+        <div class="code-label">Code d'invitation personnel</div>
+        <div class="code-value">${safeCode}</div>
+      </div>
+
+      <div class="features-list">
+        <div class="feature-item">
+          <div class="feature-icon">\u{1F4DA}</div>
+          <div class="feature-text">
+            <strong>Biblioth\xE8que Universitaire Partag\xE9e</strong>
+            Acc\xE9dez \xE0 des milliers de cours, r\xE9sum\xE9s, TD et sujets d'examens class\xE9s par mati\xE8re et fili\xE8re.
+          </div>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-icon">\u{1F916}</div>
+          <div class="feature-text">
+            <strong>Assistant IA Acad\xE9mique Officiel</strong>
+            Posez toutes vos questions sur vos cours, devoirs et exercices pour comprendre rapidement 24h/24.
+          </div>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-icon">\u26A1</div>
+          <div class="feature-text">
+            <strong>Stockage Cloud & Partage Rapide</strong>
+            Sauvegardez vos documents et partagez des liens de t\xE9l\xE9chargement instantan\xE9s avec vos camarades.
+          </div>
+        </div>
+
+        <div class="feature-item">
+          <div class="feature-icon">\u{1F381}</div>
+          <div class="feature-text">
+            <strong>Avantages D\xE9bloqu\xE9s</strong>
+            En vous inscrivant avec cette invitation, vous et votre parrain d\xE9bloquez des avantages exclusifs sur la plateforme.
+          </div>
+        </div>
+      </div>
+
+      <a href="${registerUrl}" class="btn-register">
+        <span>Cr\xE9er mon compte gratuitement</span>
+        <span>&rarr;</span>
+      </a>
+
+      <a href="${loginUrl}" class="login-link">
+        Vous avez d\xE9j\xE0 un compte ? <strong>Se connecter</strong>
+      </a>
+    </div>
+  </main>
+
+  <footer>
+    StudyCloud \u2022 D\xE9velopp\xE9 par DKD Technologies \u2022 Tous droits r\xE9serv\xE9s.
+  </footer>
+
+</body>
+</html>`;
+}
+__name(renderReferralLandingHtml, "renderReferralLandingHtml");
 function renderShareLandingHtml(folder, files, originUrl) {
   const shareCode = escapeHtml(folder.share_code || "DKD-SHARE");
   const title = escapeHtml(folder.title || "Document Partag\xE9");
@@ -1132,14 +1561,17 @@ var src_default = {
           headers: { "Content-Type": "text/html;charset=UTF-8", ...corsHeaders("*") },
           status: success ? 200 : 400
         });
+      }, generateReferralCode2 = function() {
+        return Math.floor(1e8 + Math.random() * 9e8).toString();
       };
-      var sanitizeUser = sanitizeUser2, generateId = generateId2, isValidEmail = isValidEmail2, validatePasswordFormat = validatePasswordFormat2, generateEmailAvatar = generateEmailAvatar2, htmlResponse = htmlResponse2;
+      var sanitizeUser = sanitizeUser2, generateId = generateId2, isValidEmail = isValidEmail2, validatePasswordFormat = validatePasswordFormat2, generateEmailAvatar = generateEmailAvatar2, htmlResponse = htmlResponse2, generateReferralCode = generateReferralCode2;
       __name(sanitizeUser2, "sanitizeUser");
       __name(generateId2, "generateId");
       __name(isValidEmail2, "isValidEmail");
       __name(validatePasswordFormat2, "validatePasswordFormat");
       __name(generateEmailAvatar2, "generateEmailAvatar");
       __name(htmlResponse2, "htmlResponse");
+      __name(generateReferralCode2, "generateReferralCode");
       if (path === "/api/assets/dna-logo.png" || path === "/assets/dna-logo.png") {
         const pngBytes = Uint8Array.from(atob(DNA_LOGO_PNG_B64), (c) => c.charCodeAt(0));
         return new Response(pngBytes, {
@@ -1175,6 +1607,26 @@ var src_default = {
           },
           timestamp: (/* @__PURE__ */ new Date()).toISOString()
         }, 200, origin);
+      }
+      if ((path.startsWith("/invite/") || path.startsWith("/join/") || path.startsWith("/p/")) && method === "GET") {
+        const refCode = path.split("/")[2];
+        if (refCode && env.DB) {
+          await ensureReferralsTables(env.DB);
+          const cleanRef = decodeURIComponent(refCode).trim();
+          let referrer = await env.DB.prepare(
+            "SELECT id, name, school, filiere FROM users WHERE referral_code = ? LIMIT 1"
+          ).bind(cleanRef).first();
+          const referrerName = referrer?.name || "Un membre de la communaut\xE9";
+          const html = renderReferralLandingHtml(cleanRef, referrerName, url.origin);
+          return new Response(html, {
+            status: 200,
+            headers: {
+              "Content-Type": "text/html; charset=utf-8",
+              "Cache-Control": "no-cache",
+              ...corsHeaders(origin)
+            }
+          });
+        }
       }
       if ((path.startsWith("/s/") || path.startsWith("/share/") || path.startsWith("/d/")) && method === "GET") {
         const code = path.split("/")[2];
@@ -1712,6 +2164,136 @@ var src_default = {
         return;
       }
       __name(cleanupExpiredUnfinishedAccounts, "cleanupExpiredUnfinishedAccounts");
+      let isReferralsTableInitialized = false;
+      async function ensureReferralsTables(db) {
+        if (isReferralsTableInitialized || !db)
+          return;
+        try {
+          try {
+            await db.prepare("ALTER TABLE users ADD COLUMN referral_code TEXT").run();
+          } catch (e) {
+          }
+          try {
+            await db.prepare("ALTER TABLE users ADD COLUMN referred_by TEXT").run();
+          } catch (e) {
+          }
+          try {
+            await db.prepare("ALTER TABLE users ADD COLUMN referrals_count INTEGER DEFAULT 0").run();
+          } catch (e) {
+          }
+          try {
+            await db.prepare("ALTER TABLE users ADD COLUMN ad_free_days_earned INTEGER DEFAULT 0").run();
+          } catch (e) {
+          }
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS referrals (
+              id TEXT PRIMARY KEY,
+              referrer_id TEXT NOT NULL,
+              referred_user_id TEXT NOT NULL UNIQUE,
+              referred_user_name TEXT,
+              referred_user_email TEXT,
+              reward_days INTEGER DEFAULT 5,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+          await db.prepare(`
+            CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_id)
+          `).run();
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS referral_rewards_config (
+              id TEXT PRIMARY KEY DEFAULT 'default',
+              days_per_referral INTEGER DEFAULT 5,
+              milestones_json TEXT,
+              rules_text_json TEXT,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+          const defaultMilestones = JSON.stringify([
+            { count: 3, extra_days: 5, label: "3 personnes promues : +5 jours bonus" },
+            { count: 5, extra_days: 10, label: "5 personnes promues : +10 jours bonus" },
+            { count: 7, extra_days: 15, label: "7 personnes promues : +15 jours bonus" },
+            { count: 10, extra_days: 3650, label: "10 personnes promues : +3650 jours bonus" }
+          ]);
+          const defaultRules = JSON.stringify([
+            "Chaque fois que vous promouvez avec succ\xE8s une personne qui s'inscrit, vous b\xE9n\xE9ficierez de 5 jours de publicit\xE9 gratuite, qui peuvent \xEAtre accumul\xE9s de mani\xE8re illimit\xE9e~",
+            "Un total de 3 personnes inscrites par vous, et 5 jours suppl\xE9mentaires de publicit\xE9 gratuite offerts~",
+            "Un total de 5 personnes inscrites par vous, et 10 jours suppl\xE9mentaires de publicit\xE9 gratuite offerts~",
+            "Un total de 7 personnes inscrites par vous, et 15 jours suppl\xE9mentaires de publicit\xE9 gratuite offerts~",
+            "Un total de 10 personnes inscrites par vous, et 3650 jours suppl\xE9mentaires de publicit\xE9 gratuite offerts~"
+          ]);
+          await db.prepare(`
+            INSERT OR IGNORE INTO referral_rewards_config (id, days_per_referral, milestones_json, rules_text_json, updated_at)
+            VALUES ('default', 5, ?, ?, CURRENT_TIMESTAMP)
+          `).bind(defaultMilestones, defaultRules).run();
+          isReferralsTableInitialized = true;
+        } catch (e) {
+          console.error("[StudyCloud Referrals Init Error]", e);
+        }
+      }
+      __name(ensureReferralsTables, "ensureReferralsTables");
+      async function processReferralAttribution(db, referralCode, newUserId, newUserName, newUserEmail) {
+        if (!db || !referralCode || !newUserId)
+          return;
+        try {
+          await ensureReferralsTables(db);
+          const cleanCode = String(referralCode).trim();
+          if (!cleanCode)
+            return;
+          const referrer = await db.prepare(
+            "SELECT id, name, referral_code, referrals_count, ad_free_days_earned FROM users WHERE referral_code = ?"
+          ).bind(cleanCode).first();
+          if (!referrer || referrer.id === newUserId) {
+            return;
+          }
+          const alreadyReferred = await db.prepare(
+            "SELECT id FROM referrals WHERE referred_user_id = ?"
+          ).bind(newUserId).first();
+          if (alreadyReferred) {
+            return;
+          }
+          const configRow = await db.prepare(
+            "SELECT days_per_referral, milestones_json FROM referral_rewards_config WHERE id = 'default'"
+          ).first();
+          const baseDays = Number(configRow?.days_per_referral) || 5;
+          let extraMilestoneDays = 0;
+          const currentCount = Number(referrer.referrals_count || 0) + 1;
+          if (configRow?.milestones_json) {
+            try {
+              const milestones = JSON.parse(configRow.milestones_json);
+              if (Array.isArray(milestones)) {
+                const match = milestones.find((m) => Number(m.count) === currentCount);
+                if (match && Number(match.extra_days)) {
+                  extraMilestoneDays = Number(match.extra_days);
+                }
+              }
+            } catch (e) {
+            }
+          }
+          const totalRewardDays = baseDays + extraMilestoneDays;
+          const referralId = generateId2();
+          await db.prepare(`
+            INSERT INTO referrals (id, referrer_id, referred_user_id, referred_user_name, referred_user_email, reward_days, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          `).bind(referralId, referrer.id, newUserId, newUserName, newUserEmail, totalRewardDays).run();
+          await db.prepare(`
+            UPDATE users SET
+              referrals_count = COALESCE(referrals_count, 0) + 1,
+              ad_free_days_earned = COALESCE(ad_free_days_earned, 0) + ?,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind(totalRewardDays, referrer.id).run();
+          await db.prepare(`
+            UPDATE users SET
+              referred_by = ?,
+              updated_at = CURRENT_TIMESTAMP
+            WHERE id = ?
+          `).bind(referrer.referral_code, newUserId).run();
+          console.log(`[Parrainage R\xE9ussi] Utilisateur ${newUserId} parrain\xE9 par ${referrer.name} (${cleanCode}) : +${totalRewardDays} jours.`);
+        } catch (err) {
+          console.error("[Erreur Attribution Parrainage]", err);
+        }
+      }
+      __name(processReferralAttribution, "processReferralAttribution");
       if (path.startsWith("/api/auth/") && path !== "/api/auth/check-verification-status" && !isSchemaInitialized) {
         await ensureDatabaseSchema(env.DB);
         await ensureEmailVerificationsTable(env.DB);
@@ -1726,6 +2308,7 @@ var src_default = {
           name,
           email,
           password,
+          referralCode,
           securityQuestion1,
           securityAnswer1,
           securityQuestion2,
@@ -1765,6 +2348,7 @@ var src_default = {
           name: name.trim(),
           email: cleanEmail,
           passwordHash,
+          referralCode: referralCode ? String(referralCode).trim() : "",
           securityQuestion1: q1,
           securityAnswer1Hash: answer1Hash,
           securityQuestion2: q2,
@@ -2080,6 +2664,19 @@ var src_default = {
               await env.DB.prepare("INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)").bind(userId).run();
               user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
               isNewUser = true;
+              let newRefCode = generateReferralCode2();
+              try {
+                let codeExists = await env.DB.prepare("SELECT id FROM users WHERE referral_code = ?").bind(newRefCode).first();
+                while (codeExists) {
+                  newRefCode = generateReferralCode2();
+                  codeExists = await env.DB.prepare("SELECT id FROM users WHERE referral_code = ?").bind(newRefCode).first();
+                }
+                await env.DB.prepare("UPDATE users SET referral_code = COALESCE(referral_code, ?) WHERE id = ?").bind(newRefCode, userId).run();
+              } catch (e) {
+              }
+              if (userData.referralCode) {
+                await processReferralAttribution(env.DB, userData.referralCode, userId, userData.name || "\xC9tudiant", userData.email);
+              }
             } catch (e) {
               console.error("Erreur cr\xE9ation utilisateur depuis payload:", e);
             }
@@ -2405,12 +3002,24 @@ var src_default = {
         let user = await env.DB.prepare("SELECT * FROM users WHERE google_id = ? OR LOWER(TRIM(email)) = ?").bind(profile.id, cleanGoogleEmail).first();
         if (!user) {
           const userId = generateId2();
+          let newRefCode = generateReferralCode2();
+          try {
+            let codeExists = await env.DB.prepare("SELECT id FROM users WHERE referral_code = ?").bind(newRefCode).first();
+            while (codeExists) {
+              newRefCode = generateReferralCode2();
+              codeExists = await env.DB.prepare("SELECT id FROM users WHERE referral_code = ?").bind(newRefCode).first();
+            }
+          } catch (e) {
+          }
           await env.DB.prepare(`
-            INSERT INTO users (id, name, email, provider, google_id, email_verified, avatar_url, is_onboarded, last_active_at, created_at, updated_at)
-            VALUES (?, ?, ?, 'google', ?, 1, ?, 0, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-          `).bind(userId, profile.name || cleanGoogleEmail, cleanGoogleEmail, profile.id, profile.picture || null).run();
+            INSERT INTO users (id, name, email, provider, google_id, email_verified, avatar_url, is_onboarded, referral_code, last_active_at, created_at, updated_at)
+            VALUES (?, ?, ?, 'google', ?, 1, ?, 0, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `).bind(userId, profile.name || cleanGoogleEmail, cleanGoogleEmail, profile.id, profile.picture || null, newRefCode).run();
           await env.DB.prepare("INSERT OR IGNORE INTO user_preferences (user_id) VALUES (?)").bind(userId).run();
           user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
+          if (body.referralCode) {
+            await processReferralAttribution(env.DB, body.referralCode, userId, profile.name || cleanGoogleEmail, cleanGoogleEmail);
+          }
         } else {
           await env.DB.prepare(`
             UPDATE users SET
@@ -4142,6 +4751,127 @@ var src_default = {
             grades,
             alarms,
             aiContents
+          }
+        }, 200, origin);
+      }
+      if ((path === "/api/referrals/my-status" || path === "/api/referrals/status") && method === "GET") {
+        if (!env.DB)
+          return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
+        await ensureReferralsTables(env.DB);
+        let userId = null;
+        const authHeader = request.headers.get("Authorization") || "";
+        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        if (token) {
+          const payload = await verifyJWT(token);
+          if (payload?.userId)
+            userId = payload.userId;
+        }
+        if (!userId) {
+          userId = url.searchParams.get("userId");
+        }
+        if (!userId)
+          return errorResponse("Identifiant utilisateur requis", 401, origin);
+        let user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
+        if (!user)
+          return errorResponse("Compte utilisateur introuvable", 404, origin);
+        let referralCode = user.referral_code;
+        if (!referralCode) {
+          let isUnique = false;
+          while (!isUnique) {
+            referralCode = generateReferralCode2();
+            const existing = await env.DB.prepare("SELECT id FROM users WHERE referral_code = ?").bind(referralCode).first();
+            if (!existing)
+              isUnique = true;
+          }
+          await env.DB.prepare("UPDATE users SET referral_code = ? WHERE id = ?").bind(referralCode, user.id).run();
+          user.referral_code = referralCode;
+        }
+        const stats = await env.DB.prepare(`
+          SELECT COUNT(*) as count, COALESCE(SUM(reward_days), 0) as total_days
+          FROM referrals
+          WHERE referrer_id = ?
+        `).bind(user.id).first();
+        const referralsCount = Number(stats?.count || 0);
+        const adFreeDaysEarned = Number(stats?.total_days || 0);
+        if (user.referrals_count !== referralsCount || user.ad_free_days_earned !== adFreeDaysEarned) {
+          await env.DB.prepare("UPDATE users SET referrals_count = ?, ad_free_days_earned = ? WHERE id = ?").bind(referralsCount, adFreeDaysEarned, user.id).run();
+        }
+        const configRow = await env.DB.prepare("SELECT * FROM referral_rewards_config WHERE id = 'default'").first();
+        let milestones = [
+          { count: 3, extra_days: 5, label: "3 personnes promues : +5 jours bonus" },
+          { count: 5, extra_days: 10, label: "5 personnes promues : +10 jours bonus" },
+          { count: 7, extra_days: 15, label: "7 personnes promues : +15 jours bonus" },
+          { count: 10, extra_days: 3650, label: "10 personnes promues : +3650 jours bonus" }
+        ];
+        let rules = [
+          "Chaque fois que vous promouvez avec succ\xE8s une personne qui s'inscrit, vous b\xE9n\xE9ficierez de 5 jours de publicit\xE9 gratuite, qui peuvent \xEAtre accumul\xE9s de mani\xE8re illimit\xE9e~",
+          "Un total de 3 personnes inscrites par vous, et 5 jours suppl\xE9mentaires de publicit\xE9 gratuite offerts~",
+          "Un total de 5 personnes inscrites par vous, et 10 jours suppl\xE9mentaires de publicit\xE9 gratuite offerts~",
+          "Un total de 7 personnes inscrites par vous, et 15 jours suppl\xE9mentaires de publicit\xE9 gratuite offerts~",
+          "Un total de 10 personnes inscrites par vous, et 3650 jours suppl\xE9mentaires de publicit\xE9 gratuite offerts~"
+        ];
+        if (configRow?.milestones_json) {
+          try {
+            milestones = JSON.parse(configRow.milestones_json);
+          } catch (e) {
+          }
+        }
+        if (configRow?.rules_text_json) {
+          try {
+            rules = JSON.parse(configRow.rules_text_json);
+          } catch (e) {
+          }
+        }
+        const { results: referralsList } = await env.DB.prepare(`
+          SELECT id, referred_user_name, reward_days, created_at
+          FROM referrals
+          WHERE referrer_id = ?
+          ORDER BY created_at DESC
+          LIMIT 50
+        `).bind(user.id).all();
+        return jsonResponse({
+          success: true,
+          referralCode,
+          referralsCount,
+          adFreeDaysEarned,
+          inviteUrl: `${url.origin}/invite/${referralCode}`,
+          appInviteUrl: `https://studycloud.dkd-technologies.com/?ref=${referralCode}#register`,
+          rules,
+          milestones,
+          referrals: referralsList || [],
+          config: {
+            daysPerReferral: Number(configRow?.days_per_referral) || 5,
+            rules,
+            milestones
+          }
+        }, 200, origin);
+      }
+      if (path === "/api/referrals/config" && (method === "PUT" || method === "POST")) {
+        if (!env.DB)
+          return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
+        await ensureReferralsTables(env.DB);
+        const body = await request.json().catch(() => ({}));
+        const { daysPerReferral, milestones, rules } = body;
+        const currentConfig = await env.DB.prepare("SELECT * FROM referral_rewards_config WHERE id = 'default'").first();
+        const newDays = daysPerReferral !== void 0 ? Number(daysPerReferral) : currentConfig?.days_per_referral || 5;
+        const newMilestonesJson = milestones ? JSON.stringify(milestones) : currentConfig?.milestones_json;
+        const newRulesJson = rules ? JSON.stringify(rules) : currentConfig?.rules_text_json;
+        await env.DB.prepare(`
+          INSERT INTO referral_rewards_config (id, days_per_referral, milestones_json, rules_text_json, updated_at)
+          VALUES ('default', ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(id) DO UPDATE SET
+            days_per_referral = excluded.days_per_referral,
+            milestones_json = excluded.milestones_json,
+            rules_text_json = excluded.rules_text_json,
+            updated_at = CURRENT_TIMESTAMP
+        `).bind(newDays, newMilestonesJson, newRulesJson).run();
+        return jsonResponse({
+          success: true,
+          message: "Configuration des avantages de parrainage mise \xE0 jour avec succ\xE8s",
+          config: {
+            daysPerReferral: newDays,
+            milestones: milestones || JSON.parse(newMilestonesJson || "[]"),
+            rules: rules || JSON.parse(newRulesJson || "[]")
           }
         }, 200, origin);
       }
