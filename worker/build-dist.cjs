@@ -41,7 +41,6 @@ fs.writeFileSync(targetWorkerPath, codeToSave, 'utf8');
 // Supprimer impérativement les anciens fichiers résiduels
 const legacyFiles = [
   path.join(workerDir, 'CODE_A_COLLER_DANS_CLOUDFLARE.js'),
-  path.join(workerDir, 'CODE_A_COLLER_DANS_CLOUDFLARE_AI.js'),
   path.join(workerDir, 'CODE_A_COLLER_DANS_CLOUDFLARE_GEMINI.js'),
   path.join(workerDir, 'CLOUDFLARE_WORKER.js'),
   path.join(workerDir, 'worker-clean.js'),

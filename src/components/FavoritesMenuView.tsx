@@ -163,62 +163,64 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({ onBack, se
   return (
     <div className="absolute inset-x-0 bottom-0 top-[72px] md:top-[76px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-8 overflow-y-auto transition-colors duration-300">
       {/* Top Header Bar */}
-      <div className="fixed top-[84px] md:top-[88px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none">
-        <button
-          onClick={onBack}
-          className="pointer-events-auto flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:text-white dark:border-[#334155] font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
-        >
-          <ArrowLeft className="w-3 h-3 text-[#2D4A3E] dark:text-white" />
-          <span>Retour</span>
-        </button>
-
-        {favoriteFiles.length > 0 && (
-          <div className="pointer-events-auto flex items-center bg-white dark:bg-[#1e293b] rounded-xl border-2 border-[#2D4A3E] dark:border-[#334155] px-2.5 py-1 shadow-[1px_1px_0px_0px_#1c1917]">
-            <Search className="w-3.5 h-3.5 text-stone-500 mr-1.5" />
-            <input
-              type="text"
-              placeholder="Rechercher dans favoris..."
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              className="text-xs bg-transparent outline-none w-28 sm:w-44 font-semibold text-stone-800 dark:text-white"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery('')} className="p-0.5 text-stone-400 hover:text-stone-700">
-                <X className="w-3 h-3" />
-              </button>
-            )}
-          </div>
-        )}
-      </div>
-
-      <div className="w-full px-2 sm:px-4 pt-16 sm:pt-20">
-        <div className="text-center pt-2 pb-6 max-w-5xl mx-auto">
-          <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-rose-100 dark:bg-rose-950/40 border border-rose-300 dark:border-rose-800 text-rose-600 dark:text-rose-400 font-extrabold text-xs mb-2 shadow-xs">
-            <Heart className="w-3.5 h-3.5 fill-rose-500 text-rose-500" />
-            <span>Vos documents favoris ({favoriteFiles.length})</span>
-          </div>
-          <h1 className="text-2xl sm:text-4xl font-black text-[#2D4A3E] dark:text-white tracking-tight mb-1">
-            Mes Favoris
-          </h1>
-          <p className="text-xs sm:text-sm font-medium text-[#5C6B5A] dark:text-slate-400">
-            Cliquez sur un fichier pour l'ouvrir directement dans votre espace d'étude avec l'IA Delmas.
-          </p>
+      <div className="fixed top-[84px] md:top-[88px] left-4 right-4 md:left-[17.5rem] flex items-start justify-between z-40 pointer-events-none gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">
+          <button
+            onClick={onBack}
+            className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          >
+            <ArrowLeft className="w-3 h-3 text-[#2D4A3E] dark:text-white" />
+            <span>Retour</span>
+          </button>
         </div>
 
-        {filtered.length === 0 ? (
-          <div className="flex flex-col items-center justify-center p-12 text-center max-w-md mx-auto">
-            <div className="w-16 h-16 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border-2 border-rose-300 dark:border-rose-900 flex items-center justify-center text-rose-500 mb-4 shadow-sm">
-              <Heart className="w-8 h-8 opacity-60" />
+        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] dark:text-white bg-[#E8DFD0] dark:bg-[#070a13] px-3 py-1 rounded-lg border-2 border-[#2D4A3E] dark:border-[#1e293b] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none self-start mt-0.5">
+          Mes Favoris
+        </h1>
+
+        <div className="flex items-center gap-2 pointer-events-auto">
+          {favoriteFiles.length > 0 && (
+            <div className="flex items-center bg-white dark:bg-[#1e293b] rounded-xl border-2 border-[#2D4A3E] dark:border-[#334155] px-2.5 py-1 shadow-[1px_1px_0px_0px_#1c1917]">
+              <Search className="w-3.5 h-3.5 text-stone-500 mr-1.5" />
+              <input
+                type="text"
+                placeholder="Rechercher dans favoris..."
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                className="text-xs bg-transparent outline-none w-28 sm:w-44 font-semibold text-stone-800 dark:text-white"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery('')} className="p-0.5 text-stone-400 hover:text-stone-700">
+                  <X className="w-3 h-3" />
+                </button>
+              )}
             </div>
-            <h3 className="text-base font-extrabold text-[#2D4A3E] dark:text-white mb-1">
-              Aucun favori pour l'instant
-            </h3>
-            <p className="text-xs text-[#5C6B5A] dark:text-slate-400 leading-relaxed">
-              Pour ajouter un fichier en favori, cliquez sur les options (•••) d'un fichier dans « Mes fichiers » ou dans une matière, puis choisissez « Ajouter aux favoris ».
-            </p>
-          </div>
-        ) : (
-          <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-9 gap-3 justify-items-center w-full pt-2">
+          )}
+        </div>
+      </div>
+
+      <div className="w-full px-2 sm:px-4 pt-20 sm:pt-24">
+        <div className="pt-1 pb-64 w-full max-w-7xl mx-auto">
+          {favoriteFiles.length === 0 ? (
+            <div className="flex flex-col items-center justify-center p-12 text-center max-w-md mx-auto">
+              <div className="w-16 h-16 rounded-2xl bg-rose-50 dark:bg-rose-950/30 border-2 border-rose-300 dark:border-rose-900 flex items-center justify-center text-rose-500 mb-4 shadow-sm">
+                <Heart className="w-8 h-8 opacity-60" />
+              </div>
+              <h3 className="text-base font-extrabold text-[#2D4A3E] dark:text-white mb-1">
+                Aucun favori pour l'instant
+              </h3>
+              <p className="text-xs text-[#5C6B5A] dark:text-slate-400 leading-relaxed">
+                Pour ajouter un fichier en favori, cliquez sur les options (•••) d'un fichier dans « Mes fichiers » ou dans une matière, puis choisissez « Ajouter aux favoris ».
+              </p>
+            </div>
+          ) : filtered.length === 0 ? (
+            <div className="text-center py-12">
+              <h2 className="text-lg font-bold text-[#2D4A3E] dark:text-white mb-1">Aucun résultat</h2>
+              <p className="text-xs text-[#5C6B5A] dark:text-slate-400">Aucun fichier favori ne correspond à votre recherche "{searchQuery}".</p>
+            </div>
+          ) : (
+            <div className="w-full">
+              <div className="grid grid-cols-3 sm:grid-cols-5 md:grid-cols-7 lg:grid-cols-9 gap-3 justify-items-center w-full">
             {filtered.map((f, idx) => {
               const ext = (f.extension || (f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')).toUpperCase();
               const isPdf = ext === 'PDF';
@@ -318,8 +320,10 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({ onBack, se
                 </div>
               );
             })}
-          </div>
-        )}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>
   );

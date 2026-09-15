@@ -962,7 +962,7 @@ var src_default = {
       });
     }
     try {
-      let sanitizeUser2 = function(user) {
+      let sanitizeUser2 = function (user) {
         if (!user)
           return null;
         const { password_hash: _ph, security_answer_1_hash: _s1, security_answer_2_hash: _s2, ...rest } = user;
@@ -973,14 +973,14 @@ var src_default = {
             user.security_answer_1_hash && typeof user.security_answer_1_hash === "string" && user.security_answer_1_hash.trim().length > 0 && user.security_answer_2_hash && typeof user.security_answer_2_hash === "string" && user.security_answer_2_hash.trim().length > 0
           )
         };
-      }, generateId2 = function() {
+      }, generateId2 = function () {
         return crypto.randomUUID();
-      }, isValidEmail2 = function(email) {
+      }, isValidEmail2 = function (email) {
         if (!email || typeof email !== "string")
           return false;
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
         return emailRegex.test(email.trim());
-      }, validatePasswordFormat2 = function(pwd) {
+      }, validatePasswordFormat2 = function (pwd) {
         if (!pwd || typeof pwd !== "string")
           return { valid: false, error: "Mot de passe requis" };
         if (pwd.length < 6)
@@ -992,7 +992,7 @@ var src_default = {
         if (!/[^a-zA-Z0-9]/.test(pwd))
           return { valid: false, error: "Le mot de passe doit contenir au moins un caract\xE8re sp\xE9cial (ex: @, #, $, !, etc.)" };
         return { valid: true };
-      }, generateEmailAvatar2 = function(email, name) {
+      }, generateEmailAvatar2 = function (email, name) {
         const cleanEmail = (email || "").trim().toLowerCase();
         const cleanName = (name || "").trim();
         let initials = "SC";
@@ -1011,7 +1011,7 @@ var src_default = {
         const color = colors[Math.abs(hash) % colors.length];
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"><rect width="128" height="128" rx="28" fill="${color}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="${initials.length > 1 ? "48" : "58"}" font-weight="700">${initials}</text></svg>`;
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-      }, htmlResponse2 = function(title, message, success, userId, token) {
+      }, htmlResponse2 = function (title, message, success, userId, token) {
         const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
