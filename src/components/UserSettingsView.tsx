@@ -646,7 +646,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
                 ⚠️ Cette action est irréversible !
               </p>
               <p>
-                Si vous supprimez votre compte, <strong>toutes vos données, fichiers enregistrés, cours, plannings, notes et tout enregistrement seront supprimés de manière définitive</strong> de la base de données.
+                Si vous supprimez votre compte, <strong>toutes vos données, fichiers enregistrés, cours, plannings, notes et tout enregistrement seront supprimés : suppression définitive.</strong>
               </p>
             </div>
 
