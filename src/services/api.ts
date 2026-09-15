@@ -1071,5 +1071,17 @@ export const StudyCloudAPI = {
       body: JSON.stringify({ id, url, name }),
     });
   },
+
+  // --------------------------------------------------------------------------
+  // Suppression définitive du compte et de toutes ses données
+  // --------------------------------------------------------------------------
+  async deleteAccount(userId?: string, email?: string) {
+    const token = localStorage.getItem('sc_auth_token') || localStorage.getItem('unifolder_auth_token') || localStorage.getItem('auth_token') || '';
+    return requestAuth<{ success: boolean; message: string }>('/api/users/delete-account', {
+      method: 'POST',
+      body: JSON.stringify({ userId, email }),
+    }, token);
+  },
 };
+
 

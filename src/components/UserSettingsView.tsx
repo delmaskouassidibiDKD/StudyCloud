@@ -15,6 +15,10 @@ import {
   Upload,
   Briefcase,
   Building2,
+  Trash2,
+  AlertTriangle,
+  Copy,
+  Loader2,
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
 import { StudyCloudAPI } from '../services/api';
@@ -39,6 +43,17 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [showTermsModal, setShowTermsModal] = useState(false);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Logout confirmation modal state
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
+
+  // Delete account modal state
+  const [showDeleteAccountModal, setShowDeleteAccountModal] = useState(false);
+  const [confirmEmailInput, setConfirmEmailInput] = useState('');
+  const [confirmNameInput, setConfirmNameInput] = useState('');
+  const [emailCopied, setEmailCopied] = useState(false);
+  const [nameCopied, setNameCopied] = useState(false);
+  const [isDeleting, setIsDeleting] = useState(false);
 
   // Edit modal state
   const [editingField, setEditingField] = useState<'name' | 'school' | 'filiere' | 'email' | 'country' | null>(null);
@@ -156,11 +171,58 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
       });
   };
 
-  const handleLogout = () => {
-    if (window.confirm("Êtes-vous sûr de vouloir vous déconnecter de votre compte StudyCloud ?")) {
-      logout();
-      onBack();
+  const handleConfirmLogout = () => {
+    setShowLogoutConfirm(false);
+    logout();
+    onBack();
+  };
+
+  const handleCopyEmail = async () => {
+    try {
+      await navigator.clipboard.writeText(email);
+      setEmailCopied(true);
+      setTimeout(() => setEmailCopied(false), 2000);
+    } catch (e) {
+      setConfirmEmailInput(email);
+      setEmailCopied(true);
+      setTimeout(() => setEmailCopied(false), 2000);
     }
+  };
+
+  const handleCopyName = async () => {
+    try {
+      await navigator.clipboard.writeText(name);
+      setNameCopied(true);
+      setTimeout(() => setNameCopied(false), 2000);
+    } catch (e) {
+      setConfirmNameInput(name);
+      setNameCopied(true);
+      setTimeout(() => setNameCopied(false), 2000);
+    }
+  };
+
+  const isDeleteAllowed =
+    confirmEmailInput.trim().toLowerCase() === email.trim().toLowerCase() &&
+    confirmNameInput.trim().toLowerCase() === name.trim().toLowerCase();
+
+  const handleDeleteAccount = async () => {
+    if (!isDeleteAllowed || isDeleting) return;
+    setIsDeleting(true);
+    try {
+      const userId = user?.id || localStorage.getItem('unifolder_user_id') || '';
+      await StudyCloudAPI.deleteAccount(userId, email);
+    } catch (err) {
+      console.warn('Erreur lors de la suppression backend:', err);
+    }
+
+    // Nettoyage complet du stockage local pour isoler et supprimer toutes traces
+    try {
+      localStorage.clear();
+      sessionStorage.clear();
+    } catch (e) {}
+
+    logout();
+    window.location.href = '/';
   };
 
   // Détection du statut étudiant ou profil standard / professionnel
@@ -409,14 +471,26 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
           </button>
         </div>
 
-        {/* Logout Button */}
-        <div className="pt-4 md:pt-6">
+        {/* Actions : Déconnexion et Suppression de compte */}
+        <div className="pt-4 md:pt-6 flex flex-col sm:flex-row gap-3">
           <button
-            onClick={handleLogout}
-            className="w-full flex items-center justify-center gap-2 md:gap-3 py-3.5 md:py-4 bg-red-50 dark:bg-red-950/40 hover:bg-red-100 dark:hover:bg-red-900/50 text-red-700 dark:text-red-300 font-bold text-xs md:text-sm rounded-xl md:rounded-2xl border border-red-200 dark:border-red-800/50 transition-colors cursor-pointer"
+            onClick={() => setShowLogoutConfirm(true)}
+            className="flex-1 flex items-center justify-center gap-2 md:gap-3 py-3.5 md:py-4 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 dark:hover:bg-stone-700 text-stone-700 dark:text-stone-300 font-bold text-xs md:text-sm rounded-xl md:rounded-2xl border border-stone-300 dark:border-stone-700 transition-colors cursor-pointer"
           >
-            <LogOut className="w-4 h-4 md:w-5 md:h-5" />
+            <LogOut className="w-4 h-4 md:w-5 md:h-5 text-stone-500 dark:text-stone-400" />
             <span>Se déconnecter</span>
+          </button>
+
+          <button
+            onClick={() => {
+              setConfirmEmailInput('');
+              setConfirmNameInput('');
+              setShowDeleteAccountModal(true);
+            }}
+            className="flex-1 flex items-center justify-center gap-2 md:gap-3 py-3.5 md:py-4 bg-red-600 hover:bg-red-700 text-white font-bold text-xs md:text-sm rounded-xl md:rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
+          >
+            <Trash2 className="w-4 h-4 md:w-5 md:h-5 text-white" />
+            <span>Supprimer le compte</span>
           </button>
         </div>
       </div>
@@ -507,6 +581,156 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
                 className="w-full py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs md:text-sm rounded-xl transition-colors cursor-pointer"
               >
                 Fermer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmation de Déconnexion */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-[#FDFBF7] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-stone-700 rounded-2xl md:rounded-3xl p-6 md:p-8 w-full max-w-sm shadow-[6px_6px_0px_0px_#1c1917] space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-orange-100 dark:bg-orange-950/40 border-2 border-stone-800 dark:border-stone-700 flex items-center justify-center mx-auto text-orange-600">
+              <LogOut className="w-6 h-6" />
+            </div>
+            <h3 className="font-extrabold text-base md:text-lg text-stone-900 dark:text-white">
+              Déconnexion
+            </h3>
+            <p className="text-xs md:text-sm text-stone-600 dark:text-stone-300 font-medium">
+              Êtes-vous sûr de vouloir vous déconnecter de votre compte StudyCloud ?
+            </p>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 py-3 px-4 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 text-stone-700 dark:text-stone-200 font-bold text-xs md:text-sm rounded-xl border border-stone-300 dark:border-stone-600 transition-colors cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleConfirmLogout}
+                className="flex-1 py-3 px-4 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs md:text-sm rounded-xl border-2 border-stone-900 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer"
+              >
+                Confirmer
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Suppression Définitive du Compte */}
+      {showDeleteAccountModal && (
+        <div className="fixed inset-0 z-50 bg-black/75 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn overflow-y-auto">
+          <div className="bg-[#FDFBF7] dark:bg-[#111a2e] border-3 border-red-600 rounded-2xl md:rounded-3xl p-5 md:p-8 w-full max-w-md md:max-w-lg shadow-[8px_8px_0px_0px_#1c1917] space-y-4 md:space-y-5 text-left my-auto">
+            {/* En-tête */}
+            <div className="flex items-center justify-between pb-3 border-b-2 border-stone-200 dark:border-stone-800">
+              <div className="flex items-center gap-2.5 text-red-600">
+                <AlertTriangle className="w-5 h-5 md:w-6 md:h-6 shrink-0" />
+                <h3 className="font-extrabold text-base md:text-xl text-stone-900 dark:text-white">
+                  Supprimer définitivement le compte
+                </h3>
+              </div>
+              <button
+                onClick={() => setShowDeleteAccountModal(false)}
+                className="p-1.5 hover:bg-stone-200 dark:hover:bg-stone-800 rounded-lg text-stone-700 dark:text-stone-300"
+              >
+                <X className="w-4 h-4 md:w-5 md:h-5" />
+              </button>
+            </div>
+
+            {/* Avertissement majeur */}
+            <div className="p-3.5 md:p-4 bg-red-50 dark:bg-red-950/40 border-2 border-red-300 dark:border-red-900/60 rounded-xl md:rounded-2xl text-xs md:text-sm text-red-900 dark:text-red-200 space-y-1.5 leading-relaxed font-medium">
+              <p className="font-extrabold text-red-700 dark:text-red-400">
+                ⚠️ Cette action est irréversible !
+              </p>
+              <p>
+                Si vous supprimez votre compte, <strong>toutes vos données, fichiers enregistrés, cours, plannings, notes et tout enregistrement seront supprimés de manière définitive</strong> de la base de données.
+              </p>
+            </div>
+
+            {/* Champ 1 : Adresse Email */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-stone-700 dark:text-stone-300">
+                  1. Votre adresse email :
+                </label>
+                <button
+                  type="button"
+                  onClick={handleCopyEmail}
+                  className="flex items-center gap-1 text-[11px] font-bold text-orange-600 hover:text-orange-700 bg-orange-50 dark:bg-orange-950/30 px-2 py-1 rounded-md border border-orange-200 transition-colors cursor-pointer"
+                >
+                  {emailCopied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                  <span>{emailCopied ? 'Copié !' : 'Copier'}</span>
+                </button>
+              </div>
+              <div className="text-xs font-semibold text-stone-600 dark:text-stone-400 bg-stone-100 dark:bg-stone-800/60 px-3 py-1.5 rounded-lg select-all truncate border border-stone-200 dark:border-stone-700">
+                {email}
+              </div>
+              <input
+                type="email"
+                value={confirmEmailInput}
+                onChange={(e) => setConfirmEmailInput(e.target.value)}
+                placeholder="Collez ou saisissez votre adresse email..."
+                className="w-full bg-white dark:bg-[#070a13] border-2 border-stone-800 dark:border-stone-700 rounded-xl p-3 text-xs md:text-sm text-stone-900 dark:text-white outline-none focus:border-red-500 shadow-[2px_2px_0px_0px_#1c1917]"
+              />
+            </div>
+
+            {/* Champ 2 : Nom de Profil */}
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <label className="text-xs font-bold text-stone-700 dark:text-stone-300">
+                  2. Votre nom de profil :
+                </label>
+                <button
+                  type="button"
+                  onClick={handleCopyName}
+                  className="flex items-center gap-1 text-[11px] font-bold text-orange-600 hover:text-orange-700 bg-orange-50 dark:bg-orange-950/30 px-2 py-1 rounded-md border border-orange-200 transition-colors cursor-pointer"
+                >
+                  {nameCopied ? <Check className="w-3 h-3 text-emerald-600" /> : <Copy className="w-3 h-3" />}
+                  <span>{nameCopied ? 'Copié !' : 'Copier'}</span>
+                </button>
+              </div>
+              <div className="text-xs font-semibold text-stone-600 dark:text-stone-400 bg-stone-100 dark:bg-stone-800/60 px-3 py-1.5 rounded-lg select-all truncate border border-stone-200 dark:border-stone-700">
+                {name}
+              </div>
+              <input
+                type="text"
+                value={confirmNameInput}
+                onChange={(e) => setConfirmNameInput(e.target.value)}
+                placeholder="Collez ou saisissez votre nom de profil..."
+                className="w-full bg-white dark:bg-[#070a13] border-2 border-stone-800 dark:border-stone-700 rounded-xl p-3 text-xs md:text-sm text-stone-900 dark:text-white outline-none focus:border-red-500 shadow-[2px_2px_0px_0px_#1c1917]"
+              />
+            </div>
+
+            {/* Boutons d'action */}
+            <div className="flex gap-3 pt-3">
+              <button
+                type="button"
+                onClick={() => setShowDeleteAccountModal(false)}
+                disabled={isDeleting}
+                className="flex-1 py-3 md:py-3.5 px-4 bg-stone-100 dark:bg-stone-800 hover:bg-stone-200 text-stone-800 dark:text-stone-200 font-bold text-xs md:text-sm rounded-xl border border-stone-300 dark:border-stone-700 transition-colors cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteAccount}
+                disabled={!isDeleteAllowed || isDeleting}
+                className="flex-1 py-3 md:py-3.5 px-4 bg-red-600 hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed text-white font-extrabold text-xs md:text-sm rounded-xl border-2 border-stone-900 shadow-[3px_3px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center gap-2"
+              >
+                {isDeleting ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Suppression...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-4 h-4" />
+                    <span>Supprimer le compte</span>
+                  </>
+                )}
               </button>
             </div>
           </div>

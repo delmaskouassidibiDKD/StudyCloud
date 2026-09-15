@@ -2467,10 +2467,33 @@ export default {
         return;
       }
 
-      // Suppression complète et sécurisée d'un utilisateur et de toutes ses tables associées
-      async function deleteUserCompletely(db: any, userId: string) {
+      // Suppression complète, sécurisée et définitive d'un utilisateur et de toutes ses données
+      async function deleteUserCompletely(db: any, userId: string, email?: string, bucket?: any) {
         if (!db || !userId) return;
-        const tables = [
+
+        // 1. Suppression des fichiers physiques dans le Bucket R2 (si configuré)
+        if (bucket) {
+          try {
+            const filesRes = await db.prepare('SELECT r2_key FROM files WHERE user_id = ? AND r2_key IS NOT NULL').bind(userId).all();
+            if (filesRes?.results) {
+              for (const f of filesRes.results) {
+                if (f.r2_key) await bucket.delete(f.r2_key).catch(() => {});
+              }
+            }
+          } catch (e) {}
+
+          try {
+            const pubDocs = await db.prepare('SELECT r2_key FROM published_documents WHERE user_id = ? AND r2_key IS NOT NULL').bind(userId).all();
+            if (pubDocs?.results) {
+              for (const d of pubDocs.results) {
+                if (d.r2_key) await bucket.delete(d.r2_key).catch(() => {});
+              }
+            }
+          } catch (e) {}
+        }
+
+        // 2. Suppression dans toutes les tables où user_id est utilisé
+        const tablesWithUserId = [
           'email_verifications',
           'auth_sessions',
           'user_preferences',
@@ -2481,21 +2504,62 @@ export default {
           'shared_links',
           'schedule_config',
           'schedules',
+          'schedule_slots',
+          'grades',
           'notes',
+          'calendar_events',
+          'alarms',
+          'products',
+          'cart_items',
           'shop_profiles',
           'shop_items',
           'support_tickets',
+          'notifications',
+          'chat_messages',
+          'user_document_interactions',
+          'published_documents',
+          'referral_rewards',
+          'push_subscriptions',
         ];
-        for (const table of tables) {
+
+        for (const table of tablesWithUserId) {
           try {
             await db.prepare(`DELETE FROM ${table} WHERE user_id = ?`).bind(userId).run();
           } catch (e) {}
         }
+
+        // 3. Cas spécifiques de tables avec colonnes ou relations différentes
+        try {
+          await db.prepare('DELETE FROM shared_folder_files WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)').bind(userId).run();
+        } catch (e) {}
+
+        try {
+          await db.prepare('DELETE FROM shared_folder_downloads WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)').bind(userId).run();
+        } catch (e) {}
+
+        try {
+          await db.prepare('DELETE FROM referrals WHERE referrer_id = ? OR referee_id = ?').bind(userId, userId).run();
+        } catch (e) {}
+
+        if (email) {
+          const cleanEmail = email.toLowerCase().trim();
+          try {
+            await db.prepare('DELETE FROM email_verifications WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).run();
+          } catch (e) {}
+          try {
+            await db.prepare('DELETE FROM password_resets WHERE LOWER(TRIM(email)) = ?').bind(cleanEmail).run();
+          } catch (e) {}
+        }
+
+        // 4. Suppression définitive du compte dans la table users
         try {
           await db.prepare('DELETE FROM users WHERE id = ?').bind(userId).run();
-          console.log(`[StudyCloud Expiration] Compte et données supprimés pour l'utilisateur : ${userId}`);
+          if (email) {
+            await db.prepare('DELETE FROM users WHERE LOWER(TRIM(email)) = ?').bind(email.toLowerCase().trim()).run();
+          }
+          console.log(`[StudyCloud Delete Account] Compte et toutes les données supprimés pour l'utilisateur : ${userId} (${email || ''})`);
         } catch (e) {
-          console.error(`[StudyCloud Expiration] Erreur suppression users ${userId}:`, e);
+          console.error(`[StudyCloud Delete Account] Erreur suppression users ${userId}:`, e);
         }
       }
 
@@ -3743,6 +3807,50 @@ export default {
       // ----------------------------------------------------------------------
       // 1. UTILISATEURS & PROFIL
       // ----------------------------------------------------------------------
+
+      // POST /api/users/delete-account — Suppression définitive du compte et de toutes ses données
+      if (path === '/api/users/delete-account' && method === 'POST') {
+        const body: any = await request.json().catch(() => ({}));
+        const authHeader = request.headers.get('Authorization') || '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+
+        let targetUserId = body.userId;
+        let targetEmail = body.email ? String(body.email).toLowerCase().trim() : null;
+
+        if (token) {
+          try {
+            const payload = await verifyJWT(token);
+            if (payload?.userId) targetUserId = payload.userId;
+            if (payload?.email && !targetEmail) targetEmail = String(payload.email).toLowerCase().trim();
+          } catch (e) {}
+        }
+
+        if (!targetUserId && !targetEmail) {
+          return errorResponse('userId ou email requis pour supprimer le compte', 400, origin);
+        }
+
+        if (env.DB) {
+          // Rechercher l'utilisateur existant
+          let existingUser: any = null;
+          if (targetUserId) {
+            existingUser = await env.DB.prepare('SELECT id, email FROM users WHERE id = ?').bind(targetUserId).first();
+          }
+          if (!existingUser && targetEmail) {
+            existingUser = await env.DB.prepare('SELECT id, email FROM users WHERE LOWER(TRIM(email)) = ?').bind(targetEmail).first();
+          }
+
+          const resolvedUserId = existingUser?.id || targetUserId;
+          const resolvedEmail = existingUser?.email || targetEmail;
+
+          await deleteUserCompletely(env.DB, resolvedUserId, resolvedEmail, env.BUCKET);
+        }
+
+        return jsonResponse({
+          success: true,
+          message: 'Votre compte et toutes vos données ont été définitivement supprimés de StudyCloud.',
+        }, 200, origin);
+      }
+
       if (path === '/api/users/sync' && method === 'POST') {
         const body: any = await request.json();
         const { id, name, email, school, filiere, country, avatarUrl } = body;

@@ -18,6 +18,7 @@ export const SettingsView: React.FC = () => {
   const [reportText, setReportText] = useState('');
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [unreadCount, setUnreadCount] = useState<number>(0);
+  const [showLogoutConfirm, setShowLogoutConfirm] = useState(false);
 
   // Liens dynamiques chargés depuis la base de données D1 (avec cache local pour affichage instantané)
   const [appLinks, setAppLinks] = useState<Record<string, string>>(() => {
@@ -136,9 +137,7 @@ export const SettingsView: React.FC = () => {
   };
 
   const handleLogout = () => {
-    if (window.confirm("Êtes-vous sûr de vouloir vous déconnecter de votre compte StudyCloud ?")) {
-      logout();
-    }
+    setShowLogoutConfirm(true);
   };
 
   const userName = user?.name || localStorage.getItem('unifolder_user_name') || 'Alexandre Kouassi';
@@ -391,6 +390,42 @@ export const SettingsView: React.FC = () => {
                 </button>
               </form>
             )}
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmation de Déconnexion */}
+      {showLogoutConfirm && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4 animate-fadeIn">
+          <div className="bg-[#FDFBF7] border-2 border-stone-800 rounded-2xl md:rounded-3xl p-6 md:p-8 w-full max-w-sm shadow-[6px_6px_0px_0px_#1c1917] space-y-4 text-center">
+            <div className="w-12 h-12 rounded-full bg-orange-100 border-2 border-stone-800 flex items-center justify-center mx-auto text-orange-600">
+              <LogOut className="w-6 h-6" />
+            </div>
+            <h3 className="font-extrabold text-base md:text-lg text-stone-900">
+              Déconnexion
+            </h3>
+            <p className="text-xs md:text-sm text-stone-600 font-medium">
+              Êtes-vous sûr de vouloir vous déconnecter de votre compte StudyCloud ?
+            </p>
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                onClick={() => setShowLogoutConfirm(false)}
+                className="flex-1 py-3 px-4 bg-stone-100 hover:bg-stone-200 text-stone-700 font-bold text-xs md:text-sm rounded-xl border border-stone-300 transition-colors cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={() => {
+                  setShowLogoutConfirm(false);
+                  logout();
+                }}
+                className="flex-1 py-3 px-4 bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs md:text-sm rounded-xl border-2 border-stone-900 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer"
+              >
+                Confirmer
+              </button>
+            </div>
           </div>
         </div>
       )}
