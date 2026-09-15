@@ -1,5 +1,6 @@
 import React, { useState, useEffect } from 'react';
-import { X, Loader2, Share2, FileText, Image as ImageIcon, Music, File as FileIcon, Copy, Check, Globe, QrCode, ExternalLink, ShieldCheck, Lock } from 'lucide-react';
+import { X, Loader2, Share2, FileText, Image as ImageIcon, Music, File as FileIcon, Copy, Check, Globe, QrCode, ShieldCheck, Lock } from 'lucide-react';
+import { CountryFlag } from './CountryFlag';
 import { SharedFolder } from '../types';
 import { getWorkerApiUrl } from '../services/api';
 
@@ -159,8 +160,9 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
 
             {/* Badges: Country + Public */}
             <div className="flex flex-wrap items-center gap-2">
-              <span className="text-xs font-bold bg-white text-stone-800 px-2.5 py-1 rounded-xl border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1">
-                <span>📍</span> {createdFolder.country || country}
+              <span className="text-xs font-bold bg-white text-stone-800 px-2.5 py-1 rounded-xl border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1.5">
+                <CountryFlag country={createdFolder.country || country} className="w-4 h-3" />
+                <span>{createdFolder.country || country}</span>
               </span>
               <span className={`text-xs font-bold px-2.5 py-1 rounded-xl border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] ${
                 createdFolder.isPublic !== false
@@ -206,8 +208,8 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               </div>
             </div>
 
-            {/* Actions: Partager invitation & Ouvrir la page */}
-            <div className="space-y-2 pt-1">
+            {/* Action: Partager invitation */}
+            <div className="pt-1">
               <button
                 type="button"
                 onClick={handleShareClickable}
@@ -216,16 +218,6 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
                 {copiedMessage ? <Check className="w-4 h-4" /> : <Share2 className="w-4 h-4" />}
                 <span>{copiedMessage ? 'Message & Lien prêts !' : 'Partager le lien cliquable'}</span>
               </button>
-
-              <a
-                href={shareableUrl}
-                target="_blank"
-                rel="noopener noreferrer"
-                className="w-full bg-white hover:bg-stone-100 text-stone-800 font-extrabold text-xs py-2.5 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 flex items-center justify-center gap-1.5 text-center no-underline"
-              >
-                <span>Ouvrir la page de téléchargement</span>
-                <ExternalLink className="w-3.5 h-3.5 text-orange-600" />
-              </a>
             </div>
 
             {/* Footer Information */}

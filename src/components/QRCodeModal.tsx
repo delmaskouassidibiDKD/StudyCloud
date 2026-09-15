@@ -1,5 +1,7 @@
 import React from 'react';
-import { X, Copy, Check, Download, Smartphone, Globe, Lock, QrCode } from 'lucide-react';
+import { X, Copy, Check, Download, Smartphone, Globe, Lock, QrCode, ShieldCheck } from 'lucide-react';
+import { DnaLogo } from './DnaLogo';
+import { CountryFlag } from './CountryFlag';
 import { getWorkerApiUrl } from '../services/api';
 
 interface QRCodeModalProps {
@@ -54,25 +56,27 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
         </button>
 
         <div className="text-center mb-5">
-          <div className="inline-flex items-center justify-center w-12 h-12 bg-orange-100 border-2 border-stone-800 rounded-2xl text-orange-600 mb-3 shadow-[3px_3px_0px_0px_#1c1917]">
-            <QrCode className="w-6 h-6" />
+          <div className="inline-flex items-center justify-center w-12 h-12 bg-[#0F172A] border-2 border-stone-800 rounded-2xl mb-3 shadow-[3px_3px_0px_0px_#1c1917]">
+            <DnaLogo className="w-7 h-7 drop-shadow-[0_0_8px_rgba(243,128,32,0.8)]" glow={true} />
           </div>
           <h3 className="text-lg font-extrabold text-stone-900">Scanner pour accéder & télécharger</h3>
           <p className="text-xs text-stone-600 mt-1 line-clamp-1 px-2 font-medium">{folderTitle}</p>
 
           <div className="flex items-center justify-center gap-2 mt-2.5">
             <span className="text-[10px] font-bold bg-emerald-100 text-emerald-900 px-2.5 py-1 rounded-lg border border-emerald-400 flex items-center gap-1">
-              <span>🔒</span> Lien sécurisé
+              <ShieldCheck className="w-3 h-3 text-emerald-700" /> Lien sécurisé
             </span>
-            <span className="text-[10px] font-bold bg-white text-stone-700 px-2 py-0.5 rounded-lg border border-stone-400 flex items-center gap-1">
-              <span>📍</span> {country}
+            <span className="text-[10px] font-bold bg-white text-stone-700 px-2 py-0.5 rounded-lg border border-stone-400 flex items-center gap-1.5">
+              <CountryFlag country={country} className="w-3.5 h-2.5" />
+              <span>{country}</span>
             </span>
-            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border ${
+            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-lg border flex items-center gap-1 ${
               isPublic
                 ? 'bg-emerald-100 text-emerald-800 border-emerald-400'
                 : 'bg-amber-100 text-amber-800 border-amber-400'
             }`}>
-              {isPublic ? '🌐 Public' : '🔒 Privé'}
+              {isPublic ? <Globe className="w-3 h-3 text-emerald-700" /> : <Lock className="w-3 h-3 text-amber-700" />}
+              <span>{isPublic ? 'Public' : 'Privé'}</span>
             </span>
           </div>
         </div>

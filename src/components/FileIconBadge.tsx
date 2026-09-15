@@ -9,13 +9,40 @@ interface FileIconBadgeProps {
 export const FileIconBadge: React.FC<FileIconBadgeProps> = ({ fileName = '', size = 36, isFolder = false }) => {
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
 
+  if (isFolder) {
+    const folderHeight = Math.round(size * 0.85);
+    return (
+      <div className="relative inline-flex items-center justify-center shrink-0 select-none" style={{ width: size, height: folderHeight }}>
+        <svg
+          width={size}
+          height={folderHeight}
+          viewBox="0 0 36 30"
+          fill="none"
+          xmlns="http://www.w3.org/2000/svg"
+          className="drop-shadow-sm filter"
+        >
+          <path
+            d="M3 5C3 3.89543 3.89543 3 5 3H13.5L16.5 6.5H31C32.1046 6.5 33 7.39543 33 8.5V25C33 26.1046 32.1046 27 31 27H5C3.89543 27 3 26.1046 3 25V5Z"
+            fill="#D97706"
+          />
+          <path
+            d="M3 10.5C3 9.39543 3.89543 8.5 5 8.5H31C32.1046 8.5 33 9.39543 33 10.5V25C33 26.1046 32.1046 27 31 27H5C3.89543 27 3 26.1046 3 25V10.5Z"
+            fill="#F59E0B"
+          />
+          <path
+            d="M5 9.5H31C31.5523 9.5 32 9.94772 32 10.5C32 10.05 31.5523 9.7 31 9.7H5C4.44772 9.7 4 10.05 4 10.5C4 9.94772 4.44772 9.5 5 9.5Z"
+            fill="#FEF3C7"
+            fillOpacity="0.8"
+          />
+        </svg>
+      </div>
+    );
+  }
+
   let color = '#57534E'; // default stone
   let label = ext.toUpperCase() || 'FILE';
 
-  if (isFolder) {
-    color = '#EAB308'; // Yellow
-    label = 'DOSSIER';
-  } else if (ext === 'pdf') {
+  if (ext === 'pdf') {
     color = '#EF4444'; // Red
     label = 'PDF';
   } else if (['doc', 'docx'].includes(ext)) {

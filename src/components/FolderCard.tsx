@@ -1,7 +1,8 @@
 import React, { useState } from 'react';
-import { Folder, FileText, Download, Share2, QrCode, Copy, Check, Lock, Unlock, Globe, Eye, Trash2, AlertTriangle, Loader2 } from 'lucide-react';
+import { Folder, FileText, Download, Share2, QrCode, Copy, Check, Lock, Unlock, Globe, Eye, Trash2, AlertTriangle, Loader2, ShieldCheck } from 'lucide-react';
 import { SharedFolder } from '../types';
 import { FileIconBadge } from './FileIconBadge';
+import { CountryFlag } from './CountryFlag';
 import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
 
 interface FolderCardProps {
@@ -231,13 +232,14 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
               </span>
               {folder.shareCode && (
                 <span className="text-[10px] font-bold px-2 py-0.5 bg-stone-900 text-emerald-400 border border-stone-800 dark:border-white/10 rounded-lg shadow-xs flex items-center gap-1" title="Lien d'accès protégé et chiffré">
-                  <span>🔒</span> Sécurisé
+                  <ShieldCheck className="w-3 h-3 text-emerald-400" /> Sécurisé
                 </span>
               )}
             </div>
             {folder.country && (
-              <span className="text-[10px] text-stone-500 dark:text-slate-400 font-medium flex items-center gap-1">
-                <span>📍</span> {folder.country}
+              <span className="text-[10px] text-stone-600 dark:text-slate-400 font-bold flex items-center gap-1.5 mt-0.5">
+                <CountryFlag country={folder.country} className="w-3.5 h-2.5" />
+                <span>{folder.country}</span>
               </span>
             )}
           </div>
