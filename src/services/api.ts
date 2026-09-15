@@ -752,6 +752,18 @@ export const StudyCloudAPI = {
     return request('/api/shop/profile', { method: 'PUT', body: JSON.stringify(profile) });
   },
 
+  async getShopAnalytics(userId: string) {
+    return request<{
+      success: boolean;
+      data: {
+        total_views: number;
+        total_sales: number;
+        subscriber_count: number;
+        products: any[];
+      };
+    }>(`/api/shop/analytics?userId=${encodeURIComponent(userId)}`);
+  },
+
   async getProducts(params?: string | { category?: string; search?: string; userId?: string; sellerId?: string; page?: number; limit?: number }) {
     let endpoint = '/api/products';
     if (typeof params === 'string') {

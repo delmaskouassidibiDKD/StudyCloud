@@ -298,6 +298,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     try {
       const res = await StudyCloudAPI.orderProductViaWhatsApp(product.id);
       if (res.success && res.whatsappUrl) {
+        const uId = localStorage.getItem('unifolder_user_id') || 'anonymous';
+        StudyCloudAPI.trackProductInteraction(uId, product.id, 'order').catch(() => {});
         window.open(res.whatsappUrl, '_blank');
       } else {
         triggerToast("Le vendeur n'a pas encore configuré son numéro WhatsApp.");

@@ -3928,6 +3928,57 @@ var src_default = {
           return jsonResponse({ success: true, message: "Profil boutique mis \xE0 jour" }, 200, origin);
         }
       }
+
+      // ── GET /api/shop/analytics?userId=... ─────────────────────────────
+      if (path === "/api/shop/analytics" && method === "GET") {
+        await ensureShopAndProductTables(env.DB);
+        const userId = url.searchParams.get("userId");
+        if (!userId) return errorResponse("userId requis", 400, origin);
+
+        // 1. Aggregate totals for this seller's products
+        const totalsRes = await env.DB.prepare(
+          "SELECT COALESCE(SUM(views), 0) as total_views, COALESCE(SUM(sales), 0) as total_sales FROM products WHERE seller_id = ?"
+        ).bind(userId).first().catch(() => ({ total_views: 0, total_sales: 0 }));
+
+        // 2. Subscriber count
+        let subscriberCount = 0;
+        try {
+          const subRes = await env.DB.prepare(
+            "SELECT COUNT(*) as count FROM seller_follows WHERE seller_id = ?"
+          ).bind(userId).first();
+          subscriberCount = subRes?.count || 0;
+        } catch (e) {}
+
+        // 3. Products sorted by performance score (views + sales*3) desc
+        const prodsRes = await env.DB.prepare(
+          `SELECT id, title, price, views, sales, image_urls_json, is_boosted, category
+           FROM products WHERE seller_id = ?
+           ORDER BY (views + sales * 3) DESC LIMIT 50`
+        ).bind(userId).all().catch(() => ({ results: [] }));
+
+        const products = (prodsRes?.results || []).map((p) => ({
+          id: p.id,
+          title: p.title,
+          price: p.price,
+          views: p.views || 0,
+          sales: p.sales || 0,
+          category: p.category,
+          imageUrl: p.image_urls_json ? (JSON.parse(p.image_urls_json)[0] || null) : null,
+          isBoosted: Boolean(p.is_boosted),
+          performanceScore: (p.views || 0) + (p.sales || 0) * 3,
+        }));
+
+        return jsonResponse({
+          success: true,
+          data: {
+            total_views: totalsRes?.total_views || 0,
+            total_sales: totalsRes?.total_sales || 0,
+            subscriber_count: subscriberCount,
+            products,
+          }
+        }, 200, origin);
+      }
+
       async function ensureShopAndProductTables(db) {
         try {
           await db.prepare(`
@@ -4488,7 +4539,11 @@ Lien vers le produit : ${productShareUrl}`;
           }
         }
         try {
-          await env.DB.prepare("UPDATE products SET views = views + 1 WHERE id = ?").bind(id).run();
+          if (interactionType === "order" || interactionType === "click_order" || interactionType === "sale") {
+            await env.DB.prepare("UPDATE products SET sales = sales + 1 WHERE id = ?").bind(id).run();
+          } else {
+            await env.DB.prepare("UPDATE products SET views = views + 1 WHERE id = ?").bind(id).run();
+          }
         } catch (e) {
         }
         return jsonResponse({ success: true, message: "Interaction produit enregistr\xE9e" }, 200, origin);

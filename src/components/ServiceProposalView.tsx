@@ -140,11 +140,23 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
     }
   };
 
+  const handleOpenProductDetail = (item: ProductItem) => {
+    setSelectedDetailProduct(item);
+    setActiveDetailImageIndex(0);
+    setIsDescriptionExpanded(false);
+    const uId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.trackProductInteraction(uId, item.id, 'view').catch(() => {});
+    setProducts(prev => prev.map(p => p.id === item.id ? { ...p, views: (p.views || 0) + 1 } : p));
+  };
+
   const handleOrderProduct = async (product: { id: string; title: string }) => {
     triggerToast("Ouverture de la discussion WhatsApp...");
     try {
       const res = await StudyCloudAPI.orderProductViaWhatsApp(product.id);
       if (res.success && res.whatsappUrl) {
+        const uId = localStorage.getItem('unifolder_user_id') || 'default-user';
+        StudyCloudAPI.trackProductInteraction(uId, product.id, 'order').catch(() => {});
+        setProducts(prev => prev.map(p => p.id === product.id ? { ...p, sales: (p.sales || 0) + 1 } : p));
         window.open(res.whatsappUrl, '_blank');
       } else {
         triggerToast("Le numéro WhatsApp n'est pas encore configuré.");
@@ -393,8 +405,8 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
       })
       .catch(() => {});
 
-    // 2. Récupérer les produits réels depuis D1
-    StudyCloudAPI.getProducts()
+    // 2. Récupérer les produits du vendeur depuis D1
+    StudyCloudAPI.getProducts({ sellerId: userId })
       .then((res) => {
         if (res.success && Array.isArray(res.data)) {
           const mapped: ProductItem[] = res.data.map((row: any) => ({
@@ -420,6 +432,17 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
         }
       })
       .catch((e) => console.warn('D1 Products fetch:', e));
+
+    // 3. Récupérer les données analytiques complètes de la boutique
+    StudyCloudAPI.getShopAnalytics(userId)
+      .then((res) => {
+        if (res.success && res.data) {
+          if (typeof res.data.subscriber_count === 'number') {
+            setSubscribersCount(res.data.subscriber_count);
+          }
+        }
+      })
+      .catch((e) => console.warn('D1 Shop Analytics fetch:', e));
   }, []);
 
   const triggerToast = (msg: string) => {
@@ -1296,7 +1319,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                         return (
                           <div
                             key={item.id}
-                            onClick={() => { setSelectedDetailProduct(item); setActiveDetailImageIndex(0); setIsDescriptionExpanded(false); }}
+                            onClick={() => handleOpenProductDetail(item)}
                             className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between text-left cursor-pointer"
                           >
                             <div>
@@ -1433,7 +1456,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                           return (
                             <div
                               key={item.id}
-                              onClick={() => { setSelectedDetailProduct(item); setActiveDetailImageIndex(0); setIsDescriptionExpanded(false); }}
+                              onClick={() => handleOpenProductDetail(item)}
                               className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between text-left cursor-pointer"
                             >
                               <div>
@@ -1565,54 +1588,107 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
             <div className="grid grid-cols-3 gap-3">
               <div className="bg-white border-2 border-stone-800 rounded-2xl p-3 text-center shadow-[3px_3px_0px_0px_#1c1917] flex flex-col justify-between">
                 <p className="text-[10px] text-stone-500 font-bold mb-1 leading-tight">Nombre de clics sur commandé</p>
-                <p className="font-black text-xs sm:text-sm text-emerald-600">{totalSalesCount}</p>
+                <p className="font-black text-sm sm:text-base text-emerald-600">{totalSalesCount}</p>
               </div>
 
               <div className="bg-white border-2 border-stone-800 rounded-2xl p-3 text-center shadow-[3px_3px_0px_0px_#1c1917] flex flex-col justify-between">
                 <p className="text-[10px] text-stone-500 font-bold mb-1 leading-tight">Nombre d'abonnés</p>
-                <p className="font-black text-xs sm:text-sm text-purple-600">0</p>
+                <p className="font-black text-sm sm:text-base text-purple-600">{subscribersCount}</p>
               </div>
 
               <div className="bg-white border-2 border-stone-800 rounded-2xl p-3 text-center shadow-[3px_3px_0px_0px_#1c1917] flex flex-col justify-between">
                 <p className="text-[10px] text-stone-500 font-bold mb-1 leading-tight">Nombre de vues total</p>
-                <p className="font-black text-xs sm:text-sm text-blue-600">{totalViews}</p>
+                <p className="font-black text-sm sm:text-base text-blue-600">{totalViews}</p>
               </div>
             </div>
 
             <div className="space-y-3 pt-3">
-              <h4 className="font-extrabold text-sm text-stone-900">Produits les plus performants</h4>
+              <div className="flex items-center justify-between">
+                <h4 className="font-extrabold text-sm text-stone-900">Produits les plus performants</h4>
+                <span className="text-[11px] font-bold text-stone-500">Classés du 1er au dernier</span>
+              </div>
+
               {products.length === 0 ? (
-                <p className="text-xs text-stone-500 text-center py-4">Aucune donnée disponible</p>
+                <div className="text-center py-8 bg-white border-2 border-dashed border-stone-200 rounded-2xl p-4">
+                  <Package className="w-8 h-8 text-stone-400 mx-auto mb-2" />
+                  <p className="text-xs text-stone-500 font-bold">Aucun produit publié pour le moment.</p>
+                </div>
               ) : (
                 <div className="space-y-3">
-                  {products.map((p) => {
-                    const firstImg = p.imageUrls?.[0] || p.imageUrl;
-                    const clickCount = p.sales || 0;
-                    return (
-                      <div key={p.id} className="bg-white border border-stone-200/80 rounded-2xl p-4 flex items-center justify-between shadow-xs hover:shadow-sm transition-all">
-                        <div className="flex items-center gap-3.5 min-w-0">
-                          {firstImg ? (
-                            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl border border-stone-200 overflow-hidden shrink-0 bg-stone-100">
-                              <img src={firstImg} alt={p.title} className="w-full h-full object-cover" />
-                            </div>
-                          ) : (
-                            <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-xl border border-amber-200/80 bg-amber-50 flex items-center justify-center shrink-0">
-                              <Package className="w-7 h-7 text-amber-800" />
-                            </div>
-                          )}
-                          <div className="overflow-hidden pr-2">
-                            <p className="font-extrabold text-sm sm:text-base text-stone-900 truncate leading-snug">{p.title}</p>
-                            <p className="text-xs text-stone-500 font-bold mt-0.5">
-                              {p.views || 0} vues et {clickCount} nombre de clics
-                            </p>
-                          </div>
-                        </div>
-                        <span className="font-black text-xs sm:text-sm text-orange-600 bg-orange-50 px-3.5 py-1.5 rounded-xl border border-orange-200/80 shrink-0">
-                          {p.price}
+                  {[...products]
+                    .sort((a, b) => {
+                      const scoreA = (a.views || 0) + (a.sales || 0) * 3;
+                      const scoreB = (b.views || 0) + (b.sales || 0) * 3;
+                      if (scoreB !== scoreA) return scoreB - scoreA;
+                      return (b.sales || 0) - (a.sales || 0);
+                    })
+                    .map((p, index) => {
+                      const firstImg = p.imageUrls?.[0] || p.imageUrl;
+                      const orderClicks = p.sales || 0;
+                      const viewsCount = p.views || 0;
+
+                      // Badge de classement du 1er au dernier
+                      let rankBadge = (
+                        <span className="w-6 h-6 rounded-full bg-stone-100 text-stone-600 font-black text-xs flex items-center justify-center border border-stone-300 shrink-0">
+                          #{index + 1}
                         </span>
-                      </div>
-                    );
-                  })}
+                      );
+                      if (index === 0) {
+                        rankBadge = (
+                          <span className="w-6 h-6 rounded-full bg-amber-400 text-stone-900 font-black text-xs flex items-center justify-center border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] shrink-0">
+                            1
+                          </span>
+                        );
+                      } else if (index === 1) {
+                        rankBadge = (
+                          <span className="w-6 h-6 rounded-full bg-slate-200 text-stone-800 font-black text-xs flex items-center justify-center border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] shrink-0">
+                            2
+                          </span>
+                        );
+                      } else if (index === 2) {
+                        rankBadge = (
+                          <span className="w-6 h-6 rounded-full bg-amber-200 text-stone-800 font-black text-xs flex items-center justify-center border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] shrink-0">
+                            3
+                          </span>
+                        );
+                      }
+
+                      return (
+                        <div
+                          key={p.id}
+                          onClick={() => handleOpenProductDetail(p)}
+                          className="bg-white border-2 border-stone-800 rounded-2xl p-3.5 flex items-center justify-between shadow-[2px_2px_0px_0px_#1c1917] hover:shadow-[3px_3px_0px_0px_#1c1917] hover:-translate-y-0.5 transition-all cursor-pointer gap-2"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            {rankBadge}
+                            {firstImg ? (
+                              <div className="w-13 h-13 sm:w-15 sm:h-15 rounded-xl border border-stone-200 overflow-hidden shrink-0 bg-stone-100">
+                                <img src={firstImg} alt={p.title} className="w-full h-full object-cover" />
+                              </div>
+                            ) : (
+                              <div className="w-13 h-13 sm:w-15 sm:h-15 rounded-xl border border-amber-200/80 bg-amber-50 flex items-center justify-center shrink-0">
+                                <Package className="w-6 h-6 text-amber-800" />
+                              </div>
+                            )}
+                            <div className="overflow-hidden pr-1">
+                              <p className="font-black text-xs sm:text-sm text-stone-900 truncate leading-snug">{p.title}</p>
+                              <div className="flex flex-wrap items-center gap-2 mt-1">
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-blue-600 bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200/60">
+                                  <Eye className="w-3 h-3" />
+                                  {viewsCount} vue{viewsCount > 1 ? 's' : ''}
+                                </span>
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-md border border-emerald-200/60">
+                                  {orderClicks} clic{orderClicks > 1 ? 's' : ''} commandé
+                                </span>
+                              </div>
+                            </div>
+                          </div>
+                          <span className="font-black text-xs sm:text-sm text-orange-600 bg-orange-50 px-3 py-1.5 rounded-xl border border-orange-200/80 shrink-0">
+                            {p.price}
+                          </span>
+                        </div>
+                      );
+                    })}
                 </div>
               )}
             </div>
@@ -1691,7 +1767,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                       return (
                         <div
                           key={item.id}
-                          onClick={() => { setSelectedDetailProduct(item); setActiveDetailImageIndex(0); setIsDescriptionExpanded(false); }}
+                          onClick={() => handleOpenProductDetail(item)}
                           className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between text-left cursor-pointer group"
                         >
                           <div>
