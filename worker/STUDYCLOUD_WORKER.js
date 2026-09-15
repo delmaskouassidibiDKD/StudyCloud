@@ -232,7 +232,7 @@ function renderShareLandingHtml(folder, files, originUrl) {
     return `
         <div class="file-grid-item selected" data-id="${f.id}" onclick="toggleFileSelection('${f.id}')">
           <div class="file-select-badge">
-            <svg class="check-icon" width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
+            <svg class="check-icon" width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="white" stroke-width="3.5" stroke-linecap="round" stroke-linejoin="round">
               <polyline points="20 6 9 17 4 12"></polyline>
             </svg>
           </div>
@@ -386,6 +386,12 @@ function renderShareLandingHtml(folder, files, originUrl) {
       flex-direction: column;
       gap: 16px;
     }
+    @media (min-width: 640px) {
+      main {
+        max-width: 980px;
+        padding: 20px 20px 110px;
+      }
+    }
 
     /* INFORMATIONS SUR LE DOSSIER */
     .info-section {
@@ -443,32 +449,38 @@ function renderShareLandingHtml(folder, files, originUrl) {
       padding: 4px 6px;
     }
 
-    /* GRILLE DE FICHIERS (3 PAR LIGNE SUR MOBILE) */
+    /* GRILLE DE FICHIERS (3 PAR LIGNE SUR MOBILE, 5 SUR ORDINATEUR) */
     .files-grid {
       display: grid;
       grid-template-columns: repeat(3, 1fr);
-      gap: 12px;
+      gap: 8px;
       width: 100%;
     }
+    @media (min-width: 640px) {
+      .files-grid {
+        grid-template-columns: repeat(5, 1fr);
+        gap: 10px;
+      }
+    }
 
-    /* CARTE DE FICHIER (CADRE ORANGE, FOND BLANC, COCH\xC9 EN HAUT \xC0 DROITE) */
+    /* CARTE DE FICHIER (CADRE ORANGE TR\xC8S COMPACT, RAPPROCH\xC9 DU FICHIER) */
     .file-grid-item {
       position: relative;
       display: flex;
       flex-direction: column;
       align-items: center;
       text-align: center;
-      padding: 14px 8px 12px;
-      border-radius: 18px;
+      padding: 7px 6px 7px;
+      border-radius: 12px;
       cursor: pointer;
       user-select: none;
       transition: all 0.15s ease-in-out;
-      border: 2px solid #ea580c;
+      border: 1.5px solid #ea580c;
       background: #ffffff;
-      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.03);
+      box-shadow: 0 1px 3px rgba(0, 0, 0, 0.03);
     }
     .file-grid-item:active {
-      transform: scale(0.96);
+      transform: scale(0.97);
     }
     .file-grid-item:not(.selected) {
       border-color: #e2e8f0;
@@ -477,10 +489,10 @@ function renderShareLandingHtml(folder, files, originUrl) {
     }
     .file-select-badge {
       position: absolute;
-      top: 8px;
-      right: 8px;
-      width: 20px;
-      height: 20px;
+      top: 4px;
+      right: 4px;
+      width: 16px;
+      height: 16px;
       border-radius: 50%;
       display: flex;
       align-items: center;
@@ -495,32 +507,32 @@ function renderShareLandingHtml(folder, files, originUrl) {
       display: none;
     }
 
-    /* IC\xD4NE DE FICHIER */
+    /* IC\xD4NE DE FICHIER R\xC9DUITE ET PLUS RAPPROCH\xC9E DU CADRE */
     .file-icon-wrapper {
-      width: 44px;
-      height: 56px;
+      width: 32px;
+      height: 42px;
       display: flex;
       align-items: center;
       justify-content: center;
-      margin: 8px auto 10px;
+      margin: 2px auto 4px;
     }
     .doc-icon-svg {
       width: 100%;
       height: 100%;
-      filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.08));
+      filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.06));
     }
     .file-meta {
       width: 100%;
       display: flex;
       flex-direction: column;
       align-items: center;
-      gap: 2px;
+      gap: 1px;
     }
     .file-name {
-      font-size: 11.5px;
+      font-size: 10.5px;
       font-weight: 800;
       color: #0f172a;
-      line-height: 1.35;
+      line-height: 1.25;
       display: -webkit-box;
       -webkit-line-clamp: 2;
       -webkit-box-orient: vertical;
@@ -529,7 +541,7 @@ function renderShareLandingHtml(folder, files, originUrl) {
       max-width: 100%;
     }
     .file-size {
-      font-size: 10.5px;
+      font-size: 9.5px;
       font-weight: 600;
       color: #94a3b8;
     }
@@ -612,22 +624,22 @@ function renderShareLandingHtml(folder, files, originUrl) {
 
     @media (max-width: 440px) {
       .files-grid {
-        gap: 8px;
+        gap: 6px;
       }
       .file-grid-item {
-        padding: 12px 4px 10px;
-        border-radius: 16px;
+        padding: 5px 3px 5px;
+        border-radius: 10px;
       }
       .file-icon-wrapper {
-        width: 38px;
-        height: 50px;
-        margin: 6px auto 8px;
+        width: 26px;
+        height: 34px;
+        margin: 1px auto 3px;
       }
       .file-name {
-        font-size: 11px;
+        font-size: 10px;
       }
       .file-size {
-        font-size: 10px;
+        font-size: 9px;
       }
       .bottom-bar-inner {
         gap: 8px;
