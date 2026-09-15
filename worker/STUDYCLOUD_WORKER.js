@@ -944,10 +944,37 @@ var isSchemaInitialized = true;
 var isEmailVerifTableInitialized = true;
 var isReferralsTableInitialized = false;
 var isNotificationsTableInitialized = false;
+var isAppLinksTableInitialized = false;
 function generateReferralCode() {
   return Math.floor(1e8 + Math.random() * 9e8).toString();
 }
 __name(generateReferralCode, "generateReferralCode");
+async function ensureAppLinksTable(db) {
+  if (isAppLinksTableInitialized || !db)
+    return;
+  try {
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS app_external_links (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        url TEXT NOT NULL,
+        description TEXT,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    await db.prepare(`
+      INSERT OR IGNORE INTO app_external_links (id, name, url, description)
+      VALUES 
+        ('youtube', 'Tutoriels YouTube', 'https://www.youtube.com', 'Comprendre StudyCloud'),
+        ('telegram', 'Service client officiel', 'https://t.me/+QtRhdlTsMHxjODk0', 'Support Telegram officiel'),
+        ('whatsapp', 'Groupe WhatsApp', 'https://chat.whatsapp.com/IPOnCB9rJhn7JECrNY20Ea', 'Groupe WhatsApp / Aide')
+    `).run();
+    isAppLinksTableInitialized = true;
+  } catch (err) {
+    console.error("[StudyCloud App Links Table Init Error]", err);
+  }
+}
+__name(ensureAppLinksTable, "ensureAppLinksTable");
 async function ensureNotificationsTable(db) {
   if (isNotificationsTableInitialized || !db)
     return;
@@ -4247,6 +4274,69 @@ var src_default = {
           }
         }
         return jsonResponse({ success: true }, 200, origin);
+      }
+      if (path === "/api/app-links") {
+        if (env.DB) {
+          await ensureAppLinksTable(env.DB);
+        }
+        if (method === "GET") {
+          let rows = [];
+          if (env.DB) {
+            const res = await env.DB.prepare("SELECT * FROM app_external_links ORDER BY id ASC").all();
+            rows = res?.results || [];
+          }
+          const linksDict = {
+            youtube: "https://www.youtube.com",
+            telegram: "https://t.me/+QtRhdlTsMHxjODk0",
+            whatsapp: "https://chat.whatsapp.com/IPOnCB9rJhn7JECrNY20Ea"
+          };
+          for (const row of rows) {
+            if (row.id && row.url) {
+              linksDict[row.id] = row.url;
+            }
+          }
+          return jsonResponse({ success: true, data: linksDict, links: rows }, 200, origin);
+        }
+        if (method === "POST" || method === "PUT") {
+          const body = await request.json().catch(() => ({}));
+          const { id, url: linkUrl, name, description } = body;
+          if (!id || !linkUrl)
+            return errorResponse("id et url requis", 400, origin);
+          if (env.DB) {
+            await env.DB.prepare(`
+              INSERT INTO app_external_links (id, name, url, description, updated_at)
+              VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET
+                url = excluded.url,
+                name = COALESCE(excluded.name, app_external_links.name),
+                description = COALESCE(excluded.description, app_external_links.description),
+                updated_at = CURRENT_TIMESTAMP
+            `).bind(id, name || id, linkUrl, description || null).run();
+          }
+          return jsonResponse({ success: true, message: "Lien mis \xE0 jour avec succ\xE8s" }, 200, origin);
+        }
+      }
+      if (path.startsWith("/link/")) {
+        const linkId = path.replace("/link/", "").trim().toLowerCase();
+        let targetUrl = "";
+        if (env.DB) {
+          await ensureAppLinksTable(env.DB);
+          const link = await env.DB.prepare("SELECT url FROM app_external_links WHERE id = ?").bind(linkId).first();
+          if (link?.url)
+            targetUrl = link.url;
+        }
+        if (!targetUrl) {
+          if (linkId === "youtube")
+            targetUrl = "https://www.youtube.com";
+          else if (linkId === "telegram")
+            targetUrl = "https://t.me/+QtRhdlTsMHxjODk0";
+          else if (linkId === "whatsapp")
+            targetUrl = "https://chat.whatsapp.com/IPOnCB9rJhn7JECrNY20Ea";
+        }
+        if (targetUrl) {
+          return Response.redirect(targetUrl, 302);
+        }
+        return errorResponse("Lien non trouv\xE9", 404, origin);
       }
       if (path === "/api/chat") {
         const userId = url.searchParams.get("userId");

@@ -1053,4 +1053,23 @@ export const StudyCloudAPI = {
       body: JSON.stringify(notification),
     });
   },
+
+  // --------------------------------------------------------------------------
+  // Liens Externes Dynamiques (YouTube, Telegram, WhatsApp, etc. stockés en D1)
+  // --------------------------------------------------------------------------
+  async getAppLinks() {
+    return request<{
+      success: boolean;
+      data: Record<string, string>;
+      links: Array<{ id: string; name: string; url: string; description?: string; updated_at?: string }>;
+    }>('/api/app-links');
+  },
+
+  async updateAppLink(id: string, url: string, name?: string) {
+    return request<{ success: boolean; message?: string }>('/api/app-links', {
+      method: 'POST',
+      body: JSON.stringify({ id, url, name }),
+    });
+  },
 };
+

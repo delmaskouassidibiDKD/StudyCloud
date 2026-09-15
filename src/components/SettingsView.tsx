@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Share2, Crown, Settings as SettingsIcon, GraduationCap, Mail, Bell, Headphones, MessageCircle, PlusCircle, Users, AlertTriangle, X, Check, BookOpen, Home, Youtube, LogOut, Camera, Briefcase, Building2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { StudyCloudAPI } from '../services/api';
+import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
 import { PromotionView } from './PromotionView';
 import { SettingsPricingView } from './SettingsPricingView';
 import { NotificationsView } from './NotificationsView';
@@ -18,6 +18,34 @@ export const SettingsView: React.FC = () => {
   const [reportText, setReportText] = useState('');
   const [reportSubmitted, setReportSubmitted] = useState(false);
   const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  // Liens dynamiques chargés depuis la base de données D1 (avec cache local pour affichage instantané)
+  const [appLinks, setAppLinks] = useState<Record<string, string>>(() => {
+    try {
+      const cached = localStorage.getItem('studycloud_app_links');
+      if (cached) return JSON.parse(cached);
+    } catch (e) {}
+    return {
+      youtube: '',
+      telegram: '',
+      whatsapp: '',
+    };
+  });
+
+  useEffect(() => {
+    const fetchLinks = async () => {
+      try {
+        const res = await StudyCloudAPI.getAppLinks();
+        if (res && res.success && res.data) {
+          setAppLinks(res.data);
+          localStorage.setItem('studycloud_app_links', JSON.stringify(res.data));
+        }
+      } catch (err) {
+        console.error('Erreur chargement liens externes D1:', err);
+      }
+    };
+    fetchLinks();
+  }, []);
 
   useEffect(() => {
     const handleOpenNotifs = () => {
@@ -66,7 +94,8 @@ export const SettingsView: React.FC = () => {
 
   const handleJoinGroup = () => {
     setShowContactMenu(false);
-    window.open('https://chat.whatsapp.com/IPOnCB9rJhn7JECrNY20Ea', '_blank');
+    const targetUrl = appLinks.whatsapp || `${getWorkerApiUrl()}/link/whatsapp`;
+    window.open(targetUrl, '_blank', 'noopener,noreferrer');
   };
 
   const handleOpenReport = () => {
@@ -178,7 +207,7 @@ export const SettingsView: React.FC = () => {
       {/* Action Buttons */}
       <div className="w-full space-y-3 md:space-y-4 pt-2 md:pt-4">
         <a 
-          href="https://www.youtube.com"
+          href={appLinks.youtube || `${getWorkerApiUrl()}/link/youtube`}
           target="_blank"
           rel="noopener noreferrer"
           className="w-full flex items-center justify-center gap-3 bg-[#FDFBF7] hover:bg-red-50 border-2 border-stone-800 rounded-xl md:rounded-2xl py-3 md:py-4 px-4 md:px-6 text-stone-900 font-bold text-sm md:text-base shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
@@ -232,7 +261,7 @@ export const SettingsView: React.FC = () => {
         </button>
 
         <a 
-          href="https://t.me/+QtRhdlTsMHxjODk0"
+          href={appLinks.telegram || `${getWorkerApiUrl()}/link/telegram`}
           target="_blank"
           rel="noopener noreferrer"
           className="w-full flex items-center justify-center gap-3 bg-[#FDFBF7] hover:bg-orange-50 border-2 border-stone-800 rounded-xl md:rounded-2xl py-3 md:py-4 px-4 md:px-6 text-stone-900 font-bold text-sm md:text-base shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
@@ -286,7 +315,7 @@ export const SettingsView: React.FC = () => {
                 className="w-full flex items-center gap-3 md:gap-4 p-3 md:p-4 bg-emerald-50 hover:bg-emerald-100 text-emerald-900 font-bold text-xs md:text-sm rounded-xl md:rounded-2xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5"
               >
                 <Users className="w-4 h-4 md:w-5 md:h-5 text-emerald-700 shrink-0" />
-                <span>Rejoindre le groupe</span>
+                <span>Rejoindre le groupe WhatsApp</span>
               </button>
               <button
                 onClick={handleOpenReport}
