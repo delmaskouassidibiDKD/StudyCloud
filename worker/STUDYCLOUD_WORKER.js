@@ -3318,137 +3318,27 @@ var src_default = {
         await env.DB.prepare("DELETE FROM files WHERE id = ?").bind(id).run();
         return jsonResponse({ success: true, message: "Fichier supprim\xE9" }, 200, origin);
       }
-      // ── Stockage R2 avec Compression intelligente à la volée (CompressionStream Gzip) ──
-      function isCompressibleFileType(contentType, key = "") {
-        if (!contentType) contentType = "";
-        const ct = contentType.toLowerCase().split(";")[0].trim();
-        const ext = (key.split(".").pop() || "").toLowerCase();
-
-        // 1. Formats déjà compressés nativement (images, vidéos, archives)
-        // Ne PAS compresser avec gzip pour éviter d'augmenter la taille et gaspiller du CPU
-        if (
-          ct.startsWith("image/jpeg") ||
-          ct.startsWith("image/png") ||
-          ct.startsWith("image/webp") ||
-          ct.startsWith("image/gif") ||
-          ct.startsWith("image/avif") ||
-          ct.startsWith("audio/") ||
-          ct.startsWith("video/") ||
-          ct.includes("zip") ||
-          ct.includes("gzip") ||
-          ct.includes("tar") ||
-          ct.includes("rar") ||
-          ct.includes("7z") ||
-          ct.includes("compressed")
-        ) {
-          return false;
-        }
-
-        const alreadyCompressedExts = [
-          "jpg", "jpeg", "png", "webp", "gif", "avif",
-          "mp4", "mp3", "webm", "wav", "ogg", "mov", "avi",
-          "zip", "rar", "7z", "tar", "gz",
-          "docx", "xlsx", "pptx"
-        ];
-        if (alreadyCompressedExts.includes(ext)) {
-          return false;
-        }
-
-        // 2. Fichiers hautement compressibles (PDF, documents textuels, code, données)
-        if (
-          ct.startsWith("text/") ||
-          ct.includes("json") ||
-          ct.includes("javascript") ||
-          ct.includes("xml") ||
-          ct.includes("csv") ||
-          ct.includes("html") ||
-          ct === "application/pdf" ||
-          ["pdf", "txt", "md", "csv", "json", "js", "html", "css", "svg", "sql", "xml", "doc", "xls", "ppt"].includes(ext)
-        ) {
-          return true;
-        }
-
-        return false;
-      }
-
       if (path === "/api/storage/upload" && method === "PUT") {
         const key = url.searchParams.get("key");
         if (!key)
           return errorResponse("Cl\xE9 de stockage manquante", 400, origin);
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
-
-        const shouldCompress = typeof CompressionStream !== "undefined" && isCompressibleFileType(contentType, key);
-
-        let bodyToStore;
-        let isGzip = false;
-
-        if (shouldCompress) {
-          try {
-            if (request.body) {
-              bodyToStore = request.body.pipeThrough(new CompressionStream("gzip"));
-              isGzip = true;
-            } else {
-              const buffer = await request.arrayBuffer();
-              bodyToStore = new Response(buffer).body.pipeThrough(new CompressionStream("gzip"));
-              isGzip = true;
-            }
-          } catch (compErr) {
-            console.warn("Erreur CompressionStream, fallback non compress\xE9:", compErr);
-            bodyToStore = request.body || await request.arrayBuffer();
-            isGzip = false;
-          }
-        } else {
-          bodyToStore = request.body || await request.arrayBuffer();
-          isGzip = false;
-        }
-
-        const httpMetadata = { contentType };
-        if (isGzip) {
-          httpMetadata.contentEncoding = "gzip";
-        }
-
-        await env.BUCKET.put(key, bodyToStore, {
-          httpMetadata,
-          customMetadata: {
-            compressed: isGzip ? "gzip" : "none"
-          }
+        const fileData = request.body || await request.arrayBuffer();
+        await env.BUCKET.put(key, fileData, {
+          httpMetadata: { contentType }
         });
-
         const fileUrl = `${url.origin}/api/storage/file/${encodeURIComponent(key)}`;
-        return jsonResponse({ success: true, key, url: fileUrl, compressed: isGzip }, 200, origin);
+        return jsonResponse({ success: true, key, url: fileUrl }, 200, origin);
       }
-
       if (path.startsWith("/api/storage/file/") && method === "GET") {
         const key = decodeURIComponent(path.replace("/api/storage/file/", ""));
         const object = await env.BUCKET.get(key);
         if (!object)
           return errorResponse("Fichier introuvable dans R2", 404, origin);
-
         const headers = new Headers();
         object.writeHttpMetadata(headers);
         headers.set("etag", object.httpEtag);
         headers.set("Access-Control-Allow-Origin", origin);
-
-        const isCompressedGzip = object.httpMetadata?.contentEncoding === "gzip" || 
-                                 object.customMetadata?.compressed === "gzip";
-
-        const acceptEncoding = request.headers.get("Accept-Encoding") || "";
-        const clientAcceptsGzip = acceptEncoding.includes("gzip");
-        const forceDecompress = url.searchParams.get("decompress") === "true";
-
-        if (isCompressedGzip) {
-          if (clientAcceptsGzip && !forceDecompress) {
-            // Le navigateur d\xE9compresse automatiquement en m\xE9moire de fa\xE7on transparente
-            headers.set("Content-Encoding", "gzip");
-            return new Response(object.body, { headers });
-          } else if (typeof DecompressionStream !== "undefined") {
-            // Client sans support gzip ou demande expresse (?decompress=true)
-            headers.delete("Content-Encoding");
-            const decompressedStream = object.body.pipeThrough(new DecompressionStream("gzip"));
-            return new Response(decompressedStream, { headers });
-          }
-        }
-
         return new Response(object.body, { headers });
       }
       if (path.startsWith("/api/shares") && env.DB && !isSchemaInitialized) {
@@ -4038,43 +3928,85 @@ var src_default = {
           return jsonResponse({ success: true, message: "Profil boutique mis \xE0 jour" }, 200, origin);
         }
       }
-
-      // ── GET /api/shop/analytics?userId=... ─────────────────────────────
+      if ((path === "/api/shop/delete" || path === "/api/shop/profile" && method === "DELETE") && (method === "POST" || method === "DELETE")) {
+        await ensureShopAndProductTables(env.DB);
+        const body = await request.json().catch(() => ({}));
+        const authHeader = request.headers.get("Authorization") || "";
+        const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
+        let userId = null;
+        if (token) {
+          try {
+            const payload = await verifyJWT(token);
+            userId = payload?.userId;
+          } catch (e) {
+          }
+        }
+        if (!userId) {
+          userId = body.userId || url.searchParams.get("userId");
+        }
+        const shopName = (body.shopName || "").trim();
+        let shop = null;
+        if (userId) {
+          shop = await env.DB.prepare("SELECT * FROM shop_profiles WHERE user_id = ?").bind(userId).first();
+        }
+        if (!shop && shopName) {
+          shop = await env.DB.prepare("SELECT * FROM shop_profiles WHERE LOWER(shop_name) = LOWER(?)").bind(shopName).first();
+          if (shop && !userId)
+            userId = shop.user_id;
+        }
+        if (userId) {
+          await env.DB.prepare(`
+            DELETE FROM user_product_interactions WHERE product_id IN (SELECT id FROM products WHERE seller_id = ?)
+          `).bind(userId).run().catch(() => {
+          });
+          await env.DB.prepare(`
+            DELETE FROM cart_items WHERE product_id IN (SELECT id FROM products WHERE seller_id = ?)
+          `).bind(userId).run().catch(() => {
+          });
+          await env.DB.prepare("DELETE FROM products WHERE seller_id = ?").bind(userId).run().catch(() => {
+          });
+          await env.DB.prepare("DELETE FROM seller_follows WHERE seller_id = ? OR user_id = ?").bind(userId, userId).run().catch(() => {
+          });
+          await env.DB.prepare("DELETE FROM shop_profiles WHERE user_id = ?").bind(userId).run().catch(() => {
+          });
+        } else if (shopName) {
+          await env.DB.prepare("DELETE FROM shop_profiles WHERE LOWER(shop_name) = LOWER(?)").bind(shopName).run().catch(() => {
+          });
+        }
+        return jsonResponse({
+          success: true,
+          message: "La boutique et toutes ses donn\xE9es associ\xE9es ont \xE9t\xE9 supprim\xE9es d\xE9finitivement."
+        }, 200, origin);
+      }
       if (path === "/api/shop/analytics" && method === "GET") {
         await ensureShopAndProductTables(env.DB);
         const userId = url.searchParams.get("userId");
-        if (!userId) return errorResponse("userId requis", 400, origin);
-
-        // 1. Aggregate totals for this seller's products
+        if (!userId)
+          return errorResponse("userId requis", 400, origin);
         const totalsRes = await env.DB.prepare(
           "SELECT COALESCE(SUM(views), 0) as total_views, COALESCE(SUM(sales), 0) as total_sales FROM products WHERE seller_id = ?"
         ).bind(userId).first().catch(() => ({ total_views: 0, total_sales: 0 }));
-
-        // 2. Subscriber count
         let subscriberCount = 0;
         try {
           const subRes = await env.DB.prepare(
             "SELECT COUNT(*) as count FROM seller_follows WHERE seller_id = ?"
           ).bind(userId).first();
           subscriberCount = subRes?.count || 0;
-        } catch (e) {}
-
-        // 3. Products sorted by performance score (views + sales*3) desc
+        } catch (e) {
+        }
         const prodsRes = await env.DB.prepare(
           `SELECT id, title, price, views, sales, image_urls_json, is_boosted, category
            FROM products WHERE seller_id = ?
-           ORDER BY (views + sales * 3) DESC LIMIT 50`
+           ORDER BY (views + sales * 3) DESC, sales DESC, views DESC LIMIT 100`
         ).bind(userId).all().catch(() => ({ results: [] }));
-
         const products = (prodsRes?.results || []).map((p) => {
-          let firstImg = null;
-          if (p.image_urls_json) {
-            try {
+          let firstImage = null;
+          try {
+            if (p.image_urls_json) {
               const parsed = JSON.parse(p.image_urls_json);
-              firstImg = Array.isArray(parsed) ? parsed[0] : parsed;
-            } catch (e) {
-              firstImg = typeof p.image_urls_json === 'string' ? p.image_urls_json : null;
+              firstImage = Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : null;
             }
+          } catch (e) {
           }
           return {
             id: p.id,
@@ -4083,23 +4015,21 @@ var src_default = {
             views: p.views || 0,
             sales: p.sales || 0,
             category: p.category,
-            imageUrl: firstImg,
+            imageUrl: firstImage,
             isBoosted: Boolean(p.is_boosted),
-            performanceScore: (p.views || 0) + (p.sales || 0) * 3,
+            performanceScore: (p.views || 0) + (p.sales || 0) * 3
           };
         });
-
         return jsonResponse({
           success: true,
           data: {
             total_views: totalsRes?.total_views || 0,
             total_sales: totalsRes?.total_sales || 0,
             subscriber_count: subscriberCount,
-            products,
+            products
           }
         }, 200, origin);
       }
-
       async function ensureShopAndProductTables(db) {
         try {
           await db.prepare(`
@@ -4703,67 +4633,6 @@ Lien vers le produit : ${productShareUrl}`;
           return jsonResponse({ success: true, message: "Article retir\xE9 du panier" }, 200, origin);
         }
       }
-
-      // ── Compteur de documents publiés et statistiques ────────────────
-      if (path === "/api/published-documents/count" && method === "GET") {
-        const userId = url.searchParams.get("userId");
-        if (!userId) {
-          return errorResponse("userId requis", 400, origin);
-        }
-        try {
-          await env.DB.prepare(`
-            CREATE TABLE IF NOT EXISTS user_publication_stats (
-              user_id TEXT PRIMARY KEY,
-              total_published_count INTEGER DEFAULT 0,
-              last_published_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-          `).run();
-          await env.DB.prepare(`
-            CREATE TABLE IF NOT EXISTS published_documents (
-              id TEXT PRIMARY KEY,
-              user_id TEXT NOT NULL,
-              title TEXT NOT NULL,
-              description TEXT,
-              school TEXT,
-              filiere TEXT,
-              matiere_name TEXT,
-              level TEXT,
-              category TEXT DEFAULT 'Cours',
-              author_name TEXT,
-              country TEXT,
-              info_mode TEXT DEFAULT 'all',
-              file_name TEXT,
-              file_size INTEGER DEFAULT 0,
-              file_type TEXT,
-              r2_key TEXT,
-              file_url TEXT,
-              is_public INTEGER DEFAULT 1,
-              downloads_count INTEGER DEFAULT 0,
-              views_count INTEGER DEFAULT 0,
-              tags_json TEXT DEFAULT '[]',
-              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-          `).run();
-        } catch (e) {}
-
-        const countRow = await env.DB.prepare(
-          "SELECT COUNT(*) as count FROM published_documents WHERE user_id = ?"
-        ).bind(userId).first();
-        const total = countRow?.count || 0;
-
-        try {
-          await env.DB.prepare(`
-            INSERT INTO user_publication_stats (user_id, total_published_count, last_published_at)
-            VALUES (?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(user_id) DO UPDATE SET total_published_count = excluded.total_published_count
-          `).bind(userId, total).run();
-        } catch (e) {}
-
-        return jsonResponse({ success: true, count: total }, 200, origin);
-      }
-
-      // ── Vérification des doublons de documents publiés ─────────────
       if (path === "/api/published-documents/check-duplicates" && method === "POST") {
         const body = await request.json().catch(() => ({}));
         const { userId, files } = body;
@@ -4798,30 +4667,29 @@ Lien vers le produit : ${productShareUrl}`;
               updated_at TEXT DEFAULT CURRENT_TIMESTAMP
             )
           `).run();
-        } catch (e) {}
-
+        } catch (e) {
+        }
         const duplicates = [];
-        const seenInRequest = new Set();
+        const seenInRequest = /* @__PURE__ */ new Set();
         for (const file of files) {
           const fileName = file.name || file.fileName || "";
           const fileSize = file.size || file.fileSize || 0;
-          if (!fileName) continue;
-
-          // Détecter si le même fichier apparaît deux fois dans le même lot de publication
+          if (!fileName)
+            continue;
           const normName = fileName.trim().toLowerCase();
           const reqKey = `${normName}_${fileSize}`;
-          if (seenInRequest.has(normName) || (fileSize > 0 && seenInRequest.has(reqKey))) {
+          if (seenInRequest.has(normName) || fileSize > 0 && seenInRequest.has(reqKey)) {
             duplicates.push({
               fileId: file.id || file.fileId,
               fileName,
               isDuplicate: true,
-              message: "Un fichier a été recalé car son deuxième a été enregistré"
+              message: "Un fichier a \xE9t\xE9 recal\xE9 car son deuxi\xE8me a \xE9t\xE9 enregistr\xE9"
             });
             continue;
           }
           seenInRequest.add(normName);
-          if (fileSize > 0) seenInRequest.add(reqKey);
-
+          if (fileSize > 0)
+            seenInRequest.add(reqKey);
           const existing = await env.DB.prepare(`
             SELECT id, title, file_name, file_size 
             FROM published_documents 
@@ -4829,20 +4697,18 @@ Lien vers le produit : ${productShareUrl}`;
                OR (user_id = ? AND file_size > 0 AND file_size = ? AND LOWER(file_name) = LOWER(?))
             LIMIT 1
           `).bind(userId, fileName, userId, fileSize, fileName).first();
-
           if (existing) {
             duplicates.push({
               fileId: file.id || file.fileId,
               fileName,
               isDuplicate: true,
               existingTitle: existing.title,
-              message: "Un fichier a été recalé car son deuxième a été enregistré"
+              message: "Un fichier a \xE9t\xE9 recal\xE9 car son deuxi\xE8me a \xE9t\xE9 enregistr\xE9"
             });
           }
         }
         return jsonResponse({ success: true, duplicates }, 200, origin);
       }
-
       if (path === "/api/published-documents") {
         if (method === "GET") {
           const school = url.searchParams.get("school");
@@ -5022,46 +4888,6 @@ Lien vers le produit : ${productShareUrl}`;
           if (!userId || !title || !fileName) {
             return errorResponse("userId, title et fileName sont obligatoires", 400, origin);
           }
-
-          // S'assurer que les tables existent
-          try {
-            await env.DB.prepare(`
-              CREATE TABLE IF NOT EXISTS published_documents (
-                id TEXT PRIMARY KEY,
-                user_id TEXT NOT NULL,
-                title TEXT NOT NULL,
-                description TEXT,
-                school TEXT,
-                filiere TEXT,
-                matiere_name TEXT,
-                level TEXT,
-                category TEXT DEFAULT 'Cours',
-                author_name TEXT,
-                country TEXT,
-                info_mode TEXT DEFAULT 'all',
-                file_name TEXT,
-                file_size INTEGER DEFAULT 0,
-                file_type TEXT,
-                r2_key TEXT,
-                file_url TEXT,
-                is_public INTEGER DEFAULT 1,
-                downloads_count INTEGER DEFAULT 0,
-                views_count INTEGER DEFAULT 0,
-                tags_json TEXT DEFAULT '[]',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-              )
-            `).run();
-            await env.DB.prepare(`
-              CREATE TABLE IF NOT EXISTS user_publication_stats (
-                user_id TEXT PRIMARY KEY,
-                total_published_count INTEGER DEFAULT 0,
-                last_published_at TEXT DEFAULT CURRENT_TIMESTAMP
-              )
-            `).run();
-          } catch (e) {}
-
-          // Vérification de doublon strict : si le même fichier (même nom pour l'utilisateur, ou même nom et taille) est déjà présent
           const existingDoc = await env.DB.prepare(`
             SELECT id, title, file_name, file_size 
             FROM published_documents 
@@ -5069,19 +4895,17 @@ Lien vers le produit : ${productShareUrl}`;
                OR (user_id = ? AND file_size > 0 AND file_size = ? AND LOWER(file_name) = LOWER(?))
             LIMIT 1
           `).bind(userId, fileName, userId, fileSize || 0, fileName).first();
-
           if (existingDoc) {
             return jsonResponse({
               success: false,
               duplicate: true,
-              message: `Un fichier a été recalé car son deuxième a été enregistré`,
+              message: `Un fichier a \xE9t\xE9 recal\xE9 car son deuxi\xE8me a \xE9t\xE9 enregistr\xE9`,
               existingTitle: existingDoc.title,
               fileName
             }, 200, origin);
           }
-
           const docId = id || crypto.randomUUID();
-          const finalCountry = country || "Côte d'Ivoire";
+          const finalCountry = country || "C\xF4te d'Ivoire";
           const finalIsPublic = isPublic !== void 0 ? isPublic ? 1 : 0 : 1;
           await env.DB.prepare(`
             INSERT INTO published_documents (
@@ -5119,7 +4943,7 @@ Lien vers le produit : ${productShareUrl}`;
             matiereName || "",
             level || "",
             category || "Cours",
-            authorName || "Étudiant",
+            authorName || "\xC9tudiant",
             finalCountry,
             infoMode || "all",
             fileName,
@@ -5130,30 +4954,12 @@ Lien vers le produit : ${productShareUrl}`;
             finalIsPublic,
             tagsJson || "[]"
           ).run();
-
-          // Mettre à jour la table de comptage des publications par utilisateur
-          try {
-            const countRow = await env.DB.prepare(
-              "SELECT COUNT(*) as count FROM published_documents WHERE user_id = ?"
-            ).bind(userId).first();
-            const totalCount = countRow?.count || 1;
-            await env.DB.prepare(`
-              INSERT INTO user_publication_stats (user_id, total_published_count, last_published_at)
-              VALUES (?, ?, CURRENT_TIMESTAMP)
-              ON CONFLICT(user_id) DO UPDATE SET
-                total_published_count = excluded.total_published_count,
-                last_published_at = CURRENT_TIMESTAMP
-            `).bind(userId, totalCount).run();
-          } catch (statErr) {
-            console.warn("[Publication stats error]", statErr);
-          }
-
           await createNotification(
             env.DB,
             userId,
-            "Confirmation de dépôt de document",
-            `Votre document "${title}" a été partagé avec succès dans la communauté StudyCloud. Il est désormais indexé et disponible pour vos camarades.`,
-            `${matiereName || category || "Ressource"} • ${title}`,
+            "Confirmation de d\xE9p\xF4t de document",
+            `Votre document "${title}" a \xE9t\xE9 partag\xE9 avec succ\xE8s dans la communaut\xE9 StudyCloud. Il est d\xE9sormais index\xE9 et disponible pour vos camarades.`,
+            `${matiereName || category || "Ressource"} \u2022 ${title}`,
             "document"
           );
           return jsonResponse({

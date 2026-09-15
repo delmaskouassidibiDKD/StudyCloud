@@ -4760,6 +4760,7 @@ export default {
               updated_at = CURRENT_TIMESTAMP
           `).bind(body.userId, body.shopName, body.shopPhone, body.shopWhatsapp, body.shopAvatarUrl || null, body.shopCategory || 'Vente digital (PDF)').run();
           return jsonResponse({ success: true, message: 'Profil boutique mis à jour' }, 200, origin);
+        }
       }
 
       // ── POST /api/shop/delete (Suppression définitive de la boutique) ─────
