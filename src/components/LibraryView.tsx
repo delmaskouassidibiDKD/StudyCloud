@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart, RefreshCw, Globe, Hash } from 'lucide-react';
 import { SharedFolder, SharedFile } from '../types';
 import { FileIconBadge } from './FileIconBadge';
@@ -1264,7 +1264,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           // 2. Dossiers publics distants D1 (sauf si l'utilisateur local l'a explicitement repassé en privé)
           remotePublicFolders.forEach((rf) => {
             const localMatch = localFolderMap.get(rf.id);
-            if (localMatch && !localMatch.isPublic) return; // Repassé en privé localement
+            if (localMatch && !(localMatch as any).isPublic) return; // Repassé en privé localement
             if (Boolean(rf.isPublic) && !combinedPublicMap.has(rf.id)) {
               combinedPublicMap.set(rf.id, rf);
             }

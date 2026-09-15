@@ -334,6 +334,7 @@ async function aiRequest<T>(endpoint: string, options: RequestInit = {}): Promis
     throw new Error(err.error || `Erreur API IA: ${response.status}`);
   }
 
+  return response.json();
 }
 
 // Helper spécialement pour les routes d'auth (utilise Authorization Bearer)

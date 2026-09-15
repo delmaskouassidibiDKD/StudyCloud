@@ -116,7 +116,7 @@ function parseQuizFromText(rawText: string, safeDocName: string): QuizContent {
 
   return {
     title: `Quiz : ${safeDocName}`,
-    difficulty: 'Adaptatif',
+    difficulty: 'Moyen',
     questions: questions.length > 0 ? questions : [
       {
         id: 'q-1',
