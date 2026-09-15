@@ -840,6 +840,13 @@ export const StudyCloudAPI = {
     });
   },
 
+  async resetDocumentInteractions(userId?: string) {
+    const endpoint = userId
+      ? `/api/published-documents/interactions/reset?userId=${encodeURIComponent(userId)}`
+      : '/api/published-documents/interactions/reset';
+    return request(endpoint, { method: 'DELETE' });
+  },
+
   async incrementDocumentView(id: string) {
     return request(`/api/published-documents/${encodeURIComponent(id)}/view`, { method: 'POST' });
   },

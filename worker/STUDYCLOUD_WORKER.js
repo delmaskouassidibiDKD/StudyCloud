@@ -3875,6 +3875,10 @@ var src_default = {
               INSERT INTO user_document_interactions (id, user_id, document_id, interaction_type, created_at)
               VALUES (?, ?, ?, ?, CURRENT_TIMESTAMP)
             `).bind(crypto.randomUUID(), userId, id, interactionType).run();
+            await env.DB.prepare(`
+              DELETE FROM user_document_interactions 
+              WHERE created_at < datetime('now', '-30 days')
+            `).run();
           } catch (e) {
           }
         }
@@ -3883,7 +3887,20 @@ var src_default = {
         } else {
           await env.DB.prepare("UPDATE published_documents SET views_count = views_count + 1 WHERE id = ?").bind(id).run();
         }
-        return jsonResponse({ success: true, message: "Interaction enregistr\xE9e" }, 200, origin);
+        return jsonResponse({ success: true, message: "Interaction enregistr\xE9e (historique nettoy\xE9 apr\xE8s 30 jours)" }, 200, origin);
+      }
+      if (path === "/api/published-documents/interactions/reset" && method === "DELETE") {
+        const targetUserId = url.searchParams.get("userId");
+        try {
+          if (targetUserId) {
+            await env.DB.prepare("DELETE FROM user_document_interactions WHERE user_id = ?").bind(targetUserId).run();
+          } else {
+            await env.DB.prepare("DELETE FROM user_document_interactions").run();
+          }
+          return jsonResponse({ success: true, message: "Historique des interactions r\xE9initialis\xE9 \xE0 z\xE9ro avec succ\xE8s" }, 200, origin);
+        } catch (err) {
+          return errorResponse("Erreur lors de la r\xE9initialisation: " + err.message, 500, origin);
+        }
       }
       if (path.startsWith("/api/published-documents/") && path.endsWith("/view") && method === "POST") {
         const id = path.split("/")[3];
@@ -4132,6 +4149,20 @@ var src_default = {
     } catch (err) {
       console.error("Worker API Error:", err);
       return errorResponse(err.message || "Erreur interne du serveur", 500, origin);
+    }
+  },
+  // Handler CRON Cloudflare : exécution périodique automatique pour nettoyer les interactions de plus de 30 jours
+  async scheduled(event, env, ctx) {
+    if (env && env.DB) {
+      try {
+        await env.DB.prepare(`
+          DELETE FROM user_document_interactions 
+          WHERE created_at < datetime('now', '-30 days')
+        `).run();
+        console.log("[StudyCloud Cron] Purge des interactions utilisateur de plus de 30 jours effectu\xE9e avec succ\xE8s.");
+      } catch (e) {
+        console.error("[StudyCloud Cron Error]", e);
+      }
     }
   }
 };
