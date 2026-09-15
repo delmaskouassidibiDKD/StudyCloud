@@ -10,44 +10,77 @@ interface PromotionViewProps {
 export const PromotionView: React.FC<PromotionViewProps> = ({ onBack }) => {
   const { user } = useAuth();
   const [copied, setCopied] = useState(false);
-  const [loading, setLoading] = useState(true);
   const [showHistory, setShowHistory] = useState(false);
-  const [qrLoaded, setQrLoaded] = useState(false);
 
-  // Données dynamiques connectées à Cloudflare D1
-  const [invitationCode, setInvitationCode] = useState<string>('...');
-  const [referralsCount, setReferralsCount] = useState<number>(0);
-  const [adFreeDaysEarned, setAdFreeDaysEarned] = useState<number>(0);
-  const [shareUrl, setShareUrl] = useState<string>('');
-  const [rules, setRules] = useState<string[]>([
-    "Chaque fois que vous promouvez avec succès une personne qui s'inscrit, vous bénéficierez de 5 jours de publicité gratuite, qui peuvent être accumulés de manière illimitée~",
-    "Un total de 3 personnes inscrites par vous, et 5 jours supplémentaires de publicité gratuite offerts~",
-    "Un total de 5 personnes inscrites par vous, et 10 jours supplémentaires de publicité gratuite offerts~",
-    "Un total de 7 personnes inscrites par vous, et 15 jours supplémentaires de publicité gratuite offerts~",
-    "Un total de 10 personnes inscrites par vous, et 3650 jours supplémentaires de publicité gratuite offerts~"
-  ]);
-  const [referralsList, setReferralsList] = useState<any[]>([]);
+  // Clé de cache local par utilisateur pour que le code et le lien restent en permanence sans clignoter
+  const cacheKey = user?.id ? `sc_referral_cache_${user.id}` : 'sc_referral_cache_guest';
+  const getCachedData = () => {
+    try {
+      const raw = localStorage.getItem(cacheKey);
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  };
+
+  const cached = getCachedData();
+
+  // Données dynamiques instantanées (persistantes en permanence sans clignotement)
+  const [invitationCode, setInvitationCode] = useState<string>(() => {
+    return cached?.referralCode || (user as any)?.referral_code || '';
+  });
+  const [referralsCount, setReferralsCount] = useState<number>(() => {
+    if (typeof cached?.referralsCount === 'number') return cached.referralsCount;
+    return typeof (user as any)?.referrals_count === 'number' ? (user as any).referrals_count : 0;
+  });
+  const [adFreeDaysEarned, setAdFreeDaysEarned] = useState<number>(() => {
+    return typeof cached?.adFreeDaysEarned === 'number' ? cached.adFreeDaysEarned : 0;
+  });
+  const [shareUrl, setShareUrl] = useState<string>(() => {
+    if (cached?.shareUrl) return cached.shareUrl;
+    const initialCode = cached?.referralCode || (user as any)?.referral_code;
+    return initialCode ? `https://studycloud-ai.delmaskouassidibi.workers.dev/invite/${initialCode}` : '';
+  });
+  const [rules, setRules] = useState<string[]>(() => {
+    return Array.isArray(cached?.rules) && cached.rules.length > 0 ? cached.rules : [
+      "Chaque fois que vous promouvez avec succès une personne qui s'inscrit, vous bénéficierez de 5 jours de publicité gratuite, qui peuvent être accumulés de manière illimitée~",
+      "Un total de 3 personnes inscrites par vous, et 5 jours supplémentaires de publicité gratuite offerts~",
+      "Un total de 5 personnes inscrites par vous, et 10 jours supplémentaires de publicité gratuite offerts~",
+      "Un total de 7 personnes inscrites par vous, et 15 jours supplémentaires de publicité gratuite offerts~",
+      "Un total de 10 personnes inscrites par vous, et 3650 jours supplémentaires de publicité gratuite offerts~"
+    ];
+  });
+  const [referralsList, setReferralsList] = useState<any[]>(() => {
+    return Array.isArray(cached?.referrals) ? cached.referrals : [];
+  });
+  // Ne pas afficher de spinner/clignotement si on a déjà des données en cache
+  const [loading, setLoading] = useState<boolean>(!cached?.referralCode && !(user as any)?.referral_code);
 
   useEffect(() => {
     let isMounted = true;
     const fetchStatus = async () => {
       try {
-        setLoading(true);
         const res: any = await StudyCloudAPI.getReferralStatus(user?.id);
         if (isMounted && res && res.success) {
+          const finalUrl = res.inviteUrl || (res.referralCode ? `https://studycloud-ai.delmaskouassidibi.workers.dev/invite/${res.referralCode}` : '');
           if (res.referralCode) setInvitationCode(res.referralCode);
           if (typeof res.referralsCount === 'number') setReferralsCount(res.referralsCount);
           if (typeof res.adFreeDaysEarned === 'number') setAdFreeDaysEarned(res.adFreeDaysEarned);
-          if (res.inviteUrl) setShareUrl(res.inviteUrl);
-          else if (res.referralCode) {
-            setShareUrl(`https://studycloud-ai.delmaskouassidibi.workers.dev/invite/${res.referralCode}`);
-          }
-          if (Array.isArray(res.rules) && res.rules.length > 0) {
-            setRules(res.rules);
-          }
-          if (Array.isArray(res.referrals)) {
-            setReferralsList(res.referrals);
-          }
+          if (finalUrl) setShareUrl(finalUrl);
+          if (Array.isArray(res.rules) && res.rules.length > 0) setRules(res.rules);
+          if (Array.isArray(res.referrals)) setReferralsList(res.referrals);
+
+          // Sauvegarde locale permanente pour éliminer tout clignotement aux visites suivantes
+          try {
+            localStorage.setItem(cacheKey, JSON.stringify({
+              referralCode: res.referralCode,
+              referralsCount: res.referralsCount || 0,
+              adFreeDaysEarned: res.adFreeDaysEarned || 0,
+              shareUrl: finalUrl,
+              rules: res.rules,
+              referrals: res.referrals,
+            }));
+          } catch (e) {}
         }
       } catch (err) {
         console.error('[PromotionView Error]', err);
@@ -58,9 +91,9 @@ export const PromotionView: React.FC<PromotionViewProps> = ({ onBack }) => {
 
     fetchStatus();
     return () => { isMounted = false; };
-  }, [user?.id]);
+  }, [user?.id, cacheKey]);
 
-  const activeShareUrl = shareUrl || (invitationCode !== '...' ? `https://studycloud-ai.delmaskouassidibi.workers.dev/invite/${invitationCode}` : 'https://studycloud.dkd-technologies.com');
+  const activeShareUrl = shareUrl || (invitationCode ? `https://studycloud-ai.delmaskouassidibi.workers.dev/invite/${invitationCode}` : 'https://studycloud.dkd-technologies.com');
 
   const handleCopy = () => {
     navigator.clipboard.writeText(activeShareUrl);
@@ -109,25 +142,16 @@ export const PromotionView: React.FC<PromotionViewProps> = ({ onBack }) => {
       <div className="w-full max-w-2xl lg:max-w-4xl mx-auto px-4 pt-4 md:pt-8 pb-16 flex flex-col items-center text-center space-y-5 md:space-y-8">
         <div>
           <h1 className="text-3xl md:text-5xl font-serif font-black text-stone-900 dark:text-white mb-2 tracking-tight">Promotion</h1>
-          <p className="text-xs md:text-sm text-stone-600 dark:text-stone-400 max-w-md mx-auto">
-            Partagez votre lien exclusif et cumulez des jours de visibilité et publicité gratuite pour vos fichiers et services.
-          </p>
         </div>
 
-        {/* Déjà promu */}
-        <div className="w-full flex flex-col items-center gap-2">
+        {/* Déjà promu sans encadré ni couleur autour, fondu directement dans le fond */}
+        <div className="w-full flex flex-col items-center">
           <div className="text-stone-800 dark:text-stone-100 font-bold text-lg md:text-2xl flex items-center justify-center gap-2">
             <span>Déjà promu</span>
-            <span className="text-orange-600 dark:text-orange-500 font-black text-2xl md:text-4xl px-2 py-0.5 bg-orange-50 dark:bg-orange-950/40 rounded-xl border border-orange-200 dark:border-orange-800/50 shadow-sm">
-              {loading ? '...' : referralsCount}
+            <span className="text-orange-600 dark:text-orange-500 font-black text-2xl md:text-4xl">
+              {referralsCount}
             </span>
             <span>personne(s)</span>
-          </div>
-
-          {/* Badge avantages acquis */}
-          <div className="inline-flex items-center gap-2 px-3.5 py-1.5 bg-emerald-50 dark:bg-emerald-950/30 text-emerald-800 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50 rounded-full text-xs md:text-sm font-bold shadow-xs">
-            <Gift className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-            <span>Avantages débloqués : <strong>+{loading ? '...' : adFreeDaysEarned} jours</strong> de visibilité gratuite</span>
           </div>
         </div>
 
@@ -138,16 +162,11 @@ export const PromotionView: React.FC<PromotionViewProps> = ({ onBack }) => {
               <img
                 src={qrImageUrl}
                 alt="QR Code Parrainage"
-                className={`w-full h-full object-contain transition-opacity duration-300 ${qrLoaded ? 'opacity-100' : 'opacity-0'}`}
-                onLoad={() => setQrLoaded(true)}
+                className="w-full h-full object-contain"
               />
-            ) : null}
-
-            {(!qrLoaded || loading) && (
-              <div className="absolute inset-0 flex items-center justify-center bg-white p-4">
-                <svg viewBox="0 0 24 24" className="w-full h-full text-stone-900 fill-current opacity-25 animate-pulse">
-                  <path d="M2,2H10V10H2V2M4,4V8H8V4H4M14,2H22V10H14V2M16,4V8H20V4H16M2,14H10V22H2V14M4,16V20H8V16H4M18,14V18H22V14H18M14,18H16V22H14V18M18,20H22V22H18V20M12,2H14V6H12V2M12,8H14V12H12V8M6,12H8V14H6V12M10,12H12V14H10V12M16,12H20V14H16V12M12,14H14V18H12V14M12,20H14V22H12V20Z" />
-                </svg>
+            ) : (
+              <div className="w-full h-full flex items-center justify-center bg-stone-50">
+                <span className="text-xs text-stone-400">Chargement...</span>
               </div>
             )}
           </div>
@@ -155,7 +174,7 @@ export const PromotionView: React.FC<PromotionViewProps> = ({ onBack }) => {
           <div className="flex items-center gap-2 bg-stone-100 dark:bg-[#1e293b] px-4 py-2 rounded-xl border border-stone-300 dark:border-stone-700">
             <span className="text-xs md:text-sm text-stone-700 dark:text-stone-300 font-medium">Mon code d'invitation :</span>
             <span className="text-base md:text-lg text-orange-600 dark:text-orange-400 font-mono font-black tracking-wider">
-              {loading ? '...' : invitationCode}
+              {invitationCode || '...'}
             </span>
           </div>
         </div>
