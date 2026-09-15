@@ -26,7 +26,7 @@ export const FolderCard: React.FC<FolderCardProps> = ({ folder, onSelect, onOpen
 
   const handleCopyLink = (e: React.MouseEvent) => {
     e.stopPropagation();
-    navigator.clipboard.writeText(shareUrl);
+    navigator.clipboard.writeText(`Téléchargez votre fichier en cliquant sur ce lien : ${shareUrl}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

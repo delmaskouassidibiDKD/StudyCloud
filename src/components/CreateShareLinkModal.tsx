@@ -82,9 +82,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
     ? `${workerBase}/s/${createdFolder.shareCode || createdFolder.id}`
     : '';
 
-  const formattedShareMessage = createdFolder
-    ? `StudyCloud (DKD Technologies) : Plateforme cloud de stockage sécurisé pour les élèves, les étudiants, les entreprises et les professionnels.\n\nTéléchargez les fichiers en cliquant sur le lien ci-dessous :\n${shareableUrl}`
-    : shareableUrl;
+  const downloadMessageWithLink = `Téléchargez votre fichier en cliquant sur ce lien : ${shareableUrl}`;
 
   const handleCopyCode = () => {
     if (createdFolder?.shareCode) {
@@ -98,7 +96,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
 
   const handleCopyDirect = () => {
     if (!shareableUrl) return;
-    navigator.clipboard.writeText(shareableUrl);
+    navigator.clipboard.writeText(downloadMessageWithLink);
     setCopiedDirect(true);
     setTimeout(() => setCopiedDirect(false), 2500);
   };
@@ -109,7 +107,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
       try {
         await navigator.share({
           title: `${createdFolder.title || 'Document'} • StudyCloud`,
-          text: `StudyCloud (DKD Technologies) : Plateforme cloud de stockage sécurisé pour les élèves, les étudiants, les entreprises et les professionnels.\n\nTéléchargez les fichiers en cliquant sur le lien ci-dessous :`,
+          text: `Téléchargez votre fichier en cliquant sur ce lien :`,
           url: shareableUrl,
         });
         return;
@@ -117,7 +115,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
         // Fallback to clipboard
       }
     }
-    navigator.clipboard.writeText(formattedShareMessage);
+    navigator.clipboard.writeText(downloadMessageWithLink);
     setCopiedMessage(true);
     setTimeout(() => setCopiedMessage(false), 2500);
   };

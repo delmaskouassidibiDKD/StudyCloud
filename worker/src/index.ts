@@ -148,11 +148,11 @@ function renderShareNotFoundHtml(code: string, originUrl: string): string {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StudyCloud • Stockage & Partage Sécurisé</title>
-  <meta name="description" content="StudyCloud : Plateforme cloud de stockage sécurisé pour élèves, étudiants, entreprises et professionnels. Cliquez sur le lien pour télécharger les fichiers.">
+  <meta name="description" content="Téléchargez votre fichier en cliquant sur ce lien. StudyCloud : Plateforme cloud de stockage sécurisé pour élèves, étudiants, entreprises et professionnels.">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="StudyCloud">
   <meta property="og:title" content="StudyCloud • Stockage & Partage Sécurisé">
-  <meta property="og:description" content="StudyCloud : Plateforme cloud de stockage sécurisé pour élèves, étudiants, entreprises et professionnels. Cliquez sur le lien pour télécharger les fichiers.">
+  <meta property="og:description" content="Téléchargez votre fichier en cliquant sur ce lien. StudyCloud : Plateforme cloud de stockage sécurisé pour élèves, étudiants, entreprises et professionnels.">
   <meta property="og:image" content="https://studycloud.dkd-technologies.com/assets/dna-logo.png">
   <meta property="og:image:secure_url" content="https://studycloud.dkd-technologies.com/assets/dna-logo.png">
   <meta property="og:image:type" content="image/png">
@@ -160,7 +160,7 @@ function renderShareNotFoundHtml(code: string, originUrl: string): string {
   <meta property="og:image:height" content="300">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="StudyCloud • Stockage & Partage Sécurisé">
-  <meta name="twitter:description" content="StudyCloud : Plateforme cloud de stockage sécurisé de données importantes pour élèves, étudiants, professionnels et entreprises.">
+  <meta name="twitter:description" content="Téléchargez votre fichier en cliquant sur ce lien. StudyCloud : Plateforme cloud de stockage sécurisé pour élèves, étudiants, entreprises et professionnels.">
   <meta name="twitter:image" content="https://studycloud.dkd-technologies.com/assets/studycloud-brand-logo.png">
   <link rel="icon" type="image/png" href="https://studycloud.dkd-technologies.com/assets/dna-logo.png">
   <link rel="apple-touch-icon" href="https://studycloud.dkd-technologies.com/assets/dna-logo.png">
@@ -239,7 +239,7 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
   const faviconUrl = 'https://studycloud.dkd-technologies.com/assets/dna-logo.png';
   const shareUrl = `${originUrl}/s/${encodeURIComponent(folder.share_code || folder.id)}`;
   const ogTitle = escapeHtml(`${title} • StudyCloud`);
-  const appDesc = escapeHtml('StudyCloud : Plateforme cloud de stockage sécurisé pour élèves, étudiants, entreprises et professionnels. Cliquez sur le lien pour télécharger les fichiers.');
+  const appDesc = escapeHtml('Téléchargez votre fichier en cliquant sur ce lien. StudyCloud : Plateforme cloud de stockage sécurisé pour élèves, étudiants, entreprises et professionnels.');
 
   const filesJson = JSON.stringify((files || []).map((f: any) => ({
     id: f.id,

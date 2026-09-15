@@ -28,7 +28,7 @@ export const QRCodeModal: React.FC<QRCodeModalProps> = ({
   const qrImageUrl = `https://api.qrserver.com/v1/create-qr-code/?size=260x260&data=${encodeURIComponent(realDirectUrl)}&margin=8`;
 
   const handleCopy = () => {
-    navigator.clipboard.writeText(realDirectUrl);
+    navigator.clipboard.writeText(`Téléchargez votre fichier en cliquant sur ce lien : ${realDirectUrl}`);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
   };

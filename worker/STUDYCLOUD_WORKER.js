@@ -127,11 +127,11 @@ function renderShareNotFoundHtml(code, originUrl) {
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
   <title>StudyCloud \u2022 Stockage & Partage S\xE9curis\xE9</title>
-  <meta name="description" content="StudyCloud : Plateforme cloud de stockage s\xE9curis\xE9 pour \xE9l\xE8ves, \xE9tudiants, entreprises et professionnels. Cliquez sur le lien pour t\xE9l\xE9charger les fichiers.">
+  <meta name="description" content="T\xE9l\xE9chargez votre fichier en cliquant sur ce lien. StudyCloud : Plateforme cloud de stockage s\xE9curis\xE9 pour \xE9l\xE8ves, \xE9tudiants, entreprises et professionnels.">
   <meta property="og:type" content="website">
   <meta property="og:site_name" content="StudyCloud">
   <meta property="og:title" content="StudyCloud \u2022 Stockage & Partage S\xE9curis\xE9">
-  <meta property="og:description" content="StudyCloud : Plateforme cloud de stockage s\xE9curis\xE9 pour \xE9l\xE8ves, \xE9tudiants, entreprises et professionnels. Cliquez sur le lien pour t\xE9l\xE9charger les fichiers.">
+  <meta property="og:description" content="T\xE9l\xE9chargez votre fichier en cliquant sur ce lien. StudyCloud : Plateforme cloud de stockage s\xE9curis\xE9 pour \xE9l\xE8ves, \xE9tudiants, entreprises et professionnels.">
   <meta property="og:image" content="https://studycloud.dkd-technologies.com/assets/dna-logo.png">
   <meta property="og:image:secure_url" content="https://studycloud.dkd-technologies.com/assets/dna-logo.png">
   <meta property="og:image:type" content="image/png">
@@ -139,7 +139,7 @@ function renderShareNotFoundHtml(code, originUrl) {
   <meta property="og:image:height" content="300">
   <meta name="twitter:card" content="summary">
   <meta name="twitter:title" content="StudyCloud \u2022 Stockage & Partage S\xE9curis\xE9">
-  <meta name="twitter:description" content="StudyCloud : Plateforme cloud de stockage s\xE9curis\xE9 de donn\xE9es importantes pour \xE9l\xE8ves, \xE9tudiants, professionnels et entreprises.">
+  <meta name="twitter:description" content="T\xE9l\xE9chargez votre fichier en cliquant sur ce lien. StudyCloud : Plateforme cloud de stockage s\xE9curis\xE9 pour \xE9l\xE8ves, \xE9tudiants, entreprises et professionnels.">
   <meta name="twitter:image" content="https://studycloud.dkd-technologies.com/assets/studycloud-brand-logo.png">
   <link rel="icon" type="image/png" href="https://studycloud.dkd-technologies.com/assets/dna-logo.png">
   <link rel="apple-touch-icon" href="https://studycloud.dkd-technologies.com/assets/dna-logo.png">
@@ -218,7 +218,7 @@ function renderShareLandingHtml(folder, files, originUrl) {
   const faviconUrl = "https://studycloud.dkd-technologies.com/assets/dna-logo.png";
   const shareUrl = `${originUrl}/s/${encodeURIComponent(folder.share_code || folder.id)}`;
   const ogTitle = escapeHtml(`${title} \u2022 StudyCloud`);
-  const appDesc = escapeHtml("StudyCloud : Plateforme cloud de stockage s\xE9curis\xE9 pour \xE9l\xE8ves, \xE9tudiants, entreprises et professionnels. Cliquez sur le lien pour t\xE9l\xE9charger les fichiers.");
+  const appDesc = escapeHtml("T\xE9l\xE9chargez votre fichier en cliquant sur ce lien. StudyCloud : Plateforme cloud de stockage s\xE9curis\xE9 pour \xE9l\xE8ves, \xE9tudiants, entreprises et professionnels.");
   const filesJson = JSON.stringify((files || []).map((f) => ({
     id: f.id,
     name: f.name,
