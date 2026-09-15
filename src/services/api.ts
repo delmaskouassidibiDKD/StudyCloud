@@ -1126,6 +1126,17 @@ export const StudyCloudAPI = {
       body: JSON.stringify({ userId, email }),
     }, token);
   },
+
+  // --------------------------------------------------------------------------
+  // Suppression définitive de la boutique et de toutes ses données vendeur
+  // --------------------------------------------------------------------------
+  async deleteShop(shopName: string) {
+    const token = localStorage.getItem('sc_auth_token') || localStorage.getItem('unifolder_auth_token') || localStorage.getItem('auth_token') || '';
+    return requestAuth<{ success: boolean; message: string }>('/api/shop/delete', {
+      method: 'POST',
+      body: JSON.stringify({ shopName }),
+    }, token);
+  },
 };
 
 

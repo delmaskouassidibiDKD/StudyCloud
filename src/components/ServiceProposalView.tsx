@@ -108,6 +108,12 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
   const [customEditCategory, setCustomEditCategory] = useState<string>('');
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
+  // Delete shop modal states
+  const [showDeleteShopModal, setShowDeleteShopModal] = useState(false);
+  const [deleteShopNameInput, setDeleteShopNameInput] = useState('');
+  const [deleteShopConfirmInput, setDeleteShopConfirmInput] = useState('');
+  const [isDeletingShop, setIsDeletingShop] = useState(false);
+
   useEffect(() => {
     if (shopName) localStorage.setItem('unifolder_shop_name', shopName);
     if (shopPhone) localStorage.setItem('unifolder_shop_phone', shopPhone);
@@ -190,6 +196,34 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
       shopAvatarUrl: nextAvatar,
       shopCategory: nextCategory
     }).catch(() => {});
+  };
+
+  const handleDeleteShop = async () => {
+    if (deleteShopNameInput.trim() !== shopName.trim()) return;
+    if (deleteShopConfirmInput.trim() !== shopName.trim()) return;
+    setIsDeletingShop(true);
+    try {
+      await StudyCloudAPI.deleteShop(shopName);
+    } catch (e) {
+      console.warn('deleteShop remote error (ignored):', e);
+    }
+    // Cleanup all local shop data
+    const shopKeys = [
+      'unifolder_shop_created', 'unifolder_shop_name', 'unifolder_shop_phone',
+      'unifolder_shop_whatsapp', 'unifolder_shop_avatar', 'unifolder_shop_category',
+    ];
+    shopKeys.forEach((k) => localStorage.removeItem(k));
+    setHasCreatedShop(false);
+    setShopName('');
+    setShopPhone('');
+    setShopWhatsapp('');
+    setShopAvatarUrl('');
+    setShopCategory('Vente digital (PDF)');
+    setShowDeleteShopModal(false);
+    setIsDeletingShop(false);
+    setIsRightDrawerOpen(false);
+    setActivePage('main');
+    triggerToast('Boutique supprimée. Vous pouvez en créer une nouvelle.');
   };
 
   const isFieldModified = (() => {
@@ -1856,13 +1890,137 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                 </div>
               </div>
 
-              <div className="pt-3 border-t-2 border-stone-200 text-center mt-4">
+              {/* Supprimer la boutique */}
+              <div className="pt-4 border-t-2 border-red-100">
+                <button
+                  onClick={() => {
+                    setDeleteShopNameInput('');
+                    setDeleteShopConfirmInput('');
+                    setShowDeleteShopModal(true);
+                    setIsRightDrawerOpen(false);
+                  }}
+                  className="w-full py-3 bg-red-50 hover:bg-red-100 active:bg-red-200 text-red-700 font-extrabold text-xs rounded-2xl border-2 border-red-400 shadow-[2px_2px_0px_0px_#b91c1c] transition-all cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  <span>Supprimer la boutique</span>
+                </button>
+              </div>
+
+              <div className="pt-3 border-t-2 border-stone-200 text-center mt-2">
                 <p className="text-[10px] font-bold text-stone-400">StudyCloud Services • Profil Boutique</p>
               </div>
             </motion.div>
           </div>
         )}
       </AnimatePresence>
+
+      {/* ====== Modal : Suppression définitive de la boutique ====== */}
+      {showDeleteShopModal && (
+        <div className="fixed inset-0 z-[100002] flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
+          <div className="bg-white rounded-3xl border-3 border-red-700 p-6 md:p-8 max-w-md w-full shadow-[5px_5px_0px_0px_#991b1b] space-y-5 text-left relative">
+
+            {/* Header */}
+            <div className="flex items-start justify-between gap-3">
+              <div className="flex items-center gap-3">
+                <div className="w-11 h-11 rounded-2xl bg-red-100 border-2 border-red-600 flex items-center justify-center shrink-0">
+                  <Trash2 className="w-5 h-5 text-red-700" />
+                </div>
+                <div>
+                  <h3 className="font-extrabold text-base text-red-800">Supprimer la boutique</h3>
+                  <p className="text-[11px] text-red-500 font-semibold">Action irréversible</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowDeleteShopModal(false)}
+                className="p-1.5 hover:bg-red-100 rounded-lg border border-red-300 text-red-600 cursor-pointer flex-shrink-0"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+
+            {/* Warning list */}
+            <div className="bg-red-50 border-2 border-red-200 rounded-2xl p-4 space-y-2">
+              <p className="text-xs font-extrabold text-red-800 mb-2">⚠️ En supprimant cette boutique :</p>
+              <ul className="space-y-1.5 text-xs font-semibold text-red-700">
+                <li className="flex items-start gap-2"><span className="shrink-0 mt-0.5">•</span><span>Toutes vos <strong>publications et produits</strong> seront définitivement supprimés.</span></li>
+                <li className="flex items-start gap-2"><span className="shrink-0 mt-0.5">•</span><span>Tous vos <strong>abonnements publicitaires actifs</strong> seront annulés sans remboursement.</span></li>
+                <li className="flex items-start gap-2"><span className="shrink-0 mt-0.5">•</span><span>Vos <strong>statistiques et données de vente</strong> liées à ce compte seront perdues.</span></li>
+                <li className="flex items-start gap-2"><span className="shrink-0 mt-0.5">•</span><span>Vous serez redirigé vers l'accueil pour créer une <strong>nouvelle boutique</strong>.</span></li>
+              </ul>
+            </div>
+
+            {/* Field 1 : coller le nom */}
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1.5">
+                Collez le nom de votre boutique pour confirmer
+              </label>
+              <p className="text-[11px] font-semibold text-stone-400 mb-2">
+                Nom exact : <strong className="text-stone-700">{shopName}</strong>
+              </p>
+              <input
+                type="text"
+                value={deleteShopNameInput}
+                onChange={(e) => setDeleteShopNameInput(e.target.value)}
+                placeholder={`Collez : ${shopName}`}
+                className={`w-full border-2 rounded-xl p-3 text-xs font-bold outline-none transition-colors ${
+                  deleteShopNameInput === shopName && deleteShopNameInput !== ''
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
+                    : deleteShopNameInput !== '' && deleteShopNameInput !== shopName
+                    ? 'border-red-400 bg-red-50 text-red-900'
+                    : 'border-stone-800 bg-[#FAF8F5] text-stone-900'
+                }`}
+              />
+            </div>
+
+            {/* Field 2 : confirmer à nouveau */}
+            <div>
+              <label className="block text-xs font-bold text-stone-700 mb-1.5">
+                Confirmez une deuxième fois
+              </label>
+              <input
+                type="text"
+                value={deleteShopConfirmInput}
+                onChange={(e) => setDeleteShopConfirmInput(e.target.value)}
+                placeholder={`Collez à nouveau : ${shopName}`}
+                className={`w-full border-2 rounded-xl p-3 text-xs font-bold outline-none transition-colors ${
+                  deleteShopConfirmInput === shopName && deleteShopConfirmInput !== ''
+                    ? 'border-emerald-500 bg-emerald-50 text-emerald-900'
+                    : deleteShopConfirmInput !== '' && deleteShopConfirmInput !== shopName
+                    ? 'border-red-400 bg-red-50 text-red-900'
+                    : 'border-stone-800 bg-[#FAF8F5] text-stone-900'
+                }`}
+              />
+            </div>
+
+            {/* Buttons */}
+            <div className="flex gap-3 pt-1">
+              <button
+                type="button"
+                onClick={() => setShowDeleteShopModal(false)}
+                className="flex-1 py-3 bg-stone-100 hover:bg-stone-200 text-stone-700 font-extrabold text-xs rounded-2xl border-2 border-stone-400 shadow-[2px_2px_0px_0px_#78716c] transition-all cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="button"
+                onClick={handleDeleteShop}
+                disabled={
+                  isDeletingShop ||
+                  deleteShopNameInput.trim() !== shopName.trim() ||
+                  deleteShopConfirmInput.trim() !== shopName.trim()
+                }
+                className="flex-1 py-3 bg-red-600 hover:bg-red-700 active:bg-red-800 text-white font-extrabold text-xs rounded-2xl border-2 border-red-800 shadow-[2px_2px_0px_0px_#7f1d1d] transition-all flex items-center justify-center gap-2 disabled:opacity-40 disabled:cursor-not-allowed disabled:active:translate-x-0 disabled:active:translate-y-0 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"
+              >
+                {isDeletingShop ? (
+                  <><Loader2 className="w-4 h-4 animate-spin" /><span>Suppression...</span></>
+                ) : (
+                  <><Trash2 className="w-3.5 h-3.5" /><span>Supprimer la boutique</span></>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Single Field Edit Modal Popup */}
       {editingField && (
