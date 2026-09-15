@@ -5166,13 +5166,13 @@ export default {
           }
           // Convertir en dictionnaire pour un accès direct : { youtube: '...', telegram: '...', whatsapp: '...' }
           const linksDict: Record<string, string> = {
-            youtube: 'https://www.youtube.com',
-            telegram: 'https://t.me/+QtRhdlTsMHxjODk0',
-            whatsapp: 'https://chat.whatsapp.com/IPOnCB9rJhn7JECrNY20Ea',
+            youtube: '',
+            telegram: '',
+            whatsapp: '',
           };
           for (const row of rows) {
-            if (row.id && row.url) {
-              linksDict[row.id] = row.url;
+            if (row.id) {
+              linksDict[row.id] = (row.url || '').trim();
             }
           }
           return jsonResponse({ success: true, data: linksDict, links: rows }, 200, origin);
@@ -5181,7 +5181,8 @@ export default {
         if (method === 'POST' || method === 'PUT') {
           const body: any = await request.json().catch(() => ({}));
           const { id, url: linkUrl, name, description } = body;
-          if (!id || !linkUrl) return errorResponse('id et url requis', 400, origin);
+          if (!id) return errorResponse('id requis', 400, origin);
+          const safeUrl = (linkUrl || '').trim();
           if (env.DB) {
             await env.DB.prepare(`
               INSERT INTO app_external_links (id, name, url, description, updated_at)
@@ -5191,7 +5192,7 @@ export default {
                 name = COALESCE(excluded.name, app_external_links.name),
                 description = COALESCE(excluded.description, app_external_links.description),
                 updated_at = CURRENT_TIMESTAMP
-            `).bind(id, name || id, linkUrl, description || null).run();
+            `).bind(id, name || id, safeUrl, description || null).run();
           }
           return jsonResponse({ success: true, message: 'Lien mis à jour avec succès' }, 200, origin);
         }
@@ -5204,17 +5205,12 @@ export default {
         if (env.DB) {
           await ensureAppLinksTable(env.DB);
           const link = await env.DB.prepare('SELECT url FROM app_external_links WHERE id = ?').bind(linkId).first<any>();
-          if (link?.url) targetUrl = link.url;
-        }
-        if (!targetUrl) {
-          if (linkId === 'youtube') targetUrl = 'https://www.youtube.com';
-          else if (linkId === 'telegram') targetUrl = 'https://t.me/+QtRhdlTsMHxjODk0';
-          else if (linkId === 'whatsapp') targetUrl = 'https://chat.whatsapp.com/IPOnCB9rJhn7JECrNY20Ea';
+          if (link?.url && link.url.trim()) targetUrl = link.url.trim();
         }
         if (targetUrl) {
           return Response.redirect(targetUrl, 302);
         }
-        return errorResponse('Lien non trouvé', 404, origin);
+        return errorResponse('Lien non disponible', 404, origin);
       }
 
       // ----------------------------------------------------------------------

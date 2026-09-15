@@ -32,6 +32,25 @@ export const SettingsView: React.FC = () => {
     };
   });
 
+  // Message rouge simple si lien non disponible
+  const [errorMessage, setErrorMessage] = useState<string | null>(null);
+
+  const showUnavailableMessage = () => {
+    setErrorMessage('Non disponible');
+    setTimeout(() => {
+      setErrorMessage(null);
+    }, 2500);
+  };
+
+  const handleOpenLink = (key: 'youtube' | 'telegram' | 'whatsapp') => {
+    const url = appLinks[key]?.trim();
+    if (url) {
+      window.open(url, '_blank', 'noopener,noreferrer');
+    } else {
+      showUnavailableMessage();
+    }
+  };
+
   useEffect(() => {
     const fetchLinks = async () => {
       try {
@@ -94,8 +113,7 @@ export const SettingsView: React.FC = () => {
 
   const handleJoinGroup = () => {
     setShowContactMenu(false);
-    const targetUrl = appLinks.whatsapp || `${getWorkerApiUrl()}/link/whatsapp`;
-    window.open(targetUrl, '_blank', 'noopener,noreferrer');
+    handleOpenLink('whatsapp');
   };
 
   const handleOpenReport = () => {
@@ -206,15 +224,20 @@ export const SettingsView: React.FC = () => {
 
       {/* Action Buttons */}
       <div className="w-full space-y-3 md:space-y-4 pt-2 md:pt-4">
-        <a 
-          href={appLinks.youtube || `${getWorkerApiUrl()}/link/youtube`}
-          target="_blank"
-          rel="noopener noreferrer"
+        {/* Simple message rouge si lien non disponible (sans logo) */}
+        {errorMessage && (
+          <div className="fixed top-16 md:top-20 left-1/2 -translate-x-1/2 z-50 bg-red-600 text-white text-xs md:text-sm font-bold px-6 py-2.5 rounded-xl md:rounded-2xl shadow-[4px_4px_0px_0px_#1c1917] border-2 border-stone-900 animate-fadeIn text-center pointer-events-none">
+            {errorMessage}
+          </div>
+        )}
+
+        <button 
+          onClick={() => handleOpenLink('youtube')}
           className="w-full flex items-center justify-center gap-3 bg-[#FDFBF7] hover:bg-red-50 border-2 border-stone-800 rounded-xl md:rounded-2xl py-3 md:py-4 px-4 md:px-6 text-stone-900 font-bold text-sm md:text-base shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
         >
           <Youtube className="w-5 h-5 md:w-6 md:h-6 text-red-600" />
           <span>Tutoriels YouTube - Comprendre StudyCloud</span>
-        </a>
+        </button>
 
         <button 
           onClick={() => setActiveSubView('promotion')}
@@ -260,15 +283,13 @@ export const SettingsView: React.FC = () => {
           <span>Proposer un service</span>
         </button>
 
-        <a 
-          href={appLinks.telegram || `${getWorkerApiUrl()}/link/telegram`}
-          target="_blank"
-          rel="noopener noreferrer"
+        <button 
+          onClick={() => handleOpenLink('telegram')}
           className="w-full flex items-center justify-center gap-3 bg-[#FDFBF7] hover:bg-orange-50 border-2 border-stone-800 rounded-xl md:rounded-2xl py-3 md:py-4 px-4 md:px-6 text-stone-900 font-bold text-sm md:text-base shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
         >
           <Headphones className="w-5 h-5 md:w-6 md:h-6 text-emerald-600" />
           <span>Service client officiel</span>
-        </a>
+        </button>
 
         <button 
           onClick={() => setShowContactMenu(!showContactMenu)}
