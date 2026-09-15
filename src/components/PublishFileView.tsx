@@ -558,7 +558,8 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       setUploadProgress(20);
 
       // 1. Vérification des doublons auprès du Worker
-      const duplicateFileMap = new Map<string, string>();
+      const duplicateFileIdSet = new Set<string>();
+      const duplicateNameSet = new Set<string>();
       try {
         const checkRes = await StudyCloudAPI.checkPublishedDuplicates(
           userId,
@@ -567,7 +568,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         if (checkRes && checkRes.duplicates) {
           checkRes.duplicates.forEach(d => {
             if (d.isDuplicate) {
-              duplicateFileMap.set(d.fileName.toLowerCase(), d.existingTitle || d.fileName);
+              if (d.fileId) {
+                duplicateFileIdSet.add(d.fileId);
+              } else {
+                duplicateNameSet.add(d.fileName.toLowerCase());
+              }
             }
           });
         }
@@ -576,8 +581,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       }
 
       // Marquer les fichiers détectés comme doublons
+      // Si l'ID exact a été identifié par le Worker, seul ce doublon précis est marqué (le premier s'enregistre, le 2e est refusé)
       const updatedFiles = selectedFiles.map(f => {
-        const isDup = duplicateFileMap.has(f.name.toLowerCase());
+        const isDup = duplicateFileIdSet.size > 0
+          ? duplicateFileIdSet.has(f.id)
+          : duplicateNameSet.has(f.name.toLowerCase());
         return isDup ? { ...f, isDuplicate: true } : f;
       });
       setSelectedFiles(updatedFiles);
@@ -602,6 +610,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
       // 2. Publication des fichiers valides
       const publishedSuccessNames: string[] = [];
+      const publishedSuccessIds: string[] = [];
       let currentIdx = 0;
 
       for (const file of filesToPublish) {
@@ -704,6 +713,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           setSelectedFiles(prev => prev.map(f => f.id === file.id ? { ...f, isDuplicate: true } : f));
         } else {
           publishedSuccessNames.push(file.name);
+          publishedSuccessIds.push(file.id);
           deleteRawFile(file.id);
           rawFileMap.current.delete(file.id);
         }
@@ -714,9 +724,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       // Recharger le compteur de documents publiés
       await loadPublishedCount();
 
-      // Nettoyer de la liste les fichiers publiés avec succès
-      // Les fichiers doublons restent affichés en rouge pour que l'utilisateur voie qu'ils ont été annulés
-      setSelectedFiles(prev => prev.filter(f => !publishedSuccessNames.includes(f.name)));
+      // Nettoyer de la liste les fichiers publiés avec succès en filtrant par ID
+      // Les fichiers doublons/recalés restent affichés en rouge pour que l'utilisateur voie qu'ils ont été refusés
+      setSelectedFiles(prev => prev.filter(f => !publishedSuccessIds.includes(f.id)));
 
       if (filesToPublish.length === publishedSuccessNames.length && duplicateFilesList.length === 0) {
         clearAllPersistedFiles();
@@ -820,7 +830,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 {topNotification.duplicateFiles && topNotification.duplicateFiles.length > 0 && (
                   <div className="mt-2.5 pt-2 border-t border-white/20 text-xs text-amber-200 font-medium">
                     <p className="font-bold text-amber-300">
-                      ⚠️ Fichier(s) déjà en ligne — importation annulée :
+                      ⚠️ Un fichier a été recalé car son deuxième a été enregistré :
                     </p>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {topNotification.duplicateFiles.map((fn, idx) => (

@@ -4066,17 +4066,28 @@ var src_default = {
            ORDER BY (views + sales * 3) DESC LIMIT 50`
         ).bind(userId).all().catch(() => ({ results: [] }));
 
-        const products = (prodsRes?.results || []).map((p) => ({
-          id: p.id,
-          title: p.title,
-          price: p.price,
-          views: p.views || 0,
-          sales: p.sales || 0,
-          category: p.category,
-          imageUrl: p.image_urls_json ? (JSON.parse(p.image_urls_json)[0] || null) : null,
-          isBoosted: Boolean(p.is_boosted),
-          performanceScore: (p.views || 0) + (p.sales || 0) * 3,
-        }));
+        const products = (prodsRes?.results || []).map((p) => {
+          let firstImg = null;
+          if (p.image_urls_json) {
+            try {
+              const parsed = JSON.parse(p.image_urls_json);
+              firstImg = Array.isArray(parsed) ? parsed[0] : parsed;
+            } catch (e) {
+              firstImg = typeof p.image_urls_json === 'string' ? p.image_urls_json : null;
+            }
+          }
+          return {
+            id: p.id,
+            title: p.title,
+            price: p.price,
+            views: p.views || 0,
+            sales: p.sales || 0,
+            category: p.category,
+            imageUrl: firstImg,
+            isBoosted: Boolean(p.is_boosted),
+            performanceScore: (p.views || 0) + (p.sales || 0) * 3,
+          };
+        });
 
         return jsonResponse({
           success: true,
@@ -4790,25 +4801,40 @@ Lien vers le produit : ${productShareUrl}`;
         } catch (e) {}
 
         const duplicates = [];
+        const seenInRequest = new Set();
         for (const file of files) {
           const fileName = file.name || file.fileName || "";
           const fileSize = file.size || file.fileSize || 0;
           if (!fileName) continue;
 
+          // Détecter si le même fichier apparaît deux fois dans le même lot de publication
+          const reqKey = `${fileName.toLowerCase()}_${fileSize}`;
+          if (seenInRequest.has(reqKey)) {
+            duplicates.push({
+              fileId: file.id || file.fileId,
+              fileName,
+              isDuplicate: true,
+              message: "Un fichier a été recalé car son deuxième a été enregistré"
+            });
+            continue;
+          }
+          seenInRequest.add(reqKey);
+
           const existing = await env.DB.prepare(`
             SELECT id, title, file_name, file_size 
             FROM published_documents 
             WHERE (user_id = ? AND LOWER(file_name) = LOWER(?))
-               OR (file_size > 0 AND file_size = ? AND LOWER(file_name) = LOWER(?))
+               OR (user_id = ? AND file_size > 0 AND file_size = ? AND LOWER(file_name) = LOWER(?))
             LIMIT 1
-          `).bind(userId, fileName, fileSize, fileName).first();
+          `).bind(userId, fileName, userId, fileSize, fileName).first();
 
           if (existing) {
             duplicates.push({
               fileId: file.id || file.fileId,
               fileName,
               isDuplicate: true,
-              existingTitle: existing.title
+              existingTitle: existing.title,
+              message: "Un fichier a été recalé car son deuxième a été enregistré"
             });
           }
         }
@@ -5038,15 +5064,15 @@ Lien vers le produit : ${productShareUrl}`;
             SELECT id, title, file_name, file_size 
             FROM published_documents 
             WHERE (user_id = ? AND LOWER(file_name) = LOWER(?))
-               OR (file_size > 0 AND file_size = ? AND LOWER(file_name) = LOWER(?))
+               OR (user_id = ? AND file_size > 0 AND file_size = ? AND LOWER(file_name) = LOWER(?))
             LIMIT 1
-          `).bind(userId, fileName, fileSize || 0, fileName).first();
+          `).bind(userId, fileName, userId, fileSize || 0, fileName).first();
 
           if (existingDoc) {
             return jsonResponse({
               success: false,
               duplicate: true,
-              message: `Le fichier "${fileName}" a déjà été publié précédemment. Importation annulée.`,
+              message: `Un fichier a été recalé car son deuxième a été enregistré`,
               existingTitle: existingDoc.title,
               fileName
             }, 409, origin);

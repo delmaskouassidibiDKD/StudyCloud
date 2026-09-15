@@ -4763,6 +4763,66 @@ export default {
         }
       }
 
+      // ── GET /api/shop/analytics?userId=... ─────────────────────────────
+      if (path === '/api/shop/analytics' && method === 'GET') {
+        await ensureShopAndProductTables(env.DB);
+        const userId = url.searchParams.get('userId');
+        if (!userId) return errorResponse('userId requis', 400, origin);
+
+        // 1. Total clics sur commandé (sales) et vues totales
+        const totalsRes: any = await env.DB.prepare(
+          'SELECT COALESCE(SUM(views), 0) as total_views, COALESCE(SUM(sales), 0) as total_sales FROM products WHERE seller_id = ?'
+        ).bind(userId).first().catch(() => ({ total_views: 0, total_sales: 0 }));
+
+        // 2. Nombre d'abonnés total
+        let subscriberCount = 0;
+        try {
+          const subRes: any = await env.DB.prepare(
+            'SELECT COUNT(*) as count FROM seller_follows WHERE seller_id = ?'
+          ).bind(userId).first();
+          subscriberCount = subRes?.count || 0;
+        } catch (e) {}
+
+        // 3. Produits triés du plus performant au moins performant (vues + clics commander)
+        const prodsRes: any = await env.DB.prepare(
+          `SELECT id, title, price, views, sales, image_urls_json, is_boosted, category
+           FROM products WHERE seller_id = ?
+           ORDER BY (views + sales * 3) DESC, sales DESC, views DESC LIMIT 100`
+        ).bind(userId).all().catch(() => ({ results: [] }));
+
+        const products = (prodsRes?.results || []).map((p: any) => {
+          let firstImage = null;
+          try {
+            if (p.image_urls_json) {
+              const parsed = JSON.parse(p.image_urls_json);
+              firstImage = Array.isArray(parsed) && parsed.length > 0 ? parsed[0] : null;
+            }
+          } catch (e) {}
+
+          return {
+            id: p.id,
+            title: p.title,
+            price: p.price,
+            views: p.views || 0,
+            sales: p.sales || 0,
+            category: p.category,
+            imageUrl: firstImage,
+            isBoosted: Boolean(p.is_boosted),
+            performanceScore: (p.views || 0) + (p.sales || 0) * 3,
+          };
+        });
+
+        return jsonResponse({
+          success: true,
+          data: {
+            total_views: totalsRes?.total_views || 0,
+            total_sales: totalsRes?.total_sales || 0,
+            subscriber_count: subscriberCount,
+            products,
+          }
+        }, 200, origin);
+      }
+
       async function ensureShopAndProductTables(db: any) {
         try {
           await db.prepare(`
