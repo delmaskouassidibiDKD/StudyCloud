@@ -4691,7 +4691,128 @@ Lien vers le produit : ${productShareUrl}`;
           }
           return jsonResponse({ success: true, message: "Article retir\xE9 du panier" }, 200, origin);
         }
+      // ── Compteur de documents publiés et statistiques ────────────────
+      if (path === "/api/published-documents/count" && method === "GET") {
+        const userId = url.searchParams.get("userId");
+        if (!userId) {
+          return errorResponse("userId requis", 400, origin);
+        }
+        try {
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS user_publication_stats (
+              user_id TEXT PRIMARY KEY,
+              total_published_count INTEGER DEFAULT 0,
+              last_published_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS published_documents (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              title TEXT NOT NULL,
+              description TEXT,
+              school TEXT,
+              filiere TEXT,
+              matiere_name TEXT,
+              level TEXT,
+              category TEXT DEFAULT 'Cours',
+              author_name TEXT,
+              country TEXT,
+              info_mode TEXT DEFAULT 'all',
+              file_name TEXT,
+              file_size INTEGER DEFAULT 0,
+              file_type TEXT,
+              r2_key TEXT,
+              file_url TEXT,
+              is_public INTEGER DEFAULT 1,
+              downloads_count INTEGER DEFAULT 0,
+              views_count INTEGER DEFAULT 0,
+              tags_json TEXT DEFAULT '[]',
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+        } catch (e) {}
+
+        const countRow = await env.DB.prepare(
+          "SELECT COUNT(*) as count FROM published_documents WHERE user_id = ?"
+        ).bind(userId).first();
+        const total = countRow?.count || 0;
+
+        try {
+          await env.DB.prepare(`
+            INSERT INTO user_publication_stats (user_id, total_published_count, last_published_at)
+            VALUES (?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(user_id) DO UPDATE SET total_published_count = excluded.total_published_count
+          `).bind(userId, total).run();
+        } catch (e) {}
+
+        return jsonResponse({ success: true, count: total }, 200, origin);
       }
+
+      // ── Vérification des doublons de documents publiés ─────────────
+      if (path === "/api/published-documents/check-duplicates" && method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const { userId, files } = body;
+        if (!userId || !Array.isArray(files)) {
+          return errorResponse("userId et liste files requis", 400, origin);
+        }
+        try {
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS published_documents (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              title TEXT NOT NULL,
+              description TEXT,
+              school TEXT,
+              filiere TEXT,
+              matiere_name TEXT,
+              level TEXT,
+              category TEXT DEFAULT 'Cours',
+              author_name TEXT,
+              country TEXT,
+              info_mode TEXT DEFAULT 'all',
+              file_name TEXT,
+              file_size INTEGER DEFAULT 0,
+              file_type TEXT,
+              r2_key TEXT,
+              file_url TEXT,
+              is_public INTEGER DEFAULT 1,
+              downloads_count INTEGER DEFAULT 0,
+              views_count INTEGER DEFAULT 0,
+              tags_json TEXT DEFAULT '[]',
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+        } catch (e) {}
+
+        const duplicates = [];
+        for (const file of files) {
+          const fileName = file.name || file.fileName || "";
+          const fileSize = file.size || file.fileSize || 0;
+          if (!fileName) continue;
+
+          const existing = await env.DB.prepare(`
+            SELECT id, title, file_name, file_size 
+            FROM published_documents 
+            WHERE (user_id = ? AND LOWER(file_name) = LOWER(?))
+               OR (file_size > 0 AND file_size = ? AND LOWER(file_name) = LOWER(?))
+            LIMIT 1
+          `).bind(userId, fileName, fileSize, fileName).first();
+
+          if (existing) {
+            duplicates.push({
+              fileId: file.id || file.fileId,
+              fileName,
+              isDuplicate: true,
+              existingTitle: existing.title
+            });
+          }
+        }
+        return jsonResponse({ success: true, duplicates }, 200, origin);
+      }
+
       if (path === "/api/published-documents") {
         if (method === "GET") {
           const school = url.searchParams.get("school");
@@ -4871,8 +4992,66 @@ Lien vers le produit : ${productShareUrl}`;
           if (!userId || !title || !fileName) {
             return errorResponse("userId, title et fileName sont obligatoires", 400, origin);
           }
+
+          // S'assurer que les tables existent
+          try {
+            await env.DB.prepare(`
+              CREATE TABLE IF NOT EXISTS published_documents (
+                id TEXT PRIMARY KEY,
+                user_id TEXT NOT NULL,
+                title TEXT NOT NULL,
+                description TEXT,
+                school TEXT,
+                filiere TEXT,
+                matiere_name TEXT,
+                level TEXT,
+                category TEXT DEFAULT 'Cours',
+                author_name TEXT,
+                country TEXT,
+                info_mode TEXT DEFAULT 'all',
+                file_name TEXT,
+                file_size INTEGER DEFAULT 0,
+                file_type TEXT,
+                r2_key TEXT,
+                file_url TEXT,
+                is_public INTEGER DEFAULT 1,
+                downloads_count INTEGER DEFAULT 0,
+                views_count INTEGER DEFAULT 0,
+                tags_json TEXT DEFAULT '[]',
+                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+              )
+            `).run();
+            await env.DB.prepare(`
+              CREATE TABLE IF NOT EXISTS user_publication_stats (
+                user_id TEXT PRIMARY KEY,
+                total_published_count INTEGER DEFAULT 0,
+                last_published_at TEXT DEFAULT CURRENT_TIMESTAMP
+              )
+            `).run();
+          } catch (e) {}
+
+          // Vérification de doublon strict : si le même fichier (même nom pour l'utilisateur, ou même nom et taille) est déjà présent
+          const existingDoc = await env.DB.prepare(`
+            SELECT id, title, file_name, file_size 
+            FROM published_documents 
+            WHERE (user_id = ? AND LOWER(file_name) = LOWER(?))
+               OR (file_size > 0 AND file_size = ? AND LOWER(file_name) = LOWER(?))
+            LIMIT 1
+          `).bind(userId, fileName, fileSize || 0, fileName).first();
+
+          if (existingDoc) {
+            return jsonResponse({
+              success: false,
+              duplicate: true,
+              message: `Le fichier "${fileName}" a déjà été publié précédemment. Importation annulée.`,
+              existingTitle: existingDoc.title,
+              fileName
+            }, 409, origin);
+          }
+
           const docId = id || crypto.randomUUID();
-          const finalCountry = country || "C\xF4te d'Ivoire";
+          const finalCountry = country || "Côte d'Ivoire";
           const finalIsPublic = isPublic !== void 0 ? isPublic ? 1 : 0 : 1;
           await env.DB.prepare(`
             INSERT INTO published_documents (
@@ -4910,7 +5089,7 @@ Lien vers le produit : ${productShareUrl}`;
             matiereName || "",
             level || "",
             category || "Cours",
-            authorName || "\xC9tudiant",
+            authorName || "Étudiant",
             finalCountry,
             infoMode || "all",
             fileName,
@@ -4921,12 +5100,30 @@ Lien vers le produit : ${productShareUrl}`;
             finalIsPublic,
             tagsJson || "[]"
           ).run();
+
+          // Mettre à jour la table de comptage des publications par utilisateur
+          try {
+            const countRow = await env.DB.prepare(
+              "SELECT COUNT(*) as count FROM published_documents WHERE user_id = ?"
+            ).bind(userId).first();
+            const totalCount = countRow?.count || 1;
+            await env.DB.prepare(`
+              INSERT INTO user_publication_stats (user_id, total_published_count, last_published_at)
+              VALUES (?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(user_id) DO UPDATE SET
+                total_published_count = excluded.total_published_count,
+                last_published_at = CURRENT_TIMESTAMP
+            `).bind(userId, totalCount).run();
+          } catch (statErr) {
+            console.warn("[Publication stats error]", statErr);
+          }
+
           await createNotification(
             env.DB,
             userId,
-            "Confirmation de d\xE9p\xF4t de document",
-            `Votre document "${title}" a \xE9t\xE9 partag\xE9 avec succ\xE8s dans la communaut\xE9 StudyCloud. Il est d\xE9sormais index\xE9 et disponible pour vos camarades.`,
-            `${matiereName || category || "Ressource"} \u2022 ${title}`,
+            "Confirmation de dépôt de document",
+            `Votre document "${title}" a été partagé avec succès dans la communauté StudyCloud. Il est désormais indexé et disponible pour vos camarades.`,
+            `${matiereName || category || "Ressource"} • ${title}`,
             "document"
           );
           return jsonResponse({

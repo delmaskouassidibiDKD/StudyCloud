@@ -123,8 +123,30 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
   const [isPublishing, setIsPublishing] = useState(false);
   const [publishingProgress, setPublishingProgress] = useState<{ current: number; total: number; currentFileName: string } | null>(null);
-  const [success, setSuccess] = useState(false);
+  const [uploadProgress, setUploadProgress] = useState(0);
+  const [totalPublishedCount, setTotalPublishedCount] = useState<number>(0);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [topNotification, setTopNotification] = useState<{
+    type: 'success' | 'warning' | 'error';
+    publishedFiles: string[];
+    duplicateFiles?: string[];
+  } | null>(null);
+
+  const loadPublishedCount = async () => {
+    try {
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      const res = await StudyCloudAPI.getPublishedDocumentsCount(userId);
+      if (res && typeof res.count === 'number') {
+        setTotalPublishedCount(res.count);
+      }
+    } catch (e) {
+      console.warn('Erreur chargement compteur publications:', e);
+    }
+  };
+
+  useEffect(() => {
+    loadPublishedCount();
+  }, []);
 
   useEffect(() => {
     try {
@@ -491,8 +513,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   const isFormValid = (() => {
     if (selectedFiles.length === 0) return false;
 
+    // Si tous les fichiers sont des doublons détectés, invalider
+    const nonDuplicates = selectedFiles.filter(f => !f.isDuplicate);
+    if (nonDuplicates.length === 0 && selectedFiles.some(f => f.isDuplicate)) return false;
+
     if (infoMode === 'all') {
-      // Tous les champs obligatoires sauf Description et Tags
       return (
         docTitle.trim().length > 0 &&
         docCategory.trim().length > 0 &&
@@ -505,13 +530,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     }
 
     if (infoMode === 'individual') {
-      // Tous les fichiers de la sélection doivent être validés individuellement
-      return selectedFiles.length > 0 && selectedFiles.every(f => f.isCompleted === true);
+      return nonDuplicates.length > 0 && nonDuplicates.every(f => f.isCompleted === true);
     }
 
     if (infoMode === 'none') {
-      // Aucun champ requis, le bouton devient valide immédiatement
-      return selectedFiles.length > 0;
+      return nonDuplicates.length > 0;
     }
 
     return false;
@@ -521,17 +544,74 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     if (!isFormValid || selectedFiles.length === 0 || isPublishing) return;
     setIsPublishing(true);
     setPublishError(null);
+    setUploadProgress(10);
 
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
     const userName = localStorage.getItem('unifolder_user_name') || 'Étudiant';
 
     try {
-      let fileIndex = 0;
-      for (const file of selectedFiles) {
-        fileIndex++;
+      setPublishingProgress({
+        current: 1,
+        total: selectedFiles.length,
+        currentFileName: 'Vérification anti-doublon en cours...'
+      });
+      setUploadProgress(20);
+
+      // 1. Vérification des doublons auprès du Worker
+      const duplicateFileMap = new Map<string, string>();
+      try {
+        const checkRes = await StudyCloudAPI.checkPublishedDuplicates(
+          userId,
+          selectedFiles.map(f => ({ id: f.id, name: f.name, size: f.size }))
+        );
+        if (checkRes && checkRes.duplicates) {
+          checkRes.duplicates.forEach(d => {
+            if (d.isDuplicate) {
+              duplicateFileMap.set(d.fileName.toLowerCase(), d.existingTitle || d.fileName);
+            }
+          });
+        }
+      } catch (checkErr) {
+        console.warn('Erreur vérification doublons via API:', checkErr);
+      }
+
+      // Marquer les fichiers détectés comme doublons
+      const updatedFiles = selectedFiles.map(f => {
+        const isDup = duplicateFileMap.has(f.name.toLowerCase());
+        return isDup ? { ...f, isDuplicate: true } : f;
+      });
+      setSelectedFiles(updatedFiles);
+
+      const filesToPublish = updatedFiles.filter(f => !f.isDuplicate);
+      const duplicateFilesList = updatedFiles.filter(f => f.isDuplicate).map(f => f.name);
+
+      // Si tous les fichiers sélectionnés sont des doublons
+      if (filesToPublish.length === 0) {
+        setUploadProgress(100);
+        setTimeout(() => {
+          setIsPublishing(false);
+          setPublishingProgress(null);
+          setTopNotification({
+            type: 'warning',
+            publishedFiles: [],
+            duplicateFiles: duplicateFilesList
+          });
+        }, 500);
+        return;
+      }
+
+      // 2. Publication des fichiers valides
+      const publishedSuccessNames: string[] = [];
+      let currentIdx = 0;
+
+      for (const file of filesToPublish) {
+        currentIdx++;
+        const basePercent = 20 + Math.round(((currentIdx - 1) / filesToPublish.length) * 75);
+        setUploadProgress(basePercent);
+
         setPublishingProgress({
-          current: fileIndex,
-          total: selectedFiles.length,
+          current: currentIdx,
+          total: filesToPublish.length,
           currentFileName: file.name
         });
 
@@ -566,7 +646,6 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           description = file.fileDescription?.trim() || '';
           tagsArray = file.fileTags ? file.fileTags.split(',').map((t: string) => t.trim()).filter(Boolean) : [];
         } else {
-          // infoMode === 'none' : c'est le nom du fichier lui-même qui est enregistré
           title = file.name.replace(/\.[^/.]+$/, '');
           fileSchool = '';
           fileFiliere = '';
@@ -578,7 +657,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           tagsArray = [];
         }
 
-        // Tenter d'uploader vers R2 si le fichier brut est disponible (avec compression gzip intelligente automatique)
+        // Tenter l'upload R2
         let r2Key: string | null = null;
         let fileUrl: string = '';
         try {
@@ -596,7 +675,10 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           console.warn('Upload R2 échoué (mode local):', uploadErr);
         }
 
-        await StudyCloudAPI.publishDocument({
+        setUploadProgress(basePercent + Math.round(35 / filesToPublish.length));
+
+        // Envoi au Worker
+        const pubRes = await StudyCloudAPI.publishDocument({
           userId,
           title,
           description,
@@ -616,33 +698,64 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           isPublic: true,
           tagsJson: JSON.stringify(tagsArray),
         });
+
+        if (pubRes && (pubRes as any).duplicate) {
+          duplicateFilesList.push(file.name);
+          setSelectedFiles(prev => prev.map(f => f.id === file.id ? { ...f, isDuplicate: true } : f));
+        } else {
+          publishedSuccessNames.push(file.name);
+          deleteRawFile(file.id);
+          rawFileMap.current.delete(file.id);
+        }
       }
 
-      // Nettoyer IndexedDB et le localStorage
-      clearAllPersistedFiles();
-      ['published_selected_files','published_school','published_filiere','published_info_mode',
-       'published_doc_title','published_doc_description','published_doc_category',
-       'published_doc_matiere','published_doc_level','published_doc_country','published_doc_tags'
-      ].forEach(k => localStorage.removeItem(k));
+      setUploadProgress(100);
 
-      setPublishingProgress(null);
+      // Recharger le compteur de documents publiés
+      await loadPublishedCount();
+
+      // Nettoyer de la liste les fichiers publiés avec succès
+      // Les fichiers doublons restent affichés en rouge pour que l'utilisateur voie qu'ils ont été annulés
+      setSelectedFiles(prev => prev.filter(f => !publishedSuccessNames.includes(f.name)));
+
+      if (filesToPublish.length === publishedSuccessNames.length && duplicateFilesList.length === 0) {
+        clearAllPersistedFiles();
+        ['published_selected_files','published_school','published_filiere','published_info_mode',
+         'published_doc_title','published_doc_description','published_doc_category',
+         'published_doc_matiere','published_doc_level','published_doc_country','published_doc_tags'
+        ].forEach(k => localStorage.removeItem(k));
+      }
+
       setIsPublishing(false);
-      setSuccess(true);
+      setPublishingProgress(null);
 
-      if (onPublish) {
+      // Afficher la notification en haut (citant les fichiers, sans logo étoiles)
+      setTopNotification({
+        type: 'success',
+        publishedFiles: publishedSuccessNames,
+        duplicateFiles: duplicateFilesList.length > 0 ? duplicateFilesList : undefined
+      });
+
+      if (onPublish && publishedSuccessNames.length > 0) {
         onPublish(
-          infoMode === 'all' ? docTitle : selectedFiles[0]?.name || 'Document partagé',
+          infoMode === 'all' ? docTitle : publishedSuccessNames[0],
           docDescription || '',
           docCategory || 'Cours',
-          selectedFiles
+          filesToPublish
         );
       }
 
-      setTimeout(() => { onBack(); }, 1500);
+      // Si tous les fichiers étaient valides (aucun doublon restant), retour automatique après 2.5 secondes
+      if (duplicateFilesList.length === 0) {
+        setTimeout(() => {
+          onBack();
+        }, 2500);
+      }
     } catch (err: any) {
       console.error('Erreur lors de la publication:', err);
       setPublishError(err.message || 'Erreur lors de la publication. Vérifiez la connexion au Worker.');
       setIsPublishing(false);
+      setPublishingProgress(null);
     }
   };
 
@@ -676,6 +789,60 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         </div>
       )}
 
+      {/* Top Floating Notification (cites files, without stars) */}
+      {topNotification && (
+        <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[99999] w-[94%] max-w-xl animate-in slide-in-from-top-4 duration-300 pointer-events-auto">
+          <div className={`p-4 rounded-2xl border-2 border-stone-900 shadow-[4px_4px_0px_0px_#1c1917] ${
+            topNotification.type === 'success' ? 'bg-[#2D4A3E] text-white' : 'bg-amber-100 text-stone-900'
+          }`}>
+            <div className="flex items-start gap-3">
+              <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 mt-0.5">
+                <Check className="w-5 h-5 text-emerald-300 stroke-[3]" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <h4 className="text-sm font-black leading-tight">
+                  {topNotification.publishedFiles.length > 0 ? 'Publication réussie !' : 'Notification de doublons'}
+                </h4>
+                {topNotification.publishedFiles.length > 0 && (
+                  <div className="mt-1.5 text-xs text-emerald-100 font-medium space-y-1">
+                    <p>
+                      Les fichiers suivants ont été publiés avec succès :
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {topNotification.publishedFiles.map((fn, idx) => (
+                        <span key={idx} className="bg-emerald-900/90 border border-emerald-400/50 px-2 py-0.5 rounded-md text-[11px] font-bold text-white truncate max-w-full">
+                          📄 {fn}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {topNotification.duplicateFiles && topNotification.duplicateFiles.length > 0 && (
+                  <div className="mt-2.5 pt-2 border-t border-white/20 text-xs text-amber-200 font-medium">
+                    <p className="font-bold text-amber-300">
+                      ⚠️ Fichier(s) déjà en ligne — importation annulée :
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {topNotification.duplicateFiles.map((fn, idx) => (
+                        <span key={idx} className="bg-red-900/90 border border-red-400/50 px-2 py-0.5 rounded-md text-[11px] font-bold text-white truncate max-w-full">
+                          ❌ {fn}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+              <button
+                onClick={() => setTopNotification(null)}
+                className="p-1 hover:bg-white/10 rounded-lg text-white/80 hover:text-white transition-colors cursor-pointer"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {/* Top Fixed Bar */}
       <div className="fixed top-4 left-3 right-3 sm:left-6 sm:right-6 md:left-[calc(16rem+1.5rem)] flex items-center justify-between z-40 pointer-events-none">
         <button
@@ -687,6 +854,18 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         </button>
 
         <div className="flex items-center gap-2 pointer-events-auto">
+          {/* Compteur de fichiers publiés depuis la création du compte */}
+          <div 
+            title="Nombre total de documents publiés depuis la création de votre compte"
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#F5F1E9] text-stone-900 font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] select-none"
+          >
+            <BookOpen className="w-3.5 h-3.5 text-emerald-700" />
+            <span className="hidden sm:inline text-stone-700 font-bold text-[11px]">Publiés :</span>
+            <span className="bg-[#2D4A3E] text-white font-black px-1.5 py-0.5 rounded-lg text-[11px] min-w-[20px] text-center shadow-xs">
+              {totalPublishedCount}
+            </span>
+          </div>
+
           <label 
             onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
             onDrop={(e) => {
@@ -738,14 +917,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       </div>
 
       <div className="w-full max-w-6xl mx-auto pt-16 pb-24">
-        {success ? (
-          <div className="bg-emerald-50 border-2 border-emerald-600 rounded-2xl p-6 text-center space-y-2 shadow-[3px_3px_0px_0px_#047857] w-full max-w-lg mx-auto mt-20">
-            <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
-            <h2 className="text-base font-black text-emerald-900">Fichiers publiés avec succès !</h2>
-            <p className="text-xs text-emerald-700">Vos documents ont été partagés et enregistrés.</p>
-          </div>
-        ) : (
-          <div className="w-full space-y-4">
+        <div className="w-full space-y-4">
             {selectedFiles.length === 0 ? (
               <div className="flex flex-col items-center justify-center min-h-[70vh]">
                 <label 
@@ -771,20 +943,23 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-3.5 mt-2">
                   {selectedFiles.map((file) => {
                     const isIndividual = infoMode === 'individual';
-                    const isGreen = isIndividual && file.isCompleted;
+                    const isDup = !!file.isDuplicate;
+                    const isGreen = isIndividual && file.isCompleted && !isDup;
 
                     return (
                       <div
                         key={file.id}
                         onClick={() => {
-                          if (isIndividual) {
+                          if (isIndividual && !isDup) {
                             openEditModal(file);
                           }
                         }}
                         className={`aspect-[3/4] rounded-xl p-2.5 flex flex-col justify-between shadow-[2px_2px_0px_0px_#1c1917] relative group select-none overflow-hidden transition-all ${
-                          isIndividual ? 'cursor-pointer hover:scale-[1.02]' : ''
+                          isIndividual && !isDup ? 'cursor-pointer hover:scale-[1.02]' : ''
                         } ${
-                          isGreen
+                          isDup
+                            ? 'bg-red-950/90 border-2 border-red-500 ring-2 ring-red-500/60'
+                            : isGreen
                             ? 'bg-[#18392b] border-2 border-emerald-400 ring-2 ring-emerald-500/50'
                             : isIndividual
                             ? 'bg-[#2A2B2E] border-2 border-amber-500 hover:border-amber-400'
@@ -796,8 +971,14 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                           {formatSize(file.size)}
                         </div>
 
-                        {/* Status Badge in individual mode */}
-                        {isIndividual && (
+                        {/* Status Badge */}
+                        {isDup ? (
+                          <div className="absolute top-1.5 left-8 z-20">
+                            <span className="bg-red-600 text-white font-black text-[8px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm">
+                              <X className="w-2.5 h-2.5 stroke-[3]" /> Déjà publié
+                            </span>
+                          </div>
+                        ) : isIndividual && (
                           <div className="absolute top-1.5 left-8 z-20">
                             {file.isCompleted ? (
                               <span className="bg-emerald-500 text-white font-black text-[8px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm">
@@ -923,15 +1104,22 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              openEditModal(file);
+                              if (!file.isDuplicate) openEditModal(file);
                             }}
-                            className={`w-full mt-1.5 py-1 px-1 rounded text-[9px] font-black flex items-center justify-center gap-1 shadow-sm transition-all cursor-pointer ${
-                              file.isCompleted
-                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white'
-                                : 'bg-amber-500 hover:bg-amber-400 text-stone-950 animate-pulse'
+                            className={`w-full mt-1.5 py-1 px-1 rounded text-[9px] font-black flex items-center justify-center gap-1 shadow-sm transition-all ${
+                              file.isDuplicate
+                                ? 'bg-red-700 text-white cursor-default'
+                                : file.isCompleted
+                                ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
+                                : 'bg-amber-500 hover:bg-amber-400 text-stone-950 animate-pulse cursor-pointer'
                             }`}
                           >
-                            {file.isCompleted ? (
+                            {file.isDuplicate ? (
+                              <>
+                                <X className="w-2.5 h-2.5" />
+                                <span>Doublon (non publié)</span>
+                              </>
+                            ) : file.isCompleted ? (
                               <>
                                 <Edit3 className="w-2.5 h-2.5" />
                                 <span>Modifier</span>
@@ -1235,7 +1423,6 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
               </div>
             )}
           </div>
-        )}
       </div>
 
       {/* Modal Popup pour l'édition individuelle d'un fichier */}

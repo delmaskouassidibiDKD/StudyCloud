@@ -916,6 +916,21 @@ export const StudyCloudAPI = {
     return request(`/api/published-documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 
+  async getPublishedDocumentsCount(userId: string) {
+    return request<{ success: boolean; count: number }>(`/api/published-documents/count?userId=${encodeURIComponent(userId)}`);
+  },
+
+  async checkPublishedDuplicates(userId: string, files: Array<{ id?: string; name: string; size?: number }>) {
+    return request<{ success: boolean; duplicates: Array<{ fileId?: string; fileName: string; isDuplicate: boolean; existingTitle?: string }> }>(
+      '/api/published-documents/check-duplicates',
+      {
+        method: 'POST',
+        body: JSON.stringify({ userId, files })
+      }
+    );
+  },
+
+
 
   // --------------------------------------------------------------------------
   // Assistant Delmas (Chat)
