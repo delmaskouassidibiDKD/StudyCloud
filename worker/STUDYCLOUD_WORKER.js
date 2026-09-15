@@ -4691,6 +4691,8 @@ Lien vers le produit : ${productShareUrl}`;
           }
           return jsonResponse({ success: true, message: "Article retir\xE9 du panier" }, 200, origin);
         }
+      }
+
       // ── Compteur de documents publiés et statistiques ────────────────
       if (path === "/api/published-documents/count" && method === "GET") {
         const userId = url.searchParams.get("userId");
