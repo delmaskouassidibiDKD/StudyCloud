@@ -670,136 +670,143 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
       <div className="pb-40">
         {!hasCreatedShop ? (
           /* ONBOARDING CRÉATION DE BOUTIQUE (Premier accès vendeur) */
-          <div className="w-full max-w-xl mx-auto px-4 py-8 animate-fadeIn text-left space-y-6">
-            <div className="bg-white rounded-3xl border-3 border-stone-800 p-6 sm:p-8 shadow-[5px_5px_0px_0px_#1c1917] space-y-6">
-              <div className="flex items-center gap-3.5 pb-4 border-b-2 border-stone-200">
-                <div className="w-12 h-12 rounded-2xl bg-amber-100 border-2 border-stone-800 flex items-center justify-center text-amber-900 shadow-[2px_2px_0px_0px_#1c1917] shrink-0">
-                  <Store className="w-6 h-6" />
-                </div>
-                <div>
-                  <h2 className="font-extrabold text-base sm:text-lg text-stone-900">Profil Boutique</h2>
-                  <p className="text-xs text-stone-500 font-medium">Gérer vos coordonnées pour devenir vendeur</p>
-                </div>
+          <div className="w-full max-w-2xl mx-auto px-5 py-8 animate-fadeIn text-left space-y-6">
+
+            {/* En-tête de la page */}
+            <div className="flex items-center gap-4 pb-5 border-b-2 border-stone-200">
+              <div className="w-14 h-14 rounded-2xl bg-amber-100 border-2 border-stone-800 flex items-center justify-center text-amber-900 shadow-[2px_2px_0px_0px_#1c1917] shrink-0">
+                <Store className="w-7 h-7" />
               </div>
+              <div>
+                <h2 className="font-extrabold text-xl text-stone-900">Profil Boutique</h2>
+                <p className="text-sm text-stone-500 font-medium">Renseignez vos coordonnées pour devenir vendeur</p>
+              </div>
+            </div>
 
-              <form onSubmit={handleCreateShopSubmit} className="space-y-4">
-                {/* Photo de profil boutique */}
-                <div className="flex flex-col items-center justify-center gap-2.5 pb-2">
-                  <div className="relative w-24 h-24 rounded-full bg-amber-100 border-2 border-stone-800 overflow-hidden shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center font-black text-amber-900 text-2xl">
-                    {setupShopAvatarUrl ? (
-                      <img src={setupShopAvatarUrl} alt="Avatar" className="w-full h-full object-cover" />
-                    ) : (
-                      setupShopName ? setupShopName.substring(0, 2).toUpperCase() : 'DK'
-                    )}
-                    <button
-                      type="button"
-                      onClick={() => setupAvatarInputRef.current?.click()}
-                      className="absolute inset-0 bg-black/35 hover:bg-black/45 text-white flex flex-col items-center justify-center gap-1 transition-all cursor-pointer opacity-90"
-                      title="Changer la photo"
-                    >
-                      <Camera className="w-5 h-5 text-white" />
-                      <span className="text-[9px] font-extrabold text-white">Changer</span>
-                    </button>
-                  </div>
-                  <input
-                    type="file"
-                    ref={setupAvatarInputRef}
-                    onChange={handleSetupAvatarChange}
-                    accept="image/*"
-                    className="hidden"
-                  />
-                  <span className="text-[11px] font-bold text-stone-500">Photo de profil boutique</span>
-                </div>
-
-                {/* Nom de la boutique */}
-                <div>
-                  <label className="block text-xs font-bold text-stone-700 mb-1">Nom de la boutique *</label>
-                  <input
-                    type="text"
-                    value={setupShopName}
-                    onChange={(e) => setSetupShopName(e.target.value)}
-                    placeholder="Ex: DKD Technologies ou votre nom"
-                    required
-                    className="w-full bg-[#FAF8F5] border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
-                  />
-                </div>
-
-                {/* Numéro de téléphone */}
-                <div>
-                  <label className="block text-xs font-bold text-stone-700 mb-1">Numéro de téléphone *</label>
-                  <input
-                    type="tel"
-                    value={setupShopPhone}
-                    onChange={(e) => setSetupShopPhone(e.target.value)}
-                    placeholder="Ex: +225 07 00 00 00 00"
-                    required
-                    className="w-full bg-[#FAF8F5] border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
-                  />
-                </div>
-
-                {/* Numéro WhatsApp */}
-                <div>
-                  <label className="block text-xs font-bold text-stone-700 mb-1">Numéro WhatsApp</label>
-                  <input
-                    type="tel"
-                    value={setupShopWhatsapp}
-                    onChange={(e) => setSetupShopWhatsapp(e.target.value)}
-                    placeholder="Ex: +225 07 00 00 00 00"
-                    className="w-full bg-[#FAF8F5] border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
-                  />
-                </div>
-
-                {/* Catégorie / Ce que vous vendez */}
-                <div>
-                  <label className="block text-xs font-bold text-stone-700 mb-1">Ce que vous vendez (Catégorie) *</label>
-                  <select
-                    value={setupShopCategory}
-                    onChange={(e) => setSetupShopCategory(e.target.value)}
-                    className="w-full bg-[#FAF8F5] border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
-                  >
-                    <option value="Vente digital (PDF)">Vente digital (PDF)</option>
-                    <option value="Vente de documents (livre) à la livraison">Vente de documents (livre) à la livraison</option>
-                    <option value="Matériel scolaire & Électronique">Matériel scolaire & Électronique</option>
-                    <option value="Formations & Cours particuliers">Formations & Cours particuliers</option>
-                    <option value="Services d'études & Tutorat">Services d'études & Tutorat</option>
-                    <option value="Autre">Autre</option>
-                  </select>
-
-                  {setupShopCategory === 'Autre' && (
-                    <div className="mt-2.5">
-                      <input
-                        type="text"
-                        value={setupCustomCategory}
-                        onChange={(e) => setSetupCustomCategory(e.target.value)}
-                        placeholder="Écrivez ce que vous vendez..."
-                        required
-                        className="w-full bg-white border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
-                      />
-                    </div>
+            <form onSubmit={handleCreateShopSubmit} className="space-y-6">
+              {/* Photo de profil boutique */}
+              <div className="flex flex-col items-center justify-center gap-3 pb-2">
+                <div className="relative w-28 h-28 rounded-full bg-amber-100 border-2 border-stone-800 overflow-hidden shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center font-black text-amber-900 text-3xl">
+                  {setupShopAvatarUrl ? (
+                    <img src={setupShopAvatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                  ) : (
+                    setupShopName ? setupShopName.substring(0, 2).toUpperCase() : 'DK'
                   )}
-                </div>
-
-                <div className="pt-3">
                   <button
-                    type="submit"
-                    disabled={isSubmittingSetup}
-                    className="w-full py-3.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-sm rounded-2xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                    type="button"
+                    onClick={() => setupAvatarInputRef.current?.click()}
+                    className="absolute inset-0 bg-black/35 hover:bg-black/45 text-white flex flex-col items-center justify-center gap-1 transition-all cursor-pointer opacity-90"
+                    title="Changer la photo"
                   >
-                    {isSubmittingSetup ? (
-                      <>
-                        <Loader2 className="w-4 h-4 animate-spin text-white" />
-                        <span>Création de votre boutique...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Check className="w-4 h-4" />
-                        <span>Créer ma boutique et commencer</span>
-                      </>
-                    )}
+                    <Camera className="w-6 h-6 text-white" />
+                    <span className="text-[10px] font-extrabold text-white">Changer</span>
                   </button>
                 </div>
-              </form>
-            </div>
+                <input
+                  type="file"
+                  ref={setupAvatarInputRef}
+                  onChange={handleSetupAvatarChange}
+                  accept="image/*"
+                  className="hidden"
+                />
+                <span className="text-xs font-bold text-stone-500">Photo de profil boutique</span>
+              </div>
+
+              {/* Nom de la boutique */}
+              <div>
+                <label className="block text-sm font-bold text-stone-700 mb-2">Nom de la boutique *</label>
+                <input
+                  type="text"
+                  value={setupShopName}
+                  onChange={(e) => setSetupShopName(e.target.value)}
+                  placeholder="Ex: DKD Technologies ou votre nom"
+                  required
+                  className="w-full bg-[#FAF8F5] border-2 border-stone-800 rounded-xl p-3.5 text-sm font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                />
+              </div>
+
+              {/* Numéro de téléphone */}
+              <div>
+                <label className="block text-sm font-bold text-stone-700 mb-2">Numéro de téléphone *</label>
+                <input
+                  type="tel"
+                  value={setupShopPhone}
+                  onChange={(e) => setSetupShopPhone(e.target.value)}
+                  placeholder="Ex: +225 07 00 00 00 00"
+                  required
+                  className="w-full bg-[#FAF8F5] border-2 border-stone-800 rounded-xl p-3.5 text-sm font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                />
+              </div>
+
+              {/* Numéro WhatsApp — OBLIGATOIRE */}
+              <div>
+                <label className="block text-sm font-bold text-stone-700 mb-1">
+                  Numéro WhatsApp *
+                </label>
+                <p className="text-xs text-emerald-700 font-semibold mb-2 flex items-start gap-1.5">
+                  <MessageCircle className="w-3.5 h-3.5 mt-0.5 shrink-0 fill-emerald-600 text-emerald-600" />
+                  <span>Les clients seront redirigés sur ce numéro WhatsApp lorsqu'ils cliquent sur "Commander".</span>
+                </p>
+                <input
+                  type="tel"
+                  value={setupShopWhatsapp}
+                  onChange={(e) => setSetupShopWhatsapp(e.target.value)}
+                  placeholder="Ex: +225 07 00 00 00 00"
+                  required
+                  className="w-full bg-[#FAF8F5] border-2 border-emerald-600 rounded-xl p-3.5 text-sm font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#065f46]"
+                />
+              </div>
+
+              {/* Catégorie / Ce que vous vendez */}
+              <div>
+                <label className="block text-sm font-bold text-stone-700 mb-2">Ce que vous vendez (Catégorie) *</label>
+                <select
+                  value={setupShopCategory}
+                  onChange={(e) => setSetupShopCategory(e.target.value)}
+                  className="w-full bg-[#FAF8F5] border-2 border-stone-800 rounded-xl p-3.5 text-sm font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                >
+                  <option value="Vente digital (PDF)">Vente digital (PDF)</option>
+                  <option value="Vente de documents (livre) à la livraison">Vente de documents (livre) à la livraison</option>
+                  <option value="Matériel scolaire & Électronique">Matériel scolaire & Électronique</option>
+                  <option value="Formations & Cours particuliers">Formations & Cours particuliers</option>
+                  <option value="Services d'études & Tutorat">Services d'études & Tutorat</option>
+                  <option value="Autre">Autre</option>
+                </select>
+
+                {setupShopCategory === 'Autre' && (
+                  <div className="mt-3">
+                    <input
+                      type="text"
+                      value={setupCustomCategory}
+                      onChange={(e) => setSetupCustomCategory(e.target.value)}
+                      placeholder="Écrivez ce que vous vendez..."
+                      required
+                      className="w-full bg-[#FAF8F5] border-2 border-stone-800 rounded-xl p-3.5 text-sm font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                    />
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-2">
+                <button
+                  type="submit"
+                  disabled={isSubmittingSetup}
+                  className="w-full py-4 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-base rounded-2xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                >
+                  {isSubmittingSetup ? (
+                    <>
+                      <Loader2 className="w-5 h-5 animate-spin text-white" />
+                      <span>Création de votre boutique...</span>
+                    </>
+                  ) : (
+                    <>
+                      <Check className="w-5 h-5" />
+                      <span>Créer ma boutique et commencer</span>
+                    </>
+                  )}
+                </button>
+              </div>
+            </form>
           </div>
         ) : (
           <>
