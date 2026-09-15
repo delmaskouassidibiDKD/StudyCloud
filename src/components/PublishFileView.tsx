@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { 
   ArrowLeft, Upload, CheckCircle2, X, FileText, Table, Presentation, Plus, 
-  RefreshCw, Globe, Tag, GraduationCap, BookOpen, Check, Edit3, AlertCircle, Sparkles 
+  RefreshCw, Globe, Tag, GraduationCap, BookOpen, Check, Edit3, AlertCircle 
 } from 'lucide-react';
 import { FileIconBadge } from './FileIconBadge';
 import * as pdfjsLib from 'pdfjs-dist';
@@ -727,7 +727,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
               ) : null}
               <span>
                 {isPublishing
-                  ? 'Compression & envoi...'
+                  ? 'Publication en cours...'
                   : infoMode === 'individual'
                   ? `Valider (${completedCount}/${selectedFiles.length})`
                   : `Valider (${selectedFiles.length})`}
@@ -742,7 +742,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           <div className="bg-emerald-50 border-2 border-emerald-600 rounded-2xl p-6 text-center space-y-2 shadow-[3px_3px_0px_0px_#047857] w-full max-w-lg mx-auto mt-20">
             <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
             <h2 className="text-base font-black text-emerald-900">Fichiers publiés avec succès !</h2>
-            <p className="text-xs text-emerald-700">Vos documents ont été compressés, stockés et partagés.</p>
+            <p className="text-xs text-emerald-700">Vos documents ont été partagés et enregistrés.</p>
           </div>
         ) : (
           <div className="w-full space-y-4">
@@ -767,12 +767,6 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
               </div>
             ) : (
               <div>
-                {/* Badge d'indication de compression intelligente */}
-                <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-800 text-[11px] font-bold w-fit mb-2 shadow-xs">
-                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                  <span>Compression intelligente R2 active : vos fichiers sont optimisés en arrière-plan</span>
-                </div>
-
                 {/* File Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-3.5 mt-2">
                   {selectedFiles.map((file) => {
@@ -1033,8 +1027,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 {infoMode === 'all' && (
                   <div className="mt-4 pt-3 border-t-2 border-stone-300 space-y-3.5 bg-white/60 p-4 rounded-2xl border-2 border-stone-300">
                     <div className="flex items-center justify-between">
-                      <h4 className="text-xs font-black text-stone-800 uppercase tracking-wider flex items-center gap-1.5">
-                        <Sparkles className="w-3.5 h-3.5 text-emerald-700" />
+                      <h4 className="text-xs font-black text-stone-800 uppercase tracking-wider">
                         Champs appliqués à tous les documents
                       </h4>
                       <span className="text-[10px] font-bold text-stone-500 italic">
@@ -1191,10 +1184,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 {infoMode === 'individual' && (
                   <div className="mt-4 bg-amber-50/80 border-2 border-amber-600 rounded-2xl p-4 sm:p-5 text-stone-900 shadow-[2px_2px_0px_0px_#d97706] space-y-3">
                     <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <Sparkles className="w-5 h-5 text-amber-700" />
-                        <h4 className="text-sm font-black text-amber-950">Mode informations individuelles actif</h4>
-                      </div>
+                      <h4 className="text-sm font-black text-amber-950">Mode informations individuelles actif</h4>
                       <span className={`text-xs font-black px-2.5 py-1 rounded-full border ${
                         completedCount === selectedFiles.length && selectedFiles.length > 0
                           ? 'bg-emerald-100 border-emerald-500 text-emerald-800'
@@ -1438,7 +1428,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         </div>
       )}
 
-      {/* Publishing loading modal overlay with compression info and progress */}
+      {/* Publishing loading modal overlay with progress */}
       {isPublishing && (
         <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
           <div className="bg-[#FDFBF7] border-2 border-stone-900 rounded-2xl p-6 sm:p-7 text-center space-y-4 shadow-[5px_5px_0px_0px_#1c1917] max-w-sm w-full animate-in fade-in zoom-in-95 duration-150">
@@ -1446,11 +1436,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
               <RefreshCw className="w-7 h-7 text-emerald-700 animate-spin" />
             </div>
             <div className="space-y-1.5">
-              <h3 className="text-base font-black text-stone-900">Compression & Publication</h3>
+              <h3 className="text-base font-black text-stone-900">Publication en cours...</h3>
               <p className="text-xs text-stone-600">
                 {publishingProgress 
                   ? `Traitement du document ${publishingProgress.current}/${publishingProgress.total} :`
-                  : "Optimisation et stockage en cours..."}
+                  : "Traitement et validation en cours..."}
               </p>
               {publishingProgress?.currentFileName && (
                 <p className="text-[11px] font-mono font-bold text-emerald-900 truncate bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-300 shadow-xs">
@@ -1468,7 +1458,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
             </div>
 
             <p className="text-[10px] text-stone-500 font-medium leading-relaxed">
-              ⚡ Compression intelligente R2 : vos documents sont allégés en arrière-plan sans perte de qualité.
+              Veuillez patienter pendant la validation et l'enregistrement de vos documents.
             </p>
           </div>
         </div>
