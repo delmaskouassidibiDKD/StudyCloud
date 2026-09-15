@@ -4730,30 +4730,57 @@ export default {
       // 11. BOUTIQUE ÉTUDIANTE, PRODUITS & PANIER
       // ----------------------------------------------------------------------
       if (path === '/api/shop/profile') {
+        await ensureShopAndProductTables(env.DB);
         const userId = url.searchParams.get('userId');
         if (method === 'GET') {
           if (!userId) return errorResponse('userId requis', 400, origin);
-          const profile = await env.DB.prepare('SELECT * FROM shop_profiles WHERE user_id = ?').bind(userId).first();
-          return jsonResponse({ success: true, data: profile || { shop_name: 'DKD Technologies', shop_phone: '+225 07 00 00 00 00', shop_whatsapp: '+225 07 00 00 00 00' } }, 200, origin);
+          const profile: any = await env.DB.prepare('SELECT * FROM shop_profiles WHERE user_id = ?').bind(userId).first();
+          let subscriberCount = 0;
+          try {
+            const subRes = await env.DB.prepare('SELECT COUNT(*) as count FROM seller_follows WHERE seller_id = ?').bind(userId).first<any>();
+            subscriberCount = subRes?.count || 0;
+          } catch(e) {}
+
+          return jsonResponse({
+            success: true,
+            data: profile ? { ...profile, subscriber_count: subscriberCount } : null
+          }, 200, origin);
         }
-        if (method === 'PUT') {
+        if (method === 'PUT' || method === 'POST') {
           const body: any = await request.json();
           await env.DB.prepare(`
-            INSERT INTO shop_profiles (user_id, shop_name, shop_phone, shop_whatsapp, shop_avatar_url, updated_at)
-            VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            INSERT INTO shop_profiles (user_id, shop_name, shop_phone, shop_whatsapp, shop_avatar_url, shop_category, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(user_id) DO UPDATE SET
               shop_name = excluded.shop_name,
               shop_phone = excluded.shop_phone,
               shop_whatsapp = excluded.shop_whatsapp,
               shop_avatar_url = excluded.shop_avatar_url,
+              shop_category = excluded.shop_category,
               updated_at = CURRENT_TIMESTAMP
-          `).bind(body.userId, body.shopName, body.shopPhone, body.shopWhatsapp, body.shopAvatarUrl || null).run();
+          `).bind(body.userId, body.shopName, body.shopPhone, body.shopWhatsapp, body.shopAvatarUrl || null, body.shopCategory || 'Vente digital (PDF)').run();
           return jsonResponse({ success: true, message: 'Profil boutique mis à jour' }, 200, origin);
         }
       }
 
       async function ensureShopAndProductTables(db: any) {
         try {
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS shop_profiles (
+              user_id TEXT PRIMARY KEY,
+              shop_name TEXT NOT NULL,
+              shop_phone TEXT,
+              shop_whatsapp TEXT,
+              shop_avatar_url TEXT,
+              shop_category TEXT DEFAULT 'Vente digital (PDF)',
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+
+          try {
+            await db.prepare("ALTER TABLE shop_profiles ADD COLUMN shop_category TEXT DEFAULT 'Vente digital (PDF)'").run();
+          } catch(e) {}
+
           await db.prepare(`
             CREATE TABLE IF NOT EXISTS products (
               id TEXT PRIMARY KEY,

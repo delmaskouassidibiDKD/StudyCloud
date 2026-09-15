@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { ArrowLeft, Menu, X, Package, List, Megaphone, BarChart2, Plus, Trash2, Check, DollarSign, Eye, Upload, Loader2, Share2, Search, ChevronDown, Store, Phone, MessageCircle, User, Camera, Edit3, Zap } from 'lucide-react';
+import { ArrowLeft, Menu, X, Package, List, Megaphone, BarChart2, Plus, Trash2, Check, DollarSign, Eye, Upload, Loader2, Share2, Search, ChevronDown, Store, Phone, MessageCircle, User, Camera, Edit3, Zap, Tag, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { StudyCloudAPI } from '../services/api';
 
@@ -69,29 +69,68 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
   const [isDescriptionExpanded, setIsDescriptionExpanded] = useState<boolean>(false);
 
   // Store profile configuration states
-  const [shopName, setShopName] = useState(() => localStorage.getItem('unifolder_shop_name') || 'DKD Technologies');
-  const [shopPhone, setShopPhone] = useState(() => localStorage.getItem('unifolder_shop_phone') || '+225 07 00 00 00 00');
-  const [shopWhatsapp, setShopWhatsapp] = useState(() => localStorage.getItem('unifolder_shop_whatsapp') || '+225 07 00 00 00 00');
+  const [hasCreatedShop, setHasCreatedShop] = useState<boolean>(() => {
+    return localStorage.getItem('unifolder_shop_created') === 'true';
+  });
+  const [shopName, setShopName] = useState(() => localStorage.getItem('unifolder_shop_name') || '');
+  const [shopPhone, setShopPhone] = useState(() => localStorage.getItem('unifolder_shop_phone') || '');
+  const [shopWhatsapp, setShopWhatsapp] = useState(() => localStorage.getItem('unifolder_shop_whatsapp') || '');
   const [shopAvatarUrl, setShopAvatarUrl] = useState(() => localStorage.getItem('unifolder_shop_avatar') || '');
+  const [shopCategory, setShopCategory] = useState(() => localStorage.getItem('unifolder_shop_category') || 'Vente digital (PDF)');
+  const [subscribersCount, setSubscribersCount] = useState<number>(0);
+
+  // First-time shop creation onboarding form states
+  const [setupShopName, setSetupShopName] = useState('');
+  const [setupShopPhone, setSetupShopPhone] = useState('');
+  const [setupShopWhatsapp, setSetupShopWhatsapp] = useState('');
+  const [setupShopAvatarUrl, setSetupShopAvatarUrl] = useState('');
+  const [setupShopCategory, setSetupShopCategory] = useState('Vente digital (PDF)');
+  const [setupCustomCategory, setSetupCustomCategory] = useState('');
+  const [isSubmittingSetup, setIsSubmittingSetup] = useState(false);
+  const setupAvatarInputRef = useRef<HTMLInputElement>(null);
+
+  // Progressive publishing states (ligne de progression en direct)
+  const [publishingItems, setPublishingItems] = useState<{
+    id: string;
+    title: string;
+    description: string;
+    price: string;
+    category: string;
+    imageUrl?: string;
+    imageUrls?: string[];
+    progress: number;
+  }[]>([]);
 
   // Single field edit modal states
-  const [editingField, setEditingField] = useState<'name' | 'phone' | 'whatsapp' | 'avatar' | null>(null);
+  const [editingField, setEditingField] = useState<'name' | 'phone' | 'whatsapp' | 'avatar' | 'category' | null>(null);
   const [tempFieldValue, setTempFieldValue] = useState<string>('');
+  const [customEditCategory, setCustomEditCategory] = useState<string>('');
   const avatarInputRef = useRef<HTMLInputElement>(null);
 
   useEffect(() => {
-    localStorage.setItem('unifolder_shop_name', shopName);
-    localStorage.setItem('unifolder_shop_phone', shopPhone);
-    localStorage.setItem('unifolder_shop_whatsapp', shopWhatsapp);
-    localStorage.setItem('unifolder_shop_avatar', shopAvatarUrl);
-  }, [shopName, shopPhone, shopWhatsapp, shopAvatarUrl]);
+    if (shopName) localStorage.setItem('unifolder_shop_name', shopName);
+    if (shopPhone) localStorage.setItem('unifolder_shop_phone', shopPhone);
+    if (shopWhatsapp) localStorage.setItem('unifolder_shop_whatsapp', shopWhatsapp);
+    if (shopAvatarUrl) localStorage.setItem('unifolder_shop_avatar', shopAvatarUrl);
+    if (shopCategory) localStorage.setItem('unifolder_shop_category', shopCategory);
+  }, [shopName, shopPhone, shopWhatsapp, shopAvatarUrl, shopCategory]);
 
-  const handleOpenFieldEdit = (field: 'name' | 'phone' | 'whatsapp' | 'avatar') => {
+  const handleOpenFieldEdit = (field: 'name' | 'phone' | 'whatsapp' | 'avatar' | 'category') => {
     setEditingField(field);
     if (field === 'name') setTempFieldValue(shopName);
     if (field === 'phone') setTempFieldValue(shopPhone);
     if (field === 'whatsapp') setTempFieldValue(shopWhatsapp);
     if (field === 'avatar') setTempFieldValue(shopAvatarUrl);
+    if (field === 'category') {
+      const isPredefined = ['Vente digital (PDF)', 'Vente de documents (livre) à la livraison', 'Matériel scolaire & Électronique', 'Formations & Cours particuliers', 'Services d\'études & Tutorat'].includes(shopCategory);
+      if (isPredefined) {
+        setTempFieldValue(shopCategory);
+        setCustomEditCategory('');
+      } else {
+        setTempFieldValue('Autre');
+        setCustomEditCategory(shopCategory);
+      }
+    }
   };
 
   const handleApplyFieldEdit = (e: React.FormEvent) => {
@@ -102,6 +141,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
     let nextPhone = shopPhone;
     let nextWhatsapp = shopWhatsapp;
     let nextAvatar = shopAvatarUrl;
+    let nextCategory = shopCategory;
 
     if (editingField === 'name') {
       nextName = tempFieldValue.trim() || 'DKD Technologies';
@@ -119,6 +159,10 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
       nextAvatar = tempFieldValue;
       setShopAvatarUrl(nextAvatar);
       triggerToast("Photo de profil mise à jour !");
+    } else if (editingField === 'category') {
+      nextCategory = tempFieldValue === 'Autre' ? (customEditCategory.trim() || 'Vente digital (PDF)') : tempFieldValue;
+      setShopCategory(nextCategory);
+      triggerToast("Catégorie de vente mise à jour !");
     }
     setEditingField(null);
 
@@ -127,7 +171,8 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
       shopName: nextName,
       shopPhone: nextPhone,
       shopWhatsapp: nextWhatsapp,
-      shopAvatarUrl: nextAvatar
+      shopAvatarUrl: nextAvatar,
+      shopCategory: nextCategory
     }).catch(() => {});
   };
 
@@ -136,6 +181,10 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
     if (editingField === 'phone') return tempFieldValue.trim() !== '' && tempFieldValue.trim() !== shopPhone.trim();
     if (editingField === 'whatsapp') return tempFieldValue.trim() !== '' && tempFieldValue.trim() !== shopWhatsapp.trim();
     if (editingField === 'avatar') return tempFieldValue !== shopAvatarUrl;
+    if (editingField === 'category') {
+      const finalCat = tempFieldValue === 'Autre' ? customEditCategory.trim() : tempFieldValue;
+      return finalCat !== '' && finalCat !== shopCategory;
+    }
     return false;
   })();
 
@@ -149,6 +198,71 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
       };
       reader.readAsDataURL(file);
       e.target.value = '';
+    }
+  };
+
+  const handleSetupAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const file = e.target.files[0];
+      const reader = new FileReader();
+      reader.onload = (ev) => {
+        const url = ev.target?.result as string || '';
+        setSetupShopAvatarUrl(url);
+      };
+      reader.readAsDataURL(file);
+      e.target.value = '';
+    }
+  };
+
+  const handleCreateShopSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    const finalCategory = setupShopCategory === 'Autre' ? setupCustomCategory.trim() : setupShopCategory;
+    if (!setupShopName.trim() || !setupShopPhone.trim() || !finalCategory) {
+      triggerToast("Veuillez renseigner les champs obligatoires (*)");
+      return;
+    }
+
+    setIsSubmittingSetup(true);
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const profile = {
+      userId,
+      shopName: setupShopName.trim(),
+      shopPhone: setupShopPhone.trim(),
+      shopWhatsapp: setupShopWhatsapp.trim() || setupShopPhone.trim(),
+      shopAvatarUrl: setupShopAvatarUrl || null,
+      shopCategory: finalCategory
+    };
+
+    try {
+      await StudyCloudAPI.updateShopProfile(profile);
+      setShopName(profile.shopName);
+      setShopPhone(profile.shopPhone);
+      setShopWhatsapp(profile.shopWhatsapp);
+      if (profile.shopAvatarUrl) setShopAvatarUrl(profile.shopAvatarUrl);
+      setShopCategory(profile.shopCategory);
+
+      localStorage.setItem('unifolder_shop_created', 'true');
+      localStorage.setItem('unifolder_shop_name', profile.shopName);
+      localStorage.setItem('unifolder_shop_phone', profile.shopPhone);
+      localStorage.setItem('unifolder_shop_whatsapp', profile.shopWhatsapp);
+      if (profile.shopAvatarUrl) localStorage.setItem('unifolder_shop_avatar', profile.shopAvatarUrl);
+      localStorage.setItem('unifolder_shop_category', profile.shopCategory);
+
+      setHasCreatedShop(true);
+      triggerToast("Félicitations ! Votre boutique a été créée avec succès.");
+    } catch (err) {
+      console.warn("Erreur création boutique:", err);
+      // Fallback local
+      setShopName(profile.shopName);
+      setShopPhone(profile.shopPhone);
+      setShopWhatsapp(profile.shopWhatsapp);
+      if (profile.shopAvatarUrl) setShopAvatarUrl(profile.shopAvatarUrl);
+      setShopCategory(profile.shopCategory);
+      setHasCreatedShop(true);
+      localStorage.setItem('unifolder_shop_created', 'true');
+      triggerToast("Boutique créée !");
+    } finally {
+      setIsSubmittingSetup(false);
     }
   };
 
@@ -185,17 +299,49 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
   useEffect(() => {
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    const userName = localStorage.getItem('unifolder_user_name') || '';
+    const userPhone = localStorage.getItem('unifolder_user_phone') || '';
+    const userAvatar = localStorage.getItem('unifolder_user_avatar') || '';
+
+    // Préremplir l'onboarding au cas où
+    setSetupShopName(prev => prev || userName || '');
+    setSetupShopPhone(prev => prev || userPhone || '');
+    setSetupShopWhatsapp(prev => prev || userPhone || '');
+    setSetupShopAvatarUrl(prev => prev || userAvatar || '');
+
     // 1. Récupérer le profil de la boutique depuis D1
     StudyCloudAPI.getShopProfile(userId)
       .then((res) => {
         if (res.success && res.data) {
-          if (res.data.shop_name) setShopName(res.data.shop_name);
+          if (res.data.shop_name) {
+            setShopName(res.data.shop_name);
+            setHasCreatedShop(true);
+            localStorage.setItem('unifolder_shop_created', 'true');
+          }
           if (res.data.shop_phone || res.data.phone) setShopPhone(res.data.shop_phone || res.data.phone);
           if (res.data.shop_whatsapp || res.data.whatsapp) setShopWhatsapp(res.data.shop_whatsapp || res.data.whatsapp);
           if (res.data.shop_avatar_url || res.data.avatar_url) setShopAvatarUrl(res.data.shop_avatar_url || res.data.avatar_url);
+          if (res.data.shop_category) {
+            setShopCategory(res.data.shop_category);
+            localStorage.setItem('unifolder_shop_category', res.data.shop_category);
+          }
+          if (typeof res.data.subscriber_count === 'number') {
+            setSubscribersCount(res.data.subscriber_count);
+          }
         }
       })
       .catch((e) => console.warn('D1 Shop profile fetch:', e));
+
+    // 2. Vérifier si l'utilisateur est abonné à son propre compte
+    StudyCloudAPI.getSellerFollows(userId)
+      .then((res) => {
+        if (res.success && Array.isArray(res.followedSellerIds)) {
+          if (res.followedSellerIds.includes(userId)) {
+            setIsSubscribed(true);
+          }
+        }
+      })
+      .catch(() => {});
 
     // 2. Récupérer les produits réels depuis D1
     StudyCloudAPI.getProducts()
@@ -259,74 +405,107 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
     const finalCategory = newCategory === 'Autre' ? customCategory.trim() : newCategory;
     if (!newTitle.trim() || !newPrice.trim() || !newDesc.trim() || newImageUrls.length === 0 || (newCategory === 'Autre' && !customCategory.trim())) return;
 
-    setIsPublishingModalOpen(true);
+    const tempId = Date.now().toString();
+    const tempItem = {
+      id: tempId,
+      title: newTitle.trim(),
+      description: newDesc.trim(),
+      price: `${newPrice.trim()} ${newCurrency}`,
+      category: finalCategory,
+      imageUrl: newImageUrls[0] || undefined,
+      imageUrls: [...newImageUrls],
+      progress: 15,
+    };
 
-    if (publishingTimerRef.current) clearTimeout(publishingTimerRef.current);
-    publishingTimerRef.current = setTimeout(() => {
-      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-      const sellerName = shopName || localStorage.getItem('unifolder_user_name') || 'Étudiant';
-      const sellerSchool = localStorage.getItem('unifolder_user_school') || '';
-      const sellerFiliere = localStorage.getItem('unifolder_user_filiere') || '';
-      const sellerCountry = localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire";
-      const sellerPhone = shopPhone || localStorage.getItem('unifolder_user_phone') || '';
-      const sellerWhatsapp = shopWhatsapp || localStorage.getItem('unifolder_user_phone') || '';
-      const sellerAvatarUrl = shopAvatarUrl || localStorage.getItem('unifolder_user_avatar') || '';
+    // Rediriger immédiatement vers Mes publications pour observer la progression en direct
+    setActivePage('list');
+    setListSubView('publications');
+    setPublishingItems(prev => [tempItem, ...prev]);
 
-      const newItem: ProductItem = {
-        id: Date.now().toString(),
-        sellerId: userId,
-        sellerName,
-        sellerSchool,
-        sellerFiliere,
-        sellerCountry,
-        sellerPhone,
-        sellerWhatsapp,
-        sellerAvatarUrl,
-        title: newTitle.trim(),
-        description: newDesc.trim(),
-        price: `${newPrice.trim()} ${newCurrency}`,
-        currency: newCurrency,
-        category: finalCategory,
-        date: new Date().toLocaleDateString('fr-FR'),
-        views: 0,
-        sales: 0,
-        imageUrl: newImageUrls[0] || undefined,
-        imageUrls: newImageUrls
-      };
+    // Réinitialiser les champs de saisie
+    const cachedTitle = newTitle.trim();
+    const cachedDesc = newDesc.trim();
+    const cachedPrice = `${newPrice.trim()} ${newCurrency}`;
+    const cachedCurrency = newCurrency;
+    const cachedCategory = finalCategory;
+    const cachedImages = [...newImageUrls];
 
-      setProducts((prev) => [newItem, ...prev]);
+    setNewTitle('');
+    setNewDesc('');
+    setNewPrice('');
+    setNewCurrency('FCFA');
+    setNewCategory('Vente digital (PDF)');
+    setCustomCategory('');
+    setNewImageUrls([]);
 
-      StudyCloudAPI.createProduct({
-        id: newItem.id,
-        sellerId: userId,
-        sellerName,
-        sellerSchool,
-        sellerFiliere,
-        sellerCountry,
-        sellerPhone,
-        sellerWhatsapp,
-        sellerAvatarUrl,
-        title: newItem.title,
-        description: newItem.description,
-        price: newItem.price,
-        currency: newCurrency,
-        category: newItem.category,
-        imageUrlsJson: JSON.stringify(newItem.imageUrls || []),
-        isBoosted: false
-      }).catch((e) => console.warn('Sync product to D1:', e));
+    // Animation progressive de publication (15% -> 40% -> 70% -> 92% -> 100%)
+    let currentProgress = 15;
+    const interval = setInterval(() => {
+      currentProgress += Math.floor(Math.random() * 20) + 18;
+      if (currentProgress >= 100) {
+        currentProgress = 100;
+        clearInterval(interval);
 
-      setNewTitle('');
-      setNewDesc('');
-      setNewPrice('');
-      setNewCurrency('FCFA');
-      setNewCategory('Vente digital (PDF)');
-      setCustomCategory('');
-      setNewImageUrls([]);
-      
-      setIsPublishingModalOpen(false);
-      setActivePage('list');
-      setSuccessMessage("Votre produit a été bien publié");
-    }, 3000);
+        setTimeout(() => {
+          setPublishingItems(prev => prev.filter(item => item.id !== tempId));
+
+          const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+          const sellerName = shopName || localStorage.getItem('unifolder_user_name') || 'Étudiant';
+          const sellerSchool = localStorage.getItem('unifolder_user_school') || '';
+          const sellerFiliere = localStorage.getItem('unifolder_user_filiere') || '';
+          const sellerCountry = localStorage.getItem('unifolder_user_country') || "Côte d'Ivoire";
+          const sellerPhone = shopPhone || localStorage.getItem('unifolder_user_phone') || '';
+          const sellerWhatsapp = shopWhatsapp || localStorage.getItem('unifolder_user_phone') || '';
+          const sellerAvatarUrl = shopAvatarUrl || localStorage.getItem('unifolder_user_avatar') || '';
+
+          const newItem: ProductItem = {
+            id: tempId,
+            sellerId: userId,
+            sellerName,
+            sellerSchool,
+            sellerFiliere,
+            sellerCountry,
+            sellerPhone,
+            sellerWhatsapp,
+            sellerAvatarUrl,
+            title: cachedTitle,
+            description: cachedDesc,
+            price: cachedPrice,
+            currency: cachedCurrency,
+            category: cachedCategory,
+            date: new Date().toLocaleDateString('fr-FR'),
+            views: 0,
+            sales: 0,
+            imageUrl: cachedImages[0] || undefined,
+            imageUrls: cachedImages
+          };
+
+          setProducts((prev) => [newItem, ...prev]);
+          triggerToast(`"${newItem.title}" a été bien publié !`);
+
+          StudyCloudAPI.createProduct({
+            id: newItem.id,
+            sellerId: userId,
+            sellerName,
+            sellerSchool,
+            sellerFiliere,
+            sellerCountry,
+            sellerPhone,
+            sellerWhatsapp,
+            sellerAvatarUrl,
+            title: newItem.title,
+            description: newItem.description,
+            price: newItem.price,
+            currency: cachedCurrency,
+            category: newItem.category,
+            imageUrlsJson: JSON.stringify(newItem.imageUrls || []),
+            isBoosted: false
+          }).catch((e) => console.warn('Sync product to D1:', e));
+        }, 500);
+      }
+
+      setPublishingItems(prev => prev.map(item => item.id === tempId ? { ...item, progress: Math.min(100, currentProgress) } : item));
+    }, 450);
   };
 
   const handleDeleteProduct = (id: string) => {
@@ -369,6 +548,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
   const totalSalesCount = products.reduce((acc, p) => acc + (p.sales || 0), 0);
 
   const getPageTitle = () => {
+    if (!hasCreatedShop) return 'Créer votre boutique';
     switch (activePage) {
       case 'publish': return 'Publier un produit';
       case 'list': return 'Mes produits';
@@ -410,59 +590,13 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
         </div>
       )}
 
-      {/* Publishing Modal (Menu avec rond qui tourne pendant 3s et texte publications en cours) */}
-      {isPublishingModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/40 backdrop-blur-xs animate-fadeIn">
-          <div className="bg-white border-2 border-stone-800 rounded-2xl p-6 w-full max-w-xs shadow-xl text-center relative space-y-4">
-            <button
-              onClick={() => {
-                if (publishingTimerRef.current) clearTimeout(publishingTimerRef.current);
-                setIsPublishingModalOpen(false);
-              }}
-              className="absolute top-3 right-3 p-1 rounded-lg hover:bg-stone-100 text-stone-500 hover:text-stone-900 cursor-pointer"
-              title="Sortir / Fermer"
-            >
-              <X className="w-4 h-4" />
-            </button>
-
-            <div className="pt-2">
-              <Loader2 className="w-10 h-10 text-purple-600 animate-spin mx-auto mb-3" />
-              <p className="font-extrabold text-sm text-stone-900">Publications en cours...</p>
-              <p className="text-[11px] text-stone-500 mt-1">Veuillez patienter pendant la publication...</p>
-            </div>
-
-            <div className="pt-2 flex gap-2">
-              <button
-                type="button"
-                onClick={() => {
-                  if (publishingTimerRef.current) clearTimeout(publishingTimerRef.current);
-                  setIsPublishingModalOpen(false);
-                }}
-                className="flex-1 py-2 bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs rounded-xl border border-stone-300 cursor-pointer"
-              >
-                Sortir
-              </button>
-              <button
-                type="button"
-                onClick={() => {
-                  if (publishingTimerRef.current) clearTimeout(publishingTimerRef.current);
-                  setIsPublishingModalOpen(false);
-                  setActivePage('list');
-                }}
-                className="flex-1 py-2 bg-purple-600 hover:bg-purple-700 text-white font-bold text-xs rounded-xl cursor-pointer"
-              >
-                Mes produits
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {/* Sticky Top Bar (En-tête) - Solid Dark #070a13 */}
       <div className="sticky top-0 left-0 right-0 z-40 bg-[#FDFBF7] dark:bg-[#070a13] px-4 py-2.5 flex items-center justify-between border-b border-stone-200/60 dark:border-[#1e293b]">
         <button
           onClick={() => {
-            if (activePage === 'product-picker') {
+            if (!hasCreatedShop) {
+              onBack();
+            } else if (activePage === 'product-picker') {
               setActivePage('advertise');
               if (campaignTypeTarget === 'basique') setShowBasiqueModal(true);
               if (campaignTypeTarget === 'pro') setShowProModal(true);
@@ -483,12 +617,12 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
         <div className="text-center">
           <h2 className="font-serif font-bold text-xs sm:text-sm text-stone-900 dark:text-white whitespace-nowrap">{getPageTitle()}</h2>
-          {activePage === 'list' && (
+          {hasCreatedShop && activePage === 'list' && (
             <p className="text-[10px] font-bold text-stone-500 dark:text-slate-400">{products.length} produit{products.length > 1 ? 's' : ''} publié{products.length > 1 ? 's' : ''}</p>
           )}
         </div>
 
-        {activePage === 'main' ? (
+        {hasCreatedShop && activePage === 'main' ? (
           <button
             onClick={() => setIsRightDrawerOpen(true)}
             className="p-2 bg-[#E8DFD0] dark:bg-[#1e293b] hover:bg-stone-200 dark:hover:bg-[#283852] text-stone-900 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer flex items-center justify-center"
@@ -496,7 +630,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
           >
             <Menu className="w-4 h-4 text-stone-900 dark:text-white" />
           </button>
-        ) : activePage === 'list' && listSubView === 'publications' ? (
+        ) : hasCreatedShop && activePage === 'list' && listSubView === 'publications' ? (
           <button
             onClick={() => {
               if (showPubSearchInput) {
@@ -518,6 +652,141 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
       {/* Main Content Area with bottom padding for smooth scrolling */}
       <div className="pb-40">
+        {!hasCreatedShop ? (
+          /* ONBOARDING CRÉATION DE BOUTIQUE (Premier accès vendeur) */
+          <div className="w-full max-w-xl mx-auto px-4 py-8 animate-fadeIn text-left space-y-6">
+            <div className="bg-white rounded-3xl border-3 border-stone-800 p-6 sm:p-8 shadow-[5px_5px_0px_0px_#1c1917] space-y-6">
+              <div className="flex items-center gap-3.5 pb-4 border-b-2 border-stone-200">
+                <div className="w-12 h-12 rounded-2xl bg-amber-100 border-2 border-stone-800 flex items-center justify-center text-amber-900 shadow-[2px_2px_0px_0px_#1c1917] shrink-0">
+                  <Store className="w-6 h-6" />
+                </div>
+                <div>
+                  <h2 className="font-extrabold text-base sm:text-lg text-stone-900">Profil Boutique</h2>
+                  <p className="text-xs text-stone-500 font-medium">Gérer vos coordonnées pour devenir vendeur</p>
+                </div>
+              </div>
+
+              <form onSubmit={handleCreateShopSubmit} className="space-y-4">
+                {/* Photo de profil boutique */}
+                <div className="flex flex-col items-center justify-center gap-2.5 pb-2">
+                  <div className="relative w-24 h-24 rounded-full bg-amber-100 border-2 border-stone-800 overflow-hidden shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center font-black text-amber-900 text-2xl">
+                    {setupShopAvatarUrl ? (
+                      <img src={setupShopAvatarUrl} alt="Avatar" className="w-full h-full object-cover" />
+                    ) : (
+                      setupShopName ? setupShopName.substring(0, 2).toUpperCase() : 'DK'
+                    )}
+                    <button
+                      type="button"
+                      onClick={() => setupAvatarInputRef.current?.click()}
+                      className="absolute inset-0 bg-black/35 hover:bg-black/45 text-white flex flex-col items-center justify-center gap-1 transition-all cursor-pointer opacity-90"
+                      title="Changer la photo"
+                    >
+                      <Camera className="w-5 h-5 text-white" />
+                      <span className="text-[9px] font-extrabold text-white">Changer</span>
+                    </button>
+                  </div>
+                  <input
+                    type="file"
+                    ref={setupAvatarInputRef}
+                    onChange={handleSetupAvatarChange}
+                    accept="image/*"
+                    className="hidden"
+                  />
+                  <span className="text-[11px] font-bold text-stone-500">Photo de profil boutique</span>
+                </div>
+
+                {/* Nom de la boutique */}
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">Nom de la boutique *</label>
+                  <input
+                    type="text"
+                    value={setupShopName}
+                    onChange={(e) => setSetupShopName(e.target.value)}
+                    placeholder="Ex: DKD Technologies ou votre nom"
+                    required
+                    className="w-full bg-[#FAF8F5] border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                  />
+                </div>
+
+                {/* Numéro de téléphone */}
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">Numéro de téléphone *</label>
+                  <input
+                    type="tel"
+                    value={setupShopPhone}
+                    onChange={(e) => setSetupShopPhone(e.target.value)}
+                    placeholder="Ex: +225 07 00 00 00 00"
+                    required
+                    className="w-full bg-[#FAF8F5] border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                  />
+                </div>
+
+                {/* Numéro WhatsApp */}
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">Numéro WhatsApp</label>
+                  <input
+                    type="tel"
+                    value={setupShopWhatsapp}
+                    onChange={(e) => setSetupShopWhatsapp(e.target.value)}
+                    placeholder="Ex: +225 07 00 00 00 00"
+                    className="w-full bg-[#FAF8F5] border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                  />
+                </div>
+
+                {/* Catégorie / Ce que vous vendez */}
+                <div>
+                  <label className="block text-xs font-bold text-stone-700 mb-1">Ce que vous vendez (Catégorie) *</label>
+                  <select
+                    value={setupShopCategory}
+                    onChange={(e) => setSetupShopCategory(e.target.value)}
+                    className="w-full bg-[#FAF8F5] border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                  >
+                    <option value="Vente digital (PDF)">Vente digital (PDF)</option>
+                    <option value="Vente de documents (livre) à la livraison">Vente de documents (livre) à la livraison</option>
+                    <option value="Matériel scolaire & Électronique">Matériel scolaire & Électronique</option>
+                    <option value="Formations & Cours particuliers">Formations & Cours particuliers</option>
+                    <option value="Services d'études & Tutorat">Services d'études & Tutorat</option>
+                    <option value="Autre">Autre</option>
+                  </select>
+
+                  {setupShopCategory === 'Autre' && (
+                    <div className="mt-2.5">
+                      <input
+                        type="text"
+                        value={setupCustomCategory}
+                        onChange={(e) => setSetupCustomCategory(e.target.value)}
+                        placeholder="Écrivez ce que vous vendez..."
+                        required
+                        className="w-full bg-white border-2 border-stone-800 rounded-xl p-3 text-xs font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                      />
+                    </div>
+                  )}
+                </div>
+
+                <div className="pt-3">
+                  <button
+                    type="submit"
+                    disabled={isSubmittingSetup}
+                    className="w-full py-3.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-sm rounded-2xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center gap-2 active:translate-x-0.5 active:translate-y-0.5"
+                  >
+                    {isSubmittingSetup ? (
+                      <>
+                        <Loader2 className="w-4 h-4 animate-spin text-white" />
+                        <span>Création de votre boutique...</span>
+                      </>
+                    ) : (
+                      <>
+                        <Check className="w-4 h-4" />
+                        <span>Créer ma boutique et commencer</span>
+                      </>
+                    )}
+                  </button>
+                </div>
+              </form>
+            </div>
+          </div>
+        ) : (
+          <>
         {/* Product Picker Full-Screen Page */}
         {activePage === 'product-picker' && (
           <div className="w-full max-w-5xl mx-auto px-4 sm:px-8 py-4 sm:py-8 animate-fadeIn space-y-4 text-left">
@@ -895,10 +1164,58 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                       />
                     </div>
                   )}
+
+                  {/* Produits en cours de publication (avec barre de progression qui se remplit en direct) */}
+                  {publishingItems.length > 0 && (
+                    <div className="space-y-3">
+                      <div className="flex items-center gap-2 text-xs font-black text-purple-700 uppercase tracking-wider">
+                        <Loader2 className="w-4 h-4 animate-spin text-purple-600" />
+                        <span>En cours de publication ({publishingItems.length})</span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3">
+                        {publishingItems.map((item) => (
+                          <div
+                            key={item.id}
+                            className="bg-white rounded-2xl border-2 border-dashed border-purple-400 p-3.5 shadow-sm space-y-2.5 text-left"
+                          >
+                            <div className="flex items-center gap-3">
+                              <div className="w-12 h-12 rounded-xl bg-purple-50 border border-purple-200 overflow-hidden shrink-0 flex items-center justify-center">
+                                {item.imageUrl ? (
+                                  <img src={item.imageUrl} alt="" className="w-full h-full object-cover" />
+                                ) : (
+                                  <Package className="w-5 h-5 text-purple-400" />
+                                )}
+                              </div>
+                              <div className="truncate flex-1">
+                                <h4 className="font-extrabold text-xs text-stone-900 truncate">{item.title}</h4>
+                                <span className="text-[10px] font-bold text-orange-600">{item.price}</span>
+                                <span className="text-[9px] text-stone-400 font-medium block truncate">{item.category}</span>
+                              </div>
+                            </div>
+
+                            {/* Barre de progression animée */}
+                            <div className="space-y-1">
+                              <div className="flex items-center justify-between text-[10px] font-extrabold text-purple-700">
+                                <span>Publication en cours...</span>
+                                <span>{item.progress}%</span>
+                              </div>
+                              <div className="w-full bg-purple-100 rounded-full h-2 overflow-hidden">
+                                <div
+                                  className="bg-gradient-to-r from-purple-500 to-indigo-600 h-full rounded-full transition-all duration-300"
+                                  style={{ width: `${item.progress}%` }}
+                                />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
                   {products.filter(item => 
                     item.title.toLowerCase().includes(pubSearchQuery.toLowerCase()) ||
                     (item.category && item.category.toLowerCase().includes(pubSearchQuery.toLowerCase()))
-                  ).length === 0 ? (
+                  ).length === 0 && publishingItems.length === 0 ? (
                     <div className="text-center py-12 space-y-3 bg-white rounded-2xl border border-stone-200 p-6">
                       <Package className="w-10 h-10 text-stone-400 mx-auto" />
                       <p className="text-xs font-bold text-stone-700">Aucun produit trouvé.</p>
@@ -980,21 +1297,40 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                           shopName ? shopName.substring(0, 2).toUpperCase() : 'DK'
                         )}
                       </div>
-                      <div className="overflow-hidden">
-                        <h3 className="font-extrabold text-sm md:text-xl text-stone-900 truncate">{shopName}</h3>
-                        <p className="text-xs md:text-sm text-stone-500 font-medium truncate">{shopPhone}</p>
+                      <div className="overflow-hidden space-y-1">
+                        <h3 className="font-extrabold text-sm md:text-xl text-stone-900 truncate">{shopName || 'Ma Boutique'}</h3>
+                        <p className="text-xs md:text-sm text-stone-500 font-medium truncate">{shopPhone || '+225 00 00 00 00 00'}</p>
                         {shopWhatsapp && shopWhatsapp !== shopPhone && (
                           <p className="text-[10px] md:text-xs text-emerald-700 font-bold truncate">WhatsApp: {shopWhatsapp}</p>
                         )}
+                        {shopCategory && (
+                          <span className="inline-block bg-orange-100 text-orange-800 text-[10px] font-bold px-2 py-0.5 rounded-md border border-orange-200">
+                            {shopCategory}
+                          </span>
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Nombre d'abonnés affiché au-dessus des boutons */}
+                    <div className="flex items-center gap-2 px-1">
+                      <div className="flex items-center gap-1.5 px-3 py-1 bg-blue-50 border border-blue-200 rounded-full text-blue-700 text-xs font-black shadow-xs">
+                        <Users className="w-3.5 h-3.5" />
+                        <span>{subscribersCount} abonné{subscribersCount > 1 ? 's' : ''}</span>
                       </div>
                     </div>
 
                     <div className="flex items-center gap-2 md:gap-4 pt-1 md:pt-2">
                       <button
                         type="button"
-                        onClick={() => {
-                          setIsSubscribed(!isSubscribed);
-                          triggerToast(isSubscribed ? "Vous êtes désabonné de la boutique." : "Vous êtes abonné à la boutique !");
+                        onClick={async () => {
+                          const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+                          const willSubscribe = !isSubscribed;
+                          setIsSubscribed(willSubscribe);
+                          setSubscribersCount(prev => Math.max(0, willSubscribe ? prev + 1 : prev - 1));
+                          triggerToast(willSubscribe ? "Vous êtes abonné à votre propre boutique !" : "Vous êtes désabonné de votre boutique.");
+                          try {
+                            await StudyCloudAPI.toggleSellerFollow(userId, userId, willSubscribe ? 'follow' : 'unfollow');
+                          } catch(e) {}
                         }}
                         className={`flex-1 py-2 md:py-3 font-bold text-xs md:text-sm rounded-xl md:rounded-2xl border-2 transition-all cursor-pointer ${
                           isSubscribed
@@ -1006,7 +1342,19 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                       </button>
                       <button
                         type="button"
-                        onClick={() => triggerToast("Lien de la boutique copié !")}
+                        onClick={() => {
+                          const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+                          const link = `${window.location.origin}/?shop=${encodeURIComponent(userId)}`;
+                          if (navigator.clipboard) {
+                            navigator.clipboard.writeText(link).then(() => {
+                              triggerToast("Lien d'invitation de votre boutique copié !");
+                            }).catch(() => {
+                              triggerToast("Lien de votre boutique copié !");
+                            });
+                          } else {
+                            triggerToast("Lien de votre boutique copié !");
+                          }
+                        }}
                         className="flex-1 py-2 md:py-3 bg-white text-stone-800 font-bold text-xs md:text-sm rounded-xl md:rounded-2xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] hover:bg-stone-50 cursor-pointer transition-all flex items-center justify-center gap-1.5 md:gap-2"
                       >
                         <Share2 className="w-3.5 h-3.5 md:w-5 md:h-5" />
@@ -1356,6 +1704,8 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
             </div>
           </div>
         )}
+          </>
+        )}
       </div>
 
       {/* Right Sidebar Drawer: Profil Boutique / Paramètres */}
@@ -1463,6 +1813,23 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                     </div>
                     <Edit3 className="w-3.5 h-3.5 text-stone-400 shrink-0" />
                   </button>
+
+                  {/* 5. Catégorie de vente */}
+                  <button
+                    onClick={() => handleOpenFieldEdit('category')}
+                    className="w-full text-left p-3 bg-white hover:bg-stone-50 border-2 border-stone-800 rounded-2xl shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-between text-stone-900 cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5"
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0">
+                      <div className="w-8 h-8 rounded-xl bg-orange-100 border border-stone-800 flex items-center justify-center text-orange-800 shrink-0">
+                        <Tag className="w-4 h-4" />
+                      </div>
+                      <div className="truncate">
+                        <p className="text-[10px] uppercase font-extrabold text-stone-400">Ce que vous vendez</p>
+                        <p className="font-extrabold text-xs text-stone-900 truncate">{shopCategory}</p>
+                      </div>
+                    </div>
+                    <Edit3 className="w-3.5 h-3.5 text-stone-400 shrink-0" />
+                  </button>
                 </div>
               </div>
 
@@ -1485,6 +1852,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                   {editingField === 'phone' && "Numéro de téléphone"}
                   {editingField === 'whatsapp' && "Numéro WhatsApp"}
                   {editingField === 'avatar' && "Photo de profil"}
+                  {editingField === 'category' && "Ce que vous vendez"}
                 </h3>
                 <p className="text-[11px] md:text-xs text-stone-500 font-medium">
                   Modifiez cette information pour votre boutique
@@ -1576,6 +1944,39 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                   >
                     {tempFieldValue ? "Changer la photo" : "Ajouter une photo"}
                   </button>
+                </div>
+              )}
+
+              {editingField === 'category' && (
+                <div className="space-y-3">
+                  <label className="block text-xs md:text-sm font-bold text-stone-700 mb-1 md:mb-1.5">Ce que vous vendez (Catégorie principale) *</label>
+                  <select
+                    value={tempFieldValue}
+                    onChange={(e) => setTempFieldValue(e.target.value)}
+                    className="w-full bg-white border-2 border-stone-800 rounded-xl md:rounded-2xl p-3 md:p-4 text-xs md:text-sm font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                  >
+                    <option value="Vente digital (PDF)">Vente digital (PDF)</option>
+                    <option value="Vente de documents (livre) à la livraison">Vente de documents (livre) à la livraison</option>
+                    <option value="Matériel scolaire & Électronique">Matériel scolaire & Électronique</option>
+                    <option value="Formations & Cours particuliers">Formations & Cours particuliers</option>
+                    <option value="Services d'études & Tutorat">Services d'études & Tutorat</option>
+                    <option value="Autre">Autre</option>
+                  </select>
+
+                  {tempFieldValue === 'Autre' && (
+                    <div className="pt-1">
+                      <label className="block text-[11px] font-bold text-stone-600 mb-1">Précisez votre catégorie :</label>
+                      <input
+                        type="text"
+                        value={customEditCategory}
+                        onChange={(e) => setCustomEditCategory(e.target.value)}
+                        placeholder="Écrivez ce que vous vendez..."
+                        required
+                        autoFocus
+                        className="w-full bg-white border-2 border-stone-800 rounded-xl md:rounded-2xl p-3 md:p-4 text-xs md:text-sm font-bold text-stone-900 outline-none shadow-[2px_2px_0px_0px_#1c1917]"
+                      />
+                    </div>
+                  )}
                 </div>
               )}
 
