@@ -3318,27 +3318,137 @@ var src_default = {
         await env.DB.prepare("DELETE FROM files WHERE id = ?").bind(id).run();
         return jsonResponse({ success: true, message: "Fichier supprim\xE9" }, 200, origin);
       }
+      // ── Stockage R2 avec Compression intelligente à la volée (CompressionStream Gzip) ──
+      function isCompressibleFileType(contentType, key = "") {
+        if (!contentType) contentType = "";
+        const ct = contentType.toLowerCase().split(";")[0].trim();
+        const ext = (key.split(".").pop() || "").toLowerCase();
+
+        // 1. Formats déjà compressés nativement (images, vidéos, archives)
+        // Ne PAS compresser avec gzip pour éviter d'augmenter la taille et gaspiller du CPU
+        if (
+          ct.startsWith("image/jpeg") ||
+          ct.startsWith("image/png") ||
+          ct.startsWith("image/webp") ||
+          ct.startsWith("image/gif") ||
+          ct.startsWith("image/avif") ||
+          ct.startsWith("audio/") ||
+          ct.startsWith("video/") ||
+          ct.includes("zip") ||
+          ct.includes("gzip") ||
+          ct.includes("tar") ||
+          ct.includes("rar") ||
+          ct.includes("7z") ||
+          ct.includes("compressed")
+        ) {
+          return false;
+        }
+
+        const alreadyCompressedExts = [
+          "jpg", "jpeg", "png", "webp", "gif", "avif",
+          "mp4", "mp3", "webm", "wav", "ogg", "mov", "avi",
+          "zip", "rar", "7z", "tar", "gz",
+          "docx", "xlsx", "pptx"
+        ];
+        if (alreadyCompressedExts.includes(ext)) {
+          return false;
+        }
+
+        // 2. Fichiers hautement compressibles (PDF, documents textuels, code, données)
+        if (
+          ct.startsWith("text/") ||
+          ct.includes("json") ||
+          ct.includes("javascript") ||
+          ct.includes("xml") ||
+          ct.includes("csv") ||
+          ct.includes("html") ||
+          ct === "application/pdf" ||
+          ["pdf", "txt", "md", "csv", "json", "js", "html", "css", "svg", "sql", "xml", "doc", "xls", "ppt"].includes(ext)
+        ) {
+          return true;
+        }
+
+        return false;
+      }
+
       if (path === "/api/storage/upload" && method === "PUT") {
         const key = url.searchParams.get("key");
         if (!key)
           return errorResponse("Cl\xE9 de stockage manquante", 400, origin);
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
-        const fileData = request.body || await request.arrayBuffer();
-        await env.BUCKET.put(key, fileData, {
-          httpMetadata: { contentType }
+
+        const shouldCompress = typeof CompressionStream !== "undefined" && isCompressibleFileType(contentType, key);
+
+        let bodyToStore;
+        let isGzip = false;
+
+        if (shouldCompress) {
+          try {
+            if (request.body) {
+              bodyToStore = request.body.pipeThrough(new CompressionStream("gzip"));
+              isGzip = true;
+            } else {
+              const buffer = await request.arrayBuffer();
+              bodyToStore = new Response(buffer).body.pipeThrough(new CompressionStream("gzip"));
+              isGzip = true;
+            }
+          } catch (compErr) {
+            console.warn("Erreur CompressionStream, fallback non compress\xE9:", compErr);
+            bodyToStore = request.body || await request.arrayBuffer();
+            isGzip = false;
+          }
+        } else {
+          bodyToStore = request.body || await request.arrayBuffer();
+          isGzip = false;
+        }
+
+        const httpMetadata = { contentType };
+        if (isGzip) {
+          httpMetadata.contentEncoding = "gzip";
+        }
+
+        await env.BUCKET.put(key, bodyToStore, {
+          httpMetadata,
+          customMetadata: {
+            compressed: isGzip ? "gzip" : "none"
+          }
         });
+
         const fileUrl = `${url.origin}/api/storage/file/${encodeURIComponent(key)}`;
-        return jsonResponse({ success: true, key, url: fileUrl }, 200, origin);
+        return jsonResponse({ success: true, key, url: fileUrl, compressed: isGzip }, 200, origin);
       }
+
       if (path.startsWith("/api/storage/file/") && method === "GET") {
         const key = decodeURIComponent(path.replace("/api/storage/file/", ""));
         const object = await env.BUCKET.get(key);
         if (!object)
           return errorResponse("Fichier introuvable dans R2", 404, origin);
+
         const headers = new Headers();
         object.writeHttpMetadata(headers);
         headers.set("etag", object.httpEtag);
         headers.set("Access-Control-Allow-Origin", origin);
+
+        const isCompressedGzip = object.httpMetadata?.contentEncoding === "gzip" || 
+                                 object.customMetadata?.compressed === "gzip";
+
+        const acceptEncoding = request.headers.get("Accept-Encoding") || "";
+        const clientAcceptsGzip = acceptEncoding.includes("gzip");
+        const forceDecompress = url.searchParams.get("decompress") === "true";
+
+        if (isCompressedGzip) {
+          if (clientAcceptsGzip && !forceDecompress) {
+            // Le navigateur d\xE9compresse automatiquement en m\xE9moire de fa\xE7on transparente
+            headers.set("Content-Encoding", "gzip");
+            return new Response(object.body, { headers });
+          } else if (typeof DecompressionStream !== "undefined") {
+            // Client sans support gzip ou demande expresse (?decompress=true)
+            headers.delete("Content-Encoding");
+            const decompressedStream = object.body.pipeThrough(new DecompressionStream("gzip"));
+            return new Response(decompressedStream, { headers });
+          }
+        }
+
         return new Response(object.body, { headers });
       }
       if (path.startsWith("/api/shares") && env.DB && !isSchemaInitialized) {
