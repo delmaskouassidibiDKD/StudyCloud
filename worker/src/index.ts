@@ -5133,6 +5133,216 @@ export default {
         return jsonResponse({ success: true, message: 'Produit supprimé' }, 200, origin);
       }
 
+      // ----------------------------------------------------------------------
+      // Commande WhatsApp directe & Génération de bannière avec logo StudyCloud
+      // ----------------------------------------------------------------------
+      if (path.match(/^\/api\/products\/[^/]+\/banner$/) && method === 'GET') {
+        await ensureShopAndProductTables(env.DB);
+        const id = path.split('/')[3];
+        const product: any = await env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first();
+        if (!product) return new Response('Produit introuvable', { status: 404 });
+
+        let imgUrl = '';
+        try {
+          const imgs = JSON.parse(product.image_urls_json || '[]');
+          if (imgs && imgs.length > 0) imgUrl = imgs[0];
+        } catch (e) {}
+
+        const title = escapeHtml(product.title || 'Produit StudyCloud');
+        const price = escapeHtml(product.price || 'Prix sur demande');
+        const category = escapeHtml(product.category || 'Documents & Services');
+        const seller = escapeHtml(product.seller_name || 'Vendeur Étudiant');
+
+        const svg = `<svg width="1200" height="630" viewBox="0 0 1200 630" xmlns="http://www.w3.org/2000/svg">
+  <defs>
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0b0f19" />
+      <stop offset="50%" stop-color="#111827" />
+      <stop offset="100%" stop-color="#1e1b4b" />
+    </linearGradient>
+    <linearGradient id="accentGrad" x1="0%" y1="0%" x2="100%" y2="0%">
+      <stop offset="0%" stop-color="#ea580c" />
+      <stop offset="100%" stop-color="#f97316" />
+    </linearGradient>
+    <clipPath id="prodClip">
+      <rect x="60" y="80" width="460" height="470" rx="28" ry="28" />
+    </clipPath>
+  </defs>
+
+  <rect width="1200" height="630" fill="url(#bgGrad)" />
+  <circle cx="1060" cy="110" r="180" fill="#f97316" opacity="0.1" />
+  <circle cx="150" cy="520" r="180" fill="#6366f1" opacity="0.1" />
+
+  <!-- Product Image Box -->
+  <rect x="56" y="76" width="468" height="478" rx="32" ry="32" fill="#1e293b" stroke="#334155" stroke-width="4" />
+  ${imgUrl ? `<image href="${escapeHtml(imgUrl)}" x="60" y="80" width="460" height="470" preserveAspectRatio="xMidYMid slice" clip-path="url(#prodClip)" />` : `
+    <g transform="translate(230, 270)">
+      <circle cx="60" cy="40" r="50" fill="#334155" />
+      <text x="60" y="48" font-family="system-ui, sans-serif" font-size="32" font-weight="bold" fill="#f97316" text-anchor="middle">DOC</text>
+    </g>
+  `}
+
+  <!-- Badge Logo StudyCloud en haut de l'image -->
+  <g transform="translate(80, 100)">
+    <rect width="200" height="44" rx="22" fill="#000000" fill-opacity="0.85" stroke="#f97316" stroke-width="2" />
+    <g transform="translate(14, 8) scale(0.55)">
+      ${DNA_LOGO_SVG}
+    </g>
+    <text x="52" y="28" font-family="system-ui, sans-serif" font-size="15" font-weight="900" fill="#ffffff" letter-spacing="1">STUDYCLOUD</text>
+  </g>
+
+  <!-- Right Section: Details -->
+  <g transform="translate(560, 95)">
+    <rect width="210" height="38" rx="12" fill="#f97316" fill-opacity="0.2" stroke="#f97316" stroke-width="1.5" />
+    <text x="16" y="24" font-family="system-ui, sans-serif" font-size="14" font-weight="900" fill="#f97316" letter-spacing="1">PRODUIT LIBRAIRIE</text>
+  </g>
+
+  <text x="560" y="175" font-family="system-ui, sans-serif" font-size="18" font-weight="700" fill="#94a3b8">${category}</text>
+
+  <text x="560" y="235" font-family="system-ui, sans-serif" font-size="36" font-weight="900" fill="#ffffff">
+    ${title.length > 32 ? title.substring(0, 30) + '...' : title}
+  </text>
+
+  <!-- Price Badge -->
+  <g transform="translate(560, 280)">
+    <rect width="320" height="70" rx="20" fill="url(#accentGrad)" />
+    <text x="24" y="48" font-family="system-ui, sans-serif" font-size="36" font-weight="900" fill="#ffffff">${price}</text>
+  </g>
+
+  <!-- Seller Badge -->
+  <g transform="translate(560, 395)">
+    <circle cx="24" cy="24" r="24" fill="#334155" stroke="#f97316" stroke-width="1.5" />
+    <text x="24" y="32" font-family="system-ui, sans-serif" font-size="18" font-weight="bold" fill="#ffffff" text-anchor="middle">🛒</text>
+    <text x="64" y="20" font-family="system-ui, sans-serif" font-size="14" font-weight="600" fill="#94a3b8">Boutique du vendeur</text>
+    <text x="64" y="42" font-family="system-ui, sans-serif" font-size="20" font-weight="800" fill="#ffffff">${seller}</text>
+  </g>
+
+  <!-- CTA -->
+  <g transform="translate(560, 485)">
+    <rect width="380" height="55" rx="16" fill="#16a34a" />
+    <text x="35" y="35" font-family="system-ui, sans-serif" font-size="18" font-weight="900" fill="#ffffff">💬 Commander sur WhatsApp</text>
+  </g>
+</svg>`;
+
+        return new Response(svg, {
+          status: 200,
+          headers: {
+            'Content-Type': 'image/svg+xml; charset=utf-8',
+            'Cache-Control': 'public, max-age=3600',
+            ...corsHeaders(origin)
+          }
+        });
+      }
+
+      if (path.match(/^\/api\/products\/[^/]+\/order$/) && method === 'GET') {
+        await ensureShopAndProductTables(env.DB);
+        const id = path.split('/')[3];
+        const product: any = await env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first();
+        if (!product) return errorResponse('Produit introuvable', 404, origin);
+
+        const [sellerUser, sellerShop]: any = await Promise.all([
+          env.DB.prepare('SELECT id, name, phone, country FROM users WHERE id = ?').bind(product.seller_id).first(),
+          env.DB.prepare('SELECT shop_name, shop_phone, shop_whatsapp FROM shop_profiles WHERE user_id = ?').bind(product.seller_id).first()
+        ]);
+
+        const rawPhone = product.seller_whatsapp || sellerShop?.shop_whatsapp || product.seller_phone || sellerShop?.shop_phone || sellerUser?.phone || '';
+        let cleanPhone = String(rawPhone || '').replace(/\D/g, '');
+        if (cleanPhone.length === 10 && cleanPhone.startsWith('0')) {
+          cleanPhone = '225' + cleanPhone;
+        } else if (cleanPhone.length === 8 && !cleanPhone.startsWith('225')) {
+          cleanPhone = '225' + cleanPhone;
+        }
+
+        const appOrigin = url.origin.includes('localhost') ? url.origin : 'https://studycloud.dkd-technologies.com';
+        const productShareUrl = `${appOrigin}/share/product/${encodeURIComponent(product.id)}`;
+        const bannerImageUrl = `${appOrigin}/api/products/${encodeURIComponent(product.id)}/banner`;
+
+        const autoMessage = `Bonjour ! Je suis intéressé(e) par votre produit : *${product.title}* (${product.price}).\n\nLien vers le produit : ${productShareUrl}`;
+        const whatsappUrl = cleanPhone
+          ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(autoMessage)}`
+          : '';
+
+        try {
+          await env.DB.prepare('UPDATE products SET sales = sales + 1 WHERE id = ?').bind(product.id).run();
+        } catch (e) {}
+
+        if (url.searchParams.get('redirect') === 'true' && whatsappUrl) {
+          return Response.redirect(whatsappUrl, 302);
+        }
+
+        return jsonResponse({
+          success: true,
+          whatsappUrl,
+          cleanPhone,
+          message: autoMessage,
+          productShareUrl,
+          bannerImageUrl,
+          product: {
+            id: product.id,
+            title: product.title,
+            price: product.price,
+            sellerName: product.seller_name || sellerShop?.shop_name || 'Vendeur StudyCloud'
+          }
+        }, 200, origin);
+      }
+
+      if (path.match(/^\/share\/product\/[^/]+$/) && method === 'GET') {
+        await ensureShopAndProductTables(env.DB);
+        const id = path.split('/')[3];
+        const product: any = await env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first();
+        const appOrigin = url.origin.includes('localhost') ? url.origin : 'https://studycloud.dkd-technologies.com';
+        const targetUrl = `${appOrigin}/?product=${encodeURIComponent(id)}`;
+
+        if (!product) {
+          return Response.redirect(targetUrl, 302);
+        }
+
+        const bannerUrl = `${appOrigin}/api/products/${encodeURIComponent(id)}/banner`;
+        const title = escapeHtml(product.title + ' (' + product.price + ') - StudyCloud');
+        const description = escapeHtml(`Je suis intéressé(e) par ce produit sur StudyCloud : ${product.description || product.title}`);
+
+        const html = `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <title>${title}</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <meta property="og:type" content="product">
+  <meta property="og:site_name" content="StudyCloud">
+  <meta property="og:title" content="${title}">
+  <meta property="og:description" content="${description}">
+  <meta property="og:image" content="${bannerUrl}">
+  <meta property="og:image:secure_url" content="${bannerUrl}">
+  <meta property="og:image:type" content="image/svg+xml">
+  <meta property="og:image:width" content="1200">
+  <meta property="og:image:height" content="630">
+  <meta property="og:url" content="${targetUrl}">
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${title}">
+  <meta name="twitter:description" content="${description}">
+  <meta name="twitter:image" content="${bannerUrl}">
+  <meta http-equiv="refresh" content="0;url=${targetUrl}">
+  <script>
+    window.location.replace("${targetUrl}");
+  </script>
+</head>
+<body style="background:#0b0f19;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
+  <div style="text-align:center;">
+    <h2>Redirection vers StudyCloud...</h2>
+    <p><a href="${targetUrl}" style="color:#f97316;font-weight:bold;">Ouvrir le produit sur StudyCloud</a></p>
+  </div>
+</body>
+</html>`;
+
+        return new Response(html, {
+          status: 200,
+          headers: {
+            'Content-Type': 'text/html; charset=utf-8',
+            ...corsHeaders(origin)
+          }
+        });
+      }
+
       if (path === '/api/seller-follows') {
         await ensureShopAndProductTables(env.DB);
         if (method === 'GET') {

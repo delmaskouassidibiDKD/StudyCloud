@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Menu, X, Package, List, Megaphone, BarChart2, Plus, Trash2, Check, DollarSign, Eye, Upload, Loader2, Share2, Search, ChevronDown, Store, Phone, MessageCircle, User, Camera, Edit3, Zap, Tag, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { StudyCloudAPI } from '../services/api';
+import studentLogo from '../assets/student-logo.jpg';
 
 interface ProductItem {
   id: string;
@@ -130,6 +131,21 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
         setTempFieldValue('Autre');
         setCustomEditCategory(shopCategory);
       }
+    }
+  };
+
+  const handleOrderProduct = async (product: { id: string; title: string }) => {
+    triggerToast("Ouverture de la discussion WhatsApp...");
+    try {
+      const res = await StudyCloudAPI.orderProductViaWhatsApp(product.id);
+      if (res.success && res.whatsappUrl) {
+        window.open(res.whatsappUrl, '_blank');
+      } else {
+        triggerToast("Le numéro WhatsApp n'est pas encore configuré.");
+      }
+    } catch (e) {
+      console.warn("Erreur commande WhatsApp:", e);
+      triggerToast("Erreur lors de la prise de contact WhatsApp.");
     }
   };
 
@@ -1406,7 +1422,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                                   type="button"
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    triggerToast(`Commande initiée pour "${item.title}" !`);
+                                    handleOrderProduct(item);
                                   }}
                                   className="w-full py-1.5 md:py-2.5 bg-orange-600 hover:bg-orange-700 text-white font-bold text-[11px] md:text-sm rounded-xl md:rounded-2xl shadow-xs cursor-pointer transition-all"
                                 >
@@ -2356,6 +2372,12 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                   >
                     {imageSlides.map((imgUrl, idx) => (
                       <div key={idx} className="w-full shrink-0 snap-center h-72 sm:h-80 bg-white flex items-center justify-center relative p-3">
+                        {/* Badge Logo StudyCloud en haut de l'image */}
+                        <div className="absolute top-4 left-5 flex items-center gap-1.5 px-3 py-1 bg-stone-900/90 backdrop-blur-md rounded-full border border-orange-500/50 shadow-md z-10">
+                          <img src={studentLogo} alt="StudyCloud" className="w-4 h-4 rounded-full object-cover" />
+                          <span className="text-[10px] font-black text-white tracking-wider">STUDYCLOUD</span>
+                        </div>
+
                         {imgUrl ? (
                           <img src={imgUrl} alt={`${selectedDetailProduct.title} - Image ${idx + 1}`} className="w-full h-full object-contain" />
                         ) : (
@@ -2420,9 +2442,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
             <div className="px-4 pt-3">
               <button
                 type="button"
-                onClick={() => {
-                  triggerToast(`Commande initiée pour "${selectedDetailProduct.title}" !`);
-                }}
+                onClick={() => handleOrderProduct(selectedDetailProduct)}
                 className="w-full py-3.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-sm rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-98"
               >
                 Commander

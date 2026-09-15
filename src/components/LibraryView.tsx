@@ -5,6 +5,7 @@ import { FileIconBadge } from './FileIconBadge';
 import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
 import { DownloadDestinationModal, DownloadDestinationChoice } from './DownloadDestinationModal';
 import { importFilesToMesFichiers } from '../services/userSync';
+import studentLogo from '../assets/student-logo.jpg';
 
 interface ProductItem {
   id: string;
@@ -292,6 +293,21 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     setTimeout(() => setToastMsg(null), 3000);
   };
 
+  const handleOrderProduct = async (product: { id: string; title: string }) => {
+    triggerToast("Ouverture de la discussion WhatsApp...");
+    try {
+      const res = await StudyCloudAPI.orderProductViaWhatsApp(product.id);
+      if (res.success && res.whatsappUrl) {
+        window.open(res.whatsappUrl, '_blank');
+      } else {
+        triggerToast("Le vendeur n'a pas encore configuré son numéro WhatsApp.");
+      }
+    } catch (e) {
+      console.warn("Erreur commande WhatsApp:", e);
+      triggerToast("Erreur lors de la prise de contact WhatsApp.");
+    }
+  };
+
   const mapRowToProduct = useCallback((row: any): ProductItem => ({
     id: String(row.id),
     sellerId: row.seller_id,
@@ -348,6 +364,26 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         setHasMoreProducts(Boolean(res.pagination?.hasMore));
         try {
           localStorage.setItem('unifolder_published_products', JSON.stringify(mapped));
+        } catch (e) {}
+
+        // Détection d'un produit spécifique depuis l'URL (?product=123)
+        try {
+          const targetProductId = new URLSearchParams(window.location.search).get('product');
+          if (targetProductId) {
+            setActiveSubTab('librairie');
+            const found = mapped.find((p: ProductItem) => p.id === targetProductId);
+            if (found) {
+              setSelectedDetailProduct(found);
+              setActiveDetailImageIndex(0);
+            } else {
+              StudyCloudAPI.getProducts({ search: targetProductId, limit: 1 }).then(r => {
+                if (r.success && r.data && r.data[0]) {
+                  setSelectedDetailProduct(mapRowToProduct(r.data[0]));
+                  setActiveDetailImageIndex(0);
+                }
+              }).catch(() => {});
+            }
+          }
         } catch (e) {}
       }
     } catch (e) {
@@ -996,7 +1032,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                triggerToast(`Commande initiée pour "${item.title}" !`);
+                                handleOrderProduct(item);
                               }}
                               className="w-full py-2 sm:py-2.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-xs transition-all cursor-pointer text-center active:scale-[0.98]"
                             >
@@ -1104,7 +1140,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                triggerToast(`Commande initiée pour "${item.title}" !`);
+                                handleOrderProduct(item);
                               }}
                               className="w-full py-2 sm:py-2.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-xs transition-all cursor-pointer text-center active:scale-[0.98]"
                             >
@@ -1595,6 +1631,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   >
                     {imageSlides.map((imgUrl, idx) => (
                       <div key={idx} className="w-full shrink-0 snap-center h-72 sm:h-80 bg-white flex items-center justify-center relative p-3">
+                        {/* Badge Logo StudyCloud en haut de l'image */}
+                        <div className="absolute top-4 left-5 flex items-center gap-1.5 px-3 py-1 bg-stone-900/90 backdrop-blur-md rounded-full border border-orange-500/50 shadow-md z-10">
+                          <img src={studentLogo} alt="StudyCloud" className="w-4 h-4 rounded-full object-cover" />
+                          <span className="text-[10px] font-black text-white tracking-wider">STUDYCLOUD</span>
+                        </div>
+
                         {imgUrl ? (
                           <img src={imgUrl} alt={`${selectedDetailProduct.title} - Image ${idx + 1}`} className="w-full h-full object-contain" />
                         ) : (
@@ -1673,9 +1715,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
               <button
                 type="button"
-                onClick={() => {
-                  triggerToast(`Commande initiée pour "${selectedDetailProduct.title}" !`);
-                }}
+                onClick={() => handleOrderProduct(selectedDetailProduct)}
                 className="flex-1 py-3.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-sm rounded-xl transition-all cursor-pointer text-center shadow-md active:scale-98"
               >
                 Commander
@@ -1853,7 +1893,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              triggerToast(`Commande initiée pour "${item.title}" !`);
+                              handleOrderProduct(item);
                             }}
                             className="w-full py-1.5 md:py-2.5 bg-orange-600 hover:bg-orange-700 active:bg-orange-800 text-white font-extrabold text-[11px] md:text-sm rounded-xl md:rounded-2xl shadow-xs transition-all cursor-pointer text-center active:scale-[0.98]"
                           >

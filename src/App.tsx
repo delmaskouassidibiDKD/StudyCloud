@@ -156,6 +156,9 @@ export default function App() {
   const [currentTab, setCurrentTab] = useState<NavigationTab>(() => {
     try {
       const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('product')) {
+        return 'library';
+      }
       if (urlParams.get('view') === 'notifications') {
         localStorage.setItem('studycloud_open_subview', 'notifications');
         return 'settings';

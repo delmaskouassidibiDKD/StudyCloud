@@ -778,6 +778,19 @@ export const StudyCloudAPI = {
     return request(`/api/products/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 
+  async orderProductViaWhatsApp(id: string) {
+    return request<{
+      success: boolean;
+      whatsappUrl?: string;
+      cleanPhone?: string;
+      message?: string;
+      productShareUrl?: string;
+      bannerImageUrl?: string;
+      product?: any;
+      error?: string;
+    }>(`/api/products/${encodeURIComponent(id)}/order`);
+  },
+
   async getSellerFollows(userId: string) {
     return request<{ success: boolean; followedSellerIds: string[] }>(`/api/seller-follows?userId=${encodeURIComponent(userId)}`);
   },
