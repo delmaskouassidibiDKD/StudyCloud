@@ -34,14 +34,15 @@ const banner = `// =============================================================
 /* eslint-disable */
 `;
 
-// Écrire dans STUDYCLOUD_WORKER.js et CODE_A_COLLER_DANS_CLOUDFLARE.js
+// Écrire uniquement dans STUDYCLOUD_WORKER.js (fichier unique officiel)
 const codeToSave = banner + originalCode + '\n';
 fs.writeFileSync(targetWorkerPath, codeToSave, 'utf8');
-const codeCollerPath = path.join(workerDir, 'CODE_A_COLLER_DANS_CLOUDFLARE.js');
-fs.writeFileSync(codeCollerPath, codeToSave, 'utf8');
 
 // Supprimer impérativement les anciens fichiers résiduels
 const legacyFiles = [
+  path.join(workerDir, 'CODE_A_COLLER_DANS_CLOUDFLARE.js'),
+  path.join(workerDir, 'CODE_A_COLLER_DANS_CLOUDFLARE_AI.js'),
+  path.join(workerDir, 'CODE_A_COLLER_DANS_CLOUDFLARE_GEMINI.js'),
   path.join(workerDir, 'CLOUDFLARE_WORKER.js'),
   path.join(workerDir, 'worker-clean.js'),
   path.join(workerDir, 'service-worker.js'),

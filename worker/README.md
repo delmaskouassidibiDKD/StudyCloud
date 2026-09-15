@@ -18,7 +18,7 @@ Ce dossier contient le code complet du **Cloudflare Worker** qui sert d'intermé
 
 1. Rendez-vous sur votre compte **Cloudflare** > **Workers & Pages** > Votre Worker StudyCloud.
 2. Cliquez sur **Edit code** (Éditer le code).
-3. Ouvrez le fichier unique officiel [`worker/CLOUDFLARE_WORKER.js`](./CLOUDFLARE_WORKER.js), copiez tout son contenu (Ctrl+A puis Ctrl+C).
+3. Ouvrez le fichier unique officiel [`worker/STUDYCLOUD_WORKER.js`](./STUDYCLOUD_WORKER.js), copiez tout son contenu (Ctrl+A puis Ctrl+C).
 4. Collez-le dans l'éditeur Cloudflare et cliquez sur **Deploy** (Déployer).
 5. **C'est tout !** Le Worker intègre désormais l'auto-migration automatique de toute la base D1 (`ensureDatabaseSchema`), la purge automatique des comptes expirés et toutes les fonctionnalités récentes.
 6. **Lier la base D1 et le Bucket R2 au Worker** :
