@@ -288,6 +288,7 @@ export default function App() {
       if (!shareModalTargetItems) {
         setUploadedItems([]);
       }
+      showToast(`✨ Votre lien "${linkName.trim()}" a été créé avec succès (${userCountry}) ! Retrouvez-le dans Partagés.`);
 
       try {
         await StudyCloudAPI.createShare({

@@ -143,7 +143,7 @@ export const CreateShareLinkModal: React.FC<CreateShareLinkModalProps> = ({
               <p className="text-xs text-stone-600">Génération du jeton cryptographique, page autonome et synchronisation...</p>
             </div>
             <div className="bg-orange-50 border-2 border-stone-800 rounded-2xl p-3 text-xs text-orange-900 font-medium shadow-[2px_2px_0px_0px_#1c1917]">
-              💡 Création et sécurisation de votre lien en cours...
+              💡 Vous pouvez continuer vos activités, un message vous notifiera une fois terminé.
             </div>
           </div>
         ) : createdFolder ? (
