@@ -154,6 +154,13 @@ export default function App() {
   });
 
   const [currentTab, setCurrentTab] = useState<NavigationTab>(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      if (urlParams.get('view') === 'notifications') {
+        localStorage.setItem('studycloud_open_subview', 'notifications');
+        return 'settings';
+      }
+    } catch (e) {}
     const saved = localStorage.getItem('unifolder_current_tab');
     if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file'].includes(saved)) {
       return saved as NavigationTab;
@@ -164,6 +171,21 @@ export default function App() {
   const [searchQuery, setSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState('Tous');
   const [toastMessage, setToastMessage] = useState<string | null>(null);
+
+  // Écouter les clics sur les notifications push du Service Worker
+  useEffect(() => {
+    if ('serviceWorker' in navigator) {
+      const handleSwMessage = (event: MessageEvent) => {
+        if (event.data && event.data.type === 'OPEN_NOTIFICATIONS') {
+          setCurrentTab('settings');
+          localStorage.setItem('studycloud_open_subview', 'notifications');
+          window.dispatchEvent(new Event('studycloud_open_notifications'));
+        }
+      };
+      navigator.serviceWorker.addEventListener('message', handleSwMessage);
+      return () => navigator.serviceWorker.removeEventListener('message', handleSwMessage);
+    }
+  }, []);
 
   const handleSetTab = (tab: NavigationTab) => {
     if (tab !== 'publish-file') {

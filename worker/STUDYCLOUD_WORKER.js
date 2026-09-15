@@ -943,10 +943,60 @@ __name(renderShareLandingHtml, "renderShareLandingHtml");
 var isSchemaInitialized = true;
 var isEmailVerifTableInitialized = true;
 var isReferralsTableInitialized = false;
+var isNotificationsTableInitialized = false;
 function generateReferralCode() {
   return Math.floor(1e8 + Math.random() * 9e8).toString();
 }
 __name(generateReferralCode, "generateReferralCode");
+async function ensureNotificationsTable(db) {
+  if (isNotificationsTableInitialized || !db)
+    return;
+  try {
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        item_ref TEXT,
+        type TEXT DEFAULT 'general',
+        is_read INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("DELETE FROM notifications WHERE created_at < datetime('now', '-21 days')").run();
+    } catch (e) {
+    }
+    isNotificationsTableInitialized = true;
+  } catch (err) {
+    console.error("[StudyCloud Notifications Table Init Error]", err);
+  }
+}
+__name(ensureNotificationsTable, "ensureNotificationsTable");
+async function createNotification(db, userId, title, description, itemRef, type = "general") {
+  if (!db || !userId)
+    return;
+  try {
+    await ensureNotificationsTable(db);
+    const id = crypto.randomUUID();
+    await db.prepare(`
+      INSERT INTO notifications (id, user_id, title, description, item_ref, type, is_read, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+    `).bind(id, userId, title, description, itemRef || null, type).run();
+  } catch (err) {
+    console.error("[Create Notification Error]", err);
+  }
+}
+__name(createNotification, "createNotification");
 async function ensureReferralsTables(db) {
   if (isReferralsTableInitialized || !db)
     return;
@@ -1070,6 +1120,14 @@ async function processReferralAttribution(db, referralCode, newUserId, newUserNa
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(referrer.referral_code, newUserId).run();
+    await createNotification(
+      db,
+      referrer.id,
+      "Nouveau parrainage valid\xE9 !",
+      `F\xE9licitations ! ${newUserName || "Un nouvel \xE9tudiant"} s'est inscrit avec succ\xE8s gr\xE2ce \xE0 votre lien d'invitation. Vous avez remport\xE9 +${totalRewardDays} jours de visibilit\xE9 gratuite !`,
+      `Invitation r\xE9ussie \u2022 Code ${cleanCode}`,
+      "referral"
+    );
     console.log(`[Parrainage R\xE9ussi] Utilisateur ${newUserId} parrain\xE9 par ${referrer.name} (${cleanCode}) : +${totalRewardDays} jours.`);
   } catch (err) {
     console.error("[Erreur Attribution Parrainage]", err);
@@ -2253,6 +2311,14 @@ var src_default = {
               updated_at = CURRENT_TIMESTAMP
             WHERE id = ?
           `).bind(user.id).run();
+          await createNotification(
+            env.DB,
+            user.id,
+            "Bienvenue sur StudyCloud !",
+            "F\xE9licitations ! Votre compte StudyCloud a \xE9t\xE9 activ\xE9 avec succ\xE8s. Vous pouvez d\xE9sormais stocker, classer et prot\xE9ger vos cours, devoirs et documents universitaires en toute s\xE9r\xE9nit\xE9.",
+            "Guide de d\xE9marrage StudyCloud",
+            "welcome"
+          );
           const jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
           const tokenHash = await hashToken(jwtToken);
           const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
@@ -2578,6 +2644,14 @@ var src_default = {
           if (body.referralCode) {
             await processReferralAttribution(env.DB, body.referralCode, userId, profile.name || cleanGoogleEmail, cleanGoogleEmail);
           }
+          await createNotification(
+            env.DB,
+            userId,
+            "Bienvenue sur StudyCloud !",
+            "F\xE9licitations ! Votre compte StudyCloud a \xE9t\xE9 activ\xE9 avec succ\xE8s via Google. Vous pouvez d\xE9sormais stocker, classer et prot\xE9ger vos cours, devoirs et documents universitaires en toute s\xE9r\xE9nit\xE9.",
+            "Guide de d\xE9marrage StudyCloud",
+            "welcome"
+          );
         } else {
           await env.DB.prepare(`
             UPDATE users SET
@@ -4013,6 +4087,14 @@ var src_default = {
             finalIsPublic,
             tagsJson || "[]"
           ).run();
+          await createNotification(
+            env.DB,
+            userId,
+            "Confirmation de d\xE9p\xF4t de document",
+            `Votre document "${title}" a \xE9t\xE9 partag\xE9 avec succ\xE8s dans la communaut\xE9 StudyCloud. Il est d\xE9sormais index\xE9 et disponible pour vos camarades.`,
+            `${matiereName || category || "Ressource"} \u2022 ${title}`,
+            "document"
+          );
           return jsonResponse({
             success: true,
             id: docId,
@@ -4096,18 +4178,75 @@ var src_default = {
         if (method === "GET") {
           if (!userId)
             return errorResponse("userId requis", 400, origin);
-          const { results } = await env.DB.prepare("SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all();
-          return jsonResponse({ success: true, data: results }, 200, origin);
+          if (env.DB) {
+            await ensureNotificationsTable(env.DB);
+            try {
+              await env.DB.prepare("DELETE FROM notifications WHERE created_at < datetime('now', '-21 days')").run();
+            } catch (e) {
+            }
+            const sortParam = url.searchParams.get("sort");
+            const sortOrder = sortParam === "oldest" ? "ASC" : "DESC";
+            const { results } = await env.DB.prepare(`
+              SELECT * FROM notifications 
+              WHERE user_id = ? 
+              ORDER BY created_at ${sortOrder}
+            `).bind(userId).all();
+            const unreadRow = await env.DB.prepare(`
+              SELECT COUNT(*) as count FROM notifications 
+              WHERE user_id = ? AND is_read = 0
+            `).bind(userId).first();
+            return jsonResponse({
+              success: true,
+              data: results || [],
+              unreadCount: Number(unreadRow?.count || 0)
+            }, 200, origin);
+          }
+          return jsonResponse({ success: true, data: [], unreadCount: 0 }, 200, origin);
         }
         if (method === "POST") {
           const body = await request.json();
-          const { id, userId: userId2, title, description, itemRef } = body;
-          await env.DB.prepare(`
-            INSERT INTO notifications (id, user_id, title, description, item_ref)
-            VALUES (?, ?, ?, ?, ?)
-          `).bind(id || crypto.randomUUID(), userId2, title, description, itemRef || null).run();
+          const { id, userId: targetUserId, title, description, itemRef, type } = body;
+          if (!targetUserId || !title)
+            return errorResponse("userId et title requis", 400, origin);
+          if (env.DB) {
+            await ensureNotificationsTable(env.DB);
+            await env.DB.prepare(`
+              INSERT INTO notifications (id, user_id, title, description, item_ref, type, is_read, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+            `).bind(id || crypto.randomUUID(), targetUserId, title, description || "", itemRef || null, type || "general").run();
+          }
           return jsonResponse({ success: true }, 201, origin);
         }
+        if (method === "DELETE") {
+          const notifId = url.searchParams.get("id");
+          const all = url.searchParams.get("all") === "true";
+          if (!userId)
+            return errorResponse("userId requis", 400, origin);
+          if (env.DB) {
+            await ensureNotificationsTable(env.DB);
+            if (all) {
+              await env.DB.prepare("DELETE FROM notifications WHERE user_id = ?").bind(userId).run();
+            } else if (notifId) {
+              await env.DB.prepare("DELETE FROM notifications WHERE id = ? AND user_id = ?").bind(notifId, userId).run();
+            }
+          }
+          return jsonResponse({ success: true }, 200, origin);
+        }
+      }
+      if (path === "/api/notifications/read" && (method === "POST" || method === "PATCH")) {
+        const body = await request.json().catch(() => ({}));
+        const { userId, notificationId, all } = body;
+        if (!userId)
+          return errorResponse("userId requis", 400, origin);
+        if (env.DB) {
+          await ensureNotificationsTable(env.DB);
+          if (all) {
+            await env.DB.prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?").bind(userId).run();
+          } else if (notificationId) {
+            await env.DB.prepare("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?").bind(notificationId, userId).run();
+          }
+        }
+        return jsonResponse({ success: true }, 200, origin);
       }
       if (path === "/api/chat") {
         const userId = url.searchParams.get("userId");
@@ -4448,6 +4587,11 @@ var src_default = {
           WHERE created_at < datetime('now', '-30 days')
         `).run();
         console.log("[StudyCloud Cron] Purge des interactions utilisateur de plus de 30 jours effectu\xE9e avec succ\xE8s.");
+        await env.DB.prepare(`
+          DELETE FROM notifications 
+          WHERE created_at < datetime('now', '-21 days')
+        `).run();
+        console.log("[StudyCloud Cron] Purge des notifications de plus de 3 semaines (21 jours) effectu\xE9e avec succ\xE8s.");
       } catch (e) {
         console.error("[StudyCloud Cron Error]", e);
       }

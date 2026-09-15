@@ -860,12 +860,6 @@ export const StudyCloudAPI = {
     return request(`/api/published-documents/${encodeURIComponent(id)}`, { method: 'DELETE' });
   },
 
-  // --------------------------------------------------------------------------
-  // Notifications
-  // --------------------------------------------------------------------------
-  async getNotifications(userId: string) {
-    return request<{ success: boolean; data: any[] }>(`/api/notifications?userId=${encodeURIComponent(userId)}`);
-  },
 
   // --------------------------------------------------------------------------
   // Assistant Delmas (Chat)
@@ -1027,5 +1021,36 @@ export const StudyCloudAPI = {
 
   async restoreCloud(userId: string) {
     return request<{ success: boolean; data: any }>(`/api/sync/restore?userId=${encodeURIComponent(userId)}`);
+  },
+
+  // --------------------------------------------------------------------------
+  // Notifications (Connecté D1 & Push)
+  // --------------------------------------------------------------------------
+  async getNotifications(userId: string, sort?: 'recent' | 'oldest') {
+    const sortParam = sort ? `&sort=${encodeURIComponent(sort)}` : '';
+    return request<{ success: boolean; data: any[]; unreadCount: number }>(
+      `/api/notifications?userId=${encodeURIComponent(userId)}${sortParam}`
+    );
+  },
+
+  async markNotificationAsRead(userId: string, notificationId?: string, all = false) {
+    return request<{ success: boolean }>(`/api/notifications/read`, {
+      method: 'POST',
+      body: JSON.stringify({ userId, notificationId, all }),
+    });
+  },
+
+  async deleteNotification(userId: string, notificationId?: string, all = false) {
+    let url = `/api/notifications?userId=${encodeURIComponent(userId)}`;
+    if (all) url += '&all=true';
+    else if (notificationId) url += `&id=${encodeURIComponent(notificationId)}`;
+    return request<{ success: boolean }>(url, { method: 'DELETE' });
+  },
+
+  async createNotification(notification: { userId: string; title: string; description: string; itemRef?: string; type?: string }) {
+    return request<{ success: boolean }>('/api/notifications', {
+      method: 'POST',
+      body: JSON.stringify(notification),
+    });
   },
 };

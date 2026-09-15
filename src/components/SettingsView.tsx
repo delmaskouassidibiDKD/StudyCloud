@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { User, Share2, Crown, Settings as SettingsIcon, GraduationCap, Mail, Bell, Headphones, MessageCircle, PlusCircle, Users, AlertTriangle, X, Check, BookOpen, Home, Youtube, LogOut, Camera, Briefcase, Building2 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
+import { StudyCloudAPI } from '../services/api';
 import { PromotionView } from './PromotionView';
 import { SettingsPricingView } from './SettingsPricingView';
 import { NotificationsView } from './NotificationsView';
@@ -16,6 +17,32 @@ export const SettingsView: React.FC = () => {
   const [showReportModal, setShowReportModal] = useState(false);
   const [reportText, setReportText] = useState('');
   const [reportSubmitted, setReportSubmitted] = useState(false);
+  const [unreadCount, setUnreadCount] = useState<number>(0);
+
+  useEffect(() => {
+    const handleOpenNotifs = () => {
+      setActiveSubView('notifications');
+    };
+    if (localStorage.getItem('studycloud_open_subview') === 'notifications') {
+      localStorage.removeItem('studycloud_open_subview');
+      setActiveSubView('notifications');
+    }
+    window.addEventListener('studycloud_open_notifications', handleOpenNotifs);
+    return () => window.removeEventListener('studycloud_open_notifications', handleOpenNotifs);
+  }, []);
+
+  useEffect(() => {
+    if (!user?.id) return;
+    const fetchUnread = async () => {
+      try {
+        const res: any = await StudyCloudAPI.getNotifications(user.id);
+        if (res && res.success && typeof res.unreadCount === 'number') {
+          setUnreadCount(res.unreadCount);
+        }
+      } catch (e) {}
+    };
+    fetchUnread();
+  }, [user?.id, activeSubView]);
 
   if (activeSubView === 'promotion') {
     return <PromotionView onBack={() => setActiveSubView('none')} />;
@@ -178,10 +205,22 @@ export const SettingsView: React.FC = () => {
 
         <button 
           onClick={() => setActiveSubView('notifications')}
-          className="w-full flex items-center justify-center gap-3 bg-[#FDFBF7] hover:bg-orange-50 border-2 border-stone-800 rounded-xl md:rounded-2xl py-3 md:py-4 px-4 md:px-6 text-stone-900 font-bold text-sm md:text-base shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917]"
+          className="w-full flex items-center justify-center gap-3 bg-[#FDFBF7] hover:bg-orange-50 border-2 border-stone-800 rounded-xl md:rounded-2xl py-3 md:py-4 px-4 md:px-6 text-stone-900 font-bold text-sm md:text-base shadow-[3px_3px_0px_0px_#1c1917] transition-all active:translate-x-0.5 active:translate-y-0.5 active:shadow-[1px_1px_0px_0px_#1c1917] relative"
         >
-          <Bell className="w-5 h-5 md:w-6 md:h-6 text-orange-600" />
+          <div className="relative">
+            <Bell className="w-5 h-5 md:w-6 md:h-6 text-orange-600" />
+            {unreadCount > 0 && (
+              <span className="absolute -top-1 -right-2 bg-red-500 text-white font-black text-[10px] w-4 h-4 rounded-full flex items-center justify-center border border-white dark:border-stone-900 shadow-xs animate-pulse">
+                {unreadCount > 99 ? '99+' : unreadCount}
+              </span>
+            )}
+          </div>
           <span>Notifications</span>
+          {unreadCount > 0 && (
+            <span className="ml-auto text-xs font-black bg-red-500/15 text-red-600 border border-red-500/30 px-2.5 py-0.5 rounded-full shadow-xs">
+              {unreadCount}
+            </span>
+          )}
         </button>
 
         <button 

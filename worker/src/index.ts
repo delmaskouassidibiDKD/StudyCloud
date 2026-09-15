@@ -1400,10 +1400,62 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
 let isSchemaInitialized = true;
 let isEmailVerifTableInitialized = true;
 let isReferralsTableInitialized = false;
+let isNotificationsTableInitialized = false;
 
 function generateReferralCode(): string {
   // Code d'invitation à 9 chiffres (ex: 171765542)
   return Math.floor(100000000 + Math.random() * 900000000).toString();
+}
+
+async function ensureNotificationsTable(db: any) {
+  if (isNotificationsTableInitialized || !db) return;
+  try {
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS notifications (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        title TEXT NOT NULL,
+        description TEXT NOT NULL,
+        item_ref TEXT,
+        type TEXT DEFAULT 'general',
+        is_read INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_user ON notifications(user_id)").run(); } catch (e) {}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_notifications_created ON notifications(created_at)").run(); } catch (e) {}
+
+    // Rétention de 3 semaines (21 jours) : purge automatique des notifications anciennes
+    try {
+      await db.prepare("DELETE FROM notifications WHERE created_at < datetime('now', '-21 days')").run();
+    } catch (e) {}
+
+    isNotificationsTableInitialized = true;
+  } catch (err) {
+    console.error('[StudyCloud Notifications Table Init Error]', err);
+  }
+}
+
+async function createNotification(
+  db: any,
+  userId: string,
+  title: string,
+  description: string,
+  itemRef?: string,
+  type: string = 'general'
+) {
+  if (!db || !userId) return;
+  try {
+    await ensureNotificationsTable(db);
+    const id = crypto.randomUUID();
+    await db.prepare(`
+      INSERT INTO notifications (id, user_id, title, description, item_ref, type, is_read, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+    `).bind(id, userId, title, description, itemRef || null, type).run();
+  } catch (err) {
+    console.error('[Create Notification Error]', err);
+  }
 }
 
 async function ensureReferralsTables(db: any) {
@@ -1546,6 +1598,16 @@ async function processReferralAttribution(
         updated_at = CURRENT_TIMESTAMP
       WHERE id = ?
     `).bind(referrer.referral_code, newUserId).run();
+
+    // Notification automatique dans l'application pour le parrain
+    await createNotification(
+      db,
+      referrer.id,
+      "Nouveau parrainage validé !",
+      `Félicitations ! ${newUserName || 'Un nouvel étudiant'} s'est inscrit avec succès grâce à votre lien d'invitation. Vous avez remporté +${totalRewardDays} jours de visibilité gratuite !`,
+      `Invitation réussie • Code ${cleanCode}`,
+      "referral"
+    );
 
     console.log(`[Parrainage Réussi] Utilisateur ${newUserId} parrainé par ${referrer.name} (${cleanCode}) : +${totalRewardDays} jours.`);
   } catch (err) {
@@ -2893,6 +2955,16 @@ export default {
             WHERE id = ?
           `).bind(user.id).run();
 
+          // Notification de bienvenue automatique dans l'application
+          await createNotification(
+            env.DB,
+            user.id,
+            "Bienvenue sur StudyCloud !",
+            "Félicitations ! Votre compte StudyCloud a été activé avec succès. Vous pouvez désormais stocker, classer et protéger vos cours, devoirs et documents universitaires en toute sérénité.",
+            "Guide de démarrage StudyCloud",
+            "welcome"
+          );
+
           // 3. Marquer le token comme utilisé et créer la session
           const jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
           const tokenHash = await hashToken(jwtToken);
@@ -3265,6 +3337,16 @@ export default {
           if (body.referralCode) {
             await processReferralAttribution(env.DB, body.referralCode, userId, profile.name || cleanGoogleEmail, cleanGoogleEmail);
           }
+
+          // Notification de bienvenue automatique dans l'application
+          await createNotification(
+            env.DB,
+            userId,
+            "Bienvenue sur StudyCloud !",
+            "Félicitations ! Votre compte StudyCloud a été activé avec succès via Google. Vous pouvez désormais stocker, classer et protéger vos cours, devoirs et documents universitaires en toute sérénité.",
+            "Guide de démarrage StudyCloud",
+            "welcome"
+          );
         } else {
           // Si l'utilisateur existait déjà avec cet email, on associe google_id et on active la vérification email
           await env.DB.prepare(`
@@ -4857,6 +4939,16 @@ export default {
             tagsJson || '[]'
           ).run();
 
+          // Notification automatique dans l'application pour le dépôt de document
+          await createNotification(
+            env.DB,
+            userId,
+            "Confirmation de dépôt de document",
+            `Votre document "${title}" a été partagé avec succès dans la communauté StudyCloud. Il est désormais indexé et disponible pour vos camarades.`,
+            `${matiereName || category || 'Ressource'} • ${title}`,
+            "document"
+          );
+
           return jsonResponse({
             success: true,
             id: docId,
@@ -4946,24 +5038,87 @@ export default {
       }
 
       // ----------------------------------------------------------------------
-      // 13. NOTIFICATIONS
+      // 13. NOTIFICATIONS (Connecté D1 avec purge automatique 3 semaines / 21 jours)
       // ----------------------------------------------------------------------
       if (path === '/api/notifications') {
         const userId = url.searchParams.get('userId');
+
         if (method === 'GET') {
           if (!userId) return errorResponse('userId requis', 400, origin);
-          const { results } = await env.DB.prepare('SELECT * FROM notifications WHERE user_id = ? ORDER BY created_at DESC').bind(userId).all();
-          return jsonResponse({ success: true, data: results }, 200, origin);
+          if (env.DB) {
+            await ensureNotificationsTable(env.DB);
+            // Purge automatique des notifications de plus de 21 jours (3 semaines)
+            try {
+              await env.DB.prepare("DELETE FROM notifications WHERE created_at < datetime('now', '-21 days')").run();
+            } catch (e) {}
+
+            const sortParam = url.searchParams.get('sort');
+            const sortOrder = sortParam === 'oldest' ? 'ASC' : 'DESC';
+
+            const { results } = await env.DB.prepare(`
+              SELECT * FROM notifications 
+              WHERE user_id = ? 
+              ORDER BY created_at ${sortOrder}
+            `).bind(userId).all();
+
+            const unreadRow: any = await env.DB.prepare(`
+              SELECT COUNT(*) as count FROM notifications 
+              WHERE user_id = ? AND is_read = 0
+            `).bind(userId).first();
+
+            return jsonResponse({
+              success: true,
+              data: results || [],
+              unreadCount: Number(unreadRow?.count || 0)
+            }, 200, origin);
+          }
+          return jsonResponse({ success: true, data: [], unreadCount: 0 }, 200, origin);
         }
+
         if (method === 'POST') {
           const body: any = await request.json();
-          const { id, userId, title, description, itemRef } = body;
-          await env.DB.prepare(`
-            INSERT INTO notifications (id, user_id, title, description, item_ref)
-            VALUES (?, ?, ?, ?, ?)
-          `).bind(id || crypto.randomUUID(), userId, title, description, itemRef || null).run();
+          const { id, userId: targetUserId, title, description, itemRef, type } = body;
+          if (!targetUserId || !title) return errorResponse('userId et title requis', 400, origin);
+          if (env.DB) {
+            await ensureNotificationsTable(env.DB);
+            await env.DB.prepare(`
+              INSERT INTO notifications (id, user_id, title, description, item_ref, type, is_read, created_at)
+              VALUES (?, ?, ?, ?, ?, ?, 0, CURRENT_TIMESTAMP)
+            `).bind(id || crypto.randomUUID(), targetUserId, title, description || '', itemRef || null, type || 'general').run();
+          }
           return jsonResponse({ success: true }, 201, origin);
         }
+
+        if (method === 'DELETE') {
+          const notifId = url.searchParams.get('id');
+          const all = url.searchParams.get('all') === 'true';
+          if (!userId) return errorResponse('userId requis', 400, origin);
+          if (env.DB) {
+            await ensureNotificationsTable(env.DB);
+            if (all) {
+              await env.DB.prepare("DELETE FROM notifications WHERE user_id = ?").bind(userId).run();
+            } else if (notifId) {
+              await env.DB.prepare("DELETE FROM notifications WHERE id = ? AND user_id = ?").bind(notifId, userId).run();
+            }
+          }
+          return jsonResponse({ success: true }, 200, origin);
+        }
+      }
+
+      // Marquer comme lu (unitaire ou tout marquer comme lu)
+      if (path === '/api/notifications/read' && (method === 'POST' || method === 'PATCH')) {
+        const body: any = await request.json().catch(() => ({}));
+        const { userId, notificationId, all } = body;
+        if (!userId) return errorResponse('userId requis', 400, origin);
+        if (env.DB) {
+          await ensureNotificationsTable(env.DB);
+          if (all) {
+            await env.DB.prepare("UPDATE notifications SET is_read = 1 WHERE user_id = ?").bind(userId).run();
+          } else if (notificationId) {
+            await env.DB.prepare("UPDATE notifications SET is_read = 1 WHERE id = ? AND user_id = ?").bind(notificationId, userId).run();
+          }
+        }
+        return jsonResponse({ success: true }, 200, origin);
       }
 
       // ----------------------------------------------------------------------
@@ -5347,6 +5502,12 @@ export default {
           WHERE created_at < datetime('now', '-30 days')
         `).run();
         console.log('[StudyCloud Cron] Purge des interactions utilisateur de plus de 30 jours effectuée avec succès.');
+
+        await env.DB.prepare(`
+          DELETE FROM notifications 
+          WHERE created_at < datetime('now', '-21 days')
+        `).run();
+        console.log('[StudyCloud Cron] Purge des notifications de plus de 3 semaines (21 jours) effectuée avec succès.');
       } catch (e) {
         console.error('[StudyCloud Cron Error]', e);
       }
