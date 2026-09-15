@@ -104,6 +104,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   const [docTitle, setDocTitle] = useState(() => localStorage.getItem('published_doc_title') || '');
   const [docDescription, setDocDescription] = useState(() => localStorage.getItem('published_doc_description') || '');
   const [docCategory, setDocCategory] = useState(() => localStorage.getItem('published_doc_category') || 'Cours');
+  const [customDocCategory, setCustomDocCategory] = useState(() => localStorage.getItem('published_custom_category') || '');
   const [docMatiere, setDocMatiere] = useState(() => localStorage.getItem('published_doc_matiere') || '');
   const [docLevel, setDocLevel] = useState(() => localStorage.getItem('published_doc_level') || '');
   const [docCountry, setDocCountry] = useState(() => localStorage.getItem('published_doc_country') || localStorage.getItem('user_country') || "Côte d'Ivoire");
@@ -113,6 +114,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [modalTitle, setModalTitle] = useState('');
   const [modalCategory, setModalCategory] = useState('Cours');
+  const [customModalCategory, setCustomModalCategory] = useState('');
   const [modalMatiere, setModalMatiere] = useState('');
   const [modalLevel, setModalLevel] = useState('');
   const [modalSchool, setModalSchool] = useState('');
@@ -173,6 +175,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       localStorage.setItem('published_doc_title', docTitle);
       localStorage.setItem('published_doc_description', docDescription);
       localStorage.setItem('published_doc_category', docCategory);
+      localStorage.setItem('published_custom_category', customDocCategory);
       localStorage.setItem('published_doc_matiere', docMatiere);
       localStorage.setItem('published_doc_level', docLevel);
       localStorage.setItem('published_doc_country', docCountry);
@@ -180,7 +183,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     } catch (e) {
       console.error(e);
     }
-  }, [school, filiere, infoMode, docTitle, docDescription, docCategory, docMatiere, docLevel, docCountry, docTags]);
+  }, [school, filiere, infoMode, docTitle, docDescription, docCategory, customDocCategory, docMatiere, docLevel, docCountry, docTags]);
 
   useEffect(() => {
     if (selectedFiles.length > 0 && containerRef.current) {
@@ -457,10 +460,20 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   };
 
   // Gestion de la modale individuelle
+  // Gestion de la modale individuelle
+  const STANDARD_CATEGORIES = ['Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet'];
+
   const openEditModal = (file: any) => {
     setEditingFileId(file.id);
     setModalTitle(file.fileTitle || file.name.replace(/\.[^/.]+$/, '').replace(/[_-_]/g, ' '));
-    setModalCategory(file.fileCategory || docCategory || 'Cours');
+    const cat = file.fileCategory || docCategory || 'Cours';
+    if (STANDARD_CATEGORIES.includes(cat)) {
+      setModalCategory(cat);
+      setCustomModalCategory('');
+    } else {
+      setModalCategory('Autre');
+      setCustomModalCategory(cat);
+    }
     setModalMatiere(file.fileMatiere || docMatiere || '');
     setModalLevel(file.fileLevel || docLevel || '');
     setModalSchool(file.fileSchool || school || '');
@@ -474,23 +487,24 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     setEditingFileId(null);
   };
 
+  const isModalCategoryValid = modalCategory === 'Autre' ? customModalCategory.trim().length > 0 : modalCategory.trim().length > 0;
   const isModalFormValid = 
     modalTitle.trim().length > 0 &&
-    modalCategory.trim().length > 0 &&
+    isModalCategoryValid &&
     modalMatiere.trim().length > 0 &&
     modalLevel.trim().length > 0 &&
-    modalSchool.trim().length > 0 &&
     modalFiliere.trim().length > 0 &&
     modalCountry.trim().length > 0;
 
   const saveEditModal = () => {
     if (!editingFileId || !isModalFormValid) return;
+    const finalCategory = modalCategory === 'Autre' ? (customModalCategory.trim() || 'Autre') : modalCategory;
     setSelectedFiles(prev => prev.map(f => {
       if (f.id === editingFileId) {
         return {
           ...f,
           fileTitle: modalTitle.trim(),
-          fileCategory: modalCategory.trim(),
+          fileCategory: finalCategory,
           fileMatiere: modalMatiere.trim(),
           fileLevel: modalLevel.trim(),
           fileSchool: modalSchool.trim(),
@@ -518,12 +532,12 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     if (nonDuplicates.length === 0 && selectedFiles.some(f => f.isDuplicate)) return false;
 
     if (infoMode === 'all') {
+      const isCatValid = docCategory === 'Autre' ? customDocCategory.trim().length > 0 : docCategory.trim().length > 0;
       return (
         docTitle.trim().length > 0 &&
-        docCategory.trim().length > 0 &&
+        isCatValid &&
         docMatiere.trim().length > 0 &&
         docLevel.trim().length > 0 &&
-        school.trim().length > 0 &&
         filiere.trim().length > 0 &&
         docCountry.trim().length > 0
       );
@@ -653,7 +667,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           title = docTitle.trim() || file.name.replace(/\.[^/.]+$/, '');
           fileSchool = school.trim();
           fileFiliere = filiere.trim();
-          category = docCategory.trim() || 'Cours';
+          category = docCategory === 'Autre' ? (customDocCategory.trim() || 'Autre') : (docCategory.trim() || 'Cours');
           matiereName = docMatiere.trim();
           level = docLevel.trim();
           country = docCountry.trim() || "Côte d'Ivoire";
@@ -677,7 +691,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           matiereName = '';
           level = '';
           country = docCountry || "Côte d'Ivoire";
-          description = '';
+          description = docDescription ? docDescription.trim() : '';
           tagsArray = [];
         }
 
@@ -1276,11 +1290,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     {/* Titre et description */}
                     <div className="flex flex-col sm:flex-row gap-3">
                       <div className="flex-1">
-                        <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center gap-1">
-                          <BookOpen className="w-3 h-3" /> Titre du document <span className="text-red-500">*</span>
+                        <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                          <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" /> Titre du document <span className="text-red-500">*</span></span>
+                          <span className="text-[10px] font-mono text-stone-400">{docTitle.length}/30</span>
                         </label>
                         <input
                           type="text"
+                          maxLength={30}
                           value={docTitle}
                           onChange={(e) => setDocTitle(e.target.value)}
                           placeholder="Ex: Cours d'Électrotechnique S1..."
@@ -1290,11 +1306,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                         />
                       </div>
                       <div className="flex-1">
-                        <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                          Description <span className="text-stone-400 text-[10px] font-normal">(Optionnel)</span>
+                        <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                          <span>Description <span className="text-stone-400 text-[10px] font-normal">(Optionnel)</span></span>
+                          <span className="text-[10px] font-mono text-stone-400">{docDescription.length}/30</span>
                         </label>
                         <input
                           type="text"
+                          maxLength={30}
                           value={docDescription}
                           onChange={(e) => setDocDescription(e.target.value)}
                           placeholder="Courte description du document..."
@@ -1306,23 +1324,40 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     {/* Catégorie, Matière, Niveau */}
                     <div className="flex flex-col sm:flex-row gap-3">
                       <div className="flex-1">
-                        <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                          Catégorie <span className="text-red-500">*</span>
+                        <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                          <span>Catégorie <span className="text-red-500">*</span></span>
+                          {docCategory === 'Autre' && <span className="text-[10px] font-mono text-stone-400">{customDocCategory.length}/30</span>}
                         </label>
-                        <select
-                          value={docCategory}
-                          onChange={(e) => setDocCategory(e.target.value)}
-                          className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none cursor-pointer"
-                        >
-                          {['Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet'].map(c => <option key={c} value={c}>{c}</option>)}
-                        </select>
+                        <div className="space-y-1.5">
+                          <select
+                            value={docCategory}
+                            onChange={(e) => setDocCategory(e.target.value)}
+                            className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none cursor-pointer"
+                          >
+                            {['Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet', 'Autre'].map(c => <option key={c} value={c}>{c}</option>)}
+                          </select>
+                          {docCategory === 'Autre' && (
+                            <input
+                              type="text"
+                              maxLength={30}
+                              value={customDocCategory}
+                              onChange={(e) => setCustomDocCategory(e.target.value)}
+                              placeholder="Précisez la catégorie..."
+                              className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none animate-in fade-in duration-150 ${
+                                !customDocCategory.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
+                              }`}
+                            />
+                          )}
+                        </div>
                       </div>
                       <div className="flex-1">
-                        <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center gap-1">
-                          <GraduationCap className="w-3 h-3" /> Matière <span className="text-red-500">*</span>
+                        <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                          <span className="flex items-center gap-1"><GraduationCap className="w-3 h-3" /> Matière <span className="text-red-500">*</span></span>
+                          <span className="text-[10px] font-mono text-stone-400">{docMatiere.length}/30</span>
                         </label>
                         <input
                           type="text"
+                          maxLength={30}
                           value={docMatiere}
                           onChange={(e) => setDocMatiere(e.target.value)}
                           placeholder="Ex: Mathématiques, Physique..."
@@ -1332,11 +1367,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                         />
                       </div>
                       <div className="flex-1">
-                        <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                          Niveau <span className="text-red-500">*</span>
+                        <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                          <span>Niveau <span className="text-red-500">*</span></span>
+                          <span className="text-[10px] font-mono text-stone-400">{docLevel.length}/30</span>
                         </label>
                         <input
                           type="text"
+                          maxLength={30}
                           value={docLevel}
                           onChange={(e) => setDocLevel(e.target.value)}
                           placeholder="Ex: BTS 1, Licence 2..."
@@ -1350,25 +1387,27 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     {/* École et Filière */}
                     <div className="flex flex-col sm:flex-row gap-3">
                       <div className="flex-1">
-                        <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                          École <span className="text-red-500">*</span>
+                        <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                          <span>École <span className="text-stone-400 text-[10px] font-normal">(Optionnel)</span></span>
+                          <span className="text-[10px] font-mono text-stone-400">{school.length}/30</span>
                         </label>
                         <input 
                           type="text" 
+                          maxLength={30}
                           value={school} 
                           onChange={(e) => setSchool(e.target.value)} 
-                          placeholder="Provenance de l'école..."
-                          className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
-                            !school.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
-                          }`} 
+                          placeholder="Provenance de l'école (facultatif)..."
+                          className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none" 
                         />
                       </div>
                       <div className="flex-1">
-                        <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                          Filière <span className="text-red-500">*</span>
+                        <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                          <span>Filière <span className="text-red-500">*</span></span>
+                          <span className="text-[10px] font-mono text-stone-400">{filiere.length}/30</span>
                         </label>
                         <input 
                           type="text" 
+                          maxLength={30}
                           value={filiere} 
                           onChange={(e) => setFiliere(e.target.value)} 
                           placeholder="Nom de la filière..."
@@ -1382,11 +1421,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     {/* Pays et Tags */}
                     <div className="flex flex-col sm:flex-row gap-3">
                       <div className="flex-1">
-                        <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center gap-1">
-                          <Globe className="w-3 h-3" /> Pays <span className="text-red-500">*</span>
+                        <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                          <span className="flex items-center gap-1"><Globe className="w-3 h-3" /> Pays <span className="text-red-500">*</span></span>
+                          <span className="text-[10px] font-mono text-stone-400">{docCountry.length}/30</span>
                         </label>
                         <input 
                           type="text" 
+                          maxLength={30}
                           value={docCountry} 
                           onChange={(e) => setDocCountry(e.target.value)} 
                           placeholder="Côte d'Ivoire..."
@@ -1396,11 +1437,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                         />
                       </div>
                       <div className="flex-1">
-                        <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center gap-1">
-                          <Tag className="w-3 h-3" /> Tags <span className="text-stone-400 text-[10px] font-normal">(Optionnel, séparés par virgules)</span>
+                        <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                          <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> Tags <span className="text-stone-400 text-[10px] font-normal">(Optionnel, séparés par virgules)</span></span>
+                          <span className="text-[10px] font-mono text-stone-400">{docTags.length}/30</span>
                         </label>
                         <input 
                           type="text" 
+                          maxLength={30}
                           value={docTags} 
                           onChange={(e) => setDocTags(e.target.value)} 
                           placeholder="révision, annales, circuit..."
@@ -1458,16 +1501,32 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   </div>
                 )}
 
-                {/* MODE 3 : Aucune information (les champs disparaissent, bouton immédiatement actif) */}
+                {/* MODE 3 : Aucune information (les champs disparaissent sauf description facultative) */}
                 {infoMode === 'none' && (
-                  <div className="mt-4 bg-emerald-50/80 border-2 border-emerald-600 rounded-2xl p-4 sm:p-5 text-emerald-950 shadow-[2px_2px_0px_0px_#059669] space-y-2">
+                  <div className="mt-4 bg-emerald-50/80 border-2 border-emerald-600 rounded-2xl p-4 sm:p-5 text-emerald-950 shadow-[2px_2px_0px_0px_#059669] space-y-3">
                     <div className="flex items-center gap-2">
                       <CheckCircle2 className="w-5 h-5 text-emerald-600" />
                       <h4 className="text-sm font-black">Mode sans information complémentaire</h4>
                     </div>
                     <p className="text-xs text-emerald-800 font-medium leading-relaxed">
-                      Tous les champs sont masqués. Le nom réel de chaque fichier sera automatiquement enregistré comme titre du document. Vous pouvez directement cliquer sur le bouton <strong>« Valider ({selectedFiles.length}) »</strong> en haut à droite pour publier.
+                      Le nom réel de chaque fichier sera automatiquement enregistré comme titre du document. Vous pouvez ajouter une description facultative ci-dessous ou directement cliquer sur <strong>« Valider ({selectedFiles.length}) »</strong> en haut à droite pour publier.
                     </p>
+
+                    {/* Champ Description facultatif (30 caractères max) */}
+                    <div className="pt-2 border-t border-emerald-300/80">
+                      <label className="block text-[11px] font-bold text-emerald-900 mb-1 flex items-center justify-between">
+                        <span>Description <span className="text-emerald-700 text-[10px] font-normal">(Facultatif)</span></span>
+                        <span className="text-[10px] font-mono text-emerald-800">{docDescription.length}/30</span>
+                      </label>
+                      <input 
+                        type="text"
+                        maxLength={30}
+                        value={docDescription} 
+                        onChange={(e) => setDocDescription(e.target.value)} 
+                        placeholder="Courte description facultative pour ces documents..."
+                        className="w-full bg-white border-2 border-emerald-700 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#059669] focus:outline-none" 
+                      />
+                    </div>
                   </div>
                 )}
               </div>
@@ -1503,11 +1562,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
             <div className="space-y-3">
               {/* Titre */}
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center gap-1">
-                  <BookOpen className="w-3 h-3" /> Titre du document <span className="text-red-500">*</span>
+                <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" /> Titre du document <span className="text-red-500">*</span></span>
+                  <span className="text-[10px] font-mono text-stone-400">{modalTitle.length}/30</span>
                 </label>
                 <input
                   type="text"
+                  maxLength={30}
                   value={modalTitle}
                   onChange={(e) => setModalTitle(e.target.value)}
                   placeholder="Titre de ce document..."
@@ -1520,23 +1581,40 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
               {/* Catégorie & Matière */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                    Catégorie <span className="text-red-500">*</span>
+                  <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                    <span>Catégorie <span className="text-red-500">*</span></span>
+                    {modalCategory === 'Autre' && <span className="text-[10px] font-mono text-stone-400">{customModalCategory.length}/30</span>}
                   </label>
-                  <select
-                    value={modalCategory}
-                    onChange={(e) => setModalCategory(e.target.value)}
-                    className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none cursor-pointer"
-                  >
-                    {['Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet'].map(c => <option key={c} value={c}>{c}</option>)}
-                  </select>
+                  <div className="space-y-1.5">
+                    <select
+                      value={modalCategory}
+                      onChange={(e) => setModalCategory(e.target.value)}
+                      className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none cursor-pointer"
+                    >
+                      {['Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet', 'Autre'].map(c => <option key={c} value={c}>{c}</option>)}
+                    </select>
+                    {modalCategory === 'Autre' && (
+                      <input
+                        type="text"
+                        maxLength={30}
+                        value={customModalCategory}
+                        onChange={(e) => setCustomModalCategory(e.target.value)}
+                        placeholder="Précisez la catégorie..."
+                        className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none animate-in fade-in duration-150 ${
+                          !customModalCategory.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
+                        }`}
+                      />
+                    )}
+                  </div>
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center gap-1">
-                    <GraduationCap className="w-3 h-3" /> Matière <span className="text-red-500">*</span>
+                  <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1"><GraduationCap className="w-3 h-3" /> Matière <span className="text-red-500">*</span></span>
+                    <span className="text-[10px] font-mono text-stone-400">{modalMatiere.length}/30</span>
                   </label>
                   <input
                     type="text"
+                    maxLength={30}
                     value={modalMatiere}
                     onChange={(e) => setModalMatiere(e.target.value)}
                     placeholder="Ex: Mathématiques..."
@@ -1550,11 +1628,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
               {/* Niveau & École */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                    Niveau <span className="text-red-500">*</span>
+                  <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                    <span>Niveau <span className="text-red-500">*</span></span>
+                    <span className="text-[10px] font-mono text-stone-400">{modalLevel.length}/30</span>
                   </label>
                   <input
                     type="text"
+                    maxLength={30}
                     value={modalLevel}
                     onChange={(e) => setModalLevel(e.target.value)}
                     placeholder="Ex: BTS 1, Licence 2..."
@@ -1564,17 +1644,17 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                    École <span className="text-red-500">*</span>
+                  <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                    <span>École <span className="text-stone-400 text-[10px] font-normal">(Optionnel)</span></span>
+                    <span className="text-[10px] font-mono text-stone-400">{modalSchool.length}/30</span>
                   </label>
                   <input
                     type="text"
+                    maxLength={30}
                     value={modalSchool}
                     onChange={(e) => setModalSchool(e.target.value)}
-                    placeholder="Provenance de l'école..."
-                    className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
-                      !modalSchool.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
-                    }`}
+                    placeholder="Provenance de l'école (facultatif)..."
+                    className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none"
                   />
                 </div>
               </div>
@@ -1582,11 +1662,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
               {/* Filière & Pays */}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
-                  <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                    Filière <span className="text-red-500">*</span>
+                  <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                    <span>Filière <span className="text-red-500">*</span></span>
+                    <span className="text-[10px] font-mono text-stone-400">{modalFiliere.length}/30</span>
                   </label>
                   <input
                     type="text"
+                    maxLength={30}
                     value={modalFiliere}
                     onChange={(e) => setModalFiliere(e.target.value)}
                     placeholder="Nom de la filière..."
@@ -1596,11 +1678,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   />
                 </div>
                 <div>
-                  <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center gap-1">
-                    <Globe className="w-3 h-3" /> Pays <span className="text-red-500">*</span>
+                  <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1"><Globe className="w-3 h-3" /> Pays <span className="text-red-500">*</span></span>
+                    <span className="text-[10px] font-mono text-stone-400">{modalCountry.length}/30</span>
                   </label>
                   <input
                     type="text"
+                    maxLength={30}
                     value={modalCountry}
                     onChange={(e) => setModalCountry(e.target.value)}
                     placeholder="Côte d'Ivoire..."
@@ -1613,11 +1697,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
               {/* Description & Tags */}
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1">
-                  Description <span className="text-stone-400 text-[10px] font-normal">(Optionnel)</span>
+                <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                  <span>Description <span className="text-stone-400 text-[10px] font-normal">(Optionnel)</span></span>
+                  <span className="text-[10px] font-mono text-stone-400">{modalDescription.length}/30</span>
                 </label>
                 <input
                   type="text"
+                  maxLength={30}
                   value={modalDescription}
                   onChange={(e) => setModalDescription(e.target.value)}
                   placeholder="Courte description de ce document..."
@@ -1625,11 +1711,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 />
               </div>
               <div>
-                <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center gap-1">
-                  <Tag className="w-3 h-3" /> Tags <span className="text-stone-400 text-[10px] font-normal">(Optionnel, séparés par virgules)</span>
+                <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
+                  <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> Tags <span className="text-stone-400 text-[10px] font-normal">(Optionnel, séparés par virgules)</span></span>
+                  <span className="text-[10px] font-mono text-stone-400">{modalTags.length}/30</span>
                 </label>
                 <input
                   type="text"
+                  maxLength={30}
                   value={modalTags}
                   onChange={(e) => setModalTags(e.target.value)}
                   placeholder="révision, examen, td..."
