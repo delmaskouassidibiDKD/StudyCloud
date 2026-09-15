@@ -303,7 +303,15 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: response.statusText }));
-    throw new Error(err.error || `Erreur API: ${response.status}`);
+    if (response.status === 409 || err?.duplicate) {
+      return {
+        success: false,
+        duplicate: true,
+        message: err?.message || 'Un fichier a été recalé car son deuxième a été enregistré',
+        ...err
+      } as T;
+    }
+    throw new Error(err.error || err.message || `Erreur API: ${response.status}`);
   }
 
   return response.json();

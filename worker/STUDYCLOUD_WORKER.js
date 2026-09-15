@@ -4808,8 +4808,9 @@ Lien vers le produit : ${productShareUrl}`;
           if (!fileName) continue;
 
           // Détecter si le même fichier apparaît deux fois dans le même lot de publication
-          const reqKey = `${fileName.toLowerCase()}_${fileSize}`;
-          if (seenInRequest.has(reqKey)) {
+          const normName = fileName.trim().toLowerCase();
+          const reqKey = `${normName}_${fileSize}`;
+          if (seenInRequest.has(normName) || (fileSize > 0 && seenInRequest.has(reqKey))) {
             duplicates.push({
               fileId: file.id || file.fileId,
               fileName,
@@ -4818,7 +4819,8 @@ Lien vers le produit : ${productShareUrl}`;
             });
             continue;
           }
-          seenInRequest.add(reqKey);
+          seenInRequest.add(normName);
+          if (fileSize > 0) seenInRequest.add(reqKey);
 
           const existing = await env.DB.prepare(`
             SELECT id, title, file_name, file_size 
@@ -5075,7 +5077,7 @@ Lien vers le produit : ${productShareUrl}`;
               message: `Un fichier a été recalé car son deuxième a été enregistré`,
               existingTitle: existingDoc.title,
               fileName
-            }, 409, origin);
+            }, 200, origin);
           }
 
           const docId = id || crypto.randomUUID();

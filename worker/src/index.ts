@@ -4760,7 +4760,62 @@ export default {
               updated_at = CURRENT_TIMESTAMP
           `).bind(body.userId, body.shopName, body.shopPhone, body.shopWhatsapp, body.shopAvatarUrl || null, body.shopCategory || 'Vente digital (PDF)').run();
           return jsonResponse({ success: true, message: 'Profil boutique mis à jour' }, 200, origin);
+      }
+
+      // ── POST /api/shop/delete (Suppression définitive de la boutique) ─────
+      if ((path === '/api/shop/delete' || (path === '/api/shop/profile' && method === 'DELETE')) && (method === 'POST' || method === 'DELETE')) {
+        await ensureShopAndProductTables(env.DB);
+        const body: any = await request.json().catch(() => ({}));
+        const authHeader = request.headers.get('Authorization') || '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        let userId = null;
+        if (token) {
+          try {
+            const payload: any = await verifyJWT(token);
+            userId = payload?.userId;
+          } catch (e) {}
         }
+        if (!userId) {
+          userId = body.userId || url.searchParams.get('userId');
+        }
+        const shopName = (body.shopName || '').trim();
+
+        let shop: any = null;
+        if (userId) {
+          shop = await env.DB.prepare('SELECT * FROM shop_profiles WHERE user_id = ?').bind(userId).first();
+        }
+        if (!shop && shopName) {
+          shop = await env.DB.prepare('SELECT * FROM shop_profiles WHERE LOWER(shop_name) = LOWER(?)').bind(shopName).first();
+          if (shop && !userId) userId = shop.user_id;
+        }
+
+        if (userId) {
+          // 1. Supprimer les interactions liées aux produits du vendeur
+          await env.DB.prepare(`
+            DELETE FROM user_product_interactions WHERE product_id IN (SELECT id FROM products WHERE seller_id = ?)
+          `).bind(userId).run().catch(() => {});
+
+          // 2. Supprimer les articles du panier liés aux produits du vendeur
+          await env.DB.prepare(`
+            DELETE FROM cart_items WHERE product_id IN (SELECT id FROM products WHERE seller_id = ?)
+          `).bind(userId).run().catch(() => {});
+
+          // 3. Supprimer tous les produits du vendeur
+          await env.DB.prepare('DELETE FROM products WHERE seller_id = ?').bind(userId).run().catch(() => {});
+
+          // 4. Supprimer les abonnements / followers du vendeur
+          await env.DB.prepare('DELETE FROM seller_follows WHERE seller_id = ? OR user_id = ?').bind(userId, userId).run().catch(() => {});
+
+          // 5. Supprimer le profil boutique
+          await env.DB.prepare('DELETE FROM shop_profiles WHERE user_id = ?').bind(userId).run().catch(() => {});
+        } else if (shopName) {
+          await env.DB.prepare('DELETE FROM shop_profiles WHERE LOWER(shop_name) = LOWER(?)').bind(shopName).run().catch(() => {});
+        }
+
+        return jsonResponse({
+          success: true,
+          message: 'La boutique et toutes ses données associées ont été supprimées définitivement.'
+        }, 200, origin);
       }
 
       // ── GET /api/shop/analytics?userId=... ─────────────────────────────
@@ -5454,7 +5509,11 @@ export default {
         }
 
         try {
-          await env.DB.prepare('UPDATE products SET views = views + 1 WHERE id = ?').bind(id).run();
+          if (interactionType === 'order' || interactionType === 'click_order' || interactionType === 'sale') {
+            await env.DB.prepare('UPDATE products SET sales = sales + 1 WHERE id = ?').bind(id).run();
+          } else {
+            await env.DB.prepare('UPDATE products SET views = views + 1 WHERE id = ?').bind(id).run();
+          }
         } catch (e) {}
 
         return jsonResponse({ success: true, message: 'Interaction produit enregistrée' }, 200, origin);
@@ -5492,6 +5551,86 @@ export default {
           }
           return jsonResponse({ success: true, message: 'Article retiré du panier' }, 200, origin);
         }
+      }
+
+      // ── Vérification des doublons de documents publiés ─────────────
+      if (path === '/api/published-documents/check-duplicates' && method === 'POST') {
+        const body: any = await request.json().catch(() => ({}));
+        const { userId, files } = body;
+        if (!userId || !Array.isArray(files)) {
+          return errorResponse('userId et liste files requis', 400, origin);
+        }
+        try {
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS published_documents (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              title TEXT NOT NULL,
+              description TEXT,
+              school TEXT,
+              filiere TEXT,
+              matiere_name TEXT,
+              level TEXT,
+              category TEXT DEFAULT 'Cours',
+              author_name TEXT,
+              country TEXT,
+              info_mode TEXT DEFAULT 'all',
+              file_name TEXT,
+              file_size INTEGER DEFAULT 0,
+              file_type TEXT,
+              r2_key TEXT,
+              file_url TEXT,
+              is_public INTEGER DEFAULT 1,
+              downloads_count INTEGER DEFAULT 0,
+              views_count INTEGER DEFAULT 0,
+              tags_json TEXT DEFAULT '[]',
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+        } catch (e) {}
+
+        const duplicates: any[] = [];
+        const seenInRequest = new Set<string>();
+        for (const file of files) {
+          const fileName = file.name || file.fileName || '';
+          const fileSize = file.size || file.fileSize || 0;
+          if (!fileName) continue;
+
+          // Détecter si le même fichier apparaît deux fois dans le même lot de publication
+          const normName = fileName.trim().toLowerCase();
+          const reqKey = `${normName}_${fileSize}`;
+          if (seenInRequest.has(normName) || (fileSize > 0 && seenInRequest.has(reqKey))) {
+            duplicates.push({
+              fileId: file.id || file.fileId,
+              fileName,
+              isDuplicate: true,
+              message: 'Un fichier a été recalé car son deuxième a été enregistré'
+            });
+            continue;
+          }
+          seenInRequest.add(normName);
+          if (fileSize > 0) seenInRequest.add(reqKey);
+
+          const existing: any = await env.DB.prepare(`
+            SELECT id, title, file_name, file_size 
+            FROM published_documents 
+            WHERE (user_id = ? AND LOWER(file_name) = LOWER(?))
+               OR (user_id = ? AND file_size > 0 AND file_size = ? AND LOWER(file_name) = LOWER(?))
+            LIMIT 1
+          `).bind(userId, fileName, userId, fileSize, fileName).first();
+
+          if (existing) {
+            duplicates.push({
+              fileId: file.id || file.fileId,
+              fileName,
+              isDuplicate: true,
+              existingTitle: existing.title,
+              message: 'Un fichier a été recalé car son deuxième a été enregistré'
+            });
+          }
+        }
+        return jsonResponse({ success: true, duplicates }, 200, origin);
       }
 
       // ----------------------------------------------------------------------
@@ -5697,6 +5836,25 @@ export default {
 
           if (!userId || !title || !fileName) {
             return errorResponse('userId, title et fileName sont obligatoires', 400, origin);
+          }
+
+          // Vérification de doublon strict : si le même fichier est déjà présent
+          const existingDoc: any = await env.DB.prepare(`
+            SELECT id, title, file_name, file_size 
+            FROM published_documents 
+            WHERE (user_id = ? AND LOWER(file_name) = LOWER(?))
+               OR (user_id = ? AND file_size > 0 AND file_size = ? AND LOWER(file_name) = LOWER(?))
+            LIMIT 1
+          `).bind(userId, fileName, userId, fileSize || 0, fileName).first();
+
+          if (existingDoc) {
+            return jsonResponse({
+              success: false,
+              duplicate: true,
+              message: `Un fichier a été recalé car son deuxième a été enregistré`,
+              existingTitle: existingDoc.title,
+              fileName
+            }, 200, origin);
           }
 
           const docId = id || crypto.randomUUID();

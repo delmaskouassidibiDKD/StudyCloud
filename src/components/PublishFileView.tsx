@@ -557,8 +557,23 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       });
       setUploadProgress(20);
 
-      // 1. Vérification des doublons auprès du Worker
-      const duplicateFileIdSet = new Set<string>();
+      // 1. Détection locale immédiate des doublons dans le même lot sélectionné
+      const localSeenNames = new Set<string>();
+      const localDuplicateIdSet = new Set<string>();
+      for (const f of selectedFiles) {
+        const normName = (f.name || '').trim().toLowerCase();
+        if (normName) {
+          if (localSeenNames.has(normName)) {
+            // Deuxième occurrence du même fichier : recalé
+            localDuplicateIdSet.add(f.id);
+          } else {
+            localSeenNames.add(normName);
+          }
+        }
+      }
+
+      // 2. Vérification des doublons auprès du Worker (déjà dans D1 ou dans le lot)
+      const duplicateFileIdSet = new Set<string>(localDuplicateIdSet);
       const duplicateNameSet = new Set<string>();
       try {
         const checkRes = await StudyCloudAPI.checkPublishedDuplicates(
@@ -581,7 +596,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       }
 
       // Marquer les fichiers détectés comme doublons
-      // Si l'ID exact a été identifié par le Worker, seul ce doublon précis est marqué (le premier s'enregistre, le 2e est refusé)
+      // Si le même fichier apparaît deux fois, seul le premier s'enregistre, le second est refusé/recalé
       const updatedFiles = selectedFiles.map(f => {
         const isDup = duplicateFileIdSet.size > 0
           ? duplicateFileIdSet.has(f.id)
@@ -686,27 +701,36 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
         setUploadProgress(basePercent + Math.round(35 / filesToPublish.length));
 
-        // Envoi au Worker
-        const pubRes = await StudyCloudAPI.publishDocument({
-          userId,
-          title,
-          description,
-          school: fileSchool,
-          filiere: fileFiliere,
-          matiereName,
-          level,
-          category,
-          authorName: userName,
-          country,
-          infoMode,
-          fileName: file.name,
-          fileSize: file.size,
-          fileType: file.type,
-          r2Key,
-          fileUrl,
-          isPublic: true,
-          tagsJson: JSON.stringify(tagsArray),
-        });
+        // Envoi au Worker avec tolérance doublon
+        let pubRes: any = null;
+        try {
+          pubRes = await StudyCloudAPI.publishDocument({
+            userId,
+            title,
+            description,
+            school: fileSchool,
+            filiere: fileFiliere,
+            matiereName,
+            level,
+            category,
+            authorName: userName,
+            country,
+            infoMode,
+            fileName: file.name,
+            fileSize: file.size,
+            fileType: file.type,
+            r2Key,
+            fileUrl,
+            isPublic: true,
+            tagsJson: JSON.stringify(tagsArray),
+          });
+        } catch (publishErr: any) {
+          if (publishErr?.duplicate || publishErr?.message?.includes('recalé') || publishErr?.message?.includes('409')) {
+            pubRes = { duplicate: true, message: 'Un fichier a été recalé car son deuxième a été enregistré' };
+          } else {
+            throw publishErr;
+          }
+        }
 
         if (pubRes && (pubRes as any).duplicate) {
           duplicateFilesList.push(file.name);
@@ -803,15 +827,19 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       {topNotification && (
         <div className="fixed top-4 left-1/2 -translate-x-1/2 z-[99999] w-[94%] max-w-xl animate-in slide-in-from-top-4 duration-300 pointer-events-auto">
           <div className={`p-4 rounded-2xl border-2 border-stone-900 shadow-[4px_4px_0px_0px_#1c1917] ${
-            topNotification.type === 'success' ? 'bg-[#2D4A3E] text-white' : 'bg-amber-100 text-stone-900'
+            topNotification.type === 'success' ? 'bg-[#2D4A3E] text-white' : 'bg-[#78350F] text-amber-50'
           }`}>
             <div className="flex items-start gap-3">
               <div className="w-8 h-8 rounded-xl bg-white/20 flex items-center justify-center shrink-0 mt-0.5">
-                <Check className="w-5 h-5 text-emerald-300 stroke-[3]" />
+                {topNotification.type === 'success' ? (
+                  <Check className="w-5 h-5 text-emerald-300 stroke-[3]" />
+                ) : (
+                  <AlertCircle className="w-5 h-5 text-amber-300 stroke-[3]" />
+                )}
               </div>
               <div className="flex-1 min-w-0">
                 <h4 className="text-sm font-black leading-tight">
-                  {topNotification.publishedFiles.length > 0 ? 'Publication réussie !' : 'Notification de doublons'}
+                  {topNotification.publishedFiles.length > 0 ? 'Publication réussie !' : 'Notification de doublon'}
                 </h4>
                 {topNotification.publishedFiles.length > 0 && (
                   <div className="mt-1.5 text-xs text-emerald-100 font-medium space-y-1">
@@ -828,9 +856,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   </div>
                 )}
                 {topNotification.duplicateFiles && topNotification.duplicateFiles.length > 0 && (
-                  <div className="mt-2.5 pt-2 border-t border-white/20 text-xs text-amber-200 font-medium">
+                  <div className={`mt-2.5 pt-2 text-xs font-medium ${
+                    topNotification.publishedFiles.length > 0 ? 'border-t border-white/20 text-amber-200' : 'text-amber-100'
+                  }`}>
                     <p className="font-bold text-amber-300">
-                      ⚠️ Un fichier a été recalé car son deuxième a été enregistré :
+                      ⚠️ {topNotification.duplicateFiles.length > 1
+                        ? `${topNotification.duplicateFiles.length} fichiers ont été recalés car leur double a été enregistré :`
+                        : 'Un fichier a été recalé car son deuxième a été enregistré :'}
                     </p>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {topNotification.duplicateFiles.map((fn, idx) => (
@@ -984,8 +1016,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                         {/* Status Badge */}
                         {isDup ? (
                           <div className="absolute top-1.5 left-8 z-20">
-                            <span className="bg-red-600 text-white font-black text-[8px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm">
-                              <X className="w-2.5 h-2.5 stroke-[3]" /> Déjà publié
+                            <span 
+                              title="Un fichier a été recalé car son deuxième a été enregistré"
+                              className="bg-red-600 text-white font-black text-[8px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm"
+                            >
+                              <X className="w-2.5 h-2.5 stroke-[3]" /> Recalé (doublon)
                             </span>
                           </div>
                         ) : isIndividual && (
@@ -1106,6 +1141,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                           <p className="text-[10px] font-bold text-stone-100 line-clamp-1 leading-tight break-all" title={file.name}>
                             {file.fileTitle || file.name}
                           </p>
+                          {isDup && (
+                            <p className="text-[8px] font-bold text-red-400 truncate mt-0.5" title="Un fichier a été recalé car son deuxième a été enregistré">
+                              Recalé : doublon enregistré
+                            </p>
+                          )}
                         </div>
 
                         {/* Individual Mode action button on each card */}
@@ -1127,7 +1167,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                             {file.isDuplicate ? (
                               <>
                                 <X className="w-2.5 h-2.5" />
-                                <span>Doublon (non publié)</span>
+                                <span>Recalé (doublon)</span>
                               </>
                             ) : file.isCompleted ? (
                               <>
