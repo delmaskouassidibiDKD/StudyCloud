@@ -485,11 +485,10 @@ export function OnboardingPage() {
     return `${m}:${s.toString().padStart(2, '0')}`;
   };
 
-  // Gestion de l'import direct de l'image (logo ou photo) depuis l'appareil
-  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+  // Traitement et validation d'un fichier image (via input ou glisser-déposer)
+  const processAvatarFile = (file: File) => {
     setAvatarError(null);
     setError(null);
-    const file = e.target.files?.[0];
     if (!file) return;
 
     // 1. Validation de la taille : max 1 Mo (1 048 576 octets)
@@ -522,6 +521,14 @@ export function OnboardingPage() {
       .catch(() => {
         setAvatarError("Impossible de traiter l'image sélectionnée. Veuillez réessayer.");
       });
+  };
+
+  // Gestion de l'import direct de l'image (logo ou photo) depuis l'appareil
+  const handleAvatarFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) {
+      processAvatarFile(file);
+    }
   };
 
   // Passage de l'Étape 1 (Choix du profil) vers l'Étape 2
@@ -1129,6 +1136,14 @@ export function OnboardingPage() {
                     />
 
                     <div
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.dataTransfer.files?.[0]) {
+                          processAvatarFile(e.dataTransfer.files[0]);
+                        }
+                      }}
                       className="p-4 sm:p-5 rounded-2xl flex flex-col sm:flex-row items-center gap-5 transition-all"
                       style={{ background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)' }}
                     >

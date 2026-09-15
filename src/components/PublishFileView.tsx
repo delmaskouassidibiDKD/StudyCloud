@@ -12,6 +12,71 @@ import { StudyCloudAPI } from '../services/api';
 // Configure worker for PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 
+// IndexedDB pour conserver les fichiers bruts (File / Blob) même en cas de rechargement de page
+const IDB_PUBLISH_DB = 'studycloud_publish_files_db';
+const IDB_STORE_NAME = 'raw_files';
+
+function openPublishFilesDB(): Promise<IDBDatabase> {
+  return new Promise((resolve, reject) => {
+    if (typeof window === 'undefined' || !window.indexedDB) {
+      return reject(new Error('IndexedDB not supported'));
+    }
+    const req = window.indexedDB.open(IDB_PUBLISH_DB, 1);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(IDB_STORE_NAME)) {
+        db.createObjectStore(IDB_STORE_NAME);
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+async function persistRawFile(id: string, file: File): Promise<void> {
+  try {
+    const db = await openPublishFilesDB();
+    const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+    tx.objectStore(IDB_STORE_NAME).put(file, id);
+  } catch (e) {
+    console.warn('Could not persist file to IndexedDB:', e);
+  }
+}
+
+async function retrieveRawFile(id: string): Promise<File | null> {
+  try {
+    const db = await openPublishFilesDB();
+    return new Promise((resolve) => {
+      const tx = db.transaction(IDB_STORE_NAME, 'readonly');
+      const req = tx.objectStore(IDB_STORE_NAME).get(id);
+      req.onsuccess = () => resolve(req.result || null);
+      req.onerror = () => resolve(null);
+    });
+  } catch {
+    return null;
+  }
+}
+
+async function deleteRawFile(id: string): Promise<void> {
+  try {
+    const db = await openPublishFilesDB();
+    const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+    tx.objectStore(IDB_STORE_NAME).delete(id);
+  } catch (e) {
+    console.warn('Could not delete file from IndexedDB:', e);
+  }
+}
+
+async function clearAllPersistedFiles(): Promise<void> {
+  try {
+    const db = await openPublishFilesDB();
+    const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+    tx.objectStore(IDB_STORE_NAME).clear();
+  } catch (e) {
+    console.warn('Could not clear IndexedDB:', e);
+  }
+}
+
 interface PublishFileViewProps {
   onBack: () => void;
   onPublish?: (title: string, description: string, category: string, files: any[]) => void;
@@ -57,6 +122,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   const [modalTags, setModalTags] = useState('');
 
   const [isPublishing, setIsPublishing] = useState(false);
+  const [publishingProgress, setPublishingProgress] = useState<{ current: number; total: number; currentFileName: string } | null>(null);
   const [success, setSuccess] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
 
@@ -122,6 +188,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[_-_]/g, ' ');
       const fileId = Math.random().toString(36).substring(2, 9);
       rawFileMap.current.set(fileId, file);
+      persistRawFile(fileId, file);
 
       const baseFileProps = {
         id: fileId,
@@ -345,12 +412,15 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
   const removeFile = (id: string) => {
     setSelectedFiles((prev) => prev.filter((f) => f.id !== id));
+    rawFileMap.current.delete(id);
+    deleteRawFile(id);
     if (editingFileId === id) {
       setEditingFileId(null);
     }
   };
 
   const handleBack = () => {
+    clearAllPersistedFiles();
     localStorage.removeItem('published_selected_files');
     localStorage.removeItem('published_school');
     localStorage.removeItem('published_filiere');
@@ -456,7 +526,15 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     const userName = localStorage.getItem('unifolder_user_name') || 'Étudiant';
 
     try {
+      let fileIndex = 0;
       for (const file of selectedFiles) {
+        fileIndex++;
+        setPublishingProgress({
+          current: fileIndex,
+          total: selectedFiles.length,
+          currentFileName: file.name
+        });
+
         let title = '';
         let fileSchool = '';
         let fileFiliere = '';
@@ -500,11 +578,14 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           tagsArray = [];
         }
 
-        // Tenter d'uploader vers R2 si le fichier brut est disponible (avec compression gzip automatique)
+        // Tenter d'uploader vers R2 si le fichier brut est disponible (avec compression gzip intelligente automatique)
         let r2Key: string | null = null;
         let fileUrl: string = '';
         try {
-          const rawFile = rawFileMap.current.get(file.id);
+          let rawFile = rawFileMap.current.get(file.id);
+          if (!rawFile) {
+            rawFile = (await retrieveRawFile(file.id)) || undefined;
+          }
           if (rawFile) {
             const key = `published/${userId}/${Date.now()}-${file.name}`;
             const uploadResult = await StudyCloudAPI.uploadFileToR2(rawFile, key);
@@ -537,12 +618,14 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         });
       }
 
-      // Nettoyer le localStorage
+      // Nettoyer IndexedDB et le localStorage
+      clearAllPersistedFiles();
       ['published_selected_files','published_school','published_filiere','published_info_mode',
        'published_doc_title','published_doc_description','published_doc_category',
        'published_doc_matiere','published_doc_level','published_doc_country','published_doc_tags'
       ].forEach(k => localStorage.removeItem(k));
 
+      setPublishingProgress(null);
       setIsPublishing(false);
       setSuccess(true);
 
@@ -604,7 +687,17 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         </button>
 
         <div className="flex items-center gap-2 pointer-events-auto">
-          <label className="flex items-center gap-1.5 px-3 py-1.5 bg-[#F5F1E9] hover:bg-[#EBE5DA] text-stone-900 font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5">
+          <label 
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                processFiles(Array.from(e.dataTransfer.files));
+              }
+            }}
+            className="flex items-center gap-1.5 px-3 py-1.5 bg-[#F5F1E9] hover:bg-[#EBE5DA] text-stone-900 font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          >
             <Upload className="w-3.5 h-3.5 text-orange-600" />
             <span>Ajouter</span>
             <input type="file" multiple onChange={handleFileChange} className="hidden" />
@@ -627,9 +720,15 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   : 'bg-stone-200 text-stone-400 border-stone-400 shadow-none cursor-not-allowed opacity-80'
               }`}
             >
-              {isFormValid && <Check className="w-3.5 h-3.5 text-emerald-300 stroke-[3]" />}
+              {isPublishing ? (
+                <RefreshCw className="w-3.5 h-3.5 animate-spin text-white" />
+              ) : isFormValid ? (
+                <Check className="w-3.5 h-3.5 text-emerald-300 stroke-[3]" />
+              ) : null}
               <span>
-                {infoMode === 'individual'
+                {isPublishing
+                  ? 'Compression & envoi...'
+                  : infoMode === 'individual'
                   ? `Valider (${completedCount}/${selectedFiles.length})`
                   : `Valider (${selectedFiles.length})`}
               </span>
@@ -643,14 +742,24 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           <div className="bg-emerald-50 border-2 border-emerald-600 rounded-2xl p-6 text-center space-y-2 shadow-[3px_3px_0px_0px_#047857] w-full max-w-lg mx-auto mt-20">
             <CheckCircle2 className="w-12 h-12 text-emerald-600 mx-auto" />
             <h2 className="text-base font-black text-emerald-900">Fichiers publiés avec succès !</h2>
-            <p className="text-xs text-emerald-700">Vos documents ont été partagés et enregistrés.</p>
+            <p className="text-xs text-emerald-700">Vos documents ont été compressés, stockés et partagés.</p>
           </div>
         ) : (
           <div className="w-full space-y-4">
             {selectedFiles.length === 0 ? (
               <div className="flex flex-col items-center justify-center min-h-[70vh]">
-                <label className="flex flex-col items-center justify-center border-2 border-dashed border-stone-400 bg-white hover:bg-stone-50 rounded-2xl p-12 sm:p-16 cursor-pointer transition-all shadow-[3px_3px_0px_0px_#1c1917] text-center w-full max-w-md">
-                  <Upload className="w-10 h-10 text-orange-600 mb-3" />
+                <label 
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                      processFiles(Array.from(e.dataTransfer.files));
+                    }
+                  }}
+                  className="flex flex-col items-center justify-center border-2 border-dashed border-stone-400 bg-white hover:bg-stone-50 rounded-2xl p-12 sm:p-16 cursor-pointer transition-all shadow-[3px_3px_0px_0px_#1c1917] text-center w-full max-w-md group"
+                >
+                  <Upload className="w-10 h-10 text-orange-600 mb-3 group-hover:scale-110 transition-transform" />
                   <span className="text-sm font-bold text-stone-800">Cliquez ou déposez vos fichiers ici</span>
                   <span className="text-xs text-stone-500 mt-1">PDF, Word, Excel, PPT, images...</span>
                   <input type="file" multiple onChange={handleFileChange} className="hidden" />
@@ -658,6 +767,12 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
               </div>
             ) : (
               <div>
+                {/* Badge d'indication de compression intelligente */}
+                <div className="flex items-center gap-1.5 px-3 py-1 bg-emerald-50 border border-emerald-300 rounded-xl text-emerald-800 text-[11px] font-bold w-fit mb-2 shadow-xs">
+                  <Sparkles className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <span>Compression intelligente R2 active : vos fichiers sont optimisés en arrière-plan</span>
+                </div>
+
                 {/* File Grid */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-3.5 mt-2">
                   {selectedFiles.map((file) => {
@@ -840,7 +955,17 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   })}
 
                   {/* Dashed square button with plus to add more files */}
-                  <label className="aspect-[3/4] bg-white hover:bg-stone-50 border-2 border-dashed border-stone-400 hover:border-orange-600 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer transition-all shadow-[2px_2px_0px_0px_#1c1917] group">
+                  <label 
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+                        processFiles(Array.from(e.dataTransfer.files));
+                      }
+                    }}
+                    className="aspect-[3/4] bg-white hover:bg-stone-50 border-2 border-dashed border-stone-400 hover:border-orange-600 rounded-xl p-3 flex flex-col items-center justify-center cursor-pointer transition-all shadow-[2px_2px_0px_0px_#1c1917] group"
+                  >
                     <div className="w-9 h-9 rounded-full bg-orange-100 group-hover:bg-orange-200 text-orange-600 flex items-center justify-center transition-colors mb-2 shadow-sm">
                       <Plus className="w-5 h-5 stroke-[2.5]" />
                     </div>
@@ -1313,17 +1438,38 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         </div>
       )}
 
-      {/* Publishing loading modal overlay with rotating arrow */}
+      {/* Publishing loading modal overlay with compression info and progress */}
       {isPublishing && (
-        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white border-2 border-stone-900 rounded-2xl p-8 text-center space-y-4 shadow-[4px_4px_0px_0px_#1c1917] max-w-sm w-full">
-            <div className="w-16 h-16 rounded-full bg-orange-100 flex items-center justify-center mx-auto border-2 border-stone-900 shadow-[2px_2px_0px_0px_#1c1917]">
-              <RefreshCw className="w-8 h-8 text-orange-600 animate-spin" />
+        <div className="fixed inset-0 z-[1000] bg-black/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-[#FDFBF7] border-2 border-stone-900 rounded-2xl p-6 sm:p-7 text-center space-y-4 shadow-[5px_5px_0px_0px_#1c1917] max-w-sm w-full animate-in fade-in zoom-in-95 duration-150">
+            <div className="w-14 h-14 rounded-2xl bg-emerald-100 border-2 border-stone-900 flex items-center justify-center mx-auto text-emerald-800 shadow-[2px_2px_0px_0px_#1c1917]">
+              <RefreshCw className="w-7 h-7 text-emerald-700 animate-spin" />
             </div>
-            <div className="space-y-1">
-              <h3 className="text-base font-black text-stone-900">Publication en cours...</h3>
-              <p className="text-xs text-stone-500">Veuillez patienter pendant le traitement et la validation de vos documents.</p>
+            <div className="space-y-1.5">
+              <h3 className="text-base font-black text-stone-900">Compression & Publication</h3>
+              <p className="text-xs text-stone-600">
+                {publishingProgress 
+                  ? `Traitement du document ${publishingProgress.current}/${publishingProgress.total} :`
+                  : "Optimisation et stockage en cours..."}
+              </p>
+              {publishingProgress?.currentFileName && (
+                <p className="text-[11px] font-mono font-bold text-emerald-900 truncate bg-emerald-50 px-2.5 py-1 rounded-lg border border-emerald-300 shadow-xs">
+                  {publishingProgress.currentFileName}
+                </p>
+              )}
             </div>
+
+            {/* Progress bar */}
+            <div className="w-full bg-stone-200 h-2.5 rounded-full overflow-hidden border border-stone-400">
+              <div 
+                className="bg-emerald-600 h-full transition-all duration-300 rounded-full"
+                style={{ width: `${publishingProgress ? (publishingProgress.current / publishingProgress.total) * 100 : 25}%` }}
+              />
+            </div>
+
+            <p className="text-[10px] text-stone-500 font-medium leading-relaxed">
+              ⚡ Compression intelligente R2 : vos documents sont allégés en arrière-plan sans perte de qualité.
+            </p>
           </div>
         </div>
       )}

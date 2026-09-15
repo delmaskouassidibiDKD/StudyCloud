@@ -183,6 +183,14 @@ export const UploadView: React.FC<UploadViewProps> = ({
           <div className="w-full flex flex-col items-center justify-center my-auto">
             <button
               onClick={onOpenAddMenu}
+              onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                e.stopPropagation();
+                if (e.dataTransfer.files && e.dataTransfer.files.length > 0 && onFilesDropped) {
+                  onFilesDropped(Array.from(e.dataTransfer.files));
+                }
+              }}
               className="w-36 h-36 sm:w-48 sm:h-48 border-3 border-dashed border-stone-400 hover:border-orange-500 bg-[#F5F1E9] hover:bg-orange-50/20 rounded-3xl flex flex-col items-center justify-center text-stone-600 hover:text-orange-600 transition-all group cursor-pointer shadow-[6px_6px_0px_0px_#1c1917]"
             >
               <Plus className="w-10 h-10 sm:w-12 sm:h-12 transition-transform group-hover:scale-110 mb-2" />
