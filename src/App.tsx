@@ -51,9 +51,10 @@ export default function App() {
     const authToken = urlParams.get('token');
 
     // Détection d'un lien d'invitation / parrainage (?ref=171765542 ou hash #register)
-    const refParam = urlParams.get('ref') || urlParams.get('referral') || urlParams.get('code_parrainage');
+    const refParam = urlParams.get('ref') || urlParams.get('referral') || urlParams.get('code_parrainage') || urlParams.get('code');
     if (refParam) {
-      localStorage.setItem('sc_referral_code', refParam.trim());
+      sessionStorage.setItem('sc_referral_code', refParam.trim());
+      localStorage.removeItem('sc_referral_code'); // Nettoyage de l'ancien stockage permanent
       localStorage.setItem('sc_auth_redirect_mode', 'register');
       window.dispatchEvent(new Event('studycloud_auth_redirect'));
     }
@@ -61,7 +62,7 @@ export default function App() {
     if (googleCode && !isAuthenticated) {
       const redirectUri = `${window.location.origin}${window.location.pathname}`;
       const action = urlParams.get('state') || localStorage.getItem('sc_google_auth_mode') || 'login';
-      const savedReferral = localStorage.getItem('sc_referral_code') || undefined;
+      const savedReferral = sessionStorage.getItem('sc_referral_code') || undefined;
       localStorage.removeItem('sc_google_auth_mode');
       window.history.replaceState({}, '', window.location.pathname);
       StudyCloudAPI.googleAuth({ code: googleCode, redirectUri, action, referralCode: savedReferral })

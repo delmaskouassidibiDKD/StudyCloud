@@ -63,10 +63,35 @@ export function validatePasswordRules(pwd: string): {
 export function AuthPage({ onBack }: AuthPageProps) {
   const { loginWithToken } = useAuth();
 
-  // Mode direct : 'login' par défaut pour afficher la connexion immédiatement, ou 'register' si redirection
+  // Détection du parrainage actif en session ou dans l'URL
+  const [activeReferralCode, setActiveReferralCode] = useState<string | null>(() => {
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlRef = urlParams.get('ref') || urlParams.get('referral') || urlParams.get('code_parrainage') || urlParams.get('code');
+      if (urlRef) {
+        sessionStorage.setItem('sc_referral_code', urlRef.trim());
+        return urlRef.trim();
+      }
+      return sessionStorage.getItem('sc_referral_code') || null;
+    } catch {
+      return null;
+    }
+  });
+
+  // Mode direct : 'register' si lien d'invitation ou hash #register, sinon 'login' par défaut
   const [mode, setMode] = useState<AuthMode>(() => {
-    const saved = localStorage.getItem('sc_auth_redirect_mode');
-    if (saved === 'register' || saved === 'login') return saved;
+    try {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlRef = urlParams.get('ref') || urlParams.get('referral') || urlParams.get('code_parrainage') || urlParams.get('code');
+      const sessionRef = sessionStorage.getItem('sc_referral_code');
+      const isRegisterHash = window.location.hash.toLowerCase().includes('register');
+      const saved = localStorage.getItem('sc_auth_redirect_mode');
+
+      if (urlRef || sessionRef || isRegisterHash || saved === 'register') {
+        return 'register';
+      }
+      if (saved === 'login') return 'login';
+    } catch {}
     return 'login';
   });
   const [email, setEmail] = useState(() => {
@@ -86,9 +111,27 @@ export function AuthPage({ onBack }: AuthPageProps) {
     return localStorage.getItem('sc_auth_redirect_notice') || null;
   });
 
-  // Écouter les redirections automatiques d'authentification (ex: tentative de connexion Google sans compte existant)
+  // Écouter les redirections automatiques d'authentification et les invitations
   React.useEffect(() => {
     const handleRedirectEvent = () => {
+      const urlParams = new URLSearchParams(window.location.search);
+      const urlRef = urlParams.get('ref') || urlParams.get('referral') || urlParams.get('code_parrainage') || urlParams.get('code');
+      if (urlRef) {
+        sessionStorage.setItem('sc_referral_code', urlRef.trim());
+        setActiveReferralCode(urlRef.trim());
+        setMode('register');
+      } else {
+        const sessionRef = sessionStorage.getItem('sc_referral_code');
+        if (sessionRef) {
+          setActiveReferralCode(sessionRef);
+          setMode('register');
+        }
+      }
+
+      if (window.location.hash.toLowerCase().includes('register')) {
+        setMode('register');
+      }
+
       const savedMode = localStorage.getItem('sc_auth_redirect_mode');
       const savedNotice = localStorage.getItem('sc_auth_redirect_notice');
       const savedEmail = localStorage.getItem('sc_auth_prefill_email');
@@ -113,8 +156,10 @@ export function AuthPage({ onBack }: AuthPageProps) {
 
     handleRedirectEvent();
     window.addEventListener('studycloud_auth_redirect', handleRedirectEvent);
+    window.addEventListener('hashchange', handleRedirectEvent);
     return () => {
       window.removeEventListener('studycloud_auth_redirect', handleRedirectEvent);
+      window.removeEventListener('hashchange', handleRedirectEvent);
     };
   }, []);
 
@@ -209,7 +254,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
     try {
       let res: any;
       if (mode === 'register') {
-        const savedReferral = localStorage.getItem('sc_referral_code') || undefined;
+        const savedReferral = sessionStorage.getItem('sc_referral_code') || activeReferralCode || undefined;
         res = await StudyCloudAPI.register({
           name: name.trim(),
           email: email.trim(),
@@ -220,6 +265,10 @@ export function AuthPage({ onBack }: AuthPageProps) {
           securityQuestion2,
           securityAnswer2: securityAnswer2.trim(),
         });
+        if (res.success || res.requiresVerification) {
+          sessionStorage.removeItem('sc_referral_code');
+          setActiveReferralCode(null);
+        }
       } else {
         res = await StudyCloudAPI.login({ email: email.trim(), password });
       }
@@ -613,7 +662,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
             </p>
 
             {/* Bannière de parrainage actif */}
-            {mode === 'register' && localStorage.getItem('sc_referral_code') && (
+            {mode === 'register' && (activeReferralCode || sessionStorage.getItem('sc_referral_code')) && (
               <div
                 className="mb-6 p-3.5 sm:p-4 rounded-2xl flex items-center justify-between gap-3 border transition-all animate-fadeIn"
                 style={{
@@ -629,7 +678,7 @@ export function AuthPage({ onBack }: AuthPageProps) {
                   <div className="text-left min-w-0">
                     <p className="text-xs font-black text-orange-300 uppercase tracking-wider">Invitation Étudiante Appliquée</p>
                     <p className="text-xs text-white/90 truncate">
-                      Code parrain : <span className="font-mono font-bold text-orange-400">{localStorage.getItem('sc_referral_code')}</span>
+                      Code parrain : <span className="font-mono font-bold text-orange-400">{activeReferralCode || sessionStorage.getItem('sc_referral_code')}</span>
                     </p>
                   </div>
                 </div>

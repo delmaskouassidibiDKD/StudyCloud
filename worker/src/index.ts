@@ -1399,6 +1399,159 @@ function renderShareLandingHtml(folder: any, files: any[], originUrl: string): s
 // Schéma D1 déjà initialisé définitivement en base de données
 let isSchemaInitialized = true;
 let isEmailVerifTableInitialized = true;
+let isReferralsTableInitialized = false;
+
+function generateReferralCode(): string {
+  // Code d'invitation à 9 chiffres (ex: 171765542)
+  return Math.floor(100000000 + Math.random() * 900000000).toString();
+}
+
+async function ensureReferralsTables(db: any) {
+  if (isReferralsTableInitialized || !db) return;
+  try {
+    // 1. Ajout sécurisé des colonnes de parrainage sur la table users
+    try { await db.prepare("ALTER TABLE users ADD COLUMN referral_code TEXT").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE users ADD COLUMN referred_by TEXT").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE users ADD COLUMN referrals_count INTEGER DEFAULT 0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE users ADD COLUMN ad_free_days_earned INTEGER DEFAULT 0").run(); } catch (e) {}
+
+    // 2. Table des parrainages (un utilisateur ne peut être parrainé qu'une seule fois)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS referrals (
+        id TEXT PRIMARY KEY,
+        referrer_id TEXT NOT NULL,
+        referred_user_id TEXT NOT NULL UNIQUE,
+        referred_user_name TEXT,
+        referred_user_email TEXT,
+        reward_days INTEGER DEFAULT 5,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await db.prepare(`
+      CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_id)
+    `).run();
+
+    // 3. Table de configuration des récompenses de parrainage (modifiable par les admins)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS referral_rewards_config (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        days_per_referral INTEGER DEFAULT 5,
+        milestones_json TEXT,
+        rules_text_json TEXT,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    const defaultMilestones = JSON.stringify([
+      { count: 3, extra_days: 5, label: "3 personnes promues : +5 jours bonus" },
+      { count: 5, extra_days: 10, label: "5 personnes promues : +10 jours bonus" },
+      { count: 7, extra_days: 15, label: "7 personnes promues : +15 jours bonus" },
+      { count: 10, extra_days: 3650, label: "10 personnes promues : +3650 jours bonus" },
+    ]);
+
+    const defaultRules = JSON.stringify([
+      "Chaque fois que vous promouvez avec succès une personne qui s'inscrit, vous bénéficierez de 5 jours de publicité gratuite, qui peuvent être accumulés de manière illimitée~",
+      "Un total de 3 personnes inscrites par vous, et 5 jours supplémentaires de publicité gratuite offerts~",
+      "Un total de 5 personnes inscrites par vous, et 10 jours supplémentaires de publicité gratuite offerts~",
+      "Un total de 7 personnes inscrites par vous, et 15 jours supplémentaires de publicité gratuite offerts~",
+      "Un total de 10 personnes inscrites par vous, et 3650 jours supplémentaires de publicité gratuite offerts~"
+    ]);
+
+    await db.prepare(`
+      INSERT OR IGNORE INTO referral_rewards_config (id, days_per_referral, milestones_json, rules_text_json, updated_at)
+      VALUES ('default', 5, ?, ?, CURRENT_TIMESTAMP)
+    `).bind(defaultMilestones, defaultRules).run();
+
+    isReferralsTableInitialized = true;
+  } catch (e) {
+    console.error('[StudyCloud Referrals Init Error]', e);
+  }
+}
+
+async function processReferralAttribution(
+  db: any,
+  referralCode: string,
+  newUserId: string,
+  newUserName: string,
+  newUserEmail: string
+) {
+  if (!db || !referralCode || !newUserId) return;
+  try {
+    await ensureReferralsTables(db);
+    const cleanCode = String(referralCode).trim();
+    if (!cleanCode) return;
+
+    // 1. Rechercher le parrain
+    const referrer: any = await db.prepare(
+      'SELECT id, name, referral_code, referrals_count, ad_free_days_earned FROM users WHERE referral_code = ?'
+    ).bind(cleanCode).first();
+
+    if (!referrer || referrer.id === newUserId) {
+      return;
+    }
+
+    // 2. Vérifier si ce compte est déjà inscrit ou parrainé ("si un utilisateur a déjà un compte ou est inscrit déjà sa compte pas")
+    const alreadyReferred: any = await db.prepare(
+      'SELECT id FROM referrals WHERE referred_user_id = ?'
+    ).bind(newUserId).first();
+
+    if (alreadyReferred) {
+      return;
+    }
+
+    // 3. Charger la configuration des récompenses depuis la base de données
+    const configRow: any = await db.prepare(
+      "SELECT days_per_referral, milestones_json FROM referral_rewards_config WHERE id = 'default'"
+    ).first();
+
+    const baseDays = Number(configRow?.days_per_referral) || 5;
+    let extraMilestoneDays = 0;
+    const currentCount = Number(referrer.referrals_count || 0) + 1;
+
+    if (configRow?.milestones_json) {
+      try {
+        const milestones = JSON.parse(configRow.milestones_json);
+        if (Array.isArray(milestones)) {
+          const match = milestones.find((m: any) => Number(m.count) === currentCount);
+          if (match && Number(match.extra_days)) {
+            extraMilestoneDays = Number(match.extra_days);
+          }
+        }
+      } catch (e) {}
+    }
+
+    const totalRewardDays = baseDays + extraMilestoneDays;
+
+    // 4. Enregistrer le parrainage dans la table referrals
+    const referralId = generateId();
+    await db.prepare(`
+      INSERT INTO referrals (id, referrer_id, referred_user_id, referred_user_name, referred_user_email, reward_days, created_at)
+      VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+    `).bind(referralId, referrer.id, newUserId, newUserName, newUserEmail, totalRewardDays).run();
+
+    // 5. Mettre à jour le compteur et les jours de visibilité/pub gratuite du parrain
+    await db.prepare(`
+      UPDATE users SET
+        referrals_count = COALESCE(referrals_count, 0) + 1,
+        ad_free_days_earned = COALESCE(ad_free_days_earned, 0) + ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(totalRewardDays, referrer.id).run();
+
+    // 6. Enregistrer le parrain sur le compte du nouvel utilisateur
+    await db.prepare(`
+      UPDATE users SET
+        referred_by = ?,
+        updated_at = CURRENT_TIMESTAMP
+      WHERE id = ?
+    `).bind(referrer.referral_code, newUserId).run();
+
+    console.log(`[Parrainage Réussi] Utilisateur ${newUserId} parrainé par ${referrer.name} (${cleanCode}) : +${totalRewardDays} jours.`);
+  } catch (err) {
+    console.error('[Erreur Attribution Parrainage]', err);
+  }
+}
 
 // ============================================================================
 // Gestionnaire Principal du Worker
@@ -1475,28 +1628,13 @@ export default {
       }
 
       // ----------------------------------------------------------------------
-      // Page d'invitation / parrainage personnalisée avec logo ADN StudyCloud
+      // Redirection directe vers la page d'inscription de l'application
       // ----------------------------------------------------------------------
       if ((path.startsWith('/invite/') || path.startsWith('/join/') || path.startsWith('/p/')) && method === 'GET') {
         const refCode = path.split('/')[2];
-        if (refCode && env.DB) {
-          await ensureReferralsTables(env.DB);
-          const cleanRef = decodeURIComponent(refCode).trim();
-          let referrer: any = await env.DB.prepare(
-            'SELECT id, name, school, filiere FROM users WHERE referral_code = ? LIMIT 1'
-          ).bind(cleanRef).first();
-
-          const referrerName = referrer?.name || 'Un membre de la communauté';
-          const html = renderReferralLandingHtml(cleanRef, referrerName, url.origin);
-          return new Response(html, {
-            status: 200,
-            headers: {
-              'Content-Type': 'text/html; charset=utf-8',
-              'Cache-Control': 'no-cache',
-              ...corsHeaders(origin),
-            },
-          });
-        }
+        const cleanRef = refCode ? decodeURIComponent(refCode).trim() : '';
+        const targetUrl = `https://studycloud.dkd-technologies.com/?ref=${encodeURIComponent(cleanRef)}#register`;
+        return Response.redirect(targetUrl, 302);
       }
 
       // ----------------------------------------------------------------------
@@ -2273,159 +2411,6 @@ export default {
       // Nettoyage automatique désactivé pour préserver les comptes
       async function cleanupExpiredUnfinishedAccounts(db: any) {
         return;
-      }
-
-      function generateReferralCode(): string {
-        // Code d'invitation à 9 chiffres (ex: 171765542)
-        return Math.floor(100000000 + Math.random() * 900000000).toString();
-      }
-
-      let isReferralsTableInitialized = false;
-      async function ensureReferralsTables(db: any) {
-        if (isReferralsTableInitialized || !db) return;
-        try {
-          // 1. Ajout sécurisé des colonnes de parrainage sur la table users
-          try { await db.prepare("ALTER TABLE users ADD COLUMN referral_code TEXT").run(); } catch (e) {}
-          try { await db.prepare("ALTER TABLE users ADD COLUMN referred_by TEXT").run(); } catch (e) {}
-          try { await db.prepare("ALTER TABLE users ADD COLUMN referrals_count INTEGER DEFAULT 0").run(); } catch (e) {}
-          try { await db.prepare("ALTER TABLE users ADD COLUMN ad_free_days_earned INTEGER DEFAULT 0").run(); } catch (e) {}
-
-          // 2. Table des parrainages (un utilisateur ne peut être parrainé qu'une seule fois)
-          await db.prepare(`
-            CREATE TABLE IF NOT EXISTS referrals (
-              id TEXT PRIMARY KEY,
-              referrer_id TEXT NOT NULL,
-              referred_user_id TEXT NOT NULL UNIQUE,
-              referred_user_name TEXT,
-              referred_user_email TEXT,
-              reward_days INTEGER DEFAULT 5,
-              created_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-          `).run();
-
-          await db.prepare(`
-            CREATE INDEX IF NOT EXISTS idx_referrals_referrer ON referrals(referrer_id)
-          `).run();
-
-          // 3. Table de configuration des récompenses de parrainage (modifiable par les admins)
-          await db.prepare(`
-            CREATE TABLE IF NOT EXISTS referral_rewards_config (
-              id TEXT PRIMARY KEY DEFAULT 'default',
-              days_per_referral INTEGER DEFAULT 5,
-              milestones_json TEXT,
-              rules_text_json TEXT,
-              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-            )
-          `).run();
-
-          const defaultMilestones = JSON.stringify([
-            { count: 3, extra_days: 5, label: "3 personnes promues : +5 jours bonus" },
-            { count: 5, extra_days: 10, label: "5 personnes promues : +10 jours bonus" },
-            { count: 7, extra_days: 15, label: "7 personnes promues : +15 jours bonus" },
-            { count: 10, extra_days: 3650, label: "10 personnes promues : +3650 jours bonus" },
-          ]);
-
-          const defaultRules = JSON.stringify([
-            "Chaque fois que vous promouvez avec succès une personne qui s'inscrit, vous bénéficierez de 5 jours de publicité gratuite, qui peuvent être accumulés de manière illimitée~",
-            "Un total de 3 personnes inscrites par vous, et 5 jours supplémentaires de publicité gratuite offerts~",
-            "Un total de 5 personnes inscrites par vous, et 10 jours supplémentaires de publicité gratuite offerts~",
-            "Un total de 7 personnes inscrites par vous, et 15 jours supplémentaires de publicité gratuite offerts~",
-            "Un total de 10 personnes inscrites par vous, et 3650 jours supplémentaires de publicité gratuite offerts~"
-          ]);
-
-          await db.prepare(`
-            INSERT OR IGNORE INTO referral_rewards_config (id, days_per_referral, milestones_json, rules_text_json, updated_at)
-            VALUES ('default', 5, ?, ?, CURRENT_TIMESTAMP)
-          `).bind(defaultMilestones, defaultRules).run();
-
-          isReferralsTableInitialized = true;
-        } catch (e) {
-          console.error('[StudyCloud Referrals Init Error]', e);
-        }
-      }
-
-      async function processReferralAttribution(
-        db: any,
-        referralCode: string,
-        newUserId: string,
-        newUserName: string,
-        newUserEmail: string
-      ) {
-        if (!db || !referralCode || !newUserId) return;
-        try {
-          await ensureReferralsTables(db);
-          const cleanCode = String(referralCode).trim();
-          if (!cleanCode) return;
-
-          // 1. Rechercher le parrain
-          const referrer: any = await db.prepare(
-            'SELECT id, name, referral_code, referrals_count, ad_free_days_earned FROM users WHERE referral_code = ?'
-          ).bind(cleanCode).first();
-
-          if (!referrer || referrer.id === newUserId) {
-            return;
-          }
-
-          // 2. Vérifier si ce compte est déjà inscrit ou parrainé ("si un utilisateur a déjà un compte ou est inscrit déjà sa compte pas")
-          const alreadyReferred: any = await db.prepare(
-            'SELECT id FROM referrals WHERE referred_user_id = ?'
-          ).bind(newUserId).first();
-
-          if (alreadyReferred) {
-            return;
-          }
-
-          // 3. Charger la configuration des récompenses depuis la base de données
-          const configRow: any = await db.prepare(
-            "SELECT days_per_referral, milestones_json FROM referral_rewards_config WHERE id = 'default'"
-          ).first();
-
-          const baseDays = Number(configRow?.days_per_referral) || 5;
-          let extraMilestoneDays = 0;
-          const currentCount = Number(referrer.referrals_count || 0) + 1;
-
-          if (configRow?.milestones_json) {
-            try {
-              const milestones = JSON.parse(configRow.milestones_json);
-              if (Array.isArray(milestones)) {
-                const match = milestones.find((m: any) => Number(m.count) === currentCount);
-                if (match && Number(match.extra_days)) {
-                  extraMilestoneDays = Number(match.extra_days);
-                }
-              }
-            } catch (e) {}
-          }
-
-          const totalRewardDays = baseDays + extraMilestoneDays;
-
-          // 4. Enregistrer le parrainage dans la table referrals
-          const referralId = generateId();
-          await db.prepare(`
-            INSERT INTO referrals (id, referrer_id, referred_user_id, referred_user_name, referred_user_email, reward_days, created_at)
-            VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          `).bind(referralId, referrer.id, newUserId, newUserName, newUserEmail, totalRewardDays).run();
-
-          // 5. Mettre à jour le compteur et les jours de visibilité/pub gratuite du parrain
-          await db.prepare(`
-            UPDATE users SET
-              referrals_count = COALESCE(referrals_count, 0) + 1,
-              ad_free_days_earned = COALESCE(ad_free_days_earned, 0) + ?,
-              updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).bind(totalRewardDays, referrer.id).run();
-
-          // 6. Enregistrer le parrain sur le compte du nouvel utilisateur
-          await db.prepare(`
-            UPDATE users SET
-              referred_by = ?,
-              updated_at = CURRENT_TIMESTAMP
-            WHERE id = ?
-          `).bind(referrer.referral_code, newUserId).run();
-
-          console.log(`[Parrainage Réussi] Utilisateur ${newUserId} parrainé par ${referrer.name} (${cleanCode}) : +${totalRewardDays} jours.`);
-        } catch (err) {
-          console.error('[Erreur Attribution Parrainage]', err);
-        }
       }
 
 
