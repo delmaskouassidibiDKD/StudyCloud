@@ -107,212 +107,239 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
   // Map pour stocker les fichiers bruts (non sérialisables) par ID pour l'upload R2
   const rawFileMap = useRef<Map<string, File>>(new Map());
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  const processFiles = (filesArray: File[]) => {
+    filesArray.forEach((file: any) => {
+      const fileNameLower = file.name.toLowerCase();
+      const isImage = file.type && file.type.startsWith('image/');
+      const isPdf = file.type === 'application/pdf' || fileNameLower.endsWith('.pdf');
+      const isDocx = file.type.includes('wordprocessingml') || fileNameLower.endsWith('.docx') || fileNameLower.endsWith('.doc');
+      const isXlsx = fileNameLower.endsWith('.xlsx') || fileNameLower.endsWith('.xls') || fileNameLower.endsWith('.csv') || file.type.includes('spreadsheet') || file.type.includes('excel');
+      const isPptx = fileNameLower.endsWith('.pptx') || fileNameLower.endsWith('.ppt') || file.type.includes('presentation') || file.type.includes('powerpoint');
+      const isText = file.type.startsWith('text/') || fileNameLower.endsWith('.txt') || fileNameLower.endsWith('.md') || fileNameLower.endsWith('.json');
+
+      const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[_-_]/g, ' ');
+      const fileId = Math.random().toString(36).substring(2, 9);
+      rawFileMap.current.set(fileId, file);
+
+      const baseFileProps = {
+        id: fileId,
+        name: file.name,
+        size: file.size,
+        textContent: cleanName,
+        tableRows: [],
+        fileTitle: cleanName,
+        fileCategory: docCategory || 'Cours',
+        fileMatiere: docMatiere || '',
+        fileLevel: docLevel || '',
+        fileSchool: school || '',
+        fileFiliere: filiere || '',
+        fileCountry: docCountry || "Côte d'Ivoire",
+        fileDescription: '',
+        fileTags: '',
+        isCompleted: false,
+      };
+
+      if (isImage) {
+        const reader = new FileReader();
+        reader.onload = (uploadEvent) => {
+          const resultUrl = uploadEvent.target?.result as string || '';
+          const newFileObj = {
+            ...baseFileProps,
+            type: file.type || 'image/png',
+            url: resultUrl,
+            isImage: true,
+            fileTypeCategory: 'image',
+          };
+          setSelectedFiles((prev) => [...prev, newFileObj]);
+        };
+        reader.readAsDataURL(file);
+      } else if (isPdf) {
+        const reader = new FileReader();
+        reader.onload = async (uploadEvent) => {
+          try {
+            const arrayBuffer = uploadEvent.target?.result as ArrayBuffer;
+            if (arrayBuffer) {
+              const typedarray = new Uint8Array(arrayBuffer);
+              const loadingTask = pdfjsLib.getDocument({ data: typedarray });
+              const pdf = await loadingTask.promise;
+              const page = await pdf.getPage(1);
+              const viewport = page.getViewport({ scale: 1.5 });
+              const canvas = document.createElement('canvas');
+              const context = canvas.getContext('2d');
+              if (context) {
+                canvas.height = viewport.height;
+                canvas.width = viewport.width;
+                await page.render({ canvasContext: context, viewport }).promise;
+                const imageUrl = canvas.toDataURL('image/png');
+
+                const newFileObj = {
+                  ...baseFileProps,
+                  type: file.type || 'application/pdf',
+                  url: imageUrl,
+                  isImage: true,
+                  fileTypeCategory: 'pdf',
+                };
+                setSelectedFiles((prev) => [...prev, newFileObj]);
+                return;
+              }
+            }
+          } catch (err) {
+            console.warn('Could not render PDF first page (fallback):', err);
+          }
+
+          const newFileObj = {
+            ...baseFileProps,
+            type: file.type || 'application/pdf',
+            url: '',
+            isImage: false,
+            fileTypeCategory: 'pdf',
+          };
+          setSelectedFiles((prev) => [...prev, newFileObj]);
+        };
+        reader.readAsArrayBuffer(file);
+      } else if (isDocx) {
+        const reader = new FileReader();
+        reader.onload = async (uploadEvent) => {
+          try {
+            const arrayBuffer = uploadEvent.target?.result as ArrayBuffer;
+            if (arrayBuffer) {
+              const result = await mammoth.extractRawText({ arrayBuffer });
+              const text = result.value || '';
+              const newFileObj = {
+                ...baseFileProps,
+                type: file.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+                url: '',
+                isImage: false,
+                fileTypeCategory: 'docx',
+                textContent: text ? text.trim() : cleanName,
+              };
+              setSelectedFiles((prev) => [...prev, newFileObj]);
+              return;
+            }
+          } catch (err) {
+            console.warn('Could not extract Word text (fallback):', err);
+          }
+
+          const newFileObj = {
+            ...baseFileProps,
+            type: file.type || 'application/msword',
+            url: '',
+            isImage: false,
+            fileTypeCategory: 'docx',
+          };
+          setSelectedFiles((prev) => [...prev, newFileObj]);
+        };
+        reader.readAsArrayBuffer(file);
+      } else if (isXlsx) {
+        const reader = new FileReader();
+        reader.onload = async (uploadEvent) => {
+          try {
+            const arrayBuffer = uploadEvent.target?.result as ArrayBuffer;
+            if (arrayBuffer) {
+              const workbook = XLSX.read(arrayBuffer, { type: 'array' });
+              const firstSheetName = workbook.SheetNames[0];
+              const worksheet = workbook.Sheets[firstSheetName];
+              const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
+              const rows = jsonData.slice(0, 6).map((r) => r.slice(0, 4));
+
+              const newFileObj = {
+                ...baseFileProps,
+                type: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+                url: '',
+                isImage: false,
+                fileTypeCategory: 'xlsx',
+                tableRows: rows.length > 0 ? rows : [['ID', 'Nom', 'Valeur', 'Statut'], ['01', 'Article A', '150', 'Actif'], ['02', 'Article B', '320', 'En attente']],
+              };
+              setSelectedFiles((prev) => [...prev, newFileObj]);
+              return;
+            }
+          } catch (err) {
+            console.warn('Could not parse Excel spreadsheet (fallback):', err);
+          }
+
+          const newFileObj = {
+            ...baseFileProps,
+            type: file.type || 'application/vnd.ms-excel',
+            url: '',
+            isImage: false,
+            fileTypeCategory: 'xlsx',
+          };
+          setSelectedFiles((prev) => [...prev, newFileObj]);
+        };
+        reader.readAsArrayBuffer(file);
+      } else if (isPptx) {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const newFileObj = {
+            ...baseFileProps,
+            type: file.type || 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
+            url: '',
+            isImage: false,
+            fileTypeCategory: 'pptx',
+          };
+          setSelectedFiles((prev) => [...prev, newFileObj]);
+        };
+        reader.readAsArrayBuffer(file);
+      } else if (isText) {
+        const reader = new FileReader();
+        reader.onload = (uploadEvent) => {
+          const text = uploadEvent.target?.result as string || '';
+          const newFileObj = {
+            ...baseFileProps,
+            type: file.type || 'text/plain',
+            url: '',
+            isImage: false,
+            fileTypeCategory: 'text',
+            textContent: text ? text.trim() : cleanName,
+          };
+          setSelectedFiles((prev) => [...prev, newFileObj]);
+        };
+        reader.readAsText(file);
+      } else {
+        const reader = new FileReader();
+        reader.onload = () => {
+          const newFileObj = {
+            ...baseFileProps,
+            type: file.type || 'application/octet-stream',
+            url: '',
+            isImage: false,
+            fileTypeCategory: 'other',
+          };
+          setSelectedFiles((prev) => [...prev, newFileObj]);
+        };
+        reader.readAsDataURL(file);
+      }
+    });
+  };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files) {
-      const filesArray = Array.from(e.target.files);
-      filesArray.forEach((file: any) => {
-        const fileNameLower = file.name.toLowerCase();
-        const isImage = file.type && file.type.startsWith('image/');
-        const isPdf = file.type === 'application/pdf' || fileNameLower.endsWith('.pdf');
-        const isDocx = file.type.includes('wordprocessingml') || fileNameLower.endsWith('.docx') || fileNameLower.endsWith('.doc');
-        const isXlsx = fileNameLower.endsWith('.xlsx') || fileNameLower.endsWith('.xls') || fileNameLower.endsWith('.csv') || file.type.includes('spreadsheet') || file.type.includes('excel');
-        const isPptx = fileNameLower.endsWith('.pptx') || fileNameLower.endsWith('.ppt') || file.type.includes('presentation') || file.type.includes('powerpoint');
-        const isText = file.type.startsWith('text/') || fileNameLower.endsWith('.txt') || fileNameLower.endsWith('.md') || fileNameLower.endsWith('.json');
+      processFiles(Array.from(e.target.files));
+      e.target.value = '';
+    }
+  };
 
-        const cleanName = file.name.replace(/\.[^/.]+$/, "").replace(/[_-_]/g, ' ');
-        const fileId = Math.random().toString(36).substring(2, 9);
-        rawFileMap.current.set(fileId, file);
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  };
 
-        const baseFileProps = {
-          id: fileId,
-          name: file.name,
-          size: file.size,
-          textContent: cleanName,
-          tableRows: [],
-          fileTitle: cleanName,
-          fileCategory: docCategory || 'Cours',
-          fileMatiere: docMatiere || '',
-          fileLevel: docLevel || '',
-          fileSchool: school || '',
-          fileFiliere: filiere || '',
-          fileCountry: docCountry || "Côte d'Ivoire",
-          fileDescription: '',
-          fileTags: '',
-          isCompleted: false,
-        };
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDraggingOver(false);
+  };
 
-        if (isImage) {
-          const reader = new FileReader();
-          reader.onload = (uploadEvent) => {
-            const resultUrl = uploadEvent.target?.result as string || '';
-            const newFileObj = {
-              ...baseFileProps,
-              type: file.type || 'image/png',
-              url: resultUrl,
-              isImage: true,
-              fileTypeCategory: 'image',
-            };
-            setSelectedFiles((prev) => [...prev, newFileObj]);
-          };
-          reader.readAsDataURL(file);
-        } else if (isPdf) {
-          const reader = new FileReader();
-          reader.onload = async (uploadEvent) => {
-            try {
-              const arrayBuffer = uploadEvent.target?.result as ArrayBuffer;
-              if (arrayBuffer) {
-                const typedarray = new Uint8Array(arrayBuffer);
-                const loadingTask = pdfjsLib.getDocument({ data: typedarray });
-                const pdf = await loadingTask.promise;
-                const page = await pdf.getPage(1);
-                const viewport = page.getViewport({ scale: 1.5 });
-                const canvas = document.createElement('canvas');
-                const context = canvas.getContext('2d');
-                if (context) {
-                  canvas.height = viewport.height;
-                  canvas.width = viewport.width;
-                  await page.render({ canvasContext: context, viewport }).promise;
-                  const imageUrl = canvas.toDataURL('image/png');
-
-                  const newFileObj = {
-                    ...baseFileProps,
-                    type: file.type || 'application/pdf',
-                    url: imageUrl,
-                    isImage: true,
-                    fileTypeCategory: 'pdf',
-                  };
-                  setSelectedFiles((prev) => [...prev, newFileObj]);
-                  return;
-                }
-              }
-            } catch (err) {
-              console.warn('Could not render PDF first page (fallback):', err);
-            }
-
-            const newFileObj = {
-              ...baseFileProps,
-              type: file.type || 'application/pdf',
-              url: '',
-              isImage: false,
-              fileTypeCategory: 'pdf',
-            };
-            setSelectedFiles((prev) => [...prev, newFileObj]);
-          };
-          reader.readAsArrayBuffer(file);
-        } else if (isDocx) {
-          const reader = new FileReader();
-          reader.onload = async (uploadEvent) => {
-            try {
-              const arrayBuffer = uploadEvent.target?.result as ArrayBuffer;
-              if (arrayBuffer) {
-                const result = await mammoth.extractRawText({ arrayBuffer });
-                const text = result.value || '';
-                const newFileObj = {
-                  ...baseFileProps,
-                  type: file.type || 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
-                  url: '',
-                  isImage: false,
-                  fileTypeCategory: 'docx',
-                  textContent: text ? text.trim() : cleanName,
-                };
-                setSelectedFiles((prev) => [...prev, newFileObj]);
-                return;
-              }
-            } catch (err) {
-              console.warn('Could not extract Word text (fallback):', err);
-            }
-
-            const newFileObj = {
-              ...baseFileProps,
-              type: file.type || 'application/msword',
-              url: '',
-              isImage: false,
-              fileTypeCategory: 'docx',
-            };
-            setSelectedFiles((prev) => [...prev, newFileObj]);
-          };
-          reader.readAsArrayBuffer(file);
-        } else if (isXlsx) {
-          const reader = new FileReader();
-          reader.onload = async (uploadEvent) => {
-            try {
-              const arrayBuffer = uploadEvent.target?.result as ArrayBuffer;
-              if (arrayBuffer) {
-                const workbook = XLSX.read(arrayBuffer, { type: 'array' });
-                const firstSheetName = workbook.SheetNames[0];
-                const worksheet = workbook.Sheets[firstSheetName];
-                const jsonData = XLSX.utils.sheet_to_json(worksheet, { header: 1 }) as any[][];
-                const rows = jsonData.slice(0, 6).map((r) => r.slice(0, 4));
-
-                const newFileObj = {
-                  ...baseFileProps,
-                  type: file.type || 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
-                  url: '',
-                  isImage: false,
-                  fileTypeCategory: 'xlsx',
-                  tableRows: rows.length > 0 ? rows : [['ID', 'Nom', 'Valeur', 'Statut'], ['01', 'Article A', '150', 'Actif'], ['02', 'Article B', '320', 'En attente']],
-                };
-                setSelectedFiles((prev) => [...prev, newFileObj]);
-                return;
-              }
-            } catch (err) {
-              console.warn('Could not parse Excel spreadsheet (fallback):', err);
-            }
-
-            const newFileObj = {
-              ...baseFileProps,
-              type: file.type || 'application/vnd.ms-excel',
-              url: '',
-              isImage: false,
-              fileTypeCategory: 'xlsx',
-            };
-            setSelectedFiles((prev) => [...prev, newFileObj]);
-          };
-          reader.readAsArrayBuffer(file);
-        } else if (isPptx) {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const newFileObj = {
-              ...baseFileProps,
-              type: file.type || 'application/vnd.openxmlformats-officedocument.presentationml.presentation',
-              url: '',
-              isImage: false,
-              fileTypeCategory: 'pptx',
-            };
-            setSelectedFiles((prev) => [...prev, newFileObj]);
-          };
-          reader.readAsArrayBuffer(file);
-        } else if (isText) {
-          const reader = new FileReader();
-          reader.onload = (uploadEvent) => {
-            const text = uploadEvent.target?.result as string || '';
-            const newFileObj = {
-              ...baseFileProps,
-              type: file.type || 'text/plain',
-              url: '',
-              isImage: false,
-              fileTypeCategory: 'text',
-              textContent: text ? text.trim() : cleanName,
-            };
-            setSelectedFiles((prev) => [...prev, newFileObj]);
-          };
-          reader.readAsText(file);
-        } else {
-          const reader = new FileReader();
-          reader.onload = () => {
-            const newFileObj = {
-              ...baseFileProps,
-              type: file.type || 'application/octet-stream',
-              url: '',
-              isImage: false,
-              fileTypeCategory: 'other',
-            };
-            setSelectedFiles((prev) => [...prev, newFileObj]);
-          };
-          reader.readAsDataURL(file);
-        }
-      });
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      processFiles(Array.from(e.dataTransfer.files));
     }
   };
 
@@ -546,7 +573,26 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   const activeEditingFile = selectedFiles.find(f => f.id === editingFileId);
 
   return (
-    <div ref={containerRef} className="absolute inset-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#FDFBF7] text-stone-950 px-3 sm:px-6 py-4 overflow-y-auto">
+    <div 
+      ref={containerRef} 
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`absolute inset-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#FDFBF7] text-stone-950 px-3 sm:px-6 py-4 overflow-y-auto transition-colors ${
+        isDraggingOver ? 'ring-4 ring-emerald-500 ring-inset bg-emerald-50/20' : ''
+      }`}
+    >
+      {/* Fullscreen Drag Overlay */}
+      {isDraggingOver && (
+        <div className="fixed inset-0 z-[100] bg-[#2D4A3E]/85 backdrop-blur-sm border-4 border-dashed border-emerald-400 flex flex-col items-center justify-center pointer-events-none p-6 text-center animate-in fade-in duration-150">
+          <div className="w-20 h-20 rounded-3xl bg-white/20 border-2 border-white flex items-center justify-center mb-4 shadow-xl animate-bounce">
+            <Upload className="w-10 h-10 text-white stroke-[2.5]" />
+          </div>
+          <h2 className="text-2xl font-black text-white drop-shadow-md">Déposez vos fichiers ici</h2>
+          <p className="text-sm font-bold text-emerald-100 mt-1">PDF, Word, Excel, PPT, images... ils seront ajoutés automatiquement à la publication</p>
+        </div>
+      )}
+
       {/* Top Fixed Bar */}
       <div className="fixed top-4 left-3 right-3 sm:left-6 sm:right-6 md:left-[calc(16rem+1.5rem)] flex items-center justify-between z-40 pointer-events-none">
         <button

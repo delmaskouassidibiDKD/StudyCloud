@@ -122,13 +122,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
     triggerToast("Modifications enregistrées avec succès !");
   };
 
-  const handleAvatarFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
-    if (!file) return;
-
-    // Réinitialiser la valeur de l'input pour permettre de sélectionner à nouveau le même fichier
-    e.target.value = '';
-
+  const processAvatarFile = (file: File) => {
     // Vérification du format (JPG, PNG, BMP)
     const validTypes = ['image/jpeg', 'image/png', 'image/bmp'];
     const validExtensions = ['.jpg', '.jpeg', '.png', '.bmp'];
@@ -169,6 +163,13 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
       .catch(() => {
         alert("Impossible de traiter l'image sélectionnée. Veuillez réessayer.");
       });
+  };
+
+  const handleAvatarFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    e.target.value = '';
+    processAvatarFile(file);
   };
 
   const handleConfirmLogout = () => {
@@ -278,8 +279,19 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
       <div className="max-w-2xl mx-auto p-4 md:p-8 space-y-6 md:space-y-8 text-center pb-24 md:pb-12">
         {/* Profile Card Header */}
         <div className="flex flex-col items-center justify-center space-y-3 md:space-y-4 pt-2">
-          {/* Avatar container with camera overlay */}
-          <div className="relative group">
+          {/* Avatar container with camera overlay and drag-drop */}
+          <div 
+            onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+            onDrop={(e) => {
+              e.preventDefault();
+              e.stopPropagation();
+              if (e.dataTransfer.files?.[0]) {
+                processAvatarFile(e.dataTransfer.files[0]);
+              }
+            }}
+            className="relative group cursor-pointer"
+            onClick={() => avatarInputRef.current?.click()}
+          >
             <div className="w-24 h-24 md:w-32 md:h-32 rounded-full bg-white dark:bg-[#111a2e] border-3 border-stone-800 dark:border-[#334155] flex items-center justify-center text-orange-600 dark:text-orange-500 shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none overflow-hidden">
               {displayAvatar ? (
                 <img src={displayAvatar} alt={name} className="w-full h-full object-cover" />

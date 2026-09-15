@@ -27,6 +27,7 @@ interface UploadViewProps {
   handleTouchEnd: () => void;
   handleSelectAll: () => void;
   setReplacingItemId: (id: string | null) => void;
+  onFilesDropped?: (files: File[]) => void;
 }
 
 export const UploadView: React.FC<UploadViewProps> = ({
@@ -52,9 +53,54 @@ export const UploadView: React.FC<UploadViewProps> = ({
   handleTouchEnd,
   handleSelectAll,
   setReplacingItemId,
+  onFilesDropped,
 }) => {
+  const [isDragging, setIsDragging] = React.useState(false);
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDragging(false);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDragging(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      if (onFilesDropped) {
+        onFilesDropped(Array.from(e.dataTransfer.files));
+      }
+    }
+  };
+
   return (
-    <div className="flex flex-col space-y-4 pb-24 pt-24 md:pt-24 animate-fadeIn">
+    <div 
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`flex flex-col space-y-4 pb-24 pt-24 md:pt-24 animate-fadeIn min-h-screen relative transition-colors ${
+        isDragging ? 'ring-4 ring-orange-500 ring-inset bg-orange-50/20' : ''
+      }`}
+    >
+      {/* Fullscreen Drag & Drop Overlay */}
+      {isDragging && (
+        <div className="fixed inset-0 z-50 bg-stone-900/85 backdrop-blur-sm border-4 border-dashed border-orange-500 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-150 pointer-events-none">
+          <div className="w-20 h-20 rounded-3xl bg-orange-500/20 border-2 border-orange-500 text-orange-400 flex items-center justify-center mb-4 shadow-xl animate-bounce">
+            <Upload className="w-10 h-10 stroke-[2.5]" />
+          </div>
+          <h2 className="text-2xl font-black text-white drop-shadow-md">Déposez vos fichiers ou dossiers ici</h2>
+          <p className="text-sm font-bold text-stone-300 mt-1">Tous les formats sont acceptés pour être importés dans votre espace de partage</p>
+        </div>
+      )}
+
       {/* Fixed Header for Upload Tab - Solid Dark #070a13 */}
       <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#FDFBF7] dark:bg-[#070a13] py-2 px-4 md:px-8 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm space-y-1.5">
         <div className="flex items-center justify-between gap-3 max-w-7xl mx-auto w-full">

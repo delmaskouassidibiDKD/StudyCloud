@@ -815,6 +815,56 @@ export default function App() {
       }
     }
   };
+
+  const handleFilesDropped = (files: File[]) => {
+    try {
+      if (files && files.length > 0) {
+        const newItems: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean }[] = [];
+        const imageFilesToCompress: { id: string; file: File }[] = [];
+
+        for (let i = 0; i < files.length; i++) {
+          const f = files[i];
+          const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
+          const isImg = !isPdf && (f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(f.name));
+          const id = `item-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`;
+          let url: string | undefined = undefined;
+          try {
+            if (isImg) {
+              url = URL.createObjectURL(f);
+              imageFilesToCompress.push({ id, file: f });
+            }
+          } catch (blobErr) {
+            console.error(blobErr);
+          }
+
+          newItems.push({
+            id,
+            name: f.name,
+            size: f.size,
+            type: f.type || 'Fichiers',
+            url,
+            isImage: isImg
+          });
+        }
+
+        setUploadedItems((prev) => [...prev, ...newItems]);
+        setCurrentTab('upload');
+        localStorage.setItem('unifolder_current_tab', 'upload');
+
+        imageFilesToCompress.forEach(({ id, file }) => {
+          compressImage(file).then((dataUrl) => {
+            if (dataUrl) {
+              setUploadedItems((prev) =>
+                prev.map((item) => (item.id === id ? { ...item, url: dataUrl } : item))
+              );
+            }
+          });
+        });
+      }
+    } catch (err) {
+      console.error(err);
+    }
+  };
   const [shareId, setShareId] = useState<string | null>(() => {
     const hash = window.location.hash;
     if (hash.startsWith('#share=')) {
@@ -1173,6 +1223,7 @@ export default function App() {
               handleTouchEnd={handleTouchEnd}
               handleSelectAll={handleSelectAll}
               setReplacingItemId={setReplacingItemId}
+              onFilesDropped={handleFilesDropped}
             />
           ) : currentTab === 'library' ? (
             <LibraryView

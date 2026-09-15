@@ -153,133 +153,162 @@ export function LeftMenu({
     return () => document.removeEventListener('click', handleClickOutside);
   }, []);
 
-  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  const processFiles = async (files: FileList | File[]) => {
     if (!files || files.length === 0) return;
     
-    const file = files[0];
-    if (file.size > MAX_FILE_SIZE_BYTES) {
-      alert(`Le fichier "${file.name}" dépasse la limite de 50 Mo (${formatFileSize(file.size)}).`);
-      return;
-    }
-
-    const now = Date.now();
-    const id = `file-${now}-${Math.random().toString(36).substring(2, 7)}`;
-    await storeFileBlob(id, file);
-    const localUrl = URL.createObjectURL(file);
-    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
-    const extVal = file.name.split('.').pop()?.toUpperCase() || 'FICHIER';
-
-    const newFile = {
-      id,
-      name: file.name,
-      type: file.type || 'file',
-      size: file.size,
-      date: new Date().toLocaleDateString('fr-FR'),
-      extension: extVal,
-      isImage: file.type.startsWith('image/'),
-      url: localUrl,
-      matiere: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : '',
-      isLeftMenuImport: true,
-      isStudyImport: true,
-      isImported: true,
-      importedAt: now,
-      createdAt: now,
-      timestamp: now
-    };
-    
-    // Enregistrer dans Cloudflare D1
-    StudyCloudAPI.registerFileMetadata({
-      id,
-      userId,
-      matiereId: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : null,
-      name: file.name,
-      size: file.size,
-      type: file.type || 'application/octet-stream',
-      extension: extVal,
-      r2Key: null,
-      fileUrl: localUrl,
-      isFavorite: false,
-      isImported: true,
-      isStudySession: true,
-      lastImported: now
-    }).catch(() => {});
-
-    StudyCloudAPI.registerStudyFile({
-      id,
-      userId,
-      name: file.name,
-      size: file.size,
-      type: file.type || 'application/octet-stream',
-      extension: extVal,
-      r2Key: null,
-      fileUrl: localUrl,
-      isFavorite: false,
-      importedAt: now
-    }).catch(() => {});
-
-    // Upload vers Cloudflare R2
-    const r2Key = `files/${userId}/${id}-${encodeURIComponent(file.name)}`;
-    StudyCloudAPI.uploadFileToR2(file, r2Key).then(res => {
-      if (res && res.url) {
-        StudyCloudAPI.registerFileMetadata({
-          id,
-          userId,
-          matiereId: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : null,
-          name: file.name,
-          size: file.size,
-          type: file.type || 'application/octet-stream',
-          extension: extVal,
-          r2Key: res.key,
-          fileUrl: res.url,
-          isFavorite: false,
-          isImported: true,
-          isStudySession: true,
-          lastImported: now
-        }).catch(() => {});
-
-        StudyCloudAPI.registerStudyFile({
-          id,
-          userId,
-          name: file.name,
-          size: file.size,
-          type: file.type || 'application/octet-stream',
-          extension: extVal,
-          r2Key: res.key,
-          fileUrl: res.url,
-          isFavorite: false,
-          importedAt: now
-        }).catch(() => {});
+    for (let idx = 0; idx < files.length; idx++) {
+      const file = files[idx];
+      if (file.size > MAX_FILE_SIZE_BYTES) {
+        alert(`Le fichier "${file.name}" dépasse la limite de 50 Mo (${formatFileSize(file.size)}).`);
+        continue;
       }
-    }).catch(() => {});
-    
-    // Save to dedicated study imports localStorage (global and independent of current menu)
-    try {
-      const keys = ['unifolder_study_imported_files', 'unifolder_left_menu_general_imports'];
-      keys.forEach(k => {
-        const saved = localStorage.getItem(k);
-        let parsed: any[] = [];
-        if (saved) {
-          try { parsed = JSON.parse(saved); } catch (err) {}
+
+      const now = Date.now() + idx;
+      const id = `file-${now}-${Math.random().toString(36).substring(2, 7)}`;
+      await storeFileBlob(id, file);
+      const localUrl = URL.createObjectURL(file);
+      const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      const extVal = file.name.split('.').pop()?.toUpperCase() || 'FICHIER';
+
+      const newFile = {
+        id,
+        name: file.name,
+        type: file.type || 'file',
+        size: file.size,
+        date: new Date().toLocaleDateString('fr-FR'),
+        extension: extVal,
+        isImage: file.type.startsWith('image/'),
+        url: localUrl,
+        matiere: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : '',
+        isLeftMenuImport: true,
+        isStudyImport: true,
+        isImported: true,
+        importedAt: now,
+        createdAt: now,
+        timestamp: now
+      };
+      
+      // Enregistrer dans Cloudflare D1
+      StudyCloudAPI.registerFileMetadata({
+        id,
+        userId,
+        matiereId: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : null,
+        name: file.name,
+        size: file.size,
+        type: file.type || 'application/octet-stream',
+        extension: extVal,
+        r2Key: null,
+        fileUrl: localUrl,
+        isFavorite: false,
+        isImported: true,
+        isStudySession: true,
+        lastImported: now
+      }).catch(() => {});
+
+      StudyCloudAPI.registerStudyFile({
+        id,
+        userId,
+        name: file.name,
+        size: file.size,
+        type: file.type || 'application/octet-stream',
+        extension: extVal,
+        r2Key: null,
+        fileUrl: localUrl,
+        isFavorite: false,
+        importedAt: now
+      }).catch(() => {});
+
+      // Upload vers Cloudflare R2
+      const r2Key = `files/${userId}/${id}-${encodeURIComponent(file.name)}`;
+      StudyCloudAPI.uploadFileToR2(file, r2Key).then(res => {
+        if (res && res.url) {
+          StudyCloudAPI.registerFileMetadata({
+            id,
+            userId,
+            matiereId: currentFolderName && currentFolderName !== 'Mes fichiers' ? currentFolderName : null,
+            name: file.name,
+            size: file.size,
+            type: file.type || 'application/octet-stream',
+            extension: extVal,
+            r2Key: res.key,
+            fileUrl: res.url,
+            isFavorite: false,
+            isImported: true,
+            isStudySession: true,
+            lastImported: now
+          }).catch(() => {});
+
+          StudyCloudAPI.registerStudyFile({
+            id,
+            userId,
+            name: file.name,
+            size: file.size,
+            type: file.type || 'application/octet-stream',
+            extension: extVal,
+            r2Key: res.key,
+            fileUrl: res.url,
+            isFavorite: false,
+            importedAt: now
+          }).catch(() => {});
         }
-        parsed = [newFile, ...parsed.filter((f: any) => f.id !== newFile.id)];
-        localStorage.setItem(k, JSON.stringify(parsed));
-      });
-      localStorage.setItem('unifolder_last_imported_id', newFile.id);
-      window.dispatchEvent(new Event('unifolder_files_updated'));
-    } catch (err) {}
-    
-    setMenuFiles(prev => [newFile, ...prev.filter(f => f.id !== newFile.id)]);
-    setSessionImportedIds(prev => [newFile.id, ...prev.filter(id => id !== newFile.id)]);
-    
-    if (setActivePreviewItem) {
-      setActivePreviewItem({ ...newFile, folderName: currentFolderName || 'Mes fichiers' });
-      setViewHistory(prev => [newFile.id, ...prev.filter(id => id !== newFile.id)]);
+      }).catch(() => {});
+      
+      // Save to dedicated study imports localStorage (global and independent of current menu)
+      try {
+        const keys = ['unifolder_study_imported_files', 'unifolder_left_menu_general_imports'];
+        keys.forEach(k => {
+          const saved = localStorage.getItem(k);
+          let parsed: any[] = [];
+          if (saved) {
+            try { parsed = JSON.parse(saved); } catch (err) {}
+          }
+          parsed = [newFile, ...parsed.filter((f: any) => f.id !== newFile.id)];
+          localStorage.setItem(k, JSON.stringify(parsed));
+        });
+        localStorage.setItem('unifolder_last_imported_id', newFile.id);
+        window.dispatchEvent(new Event('unifolder_files_updated'));
+      } catch (err) {}
+      
+      setMenuFiles(prev => [newFile, ...prev.filter(f => f.id !== newFile.id)]);
+      setSessionImportedIds(prev => [newFile.id, ...prev.filter(id => id !== newFile.id)]);
+      
+      if (idx === 0 && setActivePreviewItem) {
+        setActivePreviewItem({ ...newFile, folderName: currentFolderName || 'Mes fichiers' });
+        setViewHistory(prev => [newFile.id, ...prev.filter(id => id !== newFile.id)]);
+      }
     }
-    
-    // Reset input
-    if (fileInputRef.current) {
-      fileInputRef.current.value = '';
+  };
+
+  const handleFileUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      await processFiles(e.target.files);
+      if (fileInputRef.current) {
+        fileInputRef.current.value = '';
+      }
+    }
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      await processFiles(e.dataTransfer.files);
     }
   };
 
@@ -779,10 +808,26 @@ export function LeftMenu({
   return (
     <div 
       ref={containerRef} 
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
       className={`w-full h-full border-r-2 border-stone-800 relative pointer-events-auto bg-[#FDFBF7] ${
         isCenterFullscreen || isRightFullscreen ? 'hidden' : (mobilePreviewTab === 0 ? 'flex' : 'hidden md:flex')
-      } flex flex-col pt-[44px] overflow-hidden`}
+      } flex flex-col pt-[44px] overflow-hidden transition-colors ${
+        isDraggingOver ? 'ring-4 ring-orange-500 ring-inset bg-orange-50/30' : ''
+      }`}
     >
+      {/* Drag & drop overlay */}
+      {isDraggingOver && (
+        <div className="absolute inset-0 z-50 bg-stone-900/85 backdrop-blur-sm border-2 border-dashed border-orange-500 flex flex-col items-center justify-center p-4 text-center pointer-events-none animate-in fade-in duration-150">
+          <div className="w-12 h-12 rounded-2xl bg-orange-500/20 border-2 border-orange-500 text-orange-400 flex items-center justify-center mb-2 shadow-lg animate-bounce">
+            <Upload className="w-6 h-6 stroke-[2.5]" />
+          </div>
+          <h3 className="text-sm font-black text-white">Déposer le fichier ici</h3>
+          <p className="text-[10px] font-bold text-stone-300 mt-0.5">Import instantané dans l'espace d'étude</p>
+        </div>
+      )}
+
       {/* Top Header & Actions Section */}
       {!isAssistantOpen ? (
         <div className="w-full px-3 py-2 shrink-0 border-b border-stone-200/80 bg-[#FDFBF7] z-30">

@@ -508,9 +508,10 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     }
   };
 
-  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    if (e.target.files && e.target.files.length > 0) {
-      const fileList = e.target.files;
+  const [isDraggingOver, setIsDraggingOver] = useState(false);
+
+  const processFiles = async (fileList: FileList | File[]) => {
+    try {
       const newItems: ImportedItem[] = [];
       const imageFilesToCompress: { id: string; file: File }[] = [];
       const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
@@ -652,14 +653,59 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           }
         });
       });
+    } catch (err) {
+      console.error(err);
     }
-    if (e.target) {
+  };
+
+  const handleFileChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files.length > 0) {
+      await processFiles(e.target.files);
       e.target.value = '';
     }
   };
 
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    if (e.currentTarget.contains(e.relatedTarget as Node)) return;
+    setIsDraggingOver(false);
+  };
+
+  const handleDrop = async (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsDraggingOver(false);
+    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+      await processFiles(e.dataTransfer.files);
+    }
+  };
+
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[72px] md:top-[76px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-8 overflow-y-auto transition-colors duration-300">
+    <div 
+      onDragOver={handleDragOver}
+      onDragLeave={handleDragLeave}
+      onDrop={handleDrop}
+      className={`absolute inset-x-0 bottom-0 top-[72px] md:top-[76px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-8 overflow-y-auto transition-colors duration-300 ${
+        isDraggingOver ? 'ring-4 ring-emerald-500 ring-inset bg-emerald-50/20' : ''
+      }`}
+    >
+      {/* Drag & drop overlay */}
+      {isDraggingOver && (
+        <div className="fixed inset-0 z-50 bg-[#2D4A3E]/85 backdrop-blur-sm border-4 border-dashed border-emerald-400 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-150 pointer-events-none">
+          <div className="w-20 h-20 rounded-3xl bg-white/20 border-2 border-white text-white flex items-center justify-center mb-4 shadow-xl animate-bounce">
+            <Upload className="w-10 h-10 stroke-[2.5]" />
+          </div>
+          <h2 className="text-2xl font-black text-white drop-shadow-md">Déposez vos fichiers ici</h2>
+          <p className="text-sm font-bold text-emerald-100 mt-1">Ils seront importés directement dans « {matiereName} »</p>
+        </div>
+      )}
       <input 
         type="file" 
         ref={fileInputRef} 

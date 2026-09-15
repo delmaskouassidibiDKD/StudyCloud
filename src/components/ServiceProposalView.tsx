@@ -250,28 +250,34 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
     return false;
   })();
 
+  const processAvatarEdit = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const url = ev.target?.result as string || '';
+      setTempFieldValue(url);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const url = ev.target?.result as string || '';
-        setTempFieldValue(url);
-      };
-      reader.readAsDataURL(file);
+      processAvatarEdit(e.target.files[0]);
       e.target.value = '';
     }
   };
 
+  const processSetupAvatar = (file: File) => {
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const url = ev.target?.result as string || '';
+      setSetupShopAvatarUrl(url);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleSetupAvatarChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (ev) => {
-        const url = ev.target?.result as string || '';
-        setSetupShopAvatarUrl(url);
-      };
-      reader.readAsDataURL(file);
+      processSetupAvatar(e.target.files[0]);
       e.target.value = '';
     }
   };
@@ -450,20 +456,23 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
     setTimeout(() => setToastMessage(null), 2500);
   };
 
+  const processImageFile = (file: File) => {
+    if (newImageUrls.length >= 3) {
+      triggerToast("Vous pouvez importer un maximum de 3 images.");
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (uploadEvent) => {
+      const resultUrl = uploadEvent.target?.result as string || '';
+      setNewImageUrls((prev) => [...prev, resultUrl]);
+      triggerToast(`Image importée avec succès !`);
+    };
+    reader.readAsDataURL(file);
+  };
+
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      if (newImageUrls.length >= 3) {
-        triggerToast("Vous pouvez importer un maximum de 3 images.");
-        return;
-      }
-      const file = e.target.files[0];
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        const resultUrl = uploadEvent.target?.result as string || '';
-        setNewImageUrls((prev) => [...prev, resultUrl]);
-        triggerToast(`Image ${newImageUrls.length + 1}/3 importée avec succès !`);
-      };
-      reader.readAsDataURL(file);
+      processImageFile(e.target.files[0]);
       // Reset input value so the same file can be selected again if needed
       e.target.value = '';
     }
@@ -743,7 +752,17 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
             <form onSubmit={handleCreateShopSubmit} className="space-y-6">
               {/* Photo de profil boutique */}
               <div className="flex flex-col items-center justify-center gap-3 pb-2">
-                <div className="relative w-28 h-28 rounded-full bg-amber-100 border-2 border-stone-800 overflow-hidden shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center font-black text-amber-900 text-3xl">
+                <div 
+                  onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                  onDrop={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (e.dataTransfer.files?.[0]) {
+                      processSetupAvatar(e.dataTransfer.files[0]);
+                    }
+                  }}
+                  className="relative w-28 h-28 rounded-full bg-amber-100 border-2 border-stone-800 overflow-hidden shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center font-black text-amber-900 text-3xl"
+                >
                   {setupShopAvatarUrl ? (
                     <img src={setupShopAvatarUrl} alt="Avatar" className="w-full h-full object-cover" />
                   ) : (
@@ -1157,6 +1176,17 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                     <button
                       type="button"
                       onClick={() => imageInputRef.current?.click()}
+                      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.dataTransfer.files) {
+                          for (let i = 0; i < e.dataTransfer.files.length; i++) {
+                            const file = e.dataTransfer.files[i];
+                            if (file) processImageFile(file);
+                          }
+                        }
+                      }}
                       className="w-16 h-16 md:w-24 md:h-24 rounded-xl md:rounded-2xl border-2 border-stone-800 border-dashed bg-white hover:bg-purple-50 text-purple-700 font-extrabold text-xs md:text-sm flex flex-col items-center justify-center gap-1 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer transition-all active:translate-x-0.5 active:translate-y-0.5"
                     >
                       <Upload className="w-4 h-4 md:w-6 md:h-6" />
@@ -2172,7 +2202,17 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
               {editingField === 'avatar' && (
                 <div className="flex flex-col items-center justify-center gap-3 md:gap-4 py-2 md:py-4">
-                  <div className="relative w-24 h-24 md:w-32 md:h-32 rounded-full bg-amber-100 border-2 border-stone-800 overflow-hidden shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center text-amber-900 font-black text-2xl md:text-4xl">
+                  <div 
+                    onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+                    onDrop={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (e.dataTransfer.files?.[0]) {
+                        processAvatarEdit(e.dataTransfer.files[0]);
+                      }
+                    }}
+                    className="relative w-24 h-24 md:w-32 md:h-32 rounded-full bg-amber-100 border-2 border-stone-800 overflow-hidden shadow-[2px_2px_0px_0px_#1c1917] flex items-center justify-center text-amber-900 font-black text-2xl md:text-4xl"
+                  >
                     {tempFieldValue ? (
                       <img src={tempFieldValue} alt="Avatar" className="w-full h-full object-cover" />
                     ) : (
