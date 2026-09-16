@@ -356,6 +356,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [showMenuModal, setShowMenuModal] = useState(false);
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
   const [activeCategoryTooltipId, setActiveCategoryTooltipId] = useState<string | null>(null);
+  const [schoolSearchQuery, setSchoolSearchQuery] = useState('');
+  const [matiereSearchQuery, setMatiereSearchQuery] = useState('');
 
   // Mode d'affichage des ressources : 'preview' (Image 2 avec aperçus par défaut) ou 'compact' (style informations actuelles)
   const [resourceViewMode, setResourceViewMode] = useState<'preview' | 'compact'>(() => {
@@ -1226,6 +1228,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </span>
               <button onClick={() => setShowMatiereModal(false)} className="text-stone-400 hover:text-white text-xs font-bold cursor-pointer">✕</button>
             </div>
+
+            {/* Champ de recherche pour les matières */}
+            <div className="px-3 py-2 border-b border-stone-800 shrink-0">
+              <input
+                type="text"
+                placeholder="Rechercher une matière..."
+                value={matiereSearchQuery}
+                onChange={(e) => setMatiereSearchQuery(e.target.value)}
+                className="w-full bg-stone-800 text-stone-200 text-[11px] px-3 py-1.5 rounded-lg border border-stone-600 focus:outline-none focus:border-blue-500 placeholder-stone-500"
+              />
+            </div>
             
             {/* Si un filtre matière est actif, option pour réinitialiser */}
             {selectedMatiereFilter && (
@@ -1246,8 +1259,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   Aucune matière trouvée dans les publications.
                 </div>
               ) : (
-                availableMatieres.map((mat) => (
-                  <button 
+                availableMatieres.filter(m => m.toLowerCase().includes(matiereSearchQuery.toLowerCase())).length === 0 ? (
+                  <div className="p-4 text-center text-[11px] text-stone-400">
+                    Aucune matière ne correspond à votre recherche.
+                  </div>
+                ) : (
+                  availableMatieres
+                    .filter(m => m.toLowerCase().includes(matiereSearchQuery.toLowerCase()))
+                    .map((mat) => (
+                      <button 
                     key={mat}
                     onClick={() => {
                       setSelectedMatiereFilter(prev => prev === mat ? null : mat);
@@ -1279,6 +1299,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <button onClick={() => setShowSchoolsModal(false)} className="text-stone-400 hover:text-white text-xs font-bold cursor-pointer">✕</button>
             </div>
 
+            {/* Champ de recherche pour les écoles */}
+            <div className="px-3 py-2 border-b border-stone-800 shrink-0">
+              <input
+                type="text"
+                placeholder="Rechercher une école..."
+                value={schoolSearchQuery}
+                onChange={(e) => setSchoolSearchQuery(e.target.value)}
+                className="w-full bg-stone-800 text-stone-200 text-[11px] px-3 py-1.5 rounded-lg border border-stone-600 focus:outline-none focus:border-orange-500 placeholder-stone-500"
+              />
+            </div>
             {/* Si un filtre école est actif, option pour réinitialiser */}
             {selectedSchoolFilter && (
               <div className="px-3 py-1.5 border-b border-stone-800 shrink-0">
@@ -1298,8 +1328,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   Aucune école trouvée pour le moment.
                 </div>
               ) : (
-                availableSchools.map((sc) => (
-                  <button 
+                availableSchools.filter(s => s.toLowerCase().includes(schoolSearchQuery.toLowerCase())).length === 0 ? (
+                  <div className="p-4 text-center text-[11px] text-stone-400">
+                    Aucune école ne correspond à votre recherche.
+                  </div>
+                ) : (
+                  availableSchools
+                    .filter(s => s.toLowerCase().includes(schoolSearchQuery.toLowerCase()))
+                    .map((sc) => (
+                      <button 
                     key={sc}
                     onClick={() => {
                       setSelectedSchoolFilter(prev => prev === sc ? null : sc);
