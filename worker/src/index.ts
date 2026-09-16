@@ -5353,6 +5353,70 @@ export default {
         });
       }
 
+      // Endpoint d'image produit direct pour WhatsApp et les réseaux sociaux (JPG/PNG binaire, JAMAIS de SVG)
+      if (path.match(/^\/api\/products\/[^/]+\/image$/) && method === 'GET') {
+        await ensureShopAndProductTables(env.DB);
+        const id = path.split('/')[3];
+        const product: any = await env.DB.prepare('SELECT image_urls_json FROM products WHERE id = ?').bind(id).first();
+        let imgUrl = '';
+        try {
+          const imgs = JSON.parse(product?.image_urls_json || '[]');
+          if (Array.isArray(imgs) && imgs.length > 0) imgUrl = imgs[0];
+          else if (typeof imgs === 'string' && imgs) imgUrl = imgs;
+        } catch (e) {
+          if (product?.image_urls_json && typeof product.image_urls_json === 'string') {
+            imgUrl = product.image_urls_json;
+          }
+        }
+
+        const fallbackUrl = 'https://studycloud.dkd-technologies.com/assets/student-logo.jpg';
+        if (!imgUrl) {
+          return Response.redirect(fallbackUrl, 302);
+        }
+
+        if (imgUrl.startsWith('data:')) {
+          try {
+            const parts = imgUrl.split(',');
+            const mimeMatch = parts[0].match(/:(.*?);/);
+            const mime = mimeMatch ? mimeMatch[1] : 'image/jpeg';
+            const binary = atob(parts[1].replace(/\s/g, ''));
+            const bytes = new Uint8Array(binary.length);
+            for (let i = 0; i < binary.length; i++) {
+              bytes[i] = binary.charCodeAt(i);
+            }
+            return new Response(bytes.buffer, {
+              status: 200,
+              headers: {
+                'Content-Type': mime,
+                'Cache-Control': 'public, max-age=86400',
+                ...corsHeaders(origin)
+              }
+            });
+          } catch (e) {
+            return Response.redirect(fallbackUrl, 302);
+          }
+        }
+
+        const appOrigin = url.origin.includes('localhost') ? url.origin : 'https://studycloud.dkd-technologies.com';
+        const fullImgUrl = imgUrl.startsWith('http') ? imgUrl : `${appOrigin}${imgUrl.startsWith('/') ? '' : '/'}${imgUrl}`;
+
+        try {
+          const imgRes = await fetch(fullImgUrl);
+          if (imgRes.ok) {
+            const cType = imgRes.headers.get('content-type') || 'image/jpeg';
+            return new Response(imgRes.body, {
+              status: 200,
+              headers: {
+                'Content-Type': cType,
+                'Cache-Control': 'public, max-age=86400',
+                ...corsHeaders(origin)
+              }
+            });
+          }
+        } catch (e) {}
+        return Response.redirect(fullImgUrl, 302);
+      }
+
       if (path.match(/^\/api\/products\/[^/]+\/order$/) && method === 'GET') {
         await ensureShopAndProductTables(env.DB);
         const id = path.split('/')[3];
@@ -5374,7 +5438,7 @@ export default {
 
         const appOrigin = url.origin.includes('localhost') ? url.origin : 'https://studycloud.dkd-technologies.com';
         const productShareUrl = `${appOrigin}/share/product/${encodeURIComponent(product.id)}`;
-        const bannerImageUrl = `${appOrigin}/api/products/${encodeURIComponent(product.id)}/banner`;
+        const productImageOgUrl = `${appOrigin}/api/products/${encodeURIComponent(product.id)}/image`;
 
         const autoMessage = `Bonjour ! Je suis intéressé(e) par votre produit : *${product.title}* (${product.price}).\n\nLien vers le produit : ${productShareUrl}`;
         const whatsappUrl = cleanPhone
@@ -5395,7 +5459,8 @@ export default {
           cleanPhone,
           message: autoMessage,
           productShareUrl,
-          bannerImageUrl,
+          productImageUrl: productImageOgUrl,
+          bannerImageUrl: productImageOgUrl,
           product: {
             id: product.id,
             title: product.title,
@@ -5405,51 +5470,855 @@ export default {
         }, 200, origin);
       }
 
+      // Page produit standalone accessible publiquement (Clone identique de l'application Image 2)
       if (path.match(/^\/share\/product\/[^/]+$/) && method === 'GET') {
         await ensureShopAndProductTables(env.DB);
         const id = path.split('/')[3];
         const product: any = await env.DB.prepare('SELECT * FROM products WHERE id = ?').bind(id).first();
         const appOrigin = url.origin.includes('localhost') ? url.origin : 'https://studycloud.dkd-technologies.com';
-        const targetUrl = `${appOrigin}/?product=${encodeURIComponent(id)}`;
+        const targetAppUrl = `${appOrigin}/?product=${encodeURIComponent(id)}`;
 
         if (!product) {
-          return Response.redirect(targetUrl, 302);
+          return Response.redirect(targetAppUrl, 302);
         }
 
-        const bannerUrl = `${appOrigin}/api/products/${encodeURIComponent(id)}/banner`;
-        const title = escapeHtml(product.title + ' (' + product.price + ') - StudyCloud');
-        const description = escapeHtml(`Je suis intéressé(e) par ce produit sur StudyCloud : ${product.description || product.title}`);
+        // Profil du vendeur et autres produits
+        const [sellerUser, sellerShop, otherProductsRes]: any = await Promise.all([
+          env.DB.prepare('SELECT id, name, phone, school, filiere, country, avatar_url FROM users WHERE id = ?').bind(product.seller_id).first().catch(() => null),
+          env.DB.prepare('SELECT shop_name, shop_phone, shop_whatsapp, shop_avatar_url FROM shop_profiles WHERE user_id = ?').bind(product.seller_id).first().catch(() => null),
+          env.DB.prepare('SELECT id, title, price, image_urls_json, seller_name FROM products WHERE id != ? ORDER BY (seller_id = ?) DESC, created_at DESC LIMIT 6').bind(product.id, product.seller_id).all().catch(() => ({ results: [] }))
+        ]);
+
+        const sellerName = product.seller_name || sellerShop?.shop_name || sellerUser?.name || 'Vendeur StudyCloud';
+        const rawPhone = product.seller_whatsapp || sellerShop?.shop_whatsapp || product.seller_phone || sellerShop?.shop_phone || sellerUser?.phone || '';
+        let cleanPhone = String(rawPhone || '').replace(/\D/g, '');
+        if (cleanPhone.length === 10 && cleanPhone.startsWith('0')) {
+          cleanPhone = '225' + cleanPhone;
+        } else if (cleanPhone.length === 8 && !cleanPhone.startsWith('225')) {
+          cleanPhone = '225' + cleanPhone;
+        }
+        const sellerPhone = cleanPhone ? `+${cleanPhone}` : (rawPhone || '+225 00 00 00 00 00');
+        const sellerAvatar = product.seller_avatar_url || sellerShop?.shop_avatar_url || sellerUser?.avatar_url || '';
+        const sellerSchool = product.seller_school || sellerUser?.school || '';
+        const sellerFiliere = product.seller_filiere || sellerUser?.filiere || '';
+        const sellerInitials = (sellerName || 'DK').substring(0, 2).toUpperCase();
+        const sellerSubtitle = [sellerSchool, sellerFiliere].filter(Boolean).join(' • ');
+
+        const productShareUrl = `${appOrigin}/share/product/${encodeURIComponent(product.id)}`;
+        const autoMessage = `Bonjour ! Je suis intéressé(e) par votre produit : *${product.title}* (${product.price}).\n\nLien vers le produit : ${productShareUrl}`;
+        const whatsappUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(autoMessage)}` : '';
+
+        // Images du produit (3 slides)
+        let rawImages: string[] = [];
+        try {
+          rawImages = JSON.parse(product.image_urls_json || '[]');
+        } catch (e) {}
+        if (!Array.isArray(rawImages) || rawImages.length === 0) {
+          rawImages = [`${appOrigin}/api/products/${encodeURIComponent(product.id)}/image`];
+        }
+        const imageSlides = Array.from({ length: 3 }).map((_, i) => rawImages[i] || rawImages[0] || '');
+
+        // URL image produit pour Open Graph WhatsApp (JPG/PNG binaire)
+        const ogImageUrl = `${appOrigin}/api/products/${encodeURIComponent(product.id)}/image`;
+
+        const title = escapeHtml(product.title || 'Produit StudyCloud');
+        const price = escapeHtml(product.price || '0 FCFA');
+        const description = escapeHtml(product.description || 'Aucune description fournie pour ce produit.');
+        const otherProducts = otherProductsRes?.results || [];
 
         const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
   <meta charset="UTF-8">
-  <title>${title}</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${title} (${price}) • StudyCloud</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <meta name="theme-color" content="#FAF8F5">
+
+  <!-- Open Graph Meta Tags (Image produit réelle avec badge StudyCloud) -->
   <meta property="og:type" content="product">
   <meta property="og:site_name" content="StudyCloud">
-  <meta property="og:title" content="${title}">
-  <meta property="og:description" content="${description}">
-  <meta property="og:image" content="${bannerUrl}">
-  <meta property="og:image:secure_url" content="${bannerUrl}">
-  <meta property="og:image:type" content="image/svg+xml">
-  <meta property="og:image:width" content="1200">
-  <meta property="og:image:height" content="630">
-  <meta property="og:url" content="${targetUrl}">
+  <meta property="og:title" content="${title} (${price}) • StudyCloud">
+  <meta property="og:description" content="${description} • Commandez directement sur StudyCloud.">
+  <meta property="og:image" content="${ogImageUrl}">
+  <meta property="og:image:secure_url" content="${ogImageUrl}">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="600">
+  <meta property="og:image:height" content="600">
+  <meta property="og:url" content="${productShareUrl}">
+
+  <!-- Twitter Meta Tags -->
   <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="${title}">
+  <meta name="twitter:title" content="${title} (${price}) • StudyCloud">
   <meta name="twitter:description" content="${description}">
-  <meta name="twitter:image" content="${bannerUrl}">
-  <meta http-equiv="refresh" content="0;url=${targetUrl}">
-  <script>
-    window.location.replace("${targetUrl}");
-  </script>
+  <meta name="twitter:image" content="${ogImageUrl}">
+
+  <link rel="icon" type="image/png" href="${appOrigin}/assets/student-logo.jpg">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      background-color: #FAF8F5;
+      color: #1c1917;
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      overflow-x: hidden;
+      -webkit-tap-highlight-color: transparent;
+    }
+    
+    /* Sticky Top Header */
+    .top-header {
+      position: sticky;
+      top: 0;
+      z-index: 50;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(10px);
+      border-bottom: 1px solid #e7e5e4;
+      padding: 10px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .btn-app {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 8px 14px;
+      background: #1c1917;
+      color: #ffffff;
+      font-weight: 800;
+      font-size: 12px;
+      border-radius: 12px;
+      text-decoration: none;
+      box-shadow: 2px 2px 0px 0px #ea580c;
+      transition: all 0.15s ease;
+    }
+    .btn-app:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0px 0px #ea580c; }
+    .brand-pill {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 10px;
+      background: #f5f5f4;
+      border: 1px solid #d6d3d1;
+      border-radius: 9999px;
+      font-size: 11px;
+      font-weight: 800;
+      color: #44403c;
+    }
+    .brand-pill svg { width: 14px; height: 14px; }
+
+    /* Main Container */
+    .main-wrapper {
+      flex: 1;
+      max-width: 1200px;
+      width: 100%;
+      margin: 0 auto;
+      padding: 0 0 40px;
+      display: flex;
+      flex-direction: column;
+    }
+    @media (min-width: 768px) {
+      .main-wrapper {
+        flex-direction: row;
+        gap: 32px;
+        padding: 24px 24px 60px;
+        align-items: flex-start;
+      }
+    }
+
+    /* Left Column */
+    .left-col {
+      flex: 1;
+      width: 100%;
+    }
+    @media (min-width: 768px) {
+      .left-col {
+        position: sticky;
+        top: 68px;
+        background: #ffffff;
+        border-radius: 24px;
+        border: 1.5px solid #e7e5e4;
+        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
+        overflow: hidden;
+      }
+    }
+
+    /* Gallery Slider */
+    .slider-box {
+      position: relative;
+      background: #ffffff;
+      width: 100%;
+      height: 310px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      border-bottom: 1px solid #e7e5e4;
+      overflow: hidden;
+    }
+    @media (min-width: 640px) { .slider-box { height: 350px; } }
+    .slide-item {
+      position: absolute;
+      inset: 0;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      opacity: 0;
+      transition: opacity 0.25s ease-in-out;
+      pointer-events: none;
+      padding: 16px;
+    }
+    .slide-item.active {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .slide-item img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+
+    /* StudyCloud Badge on Product Image (Exact replica of Image 2) */
+    .badge-studycloud {
+      position: absolute;
+      top: 14px;
+      left: 16px;
+      z-index: 10;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 5px 12px;
+      background: rgba(28, 25, 23, 0.92);
+      backdrop-filter: blur(8px);
+      border-radius: 9999px;
+      border: 1px solid rgba(249, 115, 22, 0.7);
+      box-shadow: 0 4px 10px rgba(0,0,0,0.25);
+    }
+    .badge-studycloud svg {
+      width: 15px;
+      height: 15px;
+    }
+    .badge-studycloud span {
+      font-size: 10px;
+      font-weight: 900;
+      color: #ffffff;
+      letter-spacing: 0.08em;
+    }
+
+    .slide-counter {
+      position: absolute;
+      bottom: 12px;
+      right: 16px;
+      z-index: 10;
+      padding: 3px 9px;
+      background: rgba(28, 25, 23, 0.82);
+      backdrop-filter: blur(4px);
+      color: #ffffff;
+      font-size: 10px;
+      font-weight: 800;
+      border-radius: 6px;
+    }
+
+    .dots-row {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 10px 0;
+      background: #fbf9f6;
+      border-bottom: 1px solid #e7e5e4;
+    }
+    .dot-btn {
+      width: 8px;
+      height: 8px;
+      border-radius: 9999px;
+      background: #d6d3d1;
+      border: none;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+    .dot-btn.active {
+      width: 22px;
+      background: #1c1917;
+    }
+
+    /* Product Meta (Title & Price) */
+    .meta-box {
+      padding: 16px 18px 8px;
+    }
+    .product-title {
+      font-size: 19px;
+      font-weight: 900;
+      color: #1c1917;
+      line-height: 1.35;
+      text-transform: uppercase;
+    }
+    .product-price {
+      font-size: 24px;
+      font-weight: 900;
+      color: #ea580c;
+      margin-top: 6px;
+    }
+
+    /* Description */
+    .desc-box {
+      padding: 14px 18px;
+      border-top: 1px solid #e7e5e4;
+    }
+    .desc-title {
+      font-size: 11px;
+      font-weight: 800;
+      color: #78716c;
+      letter-spacing: 0.05em;
+      text-transform: uppercase;
+      margin-bottom: 6px;
+    }
+    .desc-content {
+      font-size: 13px;
+      color: #44403c;
+      line-height: 1.55;
+      white-space: pre-line;
+      font-weight: 500;
+    }
+    .desc-content.clamped {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .btn-toggle-desc {
+      background: none;
+      border: none;
+      font-size: 12px;
+      font-weight: 800;
+      color: #1c1917;
+      text-decoration: underline;
+      margin-top: 8px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+    }
+
+    /* Actions */
+    .actions-bar {
+      padding: 14px 18px 20px;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn-cart {
+      padding: 14px 18px;
+      background: #f5f5f4;
+      border: 1.5px solid #d6d3d1;
+      border-radius: 14px;
+      font-weight: 800;
+      font-size: 13px;
+      color: #1c1917;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+      white-space: nowrap;
+    }
+    .btn-cart.added {
+      background: #fef3c7;
+      border-color: #fcd34d;
+      color: #92400e;
+    }
+    .btn-order {
+      flex: 1;
+      padding: 14px 20px;
+      background: #ea580c;
+      color: #ffffff;
+      border-radius: 14px;
+      font-weight: 900;
+      font-size: 15px;
+      text-decoration: none;
+      text-align: center;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      box-shadow: 0 4px 12px rgba(234, 88, 12, 0.35);
+      transition: all 0.15s ease;
+    }
+    .btn-order:hover { background: #c2410c; }
+    .btn-order:active { transform: scale(0.98); }
+
+    /* Right Column */
+    .right-col {
+      flex: 1;
+      width: 100%;
+      padding: 14px 16px 0;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+    @media (min-width: 768px) { .right-col { padding: 0; } }
+
+    /* Seller Card */
+    .seller-card {
+      background: #ffffff;
+      border-radius: 24px;
+      border: 1.5px solid #e7e5e4;
+      padding: 18px;
+      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
+    }
+    .seller-profile-row {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+    }
+    .seller-avatar-box {
+      width: 54px;
+      height: 54px;
+      border-radius: 9999px;
+      background: #fef3c7;
+      border: 2px solid #1c1917;
+      box-shadow: 2px 2px 0px 0px #1c1917;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      color: #78350f;
+      font-size: 16px;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .seller-avatar-box img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .seller-meta-info {
+      overflow: hidden;
+    }
+    .seller-name {
+      font-size: 16px;
+      font-weight: 900;
+      color: #1c1917;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .seller-phone {
+      font-size: 12px;
+      font-weight: 800;
+      color: #78716c;
+      margin-top: 2px;
+    }
+    .seller-sub {
+      font-size: 11px;
+      font-weight: 600;
+      color: #a8a29e;
+      margin-top: 2px;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .seller-btns {
+      display: flex;
+      gap: 10px;
+      margin-top: 14px;
+    }
+    .btn-follow {
+      flex: 1;
+      padding: 10px 14px;
+      background: #2563eb;
+      color: #ffffff;
+      border: 2px solid #1c1917;
+      border-radius: 16px;
+      box-shadow: 2px 2px 0px 0px #1c1917;
+      font-weight: 800;
+      font-size: 12px;
+      cursor: pointer;
+      transition: all 0.15s ease;
+    }
+    .btn-follow.active {
+      background: #f5f5f4;
+      color: #1c1917;
+    }
+    .btn-share {
+      flex: 1;
+      padding: 10px 14px;
+      background: #ffffff;
+      color: #1c1917;
+      border: 2px solid #1c1917;
+      border-radius: 16px;
+      box-shadow: 2px 2px 0px 0px #1c1917;
+      font-weight: 800;
+      font-size: 12px;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.15s ease;
+    }
+
+    /* Autres Produits */
+    .others-section {
+      display: flex;
+      flex-direction: column;
+      gap: 12px;
+    }
+    .others-head {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .others-title {
+      font-size: 15px;
+      font-weight: 900;
+      color: #1c1917;
+    }
+    .others-badge {
+      font-size: 12px;
+      font-weight: 800;
+      color: #78716c;
+    }
+    .others-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    .other-card {
+      background: #ffffff;
+      border-radius: 18px;
+      border: 1px solid #e7e5e4;
+      overflow: hidden;
+      text-decoration: none;
+      color: inherit;
+      box-shadow: 0 2px 4px rgba(0,0,0,0.03);
+      display: flex;
+      flex-direction: column;
+      transition: transform 0.2s ease, box-shadow 0.2s ease;
+    }
+    .other-card:hover {
+      transform: translateY(-2px);
+      box-shadow: 0 6px 12px rgba(0,0,0,0.08);
+    }
+    .other-img-container {
+      width: 100%;
+      height: 130px;
+      background: #f5f5f4;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 10px;
+    }
+    .other-img-container img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    .other-card-body {
+      padding: 10px 12px 12px;
+      display: flex;
+      flex-direction: column;
+      gap: 4px;
+    }
+    .other-card-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: #1c1917;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .other-card-price {
+      font-size: 13px;
+      font-weight: 900;
+      color: #ea580c;
+    }
+
+    /* Toast */
+    #toast {
+      position: fixed;
+      bottom: 24px;
+      left: 50%;
+      transform: translateX(-50%) translateY(100px);
+      background: #1c1917;
+      color: #ffffff;
+      padding: 12px 20px;
+      border-radius: 16px;
+      font-size: 12px;
+      font-weight: 800;
+      border: 2px solid #ea580c;
+      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
+      z-index: 1000;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      white-space: nowrap;
+    }
+    #toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  </style>
 </head>
-<body style="background:#0b0f19;color:#fff;font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;margin:0;">
-  <div style="text-align:center;">
-    <h2>Redirection vers StudyCloud...</h2>
-    <p><a href="${targetUrl}" style="color:#f97316;font-weight:bold;">Ouvrir le produit sur StudyCloud</a></p>
-  </div>
+<body>
+
+  <!-- Top Sticky Navigation Bar -->
+  <header class="top-header">
+    <a href="${targetAppUrl}" class="btn-app" title="Ouvrir l'application StudyCloud">
+      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
+        <polyline points="15 3 21 3 21 9"></polyline>
+        <line x1="10" y1="14" x2="21" y2="3"></line>
+      </svg>
+      <span>Aller à l'application</span>
+    </a>
+
+    <div class="brand-pill">
+      ${DNA_LOGO_SVG}
+      <span>StudyCloud</span>
+    </div>
+  </header>
+
+  <!-- Main Content Layout (Image 2) -->
+  <main class="main-wrapper">
+
+    <!-- Left Column: Product Gallery & Details -->
+    <section class="left-col">
+      <!-- Image Slider with StudyCloud Badge -->
+      <div class="slider-box" id="slider">
+        <!-- Miniature StudyCloud Badge in Top-Left (Exact Image 2) -->
+        <div class="badge-studycloud">
+          ${DNA_LOGO_SVG}
+          <span>STUDYCLOUD</span>
+        </div>
+
+        ${imageSlides.map((imgUrl, idx) => `
+          <div class="slide-item ${idx === 0 ? 'active' : ''}" id="slide-${idx}">
+            ${imgUrl ? `<img src="${escapeHtml(imgUrl)}" alt="${title} - Photo ${idx + 1}" />` : `
+              <div style="display:flex;flex-direction:column;align-items:center;color:#a8a29e;gap:6px;">
+                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path></svg>
+                <span style="font-size:11px;font-weight:700;">Image ${idx + 1} / 3</span>
+              </div>
+            `}
+          </div>
+        `).join('')}
+
+        <span class="slide-counter" id="slideCounter">1 / ${imageSlides.length}</span>
+      </div>
+
+      <!-- Indicator Dots -->
+      <div class="dots-row">
+        ${imageSlides.map((_, idx) => `
+          <button type="button" class="dot-btn ${idx === 0 ? 'active' : ''}" onclick="goToSlide(${idx})" aria-label="Slide ${idx + 1}"></button>
+        `).join('')}
+      </div>
+
+      <!-- Title & Price -->
+      <div class="meta-box">
+        <h1 class="product-title">${title}</h1>
+        <div class="product-price">${price}</div>
+      </div>
+
+      <!-- Description -->
+      <div class="desc-box">
+        <h4 class="desc-title">Description</h4>
+        <div class="desc-content ${(product.description || '').length > 80 ? 'clamped' : ''}" id="descText">
+          ${description}
+        </div>
+        ${(product.description || '').length > 80 ? `
+          <button type="button" class="btn-toggle-desc" id="btnDesc" onclick="toggleDesc()">
+            <span id="descLabel">Dérouler la description</span>
+            <svg id="descIcon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+          </button>
+        ` : ''}
+      </div>
+
+      <!-- Actions: Panier & Commander -->
+      <div class="actions-bar">
+        <button type="button" class="btn-cart" id="btnCart" onclick="addToCart('${escapeHtml(product.id)}')">
+          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
+          <span id="cartBtnText">Ajouter au panier</span>
+        </button>
+
+        <a href="${whatsappUrl || targetAppUrl}" ${whatsappUrl ? 'target="_blank" rel="noopener noreferrer"' : ''} class="btn-order" onclick="recordOrder('${escapeHtml(product.id)}')">
+          Commander
+        </a>
+      </div>
+    </section>
+
+    <!-- Right Column: Shop & Other Products -->
+    <section class="right-col">
+      <!-- Seller Profile Card -->
+      <div class="seller-card">
+        <div class="seller-profile-row">
+          <div class="seller-avatar-box">
+            ${sellerAvatar ? `<img src="${escapeHtml(sellerAvatar)}" alt="${escapeHtml(sellerName)}" />` : `<span>${escapeHtml(sellerInitials)}</span>`}
+          </div>
+          <div class="seller-meta-info">
+            <h3 class="seller-name">${escapeHtml(sellerName)}</h3>
+            <p class="seller-phone">${escapeHtml(sellerPhone)}</p>
+            ${sellerSubtitle ? `<p class="seller-sub">${escapeHtml(sellerSubtitle)}</p>` : ''}
+          </div>
+        </div>
+
+        <div class="seller-btns">
+          <button type="button" class="btn-follow" id="btnFollow" onclick="toggleFollow('${escapeHtml(product.seller_id)}')">
+            S'abonner
+          </button>
+          <button type="button" class="btn-share" onclick="shareProduct()">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+            <span>Partager</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Other Products -->
+      <div class="others-section">
+        <div class="others-head">
+          <h3 class="others-title">Autres produits</h3>
+          <span class="others-badge">📚 Librairie</span>
+        </div>
+
+        <div class="others-grid">
+          ${otherProducts.map((p: any) => {
+            let pImgs = [];
+            try { pImgs = JSON.parse(p.image_urls_json || '[]'); } catch(e) {}
+            const pImg = pImgs[0] || `${appOrigin}/api/products/${encodeURIComponent(p.id)}/image`;
+            return `
+              <a href="${appOrigin}/share/product/${encodeURIComponent(p.id)}" class="other-card">
+                <div class="other-img-container">
+                  <img src="${escapeHtml(pImg)}" alt="${escapeHtml(p.title)}" loading="lazy" />
+                </div>
+                <div class="other-card-body">
+                  <h4 class="other-card-title">${escapeHtml(p.title)}</h4>
+                  <div class="other-card-price">${escapeHtml(p.price)}</div>
+                </div>
+              </a>
+            `;
+          }).join('')}
+        </div>
+      </div>
+    </section>
+
+  </main>
+
+  <div id="toast">Notification</div>
+
+  <script>
+    let activeSlide = 0;
+    const totalSlides = ${imageSlides.length};
+
+    function goToSlide(idx) {
+      activeSlide = idx;
+      for (let i = 0; i < totalSlides; i++) {
+        const slide = document.getElementById('slide-' + i);
+        if (slide) {
+          if (i === idx) slide.classList.add('active');
+          else slide.classList.remove('active');
+        }
+      }
+      const dots = document.querySelectorAll('.dot-btn');
+      dots.forEach((d, i) => {
+        if (i === idx) d.classList.add('active');
+        else d.classList.remove('active');
+      });
+      const counter = document.getElementById('slideCounter');
+      if (counter) counter.innerText = (idx + 1) + ' / ' + totalSlides;
+    }
+
+    function toggleDesc() {
+      const text = document.getElementById('descText');
+      const label = document.getElementById('descLabel');
+      const icon = document.getElementById('descIcon');
+      if (text.classList.contains('clamped')) {
+        text.classList.remove('clamped');
+        if (label) label.innerText = 'Réduire la description';
+        if (icon) icon.style.transform = 'rotate(180deg)';
+      } else {
+        text.classList.add('clamped');
+        if (label) label.innerText = 'Dérouler la description';
+        if (icon) icon.style.transform = 'rotate(0deg)';
+      }
+    }
+
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      if (!t) return;
+      t.innerText = msg;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 3000);
+    }
+
+    function addToCart(id) {
+      try {
+        const saved = JSON.parse(localStorage.getItem('unifolder_cart') || '[]');
+        if (!saved.includes(id)) {
+          saved.push(id);
+          localStorage.setItem('unifolder_cart', JSON.stringify(saved));
+        }
+      } catch (e) {}
+      const btn = document.getElementById('btnCart');
+      const label = document.getElementById('cartBtnText');
+      if (btn) btn.classList.add('added');
+      if (label) label.innerText = 'Ajouté ✓';
+      showToast('Produit ajouté au panier !');
+    }
+
+    function toggleFollow(sellerId) {
+      const btn = document.getElementById('btnFollow');
+      if (!btn) return;
+      if (btn.classList.contains('active')) {
+        btn.classList.remove('active');
+        btn.innerText = "S'abonner";
+        showToast('Désabonné de ce vendeur');
+      } else {
+        btn.classList.add('active');
+        btn.innerText = 'Abonné ✓';
+        showToast('Vous êtes désormais abonné à ce vendeur !');
+      }
+    }
+
+    function shareProduct() {
+      if (navigator.share) {
+        navigator.share({
+          title: document.title,
+          url: window.location.href
+        }).catch(() => {});
+      } else if (navigator.clipboard) {
+        navigator.clipboard.writeText(window.location.href).then(() => {
+          showToast('Lien du produit copié dans le presse-papier !');
+        }).catch(() => {
+          showToast('Lien disponible dans la barre d\\'adresse');
+        });
+      } else {
+        showToast('Lien disponible dans la barre d\\'adresse');
+      }
+    }
+
+    function recordOrder(id) {
+      fetch('/api/products/' + encodeURIComponent(id) + '/order').catch(() => {});
+    }
+
+    // Auto-swipe tactile sur le carrousel
+    let touchStartX = 0;
+    const sliderBox = document.getElementById('slider');
+    if (sliderBox) {
+      sliderBox.addEventListener('touchstart', (e) => {
+        touchStartX = e.changedTouches[0].screenX;
+      }, { passive: true });
+      sliderBox.addEventListener('touchend', (e) => {
+        const diff = touchStartX - e.changedTouches[0].screenX;
+        if (Math.abs(diff) > 40) {
+          if (diff > 0) goToSlide((activeSlide + 1) % totalSlides);
+          else goToSlide((activeSlide - 1 + totalSlides) % totalSlides);
+        }
+      }, { passive: true });
+    }
+  </script>
 </body>
 </html>`;
 
@@ -5457,6 +6326,7 @@ export default {
           status: 200,
           headers: {
             'Content-Type': 'text/html; charset=utf-8',
+            'Cache-Control': 'public, max-age=3600',
             ...corsHeaders(origin)
           }
         });
