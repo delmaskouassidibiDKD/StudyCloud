@@ -1254,7 +1254,11 @@ export default function App() {
               setSearchQuery={setSearchQuery}
               onOpenUploadModal={() => setShowUploadModal(true)}
               onOpenAddMenu={() => setShowAddMenu(true)}
-              onOpenClearConfirm={() => setShowClearConfirmModal(true)}
+              onOpenClearConfirm={() => {
+                if (uploadedItems.length > 0) {
+                  setShowClearConfirmModal(true);
+                }
+              }}
               onOpenCreateShareLink={() => {
                 setShareModalTargetItems(null);
                 setShareModalInitialName('');

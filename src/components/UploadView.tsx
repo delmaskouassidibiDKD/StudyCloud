@@ -154,8 +154,14 @@ export const UploadView: React.FC<UploadViewProps> = ({
           </div>
 
           <button
-            onClick={onOpenClearConfirm}
-            className="flex items-center gap-1.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs px-3 py-2 rounded-xl border-2 border-stone-800 dark:border-orange-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all active:translate-x-0.5 active:translate-y-0.5 cursor-pointer shrink-0"
+            onClick={uploadedItems.length > 0 ? onOpenClearConfirm : undefined}
+            disabled={uploadedItems.length === 0}
+            className={`flex items-center gap-1.5 font-bold text-xs px-3 py-2 rounded-xl border-2 transition-all shrink-0 select-none ${
+              uploadedItems.length === 0
+                ? 'bg-stone-200 dark:bg-stone-800 text-stone-400 dark:text-stone-500 border-stone-400 dark:border-stone-700 cursor-not-allowed shadow-none opacity-60'
+                : 'bg-orange-500 hover:bg-orange-600 text-white border-stone-800 dark:border-orange-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 cursor-pointer'
+            }`}
+            title={uploadedItems.length === 0 ? "Aucun élément importé pour créer un nouveau partage" : "Commencer un nouveau partage"}
           >
             <FolderPlus className="w-3.5 h-3.5" />
             <span>Nouveau partage</span>
