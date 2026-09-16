@@ -359,9 +359,11 @@ export default function App() {
       };
 
       setFolders((prev) => [newFolder, ...prev]);
-      if (!shareModalTargetItems) {
-        setUploadedItems([]);
-      }
+      setUploadedItems([]);
+      setSelectedItemIds([]);
+      try {
+        localStorage.removeItem('unifolder_uploaded_items');
+      } catch (e) {}
       showToast(`✨ Votre lien "${linkName.trim()}" a été créé avec succès (${userCountry}) ! Retrouvez-le dans Partagés.`);
 
       try {
@@ -793,7 +795,11 @@ export default function App() {
 
   useEffect(() => {
     try {
-      localStorage.setItem('unifolder_uploaded_items', JSON.stringify(uploadedItems));
+      if (uploadedItems.length === 0) {
+        localStorage.removeItem('unifolder_uploaded_items');
+      } else {
+        localStorage.setItem('unifolder_uploaded_items', JSON.stringify(uploadedItems));
+      }
     } catch (e) {
       console.error(e);
     }
@@ -1233,7 +1239,10 @@ export default function App() {
                 handleSetTab('publish-file');
               }}
               onOpenCreateShareLink={(items) => {
-                setUploadedItems(items);
+                setShareModalTargetItems(items);
+                setShareModalInitialName(
+                  items.length === 1 ? items[0].name.replace(/\.[^/.]+$/, '') : `Partage (${items.length} fichiers)`
+                );
                 setShowCreateShareLinkModal(true);
               }}
             />
@@ -1246,7 +1255,11 @@ export default function App() {
               onOpenUploadModal={() => setShowUploadModal(true)}
               onOpenAddMenu={() => setShowAddMenu(true)}
               onOpenClearConfirm={() => setShowClearConfirmModal(true)}
-              onOpenCreateShareLink={() => setShowCreateShareLinkModal(true)}
+              onOpenCreateShareLink={() => {
+                setShareModalTargetItems(null);
+                setShareModalInitialName('');
+                setShowCreateShareLinkModal(true);
+              }}
               uploadedItems={uploadedItems}
               setUploadedItems={setUploadedItems}
               selectedItemIds={selectedItemIds}
@@ -1272,7 +1285,10 @@ export default function App() {
               onSelectFolder={(folder) => setActiveFolderDetail(folder)}
               setActivePreviewItem={setActivePreviewItem}
               onOpenCreateShareLink={(items) => {
-                setUploadedItems(items);
+                setShareModalTargetItems(items);
+                setShareModalInitialName(
+                  items.length === 1 ? items[0].name.replace(/\.[^/.]+$/, '') : `Partage (${items.length} fichiers)`
+                );
                 setShowCreateShareLinkModal(true);
               }}
             />
@@ -1731,6 +1747,11 @@ export default function App() {
             setShowCreateShareLinkModal(false);
             setShareModalTargetItems(null);
             setShareModalInitialName('');
+            setUploadedItems([]);
+            setSelectedItemIds([]);
+            try {
+              localStorage.removeItem('unifolder_uploaded_items');
+            } catch (e) {}
           }}
           onStartBackgroundCreation={handleStartBackgroundCreation}
         />
