@@ -93,35 +93,35 @@ export function getDocTypeInfo(doc: any): DocTypeInfo {
   let accentTextClass = 'text-stone-300';
 
   if (ext === 'PDF') {
-    badgeClass = 'bg-red-900/40 text-red-300 border-red-700';
-    cardBgClass = 'bg-gradient-to-b from-red-950 to-[#2a0808]';
-    cardBorderClass = 'border-2 border-red-900/70 hover:border-red-600';
+    badgeClass = 'bg-red-900 text-red-100 border-red-500';
+    cardBgClass = 'bg-gradient-to-b from-red-600 to-red-800';
+    cardBorderClass = 'border-2 border-red-500 hover:border-red-400';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#450a0a] hover:shadow-[4px_4px_0px_0px_#7f1d1d]';
-    accentTextClass = 'text-red-400';
+    accentTextClass = 'text-red-100';
   } else if (['DOC', 'DOCX'].includes(ext)) {
-    badgeClass = 'bg-blue-900/40 text-blue-300 border-blue-700';
-    cardBgClass = 'bg-gradient-to-b from-blue-950 to-[#08152a]';
-    cardBorderClass = 'border-2 border-blue-900/70 hover:border-blue-600';
+    badgeClass = 'bg-blue-900 text-blue-100 border-blue-500';
+    cardBgClass = 'bg-gradient-to-b from-blue-600 to-blue-800';
+    cardBorderClass = 'border-2 border-blue-500 hover:border-blue-400';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#172554] hover:shadow-[4px_4px_0px_0px_#1e3a8a]';
-    accentTextClass = 'text-blue-400';
+    accentTextClass = 'text-blue-100';
   } else if (['JPG', 'JPEG', 'PNG', 'GIF', 'WEBP', 'SVG'].includes(ext)) {
-    badgeClass = 'bg-green-900/40 text-green-300 border-green-700';
-    cardBgClass = 'bg-gradient-to-b from-emerald-950 to-[#052e16]';
-    cardBorderClass = 'border-2 border-green-900/70 hover:border-green-600';
+    badgeClass = 'bg-green-900 text-green-100 border-green-500';
+    cardBgClass = 'bg-gradient-to-b from-emerald-600 to-emerald-800';
+    cardBorderClass = 'border-2 border-green-500 hover:border-green-400';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#052e16] hover:shadow-[4px_4px_0px_0px_#14532d]';
-    accentTextClass = 'text-green-400';
+    accentTextClass = 'text-green-100';
   } else if (['PPT', 'PPTX'].includes(ext)) {
-    badgeClass = 'bg-orange-900/40 text-orange-300 border-orange-700';
-    cardBgClass = 'bg-gradient-to-b from-orange-950 to-[#431407]';
-    cardBorderClass = 'border-2 border-orange-900/70 hover:border-orange-600';
+    badgeClass = 'bg-orange-900 text-orange-100 border-orange-500';
+    cardBgClass = 'bg-gradient-to-b from-orange-600 to-orange-800';
+    cardBorderClass = 'border-2 border-orange-500 hover:border-orange-400';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#431407] hover:shadow-[4px_4px_0px_0px_#7c2d12]';
-    accentTextClass = 'text-orange-400';
+    accentTextClass = 'text-orange-100';
   } else if (['XLS', 'XLSX', 'CSV'].includes(ext)) {
-    badgeClass = 'bg-emerald-900/40 text-emerald-300 border-emerald-700';
-    cardBgClass = 'bg-gradient-to-b from-teal-950 to-[#022c22]';
-    cardBorderClass = 'border-2 border-emerald-900/70 hover:border-emerald-600';
+    badgeClass = 'bg-emerald-900 text-emerald-100 border-emerald-500';
+    cardBgClass = 'bg-gradient-to-b from-teal-600 to-teal-800';
+    cardBorderClass = 'border-2 border-emerald-500 hover:border-emerald-400';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#022c22] hover:shadow-[4px_4px_0px_0px_#064e3b]';
-    accentTextClass = 'text-emerald-400';
+    accentTextClass = 'text-emerald-100';
   }
 
   return {
@@ -1713,6 +1713,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
                   const typeInfo = getDocTypeInfo(doc);
                   const isFlipped = flippedCardIds.has(doc.id);
+                  
+                  const isSameName = (() => {
+                    if (!doc.title || !doc.file_name) return false;
+                    const t = doc.title.toLowerCase().trim();
+                    const f = doc.file_name.toLowerCase().trim();
+                    const fNoExt = f.includes('.') ? f.substring(0, f.lastIndexOf('.')) : f;
+                    return t === f || t === fNoExt;
+                  })();
 
                   // Si l'utilisateur a appuyé sur les 3 traits de cette carte spécifique :
                   // cette carte SEULE change pour afficher les informations détaillées avec le thème du type de fichier
@@ -1745,13 +1753,22 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
                         {/* Informations détaillées */}
                         <div className="flex-1 flex flex-col justify-around py-1 space-y-1 overflow-hidden">
-                          <h3 
-                            onClick={() => handleOpenDoc(doc)}
-                            className="text-[10.5px] sm:text-[11.5px] font-black text-white truncate cursor-pointer hover:underline" 
-                            title={doc.title || doc.file_name}
-                          >
-                            {doc.title || doc.file_name}
-                          </h3>
+                          <div className="flex flex-col">
+                            {doc.file_name && (
+                              <p className="text-[8.5px] sm:text-[9.5px] font-semibold text-white/70 truncate mb-0.5" title={doc.file_name}>
+                                {doc.file_name}
+                              </p>
+                            )}
+                            {(!doc.file_name || !isSameName) && doc.title && (
+                              <h3 
+                                onClick={() => handleOpenDoc(doc)}
+                                className="text-[10.5px] sm:text-[11.5px] font-black text-white truncate cursor-pointer hover:underline" 
+                                title={doc.title}
+                              >
+                                {doc.title}
+                              </h3>
+                            )}
+                          </div>
 
                           {doc.matiere_name && (
                             <p className="text-[8.5px] sm:text-[9.5px] text-stone-300 font-semibold truncate" title={doc.matiere_name}>
@@ -1847,16 +1864,16 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         {doc.file_name && (
                           <p
                             onClick={() => handleOpenDoc(doc)}
-                            className="text-[8.5px] sm:text-[9px] font-semibold text-stone-400 truncate cursor-pointer hover:text-stone-200 transition-colors"
+                            className="text-[8.5px] sm:text-[9px] font-semibold text-white/70 truncate cursor-pointer hover:text-white transition-colors"
                             title={doc.file_name}
                           >
                             {doc.file_name}
                           </p>
                         )}
-                        {(!doc.file_name || doc.title !== doc.file_name) && doc.title && (
+                        {(!doc.file_name || !isSameName) && doc.title && (
                           <p
                             onClick={() => handleOpenDoc(doc)}
-                            className="text-[9.5px] sm:text-[10.5px] font-black text-stone-100 truncate cursor-pointer hover:text-orange-400 transition-colors"
+                            className="text-[9.5px] sm:text-[10.5px] font-black text-white truncate cursor-pointer hover:text-orange-300 transition-colors"
                             title={doc.title}
                           >
                             {doc.title}
@@ -1936,6 +1953,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
                   const typeInfo = getDocTypeInfo(doc);
 
+                  const isSameName = (() => {
+                    if (!doc.title || !doc.file_name) return false;
+                    const t = doc.title.toLowerCase().trim();
+                    const f = doc.file_name.toLowerCase().trim();
+                    const fNoExt = f.includes('.') ? f.substring(0, f.lastIndexOf('.')) : f;
+                    return t === f || t === fNoExt;
+                  })();
+
                   return (
                     <div
                       key={doc.id}
@@ -1991,7 +2016,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               {doc.file_name}
                             </p>
                           )}
-                          {(!doc.file_name || doc.title !== doc.file_name) && doc.title && (
+                          {(!doc.file_name || !isSameName) && doc.title && (
                             <h3 
                               onClick={() => handleOpenDoc(doc)}
                               className="text-[11px] sm:text-xs font-extrabold text-stone-900 truncate group-hover:text-orange-600 transition-colors cursor-pointer" 
