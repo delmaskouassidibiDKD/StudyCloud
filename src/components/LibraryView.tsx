@@ -1282,7 +1282,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     {selectedMatiereFilter === mat && <span className="text-[10px] text-blue-400 font-bold shrink-0">Actif</span>}
                   </button>
                 ))
-              )}
+              ))}
             </div>
           </div>
         </div>
@@ -1351,7 +1351,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     {selectedSchoolFilter === sc && <span className="text-[10px] text-orange-400 font-bold shrink-0">Actif</span>}
                   </button>
                 ))
-              )}
+              ))}
             </div>
           </div>
         </div>
