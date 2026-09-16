@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart, RefreshCw, Globe, Hash, Trash2 } from 'lucide-react';
+import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart, RefreshCw, Globe, Hash } from 'lucide-react';
 import { SharedFolder, SharedFile } from '../types';
 import { FileIconBadge } from './FileIconBadge';
 import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
@@ -212,15 +212,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     };
   }, [hasMoreDocs, isLoadingMoreDocs, isLoadingDocs, loadMorePublishedDocs]);
 
-  const handleDeleteDoc = async (docId: string, docTitle: string) => {
-    if (!window.confirm(`Supprimer définitivement « ${docTitle} » de la base de données en ligne ?`)) return;
-    try {
-      await StudyCloudAPI.deletePublishedDocument(docId);
-      setPublishedDocs(prev => prev.filter(d => d.id !== docId));
-    } catch (e: any) {
-      alert('Erreur lors de la suppression : ' + (e?.message || 'Erreur'));
-    }
-  };
 
   useEffect(() => {
     if (activeSubTab === 'ressources') {
@@ -1460,17 +1451,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               <Download className="w-3 h-3" />
                             </button>
                           )}
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteDoc(doc.id, doc.title || doc.file_name);
-                            }}
-                            className="p-1 sm:p-1.5 bg-red-50 hover:bg-red-100 text-red-600 rounded-lg border border-red-300 hover:border-red-500 shadow-[1px_1px_0px_0px_#b91c1c] transition-all cursor-pointer flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5"
-                            title="Supprimer définitivement de la base de données"
-                          >
-                            <Trash2 className="w-3 h-3 text-red-600" />
-                          </button>
                         </div>
                       </div>
                     </div>
