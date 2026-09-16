@@ -48,6 +48,61 @@ export function compressAvatarImage(file: File, size: number = 256, quality: num
 }
 
 /**
+ * Compresse et optimise une photo de produit en haute résolution.
+ * - Conserve le ratio d'aspect sans découper aucune partie de l'image
+ * - Résolution maximale de 1400px pour une netteté exceptionnelle
+ * - Qualité JPEG élevée (0.92) et interpolation lissée
+ */
+export function compressProductImage(file: File, maxDimension: number = 1400, quality: number = 0.92): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const reader = new FileReader();
+    reader.onload = (e) => {
+      const img = new Image();
+      img.onload = () => {
+        try {
+          let { width, height } = img;
+          if (width > maxDimension || height > maxDimension) {
+            if (width > height) {
+              height = Math.round((height * maxDimension) / width);
+              width = maxDimension;
+            } else {
+              width = Math.round((width * maxDimension) / height);
+              height = maxDimension;
+            }
+          }
+
+          const canvas = document.createElement('canvas');
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (!ctx) {
+            resolve(e.target?.result as string);
+            return;
+          }
+
+          ctx.imageSmoothingEnabled = true;
+          ctx.imageSmoothingQuality = 'high';
+
+          // Fond blanc au cas où l'image PNG contienne de la transparence
+          ctx.fillStyle = '#FFFFFF';
+          ctx.fillRect(0, 0, width, height);
+
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = canvas.toDataURL('image/jpeg', quality);
+          resolve(dataUrl);
+        } catch {
+          resolve(e.target?.result as string);
+        }
+      };
+      img.onerror = () => reject(new Error("Impossible de décoder l'image sélectionnée."));
+      img.src = e.target?.result as string;
+    };
+    reader.onerror = () => reject(new Error("Impossible de lire le fichier depuis votre appareil."));
+    reader.readAsDataURL(file);
+  });
+}
+
+/**
  * Génère un avatar élégant et déterministe à partir de l'email ou du nom de l'utilisateur.
  * Format SVG Data URL carré (128x128 px) au format officiel StudyCloud :
  * - Fonctionne 100% hors-ligne (aucun appel réseau externe)

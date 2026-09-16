@@ -6006,12 +6006,13 @@ export default {
     }
     .other-img-container {
       width: 100%;
-      height: 130px;
-      background: #f5f5f4;
+      height: 160px;
+      background: #fbf9f6;
       display: flex;
       align-items: center;
       justify-content: center;
-      padding: 10px;
+      padding: 12px;
+      border-bottom: 1px solid #e7e5e4;
     }
     .other-img-container img {
       max-width: 100%;
