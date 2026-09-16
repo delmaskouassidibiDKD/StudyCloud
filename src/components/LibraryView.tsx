@@ -170,7 +170,6 @@ const DocumentCardThumbnail: React.FC<{ doc: any; onClick?: () => void }> = ({ d
           const loadingTask = pdfjsLib.getDocument({ url: fileUrl });
           const pdf = await loadingTask.promise;
           const page = await pdf.getPage(1);
-          // Échelle 4.0 pour une qualité très haute définition très nette
           const viewport = page.getViewport({ scale: 4.0 });
           const canvas = document.createElement('canvas');
           const context = canvas.getContext('2d');
@@ -179,7 +178,8 @@ const DocumentCardThumbnail: React.FC<{ doc: any; onClick?: () => void }> = ({ d
             canvas.width = viewport.width;
             await page.render({ canvasContext: context, viewport }).promise;
             if (isMounted) {
-              const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+              // Utilisation de PNG au lieu de JPEG pour éviter les artefacts de compression sur le texte et le rendre ultra-net en HD
+              const dataUrl = canvas.toDataURL('image/png');
               if (cacheKey) {
                 memoryThumbnailCache.set(cacheKey, dataUrl);
               }
