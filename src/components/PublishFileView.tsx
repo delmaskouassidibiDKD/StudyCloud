@@ -170,7 +170,7 @@ export function saveToPublishHistory(fields: Partial<PublishHistory>) {
   for (const [key, value] of Object.entries(fields)) {
     if (value && Array.isArray(value)) {
       value.forEach(val => {
-        const trimmed = val.trim();
+        const trimmed = val.trim().toUpperCase();
         if (trimmed && !(history as any)[key].includes(trimmed)) {
           (history as any)[key] = [trimmed, ...(history as any)[key]].slice(0, 15);
         }
@@ -201,21 +201,21 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     }
     return [];
   });
-  const [school, setSchool] = useState(() => localStorage.getItem('published_school') || '');
-  const [filiere, setFiliere] = useState(() => localStorage.getItem('published_filiere') || '');
+  const [school, setSchool] = useState(() => (localStorage.getItem('published_school') || '').toUpperCase());
+  const [filiere, setFiliere] = useState(() => (localStorage.getItem('published_filiere') || '').toUpperCase());
   const [infoMode, setInfoMode] = useState<'all' | 'individual' | 'none'>(() => {
     return (localStorage.getItem('published_info_mode') as any) || 'all';
   });
 
   // Champs globaux (pour le mode "all")
-  const [docTitle, setDocTitle] = useState(() => localStorage.getItem('published_doc_title') || '');
-  const [docDescription, setDocDescription] = useState(() => localStorage.getItem('published_doc_description') || '');
+  const [docTitle, setDocTitle] = useState(() => (localStorage.getItem('published_doc_title') || '').toUpperCase());
+  const [docDescription, setDocDescription] = useState(() => (localStorage.getItem('published_doc_description') || '').toUpperCase());
   const [docCategory, setDocCategory] = useState(() => localStorage.getItem('published_doc_category') || "Pas d'informations");
-  const [customDocCategory, setCustomDocCategory] = useState(() => localStorage.getItem('published_custom_category') || '');
-  const [docMatiere, setDocMatiere] = useState(() => localStorage.getItem('published_doc_matiere') || '');
-  const [docLevel, setDocLevel] = useState(() => localStorage.getItem('published_doc_level') || '');
-  const [docCountry, setDocCountry] = useState(() => localStorage.getItem('published_doc_country') || localStorage.getItem('user_country') || "Côte d'Ivoire");
-  const [docTags, setDocTags] = useState(() => localStorage.getItem('published_doc_tags') || '');
+  const [customDocCategory, setCustomDocCategory] = useState(() => (localStorage.getItem('published_custom_category') || '').toUpperCase());
+  const [docMatiere, setDocMatiere] = useState(() => (localStorage.getItem('published_doc_matiere') || '').toUpperCase());
+  const [docLevel, setDocLevel] = useState(() => (localStorage.getItem('published_doc_level') || '').toUpperCase());
+  const [docCountry, setDocCountry] = useState(() => (localStorage.getItem('published_doc_country') || localStorage.getItem('user_country') || "CÔTE D'IVOIRE").toUpperCase());
+  const [docTags, setDocTags] = useState(() => (localStorage.getItem('published_doc_tags') || '').toUpperCase());
 
   // État du modal d'édition individuelle
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
@@ -882,22 +882,22 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
   const openEditModal = (file: any) => {
     setEditingFileId(file.id);
-    setModalTitle(file.fileTitle || file.name.replace(/\.[^/.]+$/, '').replace(/[_-_]/g, ' '));
+    setModalTitle(((file.fileTitle || file.name.replace(/\.[^/.]+$/, '').replace(/[_-_]/g, ' ')) || '').toUpperCase());
     const cat = file.fileCategory || docCategory || "Pas d'informations";
     if (STANDARD_CATEGORIES.includes(cat)) {
       setModalCategory(cat);
       setCustomModalCategory('');
     } else {
       setModalCategory('Autre');
-      setCustomModalCategory(cat === "Pas d'informations" ? '' : cat);
+      setCustomModalCategory((cat === "Pas d'informations" ? '' : cat).toUpperCase());
     }
-    setModalMatiere(file.fileMatiere || docMatiere || '');
-    setModalLevel(file.fileLevel || docLevel || '');
-    setModalSchool(file.fileSchool || school || '');
-    setModalFiliere(file.fileFiliere || filiere || '');
-    setModalCountry(file.fileCountry || docCountry || "Côte d'Ivoire");
-    setModalDescription(file.fileDescription || '');
-    setModalTags(file.fileTags || '');
+    setModalMatiere((file.fileMatiere || docMatiere || '').toUpperCase());
+    setModalLevel((file.fileLevel || docLevel || '').toUpperCase());
+    setModalSchool((file.fileSchool || school || '').toUpperCase());
+    setModalFiliere((file.fileFiliere || filiere || '').toUpperCase());
+    setModalCountry((file.fileCountry || docCountry || "CÔTE D'IVOIRE").toUpperCase());
+    setModalDescription((file.fileDescription || '').toUpperCase());
+    setModalTags((file.fileTags || '').toUpperCase());
   };
 
   const closeEditModal = () => {
@@ -913,21 +913,21 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   const saveEditModal = () => {
     if (!editingFileId || !isModalFormValid) return;
     const finalCategory = modalCategory === 'Autre'
-      ? (customModalCategory.trim() || "Pas d'informations")
+      ? (customModalCategory.trim().toUpperCase() || "Pas d'informations")
       : (modalCategory.trim() || "Pas d'informations");
     setSelectedFiles(prev => prev.map(f => {
       if (f.id === editingFileId) {
         return {
           ...f,
-          fileTitle: modalTitle.trim(),
+          fileTitle: modalTitle.trim().toUpperCase(),
           fileCategory: finalCategory,
-          fileMatiere: modalMatiere.trim(),
-          fileLevel: modalLevel.trim(),
-          fileSchool: modalSchool.trim(),
-          fileFiliere: modalFiliere.trim(),
-          fileCountry: modalCountry.trim(),
-          fileDescription: modalDescription.trim(),
-          fileTags: modalTags.trim(),
+          fileMatiere: modalMatiere.trim().toUpperCase(),
+          fileLevel: modalLevel.trim().toUpperCase(),
+          fileSchool: modalSchool.trim().toUpperCase(),
+          fileFiliere: modalFiliere.trim().toUpperCase(),
+          fileCountry: modalCountry.trim().toUpperCase(),
+          fileDescription: modalDescription.trim().toUpperCase(),
+          fileTags: modalTags.trim().toUpperCase(),
           isCompleted: true,
         };
       }
@@ -1112,6 +1112,16 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           description = docDescription ? docDescription.trim() : '';
           tagsArray = [];
         }
+
+        title = title.toUpperCase();
+        fileSchool = fileSchool.toUpperCase();
+        fileFiliere = fileFiliere.toUpperCase();
+        category = category.toUpperCase();
+        matiereName = matiereName.toUpperCase();
+        level = level.toUpperCase();
+        country = country.toUpperCase();
+        description = description.toUpperCase();
+        tagsArray = tagsArray.map((t: string) => t.toUpperCase());
 
         // Safeguard de sécurité : vérification stricte du type de fichier
         const typeCheck = checkPublicationFileType(file);
@@ -1857,9 +1867,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                           type="text"
                           maxLength={60}
                           value={docTitle}
-                          onChange={(e) => setDocTitle(e.target.value)}
-                          placeholder="Ex: Cours d'Électrotechnique S1..."
-                          className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
+                          onChange={(e) => setDocTitle(e.target.value.toUpperCase())}
+                          placeholder="EX: COURS D'ÉLECTROTECHNIQUE S1..."
+                          className={`w-full uppercase bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
                             !docTitle.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
                           }`}
                         />
@@ -1873,9 +1883,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                           type="text"
                           maxLength={60}
                           value={docDescription}
-                          onChange={(e) => setDocDescription(e.target.value)}
-                          placeholder="Courte description du document..."
-                          className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none"
+                          onChange={(e) => setDocDescription(e.target.value.toUpperCase())}
+                          placeholder="COURTE DESCRIPTION DU DOCUMENT..."
+                          className="w-full uppercase bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none"
                         />
                       </div>
                     </div>
@@ -1891,9 +1901,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                           <select
                             value={docCategory}
                             onChange={(e) => setDocCategory(e.target.value)}
-                            className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none cursor-pointer"
+                            className="w-full uppercase bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none cursor-pointer"
                           >
-                            {["Pas d'informations", 'Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet', 'Autre'].map(c => <option key={c} value={c}>{c}</option>)}
+                            {["Pas d'informations", 'Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet', 'Autre'].map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
                           </select>
                           {docCategory === 'Autre' && (
                             <input
@@ -1901,9 +1911,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                               maxLength={60}
                               list="history-customDocCategory"
                               value={customDocCategory}
-                              onChange={(e) => setCustomDocCategory(e.target.value)}
-                              placeholder="Précisez la catégorie (facultatif)..."
-                              className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none animate-in fade-in duration-150"
+                              onChange={(e) => setCustomDocCategory(e.target.value.toUpperCase())}
+                              placeholder="PRÉCISEZ LA CATÉGORIE (FACULTATIF)..."
+                              className="w-full uppercase bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none animate-in fade-in duration-150"
                             />
                           )}
                         </div>
@@ -1918,9 +1928,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                           maxLength={60}
                           list="history-docMatiere"
                           value={docMatiere}
-                          onChange={(e) => setDocMatiere(e.target.value)}
-                          placeholder="Ex: Mathématiques, Physique..."
-                          className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
+                          onChange={(e) => setDocMatiere(e.target.value.toUpperCase())}
+                          placeholder="EX: MATHÉMATIQUES, PHYSIQUE..."
+                          className={`w-full uppercase bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
                             !docMatiere.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
                           }`}
                         />
@@ -1934,9 +1944,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                           type="text"
                           maxLength={60}
                           value={docLevel}
-                          onChange={(e) => setDocLevel(e.target.value)}
-                          placeholder="Ex: BTS 1, Licence 2..."
-                          className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
+                          onChange={(e) => setDocLevel(e.target.value.toUpperCase())}
+                          placeholder="EX: BTS 1, LICENCE 2..."
+                          className={`w-full uppercase bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
                             !docLevel.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
                           }`}
                         />
@@ -1955,9 +1965,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                           maxLength={60}
                           list="history-school"
                           value={school} 
-                          onChange={(e) => setSchool(e.target.value)} 
-                          placeholder="Provenance de l'école (facultatif)..."
-                          className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none" 
+                          onChange={(e) => setSchool(e.target.value.toUpperCase())} 
+                          placeholder="PROVENANCE DE L'ÉCOLE (FACULTATIF)..."
+                          className="w-full uppercase bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none" 
                         />
                       </div>
                       <div className="flex-1">
@@ -1970,9 +1980,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                           maxLength={60}
                           list="history-filiere"
                           value={filiere} 
-                          onChange={(e) => setFiliere(e.target.value)} 
-                          placeholder="Nom de la filière..."
-                          className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
+                          onChange={(e) => setFiliere(e.target.value.toUpperCase())} 
+                          placeholder="NOM DE LA FILIÈRE..."
+                          className={`w-full uppercase bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
                             !filiere.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
                           }`} 
                         />
@@ -1990,9 +2000,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                           type="text" 
                           maxLength={60}
                           value={docCountry} 
-                          onChange={(e) => setDocCountry(e.target.value)} 
-                          placeholder="Côte d'Ivoire..."
-                          className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
+                          onChange={(e) => setDocCountry(e.target.value.toUpperCase())} 
+                          placeholder="CÔTE D'IVOIRE..."
+                          className={`w-full uppercase bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
                             !docCountry.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
                           }`} 
                         />
@@ -2007,9 +2017,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                           maxLength={60}
                           list="history-docTags"
                           value={docTags} 
-                          onChange={(e) => setDocTags(e.target.value)} 
-                          placeholder="révision, annales, circuit..."
-                          className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none" 
+                          onChange={(e) => setDocTags(e.target.value.toUpperCase())} 
+                          placeholder="RÉVISION, ANNALES, CIRCUIT..."
+                          className="w-full uppercase bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none" 
                         />
                       </div>
                     </div>
@@ -2084,9 +2094,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                         type="text"
                         maxLength={60}
                         value={docDescription} 
-                        onChange={(e) => setDocDescription(e.target.value)} 
-                        placeholder="Courte description facultative pour ces documents..."
-                        className="w-full bg-white border-2 border-emerald-700 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#059669] focus:outline-none" 
+                        onChange={(e) => setDocDescription(e.target.value.toUpperCase())} 
+                        placeholder="COURTE DESCRIPTION FACULTATIVE POUR CES DOCUMENTS..."
+                        className="w-full uppercase bg-white border-2 border-emerald-700 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#059669] focus:outline-none" 
                       />
                     </div>
                   </div>
@@ -2132,9 +2142,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   type="text"
                   maxLength={60}
                   value={modalTitle}
-                  onChange={(e) => setModalTitle(e.target.value)}
-                  placeholder="Titre de ce document..."
-                  className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
+                  onChange={(e) => setModalTitle(e.target.value.toUpperCase())}
+                  placeholder="TITRE DE CE DOCUMENT..."
+                  className={`w-full uppercase bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
                     !modalTitle.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
                   }`}
                 />
@@ -2151,9 +2161,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     <select
                       value={modalCategory}
                       onChange={(e) => setModalCategory(e.target.value)}
-                      className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none cursor-pointer"
+                      className="w-full uppercase bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none cursor-pointer"
                     >
-                      {["Pas d'informations", 'Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet', 'Autre'].map(c => <option key={c} value={c}>{c}</option>)}
+                      {["Pas d'informations", 'Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet', 'Autre'].map(c => <option key={c} value={c}>{c.toUpperCase()}</option>)}
                     </select>
                     {modalCategory === 'Autre' && (
                       <input
@@ -2161,9 +2171,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                         maxLength={60}
                         list="history-customDocCategory"
                         value={customModalCategory}
-                        onChange={(e) => setCustomModalCategory(e.target.value)}
-                        placeholder="Précisez la catégorie (facultatif)..."
-                        className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none animate-in fade-in duration-150"
+                        onChange={(e) => setCustomModalCategory(e.target.value.toUpperCase())}
+                        placeholder="PRÉCISEZ LA CATÉGORIE (FACULTATIF)..."
+                        className="w-full uppercase bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none animate-in fade-in duration-150"
                       />
                     )}
                   </div>
@@ -2178,9 +2188,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     maxLength={60}
                     list="history-docMatiere"
                     value={modalMatiere}
-                    onChange={(e) => setModalMatiere(e.target.value)}
-                    placeholder="Ex: Mathématiques..."
-                    className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
+                    onChange={(e) => setModalMatiere(e.target.value.toUpperCase())}
+                    placeholder="EX: MATHÉMATIQUES..."
+                    className={`w-full uppercase bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
                       !modalMatiere.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
                     }`}
                   />
@@ -2198,9 +2208,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     type="text"
                     maxLength={60}
                     value={modalLevel}
-                    onChange={(e) => setModalLevel(e.target.value)}
-                    placeholder="Ex: BTS 1, Licence 2..."
-                    className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
+                    onChange={(e) => setModalLevel(e.target.value.toUpperCase())}
+                    placeholder="EX: BTS 1, LICENCE 2..."
+                    className={`w-full uppercase bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
                       !modalLevel.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
                     }`}
                   />
@@ -2215,9 +2225,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     maxLength={60}
                     list="history-school"
                     value={modalSchool}
-                    onChange={(e) => setModalSchool(e.target.value)}
-                    placeholder="Provenance de l'école (facultatif)..."
-                    className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none"
+                    onChange={(e) => setModalSchool(e.target.value.toUpperCase())}
+                    placeholder="PROVENANCE DE L'ÉCOLE (FACULTATIF)..."
+                    className="w-full uppercase bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none"
                   />
                 </div>
               </div>
@@ -2234,9 +2244,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     maxLength={60}
                     list="history-filiere"
                     value={modalFiliere}
-                    onChange={(e) => setModalFiliere(e.target.value)}
-                    placeholder="Nom de la filière..."
-                    className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
+                    onChange={(e) => setModalFiliere(e.target.value.toUpperCase())}
+                    placeholder="NOM DE LA FILIÈRE..."
+                    className={`w-full uppercase bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
                       !modalFiliere.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
                     }`}
                   />
@@ -2250,9 +2260,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     type="text"
                     maxLength={60}
                     value={modalCountry}
-                    onChange={(e) => setModalCountry(e.target.value)}
-                    placeholder="Côte d'Ivoire..."
-                    className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
+                    onChange={(e) => setModalCountry(e.target.value.toUpperCase())}
+                    placeholder="CÔTE D'IVOIRE..."
+                    className={`w-full uppercase bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none ${
                       !modalCountry.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
                     }`}
                   />
@@ -2269,9 +2279,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   type="text"
                   maxLength={60}
                   value={modalDescription}
-                  onChange={(e) => setModalDescription(e.target.value)}
-                  placeholder="Courte description de ce document..."
-                  className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none"
+                  onChange={(e) => setModalDescription(e.target.value.toUpperCase())}
+                  placeholder="COURTE DESCRIPTION DE CE DOCUMENT..."
+                  className="w-full uppercase bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none"
                 />
               </div>
               <div>
@@ -2284,9 +2294,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   maxLength={60}
                   list="history-docTags"
                   value={modalTags}
-                  onChange={(e) => setModalTags(e.target.value)}
-                  placeholder="révision, examen, td..."
-                  className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none"
+                  onChange={(e) => setModalTags(e.target.value.toUpperCase())}
+                  placeholder="RÉVISION, EXAMEN, TD..."
+                  className="w-full uppercase bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none"
                 />
               </div>
             </div>
