@@ -11,6 +11,7 @@ import { StudyCloudAPI } from '../services/api';
 import { watermarkPDF } from '../utils/pdfWatermark';
 import { getFileBlob } from '../services/localFileStorage';
 import { correctSpellingInText, canonicalizeCategory } from '../utils/spellingCorrector';
+import { buildPublishedFileKey } from '../services/storageUtils';
 
 // Configure worker for PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
@@ -1145,7 +1146,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
             rawFile = (await retrieveRawFile(file.id)) || undefined;
           }
           if (rawFile) {
-            const key = `published/${userId}/${Date.now()}-${file.name}`;
+            const key = buildPublishedFileKey(userId, file.id, file.name);
             const uploadResult = await StudyCloudAPI.uploadFileToR2(rawFile, key);
             r2Key = uploadResult.key;
             fileUrl = uploadResult.url;

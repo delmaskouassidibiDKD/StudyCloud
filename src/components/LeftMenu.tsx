@@ -4,6 +4,7 @@ import { DelmasRobot } from './DelmasRobot';
 import { AssistantChat } from './AssistantChat';
 import { FileIconBadge } from './FileIconBadge';
 import { StudyCloudAPI } from '../services/api';
+import { buildAiStudyKey } from '../services/storageUtils';
 import { storeFileBlob, deleteFileBlob, getFileBlobUrl, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 
 interface LeftMenuProps {
@@ -220,8 +221,8 @@ export function LeftMenu({
         importedAt: now
       }).catch(() => {});
 
-      // Upload vers Cloudflare R2
-      const r2Key = `files/${userId}/${id}-${encodeURIComponent(file.name)}`;
+      // Upload vers Cloudflare R2 (dossier structuré ai-studies/)
+      const r2Key = buildAiStudyKey(userId, id, file.name);
       StudyCloudAPI.uploadFileToR2(file, r2Key).then(res => {
         if (res && res.url) {
           StudyCloudAPI.registerFileMetadata({

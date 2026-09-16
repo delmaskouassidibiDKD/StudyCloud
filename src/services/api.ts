@@ -520,20 +520,27 @@ export const StudyCloudAPI = {
     return request<{ success: boolean; data: any[] }>(endpoint);
   },
 
-  async uploadFileToR2(file: File, r2Key: string): Promise<{ success: boolean; key: string; url: string }> {
+  async uploadFileToR2(file: File | Blob, r2Key: string, contentType?: string): Promise<{ success: boolean; key: string; url: string }> {
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
     const url = `${baseUrl}/api/storage/upload?key=${encodeURIComponent(r2Key)}`;
+    const finalContentType = contentType || (file as any).type || 'application/octet-stream';
 
     const response = await fetch(url, {
       method: 'PUT',
       headers: {
-        'Content-Type': file.type || 'application/octet-stream',
+        'Content-Type': finalContentType,
       },
       body: file,
     });
 
     if (!response.ok) throw new Error("Échec de l'envoi du fichier vers Cloudflare R2");
     return response.json();
+  },
+
+  async uploadDataUrlToR2(dataUrl: string, r2Key: string): Promise<{ success: boolean; key: string; url: string }> {
+    const res = await fetch(dataUrl);
+    const blob = await res.blob();
+    return this.uploadFileToR2(blob, r2Key, blob.type);
   },
 
   async registerFileMetadata(fileData: {

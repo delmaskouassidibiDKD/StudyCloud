@@ -4,6 +4,7 @@ import { getFileTimestamp } from './FilesMenuView';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
+import { buildUserFileKey } from '../services/storageUtils';
 
 interface MatiereMenuViewProps {
   matiereName: string;
@@ -628,8 +629,8 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
           lastImported: now + i
         }).catch(() => {});
 
-        // 3. Upload vers Cloudflare R2 en arrière-plan
-        const r2Key = `files/${userId}/${id}-${encodeURIComponent(f.name)}`;
+        // 3. Upload vers Cloudflare R2 en arrière-plan (dossier structuré user-files/)
+        const r2Key = buildUserFileKey(userId, id, f.name);
         StudyCloudAPI.uploadFileToR2(f, r2Key).then((uploadRes) => {
           if (uploadRes && uploadRes.url) {
             StudyCloudAPI.registerFileMetadata({

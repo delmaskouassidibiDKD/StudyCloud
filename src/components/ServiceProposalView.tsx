@@ -2,6 +2,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { ArrowLeft, Menu, X, Package, List, Megaphone, BarChart2, Plus, Trash2, Check, DollarSign, Eye, Upload, Loader2, Share2, Search, ChevronDown, Store, Phone, MessageCircle, User, Camera, Edit3, Zap, Tag, Users } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { StudyCloudAPI } from '../services/api';
+import { buildProductImageKey } from '../services/storageUtils';
 import studentLogo from '../assets/student-logo.jpg';
 
 interface ProductItem {
@@ -434,7 +435,6 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
             boostEndDate: row.boost_end_date || undefined
           }));
           setProducts(mapped);
-          localStorage.setItem('unifolder_published_products', JSON.stringify(mapped));
         }
       })
       .catch((e) => console.warn('D1 Products fetch:', e));
@@ -528,7 +528,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
         currentProgress = 100;
         clearInterval(interval);
 
-        setTimeout(() => {
+        setTimeout(async () => {
           setPublishingItems(prev => prev.filter(item => item.id !== tempId));
 
           const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
@@ -539,6 +539,28 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
           const sellerPhone = shopPhone || localStorage.getItem('unifolder_user_phone') || '';
           const sellerWhatsapp = shopWhatsapp || localStorage.getItem('unifolder_user_phone') || '';
           const sellerAvatarUrl = shopAvatarUrl || localStorage.getItem('unifolder_user_avatar') || '';
+
+          // Upload des photos de produit vers Cloudflare R2 (dossier products/images/)
+          const uploadedImageUrls: string[] = [];
+          for (let idx = 0; idx < cachedImages.length; idx++) {
+            const rawImg = cachedImages[idx];
+            if (rawImg && rawImg.startsWith('data:')) {
+              try {
+                const r2Key = buildProductImageKey(userId, tempId, idx, 'jpg');
+                const uploadRes = await StudyCloudAPI.uploadDataUrlToR2(rawImg, r2Key);
+                if (uploadRes && uploadRes.url) {
+                  uploadedImageUrls.push(uploadRes.url);
+                } else {
+                  uploadedImageUrls.push(rawImg);
+                }
+              } catch (r2Err) {
+                console.warn('Upload image produit R2 fallback:', r2Err);
+                uploadedImageUrls.push(rawImg);
+              }
+            } else if (rawImg) {
+              uploadedImageUrls.push(rawImg);
+            }
+          }
 
           const newItem: ProductItem = {
             id: tempId,
@@ -558,32 +580,38 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
             date: new Date().toLocaleDateString('fr-FR'),
             views: 0,
             sales: 0,
-            imageUrl: cachedImages[0] || undefined,
-            imageUrls: cachedImages
+            imageUrl: uploadedImageUrls[0] || undefined,
+            imageUrls: uploadedImageUrls
           };
 
           setProducts((prev) => [newItem, ...prev]);
           triggerToast(`"${newItem.title}" a été bien publié !`);
 
-          StudyCloudAPI.createProduct({
-            id: newItem.id,
-            sellerId: userId,
-            sellerName,
-            sellerSchool,
-            sellerFiliere,
-            sellerCountry,
-            sellerPhone,
-            sellerWhatsapp,
-            sellerAvatarUrl,
-            title: newItem.title,
-            description: newItem.description,
-            price: newItem.price,
-            currency: cachedCurrency,
-            category: newItem.category,
-            imageUrlsJson: JSON.stringify(newItem.imageUrls || []),
-            isBoosted: false
-          }).catch((e) => console.warn('Sync product to D1:', e));
-        }, 500);
+          try {
+            await StudyCloudAPI.createProduct({
+              id: newItem.id,
+              sellerId: userId,
+              sellerName,
+              sellerSchool,
+              sellerFiliere,
+              sellerCountry,
+              sellerPhone,
+              sellerWhatsapp,
+              sellerAvatarUrl,
+              title: newItem.title,
+              description: newItem.description,
+              price: newItem.price,
+              currency: cachedCurrency,
+              category: newItem.category,
+              imageUrlsJson: JSON.stringify(uploadedImageUrls),
+              isBoosted: false
+            });
+            // Notifier la Librairie pour un affichage en direct temps réel
+            window.dispatchEvent(new Event('studycloud_products_updated'));
+          } catch (e) {
+            console.warn('Sync product to D1:', e);
+          }
+        }, 300);
       }
 
       setPublishingItems(prev => prev.map(item => item.id === tempId ? { ...item, progress: Math.min(100, currentProgress) } : item));

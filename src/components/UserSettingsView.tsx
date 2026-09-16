@@ -23,6 +23,7 @@ import {
 import { useAuth } from '../context/AuthContext';
 import { StudyCloudAPI } from '../services/api';
 import { compressAvatarImage, getAvatarFromEmail } from '../services/imageUtils';
+import { buildAvatarKey } from '../services/storageUtils';
 import studentLogo from '../assets/student-logo.jpg';
 import proLogo from '../assets/pro-logo.jpg';
 
@@ -138,14 +139,31 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
       return;
     }
 
-    // Compression et recadrage carré optimal (256x256 px, ~15-25 Ko) pour Cloudflare D1
+    // Compression et recadrage carré optimal (256x256 px, ~15-25 Ko)
     compressAvatarImage(file, 256, 0.85)
-      .then((dataUrl) => {
+      .then(async (dataUrl) => {
+        // Affichage immédiat en local pour l'UI
         setAvatarUrl(dataUrl);
         localStorage.setItem('unifolder_user_avatar', dataUrl);
         updateProfile({ avatar_url: dataUrl });
 
-        const userId = user?.id || localStorage.getItem('unifolder_user_id');
+        const userId = user?.id || localStorage.getItem('unifolder_user_id') || 'user_anonymous';
+        let finalAvatarUrl = dataUrl;
+
+        // Téléversement dans le dossier R2 dédié : avatars/
+        try {
+          const r2Key = buildAvatarKey(userId, 'png');
+          const uploadRes = await StudyCloudAPI.uploadDataUrlToR2(dataUrl, r2Key);
+          if (uploadRes?.url) {
+            finalAvatarUrl = uploadRes.url;
+            setAvatarUrl(finalAvatarUrl);
+            localStorage.setItem('unifolder_user_avatar', finalAvatarUrl);
+            updateProfile({ avatar_url: finalAvatarUrl });
+          }
+        } catch (uploadErr) {
+          console.warn('Téléversement avatar R2 échoué, utilisation du dataUrl:', uploadErr);
+        }
+
         if (userId) {
           StudyCloudAPI.syncUser({
             id: userId,
@@ -154,7 +172,7 @@ export const UserSettingsView: React.FC<UserSettingsViewProps> = ({ onBack }) =>
             school,
             filiere,
             country,
-            avatarUrl: dataUrl,
+            avatarUrl: finalAvatarUrl,
           }).catch((err) => console.warn('Erreur synchronisation avatar:', err));
         }
 

@@ -3,6 +3,7 @@ import { Edit3, ArrowLeft, Upload, File, Folder, Check, MoreVertical, X, Search,
 import { StudyCloudAPI } from '../services/api';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, getFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 import { persistRawFile } from './PublishFileView';
+import { buildUserFileKey } from '../services/storageUtils';
 
 interface FilesMenuViewProps {
   onBack: () => void;
@@ -833,8 +834,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           lastImported: now + i
         }).catch(() => {});
 
-        // 3. Upload vers R2 en arrière-plan
-        const r2Key = `files/${userId}/${id}-${encodeURIComponent(f.name)}`;
+        // 3. Upload vers R2 en arrière-plan (dossier structuré user-files/)
+        const r2Key = buildUserFileKey(userId, id, f.name);
         StudyCloudAPI.uploadFileToR2(f, r2Key).then((uploadRes) => {
           if (uploadRes && uploadRes.url) {
             StudyCloudAPI.registerFileMetadata({

@@ -5363,6 +5363,24 @@ var src_default = {
               }
             });
           }
+        } else if (env.BUCKET && (firstImg.includes("/api/storage/file/") || firstImg.startsWith("products/images/"))) {
+          try {
+            let r2Key = firstImg;
+            if (r2Key.includes("/api/storage/file/")) {
+              r2Key = decodeURIComponent(r2Key.split("/api/storage/file/")[1].split("?")[0]);
+            }
+            const r2Object = await env.BUCKET.get(r2Key);
+            if (r2Object) {
+              const headers = new Headers();
+              r2Object.writeHttpMetadata(headers);
+              headers.set("Content-Type", r2Object.httpMetadata?.contentType || "image/jpeg");
+              headers.set("Cache-Control", "public, max-age=86400, s-maxage=86400");
+              headers.set("Access-Control-Allow-Origin", origin);
+              return new Response(r2Object.body, { status: 200, headers });
+            }
+          } catch (r2Err) {
+            console.warn("[R2 Product Image Fetch Error]", r2Err);
+          }
         } else if (firstImg.startsWith("http://") || firstImg.startsWith("https://")) {
           return Response.redirect(firstImg, 302);
         }

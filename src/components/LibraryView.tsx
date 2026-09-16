@@ -771,17 +771,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     }
   }, [activeSubTab, loadPublicFolders]);
 
-  // Products state for Librairie tab
-  const [productsList, setProductsList] = useState<ProductItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('unifolder_published_products');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) return parsed;
-      }
-    } catch (e) {}
-    return DEFAULT_PRODUCTS;
-  });
+  // Products state for Librairie tab (Chargement 100% temps réel depuis D1, sans cache local)
+  const [productsList, setProductsList] = useState<ProductItem[]>([]);
 
   const [selectedDetailProduct, setSelectedDetailProduct] = useState<ProductItem | null>(null);
   const [activeDetailImageIndex, setActiveDetailImageIndex] = useState<number>(0);
@@ -908,9 +899,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         const mapped = res.data.map(mapRowToProduct);
         setProductsList(mapped);
         setHasMoreProducts(Boolean(res.pagination?.hasMore));
-        try {
-          localStorage.setItem('unifolder_published_products', JSON.stringify(mapped));
-        } catch (e) {}
 
         // Détection d'un produit spécifique depuis l'URL (?product=123)
         try {
@@ -989,8 +977,22 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   useEffect(() => {
     if (activeSubTab === 'librairie') {
       loadProducts();
+      // Rafraîchissement automatique en arrière-plan toutes les 30 secondes pour les nouveaux produits
+      const pollInterval = setInterval(() => {
+        loadProducts();
+      }, 30000);
+      return () => clearInterval(pollInterval);
     }
   }, [activeSubTab, loadProducts]);
+
+  // Écouter l'événement temps réel émis lors de la publication d'un produit
+  useEffect(() => {
+    const handleProductsUpdated = () => {
+      loadProducts();
+    };
+    window.addEventListener('studycloud_products_updated', handleProductsUpdated);
+    return () => window.removeEventListener('studycloud_products_updated', handleProductsUpdated);
+  }, [loadProducts]);
 
   // Charger les abonnements vendeurs et le panier
   useEffect(() => {
@@ -1020,11 +1022,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   useEffect(() => {
     const handleStorageChange = () => {
       try {
-        const saved = localStorage.getItem('unifolder_published_products');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed) && parsed.length > 0) setProductsList(parsed);
-        }
         const name = localStorage.getItem('unifolder_shop_name');
         if (name) setShopName(name);
         const phone = localStorage.getItem('unifolder_shop_phone');
