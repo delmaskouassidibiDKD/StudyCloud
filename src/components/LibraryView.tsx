@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart, RefreshCw, Globe, Hash, RotateCcw } from 'lucide-react';
+import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart, RefreshCw, Globe, Hash, RotateCcw, Link2 } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { SharedFolder, SharedFile } from '../types';
 import { FileIconBadge } from './FileIconBadge';
@@ -1927,7 +1927,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               ) : filteredPublicFolders.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
                   <div className="w-14 h-14 bg-blue-100 dark:bg-blue-950/40 rounded-2xl flex items-center justify-center text-blue-600 dark:text-blue-400 mx-auto mb-3">
-                    <Sparkles className="w-7 h-7 stroke-[1.8]" />
+                    <Link2 className="w-7 h-7 stroke-[2]" />
                   </div>
                   <h3 className="text-base font-extrabold text-stone-900 dark:text-white">
                     {searchQuery ? "Aucun lien ne correspond à la recherche" : "Aucun lien public disponible"}
