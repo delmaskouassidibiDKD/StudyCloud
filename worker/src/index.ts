@@ -67,6 +67,9 @@ function jsonResponse(data: any, status = 200, origin = '*') {
     status,
     headers: {
       'Content-Type': 'application/json',
+      'Cache-Control': 'no-store, no-cache, must-revalidate, max-age=0',
+      'Pragma': 'no-cache',
+      'Expires': '0',
       ...corsHeaders(origin),
     },
   });

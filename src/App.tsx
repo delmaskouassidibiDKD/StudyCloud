@@ -1226,16 +1226,18 @@ export default function App() {
             />
           ) : currentTab === 'publish-file' ? (
             <PublishFileView
-              onBack={() => handleSetTab('folders')}
-              onPublish={() => {
-                showToast('Documents publiés avec succès dans les Ressources !');
+              onBack={() => {
+                localStorage.setItem('studycloud_library_subtab', 'ressources');
+                handleSetTab('library');
               }}
-              onNavigateToRessources={() => {
-                sessionStorage.setItem('studycloud_library_subtab', 'ressources');
+              onPublish={() => {
+                // Rediriger vers Ressources en direct (sans mock local en dur)
+                localStorage.setItem('studycloud_library_subtab', 'ressources');
                 handleSetTab('library');
                 setTimeout(() => {
-                  window.dispatchEvent(new Event('studycloud_documents_updated'));
-                }, 80);
+                  window.dispatchEvent(new Event('studycloud_refresh_published_docs'));
+                }, 100);
+                showToast('Publication en ligne réussie ! Vos documents apparaissent en temps réel dans Ressources.');
               }}
             />
           ) : currentTab === 'upload' ? (

@@ -295,8 +295,11 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   const response = await fetch(url, {
     ...options,
+    cache: 'no-store',
     headers: {
       ...defaultHeaders,
+      'Cache-Control': 'no-cache',
+      'Pragma': 'no-cache',
       ...options.headers,
     },
   });
@@ -870,6 +873,7 @@ export const StudyCloudAPI = {
     if (filters?.userId) params.push(`userId=${encodeURIComponent(filters.userId)}`);
     if (filters?.page) params.push(`page=${filters.page}`);
     if (filters?.limit) params.push(`limit=${filters.limit}`);
+    params.push(`_t=${Date.now()}`);
     if (params.length > 0) endpoint += `?${params.join('&')}`;
     return request<{ success: boolean; data: any[]; pagination?: { page: number; limit: number; total: number; hasMore: boolean } }>(endpoint);
   },

@@ -80,10 +80,9 @@ async function clearAllPersistedFiles(): Promise<void> {
 interface PublishFileViewProps {
   onBack: () => void;
   onPublish?: (title: string, description: string, category: string, files: any[]) => void;
-  onNavigateToRessources?: () => void;
 }
 
-export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPublish, onNavigateToRessources }) => {
+export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPublish }) => {
   const [selectedFiles, setSelectedFiles] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('published_selected_files');
@@ -785,30 +784,24 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         duplicateFiles: duplicateFilesList.length > 0 ? duplicateFilesList : undefined
       });
 
-      // Notifier l'application pour recharger les ressources en temps réel depuis le Worker/D1
-      window.dispatchEvent(new Event('studycloud_documents_updated'));
+      const cleanFilesToPublish = filesToPublish.map(f => ({
+        id: f.id,
+        name: f.name,
+        size: f.size,
+        type: f.type,
+        url: f.url && !f.url.startsWith('data:') ? f.url : ''
+      }));
 
-      if (onPublish && publishedSuccessNames.length > 0) {
-        const cleanFilesToPublish = filesToPublish.map(f => ({
-          id: f.id,
-          name: f.name,
-          size: f.size,
-          type: f.type,
-          url: f.url && !f.url.startsWith('data:') ? f.url : ''
-        }));
-        onPublish(
-          infoMode === 'all' ? docTitle : publishedSuccessNames[0],
-          docDescription || '',
-          docCategory || 'Cours',
-          cleanFilesToPublish
-        );
-      }
-
-      // Si tous les fichiers étaient valides (aucun doublon restant), redirection automatique vers le menu Ressources après 2 secondes
+      // Redirection automatique vers l'onglet Ressources en temps réel après 2 secondes
       if (duplicateFilesList.length === 0) {
         setTimeout(() => {
-          if (onNavigateToRessources) {
-            onNavigateToRessources();
+          if (onPublish && publishedSuccessNames.length > 0) {
+            onPublish(
+              infoMode === 'all' ? docTitle : publishedSuccessNames[0],
+              docDescription || '',
+              docCategory || 'Cours',
+              cleanFilesToPublish
+            );
           } else {
             onBack();
           }
