@@ -175,11 +175,11 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
       <div className="pt-2">
         {sortedFolders.length === 0 ? (
           <div className="flex flex-col items-center justify-center py-20 text-center space-y-4">
-            <div className="w-16 h-16 bg-[#F5F1E9] border-3 border-stone-800 rounded-2xl flex items-center justify-center text-stone-400 shadow-[4px_4px_0px_0px_#1c1917]">
-              <Share2 className="w-8 h-8" />
+            <div className="w-14 h-14 bg-stone-100 dark:bg-slate-800 rounded-2xl flex items-center justify-center text-stone-500 dark:text-slate-400">
+              <Share2 className="w-7 h-7 stroke-[1.8]" />
             </div>
-            <h2 className="text-xl font-extrabold text-stone-900">Aucun lien partagé</h2>
-            <p className="text-sm text-stone-600 max-w-md">
+            <h2 className="text-xl font-extrabold text-stone-900 dark:text-white">Aucun lien partagé</h2>
+            <p className="text-sm text-stone-500 dark:text-slate-400 max-w-md">
               Vous n'avez pas encore créé de liens partagés. Importez des fichiers pour commencer.
             </p>
           </div>

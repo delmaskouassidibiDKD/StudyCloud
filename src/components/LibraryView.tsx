@@ -1228,12 +1228,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 </div>
 
                 {cartProducts.length === 0 ? (
-                  <div className="bg-[#FDFBF7] border-2 border-stone-300 rounded-2xl p-12 text-center shadow-xs">
-                    <div className="w-12 h-12 bg-amber-100 border-2 border-stone-800 rounded-2xl flex items-center justify-center text-amber-700 mx-auto mb-3 shadow-[2px_2px_0px_0px_#1c1917]">
-                      <ShoppingCart className="w-6 h-6" />
+                  <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                    <div className="w-14 h-14 bg-amber-100 dark:bg-amber-950/40 rounded-2xl flex items-center justify-center text-amber-700 dark:text-amber-400 mx-auto mb-3">
+                      <ShoppingCart className="w-7 h-7 stroke-[1.8]" />
                     </div>
-                    <h3 className="text-base font-extrabold text-stone-900">Votre panier est vide</h3>
-                    <p className="text-xs text-stone-600 mt-1">Parcourez les produits de la librairie pour ajouter des articles à votre panier !</p>
+                    <h3 className="text-base font-extrabold text-stone-900 dark:text-white">Votre panier est vide</h3>
+                    <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm">Parcourez les produits de la librairie pour ajouter des articles à votre panier !</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 w-full">
@@ -1327,12 +1327,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   <p className="text-xs font-bold text-stone-500">Sélection personnalisée selon votre profil...</p>
                 </div>
               ) : productsList.length === 0 ? (
-                <div className="bg-[#FDFBF7] border-2 border-stone-300 rounded-2xl p-12 text-center shadow-xs">
-                  <div className="w-12 h-12 bg-orange-100 border-2 border-stone-800 rounded-2xl flex items-center justify-center text-orange-600 mx-auto mb-3 shadow-[2px_2px_0px_0px_#1c1917]">
-                    <Package className="w-6 h-6" />
+                <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                  <div className="w-14 h-14 bg-amber-100 dark:bg-amber-950/40 rounded-2xl flex items-center justify-center text-amber-700 dark:text-amber-400 mx-auto mb-3">
+                    <Package className="w-7 h-7 stroke-[1.8]" />
                   </div>
-                  <h3 className="text-base font-extrabold text-stone-900">Aucun produit trouvé</h3>
-                  <p className="text-xs text-stone-600 mt-1">Aucun produit ne correspond à votre recherche.</p>
+                  <h3 className="text-base font-extrabold text-stone-900 dark:text-white">Aucun produit trouvé</h3>
+                  <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm">Aucun produit ne correspond à votre recherche.</p>
                 </div>
               ) : (
                 <div className="space-y-4">
@@ -1529,12 +1529,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <button onClick={loadPublishedDocs} className="mt-3 px-4 py-1.5 bg-red-600 text-white text-xs font-bold rounded-lg cursor-pointer hover:bg-red-700">Réessayer</button>
               </div>
             ) : publishedDocs.length === 0 ? (
-              <div className="bg-[#FDFBF7] border-3 border-stone-800 rounded-2xl p-12 text-center shadow-[4px_4px_0px_0px_#1c1917]">
-                <div className="w-12 h-12 bg-orange-100 border-2 border-stone-800 rounded-2xl flex items-center justify-center text-orange-600 mx-auto mb-3 shadow-[2px_2px_0px_0px_#1c1917]">
-                  <FileText className="w-6 h-6" />
+              <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                <div className="w-14 h-14 bg-orange-100 dark:bg-orange-950/40 rounded-2xl flex items-center justify-center text-orange-600 dark:text-orange-400 mx-auto mb-3">
+                  <FileText className="w-7 h-7 stroke-[1.8]" />
                 </div>
-                <h3 className="text-base font-extrabold text-stone-900">Aucun document trouvé</h3>
-                <p className="text-xs text-stone-600 mt-1">Essayez de modifier vos filtres ou publiez un document depuis vos fichiers.</p>
+                <h3 className="text-base font-extrabold text-stone-900 dark:text-white">Aucun document trouvé</h3>
+                <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm">Essayez de modifier vos filtres ou publiez un document depuis vos fichiers.</p>
               </div>
             ) : resourceViewMode === 'preview' ? (
               /* MODE APERÇU (STYLE IMAGE 2 - ACTIVÉ PAR DÉFAUT) */
@@ -1920,19 +1920,19 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           return (
             <div className="space-y-4">
               {isLoadingPublicFolders && filteredPublicFolders.length === 0 ? (
-                <div className="bg-[#FDFBF7] dark:bg-slate-900/70 border-3 border-stone-800 dark:border-white/10 rounded-2xl p-12 text-center shadow-[4px_4px_0px_0px_#1c1917] flex flex-col items-center justify-center">
-                  <div className="w-8 h-8 border-3 border-orange-500 border-t-transparent rounded-full animate-spin mb-3"></div>
-                  <p className="text-xs font-bold text-stone-600 dark:text-slate-400">Chargement des liens publics...</p>
+                <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                  <div className="w-8 h-8 border-3 border-blue-500 border-t-transparent rounded-full animate-spin mb-3"></div>
+                  <p className="text-xs font-bold text-stone-500 dark:text-slate-400">Chargement des liens publics...</p>
                 </div>
               ) : filteredPublicFolders.length === 0 ? (
-                <div className="bg-[#FDFBF7] border-3 border-stone-800 rounded-2xl p-12 text-center shadow-[4px_4px_0px_0px_#1c1917]">
-                  <div className="w-12 h-12 bg-blue-100 border-2 border-stone-800 rounded-2xl flex items-center justify-center text-blue-600 mx-auto mb-3 shadow-[2px_2px_0px_0px_#1c1917]">
-                    <Sparkles className="w-6 h-6" />
+                <div className="flex flex-col items-center justify-center py-16 px-4 text-center">
+                  <div className="w-14 h-14 bg-blue-100 dark:bg-blue-950/40 rounded-2xl flex items-center justify-center text-blue-600 dark:text-blue-400 mx-auto mb-3">
+                    <Sparkles className="w-7 h-7 stroke-[1.8]" />
                   </div>
-                  <h3 className="text-base font-extrabold text-stone-900">
+                  <h3 className="text-base font-extrabold text-stone-900 dark:text-white">
                     {searchQuery ? "Aucun lien ne correspond à la recherche" : "Aucun lien public disponible"}
                   </h3>
-                  <p className="text-xs text-stone-600 mt-1">
+                  <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm">
                     {searchQuery ? "Essayez avec d'autres termes de recherche." : "Pour rendre un lien public, cliquez sur le cadenas dans vos Liens Actifs et ajoutez une description."}
                   </p>
                 </div>

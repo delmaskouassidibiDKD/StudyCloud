@@ -1326,9 +1326,11 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                     item.title.toLowerCase().includes(pubSearchQuery.toLowerCase()) ||
                     (item.category && item.category.toLowerCase().includes(pubSearchQuery.toLowerCase()))
                   ).length === 0 && publishingItems.length === 0 ? (
-                    <div className="text-center py-12 space-y-3 bg-white rounded-2xl border border-stone-200 p-6">
-                      <Package className="w-10 h-10 text-stone-400 mx-auto" />
-                      <p className="text-xs font-bold text-stone-700">Aucun produit trouvé.</p>
+                    <div className="text-center py-12 space-y-3 p-6">
+                      <div className="w-12 h-12 rounded-2xl bg-stone-100 dark:bg-stone-800 flex items-center justify-center text-stone-400 mx-auto">
+                        <Package className="w-6 h-6 stroke-[1.8]" />
+                      </div>
+                      <p className="text-xs font-bold text-stone-700 dark:text-stone-300">Aucun produit trouvé.</p>
                       {products.length === 0 && (
                         <button
                           type="button"
@@ -1475,9 +1477,11 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
                   <div>
                     {products.length === 0 ? (
-                      <div className="text-center py-10 space-y-2 bg-white border border-stone-200 rounded-2xl p-6">
-                        <Package className="w-8 h-8 text-stone-400 mx-auto" />
-                        <p className="text-xs font-bold text-stone-700">Aucun produit dans la boutique.</p>
+                      <div className="text-center py-10 space-y-2 p-6">
+                        <div className="w-12 h-12 rounded-2xl bg-stone-100 dark:bg-stone-800 flex items-center justify-center text-stone-400 mx-auto">
+                          <Package className="w-6 h-6 stroke-[1.8]" />
+                        </div>
+                        <p className="text-xs font-bold text-stone-700 dark:text-stone-300">Aucun produit dans la boutique.</p>
                       </div>
                     ) : (
                       <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 md:gap-5">

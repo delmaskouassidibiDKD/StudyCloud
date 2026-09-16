@@ -293,14 +293,14 @@ export const NotificationsView: React.FC<NotificationsViewProps> = ({ onBack }) 
         )}
 
         {filteredNotifications.length === 0 ? (
-          <div className="bg-white dark:bg-[#111827] border-2 border-stone-800 dark:border-stone-700 rounded-3xl p-8 text-center shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none space-y-3 my-8">
-            <div className="w-14 h-14 mx-auto rounded-2xl bg-orange-50 dark:bg-orange-950/40 border-2 border-stone-800 dark:border-stone-700 flex items-center justify-center text-orange-600 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none">
-              <Bell className="w-7 h-7" />
+          <div className="flex flex-col items-center justify-center py-16 px-4 text-center my-4">
+            <div className="w-14 h-14 mx-auto rounded-2xl bg-orange-100 dark:bg-orange-950/40 flex items-center justify-center text-orange-600 dark:text-orange-400 mb-3">
+              <Bell className="w-7 h-7 stroke-[1.8]" />
             </div>
             <h3 className="font-extrabold text-base text-stone-900 dark:text-white">
               {searchQuery ? 'Aucun résultat trouvé' : 'Aucune notification'}
             </h3>
-            <p className="text-xs text-stone-500 dark:text-stone-400 max-w-sm mx-auto">
+            <p className="text-xs text-stone-500 dark:text-stone-400 max-w-sm mx-auto mt-1">
               {searchQuery
                 ? `Aucune notification ne correspond à votre recherche "${searchQuery}".`
                 : 'Vous êtes à jour ! Vos alertes de documents, parrainages et messages apparaîtront ici.'}
