@@ -256,17 +256,23 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [hasMoreDocs, setHasMoreDocs] = useState(false);
   const [docsError, setDocsError] = useState<string | null>(null);
   const infiniteSentinelRef = useRef<HTMLDivElement>(null);
+  const docSeedRef = useRef<string>(Date.now().toString(36));
 
-  const loadPublishedDocs = useCallback(async () => {
+  const loadPublishedDocs = useCallback(async (newSeed?: string) => {
     setIsLoadingDocs(true);
     setDocsError(null);
     setDocsPage(1);
+    const activeSeed = newSeed || docSeedRef.current || Date.now().toString(36);
+    if (newSeed) {
+      docSeedRef.current = newSeed;
+    }
     try {
       const currentUserId = localStorage.getItem('unifolder_user_id') || undefined;
       const filters: any = {
         page: 1,
         limit: 8, // Chargement par paquet de 8 pour un défilement infini progressif
         isPublic: true,
+        seed: activeSeed,
       };
       if (currentUserId) filters.userId = currentUserId;
       if (selectedSchoolFilter) filters.school = selectedSchoolFilter;
@@ -298,6 +304,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         page: nextPage,
         limit: 8,
         isPublic: true,
+        seed: docSeedRef.current,
       };
       if (currentUserId) filters.userId = currentUserId;
       if (selectedSchoolFilter) filters.school = selectedSchoolFilter;
@@ -709,6 +716,34 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     return () => window.removeEventListener('storage', handleStorageChange);
   }, []);
 
+  // État de rafraîchissement global pour le sous-menu actif
+  const isGlobalRefreshing = (activeSubTab === 'ressources' && isLoadingDocs) ||
+                             (activeSubTab === 'librairie' && isLoadingProducts) ||
+                             (activeSubTab === 'liens' && isLoadingPublicFolders);
+
+  // Fonction d'actualisation globale selon le sous-menu actif
+  const handleGlobalRefresh = useCallback(async () => {
+    if (activeSubTab === 'ressources') {
+      // Générer une nouvelle graine de rotation pour que l'algorithme propose d'autres fichiers adaptés
+      const freshSeed = Date.now().toString(36) + Math.random().toString(36).substring(2, 6);
+      await loadPublishedDocs(freshSeed);
+      // Actualiser également les filtres écoles et matières
+      StudyCloudAPI.getPublishedDocumentFilters().then(res => {
+        if (res && res.success) {
+          if (Array.isArray(res.schools)) setAvailableSchools(res.schools);
+          if (Array.isArray(res.matieres)) setAvailableMatieres(res.matieres);
+        }
+      }).catch(() => {});
+      triggerToast("Recommandations actualisées !");
+    } else if (activeSubTab === 'librairie') {
+      await loadProducts();
+      triggerToast("Librairie actualisée !");
+    } else if (activeSubTab === 'liens') {
+      await loadPublicFolders();
+      triggerToast("Liens publics actualisés !");
+    }
+  }, [activeSubTab, loadPublishedDocs, loadProducts, loadPublicFolders]);
+
   const formatSize = (bytes: number) => {
     if (!bytes) return '0 o';
     const k = 1024;
@@ -932,45 +967,69 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           )}
         </div>
 
-        {/* 3 Fixed Compact Navigation Buttons: Centered & Balanced across row */}
-        <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 w-full pt-0.5">
-          <button
-            type="button"
-            onClick={() => { setActiveSubTab('librairie'); setIsRecentFilterActive(false); }}
-            className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
-              activeSubTab === 'librairie'
-                ? 'bg-amber-400 text-stone-900 border-stone-800 dark:border-amber-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(251,191,36,0.3)]'
-                : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
-            }`}
-          >
-            <span>📚</span>
-            <span>Librairie</span>
-          </button>
+        {/* Navigation Tabs (Librairie, Ressources, Liens publics) + Bouton Actualiser Déplacé en Haut à Droite (Tracé rouge) */}
+        <div className="flex items-center justify-between gap-1.5 sm:gap-2.5 w-full pt-0.5">
+          {/* Espaceur invisible à gauche pour équilibrer le centrage sur grand écran */}
+          <div className="w-8 sm:w-24 hidden md:block shrink-0" />
 
+          {/* 3 Onglets Centrés */}
+          <div className="flex items-center justify-center gap-1.5 sm:gap-2.5 flex-1">
+            <button
+              type="button"
+              onClick={() => { setActiveSubTab('librairie'); setIsRecentFilterActive(false); }}
+              className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
+                activeSubTab === 'librairie'
+                  ? 'bg-amber-400 text-stone-900 border-stone-800 dark:border-amber-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(251,191,36,0.3)]'
+                  : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
+              }`}
+            >
+              <span>📚</span>
+              <span>Librairie</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setActiveSubTab('ressources'); setIsCartViewOpen(false); }}
+              className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
+                activeSubTab === 'ressources'
+                  ? 'bg-orange-500 text-white border-stone-800 dark:border-orange-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(249,115,22,0.3)]'
+                  : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
+              }`}
+            >
+              <span>📁</span>
+              <span>Ressources</span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => { setActiveSubTab('liens'); setIsCartViewOpen(false); setIsRecentFilterActive(false); }}
+              className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
+                activeSubTab === 'liens'
+                  ? 'bg-blue-600 text-white border-stone-800 dark:border-blue-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(37,99,235,0.3)]'
+                  : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
+              }`}
+            >
+              <span>🔗</span>
+              <span className="truncate">Liens publics</span>
+            </button>
+          </div>
+
+          {/* Bouton Actualiser Global Déplacé en Haut à Droite (Tracé rouge utilisateur) */}
           <button
             type="button"
-            onClick={() => { setActiveSubTab('ressources'); setIsCartViewOpen(false); }}
-            className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
+            onClick={handleGlobalRefresh}
+            disabled={isGlobalRefreshing}
+            title={
               activeSubTab === 'ressources'
-                ? 'bg-orange-500 text-white border-stone-800 dark:border-orange-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(249,115,22,0.3)]'
-                : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
-            }`}
+                ? "Actualiser et découvrir d'autres recommandations adaptées"
+                : activeSubTab === 'librairie'
+                ? "Actualiser la librairie"
+                : "Actualiser les liens publics"
+            }
+            className="px-2 sm:px-2.5 py-1 text-xs font-extrabold rounded-xl border-2 border-stone-800 dark:border-[#334155] bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 disabled:opacity-50"
           >
-            <span>📁</span>
-            <span>Ressources</span>
-          </button>
-
-          <button
-            type="button"
-            onClick={() => { setActiveSubTab('liens'); setIsCartViewOpen(false); setIsRecentFilterActive(false); }}
-            className={`flex-1 max-w-[135px] justify-center px-2 sm:px-3 py-1 text-xs font-extrabold rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 ${
-              activeSubTab === 'liens'
-                ? 'bg-blue-600 text-white border-stone-800 dark:border-blue-400/40 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-[0_0_15px_rgba(37,99,235,0.3)]'
-                : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-700 dark:text-slate-200 border-stone-800 dark:border-[#334155]'
-            }`}
-          >
-            <span>🔗</span>
-            <span className="truncate">Liens publics</span>
+            <RefreshCw className={`w-3.5 h-3.5 text-orange-500 dark:text-orange-400 ${isGlobalRefreshing ? 'animate-spin' : ''}`} />
+            <span className="hidden sm:inline font-bold">Actualiser</span>
           </button>
         </div>
       </div>
@@ -1451,19 +1510,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               </div>
             )}
 
-            {/* Bouton Actualiser */}
+            {/* Compteur de documents publiés */}
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-stone-500 font-medium">
                 {isLoadingDocs ? 'Chargement...' : `${publishedDocs.length} document${publishedDocs.length > 1 ? 's' : ''} publié${publishedDocs.length > 1 ? 's' : ''}`}
               </span>
-              <button
-                onClick={loadPublishedDocs}
-                disabled={isLoadingDocs}
-                className="flex items-center gap-1 px-2 py-1 bg-white border border-stone-300 rounded-lg text-[10px] font-bold text-stone-700 hover:bg-stone-100 transition-all cursor-pointer disabled:opacity-50"
-              >
-                <RefreshCw className={`w-3 h-3 ${isLoadingDocs ? 'animate-spin' : ''}`} />
-                Actualiser
-              </button>
             </div>
 
             {/* Contenu : Documents Publiés */}

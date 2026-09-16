@@ -4759,6 +4759,7 @@ Lien vers le produit : ${productShareUrl}`;
           const sort = url.searchParams.get("sort");
           const pageParam = url.searchParams.get("page");
           const limitParam = url.searchParams.get("limit");
+          const seed = url.searchParams.get("seed") || url.searchParams.get("_t") || "";
           const page = pageParam ? Math.max(1, parseInt(pageParam, 10)) : null;
           const limit = limitParam ? Math.max(1, Math.min(100, parseInt(limitParam, 10))) : 30;
           try {
@@ -4813,26 +4814,37 @@ Lien vers le produit : ${productShareUrl}`;
           query += " ORDER BY created_at DESC";
           const { results } = await env.DB.prepare(query).bind(...params).all();
           let docsList = results || [];
-          if (sort !== "recent" && userId && docsList.length > 0) {
+          if (sort !== "recent" && docsList.length > 0) {
             try {
-              const [userRes, matieresRes, filesRes, interactionsRes] = await Promise.all([
-                env.DB.prepare("SELECT school, filiere, country FROM users WHERE id = ?").bind(userId).first(),
-                env.DB.prepare("SELECT name FROM matieres WHERE user_id = ?").bind(userId).all(),
-                env.DB.prepare("SELECT name, matiere_id FROM files WHERE user_id = ? ORDER BY created_at DESC LIMIT 60").bind(userId).all(),
-                env.DB.prepare("SELECT document_id, interaction_type FROM user_document_interactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").bind(userId).all()
-              ]);
-              const userSchool = (userRes?.school || "").toLowerCase().trim();
-              const userFiliere = (userRes?.filiere || "").toLowerCase().trim();
-              const userCountry = (userRes?.country || "").toLowerCase().trim();
-              const userMatiereNames = (matieresRes?.results || []).map((m) => (m.name || "").toLowerCase().trim()).filter(Boolean);
-              const userKeywords = [];
-              (filesRes?.results || []).forEach((f) => {
-                const combined = `${f.name || ""} ${f.matiere_id || ""}`.toLowerCase();
-                const words = combined.replace(/[^a-z0-9à-ÿ]/gi, " ").split(/\s+/).filter((w) => w.length >= 3);
-                userKeywords.push(...words);
-              });
-              const uniqueUserKeywords = Array.from(new Set(userKeywords)).slice(0, 40);
-              const interactedDocIds = new Set((interactionsRes?.results || []).map((i) => i.document_id));
+              let userSchool = "";
+              let userFiliere = "";
+              let userCountry = "";
+              let userMatiereNames = [];
+              let uniqueUserKeywords = [];
+              const interactedDocIds = /* @__PURE__ */ new Set();
+              if (userId) {
+                const [userRes, matieresRes, filesRes, interactionsRes] = await Promise.all([
+                  env.DB.prepare("SELECT school, filiere, country FROM users WHERE id = ?").bind(userId).first(),
+                  env.DB.prepare("SELECT name FROM matieres WHERE user_id = ?").bind(userId).all(),
+                  env.DB.prepare("SELECT name, matiere_id FROM files WHERE user_id = ? ORDER BY created_at DESC LIMIT 60").bind(userId).all(),
+                  env.DB.prepare("SELECT document_id, interaction_type FROM user_document_interactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").bind(userId).all()
+                ]);
+                userSchool = (userRes?.school || "").toLowerCase().trim();
+                userFiliere = (userRes?.filiere || "").toLowerCase().trim();
+                userCountry = (userRes?.country || "").toLowerCase().trim();
+                userMatiereNames = (matieresRes?.results || []).map((m) => (m.name || "").toLowerCase().trim()).filter(Boolean);
+                const userKeywords = [];
+                (filesRes?.results || []).forEach((f) => {
+                  const combined = `${f.name || ""} ${f.matiere_id || ""}`.toLowerCase();
+                  const words = combined.replace(/[^a-z0-9à-ÿ]/gi, " ").split(/\s+/).filter((w) => w.length >= 3);
+                  userKeywords.push(...words);
+                });
+                uniqueUserKeywords = Array.from(new Set(userKeywords)).slice(0, 40);
+                (interactionsRes?.results || []).forEach((i) => {
+                  if (i.document_id)
+                    interactedDocIds.add(i.document_id);
+                });
+              }
               const scoredDocs = docsList.map((doc) => {
                 let score = 0;
                 const dSchool = (doc.school || "").toLowerCase().trim();
@@ -4852,7 +4864,7 @@ Lien vers le produit : ${productShareUrl}`;
                   score += 35;
                 }
                 if (interactedDocIds.has(doc.id)) {
-                  score += 20;
+                  score += 10;
                 }
                 let matchedKws = 0;
                 for (const kw of uniqueUserKeywords) {
@@ -4870,6 +4882,16 @@ Lien vers le produit : ${productShareUrl}`;
                 const ageDays = (Date.now() - new Date(doc.created_at || Date.now()).getTime()) / (1e3 * 60 * 60 * 24);
                 const recencyBonus = ageDays < 7 ? 5 : ageDays < 30 ? 2 : 0;
                 score += popBonus + recencyBonus;
+                if (seed) {
+                  let hash = 0;
+                  const str = `${doc.id}_${seed}`;
+                  for (let i = 0; i < str.length; i++) {
+                    hash = (hash << 5) - hash + str.charCodeAt(i);
+                    hash |= 0;
+                  }
+                  const rotateBonus = Math.abs(hash) % 36;
+                  score += rotateBonus;
+                }
                 return { ...doc, _relevance_score: Math.round(score) };
               });
               scoredDocs.sort((a, b) => {

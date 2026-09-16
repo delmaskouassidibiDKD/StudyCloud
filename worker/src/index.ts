@@ -5692,6 +5692,7 @@ export default {
           const sort = url.searchParams.get('sort');
           const pageParam = url.searchParams.get('page');
           const limitParam = url.searchParams.get('limit');
+          const seed = url.searchParams.get('seed') || url.searchParams.get('_t') || '';
           const page = pageParam ? Math.max(1, parseInt(pageParam, 10)) : null;
           const limit = limitParam ? Math.max(1, Math.min(100, parseInt(limitParam, 10))) : 30;
 
@@ -5735,35 +5736,46 @@ export default {
           const { results } = await env.DB.prepare(query).bind(...params).all();
           let docsList: any[] = results || [];
 
-          // ALGORITHME DE RECOMMANDATION INTELLIGENT PERSONNALISÉ
+          // ALGORITHME DE RECOMMANDATION INTELLIGENT PERSONNALISÉ & ROTATION DYNAMIQUE
           // Si sort === 'recent', on conserve strictement le tri chronologique pur
-          if (sort !== 'recent' && userId && docsList.length > 0) {
+          if (sort !== 'recent' && docsList.length > 0) {
             try {
-              // Récupérer le profil étudiant, ses matières créées, ses fichiers et son historique de clics
-              const [userRes, matieresRes, filesRes, interactionsRes] = await Promise.all([
-                env.DB.prepare('SELECT school, filiere, country FROM users WHERE id = ?').bind(userId).first<any>(),
-                env.DB.prepare('SELECT name FROM matieres WHERE user_id = ?').bind(userId).all(),
-                env.DB.prepare('SELECT name, matiere_id FROM files WHERE user_id = ? ORDER BY created_at DESC LIMIT 60').bind(userId).all(),
-                env.DB.prepare('SELECT document_id, interaction_type FROM user_document_interactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').bind(userId).all()
-              ]);
+              let userSchool = '';
+              let userFiliere = '';
+              let userCountry = '';
+              let userMatiereNames: string[] = [];
+              let uniqueUserKeywords: string[] = [];
+              const interactedDocIds = new Set<string>();
 
-              const userSchool = (userRes?.school || '').toLowerCase().trim();
-              const userFiliere = (userRes?.filiere || '').toLowerCase().trim();
-              const userCountry = (userRes?.country || '').toLowerCase().trim();
+              if (userId) {
+                // Récupérer le profil étudiant, ses matières créées, ses fichiers et son historique de clics
+                const [userRes, matieresRes, filesRes, interactionsRes] = await Promise.all([
+                  env.DB.prepare('SELECT school, filiere, country FROM users WHERE id = ?').bind(userId).first<any>(),
+                  env.DB.prepare('SELECT name FROM matieres WHERE user_id = ?').bind(userId).all(),
+                  env.DB.prepare('SELECT name, matiere_id FROM files WHERE user_id = ? ORDER BY created_at DESC LIMIT 60').bind(userId).all(),
+                  env.DB.prepare('SELECT document_id, interaction_type FROM user_document_interactions WHERE user_id = ? ORDER BY created_at DESC LIMIT 50').bind(userId).all()
+                ]);
 
-              const userMatiereNames: string[] = (matieresRes?.results || [])
-                .map((m: any) => (m.name || '').toLowerCase().trim())
-                .filter(Boolean);
+                userSchool = (userRes?.school || '').toLowerCase().trim();
+                userFiliere = (userRes?.filiere || '').toLowerCase().trim();
+                userCountry = (userRes?.country || '').toLowerCase().trim();
 
-              const userKeywords: string[] = [];
-              (filesRes?.results || []).forEach((f: any) => {
-                const combined = `${f.name || ''} ${f.matiere_id || ''}`.toLowerCase();
-                const words = combined.replace(/[^a-z0-9à-ÿ]/gi, ' ').split(/\s+/).filter((w: string) => w.length >= 3);
-                userKeywords.push(...words);
-              });
-              const uniqueUserKeywords = Array.from(new Set(userKeywords)).slice(0, 40);
+                userMatiereNames = (matieresRes?.results || [])
+                  .map((m: any) => (m.name || '').toLowerCase().trim())
+                  .filter(Boolean);
 
-              const interactedDocIds = new Set((interactionsRes?.results || []).map((i: any) => i.document_id));
+                const userKeywords: string[] = [];
+                (filesRes?.results || []).forEach((f: any) => {
+                  const combined = `${f.name || ''} ${f.matiere_id || ''}`.toLowerCase();
+                  const words = combined.replace(/[^a-z0-9à-ÿ]/gi, ' ').split(/\s+/).filter((w: string) => w.length >= 3);
+                  userKeywords.push(...words);
+                });
+                uniqueUserKeywords = Array.from(new Set(userKeywords)).slice(0, 40);
+
+                (interactionsRes?.results || []).forEach((i: any) => {
+                  if (i.document_id) interactedDocIds.add(i.document_id);
+                });
+              }
 
               // Calcul du score de pertinence décroissant pour chaque document
               const scoredDocs = docsList.map((doc: any) => {
@@ -5791,12 +5803,12 @@ export default {
                   score += 35;
                 }
 
-                // 4. Documents déjà consultés ou cliqués par l'étudiant (+20)
+                // 4. Documents déjà consultés ou cliqués par l'étudiant (+10)
                 if (interactedDocIds.has(doc.id)) {
-                  score += 20;
+                  score += 10;
                 }
 
-                // 5. Mots-clés en commun avec les fichiers présents dans ses dossiers (+10 par mot-clé, max +30)
+                // 5. Mots-clés en commun avec les fichiers de l'étudiant (+10 par mot-clé, max +30)
                 let matchedKws = 0;
                 for (const kw of uniqueUserKeywords) {
                   if (dTitle.includes(kw) || dDesc.includes(kw) || dTags.includes(kw) || dMatiere.includes(kw)) {
@@ -5816,6 +5828,20 @@ export default {
                 const ageDays = (Date.now() - new Date(doc.created_at || Date.now()).getTime()) / (1000 * 60 * 60 * 24);
                 const recencyBonus = ageDays < 7 ? 5 : (ageDays < 30 ? 2 : 0);
                 score += popBonus + recencyBonus;
+
+                // 8. Exploration & Rotation dynamique lors de l'Actualisation :
+                // Quand l'utilisateur clique sur Actualiser, l'algorithme propose d'autres fichiers qui conviennent
+                if (seed) {
+                  let hash = 0;
+                  const str = `${doc.id}_${seed}`;
+                  for (let i = 0; i < str.length; i++) {
+                    hash = ((hash << 5) - hash) + str.charCodeAt(i);
+                    hash |= 0;
+                  }
+                  // Rotation jitter (0 à 35) : permet aux autres fichiers pertinents de passer en tête de liste
+                  const rotateBonus = Math.abs(hash) % 36;
+                  score += rotateBonus;
+                }
 
                 return { ...doc, _relevance_score: Math.round(score) };
               });

@@ -589,6 +589,7 @@ export const StudyCloudAPI = {
     const params: string[] = [];
     if (userId) params.push(`userId=${encodeURIComponent(userId)}`);
     if (publicOnly) params.push('publicOnly=true');
+    params.push(`_t=${Date.now()}`);
     if (params.length > 0) endpoint += `?${params.join('&')}`;
     return request<{ success: boolean; data: any[] }>(endpoint);
   },
@@ -784,8 +785,11 @@ export const StudyCloudAPI = {
       if (params.sellerId) q.set('sellerId', params.sellerId);
       if (params.page !== undefined && params.page !== null) q.set('page', String(params.page));
       if (params.limit !== undefined && params.limit !== null) q.set('limit', String(params.limit));
+      q.set('_t', String(Date.now()));
       const str = q.toString();
       if (str) endpoint += `?${str}`;
+    } else {
+      endpoint += `?_t=${Date.now()}`;
     }
     return request<{ success: boolean; data: any[]; pagination?: { page: number; limit: number; total: number; hasMore: boolean } }>(endpoint);
   },
@@ -857,6 +861,7 @@ export const StudyCloudAPI = {
     sort?: string;
     page?: number;
     limit?: number;
+    seed?: string;
   }) {
     let endpoint = '/api/published-documents';
     const params: string[] = [];
@@ -872,6 +877,7 @@ export const StudyCloudAPI = {
     if (filters?.sort) params.push(`sort=${encodeURIComponent(filters.sort)}`);
     if (filters?.page) params.push(`page=${filters.page}`);
     if (filters?.limit) params.push(`limit=${filters.limit}`);
+    if (filters?.seed) params.push(`seed=${encodeURIComponent(filters.seed)}`);
     params.push(`_t=${Date.now()}`);
     if (params.length > 0) endpoint += `?${params.join('&')}`;
     return request<{ success: boolean; data: any[]; pagination?: { page: number; limit: number; total: number; hasMore: boolean } }>(endpoint);
