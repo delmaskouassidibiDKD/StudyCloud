@@ -456,18 +456,62 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
     setTimeout(() => setToastMessage(null), 2500);
   };
 
-  const processImageFile = (file: File) => {
+  // Optimisation et préservation de la haute fidélité visuelle du produit (1600px max, qualité 0.90)
+  const optimizeProductImage = (file: File): Promise<string> => {
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onload = (e) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          let width = img.width;
+          let height = img.height;
+          // Résolution haute fidélité augmentée (1600px max) pour préserver tous les détails (règles, instruments, textes)
+          const maxDim = 1600;
+          if (width > maxDim || height > maxDim) {
+            if (width > height) {
+              height = Math.round((height * maxDim) / width);
+              width = maxDim;
+            } else {
+              width = Math.round((width * maxDim) / height);
+              height = maxDim;
+            }
+          }
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, width, height);
+            // Qualité d'encodage JPEG augmentée à 0.90 pour une netteté cristalline et chargement rapide
+            resolve(canvas.toDataURL('image/jpeg', 0.90));
+          } else {
+            resolve((e.target?.result as string) || '');
+          }
+        };
+        img.onerror = () => resolve((e.target?.result as string) || '');
+        img.src = (e.target?.result as string) || '';
+      };
+      reader.onerror = () => resolve('');
+      reader.readAsDataURL(file);
+    });
+  };
+
+  const processImageFile = async (file: File) => {
     if (newImageUrls.length >= 3) {
       triggerToast("Vous pouvez importer un maximum de 3 images.");
       return;
     }
-    const reader = new FileReader();
-    reader.onload = (uploadEvent) => {
-      const resultUrl = uploadEvent.target?.result as string || '';
-      setNewImageUrls((prev) => [...prev, resultUrl]);
-      triggerToast(`Image importée avec succès !`);
-    };
-    reader.readAsDataURL(file);
+    try {
+      const optimizedDataUrl = await optimizeProductImage(file);
+      if (optimizedDataUrl) {
+        setNewImageUrls((prev) => [...prev, optimizedDataUrl]);
+        triggerToast(`Image de haute qualité importée avec succès !`);
+      }
+    } catch (err) {
+      console.warn('Erreur optimisation image produit:', err);
+    }
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1383,10 +1427,16 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                             className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between text-left cursor-pointer"
                           >
                             <div>
-                              {/* Top Image */}
-                              <div className="w-full h-36 md:h-48 bg-stone-100 relative overflow-hidden">
+                              {/* Top Image (Espace vertical agrandi, image entière en object-contain sans coupure) */}
+                              <div className="w-full h-48 md:h-56 bg-[#f8f7f4] relative overflow-hidden flex items-center justify-center p-2 rounded-t-2xl">
                                 {displayImages.length > 0 ? (
-                                  <img src={displayImages[0]} alt={item.title} className="w-full h-full object-cover" />
+                                  <img
+                                    src={displayImages[0]}
+                                    alt={item.title}
+                                    loading="eager"
+                                    decoding="async"
+                                    className="w-full h-full object-contain hover:scale-105 transition-transform duration-300"
+                                  />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-stone-400">
                                     <Package className="w-8 h-8 md:w-12 md:h-12" />
@@ -1522,10 +1572,16 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                               className="bg-white rounded-2xl border border-stone-200 overflow-hidden shadow-xs hover:shadow-md transition-all flex flex-col justify-between text-left cursor-pointer"
                             >
                               <div>
-                                {/* Top Image */}
-                                <div className="w-full h-36 md:h-48 bg-stone-100 relative overflow-hidden">
+                                {/* Top Image (Espace vertical agrandi, image entière en object-contain sans coupure) */}
+                                <div className="w-full h-48 md:h-56 bg-[#f8f7f4] relative overflow-hidden flex items-center justify-center p-2 rounded-t-2xl">
                                   {displayImages.length > 0 ? (
-                                    <img src={displayImages[0]} alt={item.title} className="w-full h-full object-cover" />
+                                    <img
+                                      src={displayImages[0]}
+                                      alt={item.title}
+                                      loading="eager"
+                                      decoding="async"
+                                      className="w-full h-full object-contain hover:scale-105 transition-transform duration-300"
+                                    />
                                   ) : (
                                     <div className="w-full h-full flex items-center justify-center text-stone-400">
                                       <Package className="w-8 h-8 md:w-12 md:h-12" />
