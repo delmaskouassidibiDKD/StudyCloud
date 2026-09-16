@@ -12,29 +12,123 @@ if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.wor
   (pdfjsLib as any).GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
 }
 
-// Composant miniature intelligent (rendu 1ère page PDF / image / style document authentique sans écran grisé)
+// Cache en mémoire vive JavaScript (RAM uniquement, JAMAIS de localStorage pour éviter les quotas/problèmes)
+// Garantit zéro clignotement lors des navigations et re-rendus
+const memoryThumbnailCache = new Map<string, string>();
+
+export interface DocTypeInfo {
+  name: string;
+  badgeClass: string;
+  cardBgClass: string;
+  cardBorderClass: string;
+  cardShadowClass: string;
+  accentTextClass: string;
+}
+
+export function getDocTypeInfo(doc: any): DocTypeInfo {
+  const fileName = (doc.file_name || doc.title || '').toLowerCase();
+  const fileType = (doc.file_type || '').toLowerCase();
+
+  if (fileType.includes('pdf') || fileName.endsWith('.pdf')) {
+    return {
+      name: 'PDF',
+      badgeClass: 'bg-red-500/20 text-red-400 border-red-500/40',
+      cardBgClass: 'bg-gradient-to-b from-[#2a1717] to-[#1a0f0f]',
+      cardBorderClass: 'border-2 border-red-500/70 hover:border-red-400',
+      cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#7f1d1d] hover:shadow-[4px_4px_0px_0px_#991b1b]',
+      accentTextClass: 'text-red-400',
+    };
+  }
+
+  if (fileType.includes('word') || /\.(docx|doc)$/i.test(fileName)) {
+    return {
+      name: 'WORD',
+      badgeClass: 'bg-blue-500/20 text-blue-400 border-blue-500/40',
+      cardBgClass: 'bg-gradient-to-b from-[#14233c] to-[#0e1728]',
+      cardBorderClass: 'border-2 border-blue-500/70 hover:border-blue-400',
+      cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#1e3a8a] hover:shadow-[4px_4px_0px_0px_#1d4ed8]',
+      accentTextClass: 'text-blue-400',
+    };
+  }
+
+  if (fileType.includes('sheet') || /\.(xlsx|xls|csv)$/i.test(fileName)) {
+    return {
+      name: 'EXCEL',
+      badgeClass: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
+      cardBgClass: 'bg-gradient-to-b from-[#112a1f] to-[#0c1c15]',
+      cardBorderClass: 'border-2 border-emerald-500/70 hover:border-emerald-400',
+      cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#064e3b] hover:shadow-[4px_4px_0px_0px_#047857]',
+      accentTextClass: 'text-emerald-400',
+    };
+  }
+
+  if (fileType.includes('presentation') || /\.(pptx|ppt)$/i.test(fileName)) {
+    return {
+      name: 'PPT',
+      badgeClass: 'bg-amber-500/20 text-amber-400 border-amber-500/40',
+      cardBgClass: 'bg-gradient-to-b from-[#2e1c10] to-[#1f130b]',
+      cardBorderClass: 'border-2 border-amber-500/70 hover:border-amber-400',
+      cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#78350f] hover:shadow-[4px_4px_0px_0px_#b45309]',
+      accentTextClass: 'text-amber-400',
+    };
+  }
+
+  if (fileType.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(fileName)) {
+    return {
+      name: 'IMAGE',
+      badgeClass: 'bg-teal-500/20 text-teal-400 border-teal-500/40',
+      cardBgClass: 'bg-gradient-to-b from-[#0f2824] to-[#0a1b18]',
+      cardBorderClass: 'border-2 border-teal-500/70 hover:border-teal-400',
+      cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#115e59] hover:shadow-[4px_4px_0px_0px_#0f766e]',
+      accentTextClass: 'text-teal-400',
+    };
+  }
+
+  const ext = fileName.includes('.') ? fileName.split('.').pop()?.toUpperCase() || 'DOC' : 'DOC';
+  return {
+    name: ext,
+    badgeClass: 'bg-stone-700/40 text-stone-300 border-stone-600',
+    cardBgClass: 'bg-gradient-to-b from-[#26272b] to-[#1c1c1f]',
+    cardBorderClass: 'border-2 border-stone-700 hover:border-stone-500',
+    cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#1c1917] hover:shadow-[4px_4px_0px_0px_#292524]',
+    accentTextClass: 'text-stone-300',
+  };
+}
+
+// Composant miniature intelligent (rendu 1ère page PDF haute qualité / image / cadrage de l'en-tête vers le bas)
 const DocumentCardThumbnail: React.FC<{ doc: any; onClick?: () => void }> = ({ doc, onClick }) => {
-  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+  const cacheKey = doc.id || doc.file_url || '';
+  const fileName = (doc.file_name || doc.title || '').toLowerCase();
+  const fileUrl = doc.file_url;
+  const isImage = doc.file_type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(fileName);
+  const isPdf = doc.file_type?.includes('pdf') || /\.pdf$/i.test(fileName);
+
+  const initialThumb = isImage ? fileUrl : (cacheKey ? memoryThumbnailCache.get(cacheKey) || null : null);
+  const [thumbUrl, setThumbUrl] = useState<string | null>(initialThumb);
+  const [isRendering, setIsRendering] = useState<boolean>(!initialThumb && isPdf && !!fileUrl);
 
   useEffect(() => {
     let isMounted = true;
-    const fileName = (doc.file_name || doc.title || '').toLowerCase();
-    const fileUrl = doc.file_url;
-    const isImage = doc.file_type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(fileName);
-    const isPdf = doc.file_type?.includes('pdf') || /\.pdf$/i.test(fileName);
-
     if (isImage && fileUrl) {
       setThumbUrl(fileUrl);
       return;
     }
 
+    if (cacheKey && memoryThumbnailCache.has(cacheKey)) {
+      setThumbUrl(memoryThumbnailCache.get(cacheKey)!);
+      setIsRendering(false);
+      return;
+    }
+
     if (isPdf && fileUrl) {
+      setIsRendering(true);
       (async () => {
         try {
           const loadingTask = pdfjsLib.getDocument({ url: fileUrl });
           const pdf = await loadingTask.promise;
           const page = await pdf.getPage(1);
-          const viewport = page.getViewport({ scale: 1.2 });
+          // Échelle 2.0 pour une qualité haute définition très nette (haute résolution de l'en-tête)
+          const viewport = page.getViewport({ scale: 2.0 });
           const canvas = document.createElement('canvas');
           const context = canvas.getContext('2d');
           if (context && isMounted) {
@@ -42,32 +136,52 @@ const DocumentCardThumbnail: React.FC<{ doc: any; onClick?: () => void }> = ({ d
             canvas.width = viewport.width;
             await page.render({ canvasContext: context, viewport }).promise;
             if (isMounted) {
-              setThumbUrl(canvas.toDataURL('image/png'));
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+              if (cacheKey) {
+                memoryThumbnailCache.set(cacheKey, dataUrl);
+              }
+              setThumbUrl(dataUrl);
+              setIsRendering(false);
             }
           }
         } catch (e) {
-          // Fallback automatique élégant si CORS ou restriction
+          if (isMounted) setIsRendering(false);
         }
       })();
       return () => {
         isMounted = false;
       };
     }
-  }, [doc.id, doc.file_url, doc.file_name, doc.title]);
+  }, [cacheKey, fileUrl, fileName, isImage, isPdf]);
 
-  const fileName = doc.file_name || doc.title || '';
-  const ext = fileName.includes('.') ? fileName.split('.').pop()?.toUpperCase() : 'DOC';
+  const rawFileName = doc.file_name || doc.title || '';
+  const typeInfo = getDocTypeInfo(doc);
 
   if (thumbUrl) {
     return (
-      <div onClick={onClick} className="w-full h-full relative cursor-pointer group-hover:scale-[1.02] transition-transform duration-200">
+      <div
+        onClick={onClick}
+        className="w-full h-full relative cursor-pointer overflow-hidden rounded-md group select-none"
+        title="Cliquer pour ouvrir le document dans l'application"
+      >
+        {/* object-cover object-top : cadre l'en-tête du document tout en haut et descend vers le bas */}
         <img
           src={thumbUrl}
-          alt={fileName}
-          className="w-full h-full object-cover rounded-md shadow-inner"
+          alt={rawFileName}
+          className="w-full h-full object-cover object-top rounded-md shadow-inner transition-transform duration-200 group-hover:scale-[1.02]"
           loading="lazy"
         />
-        <div className="absolute inset-0 bg-black/5 group-hover:bg-transparent transition-colors" />
+        <div className="absolute inset-0 bg-black/0 group-hover:bg-black/10 transition-colors pointer-events-none" />
+      </div>
+    );
+  }
+
+  // Pendant le rendu initial : affichage discret et stable pour éviter tout clignotement
+  if (isRendering) {
+    return (
+      <div onClick={onClick} className="w-full h-full p-2 flex flex-col items-center justify-center bg-stone-900/60 rounded-md cursor-pointer animate-pulse">
+        <FileText className="w-6 h-6 text-red-400 opacity-60 mb-1" />
+        <span className="text-[7.5px] font-bold text-stone-400">Chargement aperçu...</span>
       </div>
     );
   }
@@ -75,25 +189,28 @@ const DocumentCardThumbnail: React.FC<{ doc: any; onClick?: () => void }> = ({ d
   const isDocx = /\.(docx|doc)$/i.test(fileName);
   const isXlsx = /\.(xlsx|xls|csv)$/i.test(fileName);
   const isPptx = /\.(pptx|ppt)$/i.test(fileName);
-  const isPdf = /\.pdf$/i.test(fileName) || doc.file_type?.includes('pdf');
 
   return (
-    <div onClick={onClick} className="w-full h-full p-2 sm:p-2.5 flex flex-col justify-between rounded-md cursor-pointer select-none relative overflow-hidden shadow-inner bg-gradient-to-b from-stone-100 to-stone-200 border border-stone-300">
+    <div
+      onClick={onClick}
+      className="w-full h-full p-2 flex flex-col justify-between rounded-md cursor-pointer select-none relative overflow-hidden shadow-inner bg-gradient-to-b from-stone-100 to-stone-200 border border-stone-300 group-hover:border-stone-400 transition-all"
+      title="Cliquer pour ouvrir le document"
+    >
       <div className="flex items-center justify-between border-b border-stone-300/80 pb-1">
         <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded tracking-wider ${
           isPdf ? 'bg-red-600 text-white' :
           isDocx ? 'bg-blue-600 text-white' :
           isXlsx ? 'bg-emerald-600 text-white' :
-          isPptx ? 'bg-orange-600 text-white' : 'bg-stone-700 text-white'
+          isPptx ? 'bg-amber-600 text-white' : 'bg-stone-700 text-white'
         }`}>
-          {ext}
+          {typeInfo.name}
         </span>
-        <FileIconBadge fileName={fileName} size={16} />
+        <FileIconBadge fileName={rawFileName} size={16} />
       </div>
 
       <div className="flex-1 flex flex-col justify-center my-1 space-y-1 px-0.5">
         <p className="text-[8.5px] sm:text-[9.5px] font-extrabold text-stone-800 line-clamp-3 leading-tight drop-shadow-sm">
-          {doc.title || fileName}
+          {doc.title || rawFileName}
         </p>
         <div className="space-y-0.5 pt-0.5 opacity-60">
           <div className="h-1 bg-stone-400 rounded-full w-full"></div>
@@ -226,19 +343,28 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       .catch(err => console.warn('Erreur chargement filtres dynamiques:', err));
   }, []);
 
+  const handleDocDownload = (doc: any) => {
+    const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
+    setPublishedDocs(prev => prev.map(d => d.id === doc.id ? { ...d, downloads_count: (d.downloads_count || 0) + 1 } : d));
+    StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'download').catch(() => {});
+  };
+
   const handleOpenDoc = (doc: any) => {
     const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
     StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'view').catch(() => {});
+    const fileName = doc.file_name || doc.title || 'Document';
+    const isImage = doc.file_type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(fileName);
     if (setActivePreviewItem) {
       setActivePreviewItem({
         id: doc.id,
-        name: doc.file_name || doc.title,
+        name: fileName,
+        size: doc.file_size || 0,
+        type: doc.file_type || (isImage ? 'image/jpeg' : 'application/pdf'),
         url: doc.file_url || '',
-        folderName: doc.school || doc.matiere_name || 'Ressources',
+        isImage,
+        folderName: doc.school || doc.matiere_name || doc.category || 'Ressources',
         lockFullscreen: true,
       });
-    } else if (doc.file_url) {
-      window.open(doc.file_url, '_blank');
     }
   };
 
@@ -1546,25 +1672,31 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
                   })();
 
+                  const typeInfo = getDocTypeInfo(doc);
                   const isFlipped = flippedCardIds.has(doc.id);
 
                   // Si l'utilisateur a appuyé sur les 3 traits de cette carte spécifique :
-                  // cette carte SEULE change pour afficher les informations détaillées (comme la carte actuelle)
+                  // cette carte SEULE change pour afficher les informations détaillées avec le thème du type de fichier
                   if (isFlipped) {
                     return (
                       <div
                         key={doc.id}
-                        className="aspect-[3/4] bg-[#2A2B2E] text-stone-100 border-2 border-orange-500 rounded-2xl p-2.5 flex flex-col justify-between shadow-[2.5px_2.5px_0px_0px_#1c1917] transition-all relative select-none overflow-hidden"
+                        className={`aspect-[3/4] ${typeInfo.cardBgClass} text-stone-100 ${typeInfo.cardBorderClass} rounded-2xl p-2.5 flex flex-col justify-between ${typeInfo.cardShadowClass} transition-all relative select-none overflow-hidden`}
                       >
-                        {/* Header avec bouton retour aperçu */}
-                        <div className="flex items-center justify-between gap-1 border-b border-stone-700/80 pb-1 mb-1">
-                          <span className="text-[8px] sm:text-[9px] font-black bg-orange-500/20 text-orange-400 border border-orange-500/40 px-1.5 py-0.5 rounded truncate max-w-[70px]">
-                            {doc.category || "Pas d'informations"}
-                          </span>
+                        {/* Header avec badge catégorie + badge type + bouton retour aperçu */}
+                        <div className="flex items-center justify-between gap-1 border-b border-white/10 pb-1 mb-1">
+                          <div className="flex items-center gap-1 max-w-[70%] truncate">
+                            <span className="text-[8px] sm:text-[9px] font-black bg-orange-500/20 text-orange-400 border border-orange-500/40 px-1.5 py-0.5 rounded truncate">
+                              {doc.category || "Pas d'informations"}
+                            </span>
+                            <span className={`text-[7.5px] font-black px-1.5 py-0.5 rounded uppercase border ${typeInfo.badgeClass}`}>
+                              {typeInfo.name}
+                            </span>
+                          </div>
                           <button
                             type="button"
                             onClick={() => toggleCardFlip(doc.id)}
-                            className="px-1.5 py-0.5 bg-stone-800 hover:bg-stone-700 text-orange-400 text-[8.5px] font-bold rounded border border-stone-600 flex items-center gap-1 transition-colors cursor-pointer"
+                            className="px-1.5 py-0.5 bg-black/40 hover:bg-black/60 text-orange-400 text-[8.5px] font-bold rounded border border-white/10 flex items-center gap-1 transition-colors cursor-pointer"
                             title="Retourner vers l'aperçu"
                           >
                             <RotateCcw className="w-2.5 h-2.5" />
@@ -1574,7 +1706,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
                         {/* Informations détaillées */}
                         <div className="flex-1 flex flex-col justify-around py-1 space-y-1 overflow-hidden">
-                          <h3 className="text-[10.5px] sm:text-[11.5px] font-black text-white truncate" title={doc.title || doc.file_name}>
+                          <h3 
+                            onClick={() => handleOpenDoc(doc)}
+                            className="text-[10.5px] sm:text-[11.5px] font-black text-white truncate cursor-pointer hover:underline" 
+                            title={doc.title || doc.file_name}
+                          >
                             {doc.title || doc.file_name}
                           </h3>
 
@@ -1594,14 +1730,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             {doc.author_name && <span className="truncate">· {doc.author_name}</span>}
                           </div>
 
-                          <div className="flex items-center justify-between text-[8px] sm:text-[8.5px] text-stone-400 pt-1 border-t border-stone-700/60">
+                          <div className="flex items-center justify-between text-[8px] sm:text-[8.5px] text-stone-400 pt-1 border-t border-white/10">
                             <span>{docSizeStr}</span>
-                            <span>{doc.views_count || 0} vues · {doc.downloads_count || 0} DL</span>
+                            <span className="flex items-center gap-1 font-bold text-stone-300">
+                              <Download className="w-2.5 h-2.5 text-orange-400" />
+                              {doc.downloads_count || 0} téléchargement{(doc.downloads_count || 0) > 1 ? 's' : ''}
+                            </span>
                           </div>
                         </div>
 
                         {/* Bas de carte */}
-                        <div className="flex items-center justify-between pt-1.5 border-t border-stone-700 gap-1.5">
+                        <div className="flex items-center justify-between pt-1.5 border-t border-white/10 gap-1.5">
                           <button
                             type="button"
                             onClick={() => handleOpenDoc(doc)}
@@ -1615,10 +1754,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             <a
                               href={doc.file_url}
                               download={doc.file_name || doc.title}
-                              onClick={() => {
-                                const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
-                                StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'download').catch(() => {});
-                              }}
+                              onClick={() => handleDocDownload(doc)}
                               className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:scale-95"
                               title="Télécharger"
                             >
@@ -1636,7 +1772,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           <button
                             type="button"
                             onClick={() => toggleCardFlip(doc.id)}
-                            className="p-1 sm:p-1.5 bg-stone-800 hover:bg-stone-700 text-orange-400 rounded-lg border border-stone-600 transition-all cursor-pointer flex items-center justify-center"
+                            className="p-1 sm:p-1.5 bg-black/40 hover:bg-black/60 text-orange-400 rounded-lg border border-white/10 transition-all cursor-pointer flex items-center justify-center"
                             title="Retourner vers l'aperçu"
                           >
                             <RotateCcw className="w-3 h-3" />
@@ -1646,11 +1782,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     );
                   }
 
-                  // Carte Mode Aperçu Visuel (Image 2)
+                  // Carte Mode Aperçu Visuel (Image 1 & Image 4) : couleur du type de document, cadrage en-tête vers le bas
                   return (
                     <div
                       key={doc.id}
-                      className="aspect-[3/4] bg-[#2A2B2E] border-2 border-stone-800 hover:border-orange-500 rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between shadow-[2px_2px_0px_0px_#1c1917] hover:shadow-[3.5px_3.5px_0px_0px_#1c1917] transition-all relative group select-none overflow-hidden"
+                      className={`aspect-[3/4] ${typeInfo.cardBgClass} ${typeInfo.cardBorderClass} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${typeInfo.cardShadowClass} transition-all relative group select-none overflow-hidden`}
                     >
                       {/* Header: Catégorie à gauche, Taille à droite */}
                       <div className="flex items-center justify-between gap-1 z-10">
@@ -1662,12 +1798,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         </span>
                       </div>
 
-                      {/* Zone centrale : Miniature du document (clic pour ouvrir) */}
-                      <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-[#1E1F22] flex items-center justify-center relative shadow-inner">
+                      {/* Zone centrale : Miniature du document cadrée de l'en-tête vers le bas (clic pour ouvrir sans redirection) */}
+                      <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-black/40 flex items-center justify-center relative shadow-inner border border-white/5">
                         <DocumentCardThumbnail doc={doc} onClick={() => handleOpenDoc(doc)} />
                       </div>
 
-                      {/* Titre du document */}
+                      {/* Titre du document (clic pour ouvrir) */}
                       <div className="px-0.5 mb-1">
                         <p
                           onClick={() => handleOpenDoc(doc)}
@@ -1678,21 +1814,30 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         </p>
                       </div>
 
-                      {/* Bas de carte : Vues + Télécharger + Bouton 3 traits pour basculer les infos */}
-                      <div className="flex items-center justify-between pt-1 border-t border-stone-800/80 gap-1">
-                        <span className="text-[7.5px] font-medium text-stone-400 truncate">
-                          {doc.views_count || 0} vues
+                      {/* Bas de carte : Nombre de téléchargements (au lieu de vues) + Badge Type (croix rouge) + Bouton Télécharger + 3 traits */}
+                      <div className="flex items-center justify-between pt-1 border-t border-white/10 gap-1">
+                        {/* Téléchargements (Image 1 entouré en rouge) */}
+                        <div 
+                          className="flex items-center gap-0.5 sm:gap-1 text-[7.5px] sm:text-[8.5px] font-bold text-stone-300 truncate"
+                          title={`${doc.downloads_count || 0} téléchargement(s)`}
+                        >
+                          <Download className="w-2.5 h-2.5 text-stone-400 shrink-0" />
+                          <span>{doc.downloads_count || 0} DL</span>
+                        </div>
+
+                        {/* Badge Type de fichier (Image 1 croix rouge) */}
+                        <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${typeInfo.badgeClass}`}>
+                          {typeInfo.name}
                         </span>
+
+                        {/* Actions : Télécharger + 3 traits */}
                         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                           {/* Bouton Télécharger */}
                           {doc.file_url ? (
                             <a
                               href={doc.file_url}
                               download={doc.file_name || doc.title}
-                              onClick={() => {
-                                const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
-                                StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'download').catch(() => {});
-                              }}
+                              onClick={() => handleDocDownload(doc)}
                               className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:scale-95"
                               title="Télécharger"
                             >
@@ -1708,14 +1853,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             </button>
                           )}
 
-                          {/* Bouton 3 traits : bascule cette carte lui seul vers les détails */}
+                          {/* Bouton 3 traits : bascule cette carte seule vers les détails */}
                           <button
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
                               toggleCardFlip(doc.id);
                             }}
-                            className="p-1 sm:p-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-orange-400 rounded-lg border border-stone-700 hover:border-orange-500 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:scale-95"
+                            className="p-1 sm:p-1.5 bg-black/40 hover:bg-black/60 text-stone-200 hover:text-orange-400 rounded-lg border border-white/10 hover:border-orange-500 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:scale-95"
                             title="Voir les informations complètes sur ce fichier"
                           >
                             <Menu className="w-3 h-3" />
@@ -1739,15 +1884,24 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
                   })();
 
+                  const typeInfo = getDocTypeInfo(doc);
+
                   return (
                     <div
                       key={doc.id}
                       className="bg-[#FDFBF7] border-2 border-stone-800 rounded-xl p-2 sm:p-2.5 md:p-3 shadow-[2px_2px_0px_0px_#1c1917] hover:shadow-[3.5px_3.5px_0px_0px_#1c1917] transition-all flex flex-col justify-between group h-full relative"
                     >
                       <div>
-                        {/* Header: icône + badge catégorie */}
+                        {/* Header: icône + badge catégorie + badge type */}
                         <div className="flex items-start justify-between gap-1.5 mb-1.5">
-                          <FileIconBadge fileName={doc.file_name || doc.title} size={28} />
+                          <div className="flex items-center gap-1.5">
+                            <div className="cursor-pointer" onClick={() => handleOpenDoc(doc)}>
+                              <FileIconBadge fileName={doc.file_name || doc.title} size={28} />
+                            </div>
+                            <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase border ${typeInfo.badgeClass}`}>
+                              {typeInfo.name}
+                            </span>
+                          </div>
                           <div className="relative">
                             <button
                               type="button"
@@ -1776,8 +1930,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           </div>
                         </div>
 
-                        {/* Titre */}
-                        <h3 className="text-[11px] sm:text-xs font-extrabold text-stone-900 truncate mb-0.5 group-hover:text-orange-600 transition-colors" title={doc.title}>
+                        {/* Titre (clic pour ouvrir directement in-app) */}
+                        <h3 
+                          onClick={() => handleOpenDoc(doc)}
+                          className="text-[11px] sm:text-xs font-extrabold text-stone-900 truncate mb-0.5 group-hover:text-orange-600 transition-colors cursor-pointer" 
+                          title={doc.title || doc.file_name}
+                        >
                           {doc.title || doc.file_name}
                         </h3>
 
@@ -1807,19 +1965,20 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         </div>
                       </div>
 
-                      {/* Bas de carte */}
+                      {/* Bas de carte : Téléchargements uniquement (vues supprimées) + Voir + Télécharger */}
                       <div className="flex items-center justify-between pt-1.5 border-t border-stone-200 gap-1">
                         <div className="flex flex-col gap-0.5">
                           <span className="text-[8.5px] sm:text-[10px] font-bold text-stone-500 truncate">{docSizeStr}</span>
-                          <span className="text-[8px] text-stone-400 font-medium">
-                            {doc.views_count || 0} vues · {doc.downloads_count || 0} DL
+                          <span className="text-[8px] sm:text-[9px] text-stone-600 font-bold flex items-center gap-1" title={`${doc.downloads_count || 0} téléchargement(s)`}>
+                            <Download className="w-2.5 h-2.5 text-orange-500" />
+                            <span>{doc.downloads_count || 0} DL</span>
                           </span>
                         </div>
                         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                           <button
                             onClick={() => handleOpenDoc(doc)}
                             className="p-1 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1 transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
-                            title="Visualiser"
+                            title="Visualiser dans l'application"
                           >
                             <Eye className="w-3 h-3" />
                             <span className="hidden sm:inline">Voir</span>
@@ -1828,10 +1987,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             <a
                               href={doc.file_url}
                               download={doc.file_name || doc.title}
-                              onClick={() => {
-                                const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
-                                StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'download').catch(() => {});
-                              }}
+                              onClick={() => handleDocDownload(doc)}
                               className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5"
                               title="Télécharger"
                             >

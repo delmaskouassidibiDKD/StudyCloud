@@ -6128,6 +6128,22 @@ export default {
         }
 
         if (interactionType === 'download') {
+          try {
+            await env.DB.prepare(`
+              CREATE TABLE IF NOT EXISTS published_document_downloads (
+                id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL,
+                user_id TEXT,
+                downloaded_at TEXT DEFAULT CURRENT_TIMESTAMP
+              )
+            `).run();
+
+            await env.DB.prepare(`
+              INSERT INTO published_document_downloads (id, document_id, user_id, downloaded_at)
+              VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(crypto.randomUUID(), id, userId || 'anonymous').run();
+          } catch (e) {}
+
           await env.DB.prepare('UPDATE published_documents SET downloads_count = downloads_count + 1 WHERE id = ?').bind(id).run();
         } else {
           await env.DB.prepare('UPDATE published_documents SET views_count = views_count + 1 WHERE id = ?').bind(id).run();
@@ -6159,6 +6175,24 @@ export default {
 
       if (path.startsWith('/api/published-documents/') && path.endsWith('/download') && method === 'POST') {
         const id = path.split('/')[3];
+        const body: any = await request.json().catch(() => ({}));
+        const dlUserId = body?.userId || url.searchParams.get('userId') || 'anonymous';
+        try {
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS published_document_downloads (
+              id TEXT PRIMARY KEY,
+              document_id TEXT NOT NULL,
+              user_id TEXT,
+              downloaded_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+
+          await env.DB.prepare(`
+            INSERT INTO published_document_downloads (id, document_id, user_id, downloaded_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+          `).bind(crypto.randomUUID(), id, dlUserId).run();
+        } catch (e) {}
+
         await env.DB.prepare('UPDATE published_documents SET downloads_count = downloads_count + 1 WHERE id = ?').bind(id).run();
         return jsonResponse({ success: true }, 200, origin);
       }

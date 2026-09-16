@@ -4777,12 +4777,11 @@ Lien vers le produit : ${productShareUrl}`;
               created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
               updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
             )
-          `).run().catch(() => {});
-
+          `).run().catch(() => {
+          });
           const row = await env.DB.prepare(
             `SELECT COUNT(*) as count FROM published_documents WHERE user_id = ?`
           ).bind(userId).first();
-
           const count = row && typeof row.count === "number" ? row.count : 0;
           return jsonResponse({ success: true, count }, 200, origin);
         } catch (countErr) {
@@ -4992,51 +4991,26 @@ Lien vers le produit : ${productShareUrl}`;
           if (!userId || !title || !fileName) {
             return errorResponse("userId, title et fileName sont obligatoires", 400, origin);
           }
-
-          // Détection et interdiction des vidéos, audios/sons, et dossiers/archives
-          // Seuls les documents (PDF, Word, Excel, PPT, texte) et les images sont autorisés
           const fNameLower = (fileName || "").toLowerCase();
           const fTypeLower = (fileType || "").toLowerCase();
-
-          const isVideo = fTypeLower.startsWith("video/") ||
-            /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|3gp|3g2|ts|mts|m2ts|vob|ogv)$/i.test(fNameLower);
-
-          const isAudio = fTypeLower.startsWith("audio/") ||
-            /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|aiff|mid|midi|amr)$/i.test(fNameLower);
-
-          const isArchiveOrFolder = fTypeLower.includes("zip") ||
-            fTypeLower.includes("tar") ||
-            fTypeLower.includes("rar") ||
-            fTypeLower.includes("7z") ||
-            fTypeLower.includes("compressed") ||
-            /\.(zip|rar|7z|tar|gz|bz2|xz|tgz|iso)$/i.test(fNameLower);
-
-          const isImage = fTypeLower.startsWith("image/") ||
-            /\.(jpg|jpeg|png|webp|gif|svg|bmp|tiff|heic)$/i.test(fNameLower);
-
-          const isDoc = fTypeLower === "application/pdf" ||
-            fTypeLower.includes("word") ||
-            fTypeLower.includes("officedocument") ||
-            fTypeLower.includes("excel") ||
-            fTypeLower.includes("spreadsheet") ||
-            fTypeLower.includes("presentation") ||
-            fTypeLower.includes("powerpoint") ||
-            fTypeLower.startsWith("text/") ||
-            /\.(pdf|docx?|xlsx?|pptx?|txt|csv|md|rtf|odt|ods|odp)$/i.test(fNameLower);
-
-          if (isVideo || isAudio || isArchiveOrFolder || (!isImage && !isDoc)) {
-            let detail = "Ce genre de fichier n'est pas autorisé.";
+          const isVideo = fTypeLower.startsWith("video/") || /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|3gp|3g2|ts|mts|m2ts|vob|ogv)$/i.test(fNameLower);
+          const isAudio = fTypeLower.startsWith("audio/") || /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|aiff|mid|midi|amr)$/i.test(fNameLower);
+          const isArchiveOrFolder = fTypeLower.includes("zip") || fTypeLower.includes("tar") || fTypeLower.includes("rar") || fTypeLower.includes("7z") || fTypeLower.includes("compressed") || /\.(zip|rar|7z|tar|gz|bz2|xz|tgz|iso)$/i.test(fNameLower);
+          const isImage = fTypeLower.startsWith("image/") || /\.(jpg|jpeg|png|webp|gif|svg|bmp|tiff|heic)$/i.test(fNameLower);
+          const isDoc = fTypeLower === "application/pdf" || fTypeLower.includes("word") || fTypeLower.includes("officedocument") || fTypeLower.includes("excel") || fTypeLower.includes("spreadsheet") || fTypeLower.includes("presentation") || fTypeLower.includes("powerpoint") || fTypeLower.startsWith("text/") || /\.(pdf|docx?|xlsx?|pptx?|txt|csv|md|rtf|odt|ods|odp)$/i.test(fNameLower);
+          if (isVideo || isAudio || isArchiveOrFolder || !isImage && !isDoc) {
+            let detail = "Ce genre de fichier n'est pas autoris\xE9.";
             if (isVideo) {
-              detail = "Les vidéos ne sont pas autorisées.";
+              detail = "Les vid\xE9os ne sont pas autoris\xE9es.";
             } else if (isAudio) {
-              detail = "Les fichiers audio et sons ne sont pas autorisés.";
+              detail = "Les fichiers audio et sons ne sont pas autoris\xE9s.";
             } else if (isArchiveOrFolder) {
-              detail = "Les dossiers et archives contenant plusieurs fichiers ne sont pas autorisés.";
+              detail = "Les dossiers et archives contenant plusieurs fichiers ne sont pas autoris\xE9s.";
             }
             return jsonResponse({
               success: false,
               forbiddenType: true,
-              message: `Publication refusée : ${detail} Seuls les documents (PDF, Word, Excel...) et les images sont autorisés.`,
+              message: `Publication refus\xE9e : ${detail} Seuls les documents (PDF, Word, Excel...) et les images sont autoris\xE9s.`,
               fileName
             }, 200, origin);
           }
@@ -5151,6 +5125,21 @@ Lien vers le produit : ${productShareUrl}`;
           }
         }
         if (interactionType === "download") {
+          try {
+            await env.DB.prepare(`
+              CREATE TABLE IF NOT EXISTS published_document_downloads (
+                id TEXT PRIMARY KEY,
+                document_id TEXT NOT NULL,
+                user_id TEXT,
+                downloaded_at TEXT DEFAULT CURRENT_TIMESTAMP
+              )
+            `).run();
+            await env.DB.prepare(`
+              INSERT INTO published_document_downloads (id, document_id, user_id, downloaded_at)
+              VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(crypto.randomUUID(), id, userId || "anonymous").run();
+          } catch (e) {
+          }
           await env.DB.prepare("UPDATE published_documents SET downloads_count = downloads_count + 1 WHERE id = ?").bind(id).run();
         } else {
           await env.DB.prepare("UPDATE published_documents SET views_count = views_count + 1 WHERE id = ?").bind(id).run();
@@ -5177,6 +5166,23 @@ Lien vers le produit : ${productShareUrl}`;
       }
       if (path.startsWith("/api/published-documents/") && path.endsWith("/download") && method === "POST") {
         const id = path.split("/")[3];
+        const body = await request.json().catch(() => ({}));
+        const dlUserId = body?.userId || url.searchParams.get("userId") || "anonymous";
+        try {
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS published_document_downloads (
+              id TEXT PRIMARY KEY,
+              document_id TEXT NOT NULL,
+              user_id TEXT,
+              downloaded_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+          await env.DB.prepare(`
+            INSERT INTO published_document_downloads (id, document_id, user_id, downloaded_at)
+            VALUES (?, ?, ?, CURRENT_TIMESTAMP)
+          `).bind(crypto.randomUUID(), id, dlUserId).run();
+        } catch (e) {
+        }
         await env.DB.prepare("UPDATE published_documents SET downloads_count = downloads_count + 1 WHERE id = ?").bind(id).run();
         return jsonResponse({ success: true }, 200, origin);
       }

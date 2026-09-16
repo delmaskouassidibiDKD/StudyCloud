@@ -317,9 +317,14 @@ export function CenterMenu({
     // 1. Resolve URL for media/PDF
     if (file.id) {
       getFileBlobUrl(file.id).then(url => {
-        if (isMounted && url) setResolvedUrl(url);
+        if (!isMounted) return;
+        if (url) {
+          setResolvedUrl(url);
+        } else if (file.url) {
+          setResolvedUrl(file.url);
+        }
       });
-    } else if (file.url && !file.url.startsWith('blob:')) {
+    } else if (file.url) {
       setResolvedUrl(file.url);
     }
 
