@@ -1,5 +1,5 @@
-import React, { useRef, useState, useEffect } from 'react';
-import { Edit3, ArrowLeft, Upload, File, MoreVertical, X, Search, Check, Copy, Plus } from 'lucide-react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
+import { Edit3, ArrowLeft, Upload, File, MoreVertical, X, Search, Check, Copy, Plus, Download, Link as LinkIcon } from 'lucide-react';
 import { getFileTimestamp } from './FilesMenuView';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
@@ -9,6 +9,7 @@ interface MatiereMenuViewProps {
   matiereName: string;
   onBack: () => void;
   setActivePreviewItem?: (item: any) => void;
+  onOpenCreateShareLink?: (items: any[]) => void;
 }
 
 interface ImportedItem {
@@ -27,7 +28,7 @@ interface ImportedItem {
   timestamp?: number;
 }
 
-export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, onBack, setActivePreviewItem }) => {
+export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, onBack, setActivePreviewItem, onOpenCreateShareLink }) => {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const storageKey = `unifolder_matiere_files_${matiereName}`;
   const currentKeyRef = useRef(storageKey);
@@ -60,8 +61,48 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   const [openMenuId, setOpenMenuId] = useState<string | null>(null);
   const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
   const [isSearchOpen, setIsSearchOpen] = useState(false);
-  const [searchQuery, setSearchQuery] = useState('');
+  const [showMatiereMenuDropdown, setShowMatiereMenuDropdown] = useState(false);
   const [sortBy, setSortBy] = useState<'recent' | 'oldest' | 'size'>('recent');
+
+  const handleDownload = async (fileUrl: string, fileName: string) => {
+    try {
+      const response = await fetch(fileUrl);
+      const blob = await response.blob();
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error("Erreur lors du téléchargement:", err);
+    }
+  };
+
+  const handleBatchDownload = async () => {
+    const filesToDownload = matiereFiles.filter(f => selectedFileIds.includes(f.id));
+    for (const f of filesToDownload) {
+      if (f.url) {
+        await handleDownload(f.url, f.name);
+        await new Promise(r => setTimeout(r, 500));
+      }
+    }
+    setIsSelectionMode(false);
+    setSelectedFileIds([]);
+  };
+
+  const handleBatchShare = () => {
+    const filesToShare = matiereFiles.filter(f => selectedFileIds.includes(f.id));
+    if (onOpenCreateShareLink && filesToShare.length > 0) {
+      onOpenCreateShareLink(filesToShare);
+      setIsSelectionMode(false);
+      setSelectedFileIds([]);
+    }
+  };
+
+  const [searchQuery, setSearchQuery] = useState('');
   const [showDuplicatesOnly, setShowDuplicatesOnly] = useState(false);
 
   const [isSelectionMode, setIsSelectionMode] = useState(false);
@@ -875,6 +916,22 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
               Classer dans les matières
             </button>
             <button
+              onClick={handleBatchShare}
+              disabled={selectedFileIds.length === 0}
+              className="px-1.5 py-1 bg-blue-600 hover:bg-blue-500 disabled:opacity-40 text-white font-bold text-[9.5px] rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1"
+            >
+              <LinkIcon className="w-3 h-3" />
+              <span>Créer un lien de partage</span>
+            </button>
+            <button
+              onClick={handleBatchDownload}
+              disabled={selectedFileIds.length === 0}
+              className="px-1.5 py-1 bg-stone-700 hover:bg-stone-600 disabled:opacity-40 text-white font-bold text-[9.5px] rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1"
+            >
+              <Download className="w-3 h-3" />
+              <span>Télécharger</span>
+            </button>
+            <button
               onClick={handleBatchDelete}
               disabled={selectedFileIds.length === 0}
               className="px-1.5 py-1 bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-bold text-[9.5px] rounded-lg transition-all cursor-pointer whitespace-nowrap"
@@ -1006,6 +1063,28 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
                             className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
                           >
                             <span>❤️ {f.isFavorite ? 'Retirer des favoris' : 'Ajouter aux favoris'}</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              if (f.url) handleDownload(f.url, f.name);
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                          >
+                            <Download className="w-4 h-4 text-stone-600" />
+                            <span>Télécharger</span>
+                          </button>
+
+                          <button
+                            onClick={() => {
+                              if (onOpenCreateShareLink) onOpenCreateShareLink([f]);
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
+                          >
+                            <LinkIcon className="w-4 h-4 text-stone-600" />
+                            <span>Créer un lien de partage</span>
                           </button>
                           <button
                             onClick={() => {

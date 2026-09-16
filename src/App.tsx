@@ -1232,6 +1232,10 @@ export default function App() {
               onOpenPublishView={() => {
                 handleSetTab('publish-file');
               }}
+              onOpenCreateShareLink={(items) => {
+                setUploadedItems(items);
+                setShowCreateShareLinkModal(true);
+              }}
             />
           ) : currentTab === 'upload' ? (
             <UploadView
@@ -1267,6 +1271,10 @@ export default function App() {
               setSearchQuery={setSearchQuery}
               onSelectFolder={(folder) => setActiveFolderDetail(folder)}
               setActivePreviewItem={setActivePreviewItem}
+              onOpenCreateShareLink={(items) => {
+                setUploadedItems(items);
+                setShowCreateShareLinkModal(true);
+              }}
             />
           ) : currentTab === 'shared' ? (
             <SharedLinksView

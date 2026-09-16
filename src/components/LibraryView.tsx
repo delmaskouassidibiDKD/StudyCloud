@@ -331,6 +331,7 @@ interface LibraryViewProps {
   setSearchQuery: (q: string) => void;
   onSelectFolder: (folder: SharedFolder) => void;
   setActivePreviewItem: (file: any) => void;
+  onOpenCreateShareLink?: (items: any[]) => void;
 }
 
 const DEFAULT_PRODUCTS: ProductItem[] = [];
@@ -341,6 +342,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   setSearchQuery,
   onSelectFolder,
   setActivePreviewItem,
+  onOpenCreateShareLink,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState('Tous');
   const [activeSubTab, setActiveSubTab] = useState<'librairie' | 'ressources' | 'liens'>(() => {

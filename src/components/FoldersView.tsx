@@ -26,6 +26,7 @@ interface FoldersViewProps {
   onImportFile?: () => void;
   onOpenPublishView?: () => void;
   setActivePreviewItem?: (item: any) => void;
+  onOpenCreateShareLink?: (items: any[]) => void;
 }
 
 export const FoldersView: React.FC<FoldersViewProps> = ({
@@ -36,6 +37,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   onImportFile,
   onOpenPublishView,
   setActivePreviewItem,
+  onOpenCreateShareLink,
 }) => {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [isGeminiOpen, setIsGeminiOpen] = useState(false);
@@ -1134,13 +1136,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         <PricingView onBack={() => setViewMode('home')} onSelectPlan={(plan) => notify(`Plan ${plan} sélectionné`)} />
       )}
 
-      {viewMode === 'files-menu' && <FilesMenuView onBack={() => setViewMode('home')} onImportFile={onOpenUpload} setActivePreviewItem={setActivePreviewItem} />}
+      {viewMode === 'files-menu' && <FilesMenuView onBack={() => setViewMode('home')} onImportFile={onOpenUpload} setActivePreviewItem={setActivePreviewItem} onOpenCreateShareLink={onOpenCreateShareLink} />}
       {typeof viewMode === 'string' && viewMode.startsWith('matiere-') && (
         <MatiereMenuView 
           key={viewMode}
           matiereName={viewMode.replace('matiere-', '')} 
           onBack={() => setViewMode('home')} 
           setActivePreviewItem={setActivePreviewItem} 
+          onOpenCreateShareLink={onOpenCreateShareLink}
         />
       )}
       {viewMode === 'schedule-menu' && <ScheduleMenuView onBack={() => setViewMode('home')} />}
