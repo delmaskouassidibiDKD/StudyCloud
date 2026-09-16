@@ -283,6 +283,166 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     };
   }, []);
 
+  // Map pour stocker les fichiers bruts (non sérialisables) par ID pour l'upload R2
+  const rawFileMap = useRef<Map<string, File>>(new Map());
+  const previewGeneratingIds = useRef<Set<string>>(new Set());
+
+  // Générer et restaurer l'aperçu complet de chaque fichier (PDF page 1, image, docx, xlsx, pptx)
+  const rehydrateFilesPreview = async (filesList: any[]) => {
+    for (const f of filesList) {
+      if (!f || !f.id || previewGeneratingIds.current.has(f.id)) continue;
+
+      const fileNameLower = (f.name || '').toLowerCase();
+      const isPdf = f.type === 'application/pdf' || fileNameLower.endsWith('.pdf');
+      const isImg = f.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg|bmp)$/i.test(fileNameLower);
+      const isDocx = f.type?.includes('wordprocessingml') || fileNameLower.endsWith('.docx') || fileNameLower.endsWith('.doc');
+      const isXlsx = fileNameLower.endsWith('.xlsx') || fileNameLower.endsWith('.xls') || fileNameLower.endsWith('.csv') || f.type?.includes('spreadsheet') || f.type?.includes('excel');
+      const isPptx = fileNameLower.endsWith('.pptx') || fileNameLower.endsWith('.ppt') || f.type?.includes('presentation') || f.type?.includes('powerpoint');
+      const isText = f.type?.startsWith('text/') || fileNameLower.endsWith('.txt') || fileNameLower.endsWith('.md') || fileNameLower.endsWith('.json');
+
+      // Si l'aperçu visuel est déjà disponible et complet, ne pas régénérer
+      if (f.fileTypeCategory && (
+        (!isPdf && !isImg) || 
+        (isPdf && f.url && f.url.length > 0) || 
+        (isImg && f.url && f.url.length > 0)
+      )) {
+        continue;
+      }
+
+      previewGeneratingIds.current.add(f.id);
+
+      try {
+        // 1. Récupérer le binaire
+        let rawFile = rawFileMap.current.get(f.id);
+        if (!rawFile) {
+          rawFile = (await retrieveRawFile(f.id)) || undefined;
+        }
+        if (!rawFile) {
+          const blob = await getFileBlob(f.id);
+          if (blob) {
+            rawFile = new File([blob], f.name, { type: f.type || blob.type });
+            rawFileMap.current.set(f.id, rawFile);
+            await persistRawFile(f.id, rawFile);
+          }
+        }
+
+        if (!rawFile) {
+          previewGeneratingIds.current.delete(f.id);
+          continue;
+        }
+
+        rawFileMap.current.set(f.id, rawFile);
+
+        const cleanName = f.name.replace(/\.[^/.]+$/, "").replace(/[_-_]/g, ' ');
+        let previewProps: any = {
+          fileTitle: f.fileTitle || cleanName,
+          textContent: f.textContent || cleanName,
+        };
+
+        if (isImg) {
+          try {
+            const url = URL.createObjectURL(rawFile);
+            previewProps = {
+              ...previewProps,
+              url,
+              isImage: true,
+              fileTypeCategory: 'image',
+            };
+          } catch {
+            previewProps = { ...previewProps, isImage: true, fileTypeCategory: 'image' };
+          }
+        } else if (isPdf) {
+          try {
+            let pdfFile = rawFile;
+            try {
+              pdfFile = await watermarkPDF(rawFile);
+              rawFileMap.current.set(f.id, pdfFile);
+              await persistRawFile(f.id, pdfFile);
+            } catch (wErr) {
+              console.warn('Filigrane PDF omis:', wErr);
+            }
+
+            const arrayBuffer = await pdfFile.arrayBuffer();
+            const typedarray = new Uint8Array(arrayBuffer);
+            const loadingTask = pdfjsLib.getDocument({ data: typedarray });
+            const pdf = await loadingTask.promise;
+            const page = await pdf.getPage(1);
+            const viewport = page.getViewport({ scale: 1.5 });
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            if (context) {
+              canvas.height = viewport.height;
+              canvas.width = viewport.width;
+              await page.render({ canvasContext: context, viewport }).promise;
+              const imageUrl = canvas.toDataURL('image/png');
+              previewProps = {
+                ...previewProps,
+                url: imageUrl,
+                isImage: true,
+                fileTypeCategory: 'pdf',
+              };
+            }
+          } catch (pdfErr) {
+            console.warn('Aperçu PDF impossible:', pdfErr);
+            previewProps = { ...previewProps, isImage: false, fileTypeCategory: 'pdf' };
+          }
+        } else if (isDocx) {
+          try {
+            const arrayBuffer = await rawFile.arrayBuffer();
+            const resMammoth = await mammoth.extractRawText({ arrayBuffer });
+            const txt = resMammoth.value || '';
+            previewProps = {
+              ...previewProps,
+              textContent: txt ? txt.trim() : cleanName,
+              isImage: false,
+              fileTypeCategory: 'docx',
+            };
+          } catch {
+            previewProps = { ...previewProps, isImage: false, fileTypeCategory: 'docx' };
+          }
+        } else if (isXlsx) {
+          try {
+            const arrayBuffer = await rawFile.arrayBuffer();
+            const wb = XLSX.read(arrayBuffer, { type: 'array' });
+            const sheet = wb.Sheets[wb.SheetNames[0]];
+            const data = XLSX.utils.sheet_to_json(sheet, { header: 1 }) as any[][];
+            const rows = data.slice(0, 6).map((r) => r.slice(0, 4));
+            previewProps = {
+              ...previewProps,
+              tableRows: rows.length > 0 ? rows : [['ID', 'Nom', 'Valeur', 'Statut']],
+              isImage: false,
+              fileTypeCategory: 'xlsx',
+            };
+          } catch {
+            previewProps = { ...previewProps, isImage: false, fileTypeCategory: 'xlsx' };
+          }
+        } else if (isPptx) {
+          previewProps = { ...previewProps, isImage: false, fileTypeCategory: 'pptx' };
+        } else if (isText) {
+          try {
+            const txt = await rawFile.text();
+            previewProps = {
+              ...previewProps,
+              textContent: txt ? txt.trim() : cleanName,
+              isImage: false,
+              fileTypeCategory: 'text',
+            };
+          } catch {
+            previewProps = { ...previewProps, isImage: false, fileTypeCategory: 'text' };
+          }
+        } else {
+          previewProps = { ...previewProps, isImage: false, fileTypeCategory: 'other' };
+        }
+
+        setSelectedFiles(prev => prev.map(item => item.id === f.id ? { ...item, ...previewProps } : item));
+      } catch (err) {
+        console.warn('Erreur génération aperçu pour fichier:', f.name, err);
+      } finally {
+        previewGeneratingIds.current.delete(f.id);
+      }
+    }
+  };
+
   // Écouter l'arrivée de nouveaux fichiers à publier envoyés depuis d'autres vues (ex: Mes fichiers)
   useEffect(() => {
     const handleIncomingFiles = () => {
@@ -292,6 +452,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           const parsed = JSON.parse(saved);
           if (Array.isArray(parsed) && parsed.length > 0) {
             setSelectedFiles(parsed);
+            rehydrateFilesPreview(parsed);
           }
         }
       } catch (e) {
@@ -303,6 +464,18 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       window.removeEventListener('studycloud_refresh_selected_files', handleIncomingFiles);
     };
   }, []);
+
+  // Détecter automatiquement et générer l'aperçu pour les fichiers existants sans aperçu
+  useEffect(() => {
+    if (selectedFiles.length > 0) {
+      const needsPreview = selectedFiles.some(f => 
+        !f.fileTypeCategory || (f.isImage && !f.url) || ((f.type === 'application/pdf' || f.name?.toLowerCase().endsWith('.pdf')) && !f.url)
+      );
+      if (needsPreview) {
+        rehydrateFilesPreview(selectedFiles);
+      }
+    }
+  }, [selectedFiles]);
 
   useEffect(() => {
     try {
@@ -364,26 +537,6 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       }, 150);
     }
   }, [selectedFiles.length]);
-
-  // Map pour stocker les fichiers bruts (non sérialisables) par ID pour l'upload R2
-  const rawFileMap = useRef<Map<string, File>>(new Map());
-
-  // Réhydrater les fichiers bruts depuis IndexedDB lors du montage / retour au menu
-  useEffect(() => {
-    async function rehydrateRawFiles() {
-      for (const f of selectedFiles) {
-        if (!rawFileMap.current.has(f.id)) {
-          const raw = await retrieveRawFile(f.id);
-          if (raw) {
-            rawFileMap.current.set(f.id, raw);
-          }
-        }
-      }
-    }
-    if (selectedFiles.length > 0) {
-      rehydrateRawFiles();
-    }
-  }, []);
 
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
