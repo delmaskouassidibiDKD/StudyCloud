@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
 import { Edit3, ArrowLeft, Upload, File, Folder, Check, MoreVertical, X, Search, Copy, Plus, Download, Link as LinkIcon, Globe } from 'lucide-react';
 import { StudyCloudAPI } from '../services/api';
-import { storeFileBlob, getFileBlobUrl, deleteFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
+import { storeFileBlob, getFileBlobUrl, deleteFileBlob, getFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
+import { persistRawFile } from './PublishFileView';
 
 interface FilesMenuViewProps {
   onBack: () => void;
@@ -1151,9 +1152,20 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
               <span>Télécharger</span>
             </button>
             <button
-              onClick={() => {
+              onClick={async () => {
                 const filesToPublish = importedFiles.filter(f => selectedFileIds.includes(f.id));
                 if (filesToPublish.length > 0 && onPublishFiles) {
+                  // Synchroniser les fichiers binaires vers la base IndexedDB de publication
+                  for (const f of filesToPublish) {
+                    try {
+                      const blob = await getFileBlob(f.id);
+                      if (blob) {
+                        await persistRawFile(f.id, blob);
+                      }
+                    } catch (err) {
+                      console.warn('Could not sync raw file for publication:', err);
+                    }
+                  }
                   const payload = filesToPublish.map(f => ({
                     id: f.id,
                     name: f.name,
@@ -1163,6 +1175,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                     isImage: f.isImage,
                   }));
                   onPublishFiles(payload);
+                  window.dispatchEvent(new Event('studycloud_refresh_selected_files'));
                   setIsSelectionMode(false);
                   setSelectedFileIds([]);
                 }
@@ -1172,13 +1185,6 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
             >
               <Globe className="w-3 h-3" />
               <span>Publier</span>
-            </button>
-            <button
-              onClick={handleBatchDelete}
-              disabled={selectedFileIds.length === 0}
-              className="px-1.5 py-1 bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-bold text-[9.5px] rounded-lg transition-all cursor-pointer whitespace-nowrap"
-            >
-              {selectedFileIds.length > 1 ? 'Tout supprimer' : 'Supprimer'}
             </button>
             <button
               onClick={() => {
@@ -1378,8 +1384,16 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                             <span>☑️ Tout sélectionner</span>
                           </button>
                           <button
-                            onClick={() => {
+                            onClick={async () => {
                               if (onPublishFiles) {
+                                try {
+                                  const blob = await getFileBlob(f.id);
+                                  if (blob) {
+                                    await persistRawFile(f.id, blob);
+                                  }
+                                } catch (err) {
+                                  console.warn('Could not sync raw file for publication:', err);
+                                }
                                 const payload = [{
                                   id: f.id,
                                   name: f.name,
@@ -1389,6 +1403,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                                   isImage: f.isImage,
                                 }];
                                 onPublishFiles(payload);
+                                window.dispatchEvent(new Event('studycloud_refresh_selected_files'));
                               }
                               setOpenMenuId(null);
                             }}

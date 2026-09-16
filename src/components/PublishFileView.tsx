@@ -9,6 +9,7 @@ import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import { StudyCloudAPI } from '../services/api';
 import { watermarkPDF } from '../utils/pdfWatermark';
+import { getFileBlob } from '../services/localFileStorage';
 
 // Configure worker for PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
@@ -34,7 +35,7 @@ function openPublishFilesDB(): Promise<IDBDatabase> {
   });
 }
 
-async function persistRawFile(id: string, file: File): Promise<void> {
+export async function persistRawFile(id: string, file: File | Blob): Promise<void> {
   try {
     const db = await openPublishFilesDB();
     const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
@@ -279,6 +280,27 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     window.addEventListener('studycloud_refresh_published_docs', handleRefresh);
     return () => {
       window.removeEventListener('studycloud_refresh_published_docs', handleRefresh);
+    };
+  }, []);
+
+  // Écouter l'arrivée de nouveaux fichiers à publier envoyés depuis d'autres vues (ex: Mes fichiers)
+  useEffect(() => {
+    const handleIncomingFiles = () => {
+      try {
+        const saved = localStorage.getItem('published_selected_files');
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            setSelectedFiles(parsed);
+          }
+        }
+      } catch (e) {
+        console.error('Erreur rechargement published_selected_files:', e);
+      }
+    };
+    window.addEventListener('studycloud_refresh_selected_files', handleIncomingFiles);
+    return () => {
+      window.removeEventListener('studycloud_refresh_selected_files', handleIncomingFiles);
     };
   }, []);
 
