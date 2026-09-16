@@ -5660,17 +5660,12 @@ export default {
           });
           const schools = Array.from(schoolsSet).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
 
-          // 2. Matières distinctes (matieres + published_documents)
-          const [matieresRes, pubMatieresRes] = await Promise.all([
-            env.DB.prepare(`SELECT DISTINCT name FROM matieres WHERE name IS NOT NULL AND TRIM(name) != ''`).all().catch(() => ({ results: [] })),
-            env.DB.prepare(`SELECT DISTINCT matiere_name FROM published_documents WHERE matiere_name IS NOT NULL AND TRIM(matiere_name) != ''`).all().catch(() => ({ results: [] }))
-          ]);
+          // 2. Matières distinctes (uniquement depuis les documents publiés pour éviter les faux noms de dossiers créés par les utilisateurs)
+          const pubMatieresRes: any = await env.DB.prepare(
+            `SELECT DISTINCT matiere_name FROM published_documents WHERE matiere_name IS NOT NULL AND TRIM(matiere_name) != ''`
+          ).all().catch(() => ({ results: [] }));
 
           const matieresSet = new Set<string>();
-          (matieresRes?.results || []).forEach((r: any) => {
-            const m = (r.name || '').trim();
-            if (m && m.toLowerCase() !== 'null' && m.toLowerCase() !== 'undefined') matieresSet.add(m);
-          });
           (pubMatieresRes?.results || []).forEach((r: any) => {
             const m = (r.matiere_name || '').trim();
             if (m && m.toLowerCase() !== 'null' && m.toLowerCase() !== 'undefined') matieresSet.add(m);

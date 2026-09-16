@@ -981,7 +981,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           <div className="absolute top-16 right-4 sm:right-28 bg-[#2A2A2A] text-white border-2 border-stone-700 rounded-2xl py-2 w-72 max-h-[80vh] flex flex-col shadow-[0px_10px_30px_rgba(0,0,0,0.3)] animate-fadeIn" onClick={(e) => e.stopPropagation()}>
             <div className="px-4 py-2.5 border-b border-stone-700 mb-1 flex items-center justify-between shrink-0">
               <span className="text-xs font-extrabold uppercase tracking-wider text-blue-400 flex items-center gap-1.5">
-                <BookOpen className="w-3.5 h-3.5" /> Matières des étudiants & docs
+                <BookOpen className="w-3.5 h-3.5" /> Matières des publications
               </span>
               <button onClick={() => setShowMatiereModal(false)} className="text-stone-400 hover:text-white text-xs font-bold cursor-pointer">✕</button>
             </div>
@@ -1002,7 +1002,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             <div className="flex flex-col overflow-y-auto max-h-[60vh] divide-y divide-stone-800">
               {availableMatieres.length === 0 ? (
                 <div className="p-4 text-center text-xs text-stone-400">
-                  Aucune matière trouvée pour le moment.
+                  Aucune matière trouvée dans les publications.
                 </div>
               ) : (
                 availableMatieres.map((mat) => (
