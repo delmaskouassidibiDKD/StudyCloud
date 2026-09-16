@@ -687,7 +687,6 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   };
 
   const isModalFormValid = 
-    modalTitle.trim().length > 0 &&
     modalMatiere.trim().length > 0 &&
     modalLevel.trim().length > 0 &&
     modalFiliere.trim().length > 0 &&
@@ -732,7 +731,6 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
     if (infoMode === 'all') {
       return (
-        docTitle.trim().length > 0 &&
         docMatiere.trim().length > 0 &&
         docLevel.trim().length > 0 &&
         filiere.trim().length > 0 &&
@@ -1279,6 +1277,20 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     const isRejected = !!file.isRejected;
                     const isGreen = isIndividual && file.isCompleted && !isDup && !isRejected;
 
+                    const fileNameLower = (file.name || '').toLowerCase();
+                    const isPdfCard = fileNameLower.endsWith('.pdf');
+                    const isDocxCard = /\.(docx|doc)$/i.test(fileNameLower);
+                    const isXlsxCard = /\.(xlsx|xls|csv)$/i.test(fileNameLower);
+                    const isPptxCard = /\.(pptx|ppt)$/i.test(fileNameLower);
+                    const isTextCard = /\.(txt|md|json)$/i.test(fileNameLower);
+                    
+                    let baseBg = 'bg-stone-700'; // Par défaut
+                    if (isPdfCard) baseBg = 'bg-[#dc2626] text-white';
+                    else if (isDocxCard) baseBg = 'bg-[#2563eb] text-white';
+                    else if (isXlsxCard) baseBg = 'bg-[#059669] text-white';
+                    else if (isPptxCard) baseBg = 'bg-[#d97706] text-white';
+                    else if (file.isImage) baseBg = 'bg-[#0891b2] text-white';
+
                     return (
                       <div
                         key={file.id}
@@ -1294,11 +1306,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                             ? 'bg-red-950/90 border-2 border-red-500 ring-2 ring-red-500/60'
                             : isRejected
                             ? 'bg-red-950/90 border-2 border-rose-500 ring-2 ring-rose-500/60'
-                            : isGreen
-                            ? 'bg-[#18392b] border-2 border-emerald-400 ring-2 ring-emerald-500/50'
-                            : isIndividual
-                            ? 'bg-[#2A2B2E] border-2 border-amber-500 hover:border-amber-400'
-                            : 'bg-[#2A2B2E] border-2 border-stone-800'
+                            : `${baseBg} border-2 ${isGreen ? 'border-emerald-400 ring-2 ring-emerald-500/50' : isIndividual ? 'border-amber-500 hover:border-amber-400' : 'border-stone-800'}`
                         }`}
                       >
                         {/* File size badge in top right */}
@@ -1353,9 +1361,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                         </button>
 
                         {/* Preview Thumbnail / Authentic Document Page View */}
-                        <div className="flex-1 w-full flex items-center justify-center overflow-hidden rounded-lg bg-[#1E1F22] relative mt-5">
+                        <div className="flex-1 w-full flex items-center justify-center overflow-hidden rounded-lg bg-stone-900/40 relative mt-5">
                           {file.isImage && file.url ? (
-                            <img src={file.url} alt={file.name} className="w-full h-full object-cover" />
+                            <img src={file.url} alt={file.name} className="w-full h-full object-cover object-top" />
                           ) : file.isImage && !file.url ? (
                             <div className="w-full h-full bg-[#2A2B2E] flex flex-col items-center justify-center p-2 text-center relative overflow-hidden">
                               <div className="absolute inset-0 opacity-20 flex items-center justify-center">
