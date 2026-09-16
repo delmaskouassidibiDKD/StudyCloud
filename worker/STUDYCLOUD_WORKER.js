@@ -122,6 +122,176 @@ function renderFileDocIconSvg(color, label) {
   </svg>`;
 }
 __name(renderFileDocIconSvg, "renderFileDocIconSvg");
+
+// Dictionnaire et correcteur orthographique pour les publications
+var SPELLING_DICTIONARY_WORKER = {
+  DEVOIRE: "DEVOIR",
+  DEVOIRES: "DEVOIRS",
+  DEVOIR: "DEVOIR",
+  DEVOIRS: "DEVOIRS",
+  COUR: "COURS",
+  COURS: "COURS",
+  COURE: "COURS",
+  COURES: "COURS",
+  EXAM: "EXAMEN",
+  EXAMS: "EXAMENS",
+  EXAMAN: "EXAMEN",
+  EXAMANS: "EXAMENS",
+  EXAMAIN: "EXAMEN",
+  EXAMAINS: "EXAMENS",
+  EXAMEN: "EXAMEN",
+  EXAMENS: "EXAMENS",
+  EPREUV: "ÉPREUVE",
+  EPREUVES: "ÉPREUVES",
+  EPREUVE: "ÉPREUVE",
+  CONTROLE: "CONTRÔLE",
+  CONTROLES: "CONTRÔLES",
+  INTERRO: "INTERROGATION",
+  INTERROS: "INTERROGATIONS",
+  INTERROGATION: "INTERROGATION",
+  INTERROGATIONS: "INTERROGATIONS",
+  RESUME: "RÉSUMÉ",
+  RESUMES: "RÉSUMÉS",
+  SYNTHESE: "SYNTHÈSE",
+  SYNTHESES: "SYNTHÈSES",
+  RECAP: "RÉCAPITULATIF",
+  RECAPITULATIF: "RÉCAPITULATIF",
+  MEMOIRE: "MÉMOIRE",
+  MEMOIRES: "MÉMOIRES",
+  THESE: "THÈSE",
+  THESES: "THÈSES",
+  RAPORT: "RAPPORT",
+  RAPORTS: "RAPPORTS",
+  RAPPORT: "RAPPORT",
+  RAPPORTS: "RAPPORTS",
+  FICHE: "FICHE",
+  FICHES: "FICHES",
+  ANNALE: "ANNALE",
+  ANNALES: "ANNALES",
+  PROJET: "PROJET",
+  PROJETS: "PROJETS",
+  MATH: "MATHÉMATIQUES",
+  MATHS: "MATHÉMATIQUES",
+  MATHEMATIQUE: "MATHÉMATIQUES",
+  MATHEMATIQUES: "MATHÉMATIQUES",
+  MATHEMETIQUE: "MATHÉMATIQUES",
+  MATHEMETIQUES: "MATHÉMATIQUES",
+  PHYSIQ: "PHYSIQUE",
+  PHYSIQUE: "PHYSIQUE",
+  PHYSIQUES: "PHYSIQUE",
+  CHIMI: "CHIMIE",
+  CHIMIE: "CHIMIE",
+  ELECTROTECNIQUE: "ÉLECTROTECHNIQUE",
+  ELECTROTECHNIQUE: "ÉLECTROTECHNIQUE",
+  ELECTRONIQ: "ÉLECTRONIQUE",
+  ELECTRONIQUE: "ÉLECTRONIQUE",
+  INFORMATIQ: "INFORMATIQUE",
+  INFORMATIQUE: "INFORMATIQUE",
+  FRANCAIS: "FRANÇAIS",
+  ANGLAI: "ANGLAIS",
+  ANGLAIS: "ANGLAIS",
+  HISTOIR: "HISTOIRE",
+  HISTOIRE: "HISTOIRE",
+  GEOGRAPHI: "GÉOGRAPHIE",
+  GEOGRAPHIE: "GÉOGRAPHIE",
+  PHILOSOPHI: "PHILOSOPHIE",
+  PHILOSOPHIE: "PHILOSOPHIE",
+  LITTERATUR: "LITTÉRATURE",
+  LITTERATURE: "LITTÉRATURE",
+  MECANIQ: "MÉCANIQUE",
+  MECANIQUE: "MÉCANIQUE",
+  THERMODYNAMIQ: "THERMODYNAMIQUE",
+  THERMODYNAMIQUE: "THERMODYNAMIQUE",
+  COMPTABILITE: "COMPTABILITÉ",
+  ECONOMI: "ÉCONOMIE",
+  ECONOMIE: "ÉCONOMIE",
+  GESTION: "GESTION",
+  DROIT: "DROIT",
+  BIOLOGI: "BIOLOGIE",
+  BIOLOGIE: "BIOLOGIE",
+  GEOLOGI: "GÉOLOGIE",
+  GEOLOGIE: "GÉOLOGIE",
+  STATISTIQ: "STATISTIQUES",
+  STATISTIQUE: "STATISTIQUES",
+  STATISTIQUES: "STATISTIQUES",
+  PROBABILITE: "PROBABILITÉS",
+  PROBABILITES: "PROBABILITÉS",
+  ALGEBRE: "ALGÈBRE",
+  GEOMETRIE: "GÉOMÉTRIE",
+  OPTIQ: "OPTIQUE",
+  OPTIQUE: "OPTIQUE",
+  ALGORITHMIQ: "ALGORITHMIQUE",
+  ALGORITHMIQUE: "ALGORITHMIQUE"
+};
+
+function correctSpellingWorker(text) {
+  if (!text || typeof text !== "string") return "";
+  const trimmed = text.trim();
+  if (!trimmed) return "";
+  return trimmed.replace(/\b[A-Za-zÀ-ÿ0-9_/-]+\b/g, (word) => {
+    const upperWord = word.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
+    if (SPELLING_DICTIONARY_WORKER[word.toUpperCase()]) {
+      return SPELLING_DICTIONARY_WORKER[word.toUpperCase()];
+    }
+    if (SPELLING_DICTIONARY_WORKER[upperWord]) {
+      return SPELLING_DICTIONARY_WORKER[upperWord];
+    }
+    if (upperWord === "DEVOIRE") return "DEVOIR";
+    if (upperWord === "DEVOIRES") return "DEVOIRS";
+    return word;
+  });
+}
+__name(correctSpellingWorker, "correctSpellingWorker");
+
+function canonicalizeCategoryWorker(rawCategory) {
+  if (!rawCategory || typeof rawCategory !== "string") return "";
+  let clean = rawCategory.trim().toUpperCase();
+  if (!clean || clean === "PAS D'INFORMATIONS" || clean === "NULL" || clean === "UNDEFINED") {
+    return "";
+  }
+  clean = clean.replace(/^[#\-_\.\s]+|[#\-_\.\s]+$/g, "");
+  if (clean === "TD" || clean === "TDS" || clean === "TRAVAUX DIRIGÉS" || clean === "TRAVAUX DIRIGES") return "TD";
+  if (clean === "TP" || clean === "TPS" || clean === "TRAVAUX PRATIQUES") return "TP";
+  if (clean === "TD/TP" || clean === "TP/TD" || clean === "TD-TP" || clean === "TP-TD") return "TD/TP";
+  if (clean === "BAC" || clean === "BTS" || clean === "DUT" || clean === "LICENCE" || clean === "MASTER") return clean;
+
+  const corrected = correctSpellingWorker(clean);
+  clean = corrected ? corrected.toUpperCase() : clean;
+
+  if (clean === "COUR" || clean === "COURS" || clean === "COURE" || clean === "COURES") return "COURS";
+  if (clean === "DEVOIR" || clean === "DEVOIRS" || clean === "DEVOIRE" || clean === "DEVOIRES") return "DEVOIRS";
+  if (clean === "EXAMEN" || clean === "EXAMENS" || clean === "EXAM" || clean === "EXAMS") return "EXAMENS";
+  if (clean === "RESUME" || clean === "RESUMES" || clean === "RÉSUMÉ" || clean === "RÉSUMÉS") return "RÉSUMÉS";
+  if (clean === "PROJET" || clean === "PROJETS") return "PROJETS";
+  if (clean === "NOTE" || clean === "NOTES") return "NOTES";
+  if (clean === "FICHE" || clean === "FICHES") return "FICHES";
+  if (clean === "ANNALE" || clean === "ANNALES") return "ANNALES";
+
+  if (!clean.endsWith("S") && clean.length >= 4) {
+    return clean + "S";
+  }
+  return clean;
+}
+__name(canonicalizeCategoryWorker, "canonicalizeCategoryWorker");
+
+function getCategoryRootKeyWorker(cat) {
+  const canonical = canonicalizeCategoryWorker(cat);
+  if (!canonical) return "";
+  if (canonical === "TD" || canonical === "TP" || canonical === "TD/TP") return canonical;
+  return canonical.replace(/S$/, "");
+}
+__name(getCategoryRootKeyWorker, "getCategoryRootKeyWorker");
+
+function hashStringWorker(str) {
+  let hash = 0;
+  for (let i = 0; i < str.length; i++) {
+    hash = (hash << 5) - hash + str.charCodeAt(i);
+    hash |= 0;
+  }
+  return Math.abs(hash);
+}
+__name(hashStringWorker, "hashStringWorker");
+
 function renderShareNotFoundHtml(code, originUrl) {
   const siteUrl = "https://studycloud.dkd-technologies.com";
   return `<!DOCTYPE html>
@@ -4714,6 +4884,9 @@ Lien vers le produit : ${productShareUrl}`;
       }
       if (path === "/api/published-documents/filters" && method === "GET") {
         try {
+          const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
+          const seed = url.searchParams.get("seed") || Date.now().toString(36);
+
           const [userSchoolsRes, pubSchoolsRes] = await Promise.all([
             env.DB.prepare(`SELECT DISTINCT school FROM users WHERE school IS NOT NULL AND TRIM(school) != ''`).all().catch(() => ({ results: [] })),
             env.DB.prepare(`SELECT DISTINCT school FROM published_documents WHERE school IS NOT NULL AND TRIM(school) != ''`).all().catch(() => ({ results: [] }))
@@ -4741,48 +4914,110 @@ Lien vers le produit : ${productShareUrl}`;
           });
           const matieres = Array.from(matieresSet).sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
 
-          // ---- Dynamic categories ----
-          // 1) Explicitly stored categories in the DB
-          const pubCatsRes = await env.DB.prepare(
-            `SELECT DISTINCT category FROM published_documents WHERE category IS NOT NULL AND TRIM(category) != ''`
+          // ---- Dynamic categories with Smart Deduplication & User-centric Shuffle ----
+          // 1) All published documents for categorization and scoring
+          const pubDocsRes = await env.DB.prepare(
+            `SELECT category, school, filiere, matiere_name, country, file_name FROM published_documents WHERE is_public = 1`
           ).all().catch(() => ({ results: [] }));
 
-          // 2) Smart detection from file names for docs without an explicit category
+          const pubDocs = pubDocsRes?.results || [];
+
+          // 2) User context for personalized scoring
+          let userSchool = "";
+          let userFiliere = "";
+          let userCountry = "";
+          let userMatieres = [];
+          if (userId) {
+            try {
+              const [userRes, matRes] = await Promise.all([
+                env.DB.prepare(`SELECT school, filiere, country FROM users WHERE id = ?`).bind(userId).first().catch(() => null),
+                env.DB.prepare(`SELECT name FROM matieres WHERE user_id = ?`).bind(userId).all().catch(() => ({ results: [] }))
+              ]);
+              userSchool = (userRes?.school || "").toLowerCase().trim();
+              userFiliere = (userRes?.filiere || "").toLowerCase().trim();
+              userCountry = (userRes?.country || "").toLowerCase().trim();
+              userMatieres = (matRes?.results || []).map(m => (m.name || "").toLowerCase().trim()).filter(Boolean);
+            } catch (e) {}
+          }
+
+          // Smart detection patterns from file names
           const nameCategoryMap = [
-            { patterns: ['cours', 'lecture', 'support de cours', 'course'], label: 'Cours' },
-            { patterns: ['td', 'tp', 'travaux dirigés', 'travaux pratiques', 'exercice'], label: 'TD/TP' },
-            { patterns: ['exam', 'examen', 'devoir', 'concours', 'epreuve', 'épreuve', 'ds', 'controle', 'contrôle'], label: 'Examens' },
-            { patterns: ['projet', 'project', 'rapport', 'memoire', 'mémoire', 'pfe', 'tfe', 'these', 'thèse'], label: 'Projets' },
-            { patterns: ['note', 'notes', 'fiche', 'resume', 'résumé', 'synthese', 'synthèse', 'recap', 'récap'], label: 'Notes' },
+            { patterns: ['cours', 'lecture', 'support de cours', 'course'], label: 'COURS' },
+            { patterns: ['td', 'travaux diriges', 'travaux dirigés'], label: 'TD' },
+            { patterns: ['tp', 'travaux pratiques'], label: 'TP' },
+            { patterns: ['exam', 'examen', 'devoir', 'concours', 'epreuve', 'épreuve', 'ds', 'controle', 'contrôle'], label: 'EXAMENS' },
+            { patterns: ['projet', 'project', 'rapport', 'memoire', 'mémoire', 'pfe', 'tfe', 'these', 'thèse'], label: 'PROJETS' },
+            { patterns: ['note', 'notes', 'fiche', 'resume', 'résumé', 'synthese', 'synthèse', 'recap', 'récap'], label: 'NOTES' },
           ];
-          const undetectedRes = await env.DB.prepare(
-            `SELECT file_name FROM published_documents WHERE (category IS NULL OR TRIM(category) = '') AND file_name IS NOT NULL`
-          ).all().catch(() => ({ results: [] }));
 
-          const categoriesSet = new Set();
-          // Add explicitly set categories first
-          (pubCatsRes?.results || []).forEach((r) => {
-            const c = (r.category || "").trim();
-            if (c && c.toLowerCase() !== "null" && c.toLowerCase() !== "undefined")
-              categoriesSet.add(c);
-          });
-          // Detect from file names
-          (undetectedRes?.results || []).forEach((r) => {
-            const fname = (r.file_name || "").toLowerCase().replace(/[_\-\.]/g, ' ');
-            for (const { patterns, label } of nameCategoryMap) {
-              if (patterns.some(p => fname.includes(p))) {
-                categoriesSet.add(label);
-                break;
+          // 3) Group categories strictly by rootKey, preferring the form ending with 'S'
+          const rootMap = new Map();
+
+          const registerCategory = (rawCat, doc) => {
+            const canon = canonicalizeCategoryWorker(rawCat);
+            if (!canon) return;
+            const root = getCategoryRootKeyWorker(canon);
+            if (!root) return;
+
+            if (!rootMap.has(root)) {
+              rootMap.set(root, { label: canon, count: 0, userScore: 0 });
+            } else {
+              const item = rootMap.get(root);
+              // Règle de l'utilisateur : celui qui possède le 's' s'affiche en priorité
+              if (canon.endsWith("S") && !item.label.endsWith("S")) {
+                item.label = canon;
+              }
+            }
+
+            if (doc) {
+              const item = rootMap.get(root);
+              item.count += 1;
+              let score = 5;
+              const dFiliere = (doc.filiere || "").toLowerCase().trim();
+              const dSchool = (doc.school || "").toLowerCase().trim();
+              const dMatiere = (doc.matiere_name || "").toLowerCase().trim();
+              const dCountry = (doc.country || "").toLowerCase().trim();
+
+              if (userFiliere && dFiliere && (dFiliere.includes(userFiliere) || userFiliere.includes(dFiliere))) score += 30;
+              if (userSchool && dSchool && (dSchool.includes(userSchool) || userSchool.includes(dSchool))) score += 25;
+              if (userMatieres.some(m => m && (dMatiere.includes(m) || m.includes(dMatiere)))) score += 20;
+              if (userCountry && dCountry && (dCountry.includes(userCountry) || userCountry.includes(dCountry))) score += 10;
+
+              item.userScore += score;
+            }
+          };
+
+          // Index all categories from docs
+          pubDocs.forEach(doc => {
+            if (doc.category && doc.category.trim()) {
+              registerCategory(doc.category, doc);
+            } else if (doc.file_name) {
+              const fname = (doc.file_name || "").toLowerCase().replace(/[_\-\.]/g, ' ');
+              for (const { patterns, label } of nameCategoryMap) {
+                if (patterns.some(p => fname.includes(p))) {
+                  registerCategory(label, doc);
+                  break;
+                }
               }
             }
           });
 
-          // Ensure canonical order for well-known categories; append unknown ones after
-          const canonicalOrder = ['Cours', 'TD/TP', 'Examens', 'Projets', 'Notes'];
-          const categories = [
-            ...canonicalOrder.filter(c => categoriesSet.has(c)),
-            ...[...categoriesSet].filter(c => !canonicalOrder.includes(c)).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))
-          ];
+          // Always ensure core academic categories exist
+          ['COURS', 'DEVOIRS', 'TD', 'EXAMENS', 'PROJETS'].forEach(cat => registerCategory(cat, null));
+
+          // Dynamic shuffle per reload using seed
+          const scoredCategories = Array.from(rootMap.values()).map(entry => {
+            const hash = hashStringWorker(`${entry.label}_${seed}`);
+            const shuffleBonus = (hash % 50);
+            const totalScore = entry.userScore + (entry.count * 3) + shuffleBonus;
+            return {
+              label: entry.label,
+              score: totalScore
+            };
+          });
+
+          scoredCategories.sort((a, b) => b.score - a.score);
+          const categories = scoredCategories.map(c => c.label);
 
           return jsonResponse({ success: true, schools, matieres, categories }, 200, origin);
         } catch (filterErr) {
@@ -4877,8 +5112,10 @@ Lien vers le produit : ${productShareUrl}`;
             params.push(country);
           }
           if (category && category !== "Tous") {
-            query += " AND category = ?";
-            params.push(category);
+            const canonCat = canonicalizeCategoryWorker(category);
+            const rootCat = getCategoryRootKeyWorker(category);
+            query += " AND (UPPER(category) = ? OR UPPER(category) = ? OR UPPER(category) LIKE ? OR UPPER(category) = ?)";
+            params.push(canonCat, rootCat, rootCat + "%", category.toUpperCase());
           }
           if (matiereName) {
             query += " AND matiere_name = ?";
@@ -5011,7 +5248,7 @@ Lien vers le produit : ${productShareUrl}`;
         }
         if (method === "POST") {
           const body = await request.json();
-          const {
+          let {
             id,
             userId,
             title,
@@ -5035,6 +5272,15 @@ Lien vers le produit : ${productShareUrl}`;
           if (!userId || !title || !fileName) {
             return errorResponse("userId, title et fileName sont obligatoires", 400, origin);
           }
+
+          // Correction orthographique automatique et normalisation avant enregistrement en base de données
+          if (title) title = correctSpellingWorker(title).toUpperCase();
+          if (category) category = canonicalizeCategoryWorker(category);
+          if (matiereName) matiereName = correctSpellingWorker(matiereName).toUpperCase();
+          if (school) school = correctSpellingWorker(school).toUpperCase();
+          if (filiere) filiere = correctSpellingWorker(filiere).toUpperCase();
+          if (level) level = correctSpellingWorker(level).toUpperCase();
+          if (description) description = correctSpellingWorker(description);
           const fNameLower = (fileName || "").toLowerCase();
           const fTypeLower = (fileType || "").toLowerCase();
           const isVideo = fTypeLower.startsWith("video/") || /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|3gp|3g2|ts|mts|m2ts|vob|ogv)$/i.test(fNameLower);

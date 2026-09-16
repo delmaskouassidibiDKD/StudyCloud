@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback, useRef } from 'react';
+import React, { useState, useEffect, useCallback, useRef, useMemo } from 'react';
 import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart, RefreshCw, Globe, Hash, RotateCcw, Link2, CloudDownload, MonitorDown } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { SharedFolder, SharedFile } from '../types';
@@ -7,6 +7,7 @@ import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
 import { DownloadDestinationModal, DownloadDestinationChoice } from './DownloadDestinationModal';
 import { importFilesToMesFichiers } from '../services/userSync';
 import { storeFileBlob } from '../services/localFileStorage';
+import { rankAndShuffleCategories, isCategoryMatch, canonicalizeCategory } from '../utils/spellingCorrector';
 import studentLogo from '../assets/student-logo.jpg';
 
 if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.workerSrc) {
@@ -398,7 +399,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [availableCategories, setAvailableCategories] = useState<string[]>([]);
 
   useEffect(() => {
-    StudyCloudAPI.getPublishedDocumentFilters()
+    const uid = localStorage.getItem('unifolder_user_id') || undefined;
+    StudyCloudAPI.getPublishedDocumentFilters(uid, docSeedRef.current)
       .then(res => {
         if (res && res.success) {
           if (Array.isArray(res.schools)) setAvailableSchools(res.schools);
@@ -1105,8 +1107,45 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     });
   });
 
-  // Catégories dynamiques : on garde toujours « Tous » en premier, suivi des catégories de la DB
-  const categories = ['Tous', ...availableCategories];
+  // Profil utilisateur pour la recommandation personnalisée des catégories
+  const currentUserSchool = localStorage.getItem('unifolder_user_school') || undefined;
+  const currentUserFiliere = localStorage.getItem('unifolder_user_filiere') || undefined;
+  const currentUserCountry = localStorage.getItem('unifolder_user_country') || undefined;
+  const currentUserMatieres = useMemo(() => {
+    try {
+      const saved = localStorage.getItem('unifolder_saved_matieres');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.map((m: any) => (m && m.name) ? m.name : m);
+      }
+    } catch {}
+    return [];
+  }, []);
+
+  // Catégories dynamiques : dédupliquées (forme avec 'S' prioritaire), ordonnées pour l'utilisateur
+  // et mélangées à chaque rechargement pour faire tourner d'autres catégories en premier
+  const categories = useMemo(() => {
+    const rawAll = [...availableCategories];
+    publishedDocs.forEach((d) => {
+      if (d.category && !rawAll.includes(d.category)) {
+        rawAll.push(d.category);
+      }
+    });
+
+    const ranked = rankAndShuffleCategories(
+      rawAll,
+      {
+        school: currentUserSchool,
+        filiere: currentUserFiliere,
+        country: currentUserCountry,
+        matieres: currentUserMatieres,
+      },
+      publishedDocs,
+      docSeedRef.current
+    );
+
+    return ['Tous', ...ranked];
+  }, [availableCategories, publishedDocs, currentUserSchool, currentUserFiliere, currentUserCountry, currentUserMatieres]);
 
   const filteredItems = allFilesWithFolder.filter(({ file, folder }) => {
     const matchesSearch =
@@ -1115,7 +1154,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       (folder.category && folder.category.toLowerCase().includes(searchQuery.toLowerCase())) ||
       (folder.school && folder.school.toLowerCase().includes(searchQuery.toLowerCase()));
 
-    const matchesCategory = selectedCategory === 'Tous' || folder.category === selectedCategory;
+    const matchesCategory = selectedCategory === 'Tous' || isCategoryMatch(folder.category, selectedCategory);
 
     const matchesSchool = !selectedSchoolFilter || (
       folder.school && (
@@ -1877,7 +1916,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         <div className="flex items-center justify-between gap-1 border-b border-white/20 pb-1 mb-1">
                           <div className="flex items-center gap-1 max-w-[70%] truncate">
                             <span className="text-[8px] sm:text-[9px] font-black bg-white text-stone-900 border border-white px-1.5 py-0.5 rounded truncate shadow-sm">
-                              {doc.category || "Pas d'informations"}
+                              {canonicalizeCategory(doc.category) || doc.category || "Pas d'informations"}
                             </span>
                             <span className={`text-[7.5px] font-black px-1.5 py-0.5 rounded uppercase border ${typeInfo.badgeClass}`}>
                               {typeInfo.name}
@@ -2042,7 +2081,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       {/* Header: Catégorie à gauche, Taille à droite */}
                       <div className="flex items-center justify-between gap-1 z-10">
                         <span className="text-[7.5px] sm:text-[8.5px] font-black bg-white text-stone-800 border border-white px-1.5 py-0.5 rounded shadow-sm truncate max-w-[65px]">
-                          {doc.category || "Pas d'informations"}
+                          {canonicalizeCategory(doc.category) || doc.category || "Pas d'informations"}
                         </span>
                         <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1.5 py-0.5 rounded shadow-sm">
                           {docSizeStr}
@@ -2202,9 +2241,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                                 setActiveCategoryTooltipId(prev => prev === doc.id ? null : doc.id);
                               }}
                               className="text-[8.5px] sm:text-[10px] font-extrabold bg-orange-100 hover:bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-md border border-stone-800 truncate max-w-[55px] sm:max-w-[70px] transition-all cursor-pointer block text-left active:scale-95"
-                              title={doc.category}
+                              title={canonicalizeCategory(doc.category) || doc.category}
                             >
-                              {doc.category || "Pas d'informations"}
+                              {canonicalizeCategory(doc.category) || doc.category || "Pas d'informations"}
                             </button>
                             {activeCategoryTooltipId === doc.id && (
                               <div
@@ -2212,7 +2251,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                                 className="absolute right-0 top-full mt-1.5 z-50 bg-stone-900 text-white text-[11px] font-bold px-3 py-1.5 rounded-xl shadow-2xl border-2 border-stone-700 whitespace-nowrap animate-fadeIn flex items-center gap-2"
                               >
                                 <span className="text-orange-400 text-xs">🎓</span>
-                                <span>{doc.category}</span>
+                                <span>{canonicalizeCategory(doc.category) || doc.category}</span>
                                 <button type="button" onClick={(e) => { e.stopPropagation(); setActiveCategoryTooltipId(null); }}
                                   className="p-0.5 hover:bg-stone-800 rounded text-stone-400 hover:text-white transition-colors cursor-pointer">
                                   <X className="w-3 h-3" />

@@ -10,6 +10,7 @@ import * as XLSX from 'xlsx';
 import { StudyCloudAPI } from '../services/api';
 import { watermarkPDF } from '../utils/pdfWatermark';
 import { getFileBlob } from '../services/localFileStorage';
+import { correctSpellingInText, canonicalizeCategory } from '../utils/spellingCorrector';
 
 // Configure worker for PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
@@ -1113,15 +1114,15 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           tagsArray = [];
         }
 
-        title = title.toUpperCase();
-        fileSchool = fileSchool.toUpperCase();
-        fileFiliere = fileFiliere.toUpperCase();
-        category = category.toUpperCase();
-        matiereName = matiereName.toUpperCase();
-        level = level.toUpperCase();
+        title = correctSpellingInText(title.toUpperCase());
+        fileSchool = correctSpellingInText(fileSchool.toUpperCase());
+        fileFiliere = correctSpellingInText(fileFiliere.toUpperCase());
+        category = canonicalizeCategory(category) || category.toUpperCase();
+        matiereName = correctSpellingInText(matiereName.toUpperCase());
+        level = correctSpellingInText(level.toUpperCase());
         country = country.toUpperCase();
-        description = description.toUpperCase();
-        tagsArray = tagsArray.map((t: string) => t.toUpperCase());
+        description = correctSpellingInText(description.toUpperCase());
+        tagsArray = tagsArray.map((t: string) => correctSpellingInText(t.toUpperCase()));
 
         // Safeguard de sécurité : vérification stricte du type de fichier
         const typeCheck = checkPublicationFileType(file);

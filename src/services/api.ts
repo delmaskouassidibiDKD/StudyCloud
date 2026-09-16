@@ -891,8 +891,12 @@ export const StudyCloudAPI = {
     return request<{ success: boolean; data: any[]; pagination?: { page: number; limit: number; total: number; hasMore: boolean } }>(endpoint);
   },
 
-  async getPublishedDocumentFilters() {
-    return request<{ success: boolean; schools: string[]; matieres: string[] }>('/api/published-documents/filters');
+  async getPublishedDocumentFilters(userId?: string, seed?: string) {
+    const params: string[] = [];
+    if (userId) params.push(`userId=${encodeURIComponent(userId)}`);
+    if (seed) params.push(`seed=${encodeURIComponent(seed)}`);
+    const query = params.length > 0 ? `?${params.join('&')}` : '';
+    return request<{ success: boolean; schools: string[]; matieres: string[]; categories: string[] }>(`/api/published-documents/filters${query}`);
   },
 
   async publishDocument(doc: {
