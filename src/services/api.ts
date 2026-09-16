@@ -295,11 +295,8 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
 
   const response = await fetch(url, {
     ...options,
-    cache: 'no-store',
     headers: {
       ...defaultHeaders,
-      'Cache-Control': 'no-cache',
-      'Pragma': 'no-cache',
       ...options.headers,
     },
   });
