@@ -1736,9 +1736,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         className={`aspect-[3/4] text-stone-100 ${typeInfo.cardBorderClass} rounded-2xl p-2.5 flex flex-col justify-between ${typeInfo.cardShadowClass} transition-all relative select-none overflow-hidden`}
                       >
                         {/* Header avec badge catégorie + badge type + bouton retour aperçu */}
-                        <div className="flex items-center justify-between gap-1 border-b border-white/10 pb-1 mb-1">
+                        <div className="flex items-center justify-between gap-1 border-b border-white/20 pb-1 mb-1">
                           <div className="flex items-center gap-1 max-w-[70%] truncate">
-                            <span className="text-[8px] sm:text-[9px] font-black bg-orange-500/20 text-orange-400 border border-orange-500/40 px-1.5 py-0.5 rounded truncate">
+                            <span className="text-[8px] sm:text-[9px] font-black bg-white text-stone-900 border border-white px-1.5 py-0.5 rounded truncate shadow-sm">
                               {doc.category || "Pas d'informations"}
                             </span>
                             <span className={`text-[7.5px] font-black px-1.5 py-0.5 rounded uppercase border ${typeInfo.badgeClass}`}>
@@ -1748,7 +1748,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           <button
                             type="button"
                             onClick={() => toggleCardFlip(doc.id)}
-                            className="px-1.5 py-0.5 bg-black/40 hover:bg-black/60 text-orange-400 text-[8.5px] font-bold rounded border border-white/10 flex items-center gap-1 transition-colors cursor-pointer"
+                            className="px-1.5 py-0.5 bg-black hover:bg-stone-900 text-white text-[8.5px] font-bold rounded border border-black flex items-center gap-1 transition-colors cursor-pointer shadow-md"
                             title="Retourner vers l'aperçu"
                           >
                             <RotateCcw className="w-2.5 h-2.5" />
@@ -1760,14 +1760,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         <div className="flex-1 flex flex-col justify-around py-1 space-y-1 overflow-hidden">
                           <div className="flex flex-col">
                             {doc.file_name && (
-                              <p className="text-[8.5px] sm:text-[9.5px] font-semibold text-white/70 truncate mb-0.5" title={doc.file_name}>
+                              <p className="text-[8.5px] sm:text-[9.5px] font-semibold text-white truncate mb-0.5 drop-shadow-sm" title={doc.file_name}>
                                 {doc.file_name}
                               </p>
                             )}
                             {(!doc.file_name || !isSameName) && doc.title && (
                               <h3 
                                 onClick={() => handleOpenDoc(doc)}
-                                className="text-[10.5px] sm:text-[11.5px] font-black text-white truncate cursor-pointer hover:underline" 
+                                className="text-[10.5px] sm:text-[11.5px] font-black text-white truncate cursor-pointer hover:underline drop-shadow-md" 
                                 title={doc.title}
                               >
                                 {doc.title}
@@ -1776,32 +1776,32 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           </div>
 
                           {doc.matiere_name && (
-                            <p className="text-[8.5px] sm:text-[9.5px] text-stone-300 font-semibold truncate" title={doc.matiere_name}>
+                            <p className="text-[8.5px] sm:text-[9.5px] text-white font-bold truncate drop-shadow-sm" title={doc.matiere_name}>
                               📚 {doc.matiere_name}{doc.level ? ` · ${doc.level}` : ''}
                             </p>
                           )}
 
-                          <div className="flex items-center gap-1 text-[8.5px] sm:text-[9.5px] text-stone-300 truncate">
-                            <Building2 className="w-3 h-3 text-orange-400 shrink-0" />
+                          <div className="flex items-center gap-1 text-[8.5px] sm:text-[9.5px] text-white font-semibold truncate drop-shadow-sm">
+                            <Building2 className="w-3 h-3 text-white shrink-0" />
                             <span className="truncate">{doc.school && doc.school.trim() ? doc.school : 'École non renseignée'}</span>
                           </div>
 
-                          <div className="flex items-center gap-1 text-[8px] sm:text-[8.5px] text-stone-400 font-medium truncate">
+                          <div className="flex items-center gap-1 text-[8px] sm:text-[8.5px] text-white font-medium truncate drop-shadow-sm">
                             {doc.country && <span className="flex items-center gap-0.5"><Globe className="w-2.5 h-2.5" />{doc.country}</span>}
                             {doc.author_name && <span className="truncate">· {doc.author_name}</span>}
                           </div>
 
-                          <div className="flex items-center justify-between text-[8px] sm:text-[8.5px] text-stone-400 pt-1 border-t border-white/10">
-                            <span>{docSizeStr}</span>
-                            <span className="flex items-center gap-1 font-bold text-stone-300">
-                              <Download className="w-2.5 h-2.5 text-orange-400" />
+                          <div className="flex items-center justify-between text-[8px] sm:text-[8.5px] text-white font-semibold pt-1 border-t border-white/20">
+                            <span className="drop-shadow-sm">{docSizeStr}</span>
+                            <span className="flex items-center gap-1 font-bold text-white drop-shadow-sm">
+                              <Download className="w-2.5 h-2.5 text-white" />
                               {doc.downloads_count || 0} téléchargement{(doc.downloads_count || 0) > 1 ? 's' : ''}
                             </span>
                           </div>
                         </div>
 
                         {/* Bas de carte */}
-                        <div className="flex items-center justify-between pt-1.5 border-t border-white/10 gap-1.5">
+                        <div className="flex items-center justify-between pt-1.5 border-t border-white/20 gap-1.5">
                           <button
                             type="button"
                             onClick={() => handleOpenDoc(doc)}
@@ -1833,7 +1833,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           <button
                             type="button"
                             onClick={() => toggleCardFlip(doc.id)}
-                            className="p-1 sm:p-1.5 bg-black/40 hover:bg-black/60 text-orange-400 rounded-lg border border-white/10 transition-all cursor-pointer flex items-center justify-center"
+                            className="p-1 sm:p-1.5 bg-black hover:bg-stone-900 text-white rounded-lg border border-black shadow-md transition-all cursor-pointer flex items-center justify-center"
                             title="Retourner vers l'aperçu"
                           >
                             <RotateCcw className="w-3 h-3" />
