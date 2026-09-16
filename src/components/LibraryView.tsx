@@ -734,13 +734,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           if (Array.isArray(res.matieres)) setAvailableMatieres(res.matieres);
         }
       }).catch(() => {});
-      triggerToast("Recommandations actualisées !");
     } else if (activeSubTab === 'librairie') {
       await loadProducts();
-      triggerToast("Librairie actualisée !");
     } else if (activeSubTab === 'liens') {
       await loadPublicFolders();
-      triggerToast("Liens publics actualisés !");
     }
   }, [activeSubTab, loadPublishedDocs, loadProducts, loadPublicFolders]);
 
