@@ -3464,6 +3464,15 @@ export default {
               }
             }
           } catch (e) {}
+
+          try {
+            const sfFiles = await db.prepare('SELECT r2_key FROM shared_folder_files WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?) AND r2_key IS NOT NULL').bind(userId).all();
+            if (sfFiles?.results) {
+              for (const sf of sfFiles.results) {
+                if (sf.r2_key) await bucket.delete(sf.r2_key).catch(() => {});
+              }
+            }
+          } catch (e) {}
         }
 
         // 2. Suppression dans toutes les tables où user_id est utilisé
@@ -5282,6 +5291,19 @@ export default {
               if (f.r2_key) {
                 await env.BUCKET.delete(f.r2_key).catch(() => {});
               }
+            }
+          }
+          if (env.BUCKET && shareId) {
+            const prefixes = [`shared-links/files/${shareId}`, `shares/${shareId}`];
+            for (const pfx of prefixes) {
+              try {
+                const listed = await env.BUCKET.list({ prefix: pfx });
+                if (listed && listed.objects) {
+                  for (const obj of listed.objects) {
+                    await env.BUCKET.delete(obj.key).catch(() => {});
+                  }
+                }
+              } catch (listErr) {}
             }
           }
         } catch (e) {}

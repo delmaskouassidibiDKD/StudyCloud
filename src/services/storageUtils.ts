@@ -14,6 +14,7 @@ export const R2_FOLDERS = {
   USER_AVATARS: 'avatars',
   USER_FILES: 'user-files',
   AI_STUDIES: 'ai-studies',
+  SHARED_LINKS: 'shared-links/files',
 } as const;
 
 export type R2Category = keyof typeof R2_FOLDERS;
@@ -82,3 +83,16 @@ export function buildAiStudyKey(userId: string, fileId: string, fileName: string
   const cleanName = sanitizeFileName(fileName || 'study_doc');
   return `${R2_FOLDERS.AI_STUDIES}/${cleanUser}/${cleanId}-${cleanName}`;
 }
+
+/**
+ * Construit la clé R2 pour les fichiers associés à un lien de partage
+ * Stocke EXCLUSIVEMENT les fichiers associés aux liens dans un dossier dédié R2
+ * Format: shared-links/files/{folderId}/{fileId}-{fileName}
+ */
+export function buildSharedLinkFileKey(folderId: string, fileId: string, fileName: string): string {
+  const cleanFolder = sanitizeFileName(folderId || 'share');
+  const cleanId = sanitizeFileName(fileId || Date.now().toString());
+  const cleanName = sanitizeFileName(fileName || 'document');
+  return `${R2_FOLDERS.SHARED_LINKS}/${cleanFolder}/${cleanId}-${cleanName}`;
+}
+

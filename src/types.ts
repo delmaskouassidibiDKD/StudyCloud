@@ -3,7 +3,9 @@ export interface SharedFile {
   name: string;
   size: number;
   type: string;
-  url?: string; // object URL or data URL
+  url?: string; // object URL, data URL ou URL Cloudflare R2
+  r2Key?: string;
+  fileId?: string;
 }
 
 export interface SharedFolder {

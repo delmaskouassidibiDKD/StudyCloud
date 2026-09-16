@@ -224,6 +224,7 @@ export const SharedLinksView: React.FC<SharedLinksViewProps> = ({
               </button>
               <button
                 onClick={() => {
+                  folders.forEach((f) => onDeleteFolder(f.id));
                   setFolders([]);
                   setShowDeleteAllModal(false);
                 }}

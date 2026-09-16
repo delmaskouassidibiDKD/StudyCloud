@@ -22,12 +22,23 @@ export const FolderDetailModal: React.FC<FolderDetailModalProps> = ({ folder, on
   };
 
   const executeDeviceDownload = (file: { name: string; url?: string; size: number }) => {
+    if (file.url && (file.url.startsWith('http://') || file.url.startsWith('https://'))) {
+      const a = document.createElement('a');
+      a.href = file.url;
+      a.download = file.name;
+      a.target = '_blank';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      return;
+    }
+
     const content = file.url || `Ceci est le fichier ${file.name} téléchargé depuis StudyCloud Share.\nDossier: ${folder.title}`;
-    const blob = file.url && file.url.startsWith('data:') 
+    const blobPromise = file.url && (file.url.startsWith('data:') || file.url.startsWith('blob:'))
       ? fetch(file.url).then(r => r.blob()).catch(() => new Blob([content], { type: 'text/plain;charset=utf-8' }))
       : Promise.resolve(new Blob([content], { type: 'text/plain;charset=utf-8' }));
     
-    blob.then((b) => {
+    blobPromise.then((b) => {
       const url = URL.createObjectURL(b);
       const a = document.createElement('a');
       a.href = url;

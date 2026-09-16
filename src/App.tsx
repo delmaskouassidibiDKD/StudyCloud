@@ -23,7 +23,8 @@ import { CenterMenu } from './components/CenterMenu';
 import { RightMenu } from './components/RightMenu';
 import { StudyTimerModal, formatTimerDisplay } from './components/StudyTimerModal';
 import { StudyCloudAPI, generateCleanShareCode, getWorkerApiUrl } from './services/api';
-import { getFileBlob } from './services/localFileStorage';
+import { getFileBlob, storeFileBlob } from './services/localFileStorage';
+import { buildSharedLinkFileKey } from './services/storageUtils';
 import { useAuth } from './context/AuthContext';
 import { AuthPage } from './components/auth/AuthPage';
 import { OnboardingPage } from './components/auth/OnboardingPage';
@@ -42,6 +43,7 @@ export const sanitizeFoldersForStorage = (foldersList: SharedFolder[]): SharedFo
       type: file.type,
       // Ne JAMAIS persister de data URL base64 dans le stockage local pour éviter l'erreur de dépassement de quota
       url: file.url && !file.url.startsWith('data:') ? file.url : '',
+      r2Key: file.r2Key || undefined,
     })),
   }));
 };
@@ -306,31 +308,63 @@ export default function App() {
       const shareUrl = `${workerUrl}/s/${shareCode}`;
       const qrCodeData = `https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=${encodeURIComponent(shareUrl)}`;
 
-      // Résoudre ou uploader vers Cloudflare R2 les fichiers locaux (blobs) pour garantir le téléchargement par tous
+      // Enregistrer exclusivement les fichiers associés au lien dans le dossier dédié Cloudflare R2 (shared-links/files)
       const files = await Promise.all(
         items.map(async (item) => {
           let fileUrl = item.url || '';
-          if (!fileUrl || fileUrl.startsWith('blob:')) {
-            try {
-              const blob = await getFileBlob(item.id);
-              if (blob) {
-                const r2Key = `shares/${folderId}/${item.id}_${item.name}`;
-                const fileObj = new File([blob], item.name, { type: item.type || blob.type || 'application/octet-stream' });
-                const r2Res = await StudyCloudAPI.uploadFileToR2(fileObj, r2Key);
-                if (r2Res.success && r2Res.url) {
-                  fileUrl = r2Res.url;
-                }
-              }
-            } catch (err) {
-              console.warn('Sync blob vers R2 lors de la création du partage:', err);
+          let storedR2Key: string | undefined = undefined;
+          let fileBlob: Blob | null = null;
+
+          try {
+            // 1. Tenter de récupérer le fichier binaire depuis IndexedDB
+            fileBlob = await getFileBlob(item.id);
+
+            // 2. Si non trouvé, vérifier si un Blob / File est directement attaché à l'objet
+            if (!fileBlob && (item as any).file instanceof Blob) {
+              fileBlob = (item as any).file;
             }
+
+            // 3. Si toujours aucun blob mais qu'une URL locale ou distante existe (blob:, data: ou http)
+            if (!fileBlob && fileUrl) {
+              try {
+                const resp = await fetch(fileUrl);
+                if (resp.ok) {
+                  fileBlob = await resp.blob();
+                }
+              } catch (fetchErr) {
+                console.warn('Sync fetch blob pour partage:', fetchErr);
+              }
+            }
+
+            // Clé R2 dédiée exclusivement aux fichiers de liens partagés
+            const r2Key = buildSharedLinkFileKey(folderId, item.id, item.name);
+
+            // 4. Si nous avons le fichier binaire, l'uploader dans le dossier dédié R2
+            if (fileBlob) {
+              const fileObj = new File([fileBlob], item.name, {
+                type: item.type || fileBlob.type || 'application/octet-stream',
+              });
+              const r2Res = await StudyCloudAPI.uploadFileToR2(fileObj, r2Key);
+              if (r2Res.success && r2Res.url) {
+                fileUrl = r2Res.url;
+                storedR2Key = r2Res.key;
+              }
+            } else if (fileUrl && fileUrl.startsWith('http')) {
+              // Fichier distant déjà stocké
+              storedR2Key = (item as any).r2Key || (item as any).r2_key || r2Key;
+            }
+          } catch (err) {
+            console.warn('Erreur upload vers R2 lors de la création du partage:', err);
           }
+
           return {
             id: item.id || crypto.randomUUID(),
+            fileId: item.id,
             name: item.name,
-            size: item.size || 0,
-            type: item.type || 'file',
+            size: item.size || (fileBlob ? fileBlob.size : 0),
+            type: item.type || (fileBlob ? fileBlob.type : 'file'),
             url: fileUrl,
+            r2Key: storedR2Key,
           };
         })
       );
@@ -750,6 +784,9 @@ export default function App() {
       const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
       const isImg = !isPdf && (f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(f.name));
       
+      // Sauvegarder le binaire réel dans IndexedDB
+      storeFileBlob(replacingItemId, f).catch((err) => console.warn('Erreur stockage IndexedDB:', err));
+
       if (isImg) {
         const tempUrl = URL.createObjectURL(f);
         setUploadedItems((prev) =>
@@ -817,6 +854,10 @@ export default function App() {
           const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
           const isImg = !isPdf && (f.type.startsWith('image/') || typeLabel === 'images' || typeLabel === 'Images' || /\.(jpg|jpeg|png|webp|gif)$/i.test(f.name));
           const id = `item-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`;
+          
+          // Sauvegarder immédiatement le binaire réel dans IndexedDB
+          storeFileBlob(id, f).catch((err) => console.warn('Erreur stockage IndexedDB:', err));
+
           let url: string | undefined = undefined;
           try {
             if (isImg) {
@@ -872,6 +913,10 @@ export default function App() {
           const isPdf = f.type === 'application/pdf' || /\.pdf$/i.test(f.name);
           const isImg = !isPdf && (f.type.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif)$/i.test(f.name));
           const id = `item-${Date.now()}-${i}-${Math.random().toString(36).substring(2, 9)}`;
+          
+          // Sauvegarder immédiatement le binaire réel dans IndexedDB
+          storeFileBlob(id, f).catch((err) => console.warn('Erreur stockage IndexedDB:', err));
+
           let url: string | undefined = undefined;
           try {
             if (isImg) {
@@ -1041,6 +1086,7 @@ export default function App() {
                   size: f.size || 0,
                   type: f.type || 'file',
                   url: f.file_url || f.url || '',
+                  r2Key: f.r2_key || f.r2Key || undefined,
                 }))
               : [],
             totalSize: row.total_size || 0,
