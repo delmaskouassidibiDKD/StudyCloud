@@ -37,6 +37,7 @@ export function getDocTypeInfo(doc: any): DocTypeInfo {
       cardBorderClass: 'border-2 border-red-500/70 hover:border-red-400',
       cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#7f1d1d] hover:shadow-[4px_4px_0px_0px_#991b1b]',
       accentTextClass: 'text-red-400',
+      cardBgStyle: { background: 'linear-gradient(180deg, #dc2626 0%, #991b1b 100%)' },
     };
   }
 
@@ -48,6 +49,7 @@ export function getDocTypeInfo(doc: any): DocTypeInfo {
       cardBorderClass: 'border-2 border-blue-500/70 hover:border-blue-400',
       cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#1e3a8a] hover:shadow-[4px_4px_0px_0px_#1d4ed8]',
       accentTextClass: 'text-blue-400',
+      cardBgStyle: { background: 'linear-gradient(180deg, #2563eb 0%, #1e40af 100%)' },
     };
   }
 
@@ -59,6 +61,7 @@ export function getDocTypeInfo(doc: any): DocTypeInfo {
       cardBorderClass: 'border-2 border-emerald-500/70 hover:border-emerald-400',
       cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#064e3b] hover:shadow-[4px_4px_0px_0px_#047857]',
       accentTextClass: 'text-emerald-400',
+      cardBgStyle: { background: 'linear-gradient(180deg, #0d9488 0%, #115e59 100%)' },
     };
   }
 
@@ -70,6 +73,7 @@ export function getDocTypeInfo(doc: any): DocTypeInfo {
       cardBorderClass: 'border-2 border-amber-500/70 hover:border-amber-400',
       cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#78350f] hover:shadow-[4px_4px_0px_0px_#b45309]',
       accentTextClass: 'text-amber-400',
+      cardBgStyle: { background: 'linear-gradient(180deg, #ea580c 0%, #9a3412 100%)' },
     };
   }
 
@@ -81,6 +85,7 @@ export function getDocTypeInfo(doc: any): DocTypeInfo {
       cardBorderClass: 'border-2 border-teal-500/70 hover:border-teal-400',
       cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#115e59] hover:shadow-[4px_4px_0px_0px_#0f766e]',
       accentTextClass: 'text-teal-400',
+      cardBgStyle: { background: 'linear-gradient(180deg, #059669 0%, #065f46 100%)' },
     };
   }
 
@@ -157,18 +162,52 @@ const DocumentCardThumbnail: React.FC<{ doc: any; onClick?: () => void }> = ({ d
       setIsRendering(false);
       return;
     }
-  }, [cacheKey, fileUrl, fileName, isImage]);
+
+    if (isPdf && fileUrl) {
+      setIsRendering(true);
+      (async () => {
+        try {
+          const loadingTask = pdfjsLib.getDocument({ url: fileUrl });
+          const pdf = await loadingTask.promise;
+          const page = await pdf.getPage(1);
+          // Échelle 4.0 pour une qualité très haute définition très nette
+          const viewport = page.getViewport({ scale: 4.0 });
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          if (context && isMounted) {
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            await page.render({ canvasContext: context, viewport }).promise;
+            if (isMounted) {
+              const dataUrl = canvas.toDataURL('image/jpeg', 0.92);
+              if (cacheKey) {
+                memoryThumbnailCache.set(cacheKey, dataUrl);
+              }
+              setThumbUrl(dataUrl);
+              setIsRendering(false);
+            }
+          }
+        } catch (e) {
+          if (isMounted) setIsRendering(false);
+        }
+      })();
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [cacheKey, fileUrl, fileName, isImage, isPdf]);
 
   const rawFileName = doc.file_name || doc.title || '';
   const typeInfo = getDocTypeInfo(doc);
 
-  if (thumbUrl && isImage) {
+  if (thumbUrl) {
     return (
       <div
         onClick={onClick}
         className="w-full h-full relative cursor-pointer overflow-hidden rounded-md group select-none"
-        title="Cliquer pour ouvrir l'image"
+        title="Cliquer pour ouvrir le document dans l'application"
       >
+        {/* object-cover object-top : cadre l'en-tête du document tout en haut et descend vers le bas */}
         <img
           src={thumbUrl}
           alt={rawFileName}
@@ -180,30 +219,52 @@ const DocumentCardThumbnail: React.FC<{ doc: any; onClick?: () => void }> = ({ d
     );
   }
 
+  // Pendant le rendu initial : affichage discret et stable pour éviter tout clignotement
+  if (isRendering) {
+    return (
+      <div onClick={onClick} className="w-full h-full p-2 flex flex-col items-center justify-center bg-stone-900/60 rounded-md cursor-pointer animate-pulse">
+        <FileText className="w-6 h-6 text-red-400 opacity-60 mb-1" />
+        <span className="text-[7.5px] font-bold text-stone-400">Chargement aperçu...</span>
+      </div>
+    );
+  }
+
   const isDocx = /\.(docx|doc)$/i.test(fileName);
   const isXlsx = /\.(xlsx|xls|csv)$/i.test(fileName);
   const isPptx = /\.(pptx|ppt)$/i.test(fileName);
 
-  let bgColor = 'bg-stone-600';
-  if (isPdf) bgColor = 'bg-red-600';
-  else if (isDocx) bgColor = 'bg-blue-600';
-  else if (isXlsx) bgColor = 'bg-emerald-600';
-  else if (isPptx) bgColor = 'bg-orange-600';
-
-  const ext = fileName.includes('.') ? fileName.split('.').pop()?.toUpperCase() || 'DOC' : 'DOC';
-
   return (
     <div
       onClick={onClick}
-      className={`w-full h-full flex flex-col items-center justify-center ${bgColor} rounded-md cursor-pointer select-none relative overflow-hidden transition-all group hover:brightness-110`}
+      className="w-full h-full p-2 flex flex-col justify-between rounded-md cursor-pointer select-none relative overflow-hidden shadow-inner bg-gradient-to-b from-stone-100 to-stone-200 border border-stone-300 group-hover:border-stone-400 transition-all"
       title="Cliquer pour ouvrir le document"
     >
-      {/* Folded corner effect */}
-      <div className="absolute top-0 right-0 w-8 h-8 bg-black/15 rounded-bl-xl pointer-events-none"></div>
-      <div className="absolute top-0 right-0 w-0 h-0 border-t-[16px] border-r-[16px] border-t-transparent border-r-white/30"></div>
-      
-      <div className="my-auto text-center">
-        <span className="text-xl sm:text-3xl font-black tracking-wider uppercase drop-shadow-md text-white">{ext.slice(0, 4)}</span>
+      <div className="flex items-center justify-between border-b border-stone-300/80 pb-1">
+        <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded tracking-wider ${
+          isPdf ? 'bg-red-600 text-white' :
+          isDocx ? 'bg-blue-600 text-white' :
+          isXlsx ? 'bg-emerald-600 text-white' :
+          isPptx ? 'bg-amber-600 text-white' : 'bg-stone-700 text-white'
+        }`}>
+          {typeInfo.name}
+        </span>
+        <FileIconBadge fileName={rawFileName} size={16} />
+      </div>
+
+      <div className="flex-1 flex flex-col justify-center my-1 space-y-1 px-0.5">
+        <p className="text-[8.5px] sm:text-[9.5px] font-extrabold text-stone-800 line-clamp-3 leading-tight drop-shadow-sm">
+          {doc.title || rawFileName}
+        </p>
+        <div className="space-y-0.5 pt-0.5 opacity-60">
+          <div className="h-1 bg-stone-400 rounded-full w-full"></div>
+          <div className="h-1 bg-stone-400 rounded-full w-4/5"></div>
+          <div className="h-1 bg-stone-300 rounded-full w-3/5"></div>
+        </div>
+      </div>
+
+      <div className="text-[7px] sm:text-[7.5px] font-bold text-stone-500 truncate flex items-center justify-between pt-1 border-t border-stone-300/60">
+        <span className="truncate">{doc.school || 'Document étudiant'}</span>
+        <span className="text-orange-600 font-extrabold text-[7.5px]">Ouvrir</span>
       </div>
     </div>
   );
