@@ -5640,6 +5640,49 @@ export default {
       // ----------------------------------------------------------------------
       // 12. PUBLICATION UNIVERSITAIRE (Bibliothèque Publique & Ressources)
       // ----------------------------------------------------------------------
+      // Route pour récupérer dynamiquement les filtres réels (écoles et matières) depuis la base de données
+      if (path === '/api/published-documents/filters' && method === 'GET') {
+        try {
+          // 1. Écoles distinctes (users + published_documents)
+          const [userSchoolsRes, pubSchoolsRes] = await Promise.all([
+            env.DB.prepare(`SELECT DISTINCT school FROM users WHERE school IS NOT NULL AND TRIM(school) != ''`).all().catch(() => ({ results: [] })),
+            env.DB.prepare(`SELECT DISTINCT school FROM published_documents WHERE school IS NOT NULL AND TRIM(school) != ''`).all().catch(() => ({ results: [] }))
+          ]);
+
+          const schoolsSet = new Set<string>();
+          (userSchoolsRes?.results || []).forEach((r: any) => {
+            const s = (r.school || '').trim();
+            if (s && s.toLowerCase() !== 'null' && s.toLowerCase() !== 'undefined') schoolsSet.add(s);
+          });
+          (pubSchoolsRes?.results || []).forEach((r: any) => {
+            const s = (r.school || '').trim();
+            if (s && s.toLowerCase() !== 'null' && s.toLowerCase() !== 'undefined') schoolsSet.add(s);
+          });
+          const schools = Array.from(schoolsSet).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+
+          // 2. Matières distinctes (matieres + published_documents)
+          const [matieresRes, pubMatieresRes] = await Promise.all([
+            env.DB.prepare(`SELECT DISTINCT name FROM matieres WHERE name IS NOT NULL AND TRIM(name) != ''`).all().catch(() => ({ results: [] })),
+            env.DB.prepare(`SELECT DISTINCT matiere_name FROM published_documents WHERE matiere_name IS NOT NULL AND TRIM(matiere_name) != ''`).all().catch(() => ({ results: [] }))
+          ]);
+
+          const matieresSet = new Set<string>();
+          (matieresRes?.results || []).forEach((r: any) => {
+            const m = (r.name || '').trim();
+            if (m && m.toLowerCase() !== 'null' && m.toLowerCase() !== 'undefined') matieresSet.add(m);
+          });
+          (pubMatieresRes?.results || []).forEach((r: any) => {
+            const m = (r.matiere_name || '').trim();
+            if (m && m.toLowerCase() !== 'null' && m.toLowerCase() !== 'undefined') matieresSet.add(m);
+          });
+          const matieres = Array.from(matieresSet).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
+
+          return jsonResponse({ success: true, schools, matieres }, 200, origin);
+        } catch (filterErr: any) {
+          return jsonResponse({ success: false, error: filterErr.message, schools: [], matieres: [] }, 500, origin);
+        }
+      }
+
       if (path === '/api/published-documents') {
         if (method === 'GET') {
           const school = url.searchParams.get('school');
@@ -5651,6 +5694,7 @@ export default {
           const search = url.searchParams.get('search');
           const isPublicParam = url.searchParams.get('isPublic');
           const userId = url.searchParams.get('userId');
+          const sort = url.searchParams.get('sort');
           const pageParam = url.searchParams.get('page');
           const limitParam = url.searchParams.get('limit');
           const page = pageParam ? Math.max(1, parseInt(pageParam, 10)) : null;
@@ -5697,7 +5741,8 @@ export default {
           let docsList: any[] = results || [];
 
           // ALGORITHME DE RECOMMANDATION INTELLIGENT PERSONNALISÉ
-          if (userId && docsList.length > 0) {
+          // Si sort === 'recent', on conserve strictement le tri chronologique pur
+          if (sort !== 'recent' && userId && docsList.length > 0) {
             try {
               // Récupérer le profil étudiant, ses matières créées, ses fichiers et son historique de clics
               const [userRes, matieresRes, filesRes, interactionsRes] = await Promise.all([

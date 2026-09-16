@@ -854,6 +854,7 @@ export const StudyCloudAPI = {
     search?: string;
     isPublic?: boolean;
     userId?: string;
+    sort?: string;
     page?: number;
     limit?: number;
   }) {
@@ -868,11 +869,16 @@ export const StudyCloudAPI = {
     if (filters?.search) params.push(`search=${encodeURIComponent(filters.search)}`);
     if (filters?.isPublic !== undefined) params.push(`isPublic=${filters.isPublic ? '1' : '0'}`);
     if (filters?.userId) params.push(`userId=${encodeURIComponent(filters.userId)}`);
+    if (filters?.sort) params.push(`sort=${encodeURIComponent(filters.sort)}`);
     if (filters?.page) params.push(`page=${filters.page}`);
     if (filters?.limit) params.push(`limit=${filters.limit}`);
     params.push(`_t=${Date.now()}`);
     if (params.length > 0) endpoint += `?${params.join('&')}`;
     return request<{ success: boolean; data: any[]; pagination?: { page: number; limit: number; total: number; hasMore: boolean } }>(endpoint);
+  },
+
+  async getPublishedDocumentFilters() {
+    return request<{ success: boolean; schools: string[]; matieres: string[] }>('/api/published-documents/filters');
   },
 
   async publishDocument(doc: {

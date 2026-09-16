@@ -1,11 +1,115 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart, RefreshCw, Globe, Hash } from 'lucide-react';
+import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart, RefreshCw, Globe, Hash, RotateCcw } from 'lucide-react';
+import * as pdfjsLib from 'pdfjs-dist';
 import { SharedFolder, SharedFile } from '../types';
 import { FileIconBadge } from './FileIconBadge';
 import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
 import { DownloadDestinationModal, DownloadDestinationChoice } from './DownloadDestinationModal';
 import { importFilesToMesFichiers } from '../services/userSync';
 import studentLogo from '../assets/student-logo.jpg';
+
+if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.workerSrc) {
+  (pdfjsLib as any).GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
+}
+
+// Composant miniature intelligent (rendu 1ère page PDF / image / style document authentique sans écran grisé)
+const DocumentCardThumbnail: React.FC<{ doc: any; onClick?: () => void }> = ({ doc, onClick }) => {
+  const [thumbUrl, setThumbUrl] = useState<string | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    const fileName = (doc.file_name || doc.title || '').toLowerCase();
+    const fileUrl = doc.file_url;
+    const isImage = doc.file_type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(fileName);
+    const isPdf = doc.file_type?.includes('pdf') || /\.pdf$/i.test(fileName);
+
+    if (isImage && fileUrl) {
+      setThumbUrl(fileUrl);
+      return;
+    }
+
+    if (isPdf && fileUrl) {
+      (async () => {
+        try {
+          const loadingTask = pdfjsLib.getDocument({ url: fileUrl });
+          const pdf = await loadingTask.promise;
+          const page = await pdf.getPage(1);
+          const viewport = page.getViewport({ scale: 1.2 });
+          const canvas = document.createElement('canvas');
+          const context = canvas.getContext('2d');
+          if (context && isMounted) {
+            canvas.height = viewport.height;
+            canvas.width = viewport.width;
+            await page.render({ canvasContext: context, viewport }).promise;
+            if (isMounted) {
+              setThumbUrl(canvas.toDataURL('image/png'));
+            }
+          }
+        } catch (e) {
+          // Fallback automatique élégant si CORS ou restriction
+        }
+      })();
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [doc.id, doc.file_url, doc.file_name, doc.title]);
+
+  const fileName = doc.file_name || doc.title || '';
+  const ext = fileName.includes('.') ? fileName.split('.').pop()?.toUpperCase() : 'DOC';
+
+  if (thumbUrl) {
+    return (
+      <div onClick={onClick} className="w-full h-full relative cursor-pointer group-hover:scale-[1.02] transition-transform duration-200">
+        <img
+          src={thumbUrl}
+          alt={fileName}
+          className="w-full h-full object-cover rounded-md shadow-inner"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 bg-black/5 group-hover:bg-transparent transition-colors" />
+      </div>
+    );
+  }
+
+  const isDocx = /\.(docx|doc)$/i.test(fileName);
+  const isXlsx = /\.(xlsx|xls|csv)$/i.test(fileName);
+  const isPptx = /\.(pptx|ppt)$/i.test(fileName);
+  const isPdf = /\.pdf$/i.test(fileName) || doc.file_type?.includes('pdf');
+
+  return (
+    <div onClick={onClick} className="w-full h-full p-2 sm:p-2.5 flex flex-col justify-between rounded-md cursor-pointer select-none relative overflow-hidden shadow-inner bg-gradient-to-b from-stone-100 to-stone-200 border border-stone-300">
+      <div className="flex items-center justify-between border-b border-stone-300/80 pb-1">
+        <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded tracking-wider ${
+          isPdf ? 'bg-red-600 text-white' :
+          isDocx ? 'bg-blue-600 text-white' :
+          isXlsx ? 'bg-emerald-600 text-white' :
+          isPptx ? 'bg-orange-600 text-white' : 'bg-stone-700 text-white'
+        }`}>
+          {ext}
+        </span>
+        <FileIconBadge fileName={fileName} size={16} />
+      </div>
+
+      <div className="flex-1 flex flex-col justify-center my-1 space-y-1 px-0.5">
+        <p className="text-[8.5px] sm:text-[9.5px] font-extrabold text-stone-800 line-clamp-3 leading-tight drop-shadow-sm">
+          {doc.title || fileName}
+        </p>
+        <div className="space-y-0.5 pt-0.5 opacity-60">
+          <div className="h-1 bg-stone-400 rounded-full w-full"></div>
+          <div className="h-1 bg-stone-400 rounded-full w-4/5"></div>
+          <div className="h-1 bg-stone-300 rounded-full w-3/5"></div>
+        </div>
+      </div>
+
+      <div className="text-[7px] sm:text-[7.5px] font-bold text-stone-500 truncate flex items-center justify-between pt-1 border-t border-stone-300/60">
+        <span className="truncate">{doc.school || 'Document étudiant'}</span>
+        <span className="text-orange-600 font-extrabold text-[7.5px]">Ouvrir</span>
+      </div>
+    </div>
+  );
+};
+
 
 interface ProductItem {
   id: string;
@@ -68,12 +172,75 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   });
   const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<string | null>(null);
   const [selectedFiliereFilter, setSelectedFiliereFilter] = useState<string | null>(null);
+  const [selectedMatiereFilter, setSelectedMatiereFilter] = useState<string | null>(null);
   const [isRecentFilterActive, setIsRecentFilterActive] = useState<boolean>(false);
   const [showSchoolsModal, setShowSchoolsModal] = useState(false);
   const [showFiliereModal, setShowFiliereModal] = useState(false);
+  const [showMatiereModal, setShowMatiereModal] = useState(false);
   const [showMenuModal, setShowMenuModal] = useState(false);
   const [copiedLinkId, setCopiedLinkId] = useState<string | null>(null);
   const [activeCategoryTooltipId, setActiveCategoryTooltipId] = useState<string | null>(null);
+
+  // Mode d'affichage des ressources : 'preview' (Image 2 avec aperçus par défaut) ou 'compact' (style informations actuelles)
+  const [resourceViewMode, setResourceViewMode] = useState<'preview' | 'compact'>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_resource_view_mode');
+      if (saved === 'preview' || saved === 'compact') return saved;
+    } catch (e) {}
+    return 'preview'; // Par défaut en mode aperçu visuel (image 2)
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_resource_view_mode', resourceViewMode);
+    } catch (e) {}
+  }, [resourceViewMode]);
+
+  // Cartes dont la vue a été basculée individuellement (bouton à trois traits)
+  const [flippedCardIds, setFlippedCardIds] = useState<Set<string>>(new Set());
+
+  const toggleCardFlip = (docId: string) => {
+    setFlippedCardIds(prev => {
+      const next = new Set(prev);
+      if (next.has(docId)) {
+        next.delete(docId);
+      } else {
+        next.add(docId);
+      }
+      return next;
+    });
+  };
+
+  // Filtres dynamiques réels depuis la base de données (Cloudflare D1)
+  const [availableSchools, setAvailableSchools] = useState<string[]>([]);
+  const [availableMatieres, setAvailableMatieres] = useState<string[]>([]);
+
+  useEffect(() => {
+    StudyCloudAPI.getPublishedDocumentFilters()
+      .then(res => {
+        if (res && res.success) {
+          if (Array.isArray(res.schools)) setAvailableSchools(res.schools);
+          if (Array.isArray(res.matieres)) setAvailableMatieres(res.matieres);
+        }
+      })
+      .catch(err => console.warn('Erreur chargement filtres dynamiques:', err));
+  }, []);
+
+  const handleOpenDoc = (doc: any) => {
+    const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'view').catch(() => {});
+    if (setActivePreviewItem) {
+      setActivePreviewItem({
+        id: doc.id,
+        name: doc.file_name || doc.title,
+        url: doc.file_url || '',
+        folderName: doc.school || doc.matiere_name || 'Ressources',
+        lockFullscreen: true,
+      });
+    } else if (doc.file_url) {
+      window.open(doc.file_url, '_blank');
+    }
+  };
 
   useEffect(() => {
     const handleDocumentClick = () => setActiveCategoryTooltipId(null);
@@ -104,6 +271,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       if (currentUserId) filters.userId = currentUserId;
       if (selectedSchoolFilter) filters.school = selectedSchoolFilter;
       if (selectedFiliereFilter) filters.filiere = selectedFiliereFilter;
+      if (selectedMatiereFilter) filters.matiereName = selectedMatiereFilter;
+      if (isRecentFilterActive) filters.sort = 'recent';
       if (selectedCategory !== 'Tous') filters.category = selectedCategory;
       if (searchQuery.trim()) filters.search = searchQuery.trim();
 
@@ -117,7 +286,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     } finally {
       setIsLoadingDocs(false);
     }
-  }, [selectedSchoolFilter, selectedFiliereFilter, selectedCategory, searchQuery]);
+  }, [selectedSchoolFilter, selectedFiliereFilter, selectedMatiereFilter, isRecentFilterActive, selectedCategory, searchQuery]);
 
   const loadMorePublishedDocs = useCallback(async () => {
     if (isLoadingDocs || isLoadingMoreDocs || !hasMoreDocs) return;
@@ -133,6 +302,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       if (currentUserId) filters.userId = currentUserId;
       if (selectedSchoolFilter) filters.school = selectedSchoolFilter;
       if (selectedFiliereFilter) filters.filiere = selectedFiliereFilter;
+      if (selectedMatiereFilter) filters.matiereName = selectedMatiereFilter;
+      if (isRecentFilterActive) filters.sort = 'recent';
       if (selectedCategory !== 'Tous') filters.category = selectedCategory;
       if (searchQuery.trim()) filters.search = searchQuery.trim();
 
@@ -153,7 +324,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     } finally {
       setIsLoadingMoreDocs(false);
     }
-  }, [docsPage, hasMoreDocs, isLoadingDocs, isLoadingMoreDocs, selectedSchoolFilter, selectedFiliereFilter, selectedCategory, searchQuery]);
+  }, [docsPage, hasMoreDocs, isLoadingDocs, isLoadingMoreDocs, selectedSchoolFilter, selectedFiliereFilter, selectedMatiereFilter, isRecentFilterActive, selectedCategory, searchQuery]);
 
   // Écouter le signal de publication temps réel pour recharger immédiatement
   useEffect(() => {
@@ -718,24 +889,32 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             </button>
           )}
 
-          {/* Right side buttons (Filière, Schools & Menu): Render ONLY in 'ressources' tab */}
+          {/* Right side buttons (Matières, Schools & Menu): Render ONLY in 'ressources' tab */}
           {activeSubTab === 'ressources' && (
             <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
-              {/* Filière Button */}
+              {/* Matière Button */}
               <button
-                onClick={() => setShowFiliereModal(true)}
-                className="px-2.5 py-1.5 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5"
-                title="Filières d'études"
+                onClick={() => setShowMatiereModal(true)}
+                className={`px-2.5 py-1.5 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 ${
+                  selectedMatiereFilter
+                    ? 'bg-blue-600 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
+                    : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917]'
+                }`}
+                title="Filtrer par matière"
               >
-                <GraduationCap className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
-                <span className="hidden sm:inline">Filière</span>
+                <BookOpen className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400" />
+                <span className="hidden sm:inline">Matières</span>
               </button>
 
               {/* Schools Button */}
               <button
                 onClick={() => setShowSchoolsModal(true)}
-                className="px-2.5 py-1.5 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5"
-                title="Écoles partenaires"
+                className={`px-2.5 py-1.5 font-extrabold text-xs rounded-xl border-2 transition-all cursor-pointer flex items-center gap-1.5 active:translate-x-0.5 active:translate-y-0.5 ${
+                  selectedSchoolFilter
+                    ? 'bg-orange-500 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
+                    : 'bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917]'
+                }`}
+                title="Filtrer par école"
               >
                 <Building2 className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
                 <span className="hidden sm:inline">Écoles</span>
@@ -745,7 +924,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               <button
                 onClick={() => setShowMenuModal(true)}
                 className="p-2 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
-                title="Menu principal"
+                title="Options du menu"
               >
                 <Menu className="w-4 h-4 text-stone-800 dark:text-white" />
               </button>
@@ -796,141 +975,105 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         </div>
       </div>
 
-      {/* Filière Side Menu Modal */}
-      {showFiliereModal && (
-        <div className="fixed inset-0 z-[99999]" onClick={() => setShowFiliereModal(false)}>
-          <div className="absolute top-16 right-28 bg-[#2A2A2A] text-white border-2 border-stone-700 rounded-2xl py-2 w-64 shadow-[0px_10px_30px_rgba(0,0,0,0.3)] animate-fadeIn" onClick={(e) => e.stopPropagation()}>
-            <div className="px-4 py-2 border-b border-stone-700 mb-1 flex items-center justify-between">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-orange-400">Filtrer par filière</span>
-              <button onClick={() => setShowFiliereModal(false)} className="text-stone-400 hover:text-white text-xs font-bold cursor-pointer">✕</button>
+      {/* Matières Side Menu Modal (Données réelles de la base D1) */}
+      {showMatiereModal && (
+        <div className="fixed inset-0 z-[99999] bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setShowMatiereModal(false)}>
+          <div className="absolute top-16 right-4 sm:right-28 bg-[#2A2A2A] text-white border-2 border-stone-700 rounded-2xl py-2 w-72 max-h-[80vh] flex flex-col shadow-[0px_10px_30px_rgba(0,0,0,0.3)] animate-fadeIn" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 py-2.5 border-b border-stone-700 mb-1 flex items-center justify-between shrink-0">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-blue-400 flex items-center gap-1.5">
+                <BookOpen className="w-3.5 h-3.5" /> Matières des étudiants & docs
+              </span>
+              <button onClick={() => setShowMatiereModal(false)} className="text-stone-400 hover:text-white text-xs font-bold cursor-pointer">✕</button>
             </div>
-            <div className="flex flex-col">
-              <button 
-                onClick={() => {
-                  setSelectedFiliereFilter('Informatique');
-                  setSelectedSchoolFilter(null);
-                  setIsRecentFilterActive(false);
-                  setSelectedCategory('Tous');
-                  setActiveSubTab('ressources');
-                  setShowFiliereModal(false);
-                }}
-                className={`w-full text-left px-4 py-3 hover:bg-stone-700/60 text-xs font-semibold transition-colors flex items-center justify-between border-b border-stone-800 cursor-pointer ${
-                  selectedFiliereFilter === 'Informatique' ? 'text-orange-400 font-bold bg-stone-700/40' : 'text-stone-200'
-                }`}
-              >
-                <span>💻 Informatique & Génie Logiciel</span>
-                {selectedFiliereFilter === 'Informatique' && <span className="text-[10px] text-orange-400 font-bold">Actif</span>}
-              </button>
-              <button 
-                onClick={() => {
-                  setSelectedFiliereFilter('Mathématiques');
-                  setSelectedSchoolFilter(null);
-                  setIsRecentFilterActive(false);
-                  setSelectedCategory('Tous');
-                  setActiveSubTab('ressources');
-                  setShowFiliereModal(false);
-                }}
-                className={`w-full text-left px-4 py-3 hover:bg-stone-700/60 text-xs font-semibold transition-colors flex items-center justify-between border-b border-stone-800 cursor-pointer ${
-                  selectedFiliereFilter === 'Mathématiques' ? 'text-orange-400 font-bold bg-stone-700/40' : 'text-stone-200'
-                }`}
-              >
-                <span>📐 Mathématiques & Appliquées</span>
-                {selectedFiliereFilter === 'Mathématiques' && <span className="text-[10px] text-orange-400 font-bold">Actif</span>}
-              </button>
-              <button 
-                onClick={() => {
-                  setSelectedFiliereFilter('Droit');
-                  setSelectedSchoolFilter(null);
-                  setIsRecentFilterActive(false);
-                  setSelectedCategory('Tous');
-                  setActiveSubTab('ressources');
-                  setShowFiliereModal(false);
-                }}
-                className={`w-full text-left px-4 py-3 hover:bg-stone-700/60 text-xs font-semibold transition-colors flex items-center justify-between border-b border-stone-800 cursor-pointer ${
-                  selectedFiliereFilter === 'Droit' ? 'text-orange-400 font-bold bg-stone-700/40' : 'text-stone-200'
-                }`}
-              >
-                <span>⚖️ Droit & Sciences Politiques</span>
-                {selectedFiliereFilter === 'Droit' && <span className="text-[10px] text-orange-400 font-bold">Actif</span>}
-              </button>
-              <button 
-                onClick={() => {
-                  setSelectedFiliereFilter('Médecine');
-                  setSelectedSchoolFilter(null);
-                  setIsRecentFilterActive(false);
-                  setSelectedCategory('Tous');
-                  setActiveSubTab('ressources');
-                  setShowFiliereModal(false);
-                }}
-                className={`w-full text-left px-4 py-3 hover:bg-stone-700/60 text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer ${
-                  selectedFiliereFilter === 'Médecine' ? 'text-orange-400 font-bold bg-stone-700/40' : 'text-stone-200'
-                }`}
-              >
-                <span>🩺 Médecine & Santé</span>
-                {selectedFiliereFilter === 'Médecine' && <span className="text-[10px] text-orange-400 font-bold">Actif</span>}
-              </button>
+            
+            {/* Si un filtre matière est actif, option pour réinitialiser */}
+            {selectedMatiereFilter && (
+              <div className="px-3 py-1.5 border-b border-stone-800 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedMatiereFilter(null); setShowMatiereModal(false); }}
+                  className="w-full text-center py-1 text-[11px] font-bold bg-stone-800 hover:bg-stone-700 text-stone-300 rounded-lg border border-stone-600 transition-colors cursor-pointer"
+                >
+                  ✕ Effacer le filtre matière
+                </button>
+              </div>
+            )}
+
+            <div className="flex flex-col overflow-y-auto max-h-[60vh] divide-y divide-stone-800">
+              {availableMatieres.length === 0 ? (
+                <div className="p-4 text-center text-xs text-stone-400">
+                  Aucune matière trouvée pour le moment.
+                </div>
+              ) : (
+                availableMatieres.map((mat) => (
+                  <button 
+                    key={mat}
+                    onClick={() => {
+                      setSelectedMatiereFilter(prev => prev === mat ? null : mat);
+                      setIsRecentFilterActive(false);
+                      setShowMatiereModal(false);
+                    }}
+                    className={`w-full text-left px-4 py-3 hover:bg-stone-700/60 text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                      selectedMatiereFilter === mat ? 'text-blue-400 font-bold bg-stone-700/40' : 'text-stone-200'
+                    }`}
+                  >
+                    <span className="truncate pr-2">📖 {mat}</span>
+                    {selectedMatiereFilter === mat && <span className="text-[10px] text-blue-400 font-bold shrink-0">Actif</span>}
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>
       )}
 
-      {/* Schools Side Menu Modal */}
+      {/* Schools Side Menu Modal (Données réelles de la base D1) */}
       {showSchoolsModal && (
-        <div className="fixed inset-0 z-[99999]" onClick={() => setShowSchoolsModal(false)}>
-          <div className="absolute top-16 right-16 bg-[#2A2A2A] text-white border-2 border-stone-700 rounded-2xl py-2 w-64 shadow-[0px_10px_30px_rgba(0,0,0,0.3)] animate-fadeIn" onClick={(e) => e.stopPropagation()}>
-            <div className="px-4 py-2 border-b border-stone-700 mb-1 flex items-center justify-between">
-              <span className="text-xs font-extrabold uppercase tracking-wider text-orange-400">Écoles partenaires</span>
+        <div className="fixed inset-0 z-[99999] bg-black/40 backdrop-blur-sm animate-fadeIn" onClick={() => setShowSchoolsModal(false)}>
+          <div className="absolute top-16 right-4 sm:right-16 bg-[#2A2A2A] text-white border-2 border-stone-700 rounded-2xl py-2 w-72 max-h-[80vh] flex flex-col shadow-[0px_10px_30px_rgba(0,0,0,0.3)] animate-fadeIn" onClick={(e) => e.stopPropagation()}>
+            <div className="px-4 py-2.5 border-b border-stone-700 mb-1 flex items-center justify-between shrink-0">
+              <span className="text-xs font-extrabold uppercase tracking-wider text-orange-400 flex items-center gap-1.5">
+                <Building2 className="w-3.5 h-3.5" /> Écoles des étudiants & docs
+              </span>
               <button onClick={() => setShowSchoolsModal(false)} className="text-stone-400 hover:text-white text-xs font-bold cursor-pointer">✕</button>
             </div>
-            <div className="flex flex-col">
-              <button 
-                onClick={() => {
-                  setSelectedSchoolFilter('Université Paris-Saclay');
-                  setSelectedFiliereFilter(null);
-                  setIsRecentFilterActive(false);
-                  setSelectedCategory('Tous');
-                  setActiveSubTab('ressources');
-                  setShowSchoolsModal(false);
-                }}
-                className={`w-full text-left px-4 py-3 hover:bg-stone-700/60 text-xs font-semibold transition-colors flex items-center justify-between border-b border-stone-800 cursor-pointer ${
-                  selectedSchoolFilter === 'Université Paris-Saclay' ? 'text-orange-400 font-bold bg-stone-700/40' : 'text-stone-200'
-                }`}
-              >
-                <span>🏛️ Université Paris-Saclay</span>
-                {selectedSchoolFilter === 'Université Paris-Saclay' && <span className="text-[10px] text-orange-400 font-bold">Actif</span>}
-              </button>
-              <button 
-                onClick={() => {
-                  setSelectedSchoolFilter('Université Félix Houphouët-Boigny');
-                  setSelectedFiliereFilter(null);
-                  setIsRecentFilterActive(false);
-                  setSelectedCategory('Tous');
-                  setActiveSubTab('ressources');
-                  setShowSchoolsModal(false);
-                }}
-                className={`w-full text-left px-4 py-3 hover:bg-stone-700/60 text-xs font-semibold transition-colors flex items-center justify-between border-b border-stone-800 cursor-pointer ${
-                  selectedSchoolFilter === 'Université Félix Houphouët-Boigny' ? 'text-orange-400 font-bold bg-stone-700/40' : 'text-stone-200'
-                }`}
-              >
-                <span>🏛️ Université Félix Houphouët-Boigny</span>
-                {selectedSchoolFilter === 'Université Félix Houphouët-Boigny' && <span className="text-[10px] text-orange-400 font-bold">Actif</span>}
-              </button>
-              <button 
-                onClick={() => {
-                  setSelectedSchoolFilter('École Polytechnique');
-                  setSelectedFiliereFilter(null);
-                  setIsRecentFilterActive(false);
-                  setSelectedCategory('Tous');
-                  setActiveSubTab('ressources');
-                  setShowSchoolsModal(false);
-                }}
-                className={`w-full text-left px-4 py-3 hover:bg-stone-700/60 text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer ${
-                  selectedSchoolFilter === 'École Polytechnique' ? 'text-orange-400 font-bold bg-stone-700/40' : 'text-stone-200'
-                }`}
-              >
-                <span>🏛️ École Polytechnique</span>
-                {selectedSchoolFilter === 'École Polytechnique' && <span className="text-[10px] text-orange-400 font-bold">Actif</span>}
-              </button>
+
+            {/* Si un filtre école est actif, option pour réinitialiser */}
+            {selectedSchoolFilter && (
+              <div className="px-3 py-1.5 border-b border-stone-800 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => { setSelectedSchoolFilter(null); setShowSchoolsModal(false); }}
+                  className="w-full text-center py-1 text-[11px] font-bold bg-stone-800 hover:bg-stone-700 text-stone-300 rounded-lg border border-stone-600 transition-colors cursor-pointer"
+                >
+                  ✕ Effacer le filtre école
+                </button>
+              </div>
+            )}
+
+            <div className="flex flex-col overflow-y-auto max-h-[60vh] divide-y divide-stone-800">
+              {availableSchools.length === 0 ? (
+                <div className="p-4 text-center text-xs text-stone-400">
+                  Aucune école trouvée pour le moment.
+                </div>
+              ) : (
+                availableSchools.map((sc) => (
+                  <button 
+                    key={sc}
+                    onClick={() => {
+                      setSelectedSchoolFilter(prev => prev === sc ? null : sc);
+                      setIsRecentFilterActive(false);
+                      setShowSchoolsModal(false);
+                    }}
+                    className={`w-full text-left px-4 py-3 hover:bg-stone-700/60 text-xs font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                      selectedSchoolFilter === sc ? 'text-orange-400 font-bold bg-stone-700/40' : 'text-stone-200'
+                    }`}
+                  >
+                    <span className="truncate pr-2">🏛️ {sc}</span>
+                    {selectedSchoolFilter === sc && <span className="text-[10px] text-orange-400 font-bold shrink-0">Actif</span>}
+                  </button>
+                ))
+              )}
             </div>
           </div>
         </div>
@@ -942,27 +1085,52 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           <div className="absolute top-16 right-3 md:right-8 bg-[#2A2A2A] text-white border-2 border-stone-700 rounded-2xl py-2 w-64 md:w-80 shadow-[0px_10px_30px_rgba(0,0,0,0.3)] animate-fadeIn" onClick={(e) => e.stopPropagation()}>
             <div className="px-4 md:px-5 py-3 md:py-4 border-b border-stone-700 mb-1 flex items-center justify-between">
               <span className="text-xs md:text-sm font-extrabold uppercase tracking-wider text-orange-400">Options du menu</span>
-              <button onClick={() => setShowMenuModal(false)} className="text-stone-400 hover:text-white text-xs md:text-sm font-bold">✕</button>
+              <button onClick={() => setShowMenuModal(false)} className="text-stone-400 hover:text-white text-xs md:text-sm font-bold cursor-pointer">✕</button>
             </div>
             <div className="flex flex-col">
+              {/* Bouton Œil : bascule mode aperçu (image 2) vs mode compact actuel */}
               <button 
-                onClick={() => { setShowMenuModal(false); }}
-                className="w-full text-left px-4 md:px-5 py-3 md:py-4 hover:bg-stone-700/60 text-xs md:text-sm font-semibold text-stone-200 transition-colors border-b border-stone-800 flex items-center gap-3 cursor-pointer"
+                onClick={() => {
+                  setResourceViewMode(prev => prev === 'preview' ? 'compact' : 'preview');
+                  setShowMenuModal(false);
+                }}
+                className="w-full text-left px-4 md:px-5 py-3 md:py-4 hover:bg-stone-700/60 text-xs md:text-sm font-semibold text-stone-200 transition-colors border-b border-stone-800 flex items-center justify-between cursor-pointer"
               >
-                <span className="text-base md:text-lg">👁️</span> Voir l'aperçu des fichiers
+                <div className="flex items-center gap-3">
+                  <span className="text-base md:text-lg">👁️</span>
+                  <span>{resourceViewMode === 'preview' ? 'Mode compact (cartes sans aperçu)' : "Voir l'aperçu des fichiers"}</span>
+                </div>
+                {resourceViewMode === 'preview' && (
+                  <span className="text-[10px] text-orange-400 font-bold bg-orange-950/60 px-2 py-0.5 rounded border border-orange-800 shrink-0">
+                    Aperçu actif
+                  </span>
+                )}
               </button>
+
+              {/* Bouton Récent : tri du plus récent au plus ancien */}
               <button 
                 onClick={() => {
                   setIsRecentFilterActive(true);
                   setSelectedSchoolFilter(null);
                   setSelectedFiliereFilter(null);
+                  setSelectedMatiereFilter(null);
                   setSelectedCategory('Tous');
                   setActiveSubTab('ressources');
                   setShowMenuModal(false);
                 }}
-                className="w-full text-left px-4 md:px-5 py-3 md:py-4 hover:bg-stone-700/60 text-xs md:text-sm font-semibold text-stone-200 transition-colors flex items-center gap-3 cursor-pointer"
+                className={`w-full text-left px-4 md:px-5 py-3 md:py-4 hover:bg-stone-700/60 text-xs md:text-sm font-semibold transition-colors flex items-center justify-between cursor-pointer ${
+                  isRecentFilterActive ? 'text-orange-400 font-bold bg-stone-700/40' : 'text-stone-200'
+                }`}
               >
-                <span className="text-base md:text-lg">📚</span> Tous les fichiers récents
+                <div className="flex items-center gap-3">
+                  <span className="text-base md:text-lg">📚</span>
+                  <span>Tous les fichiers récents</span>
+                </div>
+                {isRecentFilterActive && (
+                  <span className="text-[10px] text-orange-400 font-bold bg-orange-950/60 px-2 py-0.5 rounded border border-orange-800 shrink-0">
+                    Actif
+                  </span>
+                )}
               </button>
             </div>
           </div>
@@ -1217,14 +1385,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         {/* ONGLET RESSOURCES (Actuel) */}
         {activeSubTab === 'ressources' && (
           <div className="space-y-3">
-            {/* If a School, Filière or Recent Files filter is active, show sticky header connected to top navigation with centered title & 3D pill 'Retour' button */}
-            {(selectedSchoolFilter || selectedFiliereFilter || isRecentFilterActive) ? (
+            {/* If a School, Matière, Filière or Recent Files filter is active, show sticky header connected to top navigation with centered title & 3D pill 'Retour' button */}
+            {(selectedSchoolFilter || selectedMatiereFilter || selectedFiliereFilter || isRecentFilterActive) ? (
               <div className="sticky top-[92px] z-30 bg-[#FDFBF7]/95 backdrop-blur-sm -mt-2 pt-1 pb-2 mb-2 flex items-center justify-between gap-2 border-b border-stone-200/80">
                 {/* 3D Pill 'Retour' Button matching user design */}
                 <button
                   type="button"
                   onClick={() => {
                     setSelectedSchoolFilter(null);
+                    setSelectedMatiereFilter(null);
                     setSelectedFiliereFilter(null);
                     setIsRecentFilterActive(false);
                   }}
@@ -1242,6 +1411,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       <Building2 className="w-4 h-4 sm:w-5 sm:h-5 text-orange-600 shrink-0" />
                       <span className="truncate">{selectedSchoolFilter}</span>
                     </>
+                  ) : selectedMatiereFilter ? (
+                    <>
+                      <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 shrink-0" />
+                      <span className="truncate">{selectedMatiereFilter}</span>
+                    </>
                   ) : selectedFiliereFilter ? (
                     <>
                       <GraduationCap className="w-4 h-4 sm:w-5 sm:h-5 text-blue-600 shrink-0" />
@@ -1249,7 +1423,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     </>
                   ) : (
                     <>
-                      <BookOpen className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 shrink-0" />
+                      <Sparkles className="w-4 h-4 sm:w-5 sm:h-5 text-emerald-600 shrink-0" />
                       <span className="truncate">Tous les fichiers récents</span>
                     </>
                   )}
@@ -1311,7 +1485,201 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <h3 className="text-base font-extrabold text-stone-900">Aucun document trouvé</h3>
                 <p className="text-xs text-stone-600 mt-1">Essayez de modifier vos filtres ou publiez un document depuis vos fichiers.</p>
               </div>
+            ) : resourceViewMode === 'preview' ? (
+              /* MODE APERÇU (STYLE IMAGE 2 - ACTIVÉ PAR DÉFAUT) */
+              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2.5 sm:gap-3.5 w-full">
+                {publishedDocs.map((doc) => {
+                  const docSizeStr = (() => {
+                    const bytes = doc.file_size || 0;
+                    if (!bytes) return '—';
+                    const k = 1024;
+                    const sizes = ['o', 'Ko', 'Mo', 'Go'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+                  })();
+
+                  const isFlipped = flippedCardIds.has(doc.id);
+
+                  // Si l'utilisateur a appuyé sur les 3 traits de cette carte spécifique :
+                  // cette carte SEULE change pour afficher les informations détaillées (comme la carte actuelle)
+                  if (isFlipped) {
+                    return (
+                      <div
+                        key={doc.id}
+                        className="aspect-[3/4] bg-[#2A2B2E] text-stone-100 border-2 border-orange-500 rounded-2xl p-2.5 flex flex-col justify-between shadow-[2.5px_2.5px_0px_0px_#1c1917] transition-all relative select-none overflow-hidden"
+                      >
+                        {/* Header avec bouton retour aperçu */}
+                        <div className="flex items-center justify-between gap-1 border-b border-stone-700/80 pb-1 mb-1">
+                          <span className="text-[8px] sm:text-[9px] font-black bg-orange-500/20 text-orange-400 border border-orange-500/40 px-1.5 py-0.5 rounded truncate max-w-[70px]">
+                            {doc.category || 'Cours'}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => toggleCardFlip(doc.id)}
+                            className="px-1.5 py-0.5 bg-stone-800 hover:bg-stone-700 text-orange-400 text-[8.5px] font-bold rounded border border-stone-600 flex items-center gap-1 transition-colors cursor-pointer"
+                            title="Retourner vers l'aperçu"
+                          >
+                            <RotateCcw className="w-2.5 h-2.5" />
+                            <span>Aperçu</span>
+                          </button>
+                        </div>
+
+                        {/* Informations détaillées */}
+                        <div className="flex-1 flex flex-col justify-around py-1 space-y-1 overflow-hidden">
+                          <h3 className="text-[10.5px] sm:text-[11.5px] font-black text-white truncate" title={doc.title || doc.file_name}>
+                            {doc.title || doc.file_name}
+                          </h3>
+
+                          {doc.matiere_name && (
+                            <p className="text-[8.5px] sm:text-[9.5px] text-stone-300 font-semibold truncate" title={doc.matiere_name}>
+                              📚 {doc.matiere_name}{doc.level ? ` · ${doc.level}` : ''}
+                            </p>
+                          )}
+
+                          <div className="flex items-center gap-1 text-[8.5px] sm:text-[9.5px] text-stone-300 truncate">
+                            <Building2 className="w-3 h-3 text-orange-400 shrink-0" />
+                            <span className="truncate">{doc.school && doc.school.trim() ? doc.school : 'École non renseignée'}</span>
+                          </div>
+
+                          <div className="flex items-center gap-1 text-[8px] sm:text-[8.5px] text-stone-400 font-medium truncate">
+                            {doc.country && <span className="flex items-center gap-0.5"><Globe className="w-2.5 h-2.5" />{doc.country}</span>}
+                            {doc.author_name && <span className="truncate">· {doc.author_name}</span>}
+                          </div>
+
+                          <div className="flex items-center justify-between text-[8px] sm:text-[8.5px] text-stone-400 pt-1 border-t border-stone-700/60">
+                            <span>{docSizeStr}</span>
+                            <span>{doc.views_count || 0} vues · {doc.downloads_count || 0} DL</span>
+                          </div>
+                        </div>
+
+                        {/* Bas de carte */}
+                        <div className="flex items-center justify-between pt-1.5 border-t border-stone-700 gap-1.5">
+                          <button
+                            type="button"
+                            onClick={() => handleOpenDoc(doc)}
+                            className="flex-1 py-1 bg-white hover:bg-stone-100 text-stone-900 font-extrabold text-[10px] rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center justify-center gap-1 transition-all cursor-pointer active:scale-95"
+                          >
+                            <Eye className="w-3 h-3 text-stone-900" />
+                            <span>Voir</span>
+                          </button>
+
+                          {doc.file_url ? (
+                            <a
+                              href={doc.file_url}
+                              download={doc.file_name || doc.title}
+                              onClick={() => {
+                                const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
+                                StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'download').catch(() => {});
+                              }}
+                              className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:scale-95"
+                              title="Télécharger"
+                            >
+                              <Download className="w-3 h-3" />
+                            </a>
+                          ) : (
+                            <button
+                              className="p-1 sm:p-1.5 bg-stone-700 text-stone-500 rounded-lg border border-stone-700 cursor-not-allowed flex items-center justify-center"
+                              disabled
+                            >
+                              <Download className="w-3 h-3" />
+                            </button>
+                          )}
+
+                          <button
+                            type="button"
+                            onClick={() => toggleCardFlip(doc.id)}
+                            className="p-1 sm:p-1.5 bg-stone-800 hover:bg-stone-700 text-orange-400 rounded-lg border border-stone-600 transition-all cursor-pointer flex items-center justify-center"
+                            title="Retourner vers l'aperçu"
+                          >
+                            <RotateCcw className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    );
+                  }
+
+                  // Carte Mode Aperçu Visuel (Image 2)
+                  return (
+                    <div
+                      key={doc.id}
+                      className="aspect-[3/4] bg-[#2A2B2E] border-2 border-stone-800 hover:border-orange-500 rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between shadow-[2px_2px_0px_0px_#1c1917] hover:shadow-[3.5px_3.5px_0px_0px_#1c1917] transition-all relative group select-none overflow-hidden"
+                    >
+                      {/* Header: Catégorie à gauche, Taille à droite */}
+                      <div className="flex items-center justify-between gap-1 z-10">
+                        <span className="text-[7.5px] sm:text-[8.5px] font-black bg-orange-500/20 text-orange-400 border border-orange-500/40 px-1.5 py-0.5 rounded truncate max-w-[65px]">
+                          {doc.category || 'Cours'}
+                        </span>
+                        <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/70 text-stone-200 border border-stone-700 px-1.5 py-0.5 rounded shadow-sm">
+                          {docSizeStr}
+                        </span>
+                      </div>
+
+                      {/* Zone centrale : Miniature du document (clic pour ouvrir) */}
+                      <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-[#1E1F22] flex items-center justify-center relative shadow-inner">
+                        <DocumentCardThumbnail doc={doc} onClick={() => handleOpenDoc(doc)} />
+                      </div>
+
+                      {/* Titre du document */}
+                      <div className="px-0.5 mb-1">
+                        <p
+                          onClick={() => handleOpenDoc(doc)}
+                          className="text-[9.5px] sm:text-[10.5px] font-black text-stone-100 truncate cursor-pointer hover:text-orange-400 transition-colors"
+                          title={doc.title || doc.file_name}
+                        >
+                          {doc.title || doc.file_name}
+                        </p>
+                      </div>
+
+                      {/* Bas de carte : Vues + Télécharger + Bouton 3 traits pour basculer les infos */}
+                      <div className="flex items-center justify-between pt-1 border-t border-stone-800/80 gap-1">
+                        <span className="text-[7.5px] font-medium text-stone-400 truncate">
+                          {doc.views_count || 0} vues
+                        </span>
+                        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                          {/* Bouton Télécharger */}
+                          {doc.file_url ? (
+                            <a
+                              href={doc.file_url}
+                              download={doc.file_name || doc.title}
+                              onClick={() => {
+                                const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
+                                StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'download').catch(() => {});
+                              }}
+                              className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:scale-95"
+                              title="Télécharger"
+                            >
+                              <Download className="w-3 h-3" />
+                            </a>
+                          ) : (
+                            <button
+                              className="p-1 sm:p-1.5 bg-stone-700 text-stone-500 rounded-lg border border-stone-700 cursor-not-allowed flex items-center justify-center"
+                              title="Fichier non disponible"
+                              disabled
+                            >
+                              <Download className="w-3 h-3" />
+                            </button>
+                          )}
+
+                          {/* Bouton 3 traits : bascule cette carte lui seul vers les détails */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleCardFlip(doc.id);
+                            }}
+                            className="p-1 sm:p-1.5 bg-stone-800 hover:bg-stone-700 text-stone-200 hover:text-orange-400 rounded-lg border border-stone-700 hover:border-orange-500 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:scale-95"
+                            title="Voir les informations complètes sur ce fichier"
+                          >
+                            <Menu className="w-3 h-3" />
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
             ) : (
+              /* MODE COMPACT (Cartes Détaillées) */
               <div className="grid grid-cols-2 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-2 sm:gap-2.5 lg:gap-3 w-full">
                 {publishedDocs.map((doc) => {
                   const docSizeStr = (() => {
@@ -1400,35 +1768,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           </span>
                         </div>
                         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
-                          {doc.file_url ? (
-                            <a
-                              href={doc.file_url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              onClick={() => {
-                                const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
-                                StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'view').catch(() => {});
-                              }}
-                              className="p-1 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1 transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
-                              title="Visualiser"
-                            >
-                              <Eye className="w-3 h-3" />
-                              <span className="hidden sm:inline">Voir</span>
-                            </a>
-                          ) : (
-                            <button
-                              onClick={() => {
-                                const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
-                                StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'click').catch(() => {});
-                                setActivePreviewItem({ name: doc.file_name || doc.title, url: doc.file_url || '', folderName: doc.school || '', lockFullscreen: true });
-                              }}
-                              className="p-1 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1 transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
-                              title="Visualiser"
-                            >
-                              <Eye className="w-3 h-3" />
-                              <span className="hidden sm:inline">Voir</span>
-                            </button>
-                          )}
+                          <button
+                            onClick={() => handleOpenDoc(doc)}
+                            className="p-1 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 font-bold text-[10px] sm:text-xs rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] flex items-center gap-1 transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                            title="Visualiser"
+                          >
+                            <Eye className="w-3 h-3" />
+                            <span className="hidden sm:inline">Voir</span>
+                          </button>
                           {doc.file_url ? (
                             <a
                               href={doc.file_url}

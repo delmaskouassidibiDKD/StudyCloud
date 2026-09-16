@@ -4712,6 +4712,45 @@ Lien vers le produit : ${productShareUrl}`;
         }
         return jsonResponse({ success: true, duplicates }, 200, origin);
       }
+      if (path === "/api/published-documents/filters" && method === "GET") {
+        try {
+          const [userSchoolsRes, pubSchoolsRes] = await Promise.all([
+            env.DB.prepare(`SELECT DISTINCT school FROM users WHERE school IS NOT NULL AND TRIM(school) != ''`).all().catch(() => ({ results: [] })),
+            env.DB.prepare(`SELECT DISTINCT school FROM published_documents WHERE school IS NOT NULL AND TRIM(school) != ''`).all().catch(() => ({ results: [] }))
+          ]);
+          const schoolsSet = /* @__PURE__ */ new Set();
+          (userSchoolsRes?.results || []).forEach((r) => {
+            const s = (r.school || "").trim();
+            if (s && s.toLowerCase() !== "null" && s.toLowerCase() !== "undefined")
+              schoolsSet.add(s);
+          });
+          (pubSchoolsRes?.results || []).forEach((r) => {
+            const s = (r.school || "").trim();
+            if (s && s.toLowerCase() !== "null" && s.toLowerCase() !== "undefined")
+              schoolsSet.add(s);
+          });
+          const schools = Array.from(schoolsSet).sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
+          const [matieresRes, pubMatieresRes] = await Promise.all([
+            env.DB.prepare(`SELECT DISTINCT name FROM matieres WHERE name IS NOT NULL AND TRIM(name) != ''`).all().catch(() => ({ results: [] })),
+            env.DB.prepare(`SELECT DISTINCT matiere_name FROM published_documents WHERE matiere_name IS NOT NULL AND TRIM(matiere_name) != ''`).all().catch(() => ({ results: [] }))
+          ]);
+          const matieresSet = /* @__PURE__ */ new Set();
+          (matieresRes?.results || []).forEach((r) => {
+            const m = (r.name || "").trim();
+            if (m && m.toLowerCase() !== "null" && m.toLowerCase() !== "undefined")
+              matieresSet.add(m);
+          });
+          (pubMatieresRes?.results || []).forEach((r) => {
+            const m = (r.matiere_name || "").trim();
+            if (m && m.toLowerCase() !== "null" && m.toLowerCase() !== "undefined")
+              matieresSet.add(m);
+          });
+          const matieres = Array.from(matieresSet).sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
+          return jsonResponse({ success: true, schools, matieres }, 200, origin);
+        } catch (filterErr) {
+          return jsonResponse({ success: false, error: filterErr.message, schools: [], matieres: [] }, 500, origin);
+        }
+      }
       if (path === "/api/published-documents") {
         if (method === "GET") {
           const school = url.searchParams.get("school");
@@ -4723,6 +4762,7 @@ Lien vers le produit : ${productShareUrl}`;
           const search = url.searchParams.get("search");
           const isPublicParam = url.searchParams.get("isPublic");
           const userId = url.searchParams.get("userId");
+          const sort = url.searchParams.get("sort");
           const pageParam = url.searchParams.get("page");
           const limitParam = url.searchParams.get("limit");
           const page = pageParam ? Math.max(1, parseInt(pageParam, 10)) : null;
@@ -4779,7 +4819,7 @@ Lien vers le produit : ${productShareUrl}`;
           query += " ORDER BY created_at DESC";
           const { results } = await env.DB.prepare(query).bind(...params).all();
           let docsList = results || [];
-          if (userId && docsList.length > 0) {
+          if (sort !== "recent" && userId && docsList.length > 0) {
             try {
               const [userRes, matieresRes, filesRes, interactionsRes] = await Promise.all([
                 env.DB.prepare("SELECT school, filiere, country FROM users WHERE id = ?").bind(userId).first(),
