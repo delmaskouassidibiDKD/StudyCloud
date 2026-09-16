@@ -407,6 +407,23 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
     };
     setImportedFiles(prev => [duplicated, ...prev]);
     localStorage.setItem('unifolder_last_imported_id', newId);
+
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.registerFileMetadata({
+      id: newId,
+      userId,
+      matiereId: duplicated.matiere || null,
+      name: duplicated.name,
+      size: duplicated.size,
+      type: duplicated.type,
+      extension: duplicated.extension,
+      r2Key: (duplicated as any).r2Key || null,
+      fileUrl: duplicated.url,
+      isFavorite: duplicated.isFavorite,
+      isImported: true,
+      lastImported: now
+    }).catch(() => {});
+
     window.dispatchEvent(new Event('unifolder_files_updated'));
     setOpenMenuId(null);
   };

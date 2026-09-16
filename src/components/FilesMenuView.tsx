@@ -487,6 +487,22 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       } catch (e) {}
     }
 
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+    StudyCloudAPI.registerFileMetadata({
+      id: newId,
+      userId,
+      matiereId: duplicated.matiere || null,
+      name: duplicated.name,
+      size: duplicated.size,
+      type: duplicated.type,
+      extension: duplicated.extension,
+      r2Key: (duplicated as any).r2Key || null,
+      fileUrl: duplicated.url,
+      isFavorite: duplicated.isFavorite,
+      isImported: true,
+      lastImported: now
+    }).catch(() => {});
+
     window.dispatchEvent(new Event('unifolder_files_updated'));
     setOpenMenuId(null);
   };
