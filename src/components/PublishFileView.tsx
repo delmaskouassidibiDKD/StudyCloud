@@ -785,11 +785,18 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       });
 
       if (onPublish && publishedSuccessNames.length > 0) {
+        const cleanFilesToPublish = filesToPublish.map(f => ({
+          id: f.id,
+          name: f.name,
+          size: f.size,
+          type: f.type,
+          url: f.url && !f.url.startsWith('data:') ? f.url : ''
+        }));
         onPublish(
           infoMode === 'all' ? docTitle : publishedSuccessNames[0],
           docDescription || '',
           docCategory || 'Cours',
-          filesToPublish
+          cleanFilesToPublish
         );
       }
 

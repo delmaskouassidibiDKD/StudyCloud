@@ -626,14 +626,15 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
             name: item.name,
             size: item.size,
             type: item.type,
-            url: item.url
+            url: item.url && !item.url.startsWith('data:') ? item.url : ''
           })),
           totalSize: newItems.reduce((acc, f) => acc + f.size, 0),
           downloadsCount: 0,
           isPasswordProtected: false,
           viewsCount: 0
         };
-        localStorage.setItem('unifolder_shares', JSON.stringify([newSharedFolder, ...existingShares]));
+        const trimmedShares = [newSharedFolder, ...existingShares].slice(0, 30);
+        localStorage.setItem('unifolder_shares', JSON.stringify(trimmedShares));
       } catch (err) {
         console.error(err);
       }

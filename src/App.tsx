@@ -29,6 +29,23 @@ import { AuthPage } from './components/auth/AuthPage';
 import { OnboardingPage } from './components/auth/OnboardingPage';
 import { GoogleSecuritySetupPage } from './components/auth/GoogleSecuritySetupPage';
 
+// Utilitaire de sécurisation du stockage local pour éviter l'erreur "QuotaExceededError" (5MB max)
+export const sanitizeFoldersForStorage = (foldersList: SharedFolder[]): SharedFolder[] => {
+  if (!Array.isArray(foldersList)) return [];
+  return foldersList.map((folder) => ({
+    ...folder,
+    qrCodeData: folder.qrCodeData && folder.qrCodeData.length > 500 ? undefined : folder.qrCodeData,
+    files: (folder.files || []).map((file) => ({
+      id: file.id,
+      name: file.name,
+      size: file.size,
+      type: file.type,
+      // Ne JAMAIS persister de data URL base64 dans le stockage local pour éviter l'erreur de dépassement de quota
+      url: file.url && !file.url.startsWith('data:') ? file.url : '',
+    })),
+  }));
+};
+
 export default function App() {
   const { user, isAuthenticated, isLoading: authLoading, needsOnboarding, needsSecuritySetup, loginWithToken } = useAuth();
 
@@ -205,6 +222,20 @@ export default function App() {
   // Nettoyage immédiat des anciennes données de démonstration / locales écrites en dur dans le cache
   useEffect(() => {
     try {
+      // Nettoyer les éventuelles data URLs géantes déjà stockées dans unifolder_shares pour libérer le quota
+      const rawShares = localStorage.getItem('unifolder_shares');
+      if (rawShares && (rawShares.includes('data:image') || rawShares.length > 300000)) {
+        try {
+          const parsed = JSON.parse(rawShares);
+          if (Array.isArray(parsed)) {
+            const cleaned = sanitizeFoldersForStorage(parsed);
+            localStorage.setItem('unifolder_shares', JSON.stringify(cleaned));
+          }
+        } catch (cleanErr) {
+          localStorage.removeItem('unifolder_shares');
+        }
+      }
+
       if (localStorage.getItem('sc_mock_cleaned_v2') !== 'true') {
         localStorage.setItem('sc_mock_cleaned_v2', 'true');
         // Nettoyer les faux dossiers de démo
@@ -960,7 +991,19 @@ export default function App() {
   }, [shareId, folders]);
 
   useEffect(() => {
-    localStorage.setItem('unifolder_shares', JSON.stringify(folders));
+    try {
+      const sanitized = sanitizeFoldersForStorage(folders);
+      localStorage.setItem('unifolder_shares', JSON.stringify(sanitized));
+    } catch (e) {
+      console.warn('LocalStorage quota exceeded for unifolder_shares:', e);
+      try {
+        // En cas de saturation du quota, conserver seulement les 15 partages les plus récents
+        const trimmed = sanitizeFoldersForStorage(folders.slice(0, 15));
+        localStorage.setItem('unifolder_shares', JSON.stringify(trimmed));
+      } catch (err2) {
+        console.error('Impossible de persister unifolder_shares dans le stockage local:', err2);
+      }
+    }
   }, [folders]);
 
   useEffect(() => {
@@ -998,7 +1041,12 @@ export default function App() {
             allowDownload: Boolean(row.allow_download),
           }));
           setFolders(mapped);
-          localStorage.setItem('unifolder_shares', JSON.stringify(mapped));
+          try {
+            const sanitizedMapped = sanitizeFoldersForStorage(mapped);
+            localStorage.setItem('unifolder_shares', JSON.stringify(sanitizedMapped));
+          } catch (e) {
+            console.warn('Erreur mise en cache locale des partages distants:', e);
+          }
         }
       })
       .catch((err) => console.warn('Failed to load user shares from D1:', err));
@@ -1180,15 +1228,24 @@ export default function App() {
             <PublishFileView
               onBack={() => handleSetTab('folders')}
               onPublish={(title, description, category, files) => {
-                const totalSize = files.reduce((acc, f) => acc + f.size, 0);
+                const totalSize = files.reduce((acc, f) => acc + (f.size || 0), 0);
+                const cleanFiles = (files || []).map((f) => ({
+                  id: f.id || ('f-' + Math.random().toString(36).substring(2, 9)),
+                  name: f.name,
+                  size: f.size || 0,
+                  type: f.type || 'file',
+                  url: f.url && !f.url.startsWith('data:') ? f.url : '',
+                }));
                 const newFolder: SharedFolder = {
                   id: 'folder-' + Math.random().toString(36).substring(2, 9),
                   title,
                   description: description || `Publication de ${files.length} document(s).`,
                   category,
-                  author: 'Utilisateur',
+                  author: user?.name || 'Utilisateur',
+                  school: user?.school || '',
+                  country: user?.country || "Côte d'Ivoire",
                   createdAt: new Date().toISOString(),
-                  files,
+                  files: cleanFiles,
                   totalSize,
                   downloadsCount: 0,
                   isPasswordProtected: false,

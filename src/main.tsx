@@ -29,6 +29,15 @@ class ErrorBoundary extends React.Component {
             <div className="flex flex-col gap-2 pt-2">
               <button
                 onClick={() => {
+                  try {
+                    const heavyKeys = ['unifolder_shares', 'published_selected_files', 'unifolder_uploaded_items'];
+                    heavyKeys.forEach((k) => {
+                      const val = localStorage.getItem(k);
+                      if (val && (val.includes('data:image') || val.length > 200000)) {
+                        localStorage.removeItem(k);
+                      }
+                    });
+                  } catch (e) {}
                   window.location.reload();
                 }}
                 className="w-full py-3 bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
