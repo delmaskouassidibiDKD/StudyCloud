@@ -8,6 +8,7 @@ import * as pdfjsLib from 'pdfjs-dist';
 import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import { StudyCloudAPI } from '../services/api';
+import { watermarkPDF } from '../utils/pdfWatermark';
 
 // Configure worker for PDF.js
 pdfjsLib.GlobalWorkerOptions.workerSrc = '/pdf.worker.min.js';
@@ -364,7 +365,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
-  const processFiles = (filesArray: File[]) => {
+  const processFiles = async (filesArray: File[]) => {
     const allowedFiles: File[] = [];
     const forbiddenFilesDetected: { name: string; reason: string }[] = [];
 
@@ -390,10 +391,16 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
     if (allowedFiles.length === 0) return;
 
-    allowedFiles.forEach((file: any) => {
+    for (let file of allowedFiles) {
       const fileNameLower = file.name.toLowerCase();
       const isImage = file.type && file.type.startsWith('image/');
       const isPdf = file.type === 'application/pdf' || fileNameLower.endsWith('.pdf');
+
+      // Si c'est un PDF, on applique le filigrane avant tout le reste
+      if (isPdf) {
+        file = await watermarkPDF(file as File);
+      }
+
       const isDocx = file.type.includes('wordprocessingml') || fileNameLower.endsWith('.docx') || fileNameLower.endsWith('.doc');
       const isXlsx = fileNameLower.endsWith('.xlsx') || fileNameLower.endsWith('.xls') || fileNameLower.endsWith('.csv') || file.type.includes('spreadsheet') || file.type.includes('excel');
       const isPptx = fileNameLower.endsWith('.pptx') || fileNameLower.endsWith('.ppt') || file.type.includes('presentation') || file.type.includes('powerpoint');
@@ -592,7 +599,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         };
         reader.readAsDataURL(file);
       }
-    });
+    }
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
