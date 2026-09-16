@@ -85,13 +85,52 @@ export function getDocTypeInfo(doc: any): DocTypeInfo {
   }
 
   const ext = fileName.includes('.') ? fileName.split('.').pop()?.toUpperCase() || 'DOC' : 'DOC';
+
+  let badgeClass = 'bg-stone-700/40 text-stone-300 border-stone-600';
+  let cardBgClass = 'bg-gradient-to-b from-[#26272b] to-[#1c1c1f]';
+  let cardBorderClass = 'border-2 border-stone-700 hover:border-stone-500';
+  let cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#1c1917] hover:shadow-[4px_4px_0px_0px_#292524]';
+  let accentTextClass = 'text-stone-300';
+
+  if (ext === 'PDF') {
+    badgeClass = 'bg-red-900/40 text-red-300 border-red-700';
+    cardBgClass = 'bg-gradient-to-b from-[#2a1313] to-[#1a0a0a]';
+    cardBorderClass = 'border-2 border-red-900/70 hover:border-red-600';
+    cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#450a0a] hover:shadow-[4px_4px_0px_0px_#7f1d1d]';
+    accentTextClass = 'text-red-400';
+  } else if (['DOC', 'DOCX'].includes(ext)) {
+    badgeClass = 'bg-blue-900/40 text-blue-300 border-blue-700';
+    cardBgClass = 'bg-gradient-to-b from-[#101b2e] to-[#0a101a]';
+    cardBorderClass = 'border-2 border-blue-900/70 hover:border-blue-600';
+    cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#172554] hover:shadow-[4px_4px_0px_0px_#1e3a8a]';
+    accentTextClass = 'text-blue-400';
+  } else if (['JPG', 'JPEG', 'PNG', 'GIF', 'WEBP', 'SVG'].includes(ext)) {
+    badgeClass = 'bg-green-900/40 text-green-300 border-green-700';
+    cardBgClass = 'bg-gradient-to-b from-[#112a18] to-[#0a1a0f]';
+    cardBorderClass = 'border-2 border-green-900/70 hover:border-green-600';
+    cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#052e16] hover:shadow-[4px_4px_0px_0px_#14532d]';
+    accentTextClass = 'text-green-400';
+  } else if (['PPT', 'PPTX'].includes(ext)) {
+    badgeClass = 'bg-orange-900/40 text-orange-300 border-orange-700';
+    cardBgClass = 'bg-gradient-to-b from-[#331c0b] to-[#1f1107]';
+    cardBorderClass = 'border-2 border-orange-900/70 hover:border-orange-600';
+    cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#431407] hover:shadow-[4px_4px_0px_0px_#7c2d12]';
+    accentTextClass = 'text-orange-400';
+  } else if (['XLS', 'XLSX', 'CSV'].includes(ext)) {
+    badgeClass = 'bg-emerald-900/40 text-emerald-300 border-emerald-700';
+    cardBgClass = 'bg-gradient-to-b from-[#0a271c] to-[#061811]';
+    cardBorderClass = 'border-2 border-emerald-900/70 hover:border-emerald-600';
+    cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#022c22] hover:shadow-[4px_4px_0px_0px_#064e3b]';
+    accentTextClass = 'text-emerald-400';
+  }
+
   return {
     name: ext,
-    badgeClass: 'bg-stone-700/40 text-stone-300 border-stone-600',
-    cardBgClass: 'bg-gradient-to-b from-[#26272b] to-[#1c1c1f]',
-    cardBorderClass: 'border-2 border-stone-700 hover:border-stone-500',
-    cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#1c1917] hover:shadow-[4px_4px_0px_0px_#292524]',
-    accentTextClass: 'text-stone-300',
+    badgeClass,
+    cardBgClass,
+    cardBorderClass,
+    cardShadowClass,
+    accentTextClass,
   };
 }
 
@@ -1822,7 +1861,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           title={`${doc.downloads_count || 0} téléchargement(s)`}
                         >
                           <Download className="w-2.5 h-2.5 text-stone-400 shrink-0" />
-                          <span>{doc.downloads_count || 0} DL</span>
+                          <span>{doc.downloads_count || 0} téléchargement(s)</span>
                         </div>
 
                         {/* Badge Type de fichier (Image 1 croix rouge) */}
@@ -1971,7 +2010,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           <span className="text-[8.5px] sm:text-[10px] font-bold text-stone-500 truncate">{docSizeStr}</span>
                           <span className="text-[8px] sm:text-[9px] text-stone-600 font-bold flex items-center gap-1" title={`${doc.downloads_count || 0} téléchargement(s)`}>
                             <Download className="w-2.5 h-2.5 text-orange-500" />
-                            <span>{doc.downloads_count || 0} DL</span>
+                            <span>{doc.downloads_count || 0} téléchargement(s)</span>
                           </span>
                         </div>
                         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
