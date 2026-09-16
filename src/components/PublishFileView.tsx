@@ -77,6 +77,74 @@ async function clearAllPersistedFiles(): Promise<void> {
   }
 }
 
+/**
+ * Vérifie si le fichier est autorisé à la publication.
+ * Interdit formellement : vidéos, sons/audios, dossiers et archives compressées.
+ * Seuls les documents (PDF, Word, Excel, PowerPoint, texte) et les images sont acceptés.
+ */
+export const checkPublicationFileType = (file: { name: string; type?: string; webkitRelativePath?: string }): {
+  allowed: boolean;
+  reason?: string;
+} => {
+  const name = (file.name || '').toLowerCase();
+  const type = (file.type || '').toLowerCase();
+
+  // 1. Vidéos interdites
+  if (type.startsWith('video/') || /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|3gp|3g2|ts|mts|m2ts|vob|ogv)$/i.test(name)) {
+    return {
+      allowed: false,
+      reason: "Les vidéos ne sont pas autorisées. Seuls les documents et les images sont acceptés."
+    };
+  }
+
+  // 2. Audios et sons interdits
+  if (type.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|aiff|mid|midi|amr)$/i.test(name)) {
+    return {
+      allowed: false,
+      reason: "Les fichiers audio et sons ne sont pas autorisés. Seuls les documents et les images sont acceptés."
+    };
+  }
+
+  // 3. Dossiers / archives compressées multi-fichiers interdits
+  if (
+    Boolean(file.webkitRelativePath && file.webkitRelativePath.includes('/')) ||
+    type.includes('zip') ||
+    type.includes('tar') ||
+    type.includes('rar') ||
+    type.includes('7z') ||
+    type.includes('compressed') ||
+    /\.(zip|rar|7z|tar|gz|bz2|xz|tgz|iso)$/i.test(name)
+  ) {
+    return {
+      allowed: false,
+      reason: "Les dossiers et archives compressées ne sont pas autorisés. Veuillez publier chaque document ou image un par un."
+    };
+  }
+
+  // 4. Seuls les documents et les images sont autorisés
+  const isImage = type.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg|bmp|tiff|heic)$/i.test(name);
+  const isDoc = (
+    type === 'application/pdf' ||
+    type.includes('word') ||
+    type.includes('officedocument') ||
+    type.includes('excel') ||
+    type.includes('spreadsheet') ||
+    type.includes('presentation') ||
+    type.includes('powerpoint') ||
+    type.startsWith('text/') ||
+    /\.(pdf|docx?|xlsx?|pptx?|txt|csv|md|rtf|odt|ods|odp)$/i.test(name)
+  );
+
+  if (!isImage && !isDoc) {
+    return {
+      allowed: false,
+      reason: "Ce genre de fichier n'est pas autorisé. Seuls les documents (PDF, Word, Excel, PowerPoint, texte) et les images sont acceptés."
+    };
+  }
+
+  return { allowed: true };
+};
+
 interface PublishFileViewProps {
   onBack: () => void;
   onPublish?: (title: string, description: string, category: string, files: any[]) => void;
@@ -134,6 +202,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     publishedFiles: string[];
     duplicateFiles?: string[];
     rejectedFiles?: string[];
+    forbiddenFiles?: { name: string; reason: string }[];
   } | null>(() => {
     try {
       const saved = localStorage.getItem('published_top_notification');
@@ -253,7 +322,32 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   const processFiles = (filesArray: File[]) => {
+    const allowedFiles: File[] = [];
+    const forbiddenFilesDetected: { name: string; reason: string }[] = [];
+
     filesArray.forEach((file: any) => {
+      const check = checkPublicationFileType(file);
+      if (!check.allowed) {
+        forbiddenFilesDetected.push({
+          name: file.name,
+          reason: check.reason || "Ce genre de fichier n'est pas autorisé."
+        });
+      } else {
+        allowedFiles.push(file);
+      }
+    });
+
+    if (forbiddenFilesDetected.length > 0) {
+      setTopNotification({
+        type: 'warning',
+        publishedFiles: [],
+        forbiddenFiles: forbiddenFilesDetected
+      });
+    }
+
+    if (allowedFiles.length === 0) return;
+
+    allowedFiles.forEach((file: any) => {
       const fileNameLower = file.name.toLowerCase();
       const isImage = file.type && file.type.startsWith('image/');
       const isPdf = file.type === 'application/pdf' || fileNameLower.endsWith('.pdf');
@@ -482,8 +576,41 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     e.preventDefault();
     e.stopPropagation();
     setIsDraggingOver(false);
-    if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
-      processFiles(Array.from(e.dataTransfer.files));
+
+    let folderDetected = false;
+    const detectedFiles: File[] = [];
+    const items = e.dataTransfer.items;
+    if (items && items.length > 0) {
+      for (let i = 0; i < items.length; i++) {
+        const item = items[i];
+        if (item.kind === 'file') {
+          const entry = (item as any).webkitGetAsEntry ? (item as any).webkitGetAsEntry() : null;
+          if (entry && entry.isDirectory) {
+            folderDetected = true;
+          } else {
+            const f = item.getAsFile();
+            if (f) detectedFiles.push(f);
+          }
+        }
+      }
+    }
+
+    if (folderDetected) {
+      setTopNotification({
+        type: 'warning',
+        publishedFiles: [],
+        forbiddenFiles: [
+          {
+            name: 'Dossier détecté',
+            reason: "Les dossiers (qui contiennent plusieurs fichiers) ne sont pas autorisés. Veuillez publier chaque document ou image individuellement."
+          }
+        ]
+      });
+    }
+
+    const filesToProcess: File[] = detectedFiles.length > 0 ? detectedFiles : (e.dataTransfer.files ? Array.from(e.dataTransfer.files) as File[] : []);
+    if (filesToProcess.length > 0) {
+      processFiles(filesToProcess);
     }
   };
 
@@ -763,6 +890,18 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           tagsArray = [];
         }
 
+        // Safeguard de sécurité : vérification stricte du type de fichier
+        const typeCheck = checkPublicationFileType(file);
+        if (!typeCheck.allowed) {
+          rejectedFilesList.push(file.name);
+          setSelectedFiles(prev => prev.map(f => f.id === file.id ? {
+            ...f,
+            isRejected: true,
+            rejectReason: typeCheck.reason || "Fichier non autorisé"
+          } : f));
+          continue;
+        }
+
         // Tenter l'upload R2
         let r2Key: string | null = null;
         let fileUrl: string = '';
@@ -809,6 +948,8 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         } catch (publishErr: any) {
           if (publishErr?.duplicate || publishErr?.message?.includes('recalé') || publishErr?.message?.includes('409')) {
             pubRes = { duplicate: true, message: 'Un fichier a été recalé car son deuxième a été enregistré' };
+          } else if (publishErr?.forbiddenType || publishErr?.message?.includes('pas autorisé') || publishErr?.message?.includes('interdit')) {
+            pubRes = { forbiddenType: true, message: publishErr?.message || "Ce genre de fichier n'est pas autorisé." };
           } else {
             console.warn('Fichier non accepté ou erreur:', file.name, publishErr);
             pubRes = { rejected: true, message: publishErr?.message || 'Fichier non accepté' };
@@ -818,6 +959,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         if (pubRes && (pubRes as any).duplicate) {
           duplicateFilesList.push(file.name);
           setSelectedFiles(prev => prev.map(f => f.id === file.id ? { ...f, isDuplicate: true } : f));
+        } else if (pubRes && ((pubRes as any).forbiddenType || pubRes.success === false)) {
+          rejectedFilesList.push(file.name);
+          setSelectedFiles(prev => prev.map(f => f.id === file.id ? { ...f, isRejected: true, rejectReason: pubRes.message || "Fichier non autorisé" } : f));
         } else if (pubRes && (pubRes as any).rejected) {
           rejectedFilesList.push(file.name);
           setSelectedFiles(prev => prev.map(f => f.id === file.id ? { ...f, isRejected: true, rejectReason: pubRes.message } : f));
@@ -904,7 +1048,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
             <Upload className="w-10 h-10 text-white stroke-[2.5]" />
           </div>
           <h2 className="text-2xl font-black text-white drop-shadow-md">Déposez vos fichiers ici</h2>
-          <p className="text-sm font-bold text-emerald-100 mt-1">PDF, Word, Excel, PPT, images... ils seront ajoutés automatiquement à la publication</p>
+          <p className="text-sm font-bold text-emerald-100 mt-1">Seuls les documents (PDF, Word, Excel, PPT...) et images sont acceptés (vidéos, sons et dossiers interdits)</p>
         </div>
       )}
 
@@ -924,7 +1068,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
               </div>
               <div className="flex-1 min-w-0">
                 <h4 className="text-sm font-black leading-tight">
-                  {topNotification.publishedFiles.length > 0 ? 'Publication réussie !' : 'Notification de doublon'}
+                  {topNotification.publishedFiles.length > 0
+                    ? 'Publication réussie !'
+                    : (topNotification.forbiddenFiles && topNotification.forbiddenFiles.length > 0)
+                    ? 'Fichier(s) non autorisé(s)'
+                    : (topNotification.rejectedFiles && topNotification.rejectedFiles.length > 0)
+                    ? 'Fichier(s) non accepté(s)'
+                    : 'Notification de doublon'}
                 </h4>
                 {topNotification.publishedFiles.length > 0 && (
                   <div className="mt-1.5 text-xs text-emerald-100 font-medium space-y-1">
@@ -936,6 +1086,26 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                         <span key={idx} className="bg-emerald-900/90 border border-emerald-400/50 px-2 py-0.5 rounded-md text-[11px] font-bold text-white truncate max-w-full">
                           📄 {fn}
                         </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {topNotification.forbiddenFiles && topNotification.forbiddenFiles.length > 0 && (
+                  <div className="mt-2.5 pt-2 text-xs font-medium border-t border-white/20 text-red-100">
+                    <p className="font-bold text-red-300">
+                      🚫 {topNotification.forbiddenFiles.length > 1
+                        ? `${topNotification.forbiddenFiles.length} fichiers ne sont pas autorisés :`
+                        : "Ce fichier n'est pas autorisé :"}
+                    </p>
+                    <p className="text-[11px] text-amber-200/90 mt-0.5 font-medium">
+                      Les vidéos, les sons et les dossiers sont interdits. Seuls les documents (PDF, Word, Excel, PPT...) et les images sont autorisés.
+                    </p>
+                    <div className="flex flex-col gap-1 mt-1.5">
+                      {topNotification.forbiddenFiles.map((item, idx) => (
+                        <div key={idx} className="bg-red-950/80 border border-red-400/40 px-2 py-1 rounded-md text-[11px] font-medium text-white flex items-start gap-1.5">
+                          <span className="font-bold text-red-300 shrink-0">❌ {item.name}</span>
+                          <span className="text-stone-200">— {item.reason}</span>
+                        </div>
                       ))}
                     </div>
                   </div>
@@ -1022,7 +1192,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           >
             <Upload className="w-3.5 h-3.5 text-orange-600" />
             <span>Ajouter</span>
-            <input type="file" multiple onChange={handleFileChange} className="hidden" />
+            <input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.rtf,.odt,.ods,.odp,image/*" onChange={handleFileChange} className="hidden" />
           </label>
 
           {selectedFiles.length > 0 && (
@@ -1076,8 +1246,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 >
                   <Upload className="w-10 h-10 text-orange-600 mb-3 group-hover:scale-110 transition-transform" />
                   <span className="text-sm font-bold text-stone-800">Cliquez ou déposez vos fichiers ici</span>
-                  <span className="text-xs text-stone-500 mt-1">PDF, Word, Excel, PPT, images...</span>
-                  <input type="file" multiple onChange={handleFileChange} className="hidden" />
+                  <span className="text-xs text-stone-600 mt-1">Seuls les documents (PDF, Word, Excel, PPT...) et images sont autorisés</span>
+                  <span className="text-[10.5px] font-bold text-red-600 mt-0.5">🚫 Vidéos, sons et dossiers non autorisés</span>
+                  <input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.rtf,.odt,.ods,.odp,image/*" onChange={handleFileChange} className="hidden" />
                 </label>
               </div>
             ) : (
@@ -1327,7 +1498,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                       <Plus className="w-5 h-5 stroke-[2.5]" />
                     </div>
                     <span className="text-[10px] font-extrabold text-stone-800 text-center">Ajouter</span>
-                    <input type="file" multiple onChange={handleFileChange} className="hidden" />
+                    <input type="file" multiple accept=".pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.md,.rtf,.odt,.ods,.odp,image/*" onChange={handleFileChange} className="hidden" />
                   </label>
                 </div>
 

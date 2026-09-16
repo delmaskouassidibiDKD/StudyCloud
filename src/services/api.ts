@@ -311,6 +311,14 @@ async function request<T>(endpoint: string, options: RequestInit = {}): Promise<
         ...err
       } as T;
     }
+    if (err?.forbiddenType) {
+      return {
+        success: false,
+        forbiddenType: true,
+        message: err?.message || "Ce genre de fichier n'est pas autorisé.",
+        ...err
+      } as T;
+    }
     throw new Error(err.error || err.message || `Erreur API: ${response.status}`);
   }
 

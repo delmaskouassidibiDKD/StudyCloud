@@ -5908,6 +5908,54 @@ export default {
             return errorResponse('userId, title et fileName sont obligatoires', 400, origin);
           }
 
+          // Détection et interdiction des vidéos, audios/sons, et dossiers/archives
+          // Seuls les documents (PDF, Word, Excel, PPT, texte) et les images sont autorisés
+          const fNameLower = (fileName || '').toLowerCase();
+          const fTypeLower = (fileType || '').toLowerCase();
+
+          const isVideo = fTypeLower.startsWith('video/') ||
+            /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|3gp|3g2|ts|mts|m2ts|vob|ogv)$/i.test(fNameLower);
+
+          const isAudio = fTypeLower.startsWith('audio/') ||
+            /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|aiff|mid|midi|amr)$/i.test(fNameLower);
+
+          const isArchiveOrFolder = fTypeLower.includes('zip') ||
+            fTypeLower.includes('tar') ||
+            fTypeLower.includes('rar') ||
+            fTypeLower.includes('7z') ||
+            fTypeLower.includes('compressed') ||
+            /\.(zip|rar|7z|tar|gz|bz2|xz|tgz|iso)$/i.test(fNameLower);
+
+          const isImage = fTypeLower.startsWith('image/') ||
+            /\.(jpg|jpeg|png|webp|gif|svg|bmp|tiff|heic)$/i.test(fNameLower);
+
+          const isDoc = fTypeLower === 'application/pdf' ||
+            fTypeLower.includes('word') ||
+            fTypeLower.includes('officedocument') ||
+            fTypeLower.includes('excel') ||
+            fTypeLower.includes('spreadsheet') ||
+            fTypeLower.includes('presentation') ||
+            fTypeLower.includes('powerpoint') ||
+            fTypeLower.startsWith('text/') ||
+            /\.(pdf|docx?|xlsx?|pptx?|txt|csv|md|rtf|odt|ods|odp)$/i.test(fNameLower);
+
+          if (isVideo || isAudio || isArchiveOrFolder || (!isImage && !isDoc)) {
+            let detail = "Ce genre de fichier n'est pas autorisé.";
+            if (isVideo) {
+              detail = "Les vidéos ne sont pas autorisées.";
+            } else if (isAudio) {
+              detail = "Les fichiers audio et sons ne sont pas autorisés.";
+            } else if (isArchiveOrFolder) {
+              detail = "Les dossiers et archives contenant plusieurs fichiers ne sont pas autorisés.";
+            }
+            return jsonResponse({
+              success: false,
+              forbiddenType: true,
+              message: `Publication refusée : ${detail} Seuls les documents (PDF, Word, Excel...) et les images sont autorisés.`,
+              fileName
+            }, 200, origin);
+          }
+
           // Vérification de doublon strict : si le même fichier est déjà présent
           const existingDoc: any = await env.DB.prepare(`
             SELECT id, title, file_name, file_size 
