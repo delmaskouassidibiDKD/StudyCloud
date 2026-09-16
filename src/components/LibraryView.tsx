@@ -395,6 +395,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   // Filtres dynamiques réels depuis la base de données (Cloudflare D1)
   const [availableSchools, setAvailableSchools] = useState<string[]>([]);
   const [availableMatieres, setAvailableMatieres] = useState<string[]>([]);
+  const [availableCategories, setAvailableCategories] = useState<string[]>([]);
 
   useEffect(() => {
     StudyCloudAPI.getPublishedDocumentFilters()
@@ -402,6 +403,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
         if (res && res.success) {
           if (Array.isArray(res.schools)) setAvailableSchools(res.schools);
           if (Array.isArray(res.matieres)) setAvailableMatieres(res.matieres);
+          if (Array.isArray((res as any).categories)) setAvailableCategories((res as any).categories);
         }
       })
       .catch(err => console.warn('Erreur chargement filtres dynamiques:', err));
@@ -1103,7 +1105,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     });
   });
 
-  const categories = ['Tous', 'Cours', 'TD/TP', 'Examens', 'Projets', 'Notes'];
+  // Catégories dynamiques : on garde toujours « Tous » en premier, suivi des catégories de la DB
+  const categories = ['Tous', ...availableCategories];
 
   const filteredItems = allFilesWithFolder.filter(({ file, folder }) => {
     const matchesSearch =
@@ -1926,6 +1929,35 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             {doc.author_name && <span className="truncate">· {doc.author_name}</span>}
                           </div>
 
+                          {/* Description (60 chars max) */}
+                          {doc.description && doc.description.trim() && (
+                            <p
+                              className="text-[7.5px] sm:text-[8.5px] text-white/80 font-normal leading-tight line-clamp-2 drop-shadow-sm mt-0.5"
+                              title={doc.description}
+                            >
+                              {doc.description.length > 60 ? doc.description.slice(0, 60) + '…' : doc.description}
+                            </p>
+                          )}
+
+                          {/* Tags */}
+                          {doc.tags_json && (() => {
+                            try {
+                              const tags: string[] = typeof doc.tags_json === 'string' ? JSON.parse(doc.tags_json) : doc.tags_json;
+                              if (Array.isArray(tags) && tags.length > 0) {
+                                return (
+                                  <div className="flex flex-wrap gap-0.5 mt-0.5">
+                                    {tags.slice(0, 3).map((tag: string, i: number) => (
+                                      <span key={i} className="text-[7px] font-bold bg-white/20 text-white border border-white/30 px-1 py-0 rounded-full leading-tight">
+                                        #{tag.length > 12 ? tag.slice(0, 12) + '…' : tag}
+                                      </span>
+                                    ))}
+                                  </div>
+                                );
+                              }
+                            } catch {}
+                            return null;
+                          })()}
+
                           <div className="flex items-center justify-between text-[8px] sm:text-[8.5px] text-white font-semibold pt-1 border-t border-white/20">
                             <span className="drop-shadow-sm">{docSizeStr}</span>
                             <span className="flex items-center gap-1 font-bold text-white drop-shadow-sm">
@@ -2236,6 +2268,35 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           {doc.country && <span className="flex items-center gap-0.5"><Globe className="w-2.5 h-2.5" />{doc.country}</span>}
                           {doc.author_name && <span className="truncate">· {doc.author_name}</span>}
                         </div>
+
+                        {/* Description (60 chars max) */}
+                        {doc.description && doc.description.trim() && (
+                          <p
+                            className="text-[7.5px] sm:text-[9px] text-stone-500 font-normal leading-tight line-clamp-2 mb-1"
+                            title={doc.description}
+                          >
+                            {doc.description.length > 60 ? doc.description.slice(0, 60) + '…' : doc.description}
+                          </p>
+                        )}
+
+                        {/* Tags */}
+                        {doc.tags_json && (() => {
+                          try {
+                            const tags: string[] = typeof doc.tags_json === 'string' ? JSON.parse(doc.tags_json) : doc.tags_json;
+                            if (Array.isArray(tags) && tags.length > 0) {
+                              return (
+                                <div className="flex flex-wrap gap-0.5 mb-1">
+                                  {tags.slice(0, 3).map((tag: string, i: number) => (
+                                    <span key={i} className="text-[7px] font-bold bg-orange-50 text-orange-700 border border-orange-200 px-1 py-0 rounded-full leading-tight">
+                                      #{tag.length > 12 ? tag.slice(0, 12) + '…' : tag}
+                                    </span>
+                                  ))}
+                                </div>
+                              );
+                            }
+                          } catch {}
+                          return null;
+                        })()}
                       </div>
 
                       {/* Bas de carte : Téléchargements uniquement (vues supprimées) + Voir + Télécharger */}
