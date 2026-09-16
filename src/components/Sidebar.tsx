@@ -8,9 +8,10 @@ interface SidebarProps {
   setTab: (tab: NavigationTab) => void;
   foldersCount: number;
   onOpenUpload: () => void;
+  publishStatus?: { isPublishing: boolean; hasFiles: boolean; progress?: string } | null;
 }
 
-export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCount, onOpenUpload }) => {
+export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCount, onOpenUpload, publishStatus }) => {
   const navItems: Array<{ id: NavigationTab; label: string; icon: any; highlight?: boolean; badge?: string | number }> = [
     { id: 'folders' as NavigationTab, label: 'Tableau de bord', icon: LayoutDashboard },
     { id: 'upload' as NavigationTab, label: 'Importer', icon: Upload, highlight: true },
@@ -65,6 +66,34 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
               </button>
             );
           })}
+
+          {/* Onglet dynamique de Publication (si actif ou en cours de publication) */}
+          {(currentTab === 'publish-file' || publishStatus?.isPublishing || publishStatus?.hasFiles) && (
+            <button
+              onClick={() => {
+                setTab('publish-file');
+              }}
+              className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl font-bold text-base transition-all border-2 ${
+                currentTab === 'publish-file'
+                  ? 'bg-[#2D4A3E] border-stone-800 text-white shadow-[3px_3px_0px_0px_#1c1917]'
+                  : 'border-dashed border-emerald-600 dark:border-emerald-500/50 bg-emerald-50 dark:bg-[#162033] text-emerald-900 dark:text-emerald-300 hover:bg-emerald-100'
+              }`}
+            >
+              <div className="flex items-center gap-3">
+                <Upload className="w-5 h-5 text-emerald-500" />
+                <span>Publication</span>
+              </div>
+              <span className={`text-[10px] px-2 py-0.5 rounded-md font-mono font-black ${
+                publishStatus?.isPublishing
+                  ? 'bg-amber-400 text-stone-950 animate-pulse'
+                  : currentTab === 'publish-file'
+                  ? 'bg-emerald-800 text-white'
+                  : 'bg-emerald-200 text-emerald-950'
+              }`}>
+                {publishStatus?.isPublishing ? 'En cours...' : 'Actif'}
+              </span>
+            </button>
+          )}
         </nav>
 
         {/* Student Promo Card - Solide Dark #111a2e */}

@@ -80,9 +80,10 @@ async function clearAllPersistedFiles(): Promise<void> {
 interface PublishFileViewProps {
   onBack: () => void;
   onPublish?: (title: string, description: string, category: string, files: any[]) => void;
+  onStatusChange?: (status: { isPublishing: boolean; hasFiles: boolean; progress?: string }) => void;
 }
 
-export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPublish }) => {
+export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPublish, onStatusChange }) => {
   const [selectedFiles, setSelectedFiles] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('published_selected_files');
@@ -132,7 +133,25 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     type: 'success' | 'warning' | 'error';
     publishedFiles: string[];
     duplicateFiles?: string[];
-  } | null>(null);
+    rejectedFiles?: string[];
+  } | null>(() => {
+    try {
+      const saved = localStorage.getItem('published_top_notification');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  });
+
+  useEffect(() => {
+    if (topNotification) {
+      try {
+        localStorage.setItem('published_top_notification', JSON.stringify(topNotification));
+      } catch {}
+    } else {
+      localStorage.removeItem('published_top_notification');
+    }
+  }, [topNotification]);
 
   const loadPublishedCount = async () => {
     try {
@@ -164,6 +183,21 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       } catch (err) {}
     }
   }, [selectedFiles]);
+
+  // Synchroniser le statut en cours pour l'application globale (sidebar & badge)
+  useEffect(() => {
+    if (onStatusChange) {
+      const hasFiles = selectedFiles.length > 0;
+      const progress = isPublishing
+        ? publishingProgress?.currentFileName
+          ? `Doc ${publishingProgress.current}/${publishingProgress.total} : ${publishingProgress.currentFileName}`
+          : 'Traitement en cours...'
+        : hasFiles
+        ? `${selectedFiles.length} fichier(s)`
+        : undefined;
+      onStatusChange({ isPublishing, hasFiles, progress });
+    }
+  }, [isPublishing, publishingProgress, selectedFiles.length, onStatusChange]);
 
   const containerRef = useRef<HTMLDivElement>(null);
 
@@ -198,6 +232,24 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
   // Map pour stocker les fichiers bruts (non sérialisables) par ID pour l'upload R2
   const rawFileMap = useRef<Map<string, File>>(new Map());
+
+  // Réhydrater les fichiers bruts depuis IndexedDB lors du montage / retour au menu
+  useEffect(() => {
+    async function rehydrateRawFiles() {
+      for (const f of selectedFiles) {
+        if (!rawFileMap.current.has(f.id)) {
+          const raw = await retrieveRawFile(f.id);
+          if (raw) {
+            rawFileMap.current.set(f.id, raw);
+          }
+        }
+      }
+    }
+    if (selectedFiles.length > 0) {
+      rehydrateRawFiles();
+    }
+  }, []);
+
   const [isDraggingOver, setIsDraggingOver] = useState(false);
 
   const processFiles = (filesArray: File[]) => {
@@ -446,16 +498,29 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
   const handleBack = () => {
     clearAllPersistedFiles();
-    localStorage.removeItem('published_selected_files');
-    localStorage.removeItem('published_school');
-    localStorage.removeItem('published_filiere');
-    localStorage.removeItem('published_doc_title');
-    localStorage.removeItem('published_doc_description');
-    localStorage.removeItem('published_doc_category');
-    localStorage.removeItem('published_doc_matiere');
-    localStorage.removeItem('published_doc_level');
-    localStorage.removeItem('published_doc_country');
-    localStorage.removeItem('published_doc_tags');
+    [
+      'published_selected_files',
+      'published_school',
+      'published_filiere',
+      'published_info_mode',
+      'published_doc_title',
+      'published_doc_description',
+      'published_doc_category',
+      'published_custom_category',
+      'published_doc_matiere',
+      'published_doc_level',
+      'published_doc_country',
+      'published_doc_tags',
+      'published_top_notification'
+    ].forEach(k => localStorage.removeItem(k));
+    setSelectedFiles([]);
+    setTopNotification(null);
+    setPublishError(null);
+    setIsPublishing(false);
+    setPublishingProgress(null);
+    if (onStatusChange) {
+      onStatusChange({ isPublishing: false, hasFiles: false });
+    }
     onBack();
   };
 
@@ -640,6 +705,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       // 2. Publication des fichiers valides
       const publishedSuccessNames: string[] = [];
       const publishedSuccessIds: string[] = [];
+      const rejectedFilesList: string[] = [];
       let currentIdx = 0;
 
       for (const file of filesToPublish) {
@@ -742,13 +808,17 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           if (publishErr?.duplicate || publishErr?.message?.includes('recalé') || publishErr?.message?.includes('409')) {
             pubRes = { duplicate: true, message: 'Un fichier a été recalé car son deuxième a été enregistré' };
           } else {
-            throw publishErr;
+            console.warn('Fichier non accepté ou erreur:', file.name, publishErr);
+            pubRes = { rejected: true, message: publishErr?.message || 'Fichier non accepté' };
           }
         }
 
         if (pubRes && (pubRes as any).duplicate) {
           duplicateFilesList.push(file.name);
           setSelectedFiles(prev => prev.map(f => f.id === file.id ? { ...f, isDuplicate: true } : f));
+        } else if (pubRes && (pubRes as any).rejected) {
+          rejectedFilesList.push(file.name);
+          setSelectedFiles(prev => prev.map(f => f.id === file.id ? { ...f, isRejected: true, rejectReason: pubRes.message } : f));
         } else {
           publishedSuccessNames.push(file.name);
           publishedSuccessIds.push(file.id);
@@ -763,50 +833,41 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
       await loadPublishedCount();
 
       // Nettoyer de la liste les fichiers publiés avec succès en filtrant par ID
-      // Les fichiers doublons/recalés restent affichés en rouge pour que l'utilisateur voie qu'ils ont été refusés
+      // Les fichiers doublons/recalés et non acceptés restent affichés pour que l'utilisateur voie qu'ils ont été refusés
       setSelectedFiles(prev => prev.filter(f => !publishedSuccessIds.includes(f.id)));
-
-      if (filesToPublish.length === publishedSuccessNames.length && duplicateFilesList.length === 0) {
-        clearAllPersistedFiles();
-        ['published_selected_files','published_school','published_filiere','published_info_mode',
-         'published_doc_title','published_doc_description','published_doc_category',
-         'published_doc_matiere','published_doc_level','published_doc_country','published_doc_tags'
-        ].forEach(k => localStorage.removeItem(k));
-      }
 
       setIsPublishing(false);
       setPublishingProgress(null);
 
-      // Afficher la notification en haut (citant les fichiers, sans logo étoiles)
+      // Notification détaillée en haut
       setTopNotification({
-        type: 'success',
+        type: (duplicateFilesList.length > 0 || rejectedFilesList.length > 0) && publishedSuccessNames.length === 0 ? 'warning' : 'success',
         publishedFiles: publishedSuccessNames,
-        duplicateFiles: duplicateFilesList.length > 0 ? duplicateFilesList : undefined
+        duplicateFiles: duplicateFilesList.length > 0 ? duplicateFilesList : undefined,
+        rejectedFiles: rejectedFilesList.length > 0 ? rejectedFilesList : undefined
       });
 
-      const cleanFilesToPublish = filesToPublish.map(f => ({
-        id: f.id,
-        name: f.name,
-        size: f.size,
-        type: f.type,
-        url: f.url && !f.url.startsWith('data:') ? f.url : ''
-      }));
+      // Déclencher le rafraîchissement des documents en direct en arrière-plan sans quitter la page
+      window.dispatchEvent(new Event('studycloud_refresh_published_docs'));
 
-      // Redirection automatique vers l'onglet Ressources en temps réel après 2 secondes
-      if (duplicateFilesList.length === 0) {
-        setTimeout(() => {
-          if (onPublish && publishedSuccessNames.length > 0) {
-            onPublish(
-              infoMode === 'all' ? docTitle : publishedSuccessNames[0],
-              docDescription || '',
-              docCategory || 'Cours',
-              cleanFilesToPublish
-            );
-          } else {
-            onBack();
-          }
-        }, 2000);
+      if (onPublish && publishedSuccessNames.length > 0) {
+        const cleanFilesToPublish = filesToPublish
+          .filter(f => publishedSuccessIds.includes(f.id))
+          .map(f => ({
+            id: f.id,
+            name: f.name,
+            size: f.size,
+            type: f.type,
+            url: f.url && !f.url.startsWith('data:') ? f.url : ''
+          }));
+        onPublish(
+          infoMode === 'all' ? docTitle : publishedSuccessNames[0],
+          docDescription || '',
+          docCategory || 'Cours',
+          cleanFilesToPublish
+        );
       }
+      // REMARQUE : Aucune redirection vers Ressources ! L'utilisateur reste exactement sur cette page de publication.
     } catch (err: any) {
       console.error('Erreur lors de la publication:', err);
       setPublishError(err.message || 'Erreur lors de la publication. Vérifiez la connexion au Worker.');
@@ -888,6 +949,22 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     </p>
                     <div className="flex flex-wrap gap-1 mt-1">
                       {topNotification.duplicateFiles.map((fn, idx) => (
+                        <span key={idx} className="bg-red-900/90 border border-red-400/50 px-2 py-0.5 rounded-md text-[11px] font-bold text-white truncate max-w-full">
+                          ❌ {fn}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
+                {topNotification.rejectedFiles && topNotification.rejectedFiles.length > 0 && (
+                  <div className={`mt-2.5 pt-2 text-xs font-medium border-t border-white/20 text-red-100`}>
+                    <p className="font-bold text-red-300">
+                      ⚠️ {topNotification.rejectedFiles.length > 1
+                        ? `${topNotification.rejectedFiles.length} fichiers n'ont pas pu être acceptés :`
+                        : "Un fichier n'a pas pu être accepté :"}
+                    </p>
+                    <div className="flex flex-wrap gap-1 mt-1">
+                      {topNotification.rejectedFiles.map((fn, idx) => (
                         <span key={idx} className="bg-red-900/90 border border-red-400/50 px-2 py-0.5 rounded-md text-[11px] font-bold text-white truncate max-w-full">
                           ❌ {fn}
                         </span>
@@ -1008,21 +1085,24 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   {selectedFiles.map((file) => {
                     const isIndividual = infoMode === 'individual';
                     const isDup = !!file.isDuplicate;
-                    const isGreen = isIndividual && file.isCompleted && !isDup;
+                    const isRejected = !!file.isRejected;
+                    const isGreen = isIndividual && file.isCompleted && !isDup && !isRejected;
 
                     return (
                       <div
                         key={file.id}
                         onClick={() => {
-                          if (isIndividual && !isDup) {
+                          if (isIndividual && !isDup && !isRejected) {
                             openEditModal(file);
                           }
                         }}
                         className={`aspect-[3/4] rounded-xl p-2.5 flex flex-col justify-between shadow-[2px_2px_0px_0px_#1c1917] relative group select-none overflow-hidden transition-all ${
-                          isIndividual && !isDup ? 'cursor-pointer hover:scale-[1.02]' : ''
+                          isIndividual && !isDup && !isRejected ? 'cursor-pointer hover:scale-[1.02]' : ''
                         } ${
                           isDup
                             ? 'bg-red-950/90 border-2 border-red-500 ring-2 ring-red-500/60'
+                            : isRejected
+                            ? 'bg-red-950/90 border-2 border-rose-500 ring-2 ring-rose-500/60'
                             : isGreen
                             ? 'bg-[#18392b] border-2 border-emerald-400 ring-2 ring-emerald-500/50'
                             : isIndividual
@@ -1043,6 +1123,15 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                               className="bg-red-600 text-white font-black text-[8px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm"
                             >
                               <X className="w-2.5 h-2.5 stroke-[3]" /> Recalé (doublon)
+                            </span>
+                          </div>
+                        ) : isRejected ? (
+                          <div className="absolute top-1.5 left-8 z-20">
+                            <span 
+                              title={file.rejectReason || "Non accepté"}
+                              className="bg-rose-700 text-white font-black text-[8px] px-1.5 py-0.5 rounded-full flex items-center gap-0.5 shadow-sm"
+                            >
+                              <X className="w-2.5 h-2.5 stroke-[3]" /> Non accepté
                             </span>
                           </div>
                         ) : isIndividual && (
@@ -1168,6 +1257,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                               Recalé : doublon enregistré
                             </p>
                           )}
+                          {isRejected && (
+                            <p className="text-[8px] font-bold text-rose-300 truncate mt-0.5" title={file.rejectReason || "Non accepté"}>
+                              {file.rejectReason || "Non accepté"}
+                            </p>
+                          )}
                         </div>
 
                         {/* Individual Mode action button on each card */}
@@ -1176,11 +1270,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                             type="button"
                             onClick={(e) => {
                               e.stopPropagation();
-                              if (!file.isDuplicate) openEditModal(file);
+                              if (!file.isDuplicate && !file.isRejected) openEditModal(file);
                             }}
                             className={`w-full mt-1.5 py-1 px-1 rounded text-[9px] font-black flex items-center justify-center gap-1 shadow-sm transition-all ${
                               file.isDuplicate
                                 ? 'bg-red-700 text-white cursor-default'
+                                : file.isRejected
+                                ? 'bg-rose-800 text-white cursor-default'
                                 : file.isCompleted
                                 ? 'bg-emerald-600 hover:bg-emerald-500 text-white cursor-pointer'
                                 : 'bg-amber-500 hover:bg-amber-400 text-stone-950 animate-pulse cursor-pointer'
@@ -1190,6 +1286,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                               <>
                                 <X className="w-2.5 h-2.5" />
                                 <span>Recalé (doublon)</span>
+                              </>
+                            ) : file.isRejected ? (
+                              <>
+                                <X className="w-2.5 h-2.5" />
+                                <span>Non accepté</span>
                               </>
                             ) : file.isCompleted ? (
                               <>

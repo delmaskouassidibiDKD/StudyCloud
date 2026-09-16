@@ -207,10 +207,18 @@ export default function App() {
     }
   }, []);
 
+  const [publishStatus, setPublishStatus] = useState<{ isPublishing: boolean; hasFiles: boolean; progress?: string } | null>(() => {
+    try {
+      const savedFiles = localStorage.getItem('published_selected_files');
+      if (savedFiles && JSON.parse(savedFiles).length > 0) {
+        return { isPublishing: false, hasFiles: true, progress: `${JSON.parse(savedFiles).length} fichier(s)` };
+      }
+    } catch {}
+    return null;
+  });
+
   const handleSetTab = (tab: NavigationTab) => {
-    if (tab !== 'publish-file') {
-      localStorage.removeItem('published_selected_files');
-    }
+    // Ne jamais effacer les fichiers de publication en cours lors d'un changement d'onglet
     setCurrentTab(tab);
   };
 
@@ -1205,6 +1213,7 @@ export default function App() {
         setTab={handleSetTab}
         foldersCount={folders.length}
         onOpenUpload={() => setShowUploadModal(true)}
+        publishStatus={publishStatus}
       />
 
       {/* Main Content Area */}
@@ -1222,22 +1231,6 @@ export default function App() {
               }}
               onOpenPublishView={() => {
                 handleSetTab('publish-file');
-              }}
-            />
-          ) : currentTab === 'publish-file' ? (
-            <PublishFileView
-              onBack={() => {
-                localStorage.setItem('studycloud_library_subtab', 'ressources');
-                handleSetTab('library');
-              }}
-              onPublish={() => {
-                // Rediriger vers Ressources en direct (sans mock local en dur)
-                localStorage.setItem('studycloud_library_subtab', 'ressources');
-                handleSetTab('library');
-                setTimeout(() => {
-                  window.dispatchEvent(new Event('studycloud_refresh_published_docs'));
-                }, 100);
-                showToast('Publication en ligne réussie ! Vos documents apparaissent en temps réel dans Ressources.');
               }}
             />
           ) : currentTab === 'upload' ? (
@@ -1288,8 +1281,50 @@ export default function App() {
           ) : currentTab === 'settings' ? (
             <SettingsView />
           ) : null}
+
+          {/* Persistent PublishFileView: keeps in-progress uploads, drafts, rejected files & status intact */}
+          <div className={currentTab === 'publish-file' ? 'contents' : 'hidden'}>
+            <PublishFileView
+              onBack={() => {
+                setPublishStatus(null);
+                handleSetTab('folders');
+              }}
+              onPublish={() => {
+                // Ne PAS rediriger vers Ressources : rester où l'utilisateur se trouve
+                window.dispatchEvent(new Event('studycloud_refresh_published_docs'));
+                showToast('Publication en ligne réussie ! Vos documents sont enregistrés.');
+              }}
+              onStatusChange={setPublishStatus}
+            />
+          </div>
         </main>
       </div>
+
+      {/* Floating pill when publication is in progress or has draft files and user is on another menu */}
+      {currentTab !== 'publish-file' && (publishStatus?.isPublishing || publishStatus?.hasFiles) && (
+        <div className="fixed bottom-20 md:bottom-6 right-4 sm:right-6 z-50 animate-in slide-in-from-bottom-3 duration-200 pointer-events-auto">
+          <button
+            onClick={() => handleSetTab('publish-file')}
+            className="flex items-center gap-3 px-4 py-2.5 bg-[#2D4A3E] hover:bg-[#1e332a] text-white font-bold text-xs rounded-2xl border-2 border-stone-800 shadow-[3px_3px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 group"
+          >
+            <div className="relative flex items-center justify-center">
+              <div className={`w-3 h-3 rounded-full ${publishStatus.isPublishing ? 'bg-amber-400 animate-ping' : 'bg-emerald-400'}`} />
+              <div className={`absolute w-2 h-2 rounded-full ${publishStatus.isPublishing ? 'bg-amber-400' : 'bg-emerald-400'}`} />
+            </div>
+            <div className="text-left">
+              <div className="text-[10px] text-emerald-200 uppercase font-black tracking-wider">
+                {publishStatus.isPublishing ? 'Publication en cours' : 'Publication en attente'}
+              </div>
+              <div className="text-xs font-bold text-white max-w-[200px] truncate">
+                {publishStatus.progress || 'Cliquez pour ouvrir'}
+              </div>
+            </div>
+            <span className="bg-emerald-950/80 px-2 py-1 rounded-lg text-[10px] font-bold border border-emerald-400/30 text-emerald-100 group-hover:bg-emerald-900">
+              Ouvrir →
+            </span>
+          </button>
+        </div>
+      )}
 
       {/* Modals */}
       {showAddMenu && (
