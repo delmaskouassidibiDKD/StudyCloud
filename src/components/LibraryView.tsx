@@ -63,7 +63,17 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   setActivePreviewItem,
 }) => {
   const [selectedCategory, setSelectedCategory] = useState('Tous');
-  const [activeSubTab, setActiveSubTab] = useState<'librairie' | 'ressources' | 'liens'>('librairie');
+  const [activeSubTab, setActiveSubTab] = useState<'librairie' | 'ressources' | 'liens'>(() => {
+    const saved = sessionStorage.getItem('studycloud_library_subtab') || localStorage.getItem('studycloud_library_subtab');
+    if (saved === 'librairie' || saved === 'ressources' || saved === 'liens') {
+      return saved;
+    }
+    return 'ressources';
+  });
+
+  useEffect(() => {
+    sessionStorage.setItem('studycloud_library_subtab', activeSubTab);
+  }, [activeSubTab]);
   const [selectedSchoolFilter, setSelectedSchoolFilter] = useState<string | null>(null);
   const [selectedFiliereFilter, setSelectedFiliereFilter] = useState<string | null>(null);
   const [isRecentFilterActive, setIsRecentFilterActive] = useState<boolean>(false);
@@ -79,8 +89,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     return () => document.removeEventListener('click', handleDocumentClick);
   }, []);
 
-  // ---- Published Documents (onglet Ressources avec Recommandation Personnalisée & Défilement Infini) ----
+  // ---- Published Documents (onglet Ressources avec Recommandation Personnalisée & Défilement Infini au fur et à mesure) ----
+  const DOCS_PER_PAGE = 8;
+  const isFetchingMoreRef = useRef(false);
   const [publishedDocs, setPublishedDocs] = useState<any[]>([]);
+  const [totalDocsCount, setTotalDocsCount] = useState<number>(0);
   const [isLoadingDocs, setIsLoadingDocs] = useState(false);
   const [isLoadingMoreDocs, setIsLoadingMoreDocs] = useState(false);
   const [docsPage, setDocsPage] = useState(1);
@@ -96,7 +109,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       const currentUserId = localStorage.getItem('unifolder_user_id') || undefined;
       const filters: any = {
         page: 1,
-        limit: 24,
+        limit: DOCS_PER_PAGE,
         isPublic: true,
       };
       if (currentUserId) filters.userId = currentUserId;
@@ -107,10 +120,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
       const res = await StudyCloudAPI.getPublishedDocuments(filters);
       setPublishedDocs(res.data || []);
+      setTotalDocsCount(res.pagination?.total ?? (res.data ? res.data.length : 0));
       setHasMoreDocs(Boolean(res.pagination?.hasMore));
     } catch (err: any) {
       setDocsError(err.message || 'Erreur de chargement');
       setPublishedDocs([]);
+      setTotalDocsCount(0);
       setHasMoreDocs(false);
     } finally {
       setIsLoadingDocs(false);
@@ -118,14 +133,15 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   }, [selectedSchoolFilter, selectedFiliereFilter, selectedCategory, searchQuery]);
 
   const loadMorePublishedDocs = useCallback(async () => {
-    if (isLoadingDocs || isLoadingMoreDocs || !hasMoreDocs) return;
+    if (isLoadingDocs || isLoadingMoreDocs || !hasMoreDocs || isFetchingMoreRef.current) return;
+    isFetchingMoreRef.current = true;
     setIsLoadingMoreDocs(true);
     const nextPage = docsPage + 1;
     try {
       const currentUserId = localStorage.getItem('unifolder_user_id') || undefined;
       const filters: any = {
         page: nextPage,
-        limit: 24,
+        limit: DOCS_PER_PAGE,
         isPublic: true,
       };
       if (currentUserId) filters.userId = currentUserId;
@@ -142,6 +158,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           return [...prev, ...newItems];
         });
         setDocsPage(nextPage);
+        setTotalDocsCount(res.pagination?.total ?? (res.data ? res.data.length : 0));
         setHasMoreDocs(Boolean(res.pagination?.hasMore));
       } else {
         setHasMoreDocs(false);
@@ -149,6 +166,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     } catch (err) {
       console.warn('Erreur chargement page suivante ressources:', err);
     } finally {
+      isFetchingMoreRef.current = false;
       setIsLoadingMoreDocs(false);
     }
   }, [docsPage, hasMoreDocs, isLoadingDocs, isLoadingMoreDocs, selectedSchoolFilter, selectedFiliereFilter, selectedCategory, searchQuery]);
@@ -162,17 +180,54 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           loadMorePublishedDocs();
         }
       },
-      { threshold: 0.1, rootMargin: '200px' }
+      { threshold: 0.1, rootMargin: '300px' }
     );
     observer.observe(infiniteSentinelRef.current);
     return () => observer.disconnect();
   }, [hasMoreDocs, isLoadingMoreDocs, isLoadingDocs, loadMorePublishedDocs]);
 
+  // Détection de défilement de la fenêtre au fur et à mesure (complément)
+  useEffect(() => {
+    if (!hasMoreDocs || isLoadingMoreDocs || isLoadingDocs) return;
+
+    let ticking = false;
+    const handleScroll = () => {
+      if (!ticking) {
+        window.requestAnimationFrame(() => {
+          const scrollHeight = document.documentElement.scrollHeight;
+          const scrollTop = window.scrollY || document.documentElement.scrollTop;
+          const clientHeight = window.innerHeight || document.documentElement.clientHeight;
+
+          if (scrollTop + clientHeight >= scrollHeight - 350) {
+            loadMorePublishedDocs();
+          }
+          ticking = false;
+        });
+        ticking = true;
+      }
+    };
+
+    window.addEventListener('scroll', handleScroll, { passive: true });
+    return () => window.removeEventListener('scroll', handleScroll);
+  }, [hasMoreDocs, isLoadingMoreDocs, isLoadingDocs, loadMorePublishedDocs]);
+
+  // Rechargement des documents dès qu'on active l'onglet Ressources
   useEffect(() => {
     if (activeSubTab === 'ressources') {
       loadPublishedDocs();
     }
   }, [activeSubTab, loadPublishedDocs]);
+
+  // Écoute de l'événement global après publication pour un affichage en temps réel sans rechargement
+  useEffect(() => {
+    const handleDocsUpdated = () => {
+      setActiveSubTab('ressources');
+      sessionStorage.setItem('studycloud_library_subtab', 'ressources');
+      loadPublishedDocs();
+    };
+    window.addEventListener('studycloud_documents_updated', handleDocsUpdated);
+    return () => window.removeEventListener('studycloud_documents_updated', handleDocsUpdated);
+  }, [loadPublishedDocs]);
 
   // ---- Liens publics partagés de la communauté (onglet Liens publics) ----
   const [remotePublicFolders, setRemotePublicFolders] = useState<SharedFolder[]>([]);
@@ -1235,7 +1290,11 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             {/* Bouton Actualiser */}
             <div className="flex items-center justify-between">
               <span className="text-[10px] text-stone-500 font-medium">
-                {isLoadingDocs ? 'Chargement...' : `${publishedDocs.length} document${publishedDocs.length > 1 ? 's' : ''} publié${publishedDocs.length > 1 ? 's' : ''}`}
+                {isLoadingDocs
+                  ? 'Chargement des ressources...'
+                  : hasMoreDocs
+                  ? `${totalDocsCount || publishedDocs.length} documents publics (${publishedDocs.length} affichés · défilez pour plus)`
+                  : `${publishedDocs.length} document${publishedDocs.length > 1 ? 's' : ''} public${publishedDocs.length > 1 ? 's' : ''}`}
               </span>
               <button
                 onClick={loadPublishedDocs}

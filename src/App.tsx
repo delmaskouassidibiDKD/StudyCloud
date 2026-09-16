@@ -1227,32 +1227,15 @@ export default function App() {
           ) : currentTab === 'publish-file' ? (
             <PublishFileView
               onBack={() => handleSetTab('folders')}
-              onPublish={(title, description, category, files) => {
-                const totalSize = files.reduce((acc, f) => acc + (f.size || 0), 0);
-                const cleanFiles = (files || []).map((f) => ({
-                  id: f.id || ('f-' + Math.random().toString(36).substring(2, 9)),
-                  name: f.name,
-                  size: f.size || 0,
-                  type: f.type || 'file',
-                  url: f.url && !f.url.startsWith('data:') ? f.url : '',
-                }));
-                const newFolder: SharedFolder = {
-                  id: 'folder-' + Math.random().toString(36).substring(2, 9),
-                  title,
-                  description: description || `Publication de ${files.length} document(s).`,
-                  category,
-                  author: user?.name || 'Utilisateur',
-                  school: user?.school || '',
-                  country: user?.country || "Côte d'Ivoire",
-                  createdAt: new Date().toISOString(),
-                  files: cleanFiles,
-                  totalSize,
-                  downloadsCount: 0,
-                  isPasswordProtected: false,
-                  viewsCount: 0,
-                };
-                setFolders((prev) => [newFolder, ...prev]);
-                showToast('Publications effectuées avec succès');
+              onPublish={() => {
+                showToast('Documents publiés avec succès dans les Ressources !');
+              }}
+              onNavigateToRessources={() => {
+                sessionStorage.setItem('studycloud_library_subtab', 'ressources');
+                handleSetTab('library');
+                setTimeout(() => {
+                  window.dispatchEvent(new Event('studycloud_documents_updated'));
+                }, 80);
               }}
             />
           ) : currentTab === 'upload' ? (
