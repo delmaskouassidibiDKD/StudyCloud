@@ -94,31 +94,31 @@ export function getDocTypeInfo(doc: any): DocTypeInfo {
 
   if (ext === 'PDF') {
     badgeClass = 'bg-red-900/40 text-red-300 border-red-700';
-    cardBgClass = 'bg-gradient-to-b from-[#2a1313] to-[#1a0a0a]';
+    cardBgClass = 'bg-gradient-to-b from-red-950 to-[#2a0808]';
     cardBorderClass = 'border-2 border-red-900/70 hover:border-red-600';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#450a0a] hover:shadow-[4px_4px_0px_0px_#7f1d1d]';
     accentTextClass = 'text-red-400';
   } else if (['DOC', 'DOCX'].includes(ext)) {
     badgeClass = 'bg-blue-900/40 text-blue-300 border-blue-700';
-    cardBgClass = 'bg-gradient-to-b from-[#101b2e] to-[#0a101a]';
+    cardBgClass = 'bg-gradient-to-b from-blue-950 to-[#08152a]';
     cardBorderClass = 'border-2 border-blue-900/70 hover:border-blue-600';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#172554] hover:shadow-[4px_4px_0px_0px_#1e3a8a]';
     accentTextClass = 'text-blue-400';
   } else if (['JPG', 'JPEG', 'PNG', 'GIF', 'WEBP', 'SVG'].includes(ext)) {
     badgeClass = 'bg-green-900/40 text-green-300 border-green-700';
-    cardBgClass = 'bg-gradient-to-b from-[#112a18] to-[#0a1a0f]';
+    cardBgClass = 'bg-gradient-to-b from-emerald-950 to-[#052e16]';
     cardBorderClass = 'border-2 border-green-900/70 hover:border-green-600';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#052e16] hover:shadow-[4px_4px_0px_0px_#14532d]';
     accentTextClass = 'text-green-400';
   } else if (['PPT', 'PPTX'].includes(ext)) {
     badgeClass = 'bg-orange-900/40 text-orange-300 border-orange-700';
-    cardBgClass = 'bg-gradient-to-b from-[#331c0b] to-[#1f1107]';
+    cardBgClass = 'bg-gradient-to-b from-orange-950 to-[#431407]';
     cardBorderClass = 'border-2 border-orange-900/70 hover:border-orange-600';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#431407] hover:shadow-[4px_4px_0px_0px_#7c2d12]';
     accentTextClass = 'text-orange-400';
   } else if (['XLS', 'XLSX', 'CSV'].includes(ext)) {
     badgeClass = 'bg-emerald-900/40 text-emerald-300 border-emerald-700';
-    cardBgClass = 'bg-gradient-to-b from-[#0a271c] to-[#061811]';
+    cardBgClass = 'bg-gradient-to-b from-teal-950 to-[#022c22]';
     cardBorderClass = 'border-2 border-emerald-900/70 hover:border-emerald-600';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#022c22] hover:shadow-[4px_4px_0px_0px_#064e3b]';
     accentTextClass = 'text-emerald-400';
@@ -166,8 +166,8 @@ const DocumentCardThumbnail: React.FC<{ doc: any; onClick?: () => void }> = ({ d
           const loadingTask = pdfjsLib.getDocument({ url: fileUrl });
           const pdf = await loadingTask.promise;
           const page = await pdf.getPage(1);
-          // Échelle 2.0 pour une qualité haute définition très nette (haute résolution de l'en-tête)
-          const viewport = page.getViewport({ scale: 2.0 });
+          // Échelle 4.0 pour une qualité très haute définition très nette
+          const viewport = page.getViewport({ scale: 4.0 });
           const canvas = document.createElement('canvas');
           const context = canvas.getContext('2d');
           if (context && isMounted) {
@@ -1843,14 +1843,25 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       </div>
 
                       {/* Titre du document (clic pour ouvrir) */}
-                      <div className="px-0.5 mb-1">
-                        <p
-                          onClick={() => handleOpenDoc(doc)}
-                          className="text-[9.5px] sm:text-[10.5px] font-black text-stone-100 truncate cursor-pointer hover:text-orange-400 transition-colors"
-                          title={doc.title || doc.file_name}
-                        >
-                          {doc.title || doc.file_name}
-                        </p>
+                      <div className="px-0.5 mb-1 flex flex-col gap-0.5">
+                        {doc.file_name && (
+                          <p
+                            onClick={() => handleOpenDoc(doc)}
+                            className="text-[8.5px] sm:text-[9px] font-semibold text-stone-400 truncate cursor-pointer hover:text-stone-200 transition-colors"
+                            title={doc.file_name}
+                          >
+                            {doc.file_name}
+                          </p>
+                        )}
+                        {(!doc.file_name || doc.title !== doc.file_name) && doc.title && (
+                          <p
+                            onClick={() => handleOpenDoc(doc)}
+                            className="text-[9.5px] sm:text-[10.5px] font-black text-stone-100 truncate cursor-pointer hover:text-orange-400 transition-colors"
+                            title={doc.title}
+                          >
+                            {doc.title}
+                          </p>
+                        )}
                       </div>
 
                       {/* Bas de carte : Nombre de téléchargements (au lieu de vues) + Badge Type (croix rouge) + Bouton Télécharger + 3 traits */}
@@ -1861,7 +1872,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           title={`${doc.downloads_count || 0} téléchargement(s)`}
                         >
                           <Download className="w-2.5 h-2.5 text-stone-400 shrink-0" />
-                          <span>{doc.downloads_count || 0} téléchargement(s)</span>
+                          <span>{doc.downloads_count || 0}</span>
                         </div>
 
                         {/* Badge Type de fichier (Image 1 croix rouge) */}
@@ -1970,13 +1981,26 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         </div>
 
                         {/* Titre (clic pour ouvrir directement in-app) */}
-                        <h3 
-                          onClick={() => handleOpenDoc(doc)}
-                          className="text-[11px] sm:text-xs font-extrabold text-stone-900 truncate mb-0.5 group-hover:text-orange-600 transition-colors cursor-pointer" 
-                          title={doc.title || doc.file_name}
-                        >
-                          {doc.title || doc.file_name}
-                        </h3>
+                        <div className="mb-0.5 flex flex-col">
+                          {doc.file_name && (
+                            <p
+                              onClick={() => handleOpenDoc(doc)}
+                              className="text-[9px] sm:text-[10px] font-semibold text-stone-500 truncate cursor-pointer hover:text-stone-700 transition-colors"
+                              title={doc.file_name}
+                            >
+                              {doc.file_name}
+                            </p>
+                          )}
+                          {(!doc.file_name || doc.title !== doc.file_name) && doc.title && (
+                            <h3 
+                              onClick={() => handleOpenDoc(doc)}
+                              className="text-[11px] sm:text-xs font-extrabold text-stone-900 truncate group-hover:text-orange-600 transition-colors cursor-pointer" 
+                              title={doc.title}
+                            >
+                              {doc.title}
+                            </h3>
+                          )}
+                        </div>
 
                         {/* Matière */}
                         {doc.matiere_name && (
@@ -2010,7 +2034,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           <span className="text-[8.5px] sm:text-[10px] font-bold text-stone-500 truncate">{docSizeStr}</span>
                           <span className="text-[8px] sm:text-[9px] text-stone-600 font-bold flex items-center gap-1" title={`${doc.downloads_count || 0} téléchargement(s)`}>
                             <Download className="w-2.5 h-2.5 text-orange-500" />
-                            <span>{doc.downloads_count || 0} téléchargement(s)</span>
+                            <span>{doc.downloads_count || 0}</span>
                           </span>
                         </div>
                         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
