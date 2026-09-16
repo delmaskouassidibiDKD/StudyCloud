@@ -1,11 +1,12 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
-import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart, RefreshCw, Globe, Hash, RotateCcw, Link2 } from 'lucide-react';
+import { BookOpen, Search, FileText, Download, Folder, Eye, Sparkles, Building2, Menu, X, GraduationCap, Package, ChevronDown, ArrowLeft, Share2, Copy, ShoppingCart, RefreshCw, Globe, Hash, RotateCcw, Link2, CloudDownload, MonitorDown } from 'lucide-react';
 import * as pdfjsLib from 'pdfjs-dist';
 import { SharedFolder, SharedFile } from '../types';
 import { FileIconBadge } from './FileIconBadge';
 import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
 import { DownloadDestinationModal, DownloadDestinationChoice } from './DownloadDestinationModal';
 import { importFilesToMesFichiers } from '../services/userSync';
+import { storeFileBlob } from '../services/localFileStorage';
 import studentLogo from '../assets/student-logo.jpg';
 
 if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.workerSrc) {
@@ -406,10 +407,89 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
       .catch(err => console.warn('Erreur chargement filtres dynamiques:', err));
   }, []);
 
-  const handleDocDownload = (doc: any) => {
+  const [downloadMenuId, setDownloadMenuId] = useState<string | null>(null);
+
+  const handleDownloadToDevice = async (doc: any) => {
+    setDownloadMenuId(null);
     const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
     setPublishedDocs(prev => prev.map(d => d.id === doc.id ? { ...d, downloads_count: (d.downloads_count || 0) + 1 } : d));
     StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'download').catch(() => {});
+    
+    try {
+      const res = await fetch(doc.file_url);
+      const blob = await res.blob();
+      const blobUrl = URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = blobUrl;
+      a.download = doc.file_name || doc.title || 'Document';
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      setTimeout(() => URL.revokeObjectURL(blobUrl), 100);
+    } catch (error) {
+      console.error(error);
+      window.open(doc.file_url, '_blank');
+    }
+  };
+
+  const handleSaveToStudyCloud = async (doc: any) => {
+    setDownloadMenuId(null);
+    triggerToast('Téléchargement en cours dans StudyCloud espace mes fichiers...');
+    try {
+      const res = await fetch(doc.file_url);
+      const blob = await res.blob();
+      const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
+      const now = Date.now();
+      const id = `file-${now}-${Math.random().toString(36).substring(2, 7)}`;
+      
+      const file = new File([blob], doc.file_name || doc.title || 'Document', { type: doc.file_type || blob.type || 'application/octet-stream' });
+      await storeFileBlob(id, file);
+      
+      const extVal = file.name.includes('.') ? file.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER';
+      
+      const localKey = 'unifolder_files_menu_items';
+      const saved = localStorage.getItem(localKey);
+      let localItems = saved ? JSON.parse(saved) : [];
+      const itemObj = {
+        id,
+        matiere: '',
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        extension: extVal,
+        url: URL.createObjectURL(file),
+        r2Key: doc.r2_key || null,
+        importedAt: now,
+        createdAt: now,
+        timestamp: now,
+        isFavorite: false
+      };
+      localItems = [itemObj, ...localItems];
+      localStorage.setItem(localKey, JSON.stringify(localItems));
+      
+      StudyCloudAPI.registerFileMetadata({
+        id,
+        userId: uid,
+        matiereId: '',
+        name: file.name,
+        size: file.size,
+        type: file.type,
+        extension: extVal,
+        r2Key: doc.r2_key || null,
+        fileUrl: doc.file_url,
+        isFavorite: false,
+        isImported: true,
+        lastImported: now
+      }).catch(() => {});
+      
+      setPublishedDocs(prev => prev.map(d => d.id === doc.id ? { ...d, downloads_count: (d.downloads_count || 0) + 1 } : d));
+      StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'download').catch(() => {});
+      
+      triggerToast('Le fichier a été bien téléchargé dans votre espace mes fichiers avec succès');
+    } catch (err) {
+      console.error(err);
+      triggerToast('Erreur lors du téléchargement');
+    }
   };
 
   const handleOpenDoc = (doc: any) => {
@@ -1867,15 +1947,37 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           </button>
 
                           {doc.file_url ? (
-                            <a
-                              href={doc.file_url}
-                              download={doc.file_name || doc.title}
-                              onClick={() => handleDocDownload(doc)}
-                              className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:scale-95"
-                              title="Télécharger"
-                            >
-                              <Download className="w-3 h-3" />
-                            </a>
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setDownloadMenuId(downloadMenuId === doc.id ? null : doc.id); }}
+                                className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:scale-95"
+                                title="Télécharger"
+                              >
+                                <Download className="w-3 h-3" />
+                              </button>
+                              {downloadMenuId === doc.id && (
+                                <>
+                                  <div className="fixed inset-0 z-[90]" onClick={(e) => { e.stopPropagation(); setDownloadMenuId(null); }} />
+                                  <div className="absolute bottom-full right-0 mb-1 z-[100] w-64 bg-white dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#334155] rounded-xl shadow-[4px_4px_0px_0px_#1c1917] py-1 text-left animate-in fade-in zoom-in-95 duration-150" onClick={e => e.stopPropagation()}>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleDownloadToDevice(doc); }}
+                                      className="w-full px-3 py-2.5 text-xs font-bold text-stone-800 dark:text-slate-100 hover:bg-stone-100 dark:hover:bg-white/10 flex items-center gap-2.5 transition-colors border-b border-stone-100 dark:border-white/10 cursor-pointer"
+                                    >
+                                      <MonitorDown className="w-4 h-4 text-orange-600 dark:text-orange-500 shrink-0" />
+                                      <span className="leading-tight text-left">Télécharger dans l'appareil</span>
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleSaveToStudyCloud(doc); }}
+                                      className="w-full px-3 py-2.5 text-xs font-bold text-stone-800 dark:text-slate-100 hover:bg-stone-100 dark:hover:bg-white/10 flex items-center gap-2.5 transition-colors cursor-pointer"
+                                    >
+                                      <CloudDownload className="w-4 h-4 text-emerald-600 dark:text-emerald-500 shrink-0" />
+                                      <span className="leading-tight text-left">Télécharger dans StudyCloud<br/><span className="text-[9.5px] font-semibold text-stone-500 dark:text-slate-400">Mes fichiers</span></span>
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           ) : (
                             <button
                               className="p-1 sm:p-1.5 bg-stone-700 text-stone-500 rounded-lg border border-stone-700 cursor-not-allowed flex items-center justify-center"
@@ -1962,15 +2064,37 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
                           {/* Bouton Télécharger */}
                           {doc.file_url ? (
-                            <a
-                              href={doc.file_url}
-                              download={doc.file_name || doc.title}
-                              onClick={() => handleDocDownload(doc)}
-                              className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:scale-95"
-                              title="Télécharger"
-                            >
-                              <Download className="w-3 h-3" />
-                            </a>
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setDownloadMenuId(downloadMenuId === doc.id ? null : doc.id); }}
+                                className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:scale-95"
+                                title="Télécharger"
+                              >
+                                <Download className="w-3 h-3" />
+                              </button>
+                              {downloadMenuId === doc.id && (
+                                <>
+                                  <div className="fixed inset-0 z-[90]" onClick={(e) => { e.stopPropagation(); setDownloadMenuId(null); }} />
+                                  <div className="absolute bottom-full right-0 mb-1 z-[100] w-64 bg-white dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#334155] rounded-xl shadow-[4px_4px_0px_0px_#1c1917] py-1 text-left animate-in fade-in zoom-in-95 duration-150" onClick={e => e.stopPropagation()}>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleDownloadToDevice(doc); }}
+                                      className="w-full px-3 py-2.5 text-xs font-bold text-stone-800 dark:text-slate-100 hover:bg-stone-100 dark:hover:bg-white/10 flex items-center gap-2.5 transition-colors border-b border-stone-100 dark:border-white/10 cursor-pointer"
+                                    >
+                                      <MonitorDown className="w-4 h-4 text-orange-600 dark:text-orange-500 shrink-0" />
+                                      <span className="leading-tight text-left">Télécharger dans l'appareil</span>
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleSaveToStudyCloud(doc); }}
+                                      className="w-full px-3 py-2.5 text-xs font-bold text-stone-800 dark:text-slate-100 hover:bg-stone-100 dark:hover:bg-white/10 flex items-center gap-2.5 transition-colors cursor-pointer"
+                                    >
+                                      <CloudDownload className="w-4 h-4 text-emerald-600 dark:text-emerald-500 shrink-0" />
+                                      <span className="leading-tight text-left">Télécharger dans StudyCloud<br/><span className="text-[9.5px] font-semibold text-stone-500 dark:text-slate-400">Mes fichiers</span></span>
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           ) : (
                             <button
                               className="p-1 sm:p-1.5 bg-stone-700 text-stone-500 rounded-lg border border-stone-700 cursor-not-allowed flex items-center justify-center"
@@ -2133,15 +2257,37 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                             <span className="hidden sm:inline">Voir</span>
                           </button>
                           {doc.file_url ? (
-                            <a
-                              href={doc.file_url}
-                              download={doc.file_name || doc.title}
-                              onClick={() => handleDocDownload(doc)}
-                              className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5"
-                              title="Télécharger"
-                            >
-                              <Download className="w-3 h-3" />
-                            </a>
+                            <div className="relative">
+                              <button
+                                type="button"
+                                onClick={(e) => { e.stopPropagation(); setDownloadMenuId(downloadMenuId === doc.id ? null : doc.id); }}
+                                className="p-1 sm:p-1.5 bg-orange-500 hover:bg-orange-600 text-white rounded-lg border border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center active:translate-x-0.5 active:translate-y-0.5"
+                                title="Télécharger"
+                              >
+                                <Download className="w-3 h-3" />
+                              </button>
+                              {downloadMenuId === doc.id && (
+                                <>
+                                  <div className="fixed inset-0 z-[90]" onClick={(e) => { e.stopPropagation(); setDownloadMenuId(null); }} />
+                                  <div className="absolute bottom-full right-0 mb-1 z-[100] w-64 bg-white dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#334155] rounded-xl shadow-[4px_4px_0px_0px_#1c1917] py-1 text-left animate-in fade-in zoom-in-95 duration-150" onClick={e => e.stopPropagation()}>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleDownloadToDevice(doc); }}
+                                      className="w-full px-3 py-2.5 text-xs font-bold text-stone-800 dark:text-slate-100 hover:bg-stone-100 dark:hover:bg-white/10 flex items-center gap-2.5 transition-colors border-b border-stone-100 dark:border-white/10 cursor-pointer"
+                                    >
+                                      <MonitorDown className="w-4 h-4 text-orange-600 dark:text-orange-500 shrink-0" />
+                                      <span className="leading-tight text-left">Télécharger dans l'appareil</span>
+                                    </button>
+                                    <button
+                                      onClick={(e) => { e.stopPropagation(); handleSaveToStudyCloud(doc); }}
+                                      className="w-full px-3 py-2.5 text-xs font-bold text-stone-800 dark:text-slate-100 hover:bg-stone-100 dark:hover:bg-white/10 flex items-center gap-2.5 transition-colors cursor-pointer"
+                                    >
+                                      <CloudDownload className="w-4 h-4 text-emerald-600 dark:text-emerald-500 shrink-0" />
+                                      <span className="leading-tight text-left">Télécharger dans StudyCloud<br/><span className="text-[9.5px] font-semibold text-stone-500 dark:text-slate-400">Mes fichiers</span></span>
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
                           ) : (
                             <button
                               className="p-1 sm:p-1.5 bg-stone-300 text-stone-400 rounded-lg border border-stone-300 cursor-not-allowed flex items-center justify-center"
