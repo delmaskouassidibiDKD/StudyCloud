@@ -87,38 +87,38 @@ export function getDocTypeInfo(doc: any): DocTypeInfo {
   const ext = fileName.includes('.') ? fileName.split('.').pop()?.toUpperCase() || 'DOC' : 'DOC';
 
   let badgeClass = 'bg-stone-700/40 text-stone-300 border-stone-600';
-  let cardBgClass = 'bg-gradient-to-b from-[#26272b] to-[#1c1c1f]';
+  let cardBgStyle = { background: 'linear-gradient(180deg, #26272b 0%, #1c1c1f 100%)' };
   let cardBorderClass = 'border-2 border-stone-700 hover:border-stone-500';
   let cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#1c1917] hover:shadow-[4px_4px_0px_0px_#292524]';
   let accentTextClass = 'text-stone-300';
 
   if (ext === 'PDF') {
     badgeClass = 'bg-red-900 text-red-100 border-red-500';
-    cardBgClass = 'bg-gradient-to-b from-red-600 to-red-800';
+    cardBgStyle = { background: 'linear-gradient(180deg, #dc2626 0%, #991b1b 100%)' }; // red-600 to red-800
     cardBorderClass = 'border-2 border-red-500 hover:border-red-400';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#450a0a] hover:shadow-[4px_4px_0px_0px_#7f1d1d]';
     accentTextClass = 'text-red-100';
   } else if (['DOC', 'DOCX'].includes(ext)) {
     badgeClass = 'bg-blue-900 text-blue-100 border-blue-500';
-    cardBgClass = 'bg-gradient-to-b from-blue-600 to-blue-800';
+    cardBgStyle = { background: 'linear-gradient(180deg, #2563eb 0%, #1e40af 100%)' }; // blue-600 to blue-800
     cardBorderClass = 'border-2 border-blue-500 hover:border-blue-400';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#172554] hover:shadow-[4px_4px_0px_0px_#1e3a8a]';
     accentTextClass = 'text-blue-100';
   } else if (['JPG', 'JPEG', 'PNG', 'GIF', 'WEBP', 'SVG'].includes(ext)) {
     badgeClass = 'bg-green-900 text-green-100 border-green-500';
-    cardBgClass = 'bg-gradient-to-b from-emerald-600 to-emerald-800';
+    cardBgStyle = { background: 'linear-gradient(180deg, #059669 0%, #065f46 100%)' }; // emerald-600 to emerald-800
     cardBorderClass = 'border-2 border-green-500 hover:border-green-400';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#052e16] hover:shadow-[4px_4px_0px_0px_#14532d]';
     accentTextClass = 'text-green-100';
   } else if (['PPT', 'PPTX'].includes(ext)) {
     badgeClass = 'bg-orange-900 text-orange-100 border-orange-500';
-    cardBgClass = 'bg-gradient-to-b from-orange-600 to-orange-800';
+    cardBgStyle = { background: 'linear-gradient(180deg, #ea580c 0%, #9a3412 100%)' }; // orange-600 to orange-800
     cardBorderClass = 'border-2 border-orange-500 hover:border-orange-400';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#431407] hover:shadow-[4px_4px_0px_0px_#7c2d12]';
     accentTextClass = 'text-orange-100';
   } else if (['XLS', 'XLSX', 'CSV'].includes(ext)) {
     badgeClass = 'bg-emerald-900 text-emerald-100 border-emerald-500';
-    cardBgClass = 'bg-gradient-to-b from-teal-600 to-teal-800';
+    cardBgStyle = { background: 'linear-gradient(180deg, #0d9488 0%, #115e59 100%)' }; // teal-600 to teal-800
     cardBorderClass = 'border-2 border-emerald-500 hover:border-emerald-400';
     cardShadowClass = 'shadow-[2.5px_2.5px_0px_0px_#022c22] hover:shadow-[4px_4px_0px_0px_#064e3b]';
     accentTextClass = 'text-emerald-100';
@@ -127,7 +127,7 @@ export function getDocTypeInfo(doc: any): DocTypeInfo {
   return {
     name: ext,
     badgeClass,
-    cardBgClass,
+    cardBgStyle,
     cardBorderClass,
     cardShadowClass,
     accentTextClass,
@@ -1728,7 +1728,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     return (
                       <div
                         key={doc.id}
-                        className={`aspect-[3/4] ${typeInfo.cardBgClass} text-stone-100 ${typeInfo.cardBorderClass} rounded-2xl p-2.5 flex flex-col justify-between ${typeInfo.cardShadowClass} transition-all relative select-none overflow-hidden`}
+                        style={typeInfo.cardBgStyle}
+                        className={`aspect-[3/4] text-stone-100 ${typeInfo.cardBorderClass} rounded-2xl p-2.5 flex flex-col justify-between ${typeInfo.cardShadowClass} transition-all relative select-none overflow-hidden`}
                       >
                         {/* Header avec badge catégorie + badge type + bouton retour aperçu */}
                         <div className="flex items-center justify-between gap-1 border-b border-white/10 pb-1 mb-1">
@@ -1842,7 +1843,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                   return (
                     <div
                       key={doc.id}
-                      className={`aspect-[3/4] ${typeInfo.cardBgClass} ${typeInfo.cardBorderClass} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${typeInfo.cardShadowClass} transition-all relative group select-none overflow-hidden`}
+                      style={typeInfo.cardBgStyle}
+                      className={`aspect-[3/4] ${typeInfo.cardBorderClass} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${typeInfo.cardShadowClass} transition-all relative group select-none overflow-hidden`}
                     >
                       {/* Header: Catégorie à gauche, Taille à droite */}
                       <div className="flex items-center justify-between gap-1 z-10">
