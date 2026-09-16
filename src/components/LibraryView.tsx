@@ -32,60 +32,60 @@ export function getDocTypeInfo(doc: any): DocTypeInfo {
   if (fileType.includes('pdf') || fileName.endsWith('.pdf')) {
     return {
       name: 'PDF',
-      badgeClass: 'bg-red-500/20 text-red-400 border-red-500/40',
-      cardBgClass: 'bg-gradient-to-b from-[#2a1717] to-[#1a0f0f]',
-      cardBorderClass: 'border-2 border-red-500/70 hover:border-red-400',
+      badgeClass: 'bg-white text-red-700 border-white shadow-sm',
+      cardBgClass: 'bg-red-600',
+      cardBorderClass: 'border-2 border-red-700 hover:border-red-500',
       cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#7f1d1d] hover:shadow-[4px_4px_0px_0px_#991b1b]',
-      accentTextClass: 'text-red-400',
-      cardBgStyle: { background: 'linear-gradient(180deg, #dc2626 0%, #991b1b 100%)' },
+      accentTextClass: 'text-white',
+      cardBgStyle: { backgroundColor: '#dc2626' },
     };
   }
 
   if (fileType.includes('word') || /\.(docx|doc)$/i.test(fileName)) {
     return {
       name: 'WORD',
-      badgeClass: 'bg-blue-500/20 text-blue-400 border-blue-500/40',
-      cardBgClass: 'bg-gradient-to-b from-[#14233c] to-[#0e1728]',
-      cardBorderClass: 'border-2 border-blue-500/70 hover:border-blue-400',
+      badgeClass: 'bg-white text-blue-700 border-white shadow-sm',
+      cardBgClass: 'bg-blue-600',
+      cardBorderClass: 'border-2 border-blue-700 hover:border-blue-500',
       cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#1e3a8a] hover:shadow-[4px_4px_0px_0px_#1d4ed8]',
-      accentTextClass: 'text-blue-400',
-      cardBgStyle: { background: 'linear-gradient(180deg, #2563eb 0%, #1e40af 100%)' },
+      accentTextClass: 'text-white',
+      cardBgStyle: { backgroundColor: '#2563eb' },
     };
   }
 
   if (fileType.includes('sheet') || /\.(xlsx|xls|csv)$/i.test(fileName)) {
     return {
       name: 'EXCEL',
-      badgeClass: 'bg-emerald-500/20 text-emerald-400 border-emerald-500/40',
-      cardBgClass: 'bg-gradient-to-b from-[#112a1f] to-[#0c1c15]',
-      cardBorderClass: 'border-2 border-emerald-500/70 hover:border-emerald-400',
+      badgeClass: 'bg-white text-emerald-700 border-white shadow-sm',
+      cardBgClass: 'bg-emerald-600',
+      cardBorderClass: 'border-2 border-emerald-700 hover:border-emerald-500',
       cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#064e3b] hover:shadow-[4px_4px_0px_0px_#047857]',
-      accentTextClass: 'text-emerald-400',
-      cardBgStyle: { background: 'linear-gradient(180deg, #0d9488 0%, #115e59 100%)' },
+      accentTextClass: 'text-white',
+      cardBgStyle: { backgroundColor: '#059669' },
     };
   }
 
   if (fileType.includes('presentation') || /\.(pptx|ppt)$/i.test(fileName)) {
     return {
       name: 'PPT',
-      badgeClass: 'bg-amber-500/20 text-amber-400 border-amber-500/40',
-      cardBgClass: 'bg-gradient-to-b from-[#2e1c10] to-[#1f130b]',
-      cardBorderClass: 'border-2 border-amber-500/70 hover:border-amber-400',
+      badgeClass: 'bg-white text-amber-700 border-white shadow-sm',
+      cardBgClass: 'bg-amber-600',
+      cardBorderClass: 'border-2 border-amber-700 hover:border-amber-500',
       cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#78350f] hover:shadow-[4px_4px_0px_0px_#b45309]',
-      accentTextClass: 'text-amber-400',
-      cardBgStyle: { background: 'linear-gradient(180deg, #ea580c 0%, #9a3412 100%)' },
+      accentTextClass: 'text-white',
+      cardBgStyle: { backgroundColor: '#d97706' },
     };
   }
 
   if (fileType.startsWith('image/') || /\.(jpg|jpeg|png|webp|gif|svg)$/i.test(fileName)) {
     return {
       name: 'IMAGE',
-      badgeClass: 'bg-teal-500/20 text-teal-400 border-teal-500/40',
-      cardBgClass: 'bg-gradient-to-b from-[#0f2824] to-[#0a1b18]',
-      cardBorderClass: 'border-2 border-teal-500/70 hover:border-teal-400',
+      badgeClass: 'bg-white text-teal-700 border-white shadow-sm',
+      cardBgClass: 'bg-teal-600',
+      cardBorderClass: 'border-2 border-teal-700 hover:border-teal-500',
       cardShadowClass: 'shadow-[2.5px_2.5px_0px_0px_#115e59] hover:shadow-[4px_4px_0px_0px_#0f766e]',
-      accentTextClass: 'text-teal-400',
-      cardBgStyle: { background: 'linear-gradient(180deg, #059669 0%, #065f46 100%)' },
+      accentTextClass: 'text-white',
+      cardBgStyle: { backgroundColor: '#0d9488' },
     };
   }
 
@@ -1852,10 +1852,10 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     >
                       {/* Header: Catégorie à gauche, Taille à droite */}
                       <div className="flex items-center justify-between gap-1 z-10">
-                        <span className="text-[7.5px] sm:text-[8.5px] font-black bg-orange-500/20 text-orange-400 border border-orange-500/40 px-1.5 py-0.5 rounded truncate max-w-[65px]">
+                        <span className="text-[7.5px] sm:text-[8.5px] font-black bg-white text-stone-800 border border-white px-1.5 py-0.5 rounded shadow-sm truncate max-w-[65px]">
                           {doc.category || "Pas d'informations"}
                         </span>
-                        <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/70 text-stone-200 border border-stone-700 px-1.5 py-0.5 rounded shadow-sm">
+                        <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1.5 py-0.5 rounded shadow-sm">
                           {docSizeStr}
                         </span>
                       </div>
@@ -1870,7 +1870,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         {doc.file_name && (
                           <p
                             onClick={() => handleOpenDoc(doc)}
-                            className="text-[8.5px] sm:text-[9px] font-semibold text-white/70 truncate cursor-pointer hover:text-white transition-colors"
+                            className="text-[8.5px] sm:text-[9px] font-semibold text-white truncate cursor-pointer hover:text-white/80 transition-colors drop-shadow-sm"
                             title={doc.file_name}
                           >
                             {doc.file_name}
@@ -1879,7 +1879,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         {(!doc.file_name || !isSameName) && doc.title && (
                           <p
                             onClick={() => handleOpenDoc(doc)}
-                            className="text-[9.5px] sm:text-[10.5px] font-black text-white truncate cursor-pointer hover:text-orange-300 transition-colors"
+                            className="text-[9.5px] sm:text-[10.5px] font-black text-white truncate cursor-pointer hover:text-orange-300 transition-colors drop-shadow-md"
                             title={doc.title}
                           >
                             {doc.title}
@@ -1888,13 +1888,13 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       </div>
 
                       {/* Bas de carte : Nombre de téléchargements (au lieu de vues) + Badge Type (croix rouge) + Bouton Télécharger + 3 traits */}
-                      <div className="flex items-center justify-between pt-1 border-t border-white/10 gap-1">
+                      <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
                         {/* Téléchargements (Image 1 entouré en rouge) */}
                         <div 
-                          className="flex items-center gap-0.5 sm:gap-1 text-[7.5px] sm:text-[8.5px] font-bold text-stone-300 truncate"
+                          className="flex items-center gap-0.5 sm:gap-1 text-[7.5px] sm:text-[8.5px] font-bold text-white truncate drop-shadow-sm"
                           title={`${doc.downloads_count || 0} téléchargement(s)`}
                         >
-                          <Download className="w-2.5 h-2.5 text-stone-400 shrink-0" />
+                          <Download className="w-2.5 h-2.5 text-white shrink-0 drop-shadow-sm" />
                           <span>{doc.downloads_count || 0}</span>
                         </div>
 
