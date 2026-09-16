@@ -1292,11 +1292,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                       <div className="flex-1">
                         <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                           <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" /> Titre du document <span className="text-red-500">*</span></span>
-                          <span className="text-[10px] font-mono text-stone-400">{docTitle.length}/30</span>
+                          <span className="text-[10px] font-mono text-stone-400">{docTitle.length}/60</span>
                         </label>
                         <input
                           type="text"
-                          maxLength={30}
+                          maxLength={60}
                           value={docTitle}
                           onChange={(e) => setDocTitle(e.target.value)}
                           placeholder="Ex: Cours d'Électrotechnique S1..."
@@ -1308,11 +1308,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                       <div className="flex-1">
                         <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                           <span>Description <span className="text-stone-400 text-[10px] font-normal">(Optionnel)</span></span>
-                          <span className="text-[10px] font-mono text-stone-400">{docDescription.length}/30</span>
+                          <span className="text-[10px] font-mono text-stone-400">{docDescription.length}/60</span>
                         </label>
                         <input
                           type="text"
-                          maxLength={30}
+                          maxLength={60}
                           value={docDescription}
                           onChange={(e) => setDocDescription(e.target.value)}
                           placeholder="Courte description du document..."
@@ -1326,7 +1326,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                       <div className="flex-1">
                         <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                           <span>Catégorie <span className="text-red-500">*</span></span>
-                          {docCategory === 'Autre' && <span className="text-[10px] font-mono text-stone-400">{customDocCategory.length}/30</span>}
+                          {docCategory === 'Autre' && <span className="text-[10px] font-mono text-stone-400">{customDocCategory.length}/60</span>}
                         </label>
                         <div className="space-y-1.5">
                           <select
@@ -1339,7 +1339,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                           {docCategory === 'Autre' && (
                             <input
                               type="text"
-                              maxLength={30}
+                              maxLength={60}
                               value={customDocCategory}
                               onChange={(e) => setCustomDocCategory(e.target.value)}
                               placeholder="Précisez la catégorie..."
@@ -1353,11 +1353,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                       <div className="flex-1">
                         <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                           <span className="flex items-center gap-1"><GraduationCap className="w-3 h-3" /> Matière <span className="text-red-500">*</span></span>
-                          <span className="text-[10px] font-mono text-stone-400">{docMatiere.length}/30</span>
+                          <span className="text-[10px] font-mono text-stone-400">{docMatiere.length}/60</span>
                         </label>
                         <input
                           type="text"
-                          maxLength={30}
+                          maxLength={60}
                           value={docMatiere}
                           onChange={(e) => setDocMatiere(e.target.value)}
                           placeholder="Ex: Mathématiques, Physique..."
@@ -1369,11 +1369,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                       <div className="flex-1">
                         <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                           <span>Niveau <span className="text-red-500">*</span></span>
-                          <span className="text-[10px] font-mono text-stone-400">{docLevel.length}/30</span>
+                          <span className="text-[10px] font-mono text-stone-400">{docLevel.length}/60</span>
                         </label>
                         <input
                           type="text"
-                          maxLength={30}
+                          maxLength={60}
                           value={docLevel}
                           onChange={(e) => setDocLevel(e.target.value)}
                           placeholder="Ex: BTS 1, Licence 2..."
@@ -1389,11 +1389,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                       <div className="flex-1">
                         <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                           <span>École <span className="text-stone-400 text-[10px] font-normal">(Optionnel)</span></span>
-                          <span className="text-[10px] font-mono text-stone-400">{school.length}/30</span>
+                          <span className="text-[10px] font-mono text-stone-400">{school.length}/60</span>
                         </label>
                         <input 
                           type="text" 
-                          maxLength={30}
+                          maxLength={60}
                           value={school} 
                           onChange={(e) => setSchool(e.target.value)} 
                           placeholder="Provenance de l'école (facultatif)..."
@@ -1403,11 +1403,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                       <div className="flex-1">
                         <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                           <span>Filière <span className="text-red-500">*</span></span>
-                          <span className="text-[10px] font-mono text-stone-400">{filiere.length}/30</span>
+                          <span className="text-[10px] font-mono text-stone-400">{filiere.length}/60</span>
                         </label>
                         <input 
                           type="text" 
-                          maxLength={30}
+                          maxLength={60}
                           value={filiere} 
                           onChange={(e) => setFiliere(e.target.value)} 
                           placeholder="Nom de la filière..."
@@ -1423,11 +1423,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                       <div className="flex-1">
                         <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                           <span className="flex items-center gap-1"><Globe className="w-3 h-3" /> Pays <span className="text-red-500">*</span></span>
-                          <span className="text-[10px] font-mono text-stone-400">{docCountry.length}/30</span>
+                          <span className="text-[10px] font-mono text-stone-400">{docCountry.length}/60</span>
                         </label>
                         <input 
                           type="text" 
-                          maxLength={30}
+                          maxLength={60}
                           value={docCountry} 
                           onChange={(e) => setDocCountry(e.target.value)} 
                           placeholder="Côte d'Ivoire..."
@@ -1439,11 +1439,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                       <div className="flex-1">
                         <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                           <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> Tags <span className="text-stone-400 text-[10px] font-normal">(Optionnel, séparés par virgules)</span></span>
-                          <span className="text-[10px] font-mono text-stone-400">{docTags.length}/30</span>
+                          <span className="text-[10px] font-mono text-stone-400">{docTags.length}/60</span>
                         </label>
                         <input 
                           type="text" 
-                          maxLength={30}
+                          maxLength={60}
                           value={docTags} 
                           onChange={(e) => setDocTags(e.target.value)} 
                           placeholder="révision, annales, circuit..."
@@ -1512,15 +1512,15 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                       Le nom réel de chaque fichier sera automatiquement enregistré comme titre du document. Vous pouvez ajouter une description facultative ci-dessous ou directement cliquer sur <strong>« Valider ({selectedFiles.length}) »</strong> en haut à droite pour publier.
                     </p>
 
-                    {/* Champ Description facultatif (30 caractères max) */}
+                    {/* Champ Description facultatif (60 caractères max) */}
                     <div className="pt-2 border-t border-emerald-300/80">
                       <label className="block text-[11px] font-bold text-emerald-900 mb-1 flex items-center justify-between">
                         <span>Description <span className="text-emerald-700 text-[10px] font-normal">(Facultatif)</span></span>
-                        <span className="text-[10px] font-mono text-emerald-800">{docDescription.length}/30</span>
+                        <span className="text-[10px] font-mono text-emerald-800">{docDescription.length}/60</span>
                       </label>
                       <input 
                         type="text"
-                        maxLength={30}
+                        maxLength={60}
                         value={docDescription} 
                         onChange={(e) => setDocDescription(e.target.value)} 
                         placeholder="Courte description facultative pour ces documents..."
@@ -1564,11 +1564,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
               <div>
                 <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                   <span className="flex items-center gap-1"><BookOpen className="w-3 h-3" /> Titre du document <span className="text-red-500">*</span></span>
-                  <span className="text-[10px] font-mono text-stone-400">{modalTitle.length}/30</span>
+                  <span className="text-[10px] font-mono text-stone-400">{modalTitle.length}/60</span>
                 </label>
                 <input
                   type="text"
-                  maxLength={30}
+                  maxLength={60}
                   value={modalTitle}
                   onChange={(e) => setModalTitle(e.target.value)}
                   placeholder="Titre de ce document..."
@@ -1583,7 +1583,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 <div>
                   <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                     <span>Catégorie <span className="text-red-500">*</span></span>
-                    {modalCategory === 'Autre' && <span className="text-[10px] font-mono text-stone-400">{customModalCategory.length}/30</span>}
+                    {modalCategory === 'Autre' && <span className="text-[10px] font-mono text-stone-400">{customModalCategory.length}/60</span>}
                   </label>
                   <div className="space-y-1.5">
                     <select
@@ -1596,7 +1596,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     {modalCategory === 'Autre' && (
                       <input
                         type="text"
-                        maxLength={30}
+                        maxLength={60}
                         value={customModalCategory}
                         onChange={(e) => setCustomModalCategory(e.target.value)}
                         placeholder="Précisez la catégorie..."
@@ -1610,11 +1610,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 <div>
                   <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                     <span className="flex items-center gap-1"><GraduationCap className="w-3 h-3" /> Matière <span className="text-red-500">*</span></span>
-                    <span className="text-[10px] font-mono text-stone-400">{modalMatiere.length}/30</span>
+                    <span className="text-[10px] font-mono text-stone-400">{modalMatiere.length}/60</span>
                   </label>
                   <input
                     type="text"
-                    maxLength={30}
+                    maxLength={60}
                     value={modalMatiere}
                     onChange={(e) => setModalMatiere(e.target.value)}
                     placeholder="Ex: Mathématiques..."
@@ -1630,11 +1630,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 <div>
                   <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                     <span>Niveau <span className="text-red-500">*</span></span>
-                    <span className="text-[10px] font-mono text-stone-400">{modalLevel.length}/30</span>
+                    <span className="text-[10px] font-mono text-stone-400">{modalLevel.length}/60</span>
                   </label>
                   <input
                     type="text"
-                    maxLength={30}
+                    maxLength={60}
                     value={modalLevel}
                     onChange={(e) => setModalLevel(e.target.value)}
                     placeholder="Ex: BTS 1, Licence 2..."
@@ -1646,11 +1646,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 <div>
                   <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                     <span>École <span className="text-stone-400 text-[10px] font-normal">(Optionnel)</span></span>
-                    <span className="text-[10px] font-mono text-stone-400">{modalSchool.length}/30</span>
+                    <span className="text-[10px] font-mono text-stone-400">{modalSchool.length}/60</span>
                   </label>
                   <input
                     type="text"
-                    maxLength={30}
+                    maxLength={60}
                     value={modalSchool}
                     onChange={(e) => setModalSchool(e.target.value)}
                     placeholder="Provenance de l'école (facultatif)..."
@@ -1664,11 +1664,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 <div>
                   <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                     <span>Filière <span className="text-red-500">*</span></span>
-                    <span className="text-[10px] font-mono text-stone-400">{modalFiliere.length}/30</span>
+                    <span className="text-[10px] font-mono text-stone-400">{modalFiliere.length}/60</span>
                   </label>
                   <input
                     type="text"
-                    maxLength={30}
+                    maxLength={60}
                     value={modalFiliere}
                     onChange={(e) => setModalFiliere(e.target.value)}
                     placeholder="Nom de la filière..."
@@ -1680,11 +1680,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 <div>
                   <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                     <span className="flex items-center gap-1"><Globe className="w-3 h-3" /> Pays <span className="text-red-500">*</span></span>
-                    <span className="text-[10px] font-mono text-stone-400">{modalCountry.length}/30</span>
+                    <span className="text-[10px] font-mono text-stone-400">{modalCountry.length}/60</span>
                   </label>
                   <input
                     type="text"
-                    maxLength={30}
+                    maxLength={60}
                     value={modalCountry}
                     onChange={(e) => setModalCountry(e.target.value)}
                     placeholder="Côte d'Ivoire..."
@@ -1699,11 +1699,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
               <div>
                 <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                   <span>Description <span className="text-stone-400 text-[10px] font-normal">(Optionnel)</span></span>
-                  <span className="text-[10px] font-mono text-stone-400">{modalDescription.length}/30</span>
+                  <span className="text-[10px] font-mono text-stone-400">{modalDescription.length}/60</span>
                 </label>
                 <input
                   type="text"
-                  maxLength={30}
+                  maxLength={60}
                   value={modalDescription}
                   onChange={(e) => setModalDescription(e.target.value)}
                   placeholder="Courte description de ce document..."
@@ -1713,11 +1713,11 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
               <div>
                 <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
                   <span className="flex items-center gap-1"><Tag className="w-3 h-3" /> Tags <span className="text-stone-400 text-[10px] font-normal">(Optionnel, séparés par virgules)</span></span>
-                  <span className="text-[10px] font-mono text-stone-400">{modalTags.length}/30</span>
+                  <span className="text-[10px] font-mono text-stone-400">{modalTags.length}/60</span>
                 </label>
                 <input
                   type="text"
-                  maxLength={30}
+                  maxLength={60}
                   value={modalTags}
                   onChange={(e) => setModalTags(e.target.value)}
                   placeholder="révision, examen, td..."
