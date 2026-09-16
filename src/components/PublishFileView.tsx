@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { 
   ArrowLeft, Upload, CheckCircle2, X, FileText, Table, Presentation, Plus, 
   RefreshCw, Globe, Tag, GraduationCap, BookOpen, Check, Edit3, AlertCircle 
@@ -145,6 +145,40 @@ export const checkPublicationFileType = (file: { name: string; type?: string; we
   return { allowed: true };
 };
 
+export interface PublishHistory {
+  school: string[];
+  filiere: string[];
+  docMatiere: string[];
+  docTags: string[];
+  customDocCategory: string[];
+}
+
+export function getPublishHistory(): PublishHistory {
+  try {
+    const data = localStorage.getItem('studycloud_publish_history');
+    if (data) {
+      return JSON.parse(data);
+    }
+  } catch (e) {}
+  return { school: [], filiere: [], docMatiere: [], docTags: [], customDocCategory: [] };
+}
+
+export function saveToPublishHistory(fields: Partial<PublishHistory>) {
+  const history = getPublishHistory();
+  for (const [key, value] of Object.entries(fields)) {
+    if (value && Array.isArray(value)) {
+      value.forEach(val => {
+        const trimmed = val.trim();
+        if (trimmed && !(history as any)[key].includes(trimmed)) {
+          (history as any)[key] = [trimmed, ...(history as any)[key]].slice(0, 15);
+        }
+      });
+    }
+  }
+  localStorage.setItem('studycloud_publish_history', JSON.stringify(history));
+}
+
+
 interface PublishFileViewProps {
   onBack: () => void;
   onPublish?: (title: string, description: string, category: string, files: any[]) => void;
@@ -152,6 +186,8 @@ interface PublishFileViewProps {
 }
 
 export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPublish, onStatusChange }) => {
+  const history = useMemo(() => getPublishHistory(), []);
+
   const [selectedFiles, setSelectedFiles] = useState<any[]>(() => {
     try {
       const saved = localStorage.getItem('published_selected_files');
@@ -1009,6 +1045,39 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         rejectedFiles: rejectedFilesList.length > 0 ? rejectedFilesList : undefined
       });
 
+      // Enregistrer dans l'historique pour l'autocomplétion
+      if (publishedSuccessIds.length > 0) {
+        const hSchool: string[] = [];
+        const hFiliere: string[] = [];
+        const hDocMatiere: string[] = [];
+        const hDocTags: string[] = [];
+        const hCustomCategory: string[] = [];
+        
+        if (infoMode === 'all') {
+          hSchool.push(school);
+          hFiliere.push(filiere);
+          hDocMatiere.push(docMatiere);
+          if (docTags) hDocTags.push(...docTags.split(',').map(s => s.trim()));
+          if (docCategory === 'Autre') hCustomCategory.push(customDocCategory);
+        } else {
+          filesToPublish.filter(f => publishedSuccessIds.includes(f.id)).forEach(f => {
+            if (f.fileSchool) hSchool.push(f.fileSchool);
+            if (f.fileFiliere) hFiliere.push(f.fileFiliere);
+            if (f.fileMatiere) hDocMatiere.push(f.fileMatiere);
+            if (f.fileTags) hDocTags.push(...f.fileTags.split(',').map((s: string) => s.trim()));
+            if (f.fileCategory === 'Autre' && f.fileCustomCategory) hCustomCategory.push(f.fileCustomCategory);
+          });
+        }
+        
+        saveToPublishHistory({
+          school: hSchool,
+          filiere: hFiliere,
+          docMatiere: hDocMatiere,
+          docTags: hDocTags,
+          customDocCategory: hCustomCategory
+        });
+      }
+
       // Déclencher le rafraîchissement des documents en direct en arrière-plan sans quitter la page
       window.dispatchEvent(new Event('studycloud_refresh_published_docs'));
 
@@ -1648,6 +1717,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                             <input
                               type="text"
                               maxLength={60}
+                              list="history-customDocCategory"
                               value={customDocCategory}
                               onChange={(e) => setCustomDocCategory(e.target.value)}
                               placeholder="Précisez la catégorie (facultatif)..."
@@ -1664,6 +1734,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                         <input
                           type="text"
                           maxLength={60}
+                          list="history-docMatiere"
                           value={docMatiere}
                           onChange={(e) => setDocMatiere(e.target.value)}
                           placeholder="Ex: Mathématiques, Physique..."
@@ -1700,6 +1771,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                         <input 
                           type="text" 
                           maxLength={60}
+                          list="history-school"
                           value={school} 
                           onChange={(e) => setSchool(e.target.value)} 
                           placeholder="Provenance de l'école (facultatif)..."
@@ -1714,6 +1786,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                         <input 
                           type="text" 
                           maxLength={60}
+                          list="history-filiere"
                           value={filiere} 
                           onChange={(e) => setFiliere(e.target.value)} 
                           placeholder="Nom de la filière..."
@@ -1750,6 +1823,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                         <input 
                           type="text" 
                           maxLength={60}
+                          list="history-docTags"
                           value={docTags} 
                           onChange={(e) => setDocTags(e.target.value)} 
                           placeholder="révision, annales, circuit..."
@@ -1903,6 +1977,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                       <input
                         type="text"
                         maxLength={60}
+                        list="history-customDocCategory"
                         value={customModalCategory}
                         onChange={(e) => setCustomModalCategory(e.target.value)}
                         placeholder="Précisez la catégorie (facultatif)..."
@@ -1919,6 +1994,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   <input
                     type="text"
                     maxLength={60}
+                    list="history-docMatiere"
                     value={modalMatiere}
                     onChange={(e) => setModalMatiere(e.target.value)}
                     placeholder="Ex: Mathématiques..."
@@ -1955,6 +2031,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   <input
                     type="text"
                     maxLength={60}
+                    list="history-school"
                     value={modalSchool}
                     onChange={(e) => setModalSchool(e.target.value)}
                     placeholder="Provenance de l'école (facultatif)..."
@@ -1973,6 +2050,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                   <input
                     type="text"
                     maxLength={60}
+                    list="history-filiere"
                     value={modalFiliere}
                     onChange={(e) => setModalFiliere(e.target.value)}
                     placeholder="Nom de la filière..."
@@ -2022,6 +2100,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                 <input
                   type="text"
                   maxLength={60}
+                  list="history-docTags"
                   value={modalTags}
                   onChange={(e) => setModalTags(e.target.value)}
                   placeholder="révision, examen, td..."
@@ -2092,6 +2171,33 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           </div>
         </div>
       )}
+
+      {/* Datalists pour l'autocomplétion basée sur l'historique */}
+      <datalist id="history-school">
+        {history.school.map((item, idx) => (
+          <option key={`school-${idx}`} value={item} />
+        ))}
+      </datalist>
+      <datalist id="history-filiere">
+        {history.filiere.map((item, idx) => (
+          <option key={`filiere-${idx}`} value={item} />
+        ))}
+      </datalist>
+      <datalist id="history-docMatiere">
+        {history.docMatiere.map((item, idx) => (
+          <option key={`matiere-${idx}`} value={item} />
+        ))}
+      </datalist>
+      <datalist id="history-docTags">
+        {history.docTags.map((item, idx) => (
+          <option key={`tag-${idx}`} value={item} />
+        ))}
+      </datalist>
+      <datalist id="history-customDocCategory">
+        {history.customDocCategory.map((item, idx) => (
+          <option key={`cat-${idx}`} value={item} />
+        ))}
+      </datalist>
     </div>
   );
 };
