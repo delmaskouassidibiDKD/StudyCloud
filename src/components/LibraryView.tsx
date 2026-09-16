@@ -1813,14 +1813,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         <div className="flex-1 flex flex-col justify-around py-1 space-y-1 overflow-hidden">
                           <div className="flex flex-col">
                             {doc.file_name && (
-                              <p className="text-[8.5px] sm:text-[9.5px] font-semibold text-white truncate mb-0.5 drop-shadow-sm" title={doc.file_name}>
+                              <p className="text-[8.5px] sm:text-[9.5px] font-semibold text-white line-clamp-2 leading-tight mb-0.5 drop-shadow-sm" title={doc.file_name}>
                                 {doc.file_name}
                               </p>
                             )}
                             {(!doc.file_name || !isSameName) && doc.title && (
                               <h3 
                                 onClick={() => handleOpenDoc(doc)}
-                                className="text-[10.5px] sm:text-[11.5px] font-black text-white truncate cursor-pointer hover:underline drop-shadow-md" 
+                                className="text-[10.5px] sm:text-[11.5px] font-black text-white line-clamp-2 leading-tight cursor-pointer hover:underline drop-shadow-md" 
                                 title={doc.title}
                               >
                                 {doc.title}
@@ -1829,7 +1829,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           </div>
 
                           {doc.matiere_name && (
-                            <p className="text-[8.5px] sm:text-[9.5px] text-white font-bold truncate drop-shadow-sm" title={doc.matiere_name}>
+                            <p className="text-[8.5px] sm:text-[9.5px] text-white font-bold line-clamp-2 leading-tight drop-shadow-sm" title={doc.matiere_name}>
                               📚 {doc.matiere_name}{doc.level ? ` · ${doc.level}` : ''}
                             </p>
                           )}
@@ -2069,7 +2069,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           {doc.file_name && (
                             <p
                               onClick={() => handleOpenDoc(doc)}
-                              className="text-[9px] sm:text-[10px] font-semibold text-stone-500 truncate cursor-pointer hover:text-stone-700 transition-colors"
+                              className="text-[9px] sm:text-[10px] font-semibold text-stone-500 line-clamp-2 leading-tight cursor-pointer hover:text-stone-700 transition-colors"
                               title={doc.file_name}
                             >
                               {doc.file_name}
@@ -2078,7 +2078,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                           {(!doc.file_name || !isSameName) && doc.title && (
                             <h3 
                               onClick={() => handleOpenDoc(doc)}
-                              className="text-[11px] sm:text-xs font-extrabold text-stone-900 truncate group-hover:text-orange-600 transition-colors cursor-pointer" 
+                              className="text-[11px] sm:text-xs font-extrabold text-stone-900 line-clamp-2 leading-tight group-hover:text-orange-600 transition-colors cursor-pointer" 
                               title={doc.title}
                             >
                               {doc.title}
@@ -2088,7 +2088,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
 
                         {/* Matière */}
                         {doc.matiere_name && (
-                          <p className="text-[9px] text-stone-500 font-semibold truncate mb-0.5" title={doc.matiere_name}>
+                          <p className="text-[9px] text-stone-500 font-semibold line-clamp-2 leading-tight mb-0.5" title={doc.matiere_name}>
                             📚 {doc.matiere_name}{doc.level ? ` · ${doc.level}` : ''}
                           </p>
                         )}
