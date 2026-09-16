@@ -5672,9 +5672,48 @@ export default {
           });
           const matieres = Array.from(matieresSet).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }));
 
-          return jsonResponse({ success: true, schools, matieres }, 200, origin);
+          // 3. Catégories dynamiques
+          // a) Catégories explicitement enregistrées dans la DB
+          const pubCatsRes: any = await env.DB.prepare(
+            `SELECT DISTINCT category FROM published_documents WHERE category IS NOT NULL AND TRIM(category) != ''`
+          ).all().catch(() => ({ results: [] }));
+
+          // b) Détection intelligente depuis le nom du fichier (pour les docs sans catégorie)
+          const nameCategoryMap = [
+            { patterns: ['cours', 'lecture', 'support de cours', 'course'], label: 'Cours' },
+            { patterns: ['td', 'tp', 'travaux dirigés', 'travaux pratiques', 'exercice'], label: 'TD/TP' },
+            { patterns: ['exam', 'examen', 'devoir', 'concours', 'epreuve', 'épreuve', 'ds', 'controle', 'contrôle'], label: 'Examens' },
+            { patterns: ['projet', 'project', 'rapport', 'memoire', 'mémoire', 'pfe', 'tfe', 'these', 'thèse'], label: 'Projets' },
+            { patterns: ['note', 'notes', 'fiche', 'resume', 'résumé', 'synthese', 'synthèse', 'recap', 'récap'], label: 'Notes' },
+          ];
+          const undetectedRes: any = await env.DB.prepare(
+            `SELECT file_name FROM published_documents WHERE (category IS NULL OR TRIM(category) = '') AND file_name IS NOT NULL`
+          ).all().catch(() => ({ results: [] }));
+
+          const categoriesSet = new Set<string>();
+          (pubCatsRes?.results || []).forEach((r: any) => {
+            const c = (r.category || '').trim();
+            if (c && c.toLowerCase() !== 'null' && c.toLowerCase() !== 'undefined') categoriesSet.add(c);
+          });
+          (undetectedRes?.results || []).forEach((r: any) => {
+            const fname = (r.file_name || '').toLowerCase().replace(/[_\-.]/g, ' ');
+            for (const { patterns, label } of nameCategoryMap) {
+              if (patterns.some((p: string) => fname.includes(p))) {
+                categoriesSet.add(label);
+                break;
+              }
+            }
+          });
+
+          const canonicalOrder = ['Cours', 'TD/TP', 'Examens', 'Projets', 'Notes'];
+          const categories = [
+            ...canonicalOrder.filter(c => categoriesSet.has(c)),
+            ...[...categoriesSet].filter(c => !canonicalOrder.includes(c)).sort((a, b) => a.localeCompare(b, 'fr', { sensitivity: 'base' }))
+          ];
+
+          return jsonResponse({ success: true, schools, matieres, categories }, 200, origin);
         } catch (filterErr: any) {
-          return jsonResponse({ success: false, error: filterErr.message, schools: [], matieres: [] }, 500, origin);
+          return jsonResponse({ success: false, error: filterErr.message, schools: [], matieres: [], categories: [] }, 500, origin);
         }
       }
 
@@ -5775,9 +5814,9 @@ export default {
           }
 
           if (search) {
-            query += ' AND (title LIKE ? OR description LIKE ? OR matiere_name LIKE ? OR author_name LIKE ? OR tags_json LIKE ?)';
+            query += ' AND (title LIKE ? OR description LIKE ? OR matiere_name LIKE ? OR author_name LIKE ? OR tags_json LIKE ? OR country LIKE ? OR file_name LIKE ? OR category LIKE ?)';
             const s = `%${search}%`;
-            params.push(s, s, s, s, s);
+            params.push(s, s, s, s, s, s, s, s);
           }
 
           query += ' ORDER BY created_at DESC';
