@@ -922,6 +922,17 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
             const uploadResult = await StudyCloudAPI.uploadFileToR2(rawFile, key);
             r2Key = uploadResult.key;
             fileUrl = uploadResult.url;
+
+            // Upload de la miniature si elle a été générée (PDF)
+            if (file.url && file.url.startsWith('data:image')) {
+              try {
+                const res = await fetch(file.url);
+                const blob = await res.blob();
+                await StudyCloudAPI.uploadFileToR2(blob, `${key}_thumb.png`);
+              } catch (thumbErr) {
+                console.warn('Upload de la miniature R2 échoué:', thumbErr);
+              }
+            }
           }
         } catch (uploadErr) {
           console.warn('Upload R2 échoué (mode local):', uploadErr);

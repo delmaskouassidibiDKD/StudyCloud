@@ -165,33 +165,49 @@ const DocumentCardThumbnail: React.FC<{ doc: any; onClick?: () => void }> = ({ d
 
     if (isPdf && fileUrl) {
       setIsRendering(true);
-      (async () => {
-        try {
-          const loadingTask = pdfjsLib.getDocument({ url: fileUrl });
-          const pdf = await loadingTask.promise;
-          const page = await pdf.getPage(1);
-          const viewport = page.getViewport({ scale: 4.0 });
-          const canvas = document.createElement('canvas');
-          const context = canvas.getContext('2d');
-          if (context && isMounted) {
-            canvas.height = viewport.height;
-            canvas.width = viewport.width;
-            await page.render({ canvasContext: context, viewport }).promise;
-            if (isMounted) {
-              // Utilisation de PNG au lieu de JPEG pour éviter les artefacts de compression sur le texte et le rendre ultra-net en HD
-              const dataUrl = canvas.toDataURL('image/png');
-              if (cacheKey) {
-                memoryThumbnailCache.set(cacheKey, dataUrl);
-              }
-              setThumbUrl(dataUrl);
-              setIsRendering(false);
-            }
-          }
-        } catch (e) {
-          if (isMounted) setIsRendering(false);
+      let isMountedLocal = true;
+
+      const r2ThumbUrl = `${fileUrl}_thumb.png`;
+      const img = new Image();
+      img.onload = () => {
+        if (isMountedLocal) {
+          setThumbUrl(r2ThumbUrl);
+          setIsRendering(false);
+          if (cacheKey) memoryThumbnailCache.set(cacheKey, r2ThumbUrl);
         }
-      })();
+      };
+      img.onerror = () => {
+        // Fallback: Si la miniature serveur n'existe pas (anciens fichiers), on génère en local
+        (async () => {
+          try {
+            const loadingTask = pdfjsLib.getDocument({ url: fileUrl });
+            const pdf = await loadingTask.promise;
+            const page = await pdf.getPage(1);
+            const viewport = page.getViewport({ scale: 4.0 });
+            const canvas = document.createElement('canvas');
+            const context = canvas.getContext('2d');
+            if (context && isMountedLocal) {
+              canvas.height = viewport.height;
+              canvas.width = viewport.width;
+              await page.render({ canvasContext: context, viewport }).promise;
+              if (isMountedLocal) {
+                const dataUrl = canvas.toDataURL('image/png');
+                if (cacheKey) {
+                  memoryThumbnailCache.set(cacheKey, dataUrl);
+                }
+                setThumbUrl(dataUrl);
+                setIsRendering(false);
+              }
+            }
+          } catch (e) {
+            if (isMountedLocal) setIsRendering(false);
+          }
+        })();
+      };
+      img.src = r2ThumbUrl;
+
       return () => {
+        isMountedLocal = false;
         isMounted = false;
       };
     }
