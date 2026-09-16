@@ -5966,7 +5966,7 @@ export default {
             filiere || '',
             matiereName || '',
             level || '',
-            category || 'Cours',
+            category || "Pas d'informations",
             authorName || 'Étudiant',
             finalCountry,
             infoMode || 'all',

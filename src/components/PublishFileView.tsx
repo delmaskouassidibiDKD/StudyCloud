@@ -104,7 +104,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   // Champs globaux (pour le mode "all")
   const [docTitle, setDocTitle] = useState(() => localStorage.getItem('published_doc_title') || '');
   const [docDescription, setDocDescription] = useState(() => localStorage.getItem('published_doc_description') || '');
-  const [docCategory, setDocCategory] = useState(() => localStorage.getItem('published_doc_category') || 'Cours');
+  const [docCategory, setDocCategory] = useState(() => localStorage.getItem('published_doc_category') || "Pas d'informations");
   const [customDocCategory, setCustomDocCategory] = useState(() => localStorage.getItem('published_custom_category') || '');
   const [docMatiere, setDocMatiere] = useState(() => localStorage.getItem('published_doc_matiere') || '');
   const [docLevel, setDocLevel] = useState(() => localStorage.getItem('published_doc_level') || '');
@@ -114,7 +114,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
   // État du modal d'édition individuelle
   const [editingFileId, setEditingFileId] = useState<string | null>(null);
   const [modalTitle, setModalTitle] = useState('');
-  const [modalCategory, setModalCategory] = useState('Cours');
+  const [modalCategory, setModalCategory] = useState("Pas d'informations");
   const [customModalCategory, setCustomModalCategory] = useState('');
   const [modalMatiere, setModalMatiere] = useState('');
   const [modalLevel, setModalLevel] = useState('');
@@ -274,7 +274,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         textContent: cleanName,
         tableRows: [],
         fileTitle: cleanName,
-        fileCategory: docCategory || 'Cours',
+        fileCategory: docCategory || "Pas d'informations",
         fileMatiere: docMatiere || '',
         fileLevel: docLevel || '',
         fileSchool: school || '',
@@ -526,18 +526,18 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
   // Gestion de la modale individuelle
   // Gestion de la modale individuelle
-  const STANDARD_CATEGORIES = ['Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet'];
+  const STANDARD_CATEGORIES = ["Pas d'informations", 'Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet'];
 
   const openEditModal = (file: any) => {
     setEditingFileId(file.id);
     setModalTitle(file.fileTitle || file.name.replace(/\.[^/.]+$/, '').replace(/[_-_]/g, ' '));
-    const cat = file.fileCategory || docCategory || 'Cours';
+    const cat = file.fileCategory || docCategory || "Pas d'informations";
     if (STANDARD_CATEGORIES.includes(cat)) {
       setModalCategory(cat);
       setCustomModalCategory('');
     } else {
       setModalCategory('Autre');
-      setCustomModalCategory(cat);
+      setCustomModalCategory(cat === "Pas d'informations" ? '' : cat);
     }
     setModalMatiere(file.fileMatiere || docMatiere || '');
     setModalLevel(file.fileLevel || docLevel || '');
@@ -552,10 +552,8 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     setEditingFileId(null);
   };
 
-  const isModalCategoryValid = modalCategory === 'Autre' ? customModalCategory.trim().length > 0 : modalCategory.trim().length > 0;
   const isModalFormValid = 
     modalTitle.trim().length > 0 &&
-    isModalCategoryValid &&
     modalMatiere.trim().length > 0 &&
     modalLevel.trim().length > 0 &&
     modalFiliere.trim().length > 0 &&
@@ -563,7 +561,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
   const saveEditModal = () => {
     if (!editingFileId || !isModalFormValid) return;
-    const finalCategory = modalCategory === 'Autre' ? (customModalCategory.trim() || 'Autre') : modalCategory;
+    const finalCategory = modalCategory === 'Autre'
+      ? (customModalCategory.trim() || "Pas d'informations")
+      : (modalCategory.trim() || "Pas d'informations");
     setSelectedFiles(prev => prev.map(f => {
       if (f.id === editingFileId) {
         return {
@@ -597,10 +597,8 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
     if (nonDuplicates.length === 0 && selectedFiles.some(f => f.isDuplicate)) return false;
 
     if (infoMode === 'all') {
-      const isCatValid = docCategory === 'Autre' ? customDocCategory.trim().length > 0 : docCategory.trim().length > 0;
       return (
         docTitle.trim().length > 0 &&
-        isCatValid &&
         docMatiere.trim().length > 0 &&
         docLevel.trim().length > 0 &&
         filiere.trim().length > 0 &&
@@ -722,7 +720,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         let title = '';
         let fileSchool = '';
         let fileFiliere = '';
-        let category = 'Cours';
+        let category = "Pas d'informations";
         let matiereName = '';
         let level = '';
         let country = docCountry || "Côte d'Ivoire";
@@ -733,7 +731,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           title = docTitle.trim() || file.name.replace(/\.[^/.]+$/, '');
           fileSchool = school.trim();
           fileFiliere = filiere.trim();
-          category = docCategory === 'Autre' ? (customDocCategory.trim() || 'Autre') : (docCategory.trim() || 'Cours');
+          category = docCategory === 'Autre'
+            ? (customDocCategory.trim() || "Pas d'informations")
+            : (docCategory.trim() || "Pas d'informations");
           matiereName = docMatiere.trim();
           level = docLevel.trim();
           country = docCountry.trim() || "Côte d'Ivoire";
@@ -743,7 +743,9 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           title = file.fileTitle?.trim() || file.name.replace(/\.[^/.]+$/, '');
           fileSchool = file.fileSchool?.trim() || '';
           fileFiliere = file.fileFiliere?.trim() || '';
-          category = file.fileCategory?.trim() || 'Cours';
+          category = file.fileCategory?.trim() && file.fileCategory !== 'Autre'
+            ? file.fileCategory.trim()
+            : "Pas d'informations";
           matiereName = file.fileMatiere?.trim() || '';
           level = file.fileLevel?.trim() || '';
           country = file.fileCountry?.trim() || docCountry || "Côte d'Ivoire";
@@ -753,7 +755,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           title = file.name.replace(/\.[^/.]+$/, '');
           fileSchool = '';
           fileFiliere = '';
-          category = 'Cours';
+          category = "Pas d'informations";
           matiereName = '';
           level = '';
           country = docCountry || "Côte d'Ivoire";
@@ -863,7 +865,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
         onPublish(
           infoMode === 'all' ? docTitle : publishedSuccessNames[0],
           docDescription || '',
-          docCategory || 'Cours',
+          docCategory || "Pas d'informations",
           cleanFilesToPublish
         );
       }
@@ -1434,7 +1436,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                     <div className="flex flex-col sm:flex-row gap-3">
                       <div className="flex-1">
                         <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
-                          <span>Catégorie <span className="text-red-500">*</span></span>
+                          <span>Catégorie <span className="text-stone-400 text-[10px] font-normal">(Optionnel)</span></span>
                           {docCategory === 'Autre' && <span className="text-[10px] font-mono text-stone-400">{customDocCategory.length}/60</span>}
                         </label>
                         <div className="space-y-1.5">
@@ -1443,7 +1445,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                             onChange={(e) => setDocCategory(e.target.value)}
                             className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none cursor-pointer"
                           >
-                            {['Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet', 'Autre'].map(c => <option key={c} value={c}>{c}</option>)}
+                            {["Pas d'informations", 'Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet', 'Autre'].map(c => <option key={c} value={c}>{c}</option>)}
                           </select>
                           {docCategory === 'Autre' && (
                             <input
@@ -1451,10 +1453,8 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                               maxLength={60}
                               value={customDocCategory}
                               onChange={(e) => setCustomDocCategory(e.target.value)}
-                              placeholder="Précisez la catégorie..."
-                              className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none animate-in fade-in duration-150 ${
-                                !customDocCategory.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
-                              }`}
+                              placeholder="Précisez la catégorie (facultatif)..."
+                              className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none animate-in fade-in duration-150"
                             />
                           )}
                         </div>
@@ -1691,7 +1691,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                 <div>
                   <label className="block text-[11px] font-bold text-stone-700 mb-1 flex items-center justify-between">
-                    <span>Catégorie <span className="text-red-500">*</span></span>
+                    <span>Catégorie <span className="text-stone-400 text-[10px] font-normal">(Optionnel)</span></span>
                     {modalCategory === 'Autre' && <span className="text-[10px] font-mono text-stone-400">{customModalCategory.length}/60</span>}
                   </label>
                   <div className="space-y-1.5">
@@ -1700,7 +1700,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                       onChange={(e) => setModalCategory(e.target.value)}
                       className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none cursor-pointer"
                     >
-                      {['Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet', 'Autre'].map(c => <option key={c} value={c}>{c}</option>)}
+                      {["Pas d'informations", 'Cours', 'TD', 'TP', 'Examen', 'Résumé', 'Projet', 'Autre'].map(c => <option key={c} value={c}>{c}</option>)}
                     </select>
                     {modalCategory === 'Autre' && (
                       <input
@@ -1708,10 +1708,8 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
                         maxLength={60}
                         value={customModalCategory}
                         onChange={(e) => setCustomModalCategory(e.target.value)}
-                        placeholder="Précisez la catégorie..."
-                        className={`w-full bg-white border-2 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none animate-in fade-in duration-150 ${
-                          !customModalCategory.trim() ? 'border-red-400 bg-red-50/20' : 'border-stone-800'
-                        }`}
+                        placeholder="Précisez la catégorie (facultatif)..."
+                        className="w-full bg-white border-2 border-stone-800 rounded-xl px-3 py-1.5 text-xs font-medium text-stone-900 placeholder:text-stone-400 shadow-[2px_2px_0px_0px_#1c1917] focus:outline-none animate-in fade-in duration-150"
                       />
                     )}
                   </div>

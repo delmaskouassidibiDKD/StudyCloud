@@ -420,7 +420,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
             title: row.title,
             description: row.description || '',
             price: row.price || '0 FCFA',
-            category: row.category || 'Cours',
+            category: row.category || "Pas d'informations",
             date: row.created_at ? new Date(row.created_at).toLocaleDateString('fr-FR') : '01/09/2026',
             views: row.views || 0,
             sales: row.sales || 0,

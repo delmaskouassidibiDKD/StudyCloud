@@ -5001,7 +5001,7 @@ Lien vers le produit : ${productShareUrl}`;
             filiere || "",
             matiereName || "",
             level || "",
-            category || "Cours",
+            category || "Pas d'informations",
             authorName || "\xC9tudiant",
             finalCountry,
             infoMode || "all",

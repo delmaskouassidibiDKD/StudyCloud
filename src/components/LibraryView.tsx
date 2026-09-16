@@ -410,7 +410,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           id: row.id,
           title: row.title,
           description: row.description || '',
-          category: row.category || 'Cours',
+          category: row.category || "Pas d'informations",
           author: row.author_name || 'Étudiant',
           school: row.school || '',
           country: row.country || "Côte d'Ivoire",
@@ -1559,7 +1559,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         {/* Header avec bouton retour aperçu */}
                         <div className="flex items-center justify-between gap-1 border-b border-stone-700/80 pb-1 mb-1">
                           <span className="text-[8px] sm:text-[9px] font-black bg-orange-500/20 text-orange-400 border border-orange-500/40 px-1.5 py-0.5 rounded truncate max-w-[70px]">
-                            {doc.category || 'Cours'}
+                            {doc.category || "Pas d'informations"}
                           </span>
                           <button
                             type="button"
@@ -1655,7 +1655,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       {/* Header: Catégorie à gauche, Taille à droite */}
                       <div className="flex items-center justify-between gap-1 z-10">
                         <span className="text-[7.5px] sm:text-[8.5px] font-black bg-orange-500/20 text-orange-400 border border-orange-500/40 px-1.5 py-0.5 rounded truncate max-w-[65px]">
-                          {doc.category || 'Cours'}
+                          {doc.category || "Pas d'informations"}
                         </span>
                         <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/70 text-stone-200 border border-stone-700 px-1.5 py-0.5 rounded shadow-sm">
                           {docSizeStr}
@@ -1758,7 +1758,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                               className="text-[8.5px] sm:text-[10px] font-extrabold bg-orange-100 hover:bg-orange-200 text-orange-800 px-1.5 py-0.5 rounded-md border border-stone-800 truncate max-w-[55px] sm:max-w-[70px] transition-all cursor-pointer block text-left active:scale-95"
                               title={doc.category}
                             >
-                              {doc.category || 'Cours'}
+                              {doc.category || "Pas d'informations"}
                             </button>
                             {activeCategoryTooltipId === doc.id && (
                               <div
