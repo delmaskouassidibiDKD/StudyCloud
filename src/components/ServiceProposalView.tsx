@@ -3,7 +3,6 @@ import { ArrowLeft, Menu, X, Package, List, Megaphone, BarChart2, Plus, Trash2, 
 import { motion, AnimatePresence } from 'motion/react';
 import { StudyCloudAPI } from '../services/api';
 import studentLogo from '../assets/student-logo.jpg';
-import { compressProductImage } from '../services/imageUtils';
 
 interface ProductItem {
   id: string;
@@ -457,24 +456,18 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
     setTimeout(() => setToastMessage(null), 2500);
   };
 
-  const processImageFile = async (file: File) => {
+  const processImageFile = (file: File) => {
     if (newImageUrls.length >= 3) {
       triggerToast("Vous pouvez importer un maximum de 3 images.");
       return;
     }
-    try {
-      const highQualityUrl = await compressProductImage(file, 1400, 0.92);
-      setNewImageUrls((prev) => [...prev, highQualityUrl]);
-      triggerToast("Image importée en haute qualité !");
-    } catch {
-      const reader = new FileReader();
-      reader.onload = (uploadEvent) => {
-        const resultUrl = uploadEvent.target?.result as string || '';
-        setNewImageUrls((prev) => [...prev, resultUrl]);
-        triggerToast("Image importée avec succès !");
-      };
-      reader.readAsDataURL(file);
-    }
+    const reader = new FileReader();
+    reader.onload = (uploadEvent) => {
+      const resultUrl = uploadEvent.target?.result as string || '';
+      setNewImageUrls((prev) => [...prev, resultUrl]);
+      triggerToast(`Image importée avec succès !`);
+    };
+    reader.readAsDataURL(file);
   };
 
   const handleImageChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -943,12 +936,12 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                       >
                         <div>
                           {/* Top Image */}
-                          <div className="w-full h-44 sm:h-52 md:h-56 bg-[#fbf9f6] dark:bg-stone-900/60 relative overflow-hidden flex items-center justify-center p-2.5 sm:p-3 border-b border-stone-100 dark:border-stone-800">
+                          <div className="w-full h-32 bg-stone-100 relative overflow-hidden">
                             {displayImages.length > 0 ? (
-                              <img src={displayImages[0]} alt={p.title} className="w-full h-full object-contain hover:scale-[1.03] transition-transform duration-300" loading="lazy" />
+                              <img src={displayImages[0]} alt={p.title} className="w-full h-full object-cover" />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-stone-400">
-                                <Package className="w-8 h-8" />
+                                <Package className="w-6 h-6" />
                               </div>
                             )}
                           </div>
@@ -1363,9 +1356,9 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                           >
                             <div>
                               {/* Top Image */}
-                              <div className="w-full h-48 sm:h-56 md:h-60 bg-[#fbf9f6] dark:bg-stone-900/60 relative overflow-hidden flex items-center justify-center p-2.5 sm:p-3.5 border-b border-stone-100 dark:border-stone-800">
+                              <div className="w-full h-36 md:h-48 bg-stone-100 relative overflow-hidden">
                                 {displayImages.length > 0 ? (
-                                  <img src={displayImages[0]} alt={item.title} className="w-full h-full object-contain hover:scale-[1.03] transition-transform duration-300" loading="lazy" />
+                                  <img src={displayImages[0]} alt={item.title} className="w-full h-full object-cover" />
                                 ) : (
                                   <div className="w-full h-full flex items-center justify-center text-stone-400">
                                     <Package className="w-8 h-8 md:w-12 md:h-12" />
@@ -1502,9 +1495,9 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                             >
                               <div>
                                 {/* Top Image */}
-                                <div className="w-full h-48 sm:h-56 md:h-60 bg-[#fbf9f6] dark:bg-stone-900/60 relative overflow-hidden flex items-center justify-center p-2.5 sm:p-3.5 border-b border-stone-100 dark:border-stone-800">
+                                <div className="w-full h-36 md:h-48 bg-stone-100 relative overflow-hidden">
                                   {displayImages.length > 0 ? (
-                                    <img src={displayImages[0]} alt={item.title} className="w-full h-full object-contain hover:scale-[1.03] transition-transform duration-300" loading="lazy" />
+                                    <img src={displayImages[0]} alt={item.title} className="w-full h-full object-cover" />
                                   ) : (
                                     <div className="w-full h-full flex items-center justify-center text-stone-400">
                                       <Package className="w-8 h-8 md:w-12 md:h-12" />
@@ -1813,9 +1806,9 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                         >
                           <div>
                             {/* Top Image */}
-                            <div className="w-full h-44 sm:h-52 md:h-56 bg-[#fbf9f6] dark:bg-stone-900/60 relative overflow-hidden flex items-center justify-center p-2.5 sm:p-3 border-b border-stone-100 dark:border-stone-800">
+                            <div className="w-full h-36 bg-stone-100 relative overflow-hidden">
                               {displayImages.length > 0 ? (
-                                <img src={displayImages[0]} alt={item.title} className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-300" loading="lazy" />
+                                <img src={displayImages[0]} alt={item.title} className="w-full h-full object-cover group-hover:scale-105 transition-transform" />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-stone-400">
                                   <Package className="w-8 h-8" />

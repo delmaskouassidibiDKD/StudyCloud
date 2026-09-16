@@ -122,176 +122,6 @@ function renderFileDocIconSvg(color, label) {
   </svg>`;
 }
 __name(renderFileDocIconSvg, "renderFileDocIconSvg");
-
-// Dictionnaire et correcteur orthographique pour les publications
-var SPELLING_DICTIONARY_WORKER = {
-  DEVOIRE: "DEVOIR",
-  DEVOIRES: "DEVOIRS",
-  DEVOIR: "DEVOIR",
-  DEVOIRS: "DEVOIRS",
-  COUR: "COURS",
-  COURS: "COURS",
-  COURE: "COURS",
-  COURES: "COURS",
-  EXAM: "EXAMEN",
-  EXAMS: "EXAMENS",
-  EXAMAN: "EXAMEN",
-  EXAMANS: "EXAMENS",
-  EXAMAIN: "EXAMEN",
-  EXAMAINS: "EXAMENS",
-  EXAMEN: "EXAMEN",
-  EXAMENS: "EXAMENS",
-  EPREUV: "ÉPREUVE",
-  EPREUVES: "ÉPREUVES",
-  EPREUVE: "ÉPREUVE",
-  CONTROLE: "CONTRÔLE",
-  CONTROLES: "CONTRÔLES",
-  INTERRO: "INTERROGATION",
-  INTERROS: "INTERROGATIONS",
-  INTERROGATION: "INTERROGATION",
-  INTERROGATIONS: "INTERROGATIONS",
-  RESUME: "RÉSUMÉ",
-  RESUMES: "RÉSUMÉS",
-  SYNTHESE: "SYNTHÈSE",
-  SYNTHESES: "SYNTHÈSES",
-  RECAP: "RÉCAPITULATIF",
-  RECAPITULATIF: "RÉCAPITULATIF",
-  MEMOIRE: "MÉMOIRE",
-  MEMOIRES: "MÉMOIRES",
-  THESE: "THÈSE",
-  THESES: "THÈSES",
-  RAPORT: "RAPPORT",
-  RAPORTS: "RAPPORTS",
-  RAPPORT: "RAPPORT",
-  RAPPORTS: "RAPPORTS",
-  FICHE: "FICHE",
-  FICHES: "FICHES",
-  ANNALE: "ANNALE",
-  ANNALES: "ANNALES",
-  PROJET: "PROJET",
-  PROJETS: "PROJETS",
-  MATH: "MATHÉMATIQUES",
-  MATHS: "MATHÉMATIQUES",
-  MATHEMATIQUE: "MATHÉMATIQUES",
-  MATHEMATIQUES: "MATHÉMATIQUES",
-  MATHEMETIQUE: "MATHÉMATIQUES",
-  MATHEMETIQUES: "MATHÉMATIQUES",
-  PHYSIQ: "PHYSIQUE",
-  PHYSIQUE: "PHYSIQUE",
-  PHYSIQUES: "PHYSIQUE",
-  CHIMI: "CHIMIE",
-  CHIMIE: "CHIMIE",
-  ELECTROTECNIQUE: "ÉLECTROTECHNIQUE",
-  ELECTROTECHNIQUE: "ÉLECTROTECHNIQUE",
-  ELECTRONIQ: "ÉLECTRONIQUE",
-  ELECTRONIQUE: "ÉLECTRONIQUE",
-  INFORMATIQ: "INFORMATIQUE",
-  INFORMATIQUE: "INFORMATIQUE",
-  FRANCAIS: "FRANÇAIS",
-  ANGLAI: "ANGLAIS",
-  ANGLAIS: "ANGLAIS",
-  HISTOIR: "HISTOIRE",
-  HISTOIRE: "HISTOIRE",
-  GEOGRAPHI: "GÉOGRAPHIE",
-  GEOGRAPHIE: "GÉOGRAPHIE",
-  PHILOSOPHI: "PHILOSOPHIE",
-  PHILOSOPHIE: "PHILOSOPHIE",
-  LITTERATUR: "LITTÉRATURE",
-  LITTERATURE: "LITTÉRATURE",
-  MECANIQ: "MÉCANIQUE",
-  MECANIQUE: "MÉCANIQUE",
-  THERMODYNAMIQ: "THERMODYNAMIQUE",
-  THERMODYNAMIQUE: "THERMODYNAMIQUE",
-  COMPTABILITE: "COMPTABILITÉ",
-  ECONOMI: "ÉCONOMIE",
-  ECONOMIE: "ÉCONOMIE",
-  GESTION: "GESTION",
-  DROIT: "DROIT",
-  BIOLOGI: "BIOLOGIE",
-  BIOLOGIE: "BIOLOGIE",
-  GEOLOGI: "GÉOLOGIE",
-  GEOLOGIE: "GÉOLOGIE",
-  STATISTIQ: "STATISTIQUES",
-  STATISTIQUE: "STATISTIQUES",
-  STATISTIQUES: "STATISTIQUES",
-  PROBABILITE: "PROBABILITÉS",
-  PROBABILITES: "PROBABILITÉS",
-  ALGEBRE: "ALGÈBRE",
-  GEOMETRIE: "GÉOMÉTRIE",
-  OPTIQ: "OPTIQUE",
-  OPTIQUE: "OPTIQUE",
-  ALGORITHMIQ: "ALGORITHMIQUE",
-  ALGORITHMIQUE: "ALGORITHMIQUE"
-};
-
-function correctSpellingWorker(text) {
-  if (!text || typeof text !== "string") return "";
-  const trimmed = text.trim();
-  if (!trimmed) return "";
-  return trimmed.replace(/\b[A-Za-zÀ-ÿ0-9_/-]+\b/g, (word) => {
-    const upperWord = word.toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g, "");
-    if (SPELLING_DICTIONARY_WORKER[word.toUpperCase()]) {
-      return SPELLING_DICTIONARY_WORKER[word.toUpperCase()];
-    }
-    if (SPELLING_DICTIONARY_WORKER[upperWord]) {
-      return SPELLING_DICTIONARY_WORKER[upperWord];
-    }
-    if (upperWord === "DEVOIRE") return "DEVOIR";
-    if (upperWord === "DEVOIRES") return "DEVOIRS";
-    return word;
-  });
-}
-__name(correctSpellingWorker, "correctSpellingWorker");
-
-function canonicalizeCategoryWorker(rawCategory) {
-  if (!rawCategory || typeof rawCategory !== "string") return "";
-  let clean = rawCategory.trim().toUpperCase();
-  if (!clean || clean === "PAS D'INFORMATIONS" || clean === "NULL" || clean === "UNDEFINED") {
-    return "";
-  }
-  clean = clean.replace(/^[#\-_\.\s]+|[#\-_\.\s]+$/g, "");
-  if (clean === "TD" || clean === "TDS" || clean === "TRAVAUX DIRIGÉS" || clean === "TRAVAUX DIRIGES") return "TD";
-  if (clean === "TP" || clean === "TPS" || clean === "TRAVAUX PRATIQUES") return "TP";
-  if (clean === "TD/TP" || clean === "TP/TD" || clean === "TD-TP" || clean === "TP-TD") return "TD/TP";
-  if (clean === "BAC" || clean === "BTS" || clean === "DUT" || clean === "LICENCE" || clean === "MASTER") return clean;
-
-  const corrected = correctSpellingWorker(clean);
-  clean = corrected ? corrected.toUpperCase() : clean;
-
-  if (clean === "COUR" || clean === "COURS" || clean === "COURE" || clean === "COURES") return "COURS";
-  if (clean === "DEVOIR" || clean === "DEVOIRS" || clean === "DEVOIRE" || clean === "DEVOIRES") return "DEVOIRS";
-  if (clean === "EXAMEN" || clean === "EXAMENS" || clean === "EXAM" || clean === "EXAMS") return "EXAMENS";
-  if (clean === "RESUME" || clean === "RESUMES" || clean === "RÉSUMÉ" || clean === "RÉSUMÉS") return "RÉSUMÉS";
-  if (clean === "PROJET" || clean === "PROJETS") return "PROJETS";
-  if (clean === "NOTE" || clean === "NOTES") return "NOTES";
-  if (clean === "FICHE" || clean === "FICHES") return "FICHES";
-  if (clean === "ANNALE" || clean === "ANNALES") return "ANNALES";
-
-  if (!clean.endsWith("S") && clean.length >= 4) {
-    return clean + "S";
-  }
-  return clean;
-}
-__name(canonicalizeCategoryWorker, "canonicalizeCategoryWorker");
-
-function getCategoryRootKeyWorker(cat) {
-  const canonical = canonicalizeCategoryWorker(cat);
-  if (!canonical) return "";
-  if (canonical === "TD" || canonical === "TP" || canonical === "TD/TP") return canonical;
-  return canonical.replace(/S$/, "");
-}
-__name(getCategoryRootKeyWorker, "getCategoryRootKeyWorker");
-
-function hashStringWorker(str) {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash << 5) - hash + str.charCodeAt(i);
-    hash |= 0;
-  }
-  return Math.abs(hash);
-}
-__name(hashStringWorker, "hashStringWorker");
-
 function renderShareNotFoundHtml(code, originUrl) {
   const siteUrl = "https://studycloud.dkd-technologies.com";
   return `<!DOCTYPE html>
@@ -1113,6 +943,971 @@ function renderShareLandingHtml(folder, files, originUrl) {
 </html>`;
 }
 __name(renderShareLandingHtml, "renderShareLandingHtml");
+function renderProductSharePageHtml(product, sellerShop, sellerUser, relatedProducts, appOrigin) {
+  const title = escapeHtml(product.title || "Produit StudyCloud");
+  const price = escapeHtml(product.price || "0 FCFA");
+  const description = product.description || "";
+  const cleanDesc = description ? description.replace(/<[^>]*>?/gm, "").trim() : `Commandez ${product.title} sur la boutique de ${product.seller_name || "DKD"} sur StudyCloud.`;
+  const productShareUrl = `${appOrigin}/share/product/${encodeURIComponent(product.id)}`;
+  const productImageUrl = `${appOrigin}/api/products/${encodeURIComponent(product.id)}/image`;
+  let rawImages = [];
+  try {
+    rawImages = JSON.parse(product.image_urls_json || "[]");
+  } catch (e) {
+  }
+  if (!Array.isArray(rawImages) || rawImages.length === 0) {
+    if (product.image_url)
+      rawImages = [product.image_url];
+  }
+  const imageSlides = Array.from({ length: 3 }).map((_, i) => rawImages[i] || (rawImages[0] ? rawImages[0] : null));
+  const sellerName = escapeHtml(product.seller_name || sellerShop?.shop_name || sellerUser?.name || "DKD");
+  const rawPhone = product.seller_whatsapp || sellerShop?.shop_whatsapp || product.seller_phone || sellerShop?.shop_phone || sellerUser?.phone || "";
+  let cleanPhone = String(rawPhone || "").replace(/\D/g, "");
+  if (cleanPhone.length === 10 && cleanPhone.startsWith("0")) {
+    cleanPhone = "225" + cleanPhone;
+  } else if (cleanPhone.length === 8 && !cleanPhone.startsWith("225")) {
+    cleanPhone = "225" + cleanPhone;
+  }
+  const sellerAvatar = product.seller_avatar_url || sellerShop?.shop_avatar_url || "";
+  const sellerInitials = sellerName.substring(0, 2).toUpperCase();
+  let sellerSubtitle = "";
+  if (product.seller_school && product.seller_filiere) {
+    sellerSubtitle = `${product.seller_school} - ${product.seller_filiere}`;
+  } else if (product.seller_school) {
+    sellerSubtitle = product.seller_school;
+  } else if (product.seller_filiere) {
+    sellerSubtitle = product.seller_filiere;
+  } else {
+    sellerSubtitle = "Boutique Officielle StudyCloud";
+  }
+  sellerSubtitle = escapeHtml(sellerSubtitle);
+  const autoMessage = `Bonjour ! Je suis int\xE9ress\xE9(e) par votre produit : *${product.title}* (${product.price}).
+
+Lien vers le produit : ${productShareUrl}`;
+  const whatsappUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(autoMessage)}` : `https://wa.me/?text=${encodeURIComponent(autoMessage)}`;
+  const hasLongDesc = description && description.length > 80;
+  return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+  <title>${title} - ${price} | StudyCloud</title>
+  
+  <!-- Open Graph / WhatsApp Preview Tags -->
+  <meta property="og:type" content="product">
+  <meta property="og:site_name" content="StudyCloud - Librairie & Produits">
+  <meta property="og:title" content="${title} (${price})">
+  <meta property="og:description" content="${escapeHtml(cleanDesc)}">
+  <meta property="og:image" content="${productImageUrl}">
+  <meta property="og:image:secure_url" content="${productImageUrl}">
+  <meta property="og:image:type" content="image/jpeg">
+  <meta property="og:image:width" content="600">
+  <meta property="og:image:height" content="600">
+  <meta property="og:url" content="${productShareUrl}">
+
+  <!-- Twitter Card -->
+  <meta name="twitter:card" content="summary_large_image">
+  <meta name="twitter:title" content="${title} (${price})">
+  <meta name="twitter:description" content="${escapeHtml(cleanDesc)}">
+  <meta name="twitter:image" content="${productImageUrl}">
+
+  <link rel="icon" type="image/png" href="${appOrigin}/assets/dna-logo.png">
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
+
+  <style>
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      -webkit-tap-highlight-color: transparent;
+    }
+    body {
+      background-color: #FAF8F5;
+      color: #1c1917;
+      min-height: 100vh;
+      overflow-x: hidden;
+    }
+
+    /* Top Sticky Header */
+    .top-header {
+      position: sticky;
+      top: 0;
+      z-index: 1000;
+      background: rgba(255, 255, 255, 0.95);
+      backdrop-filter: blur(12px);
+      -webkit-backdrop-filter: blur(12px);
+      border-bottom: 1px solid rgba(231, 229, 228, 0.85);
+      padding: 10px 16px;
+      box-shadow: 0 1px 2px rgba(0,0,0,0.03);
+    }
+    .header-inner {
+      max-width: 1280px;
+      margin: 0 auto;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+    .btn-goto-app {
+      display: inline-flex;
+      align-items: center;
+      gap: 7px;
+      padding: 7px 14px;
+      background: #f5f5f4;
+      border: 1px solid #e7e5e4;
+      border-radius: 12px;
+      color: #1c1917;
+      font-size: 12.5px;
+      font-weight: 700;
+      text-decoration: none;
+      transition: all 0.2s ease;
+      cursor: pointer;
+    }
+    .btn-goto-app:hover {
+      background: #e7e5e4;
+      transform: translateY(-1px);
+    }
+    .header-brand {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      text-decoration: none;
+    }
+    .header-brand img {
+      width: 26px;
+      height: 26px;
+      object-fit: contain;
+    }
+    .brand-title {
+      font-weight: 900;
+      font-size: 17px;
+      letter-spacing: -0.5px;
+    }
+    .brand-study { color: #f97316; }
+    .brand-cloud { color: #1e293b; }
+
+    /* Container */
+    .main-container {
+      max-width: 1280px;
+      margin: 0 auto;
+      padding: 24px 16px 60px;
+      display: flex;
+      flex-direction: row;
+      gap: 36px;
+      align-items: flex-start;
+    }
+    @media (max-width: 860px) {
+      .main-container {
+        flex-direction: column;
+        gap: 20px;
+        padding: 12px 12px 60px;
+      }
+    }
+
+    /* Colonne Gauche */
+    .left-column {
+      flex: 1.15;
+      width: 100%;
+      min-width: 0;
+    }
+
+    /* Carte Slider Image */
+    .carousel-card {
+      background: #ffffff;
+      border-radius: 24px;
+      border: 1px solid #e7e5e4;
+      overflow: hidden;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .carousel-viewport {
+      position: relative;
+      width: 100%;
+      height: 340px;
+      background: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      overflow: hidden;
+    }
+    @media (min-width: 640px) {
+      .carousel-viewport {
+        height: 380px;
+      }
+    }
+
+    /* Badge Logo StudyCloud incrust\xE9 */
+    .sc-badge {
+      position: absolute;
+      top: 16px;
+      left: 18px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      padding: 4px 12px;
+      background: rgba(28, 25, 23, 0.92);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      border-radius: 9999px;
+      border: 1px solid rgba(249, 115, 22, 0.5);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.2);
+      z-index: 20;
+    }
+    .sc-badge-img {
+      width: 15px;
+      height: 15px;
+      border-radius: 50%;
+      object-fit: contain;
+    }
+    .sc-badge-text {
+      font-size: 10px;
+      font-weight: 900;
+      color: #ffffff;
+      letter-spacing: 1px;
+    }
+
+    /* Compteur de slide */
+    .slide-counter {
+      position: absolute;
+      bottom: 12px;
+      right: 16px;
+      background: rgba(28, 25, 23, 0.82);
+      color: #ffffff;
+      font-size: 11px;
+      font-weight: 700;
+      padding: 3px 9px;
+      border-radius: 6px;
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 20;
+    }
+
+    .slide-img-box {
+      width: 100%;
+      height: 100%;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+    }
+    .slide-img-box.active {
+      display: flex;
+    }
+    .slide-img-box img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+      border-radius: 12px;
+    }
+    .slide-placeholder {
+      width: 100%;
+      height: 100%;
+      background: #fafaf9;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      color: #a8a29e;
+      border: 2px dashed #e7e5e4;
+      border-radius: 16px;
+    }
+
+    /* Points indicateurs */
+    .carousel-dots {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      padding: 12px 0 14px;
+      background: #f5f5f4;
+      border-top: 1px solid #e7e5e4;
+    }
+    .dot {
+      height: 7px;
+      border-radius: 9999px;
+      background: #d6d3d1;
+      transition: all 0.25s ease;
+      cursor: pointer;
+      width: 8px;
+    }
+    .dot.active {
+      width: 22px;
+      background: #1c1917;
+    }
+
+    /* D\xE9tails du produit */
+    .product-details-card {
+      background: #ffffff;
+      border-radius: 24px;
+      border: 1px solid #e7e5e4;
+      padding: 22px;
+      margin-top: 16px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .product-title {
+      font-size: 21px;
+      font-weight: 900;
+      color: #1c1917;
+      text-transform: uppercase;
+      line-height: 1.35;
+      letter-spacing: -0.3px;
+    }
+    .product-price {
+      font-size: 25px;
+      font-weight: 900;
+      color: #ea580c;
+      margin-top: 6px;
+    }
+
+    /* Description */
+    .desc-section {
+      border-top: 1px solid #e7e5e4;
+      margin-top: 18px;
+      padding-top: 16px;
+    }
+    .desc-header {
+      font-size: 11px;
+      font-weight: 800;
+      color: #78716c;
+      text-transform: uppercase;
+      letter-spacing: 0.8px;
+      margin-bottom: 8px;
+    }
+    .desc-text {
+      font-size: 12.5px;
+      color: #44403c;
+      line-height: 1.65;
+      white-space: pre-line;
+      font-weight: 500;
+    }
+    .desc-clamped {
+      display: -webkit-box;
+      -webkit-line-clamp: 2;
+      -webkit-box-orient: vertical;
+      overflow: hidden;
+    }
+    .desc-toggle-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 5px;
+      background: none;
+      border: none;
+      color: #1c1917;
+      font-size: 12px;
+      font-weight: 800;
+      text-decoration: underline;
+      text-underline-offset: 3px;
+      cursor: pointer;
+      margin-top: 8px;
+      padding: 0;
+    }
+    .desc-toggle-btn svg {
+      transition: transform 0.2s ease;
+    }
+    .desc-toggle-btn.expanded svg {
+      transform: rotate(180deg);
+    }
+
+    /* Actions */
+    .actions-row {
+      display: flex;
+      align-items: center;
+      gap: 12px;
+      margin-top: 20px;
+    }
+    .btn-cart {
+      padding: 13px 18px;
+      border-radius: 14px;
+      border: 1px solid #d6d3d1;
+      background: #f5f5f4;
+      color: #1c1917;
+      font-size: 13px;
+      font-weight: 800;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 8px;
+      cursor: pointer;
+      transition: all 0.2s;
+      flex-shrink: 0;
+    }
+    .btn-cart:hover {
+      background: #e7e5e4;
+    }
+    .btn-cart.added {
+      background: #fef3c7;
+      color: #78350f;
+      border-color: #fcd34d;
+    }
+    .btn-commander {
+      flex: 1;
+      padding: 14px 20px;
+      background: #ea580c;
+      color: #ffffff;
+      border-radius: 14px;
+      font-size: 14px;
+      font-weight: 800;
+      text-align: center;
+      text-decoration: none;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(234, 88, 12, 0.35);
+      transition: all 0.2s;
+    }
+    .btn-commander:hover {
+      background: #c2410c;
+      transform: translateY(-1px);
+    }
+
+    /* Colonne Droite */
+    .right-column {
+      flex: 0.95;
+      width: 100%;
+      min-width: 0;
+      display: flex;
+      flex-direction: column;
+      gap: 20px;
+    }
+
+    /* Fiche Vendeur */
+    .seller-card {
+      background: #ffffff;
+      border-radius: 24px;
+      border: 1px solid #e7e5e4;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .seller-header {
+      display: flex;
+      align-items: center;
+      gap: 14px;
+      margin-bottom: 16px;
+    }
+    .seller-avatar {
+      width: 56px;
+      height: 56px;
+      border-radius: 50%;
+      background: #fef3c7;
+      border: 2px solid #1c1917;
+      box-shadow: 2px 2px 0px #1c1917;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      font-weight: 900;
+      font-size: 18px;
+      color: #78350f;
+      overflow: hidden;
+      flex-shrink: 0;
+    }
+    .seller-avatar img {
+      width: 100%;
+      height: 100%;
+      object-fit: cover;
+    }
+    .seller-details {
+      overflow: hidden;
+    }
+    .seller-name {
+      font-size: 16px;
+      font-weight: 900;
+      color: #1c1917;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .seller-phone {
+      font-size: 12.5px;
+      font-weight: 600;
+      color: #57534e;
+      margin-top: 2px;
+    }
+    .seller-subtitle {
+      font-size: 11px;
+      font-weight: 700;
+      color: #78716c;
+      text-transform: uppercase;
+      margin-top: 2px;
+    }
+    .seller-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    .btn-seller {
+      flex: 1;
+      padding: 9px 16px;
+      border-radius: 9999px;
+      border: 1.5px solid #1c1917;
+      background: transparent;
+      color: #1c1917;
+      font-size: 12px;
+      font-weight: 800;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 6px;
+      transition: all 0.2s;
+    }
+    .btn-seller:hover {
+      background: #f5f5f4;
+    }
+    .btn-seller.active {
+      background: #1c1917;
+      color: #ffffff;
+    }
+
+    /* Autres Produits */
+    .other-products-card {
+      background: #ffffff;
+      border-radius: 24px;
+      border: 1px solid #e7e5e4;
+      padding: 20px;
+      box-shadow: 0 1px 3px rgba(0,0,0,0.03);
+    }
+    .other-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      margin-bottom: 14px;
+    }
+    .other-title {
+      font-size: 14px;
+      font-weight: 800;
+      color: #1c1917;
+    }
+    .librairie-link {
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-size: 12px;
+      font-weight: 700;
+      color: #78716c;
+      text-decoration: none;
+      transition: color 0.2s;
+    }
+    .librairie-link:hover {
+      color: #ea580c;
+    }
+    .other-grid {
+      display: grid;
+      grid-template-columns: repeat(2, 1fr);
+      gap: 12px;
+    }
+    .other-item {
+      display: block;
+      border: 1px solid #e7e5e4;
+      border-radius: 16px;
+      padding: 10px;
+      text-decoration: none;
+      color: inherit;
+      background: #fafaf9;
+      transition: all 0.2s ease;
+    }
+    .other-item:hover {
+      background: #ffffff;
+      border-color: #d6d3d1;
+      transform: translateY(-2px);
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06);
+    }
+    .other-img-wrap {
+      position: relative;
+      width: 100%;
+      height: 110px;
+      background: #ffffff;
+      border-radius: 12px;
+      overflow: hidden;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      margin-bottom: 8px;
+    }
+    .other-img-wrap img {
+      max-width: 100%;
+      max-height: 100%;
+      object-fit: contain;
+    }
+    .other-item-title {
+      font-size: 12px;
+      font-weight: 800;
+      color: #1c1917;
+      text-transform: uppercase;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .other-item-price {
+      font-size: 13px;
+      font-weight: 900;
+      color: #ea580c;
+      margin-top: 3px;
+    }
+
+    /* Toast Flottant */
+    .toast {
+      position: fixed;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-80px);
+      background: #059669;
+      color: #ffffff;
+      padding: 11px 22px;
+      border-radius: 16px;
+      font-size: 13px;
+      font-weight: 800;
+      box-shadow: 0 10px 30px rgba(0,0,0,0.2);
+      z-index: 99999;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      max-width: 90vw;
+      text-align: center;
+    }
+    .toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+
+  <!-- Header Flottant -->
+  <header class="top-header">
+    <div class="header-inner">
+      <a href="${appOrigin}/?product=${encodeURIComponent(product.id)}#librairie" class="btn-goto-app">
+        <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+          <rect x="3" y="3" width="7" height="7"></rect>
+          <rect x="14" y="3" width="7" height="7"></rect>
+          <rect x="14" y="14" width="7" height="7"></rect>
+          <rect x="3" y="14" width="7" height="7"></rect>
+        </svg>
+        <span>Aller \xE0 l'application</span>
+      </a>
+
+      <a href="${appOrigin}" class="header-brand">
+        <img src="${appOrigin}/assets/dna-logo.png" onerror="this.onerror=null;this.src='data:image/png;base64,${DNA_LOGO_PNG_B64}'" alt="StudyCloud" />
+        <span class="brand-title"><span class="brand-study">Study</span><span class="brand-cloud">Cloud</span></span>
+      </a>
+    </div>
+  </header>
+
+  <!-- Notification Toast -->
+  <div id="toastEl" class="toast"></div>
+
+  <!-- Contenu Principal -->
+  <main class="main-container">
+
+    <!-- Colonne Gauche : Image et D\xE9tails -->
+    <div class="left-column">
+      
+      <!-- Galerie Image -->
+      <div class="carousel-card">
+        <div class="carousel-viewport" id="carouselViewport">
+          <!-- Badge Logo StudyCloud en haut de l'image -->
+          <div class="sc-badge">
+            <img src="${appOrigin}/assets/dna-logo.png" onerror="this.onerror=null;this.src='data:image/png;base64,${DNA_LOGO_PNG_B64}'" class="sc-badge-img" alt="StudyCloud" />
+            <span class="sc-badge-text">STUDYCLOUD</span>
+          </div>
+
+          <!-- Compteur 1 / 3 -->
+          <div id="slideCounter" class="slide-counter">1 / ${imageSlides.length}</div>
+
+          <!-- Slides -->
+          ${imageSlides.map((imgUrl, idx) => `
+            <div class="slide-img-box ${idx === 0 ? "active" : ""}" data-index="${idx}">
+              ${imgUrl ? `
+                <img src="${escapeHtml(imgUrl)}" alt="${title} - Image ${idx + 1}" />
+              ` : `
+                <div class="slide-placeholder">
+                  <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                  <span style="font-size: 11px; font-weight: 700;">Image ${idx + 1} / 3</span>
+                </div>
+              `}
+            </div>
+          `).join("")}
+        </div>
+
+        <!-- Points indicateurs du slider -->
+        <div class="carousel-dots" id="dotsContainer">
+          ${imageSlides.map((_, idx) => `
+            <div class="dot ${idx === 0 ? "active" : ""}" onclick="goToSlide(${idx})"></div>
+          `).join("")}
+        </div>
+      </div>
+
+      <!-- D\xE9tails Produit -->
+      <div class="product-details-card">
+        <h1 class="product-title">${title}</h1>
+        <div class="product-price">${price}</div>
+
+        <!-- Description -->
+        <div class="desc-section">
+          <div class="desc-header">Description</div>
+          <div id="descText" class="desc-text ${hasLongDesc ? "desc-clamped" : ""}">
+            ${escapeHtml(description || "Aucune description fournie pour ce produit.")}
+          </div>
+          ${hasLongDesc ? `
+            <button type="button" id="descBtn" onclick="toggleDescription()" class="desc-toggle-btn">
+              <span id="descBtnText">D\xE9rouler la description</span>
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
+            </button>
+          ` : ""}
+        </div>
+
+        <!-- Boutons d'Action -->
+        <div class="actions-row">
+          <button type="button" id="cartBtn" onclick="handleCartToggle()" class="btn-cart">
+            <svg width="17" height="17" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <circle cx="9" cy="21" r="1"></circle>
+              <circle cx="20" cy="21" r="1"></circle>
+              <path d="M1 1h4l2.68 13.39a2 2 0 0 0 2 1.61h9.72a2 2 0 0 0 2-1.61L23 6H6"></path>
+            </svg>
+            <span id="cartBtnText">Ajouter au panier</span>
+          </button>
+
+          <a href="${whatsappUrl}" target="_blank" class="btn-commander">
+            Commander
+          </a>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- Colonne Droite : Vendeur & Autres Produits -->
+    <div class="right-column">
+      
+      <!-- Fiche Vendeur -->
+      <div class="seller-card">
+        <div class="seller-header">
+          <div class="seller-avatar">
+            ${sellerAvatar ? `<img src="${escapeHtml(sellerAvatar)}" alt="${sellerName}">` : sellerInitials}
+          </div>
+          <div class="seller-details">
+            <div class="seller-name">${sellerName}</div>
+            <div class="seller-phone">${escapeHtml(rawPhone || "+225 00 00 00 00")}</div>
+            <div class="seller-subtitle">${sellerSubtitle}</div>
+          </div>
+        </div>
+
+        <div class="seller-actions">
+          <button type="button" id="followBtn" onclick="handleFollowToggle()" class="btn-seller">
+            <span id="followBtnText">S'abonner</span>
+          </button>
+
+          <button type="button" onclick="handleShare()" class="btn-seller">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
+            <span>Partager</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Autres Produits de la boutique -->
+      ${relatedProducts && relatedProducts.length > 0 ? `
+        <div class="other-products-card">
+          <div class="other-header">
+            <span class="other-title">Autres produits</span>
+            <a href="${appOrigin}/?product=${encodeURIComponent(product.id)}#librairie" class="librairie-link">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><path d="M4 19.5A2.5 2.5 0 0 1 6.5 17H20"></path><path d="M6.5 2H20v20H6.5A2.5 2.5 0 0 1 4 19.5v-15A2.5 2.5 0 0 1 6.5 2z"></path></svg>
+              <span>Librairie</span>
+            </a>
+          </div>
+
+          <div class="other-grid">
+            ${relatedProducts.map((p) => {
+    let rImg = "";
+    try {
+      const pImgs = JSON.parse(p.image_urls_json || "[]");
+      if (pImgs && pImgs[0])
+        rImg = pImgs[0];
+    } catch (e) {
+    }
+    return `
+                <a href="${appOrigin}/share/product/${encodeURIComponent(p.id)}" class="other-item">
+                  <div class="other-img-wrap">
+                    ${rImg ? `
+                      <img src="${escapeHtml(rImg)}" alt="${escapeHtml(p.title)}" />
+                    ` : `
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#a8a29e" stroke-width="1.8"><rect x="3" y="3" width="18" height="18" rx="2" ry="2"></rect><circle cx="8.5" cy="8.5" r="1.5"></circle><polyline points="21 15 16 10 5 21"></polyline></svg>
+                    `}
+                  </div>
+                  <div class="other-item-title">${escapeHtml(p.title)}</div>
+                  <div class="other-item-price">${escapeHtml(p.price)}</div>
+                </a>
+              `;
+  }).join("")}
+          </div>
+        </div>
+      ` : ""}
+
+    </div>
+
+  </main>
+
+  <script>
+    const PRODUCT_ID = ${JSON.stringify(String(product.id))};
+    const PRODUCT_TITLE = ${JSON.stringify(String(product.title))};
+    const SELLER_ID = ${JSON.stringify(String(product.seller_id || "default-seller"))};
+    const SELLER_NAME = ${JSON.stringify(String(product.seller_name || "Vendeur"))};
+    const TOTAL_SLIDES = ${imageSlides.length};
+
+    // TOAST
+    let toastTimer = null;
+    function showToast(msg) {
+      const toast = document.getElementById('toastEl');
+      if (!toast) return;
+      toast.innerHTML = '<span>\u{1F6D2}</span> <span>' + msg + '</span>';
+      toast.classList.add('show');
+      if (toastTimer) clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => {
+        toast.classList.remove('show');
+      }, 3000);
+    }
+
+    // CAROUSEL SLIDER
+    let currentSlide = 0;
+    function goToSlide(idx) {
+      currentSlide = idx;
+      const slides = document.querySelectorAll('.slide-img-box');
+      const dots = document.querySelectorAll('.dot');
+      slides.forEach((s, i) => {
+        s.classList.toggle('active', i === idx);
+      });
+      dots.forEach((d, i) => {
+        d.classList.toggle('active', i === idx);
+      });
+      const counter = document.getElementById('slideCounter');
+      if (counter) counter.innerText = (idx + 1) + ' / ' + TOTAL_SLIDES;
+    }
+
+    // DESCRIPTION TOGGLE
+    let isExpanded = false;
+    function toggleDescription() {
+      isExpanded = !isExpanded;
+      const text = document.getElementById('descText');
+      const btn = document.getElementById('descBtn');
+      const btnText = document.getElementById('descBtnText');
+      if (text && btn && btnText) {
+        if (isExpanded) {
+          text.classList.remove('desc-clamped');
+          btn.classList.add('expanded');
+          btnText.innerText = 'R\xE9duire la description';
+        } else {
+          text.classList.add('desc-clamped');
+          btn.classList.remove('expanded');
+          btnText.innerText = 'D\xE9rouler la description';
+        }
+      }
+    }
+
+    // PANIER (LOCALSTORAGE SYNCHRONIS\xC9 AVEC L'APP)
+    function getCart() {
+      try {
+        const raw = localStorage.getItem('unifolder_cart');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    function updateCartUI() {
+      const cart = getCart();
+      const inCart = cart.includes(PRODUCT_ID);
+      const btn = document.getElementById('cartBtn');
+      const btnText = document.getElementById('cartBtnText');
+      if (btn && btnText) {
+        if (inCart) {
+          btn.classList.add('added');
+          btnText.innerText = 'Ajout\xE9 \u2713';
+        } else {
+          btn.classList.remove('added');
+          btnText.innerText = 'Ajouter au panier';
+        }
+      }
+    }
+    function handleCartToggle() {
+      let cart = getCart();
+      if (cart.includes(PRODUCT_ID)) {
+        cart = cart.filter(id => id !== PRODUCT_ID);
+        showToast('"' + PRODUCT_TITLE + '" retir\xE9 du panier');
+      } else {
+        cart.push(PRODUCT_ID);
+        showToast('"' + PRODUCT_TITLE + '" ajout\xE9 au panier !');
+      }
+      try {
+        localStorage.setItem('unifolder_cart', JSON.stringify(cart));
+      } catch (e) {}
+      updateCartUI();
+    }
+
+    // ABONNEMENT VENDEUR
+    function getFollowedSellers() {
+      try {
+        const raw = localStorage.getItem('unifolder_followed_sellers');
+        return raw ? JSON.parse(raw) : [];
+      } catch (e) {
+        return [];
+      }
+    }
+    function updateFollowUI() {
+      const list = getFollowedSellers();
+      const isSub = list.includes(SELLER_ID);
+      const btn = document.getElementById('followBtn');
+      const text = document.getElementById('followBtnText');
+      if (btn && text) {
+        if (isSub) {
+          btn.classList.add('active');
+          text.innerText = 'Abonn\xE9 \u2713';
+        } else {
+          btn.classList.remove('active');
+          text.innerText = "S'abonner";
+        }
+      }
+    }
+    function handleFollowToggle() {
+      let list = getFollowedSellers();
+      if (list.includes(SELLER_ID)) {
+        list = list.filter(id => id !== SELLER_ID);
+        showToast('D\xE9sabonn\xE9 de ' + SELLER_NAME);
+      } else {
+        list.push(SELLER_ID);
+        showToast('Vous \xEAtes maintenant abonn\xE9 \xE0 ' + SELLER_NAME + ' !');
+      }
+      try {
+        localStorage.setItem('unifolder_followed_sellers', JSON.stringify(list));
+      } catch (e) {}
+      updateFollowUI();
+    }
+
+    // PARTAGE LIEN
+    function handleShare() {
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(window.location.href).then(() => {
+          showToast('Lien du produit copi\xE9 dans le presse-papier !');
+        }).catch(() => {
+          fallbackShare();
+        });
+      } else {
+        fallbackShare();
+      }
+    }
+    function fallbackShare() {
+      showToast('Lien : ' + window.location.href);
+    }
+
+    // Initialisation
+    updateCartUI();
+    updateFollowUI();
+  <\/script>
+</body>
+</html>`;
+}
+__name(renderProductSharePageHtml, "renderProductSharePageHtml");
 var isSchemaInitialized = true;
 var isEmailVerifTableInitialized = true;
 var isReferralsTableInitialized = false;
@@ -1574,7 +2369,7 @@ var src_default = {
         const targetUrl = `https://studycloud.dkd-technologies.com/?ref=${encodeURIComponent(cleanRef)}#register`;
         return Response.redirect(targetUrl, 302);
       }
-      if ((path.startsWith("/s/") || path.startsWith("/share/") || path.startsWith("/d/")) && method === "GET") {
+      if ((path.startsWith("/s/") || path.startsWith("/share/") && !path.startsWith("/share/product/") || path.startsWith("/d/")) && method === "GET") {
         const code = path.split("/")[2];
         if (code && env.DB) {
           if (!isSchemaInitialized)
@@ -4522,6 +5317,65 @@ var src_default = {
         await env.DB.prepare("DELETE FROM products WHERE id = ?").bind(id).run();
         return jsonResponse({ success: true, message: "Produit supprim\xE9" }, 200, origin);
       }
+      if (path.match(/^\/api\/products\/[^/]+\/image$/) && method === "GET") {
+        await ensureShopAndProductTables(env.DB);
+        const id = path.split("/")[3];
+        const product = await env.DB.prepare("SELECT * FROM products WHERE id = ?").bind(id).first();
+        if (!product) {
+          return new Response("Image introuvable", { status: 404, headers: corsHeaders(origin) });
+        }
+        let firstImg = "";
+        try {
+          const imgs = JSON.parse(product.image_urls_json || "[]");
+          if (Array.isArray(imgs) && imgs.length > 0 && imgs[0]) {
+            firstImg = imgs[0];
+          }
+        } catch (e) {
+        }
+        const appOrigin = url.origin.includes("localhost") ? url.origin : "https://studycloud.dkd-technologies.com";
+        if (!firstImg) {
+          const pngBytes2 = Uint8Array.from(atob(DNA_LOGO_PNG_B64), (c) => c.charCodeAt(0));
+          return new Response(pngBytes2.buffer, {
+            status: 200,
+            headers: {
+              "Content-Type": "image/png",
+              "Cache-Control": "public, max-age=86400, s-maxage=86400",
+              ...corsHeaders(origin)
+            }
+          });
+        }
+        if (firstImg.startsWith("data:")) {
+          const match = firstImg.match(/^data:([^;]+);base64,(.+)$/);
+          if (match) {
+            const mimeType = match[1] || "image/jpeg";
+            const b64Data = match[2];
+            const binaryString = atob(b64Data);
+            const bytes = new Uint8Array(binaryString.length);
+            for (let i = 0; i < binaryString.length; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            return new Response(bytes.buffer, {
+              status: 200,
+              headers: {
+                "Content-Type": mimeType,
+                "Cache-Control": "public, max-age=86400, s-maxage=86400",
+                ...corsHeaders(origin)
+              }
+            });
+          }
+        } else if (firstImg.startsWith("http://") || firstImg.startsWith("https://")) {
+          return Response.redirect(firstImg, 302);
+        }
+        const pngBytes = Uint8Array.from(atob(DNA_LOGO_PNG_B64), (c) => c.charCodeAt(0));
+        return new Response(pngBytes.buffer, {
+          status: 200,
+          headers: {
+            "Content-Type": "image/png",
+            "Cache-Control": "public, max-age=86400, s-maxage=86400",
+            ...corsHeaders(origin)
+          }
+        });
+      }
       if (path.match(/^\/api\/products\/[^/]+\/banner$/) && method === "GET") {
         await ensureShopAndProductTables(env.DB);
         const id = path.split("/")[3];
@@ -4618,64 +5472,6 @@ var src_default = {
           }
         });
       }
-      // Endpoint d'image produit direct pour WhatsApp et les réseaux sociaux (JPG/PNG binaire, JAMAIS de SVG)
-      if (path.match(/^\/api\/products\/[^/]+\/image$/) && method === "GET") {
-        await ensureShopAndProductTables(env.DB);
-        const id = path.split("/")[3];
-        const product = await env.DB.prepare("SELECT image_urls_json FROM products WHERE id = ?").bind(id).first();
-        let imgUrl = "";
-        try {
-          const imgs = JSON.parse(product?.image_urls_json || "[]");
-          if (Array.isArray(imgs) && imgs.length > 0) imgUrl = imgs[0];
-        } catch (e) {}
-
-        const fallbackUrl = "https://studycloud.dkd-technologies.com/assets/student-logo.jpg";
-        if (!imgUrl) {
-          return Response.redirect(fallbackUrl, 302);
-        }
-
-        if (imgUrl.startsWith("data:")) {
-          try {
-            const parts = imgUrl.split(",");
-            const mimeMatch = parts[0].match(/:(.*?);/);
-            const mime = mimeMatch ? mimeMatch[1] : "image/jpeg";
-            const binary = atob(parts[1].replace(/\s/g, ''));
-            const bytes = new Uint8Array(binary.length);
-            for (let i = 0; i < binary.length; i++) {
-              bytes[i] = binary.charCodeAt(i);
-            }
-            return new Response(bytes.buffer, {
-              status: 200,
-              headers: {
-                "Content-Type": mime,
-                "Cache-Control": "public, max-age=86400",
-                ...corsHeaders(origin)
-              }
-            });
-          } catch (e) {
-            return Response.redirect(fallbackUrl, 302);
-          }
-        }
-
-        const appOrigin = url.origin.includes("localhost") ? url.origin : "https://studycloud.dkd-technologies.com";
-        const fullImgUrl = imgUrl.startsWith("http") ? imgUrl : `${appOrigin}${imgUrl.startsWith('/') ? '' : '/'}${imgUrl}`;
-
-        try {
-          const imgRes = await fetch(fullImgUrl);
-          if (imgRes.ok) {
-            const cType = imgRes.headers.get("content-type") || "image/jpeg";
-            return new Response(imgRes.body, {
-              status: 200,
-              headers: {
-                "Content-Type": cType,
-                "Cache-Control": "public, max-age=86400",
-                ...corsHeaders(origin)
-              }
-            });
-          }
-        } catch (e) {}
-        return Response.redirect(fullImgUrl, 302);
-      }
       if (path.match(/^\/api\/products\/[^/]+\/order$/) && method === "GET") {
         await ensureShopAndProductTables(env.DB);
         const id = path.split("/")[3];
@@ -4695,8 +5491,10 @@ var src_default = {
         }
         const appOrigin = url.origin.includes("localhost") ? url.origin : "https://studycloud.dkd-technologies.com";
         const productShareUrl = `${appOrigin}/share/product/${encodeURIComponent(product.id)}`;
-        const productImageOgUrl = `${appOrigin}/api/products/${encodeURIComponent(product.id)}/image`;
-        const autoMessage = `Bonjour ! Je suis int\xE9ress\xE9(e) par votre produit : *${product.title}* (${product.price}).\n\nLien vers le produit : ${productShareUrl}`;
+        const bannerImageUrl = `${appOrigin}/api/products/${encodeURIComponent(product.id)}/image`;
+        const autoMessage = `Bonjour ! Je suis int\xE9ress\xE9(e) par votre produit : *${product.title}* (${product.price}).
+
+Lien vers le produit : ${productShareUrl}`;
         const whatsappUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(autoMessage)}` : "";
         try {
           await env.DB.prepare("UPDATE products SET sales = sales + 1 WHERE id = ?").bind(product.id).run();
@@ -4711,7 +5509,7 @@ var src_default = {
           cleanPhone,
           message: autoMessage,
           productShareUrl,
-          productImageUrl: productImageOgUrl,
+          bannerImageUrl,
           product: {
             id: product.id,
             title: product.title,
@@ -4720,864 +5518,29 @@ var src_default = {
           }
         }, 200, origin);
       }
-
-      // Page produit standalone accessible publiquement (Clone identique de l'application Image 2)
       if (path.match(/^\/share\/product\/[^/]+$/) && method === "GET") {
         await ensureShopAndProductTables(env.DB);
         const id = path.split("/")[3];
         const product = await env.DB.prepare("SELECT * FROM products WHERE id = ?").bind(id).first();
         const appOrigin = url.origin.includes("localhost") ? url.origin : "https://studycloud.dkd-technologies.com";
-        const targetAppUrl = `${appOrigin}/?product=${encodeURIComponent(id)}`;
         if (!product) {
-          return Response.redirect(targetAppUrl, 302);
+          return Response.redirect(`${appOrigin}/?view=products#librairie`, 302);
         }
-
-        // Profil du vendeur et autres produits
-        const [sellerUser, sellerShop, otherProductsRes] = await Promise.all([
-          env.DB.prepare("SELECT id, name, phone, school, filiere, country, avatar_url FROM users WHERE id = ?").bind(product.seller_id).first().catch(() => null),
-          env.DB.prepare("SELECT shop_name, shop_phone, shop_whatsapp, shop_avatar_url FROM shop_profiles WHERE user_id = ?").bind(product.seller_id).first().catch(() => null),
-          env.DB.prepare("SELECT id, title, price, image_urls_json, seller_name FROM products WHERE id != ? ORDER BY (seller_id = ?) DESC, created_at DESC LIMIT 6").bind(product.id, product.seller_id).all().catch(() => ({ results: [] }))
-        ]);
-
-        const sellerName = product.seller_name || sellerShop?.shop_name || sellerUser?.name || "Vendeur StudyCloud";
-        const rawPhone = product.seller_whatsapp || sellerShop?.shop_whatsapp || product.seller_phone || sellerShop?.shop_phone || sellerUser?.phone || "";
-        let cleanPhone = String(rawPhone || "").replace(/\D/g, "");
-        if (cleanPhone.length === 10 && cleanPhone.startsWith("0")) {
-          cleanPhone = "225" + cleanPhone;
-        } else if (cleanPhone.length === 8 && !cleanPhone.startsWith("225")) {
-          cleanPhone = "225" + cleanPhone;
-        }
-        const sellerPhone = cleanPhone ? `+${cleanPhone}` : (rawPhone || "+225 00 00 00 00 00");
-        const sellerAvatar = product.seller_avatar_url || sellerShop?.shop_avatar_url || sellerUser?.avatar_url || "";
-        const sellerSchool = product.seller_school || sellerUser?.school || "";
-        const sellerFiliere = product.seller_filiere || sellerUser?.filiere || "";
-        const sellerInitials = (sellerName || "DK").substring(0, 2).toUpperCase();
-        const sellerSubtitle = [sellerSchool, sellerFiliere].filter(Boolean).join(" \u2022 ");
-
-        const productShareUrl = `${appOrigin}/share/product/${encodeURIComponent(product.id)}`;
-        const autoMessage = `Bonjour ! Je suis int\xE9ress\xE9(e) par votre produit : *${product.title}* (${product.price}).\n\nLien vers le produit : ${productShareUrl}`;
-        const whatsappUrl = cleanPhone ? `https://wa.me/${cleanPhone}?text=${encodeURIComponent(autoMessage)}` : "";
-
-        // Images du produit (3 slides)
-        let rawImages = [];
         try {
-          rawImages = JSON.parse(product.image_urls_json || "[]");
-        } catch (e) {}
-        if (!Array.isArray(rawImages) || rawImages.length === 0) {
-          rawImages = [`${appOrigin}/api/products/${encodeURIComponent(product.id)}/image`];
+          await env.DB.prepare("UPDATE products SET views = views + 1 WHERE id = ?").bind(id).run();
+        } catch (e) {
         }
-        const imageSlides = Array.from({ length: 3 }).map((_, i) => rawImages[i] || rawImages[0] || "");
-
-        // URL image produit pour Open Graph WhatsApp (JPG/PNG binaire)
-        const ogImageUrl = `${appOrigin}/api/products/${encodeURIComponent(product.id)}/image`;
-
-        const title = escapeHtml(product.title || "Produit StudyCloud");
-        const price = escapeHtml(product.price || "0 FCFA");
-        const description = escapeHtml(product.description || "Aucune description fournie pour ce produit.");
-        const otherProducts = otherProductsRes?.results || [];
-
-        const html = `<!DOCTYPE html>
-<html lang="fr">
-<head>
-  <meta charset="UTF-8">
-  <title>${title} (${price}) \u2022 StudyCloud</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-  <meta name="theme-color" content="#FAF8F5">
-
-  <!-- Open Graph Meta Tags (Image produit r\xE9elle avec badge StudyCloud) -->
-  <meta property="og:type" content="product">
-  <meta property="og:site_name" content="StudyCloud">
-  <meta property="og:title" content="${title} (${price}) \u2022 StudyCloud">
-  <meta property="og:description" content="${description} \u2022 Commandez directement sur StudyCloud.">
-  <meta property="og:image" content="${ogImageUrl}">
-  <meta property="og:image:secure_url" content="${ogImageUrl}">
-  <meta property="og:image:type" content="image/jpeg">
-  <meta property="og:image:width" content="600">
-  <meta property="og:image:height" content="600">
-  <meta property="og:url" content="${productShareUrl}">
-
-  <!-- Twitter Meta Tags -->
-  <meta name="twitter:card" content="summary_large_image">
-  <meta name="twitter:title" content="${title} (${price}) \u2022 StudyCloud">
-  <meta name="twitter:description" content="${description}">
-  <meta name="twitter:image" content="${ogImageUrl}">
-
-  <link rel="icon" type="image/png" href="${appOrigin}/assets/student-logo.jpg">
-  <link rel="preconnect" href="https://fonts.googleapis.com">
-  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
-  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800;900&display=swap" rel="stylesheet">
-
-  <style>
-    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
-    body {
-      font-family: 'Plus Jakarta Sans', -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
-      background-color: #FAF8F5;
-      color: #1c1917;
-      min-height: 100vh;
-      display: flex;
-      flex-direction: column;
-      overflow-x: hidden;
-      -webkit-tap-highlight-color: transparent;
-    }
-    
-    /* Sticky Top Header */
-    .top-header {
-      position: sticky;
-      top: 0;
-      z-index: 50;
-      background: rgba(255, 255, 255, 0.95);
-      backdrop-filter: blur(10px);
-      border-bottom: 1px solid #e7e5e4;
-      padding: 10px 16px;
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .btn-app {
-      display: inline-flex;
-      align-items: center;
-      gap: 7px;
-      padding: 8px 14px;
-      background: #1c1917;
-      color: #ffffff;
-      font-weight: 800;
-      font-size: 12px;
-      border-radius: 12px;
-      text-decoration: none;
-      box-shadow: 2px 2px 0px 0px #ea580c;
-      transition: all 0.15s ease;
-    }
-    .btn-app:active { transform: translate(1px, 1px); box-shadow: 1px 1px 0px 0px #ea580c; }
-    .brand-pill {
-      display: inline-flex;
-      align-items: center;
-      gap: 6px;
-      padding: 4px 10px;
-      background: #f5f5f4;
-      border: 1px solid #d6d3d1;
-      border-radius: 9999px;
-      font-size: 11px;
-      font-weight: 800;
-      color: #44403c;
-    }
-    .brand-pill svg { width: 14px; height: 14px; }
-
-    /* Main Container */
-    .main-wrapper {
-      flex: 1;
-      max-width: 1200px;
-      width: 100%;
-      margin: 0 auto;
-      padding: 0 0 40px;
-      display: flex;
-      flex-direction: column;
-    }
-    @media (min-width: 768px) {
-      .main-wrapper {
-        flex-direction: row;
-        gap: 32px;
-        padding: 24px 24px 60px;
-        align-items: flex-start;
-      }
-    }
-
-    /* Left Column */
-    .left-col {
-      flex: 1;
-      width: 100%;
-    }
-    @media (min-width: 768px) {
-      .left-col {
-        position: sticky;
-        top: 68px;
-        background: #ffffff;
-        border-radius: 24px;
-        border: 1.5px solid #e7e5e4;
-        box-shadow: 0 2px 8px rgba(0,0,0,0.04);
-        overflow: hidden;
-      }
-    }
-
-    /* Gallery Slider */
-    .slider-box {
-      position: relative;
-      background: #ffffff;
-      width: 100%;
-      height: 310px;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      border-bottom: 1px solid #e7e5e4;
-      overflow: hidden;
-    }
-    @media (min-width: 640px) { .slider-box { height: 350px; } }
-    .slide-item {
-      position: absolute;
-      inset: 0;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      opacity: 0;
-      transition: opacity 0.25s ease-in-out;
-      pointer-events: none;
-      padding: 16px;
-    }
-    .slide-item.active {
-      opacity: 1;
-      pointer-events: auto;
-    }
-    .slide-item img {
-      max-width: 100%;
-      max-height: 100%;
-      object-fit: contain;
-    }
-
-    /* StudyCloud Badge on Product Image (Exact replica of Image 2) */
-    .badge-studycloud {
-      position: absolute;
-      top: 14px;
-      left: 16px;
-      z-index: 10;
-      display: flex;
-      align-items: center;
-      gap: 6px;
-      padding: 5px 12px;
-      background: rgba(28, 25, 23, 0.92);
-      backdrop-filter: blur(8px);
-      border-radius: 9999px;
-      border: 1px solid rgba(249, 115, 22, 0.7);
-      box-shadow: 0 4px 10px rgba(0,0,0,0.25);
-    }
-    .badge-studycloud svg {
-      width: 15px;
-      height: 15px;
-    }
-    .badge-studycloud span {
-      font-size: 10px;
-      font-weight: 900;
-      color: #ffffff;
-      letter-spacing: 0.08em;
-    }
-
-    .slide-counter {
-      position: absolute;
-      bottom: 12px;
-      right: 16px;
-      z-index: 10;
-      padding: 3px 9px;
-      background: rgba(28, 25, 23, 0.82);
-      backdrop-filter: blur(4px);
-      color: #ffffff;
-      font-size: 10px;
-      font-weight: 800;
-      border-radius: 6px;
-    }
-
-    .dots-row {
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      padding: 10px 0;
-      background: #fbf9f6;
-      border-bottom: 1px solid #e7e5e4;
-    }
-    .dot-btn {
-      width: 8px;
-      height: 8px;
-      border-radius: 9999px;
-      background: #d6d3d1;
-      border: none;
-      cursor: pointer;
-      transition: all 0.2s ease;
-    }
-    .dot-btn.active {
-      width: 22px;
-      background: #1c1917;
-    }
-
-    /* Product Meta (Title & Price) */
-    .meta-box {
-      padding: 16px 18px 8px;
-    }
-    .product-title {
-      font-size: 19px;
-      font-weight: 900;
-      color: #1c1917;
-      line-height: 1.35;
-      text-transform: uppercase;
-    }
-    .product-price {
-      font-size: 24px;
-      font-weight: 900;
-      color: #ea580c;
-      margin-top: 6px;
-    }
-
-    /* Description */
-    .desc-box {
-      padding: 14px 18px;
-      border-top: 1px solid #e7e5e4;
-    }
-    .desc-title {
-      font-size: 11px;
-      font-weight: 800;
-      color: #78716c;
-      letter-spacing: 0.05em;
-      text-transform: uppercase;
-      margin-bottom: 6px;
-    }
-    .desc-content {
-      font-size: 13px;
-      color: #44403c;
-      line-height: 1.55;
-      white-space: pre-line;
-      font-weight: 500;
-    }
-    .desc-content.clamped {
-      display: -webkit-box;
-      -webkit-line-clamp: 2;
-      -webkit-box-orient: vertical;
-      overflow: hidden;
-    }
-    .btn-toggle-desc {
-      background: none;
-      border: none;
-      font-size: 12px;
-      font-weight: 800;
-      color: #1c1917;
-      text-decoration: underline;
-      margin-top: 8px;
-      cursor: pointer;
-      display: inline-flex;
-      align-items: center;
-      gap: 4px;
-    }
-
-    /* Actions */
-    .actions-bar {
-      padding: 14px 18px 20px;
-      display: flex;
-      align-items: center;
-      gap: 10px;
-    }
-    .btn-cart {
-      padding: 14px 18px;
-      background: #f5f5f4;
-      border: 1.5px solid #d6d3d1;
-      border-radius: 14px;
-      font-weight: 800;
-      font-size: 13px;
-      color: #1c1917;
-      display: flex;
-      align-items: center;
-      gap: 8px;
-      cursor: pointer;
-      transition: all 0.15s ease;
-      white-space: nowrap;
-    }
-    .btn-cart.added {
-      background: #fef3c7;
-      border-color: #fcd34d;
-      color: #92400e;
-    }
-    .btn-order {
-      flex: 1;
-      padding: 14px 20px;
-      background: #ea580c;
-      color: #ffffff;
-      border-radius: 14px;
-      font-weight: 900;
-      font-size: 15px;
-      text-decoration: none;
-      text-align: center;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 8px;
-      box-shadow: 0 4px 12px rgba(234, 88, 12, 0.35);
-      transition: all 0.15s ease;
-    }
-    .btn-order:hover { background: #c2410c; }
-    .btn-order:active { transform: scale(0.98); }
-
-    /* Right Column */
-    .right-col {
-      flex: 1;
-      width: 100%;
-      padding: 14px 16px 0;
-      display: flex;
-      flex-direction: column;
-      gap: 20px;
-    }
-    @media (min-width: 768px) { .right-col { padding: 0; } }
-
-    /* Seller Card */
-    .seller-card {
-      background: #ffffff;
-      border-radius: 24px;
-      border: 1.5px solid #e7e5e4;
-      padding: 18px;
-      box-shadow: 0 2px 6px rgba(0,0,0,0.03);
-    }
-    .seller-profile-row {
-      display: flex;
-      align-items: center;
-      gap: 14px;
-    }
-    .seller-avatar-box {
-      width: 54px;
-      height: 54px;
-      border-radius: 9999px;
-      background: #fef3c7;
-      border: 2px solid #1c1917;
-      box-shadow: 2px 2px 0px 0px #1c1917;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      font-weight: 900;
-      color: #78350f;
-      font-size: 16px;
-      overflow: hidden;
-      flex-shrink: 0;
-    }
-    .seller-avatar-box img {
-      width: 100%;
-      height: 100%;
-      object-fit: cover;
-    }
-    .seller-meta-info {
-      overflow: hidden;
-    }
-    .seller-name {
-      font-size: 16px;
-      font-weight: 900;
-      color: #1c1917;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .seller-phone {
-      font-size: 12px;
-      font-weight: 800;
-      color: #78716c;
-      margin-top: 2px;
-    }
-    .seller-sub {
-      font-size: 11px;
-      font-weight: 600;
-      color: #a8a29e;
-      margin-top: 2px;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .seller-btns {
-      display: flex;
-      gap: 10px;
-      margin-top: 14px;
-    }
-    .btn-follow {
-      flex: 1;
-      padding: 10px 14px;
-      background: #2563eb;
-      color: #ffffff;
-      border: 2px solid #1c1917;
-      border-radius: 16px;
-      box-shadow: 2px 2px 0px 0px #1c1917;
-      font-weight: 800;
-      font-size: 12px;
-      cursor: pointer;
-      transition: all 0.15s ease;
-    }
-    .btn-follow.active {
-      background: #f5f5f4;
-      color: #1c1917;
-    }
-    .btn-share {
-      flex: 1;
-      padding: 10px 14px;
-      background: #ffffff;
-      color: #1c1917;
-      border: 2px solid #1c1917;
-      border-radius: 16px;
-      box-shadow: 2px 2px 0px 0px #1c1917;
-      font-weight: 800;
-      font-size: 12px;
-      cursor: pointer;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      gap: 6px;
-      transition: all 0.15s ease;
-    }
-
-    /* Autres Produits */
-    .others-section {
-      display: flex;
-      flex-direction: column;
-      gap: 12px;
-    }
-    .others-head {
-      display: flex;
-      align-items: center;
-      justify-content: space-between;
-    }
-    .others-title {
-      font-size: 15px;
-      font-weight: 900;
-      color: #1c1917;
-    }
-    .others-badge {
-      font-size: 12px;
-      font-weight: 800;
-      color: #78716c;
-    }
-    .others-grid {
-      display: grid;
-      grid-template-columns: repeat(2, 1fr);
-      gap: 12px;
-    }
-    .other-card {
-      background: #ffffff;
-      border-radius: 18px;
-      border: 1px solid #e7e5e4;
-      overflow: hidden;
-      text-decoration: none;
-      color: inherit;
-      box-shadow: 0 2px 4px rgba(0,0,0,0.03);
-      display: flex;
-      flex-direction: column;
-      transition: transform 0.2s ease, box-shadow 0.2s ease;
-    }
-    .other-card:hover {
-      transform: translateY(-2px);
-      box-shadow: 0 6px 12px rgba(0,0,0,0.08);
-    }
-    .other-img-container {
-      width: 100%;
-      height: 160px;
-      background: #fbf9f6;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      padding: 12px;
-      border-bottom: 1px solid #e7e5e4;
-    }
-    .other-img-container img {
-      max-width: 100%;
-      max-height: 100%;
-      object-fit: contain;
-    }
-    .other-card-body {
-      padding: 10px 12px 12px;
-      display: flex;
-      flex-direction: column;
-      gap: 4px;
-    }
-    .other-card-title {
-      font-size: 12px;
-      font-weight: 800;
-      color: #1c1917;
-      white-space: nowrap;
-      overflow: hidden;
-      text-overflow: ellipsis;
-    }
-    .other-card-price {
-      font-size: 13px;
-      font-weight: 900;
-      color: #ea580c;
-    }
-
-    /* Toast */
-    #toast {
-      position: fixed;
-      bottom: 24px;
-      left: 50%;
-      transform: translateX(-50%) translateY(100px);
-      background: #1c1917;
-      color: #ffffff;
-      padding: 12px 20px;
-      border-radius: 16px;
-      font-size: 12px;
-      font-weight: 800;
-      border: 2px solid #ea580c;
-      box-shadow: 0 10px 25px rgba(0,0,0,0.3);
-      z-index: 1000;
-      opacity: 0;
-      pointer-events: none;
-      transition: all 0.3s cubic-bezier(0.16, 1, 0.3, 1);
-      white-space: nowrap;
-    }
-    #toast.show {
-      transform: translateX(-50%) translateY(0);
-      opacity: 1;
-    }
-  </style>
-</head>
-<body>
-
-  <!-- Top Sticky Navigation Bar -->
-  <header class="top-header">
-    <a href="${targetAppUrl}" class="btn-app" title="Ouvrir l'application StudyCloud">
-      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round" stroke-linejoin="round">
-        <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"></path>
-        <polyline points="15 3 21 3 21 9"></polyline>
-        <line x1="10" y1="14" x2="21" y2="3"></line>
-      </svg>
-      <span>Aller \xE0 l'application</span>
-    </a>
-
-    <div class="brand-pill">
-      ${DNA_LOGO_SVG}
-      <span>StudyCloud</span>
-    </div>
-  </header>
-
-  <!-- Main Content Layout (Image 2) -->
-  <main class="main-wrapper">
-
-    <!-- Left Column: Product Gallery & Details -->
-    <section class="left-col">
-      <!-- Image Slider with StudyCloud Badge -->
-      <div class="slider-box" id="slider">
-        <!-- Miniature StudyCloud Badge in Top-Left (Exact Image 2) -->
-        <div class="badge-studycloud">
-          ${DNA_LOGO_SVG}
-          <span>STUDYCLOUD</span>
-        </div>
-
-        ${imageSlides.map((imgUrl, idx) => `
-          <div class="slide-item ${idx === 0 ? 'active' : ''}" id="slide-${idx}">
-            ${imgUrl ? `<img src="${escapeHtml(imgUrl)}" alt="${title} - Photo ${idx + 1}" />` : `
-              <div style="display:flex;flex-direction:column;align-items:center;color:#a8a29e;gap:6px;">
-                <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.5"><path d="m7.5 4.27 9 5.15"></path><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"></path></svg>
-                <span style="font-size:11px;font-weight:700;">Image ${idx + 1} / 3</span>
-              </div>
-            `}
-          </div>
-        `).join('')}
-
-        <span class="slide-counter" id="slideCounter">1 / ${imageSlides.length}</span>
-      </div>
-
-      <!-- Indicator Dots -->
-      <div class="dots-row">
-        ${imageSlides.map((_, idx) => `
-          <button type="button" class="dot-btn ${idx === 0 ? 'active' : ''}" onclick="goToSlide(${idx})" aria-label="Slide ${idx + 1}"></button>
-        `).join('')}
-      </div>
-
-      <!-- Title & Price -->
-      <div class="meta-box">
-        <h1 class="product-title">${title}</h1>
-        <div class="product-price">${price}</div>
-      </div>
-
-      <!-- Description -->
-      <div class="desc-box">
-        <h4 class="desc-title">Description</h4>
-        <div class="desc-content ${(product.description || '').length > 80 ? 'clamped' : ''}" id="descText">
-          ${description}
-        </div>
-        ${(product.description || '').length > 80 ? `
-          <button type="button" class="btn-toggle-desc" id="btnDesc" onclick="toggleDesc()">
-            <span id="descLabel">D\xE9rouler la description</span>
-            <svg id="descIcon" width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"></polyline></svg>
-          </button>
-        ` : ''}
-      </div>
-
-      <!-- Actions: Panier & Commander -->
-      <div class="actions-bar">
-        <button type="button" class="btn-cart" id="btnCart" onclick="addToCart('${escapeHtml(product.id)}')">
-          <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2"><circle cx="8" cy="21" r="1"/><circle cx="19" cy="21" r="1"/><path d="M2.05 2.05h2l2.66 12.42a2 2 0 0 0 2 1.58h9.78a2 2 0 0 0 1.95-1.57l1.65-7.43H5.12"/></svg>
-          <span id="cartBtnText">Ajouter au panier</span>
-        </button>
-
-        <a href="${whatsappUrl || targetAppUrl}" ${whatsappUrl ? 'target="_blank" rel="noopener noreferrer"' : ''} class="btn-order" onclick="recordOrder('${escapeHtml(product.id)}')">
-          Commander
-        </a>
-      </div>
-    </section>
-
-    <!-- Right Column: Shop & Other Products -->
-    <section class="right-col">
-      <!-- Seller Profile Card -->
-      <div class="seller-card">
-        <div class="seller-profile-row">
-          <div class="seller-avatar-box">
-            ${sellerAvatar ? `<img src="${escapeHtml(sellerAvatar)}" alt="${escapeHtml(sellerName)}" />` : `<span>${escapeHtml(sellerInitials)}</span>`}
-          </div>
-          <div class="seller-meta-info">
-            <h3 class="seller-name">${escapeHtml(sellerName)}</h3>
-            <p class="seller-phone">${escapeHtml(sellerPhone)}</p>
-            ${sellerSubtitle ? `<p class="seller-sub">${escapeHtml(sellerSubtitle)}</p>` : ''}
-          </div>
-        </div>
-
-        <div class="seller-btns">
-          <button type="button" class="btn-follow" id="btnFollow" onclick="toggleFollow('${escapeHtml(product.seller_id)}')">
-            S'abonner
-          </button>
-          <button type="button" class="btn-share" onclick="shareProduct()">
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><circle cx="18" cy="5" r="3"></circle><circle cx="6" cy="12" r="3"></circle><circle cx="18" cy="19" r="3"></circle><line x1="8.59" y1="13.51" x2="15.42" y2="17.49"></line><line x1="15.41" y1="6.51" x2="8.59" y2="10.49"></line></svg>
-            <span>Partager</span>
-          </button>
-        </div>
-      </div>
-
-      <!-- Other Products -->
-      <div class="others-section">
-        <div class="others-head">
-          <h3 class="others-title">Autres produits</h3>
-          <span class="others-badge">\U0001F4DA Librairie</span>
-        </div>
-
-        <div class="others-grid">
-          ${otherProducts.map(p => {
-            let pImgs = [];
-            try { pImgs = JSON.parse(p.image_urls_json || "[]"); } catch(e) {}
-            const pImg = pImgs[0] || `${appOrigin}/api/products/${encodeURIComponent(p.id)}/image`;
-            return `
-              <a href="${appOrigin}/share/product/${encodeURIComponent(p.id)}" class="other-card">
-                <div class="other-img-container">
-                  <img src="${escapeHtml(pImg)}" alt="${escapeHtml(p.title)}" loading="lazy" />
-                </div>
-                <div class="other-card-body">
-                  <h4 class="other-card-title">${escapeHtml(p.title)}</h4>
-                  <div class="other-card-price">${escapeHtml(p.price)}</div>
-                </div>
-              </a>
-            `;
-          }).join('')}
-        </div>
-      </div>
-    </section>
-
-  </main>
-
-  <div id="toast">Notification</div>
-
-  <script>
-    let activeSlide = 0;
-    const totalSlides = ${imageSlides.length};
-
-    function goToSlide(idx) {
-      activeSlide = idx;
-      for (let i = 0; i < totalSlides; i++) {
-        const slide = document.getElementById('slide-' + i);
-        if (slide) {
-          if (i === idx) slide.classList.add('active');
-          else slide.classList.remove('active');
-        }
-      }
-      const dots = document.querySelectorAll('.dot-btn');
-      dots.forEach((d, i) => {
-        if (i === idx) d.classList.add('active');
-        else d.classList.remove('active');
-      });
-      const counter = document.getElementById('slideCounter');
-      if (counter) counter.innerText = (idx + 1) + ' / ' + totalSlides;
-    }
-
-    function toggleDesc() {
-      const text = document.getElementById('descText');
-      const label = document.getElementById('descLabel');
-      const icon = document.getElementById('descIcon');
-      if (text.classList.contains('clamped')) {
-        text.classList.remove('clamped');
-        if (label) label.innerText = 'R\xE9duire la description';
-        if (icon) icon.style.transform = 'rotate(180deg)';
-      } else {
-        text.classList.add('clamped');
-        if (label) label.innerText = 'D\xE9rouler la description';
-        if (icon) icon.style.transform = 'rotate(0deg)';
-      }
-    }
-
-    function showToast(msg) {
-      const t = document.getElementById('toast');
-      if (!t) return;
-      t.innerText = msg;
-      t.classList.add('show');
-      setTimeout(() => t.classList.remove('show'), 3000);
-    }
-
-    function addToCart(id) {
-      try {
-        const saved = JSON.parse(localStorage.getItem('unifolder_cart') || '[]');
-        if (!saved.includes(id)) {
-          saved.push(id);
-          localStorage.setItem('unifolder_cart', JSON.stringify(saved));
-        }
-      } catch (e) {}
-      const btn = document.getElementById('btnCart');
-      const label = document.getElementById('cartBtnText');
-      if (btn) btn.classList.add('added');
-      if (label) label.innerText = 'Ajout\xE9 \u2713';
-      showToast('Produit ajout\xE9 au panier !');
-    }
-
-    function toggleFollow(sellerId) {
-      const btn = document.getElementById('btnFollow');
-      if (!btn) return;
-      if (btn.classList.contains('active')) {
-        btn.classList.remove('active');
-        btn.innerText = "S'abonner";
-        showToast('D\xE9sabonn\xE9 de ce vendeur');
-      } else {
-        btn.classList.add('active');
-        btn.innerText = 'Abonn\xE9 \u2713';
-        showToast('Vous \xEAtes d\xE9sormais abonn\xE9 \xE0 ce vendeur !');
-      }
-    }
-
-    function shareProduct() {
-      if (navigator.share) {
-        navigator.share({
-          title: document.title,
-          url: window.location.href
-        }).catch(() => {});
-      } else if (navigator.clipboard) {
-        navigator.clipboard.writeText(window.location.href).then(() => {
-          showToast('Lien du produit copi\xE9 dans le presse-papier !');
-        }).catch(() => {
-          showToast('Lien disponible dans la barre d\\'adresse');
-        });
-      } else {
-        showToast('Lien disponible dans la barre d\\'adresse');
-      }
-    }
-
-    function recordOrder(id) {
-      fetch('/api/products/' + encodeURIComponent(id) + '/order').catch(() => {});
-    }
-
-    // Auto-swipe tactile sur le carrousel
-    let touchStartX = 0;
-    const sliderBox = document.getElementById('slider');
-    if (sliderBox) {
-      sliderBox.addEventListener('touchstart', (e) => {
-        touchStartX = e.changedTouches[0].screenX;
-      }, { passive: true });
-      sliderBox.addEventListener('touchend', (e) => {
-        const diff = touchStartX - e.changedTouches[0].screenX;
-        if (Math.abs(diff) > 40) {
-          if (diff > 0) goToSlide((activeSlide + 1) % totalSlides);
-          else goToSlide((activeSlide - 1 + totalSlides) % totalSlides);
-        }
-      }, { passive: true });
-    }
-  </script>
-</body>
-</html>`;
-
+        const [sellerUser, sellerShop, relatedRes] = await Promise.all([
+          env.DB.prepare("SELECT id, name, phone, school, filiere, country FROM users WHERE id = ?").bind(product.seller_id).first().catch(() => null),
+          env.DB.prepare("SELECT shop_name, shop_phone, shop_whatsapp, shop_avatar_url, shop_category FROM shop_profiles WHERE user_id = ?").bind(product.seller_id).first().catch(() => null),
+          env.DB.prepare("SELECT id, title, price, currency, image_urls_json FROM products WHERE seller_id = ? AND id != ? ORDER BY created_at DESC LIMIT 6").bind(product.seller_id, id).all().catch(() => ({ results: [] }))
+        ]);
+        const html = renderProductSharePageHtml(product, sellerShop, sellerUser, relatedRes?.results || [], appOrigin);
         return new Response(html, {
           status: 200,
           headers: {
             "Content-Type": "text/html; charset=utf-8",
-            "Cache-Control": "public, max-age=3600",
+            "Cache-Control": "public, max-age=180",
             ...corsHeaders(origin)
           }
         });
@@ -5750,9 +5713,6 @@ var src_default = {
       }
       if (path === "/api/published-documents/filters" && method === "GET") {
         try {
-          const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
-          const seed = url.searchParams.get("seed") || Date.now().toString(36);
-
           const [userSchoolsRes, pubSchoolsRes] = await Promise.all([
             env.DB.prepare(`SELECT DISTINCT school FROM users WHERE school IS NOT NULL AND TRIM(school) != ''`).all().catch(() => ({ results: [] })),
             env.DB.prepare(`SELECT DISTINCT school FROM published_documents WHERE school IS NOT NULL AND TRIM(school) != ''`).all().catch(() => ({ results: [] }))
@@ -5779,112 +5739,39 @@ var src_default = {
               matieresSet.add(m);
           });
           const matieres = Array.from(matieresSet).sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
-
-          // ---- Dynamic categories with Smart Deduplication & User-centric Shuffle ----
-          // 1) All published documents for categorization and scoring
-          const pubDocsRes = await env.DB.prepare(
-            `SELECT category, school, filiere, matiere_name, country, file_name FROM published_documents WHERE is_public = 1`
+          const pubCatsRes = await env.DB.prepare(
+            `SELECT DISTINCT category FROM published_documents WHERE category IS NOT NULL AND TRIM(category) != ''`
           ).all().catch(() => ({ results: [] }));
-
-          const pubDocs = pubDocsRes?.results || [];
-
-          // 2) User context for personalized scoring
-          let userSchool = "";
-          let userFiliere = "";
-          let userCountry = "";
-          let userMatieres = [];
-          if (userId) {
-            try {
-              const [userRes, matRes] = await Promise.all([
-                env.DB.prepare(`SELECT school, filiere, country FROM users WHERE id = ?`).bind(userId).first().catch(() => null),
-                env.DB.prepare(`SELECT name FROM matieres WHERE user_id = ?`).bind(userId).all().catch(() => ({ results: [] }))
-              ]);
-              userSchool = (userRes?.school || "").toLowerCase().trim();
-              userFiliere = (userRes?.filiere || "").toLowerCase().trim();
-              userCountry = (userRes?.country || "").toLowerCase().trim();
-              userMatieres = (matRes?.results || []).map(m => (m.name || "").toLowerCase().trim()).filter(Boolean);
-            } catch (e) {}
-          }
-
-          // Smart detection patterns from file names
           const nameCategoryMap = [
-            { patterns: ['cours', 'lecture', 'support de cours', 'course'], label: 'COURS' },
-            { patterns: ['td', 'travaux diriges', 'travaux dirigés'], label: 'TD' },
-            { patterns: ['tp', 'travaux pratiques'], label: 'TP' },
-            { patterns: ['exam', 'examen', 'devoir', 'concours', 'epreuve', 'épreuve', 'ds', 'controle', 'contrôle'], label: 'EXAMENS' },
-            { patterns: ['projet', 'project', 'rapport', 'memoire', 'mémoire', 'pfe', 'tfe', 'these', 'thèse'], label: 'PROJETS' },
-            { patterns: ['note', 'notes', 'fiche', 'resume', 'résumé', 'synthese', 'synthèse', 'recap', 'récap'], label: 'NOTES' },
+            { patterns: ["cours", "lecture", "support de cours", "course"], label: "Cours" },
+            { patterns: ["td", "tp", "travaux dirig\xE9s", "travaux pratiques", "exercice"], label: "TD/TP" },
+            { patterns: ["exam", "examen", "devoir", "concours", "epreuve", "\xE9preuve", "ds", "controle", "contr\xF4le"], label: "Examens" },
+            { patterns: ["projet", "project", "rapport", "memoire", "m\xE9moire", "pfe", "tfe", "these", "th\xE8se"], label: "Projets" },
+            { patterns: ["note", "notes", "fiche", "resume", "r\xE9sum\xE9", "synthese", "synth\xE8se", "recap", "r\xE9cap"], label: "Notes" }
           ];
-
-          // 3) Group categories strictly by rootKey, preferring the form ending with 'S'
-          const rootMap = new Map();
-
-          const registerCategory = (rawCat, doc) => {
-            const canon = canonicalizeCategoryWorker(rawCat);
-            if (!canon) return;
-            const root = getCategoryRootKeyWorker(canon);
-            if (!root) return;
-
-            if (!rootMap.has(root)) {
-              rootMap.set(root, { label: canon, count: 0, userScore: 0 });
-            } else {
-              const item = rootMap.get(root);
-              // Règle de l'utilisateur : celui qui possède le 's' s'affiche en priorité
-              if (canon.endsWith("S") && !item.label.endsWith("S")) {
-                item.label = canon;
-              }
-            }
-
-            if (doc) {
-              const item = rootMap.get(root);
-              item.count += 1;
-              let score = 5;
-              const dFiliere = (doc.filiere || "").toLowerCase().trim();
-              const dSchool = (doc.school || "").toLowerCase().trim();
-              const dMatiere = (doc.matiere_name || "").toLowerCase().trim();
-              const dCountry = (doc.country || "").toLowerCase().trim();
-
-              if (userFiliere && dFiliere && (dFiliere.includes(userFiliere) || userFiliere.includes(dFiliere))) score += 30;
-              if (userSchool && dSchool && (dSchool.includes(userSchool) || userSchool.includes(dSchool))) score += 25;
-              if (userMatieres.some(m => m && (dMatiere.includes(m) || m.includes(dMatiere)))) score += 20;
-              if (userCountry && dCountry && (dCountry.includes(userCountry) || userCountry.includes(dCountry))) score += 10;
-
-              item.userScore += score;
-            }
-          };
-
-          // Index all categories from docs
-          pubDocs.forEach(doc => {
-            if (doc.category && doc.category.trim()) {
-              registerCategory(doc.category, doc);
-            } else if (doc.file_name) {
-              const fname = (doc.file_name || "").toLowerCase().replace(/[_\-\.]/g, ' ');
-              for (const { patterns, label } of nameCategoryMap) {
-                if (patterns.some(p => fname.includes(p))) {
-                  registerCategory(label, doc);
-                  break;
-                }
+          const undetectedRes = await env.DB.prepare(
+            `SELECT file_name FROM published_documents WHERE (category IS NULL OR TRIM(category) = '') AND file_name IS NOT NULL`
+          ).all().catch(() => ({ results: [] }));
+          const categoriesSet = /* @__PURE__ */ new Set();
+          (pubCatsRes?.results || []).forEach((r) => {
+            const c = (r.category || "").trim();
+            if (c && c.toLowerCase() !== "null" && c.toLowerCase() !== "undefined")
+              categoriesSet.add(c);
+          });
+          (undetectedRes?.results || []).forEach((r) => {
+            const fname = (r.file_name || "").toLowerCase().replace(/[_\-.]/g, " ");
+            for (const { patterns, label } of nameCategoryMap) {
+              if (patterns.some((p) => fname.includes(p))) {
+                categoriesSet.add(label);
+                break;
               }
             }
           });
-
-          // Always ensure core academic categories exist
-          ['COURS', 'DEVOIRS', 'TD', 'EXAMENS', 'PROJETS'].forEach(cat => registerCategory(cat, null));
-
-          // Dynamic shuffle per reload using seed
-          const scoredCategories = Array.from(rootMap.values()).map(entry => {
-            const hash = hashStringWorker(`${entry.label}_${seed}`);
-            const shuffleBonus = (hash % 50);
-            const totalScore = entry.userScore + (entry.count * 3) + shuffleBonus;
-            return {
-              label: entry.label,
-              score: totalScore
-            };
-          });
-
-          scoredCategories.sort((a, b) => b.score - a.score);
-          const categories = scoredCategories.map(c => c.label);
-
+          const canonicalOrder = ["Cours", "TD/TP", "Examens", "Projets", "Notes"];
+          const categories = [
+            ...canonicalOrder.filter((c) => categoriesSet.has(c)),
+            ...[...categoriesSet].filter((c) => !canonicalOrder.includes(c)).sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }))
+          ];
           return jsonResponse({ success: true, schools, matieres, categories }, 200, origin);
         } catch (filterErr) {
           return jsonResponse({ success: false, error: filterErr.message, schools: [], matieres: [], categories: [] }, 500, origin);
@@ -5978,10 +5865,8 @@ var src_default = {
             params.push(country);
           }
           if (category && category !== "Tous") {
-            const canonCat = canonicalizeCategoryWorker(category);
-            const rootCat = getCategoryRootKeyWorker(category);
-            query += " AND (UPPER(category) = ? OR UPPER(category) = ? OR UPPER(category) LIKE ? OR UPPER(category) = ?)";
-            params.push(canonCat, rootCat, rootCat + "%", category.toUpperCase());
+            query += " AND category = ?";
+            params.push(category);
           }
           if (matiereName) {
             query += " AND matiere_name = ?";
@@ -6114,7 +5999,7 @@ var src_default = {
         }
         if (method === "POST") {
           const body = await request.json();
-          let {
+          const {
             id,
             userId,
             title,
@@ -6138,15 +6023,6 @@ var src_default = {
           if (!userId || !title || !fileName) {
             return errorResponse("userId, title et fileName sont obligatoires", 400, origin);
           }
-
-          // Correction orthographique automatique et normalisation avant enregistrement en base de données
-          if (title) title = correctSpellingWorker(title).toUpperCase();
-          if (category) category = canonicalizeCategoryWorker(category);
-          if (matiereName) matiereName = correctSpellingWorker(matiereName).toUpperCase();
-          if (school) school = correctSpellingWorker(school).toUpperCase();
-          if (filiere) filiere = correctSpellingWorker(filiere).toUpperCase();
-          if (level) level = correctSpellingWorker(level).toUpperCase();
-          if (description) description = correctSpellingWorker(description);
           const fNameLower = (fileName || "").toLowerCase();
           const fTypeLower = (fileType || "").toLowerCase();
           const isVideo = fTypeLower.startsWith("video/") || /\.(mp4|mkv|avi|mov|wmv|flv|webm|m4v|3gp|3g2|ts|mts|m2ts|vob|ogv)$/i.test(fNameLower);

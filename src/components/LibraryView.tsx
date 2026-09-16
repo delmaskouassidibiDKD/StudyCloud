@@ -1645,13 +1645,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         >
                           <div>
                             {/* Top Image Box */}
-                            <div className="w-full h-48 sm:h-56 md:h-60 bg-[#fbf9f6] dark:bg-stone-900/60 relative overflow-hidden flex items-center justify-center p-2.5 sm:p-3.5 border-b border-stone-100 dark:border-stone-800">
+                            <div className="w-full h-36 sm:h-44 bg-stone-100/80 relative overflow-hidden flex items-center justify-center p-3">
                               {displayImages.length > 0 ? (
                                 <img
                                   src={displayImages[0]}
                                   alt={item.title}
-                                  className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-300"
-                                  loading="lazy"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                 />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-stone-300">
@@ -1748,13 +1747,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                         >
                           <div>
                             {/* Top Image Box */}
-                            <div className="w-full h-48 sm:h-56 md:h-60 bg-[#fbf9f6] dark:bg-stone-900/60 relative overflow-hidden flex items-center justify-center p-2.5 sm:p-3.5 border-b border-stone-100 dark:border-stone-800">
+                            <div className="w-full h-36 sm:h-44 bg-stone-100/80 relative overflow-hidden flex items-center justify-center p-3">
                               {displayImages.length > 0 ? (
                                 <img
                                   src={displayImages[0]}
                                   alt={item.title}
-                                  className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-300"
-                                  loading="lazy"
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                                 />
                               ) : (
                                 <div className="w-full h-full flex items-center justify-center text-stone-300">
@@ -2823,13 +2821,12 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       >
                         <div>
                           {/* Top Image Box */}
-                          <div className="w-full h-40 sm:h-48 md:h-52 bg-[#fbf9f6] dark:bg-stone-900/60 relative overflow-hidden flex items-center justify-center p-2.5 md:p-3 border-b border-stone-100 dark:border-stone-800">
+                          <div className="w-full h-32 sm:h-36 md:h-48 bg-stone-100/80 relative overflow-hidden flex items-center justify-center p-2.5 md:p-3">
                             {displayImages.length > 0 ? (
                               <img
                                 src={displayImages[0]}
                                 alt={item.title}
-                                className="w-full h-full object-contain group-hover:scale-[1.03] transition-transform duration-300"
-                                loading="lazy"
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                               />
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-stone-300">
