@@ -1136,7 +1136,26 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         <PricingView onBack={() => setViewMode('home')} onSelectPlan={(plan) => notify(`Plan ${plan} sélectionné`)} />
       )}
 
-      {viewMode === 'files-menu' && <FilesMenuView onBack={() => setViewMode('home')} onImportFile={onOpenUpload} setActivePreviewItem={setActivePreviewItem} onOpenCreateShareLink={onOpenCreateShareLink} />}
+      {viewMode === 'files-menu' && <FilesMenuView
+        onBack={() => setViewMode('home')}
+        onImportFile={onOpenUpload}
+        setActivePreviewItem={setActivePreviewItem}
+        onOpenCreateShareLink={onOpenCreateShareLink}
+        onPublishFiles={(files) => {
+          try {
+            const payload = files.map(f => ({
+              id: f.id || `pub-${Date.now()}-${Math.random().toString(36).slice(2)}`,
+              name: f.name,
+              size: f.size,
+              type: f.type,
+              url: f.url || '',
+              isImage: f.isImage || false,
+            }));
+            localStorage.setItem('published_selected_files', JSON.stringify(payload));
+          } catch (e) {}
+          if (onOpenPublishView) onOpenPublishView();
+        }}
+      />}
       {typeof viewMode === 'string' && viewMode.startsWith('matiere-') && (
         <MatiereMenuView 
           key={viewMode}

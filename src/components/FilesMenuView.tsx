@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useMemo, useRef } from 'react';
-import { Edit3, ArrowLeft, Upload, File, Folder, Check, MoreVertical, X, Search, Copy, Plus, Download, Link as LinkIcon } from 'lucide-react';
+import { Edit3, ArrowLeft, Upload, File, Folder, Check, MoreVertical, X, Search, Copy, Plus, Download, Link as LinkIcon, Globe } from 'lucide-react';
 import { StudyCloudAPI } from '../services/api';
 import { storeFileBlob, getFileBlobUrl, deleteFileBlob, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 
@@ -8,6 +8,7 @@ interface FilesMenuViewProps {
   onImportFile?: () => void;
   setActivePreviewItem?: (item: any) => void;
   onOpenCreateShareLink?: (items: any[]) => void;
+  onPublishFiles?: (files: any[]) => void;
 }
 
 interface ImportedItem {
@@ -86,7 +87,7 @@ export const getFileTimestamp = (item: any): number => {
   return 0;
 };
 
-export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFile, setActivePreviewItem, onOpenCreateShareLink }) => {
+export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFile, setActivePreviewItem, onOpenCreateShareLink, onPublishFiles }) => {
   const loadAllUserFiles = (): ImportedItem[] => {
     const allFilesMap = new Map<string, ImportedItem>();
     let orderCounter = 0;
@@ -1150,6 +1151,29 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
               <span>Télécharger</span>
             </button>
             <button
+              onClick={() => {
+                const filesToPublish = importedFiles.filter(f => selectedFileIds.includes(f.id));
+                if (filesToPublish.length > 0 && onPublishFiles) {
+                  const payload = filesToPublish.map(f => ({
+                    id: f.id,
+                    name: f.name,
+                    size: f.size,
+                    type: f.type,
+                    url: f.url || '',
+                    isImage: f.isImage,
+                  }));
+                  onPublishFiles(payload);
+                  setIsSelectionMode(false);
+                  setSelectedFileIds([]);
+                }
+              }}
+              disabled={selectedFileIds.length === 0}
+              className="px-1.5 py-1 bg-emerald-700 hover:bg-emerald-600 disabled:opacity-40 text-white font-bold text-[9.5px] rounded-lg transition-all cursor-pointer whitespace-nowrap flex items-center gap-1"
+            >
+              <Globe className="w-3 h-3" />
+              <span>Publier</span>
+            </button>
+            <button
               onClick={handleBatchDelete}
               disabled={selectedFileIds.length === 0}
               className="px-1.5 py-1 bg-red-600 hover:bg-red-500 disabled:opacity-40 text-white font-bold text-[9.5px] rounded-lg transition-all cursor-pointer whitespace-nowrap"
@@ -1352,6 +1376,26 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
                             className="w-full text-left px-3.5 py-2 hover:bg-[#E8DFD0]/50 flex items-center gap-2 text-stone-700 transition-colors border-t border-stone-200 cursor-pointer"
                           >
                             <span>☑️ Tout sélectionner</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              if (onPublishFiles) {
+                                const payload = [{
+                                  id: f.id,
+                                  name: f.name,
+                                  size: f.size,
+                                  type: f.type,
+                                  url: f.url || '',
+                                  isImage: f.isImage,
+                                }];
+                                onPublishFiles(payload);
+                              }
+                              setOpenMenuId(null);
+                            }}
+                            className="w-full text-left px-3.5 py-2 hover:bg-emerald-50 text-emerald-700 flex items-center gap-2 transition-colors border-t border-stone-200 cursor-pointer font-semibold"
+                          >
+                            <Globe className="w-4 h-4 text-emerald-600" />
+                            <span>Publier (rendre public)</span>
                           </button>
                           <button
                             onClick={() => {
