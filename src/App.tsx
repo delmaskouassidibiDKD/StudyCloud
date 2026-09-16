@@ -1292,7 +1292,6 @@ export default function App() {
               onPublish={() => {
                 // Ne PAS rediriger vers Ressources : rester où l'utilisateur se trouve
                 window.dispatchEvent(new Event('studycloud_refresh_published_docs'));
-                showToast('Publication en ligne réussie ! Vos documents sont enregistrés.');
               }}
               onStatusChange={setPublishStatus}
             />

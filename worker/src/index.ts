@@ -5678,6 +5678,54 @@ export default {
         }
       }
 
+      // Route pour compter le nombre total de publications d'un utilisateur
+      if (path === '/api/published-documents/count' && method === 'GET') {
+        try {
+          const userId = url.searchParams.get('userId') || request.headers.get('x-user-id');
+          if (!userId) {
+            return jsonResponse({ success: true, count: 0 }, 200, origin);
+          }
+
+          await env.DB.prepare(`
+            CREATE TABLE IF NOT EXISTS published_documents (
+              id TEXT PRIMARY KEY,
+              user_id TEXT NOT NULL,
+              title TEXT NOT NULL,
+              description TEXT,
+              school TEXT,
+              filiere TEXT,
+              matiere_name TEXT,
+              level TEXT,
+              category TEXT DEFAULT 'Pas d''informations',
+              author_name TEXT,
+              country TEXT,
+              info_mode TEXT DEFAULT 'all',
+              file_name TEXT,
+              file_size INTEGER DEFAULT 0,
+              file_type TEXT,
+              r2_key TEXT,
+              file_url TEXT,
+              is_public INTEGER DEFAULT 1,
+              downloads_count INTEGER DEFAULT 0,
+              views_count INTEGER DEFAULT 0,
+              tags_json TEXT DEFAULT '[]',
+              created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+              updated_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run().catch(() => {});
+
+          const row: any = await env.DB.prepare(
+            `SELECT COUNT(*) as count FROM published_documents WHERE user_id = ?`
+          ).bind(userId).first();
+
+          const count = row && typeof row.count === 'number' ? row.count : 0;
+          return jsonResponse({ success: true, count }, 200, origin);
+        } catch (countErr: any) {
+          console.warn('[Published Documents Count Error]', countErr);
+          return jsonResponse({ success: true, count: 0 }, 200, origin);
+        }
+      }
+
       if (path === '/api/published-documents') {
         if (method === 'GET') {
           const school = url.searchParams.get('school');

@@ -236,6 +236,13 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
 
   useEffect(() => {
     loadPublishedCount();
+    const handleRefresh = () => {
+      loadPublishedCount();
+    };
+    window.addEventListener('studycloud_refresh_published_docs', handleRefresh);
+    return () => {
+      window.removeEventListener('studycloud_refresh_published_docs', handleRefresh);
+    };
   }, []);
 
   useEffect(() => {
