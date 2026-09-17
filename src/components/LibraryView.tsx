@@ -1238,9 +1238,9 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   };
 
   return (
-    <div className="flex flex-col space-y-4 pb-24 pt-24 md:pt-26 animate-fadeIn w-full px-2 sm:px-4">
+    <div className="flex flex-col space-y-4 pb-24 pt-24 md:pt-26 animate-fadeIn w-full px-2 sm:px-4 bg-[#DDDDDD] dark:bg-[#0b0f19] min-h-screen transition-colors">
       {/* Fixed Header Container enclosing search bar and 3 fixed compact buttons - Solid Dark #070a13 */}
-      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#FDFBF7] dark:bg-[#070a13] border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm px-3 sm:px-6 pt-2.5 pb-2 space-y-2">
+      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#DDDDDD] dark:bg-[#070a13] border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm px-3 sm:px-6 pt-2.5 pb-2 space-y-2 transition-colors">
         <div className="flex items-center justify-between gap-2 sm:gap-3 w-full">
           {/* Expanded Search input */}
           <div className="relative flex-1 min-w-[120px]">
@@ -1593,7 +1593,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
             {isCartViewOpen ? (
               <div className="space-y-4">
                 {/* Header connecté avec bouton Retour 3D Pilule et Titre Mon Panier centré */}
-                <div className="sticky top-[92px] z-30 bg-[#FDFBF7]/95 backdrop-blur-sm -mt-2 pt-1 pb-2 mb-2 flex items-center justify-between gap-2 border-b border-stone-200/80">
+                <div className="sticky top-[92px] z-30 bg-[#DDDDDD]/95 dark:bg-[#070a13]/95 backdrop-blur-sm -mt-2 pt-1 pb-2 mb-2 flex items-center justify-between gap-2 border-b border-stone-200/80 dark:border-[#1e293b]">
                   {/* 3D Pill 'Retour' Button */}
                   <button
                     type="button"
@@ -1838,7 +1838,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           <div className="space-y-3">
             {/* If a School, Matière, Filière or Recent Files filter is active, show sticky header connected to top navigation with centered title & 3D pill 'Retour' button */}
             {(selectedSchoolFilter || selectedMatiereFilter || selectedFiliereFilter || isRecentFilterActive) ? (
-              <div className="sticky top-[92px] z-30 bg-[#FDFBF7]/95 backdrop-blur-sm -mt-2 pt-1 pb-2 mb-2 flex items-center justify-between gap-2 border-b border-stone-200/80">
+              <div className="sticky top-[92px] z-30 bg-[#DDDDDD]/95 dark:bg-[#070a13]/95 backdrop-blur-sm -mt-2 pt-1 pb-2 mb-2 flex items-center justify-between gap-2 border-b border-stone-200/80 dark:border-[#1e293b]">
                 {/* 3D Pill 'Retour' Button matching user design */}
                 <button
                   type="button"
