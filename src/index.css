@@ -205,6 +205,7 @@ aside .brand-tagline,
 /* Transformation de tous les fonds clairs (blancs, beiges, stone) en fond sombre solide */
 .dark [class*="bg-[#FDFBF7]"],
 .dark [class*="bg-[#E9D7C9]"],
+.dark [class*="bg-[#F2EDDA]"],
 .dark [class*="bg-[#FAF7F2]"],
 .dark [class*="bg-[#F9F6F0]"],
 .dark [class*="bg-[#F5F1E9]"],
