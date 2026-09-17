@@ -422,7 +422,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     <>
       <div 
         style={{ backgroundColor: editorColor }}
-        className={`absolute inset-x-0 bottom-0 top-[72px] md:top-[76px] md:left-64 w-full md:w-[calc(100%-16rem)] text-white overflow-y-auto flex-col min-h-[calc(100vh-76px)] select-none transition-all duration-300 ease-in-out flex ${viewMode === 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
+        className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 w-full md:w-[calc(100%-16rem)] text-white overflow-y-auto flex-col min-h-[calc(100vh-66px)] select-none transition-all duration-300 ease-in-out flex ${viewMode === 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
       >
         {/* Floating Fixed Buttons (No background bar) */}
         <div className="fixed top-[84px] md:top-[88px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-50 pointer-events-none">
@@ -551,7 +551,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
       {/* ---------------- RENDER MAIN NOTES LIST VIEW ---------------- */}
       <div 
         ref={listContainerRef} 
-        className={`absolute inset-x-0 bottom-0 top-[72px] md:top-[76px] md:left-64 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto flex-col min-h-[calc(100vh-76px)] select-none transition-all duration-300 ease-in-out flex ${viewMode !== 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
+        className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto flex-col min-h-[calc(100vh-66px)] select-none transition-all duration-300 ease-in-out flex ${viewMode !== 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
       >
       
       {/* Fixed 3D Header - Solid Dark #070a13 */}

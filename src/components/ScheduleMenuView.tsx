@@ -453,7 +453,7 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
   };
 
   return (
-    <div className="absolute inset-x-0 md:left-64 md:right-0 bottom-16 md:bottom-0 top-[72px] md:top-[76px] z-30 w-full md:w-[calc(100%-16rem)] bg-[#FDFBF7] dark:bg-[#0b0f19] text-stone-900 dark:text-slate-100 flex flex-col overflow-hidden transition-colors duration-300">
+    <div className="absolute inset-x-0 md:left-64 md:right-0 bottom-16 md:bottom-0 top-[62px] md:top-[66px] z-30 w-full md:w-[calc(100%-16rem)] bg-[#FDFBF7] dark:bg-[#0b0f19] text-stone-900 dark:text-slate-100 flex flex-col overflow-hidden transition-colors duration-300">
       {/* Top Header Bar */}
       <div className="flex-none px-3 py-2 bg-[#FDFBF7] dark:bg-[#070a13] backdrop-blur-md border-b border-stone-200 dark:border-[#1e293b] flex items-center justify-between z-40 shadow-sm">
         <button

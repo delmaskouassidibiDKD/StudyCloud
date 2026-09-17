@@ -419,7 +419,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[72px] md:top-[76px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-6 overflow-y-auto transition-colors duration-300">
+    <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-6 overflow-y-auto transition-colors duration-300">
       <svg style={{ position: 'absolute', width: 0, height: 0, overflow: 'hidden' }}>
         <defs>
           {trimesterData.map((item, idx) => {

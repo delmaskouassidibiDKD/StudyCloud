@@ -161,7 +161,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({ onBack, se
   );
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[72px] md:top-[76px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-8 overflow-y-auto transition-colors duration-300">
+    <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-8 overflow-y-auto transition-colors duration-300">
       {/* Top Header Bar */}
       <div className="fixed top-[84px] md:top-[88px] left-4 right-4 md:left-[17.5rem] flex items-start justify-between z-40 pointer-events-none gap-2">
         <div className="flex items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">

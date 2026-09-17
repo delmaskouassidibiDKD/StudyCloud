@@ -516,7 +516,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   return (
     <div className="flex flex-col items-center justify-start min-h-[75vh] px-2 sm:px-4 text-center pt-12 md:pt-14 pb-24 bg-[#E9D7C9] dark:bg-[#0b0f19] transition-colors duration-200">
       {/* Fixed Header bar with action buttons - Solid Dark #070a13 */}
-      <div className={`fixed top-0 left-0 right-0 md:left-64 z-40 px-3 md:px-6 py-2 flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${
+      <div className={`fixed top-0 left-0 right-0 md:left-64 z-40 px-3 md:px-6 py-2 h-[64px] md:h-[68px] flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${
         isDarkMode 
           ? 'bg-[#070a13] border-b border-[#1e293b] shadow-md' 
           : 'bg-[#E9D7C9] border-b-2 border-stone-800 shadow-sm'

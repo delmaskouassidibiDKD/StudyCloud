@@ -419,7 +419,7 @@ export const GradesMenuView: React.FC<GradesMenuViewProps> = ({ onBack }) => {
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[72px] md:top-[76px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#f1f5f9] dark:bg-[#0b0f19] text-stone-900 dark:text-slate-100 flex flex-col overflow-hidden transition-colors duration-300">
+    <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#f1f5f9] dark:bg-[#0b0f19] text-stone-900 dark:text-slate-100 flex flex-col overflow-hidden transition-colors duration-300">
       {/* Sticky Header Group */}
       <div className="sticky top-0 z-40 flex flex-col w-full shadow-md shrink-0">
         {/* Top Navigation Bar with Back & Add */}

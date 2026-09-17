@@ -10,7 +10,7 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan }
   const [billingCycle, setBillingCycle] = useState<'annual' | 'monthly'>('annual');
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[72px] md:top-[76px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto animate-fadeIn pb-24 transition-colors duration-300">
+    <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto animate-fadeIn pb-24 transition-colors duration-300">
       {/* Fixed floating buttons directly below the top header */}
       <div className="fixed top-[84px] md:top-[88px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none gap-2">
         <button
