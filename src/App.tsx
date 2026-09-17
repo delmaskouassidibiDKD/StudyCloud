@@ -1259,7 +1259,7 @@ export default function App() {
   });
 
   return (
-    <div className={`min-h-dvh ${currentTab === 'upload' ? 'bg-[#F2EDDA]' : currentTab === 'library' ? 'bg-[#DDDDDD]' : 'bg-[#E9D7C9]'} dark:bg-[#0b0f19] flex flex-col md:flex-row font-sans text-stone-900 dark:text-slate-100 transition-colors duration-200`}>
+    <div className={`min-h-dvh ${currentTab === 'library' ? 'bg-[#DDDDDD]' : 'bg-[#E9D7C9]'} dark:bg-[#0b0f19] flex flex-col md:flex-row font-sans text-stone-900 dark:text-slate-100 transition-colors duration-200`}>
       {/* Sidebar (Desktop & Mobile Nav) */}
       <Sidebar
         currentTab={currentTab}
@@ -1270,7 +1270,7 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <div className={`flex-1 flex flex-col min-h-dvh pb-20 md:pb-0 md:ml-64 ${currentTab === 'upload' ? 'bg-[#F2EDDA]' : currentTab === 'library' ? 'bg-[#DDDDDD]' : 'bg-[#E9D7C9]'} dark:bg-[#0b0f19] transition-colors duration-200`}>
+      <div className={`flex-1 flex flex-col min-h-dvh pb-20 md:pb-0 md:ml-64 ${currentTab === 'library' ? 'bg-[#DDDDDD]' : 'bg-[#E9D7C9]'} dark:bg-[#0b0f19] transition-colors duration-200`}>
         <main className={`flex-1 ${currentTab === 'library' ? 'p-0 w-full' : 'p-6 md:p-8 max-w-7xl w-full mx-auto'}`}>
           {currentTab === 'folders' ? (
             <FoldersView

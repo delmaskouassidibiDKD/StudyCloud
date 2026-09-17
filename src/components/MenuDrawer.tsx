@@ -2,7 +2,6 @@ import React, { useState } from 'react';
 import { Menu, X, Search, Upload, Home, MoreVertical } from 'lucide-react';
 import { createPortal } from 'react-dom';
 import { motion, AnimatePresence } from 'motion/react';
-import { DnaLogo } from './DnaLogo';
 
 interface MenuDrawerProps {
   onNavigateHome: () => void;
@@ -107,19 +106,8 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             transition={{ type: 'tween', ease: 'easeOut', duration: 0.25 }}
             className="fixed top-0 left-0 bottom-0 z-[9999] w-80 md:w-96 bg-[#FDFBF7] dark:bg-[#070a13] border-r-3 border-stone-800 dark:border-[#1e293b] px-6 pt-4 pb-6 flex flex-col shadow-2xl"
           >
-            {/* Brand Header */}
-            <div className="flex items-center justify-between pb-3 mb-3 border-b-2 border-stone-200 dark:border-[#1e293b]">
-              <div className="flex items-center gap-2 notranslate">
-                <DnaLogo className="w-8 h-8" />
-                <div className="flex flex-col truncate text-left leading-none mt-0.5">
-                  <h1 className="brand-header font-extrabold text-[18px] md:text-[20px] tracking-tight truncate leading-none" style={{ fontFamily: 'Outfit, sans-serif' }}>
-                    <span className="brand-study text-orange-600 dark:text-orange-500" style={{ color: '#ea580c' }}>Study</span><span className="brand-cloud text-blue-600 dark:text-blue-500" style={{ color: '#2563eb' }}>Cloud</span>
-                  </h1>
-                  <p className="brand-tagline text-[8px] md:text-[8.5px] font-bold uppercase tracking-widest leading-none truncate mt-[2px]" style={{ color: '#f59e0b' }}>
-                    DKD Technologies
-                  </p>
-                </div>
-              </div>
+            {/* Drawer Header - Bouton Fermer */}
+            <div className="flex items-center justify-end pb-3 mb-3 border-b-2 border-stone-200 dark:border-[#1e293b]">
               <button
                 onClick={() => setIsOpen(false)}
                 className="p-1.5 hover:bg-stone-200 dark:hover:bg-[#283852] rounded-lg transition-colors text-stone-700 dark:text-white border-2 border-stone-800 dark:border-[#334155] bg-[#F5F1E9] dark:bg-[#1e293b] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none shrink-0 active:translate-x-0.5 active:translate-y-0.5 cursor-pointer"

@@ -86,7 +86,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`flex flex-col space-y-4 pb-24 pt-24 md:pt-24 animate-fadeIn min-h-screen relative transition-colors bg-[#F2EDDA] dark:bg-[#0b0f19] ${
+      className={`flex flex-col space-y-4 pb-24 pt-24 md:pt-24 animate-fadeIn min-h-screen relative transition-colors bg-[#E9D7C9] dark:bg-[#0b0f19] ${
         isDragging ? 'ring-4 ring-orange-500 ring-inset bg-orange-50/20' : ''
       }`}
     >
@@ -102,7 +102,7 @@ export const UploadView: React.FC<UploadViewProps> = ({
       )}
 
       {/* Fixed Header for Upload Tab - Solid Dark #070a13 */}
-      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#F2EDDA] dark:bg-[#070a13] py-2 px-4 md:px-8 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm space-y-1.5 transition-colors">
+      <div className="fixed top-0 left-0 right-0 md:left-64 z-40 bg-[#E9D7C9] dark:bg-[#070a13] py-2 px-4 md:px-8 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm space-y-1.5 transition-colors">
         <div className="flex items-center justify-between gap-3 max-w-7xl mx-auto w-full">
           <div className="flex items-center gap-2.5 sm:gap-3.5">
             <label className="flex flex-col items-center justify-center bg-[#F5F1E9] dark:bg-[#1e293b] hover:bg-[#EBE5DA] dark:hover:bg-[#283852] text-stone-800 dark:text-white font-bold px-1.5 sm:px-2 py-1 rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none text-[10px] cursor-pointer select-none active:translate-x-0.5 active:translate-y-0.5 transition-all">
