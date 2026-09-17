@@ -3,7 +3,8 @@ import { createPortal } from 'react-dom';
 import { 
   Maximize, Minimize, Mic, Pause, Play, Square, RotateCcw, X, FileText, 
   ArrowLeftRight, ArrowUpDown, Music, Download, ZoomIn, ZoomOut, ChevronLeft, ChevronRight, 
-  Copy, Check, Search, Table, Presentation, FileCode, Volume2, SkipBack, SkipForward, MousePointerClick
+  Copy, Check, Search, Table, Presentation, FileCode, Volume2, SkipBack, SkipForward, MousePointerClick,
+  BookOpen
 } from 'lucide-react';
 import { FileIconBadge } from './FileIconBadge';
 import { PdfHorizontalViewer, extractPageLines } from './PdfHorizontalViewer';
@@ -878,7 +879,7 @@ export function CenterMenu({
   };
 
   return (
-    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r border-stone-300 dark:border-stone-800'} flex flex-col animate-fadeIn relative pointer-events-auto overflow-hidden bg-white dark:bg-stone-950 pt-[44px] ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
+    <div className={`w-full h-full ${isCenterFullscreen ? '' : 'border-r border-stone-300 dark:border-[#1e293b]'} flex flex-col animate-fadeIn relative pointer-events-auto overflow-hidden bg-white dark:bg-[#0b0f19] pt-[44px] ${isRightFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 1 || isCenterFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
       
       {/* Sleek Document Action Bar: Present for ALL documents (PDF, Word, Excel, PPTX, Images, Code) */}
       {activePreviewItem && (
@@ -1100,9 +1101,14 @@ export function CenterMenu({
             </p>
           </div>
         ) : !activePreviewItem ? (
-          <div className="w-full h-full flex flex-col items-center justify-center text-center p-8 text-stone-400 gap-2 bg-white dark:bg-stone-950">
-            <FileText className="w-10 h-10 opacity-30" />
-            <p className="text-xs font-bold text-stone-500">Aucun document sélectionné</p>
+          <div className="w-full h-full flex flex-col items-center justify-center text-center p-8 gap-3 bg-white dark:bg-[#0b0f19] transition-colors">
+            <div className="w-16 h-16 rounded-2xl bg-stone-50 dark:bg-[#111a2e] border-2 border-dashed border-stone-300 dark:border-stone-700 flex items-center justify-center text-stone-400 dark:text-stone-500 shadow-sm">
+              <BookOpen className="w-8 h-8 text-orange-500/80 dark:text-orange-400" />
+            </div>
+            <h3 className="text-sm sm:text-base font-extrabold text-stone-900 dark:text-white">Aucun fichier sélectionné</h3>
+            <p className="text-xs font-semibold text-stone-500 dark:text-slate-400 max-w-sm leading-relaxed">
+              Sélectionnez un fichier dans la liste à gauche pour afficher son aperçu et commencer votre session d'étude.
+            </p>
           </div>
         ) : (() => {
           const isImg = ['JPG', 'JPEG', 'PNG', 'WEBP', 'SVG', 'GIF', 'BMP', 'ICO'].includes(ext) || activePreviewItem?.type?.startsWith('image/') || activePreviewItem?.isImage;

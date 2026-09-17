@@ -485,6 +485,7 @@ export default function App() {
     return 'folders';
   });
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
+  const [isStudySpaceOpen, setIsStudySpaceOpen] = useState(false);
 
   const setActivePreviewItem = (item: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null) => {
     if (!item) {
@@ -1284,6 +1285,11 @@ export default function App() {
               onOpenPublishView={() => {
                 handleSetTab('publish-file');
               }}
+              onOpenStudySpace={() => {
+                setActivePreviewItem(null);
+                setPreviewOwnerTab('folders');
+                setIsStudySpaceOpen(true);
+              }}
               onOpenCreateShareLink={(items) => {
                 setShareModalTargetItems(items);
                 setShareModalInitialName(
@@ -1560,46 +1566,49 @@ export default function App() {
         />
       )}
 
-      {activePreviewItem && (previewOwnerTab ? previewOwnerTab === currentTab : currentTab === 'folders') && (
+      {(isStudySpaceOpen || activePreviewItem) && (previewOwnerTab ? previewOwnerTab === currentTab : currentTab === 'folders') && (
         <div className="fixed inset-0 md:left-64 z-[99999] bg-[#FDFBF7] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-hidden">
           {/* Top Header Bar - Solid Dark #070a13 */}
           <div className="fixed top-0 left-0 right-0 md:left-64 z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[44px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
             {/* Left: Bouton Retour & badge du dossier/matière */}
             <div className="flex items-center gap-1.5 shrink-0">
               <button
-                onClick={() => setActivePreviewItem(null)}
+                onClick={() => {
+                  setActivePreviewItem(null);
+                  setIsStudySpaceOpen(false);
+                }}
                 className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
               >
                 <ArrowLeft className="w-3.5 h-3.5 text-stone-900 dark:text-white" />
                 <span>Retour</span>
               </button>
 
-              {(activePreviewItem.folderName || activeFolderDetail?.title) && (
-                <span className="text-[10px] sm:text-[11px] font-black text-stone-800 dark:text-orange-400 uppercase tracking-widest max-w-[120px] sm:max-w-[180px] truncate bg-[#E8DFD0] dark:bg-[#111a2e] px-2.5 py-1 rounded-lg border-2 border-stone-800 dark:border-[#1e293b] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none shrink-0 text-center">
-                  {activePreviewItem.folderName || activeFolderDetail?.title}
-                </span>
-              )}
+              <span className="text-[10px] sm:text-[11px] font-black text-stone-800 dark:text-orange-400 uppercase tracking-widest max-w-[120px] sm:max-w-[180px] truncate bg-[#E8DFD0] dark:bg-[#111a2e] px-2.5 py-1 rounded-lg border-2 border-stone-800 dark:border-[#1e293b] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none shrink-0 text-center">
+                {activePreviewItem?.folderName || activeFolderDetail?.title || "MES FICHIERS"}
+              </span>
             </div>
 
             {/* Center: Nom du fichier & Contrôles Audio (au-dessus de la page en mode écran réduit) */}
             <div className="flex-1 items-center justify-center gap-2 overflow-hidden px-1 sm:px-2 min-w-0 flex">
               <p className="text-[11px] sm:text-xs font-bold text-stone-900 dark:text-white leading-tight truncate overflow-hidden text-ellipsis text-center max-w-[140px] sm:max-w-xs lg:max-w-sm shrink">
-                {activePreviewItem.name}
+                {activePreviewItem ? activePreviewItem.name : "Espace d'étude - Mes fichiers"}
               </p>
               <div id="studycloud-top-audio-portal" className="flex items-center shrink-0" />
             </div>
             
             <div className="flex items-center gap-2 shrink-0">
-              <span className="hidden sm:inline text-[9px] sm:text-[10px] text-stone-600 dark:text-slate-300 font-semibold px-1">
-                {(() => {
-                  const bytes = activePreviewItem.size;
-                  if (!bytes) return '0 o';
-                  const k = 1024;
-                  const sizes = ['o', 'Ko', 'Mo', 'Go'];
-                  const i = Math.floor(Math.log(bytes) / Math.log(k));
-                  return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
-                })()}
-              </span>
+              {activePreviewItem?.size ? (
+                <span className="hidden sm:inline text-[9px] sm:text-[10px] text-stone-600 dark:text-slate-300 font-semibold px-1">
+                  {(() => {
+                    const bytes = activePreviewItem.size;
+                    if (!bytes) return '0 o';
+                    const k = 1024;
+                    const sizes = ['o', 'Ko', 'Mo', 'Go'];
+                    const i = Math.floor(Math.log(bytes) / Math.log(k));
+                    return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i];
+                  })()}
+                </span>
+              ) : null}
               <div className="flex items-center gap-1.5 sm:gap-2">
                 {/* Clock / Study Timer Button */}
                 <button
@@ -1621,47 +1630,51 @@ export default function App() {
                   </span>
                 </button>
 
-                {/* Share Button */}
-                <button
-                  onClick={() => {
-                    if (!activePreviewItem) return;
-                    setShareModalTargetItems([activePreviewItem]);
-                    setShareModalInitialName(activePreviewItem.name.replace(/\.[^/.]+$/, ''));
-                    setShowCreateShareLinkModal(true);
-                  }}
-                  className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 shrink-0"
-                  title="Créer un lien de partage pour ce document"
-                >
-                  <Share2 className="w-3.5 h-3.5 text-orange-500 shrink-0" />
-                  <span className="text-[7.5px] sm:text-xs font-bold sm:font-extrabold leading-none text-center">
-                    Partager
-                  </span>
-                </button>
+                {activePreviewItem && (
+                  <>
+                    {/* Share Button */}
+                    <button
+                      onClick={() => {
+                        if (!activePreviewItem) return;
+                        setShareModalTargetItems([activePreviewItem]);
+                        setShareModalInitialName(activePreviewItem.name.replace(/\.[^/.]+$/, ''));
+                        setShowCreateShareLinkModal(true);
+                      }}
+                      className="px-1.5 py-0.5 sm:px-2 sm:py-1 bg-white hover:bg-stone-100 text-stone-900 rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex flex-col sm:flex-row items-center justify-center gap-0.5 sm:gap-1 shrink-0"
+                      title="Créer un lien de partage pour ce document"
+                    >
+                      <Share2 className="w-3.5 h-3.5 text-orange-500 shrink-0" />
+                      <span className="text-[7.5px] sm:text-xs font-bold sm:font-extrabold leading-none text-center">
+                        Partager
+                      </span>
+                    </button>
 
-                {/* Download Button */}
-                <button
-                  onClick={() => {
-                    const content = activePreviewItem.url || `Ceci est le fichier ${activePreviewItem.name} téléchargé depuis UniFolder Share.`;
-                    const blob = activePreviewItem.url && (activePreviewItem.url.startsWith('data:') || activePreviewItem.url.startsWith('blob:') || activePreviewItem.url.startsWith('http')) 
-                      ? fetch(activePreviewItem.url).then(r => r.blob()).catch(() => new Blob([content], { type: 'text/plain;charset=utf-8' }))
-                      : Promise.resolve(new Blob([content], { type: 'text/plain;charset=utf-8' }));
-                    blob.then((b) => {
-                      const url = URL.createObjectURL(b);
-                      const a = document.createElement('a');
-                      a.href = url;
-                      a.download = activePreviewItem.name;
-                      document.body.appendChild(a);
-                      a.click();
-                      document.body.removeChild(a);
-                      URL.revokeObjectURL(url);
-                    });
-                  }}
-                  className="px-2 sm:px-2.5 py-1 bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 shrink-0"
-                  title="Télécharger le fichier"
-                >
-                  <Download className="w-3.5 h-3.5 shrink-0" />
-                  <span className="hidden sm:inline">Télécharger</span>
-                </button>
+                    {/* Download Button */}
+                    <button
+                      onClick={() => {
+                        const content = activePreviewItem.url || `Ceci est le fichier ${activePreviewItem.name} téléchargé depuis UniFolder Share.`;
+                        const blob = activePreviewItem.url && (activePreviewItem.url.startsWith('data:') || activePreviewItem.url.startsWith('blob:') || activePreviewItem.url.startsWith('http')) 
+                          ? fetch(activePreviewItem.url).then(r => r.blob()).catch(() => new Blob([content], { type: 'text/plain;charset=utf-8' }))
+                          : Promise.resolve(new Blob([content], { type: 'text/plain;charset=utf-8' }));
+                        blob.then((b) => {
+                          const url = URL.createObjectURL(b);
+                          const a = document.createElement('a');
+                          a.href = url;
+                          a.download = activePreviewItem.name;
+                          document.body.appendChild(a);
+                          a.click();
+                          document.body.removeChild(a);
+                          URL.revokeObjectURL(url);
+                        });
+                      }}
+                      className="px-2 sm:px-2.5 py-1 bg-orange-500 hover:bg-orange-600 text-white font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 shrink-0"
+                      title="Télécharger le fichier"
+                    >
+                      <Download className="w-3.5 h-3.5 shrink-0" />
+                      <span className="hidden sm:inline">Télécharger</span>
+                    </button>
+                  </>
+                )}
               </div>
             </div>
           </div>

@@ -52,7 +52,7 @@ export function LeftMenu({
   const [searchQuery, setSearchQuery] = useState('');
 
   const currentFolderName = activePreviewItem?.folderName || activePreviewItem?.matiere || activeFolderDetail?.title;
-  const isMesFichiersMode = currentFolderName === 'Mes fichiers' || (!currentFolderName && !!activePreviewItem);
+  const isMesFichiersMode = currentFolderName === 'Mes fichiers' || !currentFolderName || !activeFolderDetail;
   const [panelWidth, setPanelWidth] = useState(380);
 
   useEffect(() => {
@@ -144,6 +144,52 @@ export function LeftMenu({
         }
       })
       .catch(err => console.warn('[LeftMenu] Erreur synchro study files:', err));
+
+    // Synchronisation avec le worker pour charger tous les fichiers de "Mes fichiers"
+    StudyCloudAPI.getFiles(userId, 'root', false)
+      .then(async (res) => {
+        if (!isMounted) return;
+        if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
+          const nonStudyRows = res.data.filter((row: any) => !row.is_study_session && !row.isStudyImport);
+          const filesWithUrls = await Promise.all(
+            nonStudyRows.map(async (row: any) => {
+              const localBlobUrl = await getFileBlobUrl(row.id);
+              return {
+                id: row.id,
+                name: row.name,
+                size: row.size || 0,
+                type: row.type || 'Fichier',
+                extension: row.extension || (row.name?.includes('.') ? row.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+                url: localBlobUrl || row.file_url || '',
+                r2Key: row.r2_key,
+                isFavorite: !!row.is_favorite,
+                matiere: row.matiere_id && row.matiere_id !== 'Mes fichiers' ? row.matiere_id : 'Mes fichiers',
+                importedAt: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+                createdAt: row.created_at,
+                timestamp: row.last_imported || (row.created_at ? new Date(row.created_at).getTime() : Date.now()),
+                isImage: row.type?.startsWith('image/') || /\.(jpg|jpeg|png|webp|svg|gif)$/i.test(row.name || ''),
+              };
+            })
+          );
+          if (!isMounted) return;
+          const existingRaw = localStorage.getItem('unifolder_files_menu_items');
+          let localList: any[] = [];
+          if (existingRaw) {
+            try { localList = JSON.parse(existingRaw); } catch (e) {}
+          }
+          const mergedMap = new Map<string, any>();
+          filesWithUrls.forEach(f => mergedMap.set(f.id, f));
+          localList.forEach(f => {
+            if (f && f.id && !mergedMap.has(f.id)) {
+              mergedMap.set(f.id, f);
+            }
+          });
+          const merged = Array.from(mergedMap.values());
+          localStorage.setItem('unifolder_files_menu_items', JSON.stringify(merged));
+          setSyncTick(prev => prev + 1);
+        }
+      })
+      .catch(err => console.warn('[LeftMenu] Erreur synchro general files from worker:', err));
 
     return () => { isMounted = false; };
   }, []);
@@ -757,10 +803,10 @@ export function LeftMenu({
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
             parsed.forEach((f: any) => {
-              if (f && f.id && (!f.matiere || f.matiere === 'Mes fichiers') && !f.isLeftMenuImport && !f.isStudyImport && !importedIds.includes(f.id)) {
+              if (f && f.id && !f.isLeftMenuImport && !f.isStudyImport && !importedIds.includes(f.id)) {
                 directMap.set(f.id, {
                   ...f,
-                  matiere: 'Mes fichiers',
+                  matiere: f.matiere || 'Mes fichiers',
                   extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
                 });
               }

@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, X, Search, Globe, Sun, Moon } from 'lucide-react';
+import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, X, Search, Globe, Sun, Moon, BookOpen } from 'lucide-react';
 import { MenuDrawer } from './MenuDrawer';
 import { GeminiDrawer } from './GeminiDrawer';
 import { DnaLogo } from './DnaLogo';
@@ -27,6 +27,7 @@ interface FoldersViewProps {
   onOpenPublishView?: () => void;
   setActivePreviewItem?: (item: any) => void;
   onOpenCreateShareLink?: (items: any[]) => void;
+  onOpenStudySpace?: () => void;
 }
 
 export const FoldersView: React.FC<FoldersViewProps> = ({
@@ -38,6 +39,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   onOpenPublishView,
   setActivePreviewItem,
   onOpenCreateShareLink,
+  onOpenStudySpace,
 }) => {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [isGeminiOpen, setIsGeminiOpen] = useState(false);
@@ -537,6 +539,24 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-3">
+          {/* Espace d'étude Button (Placé directement DEVANT le bouton mode sombre) */}
+          <div className="flex flex-col items-center">
+            <button
+              onClick={() => onOpenStudySpace?.()}
+              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer flex items-center justify-center active:scale-95 ${
+                isDarkMode 
+                  ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-amber-500/50 shadow-sm' 
+                  : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
+              }`}
+              title="Ouvrir l'Espace d'étude"
+            >
+              <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+            </button>
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${isDarkMode ? 'text-white' : 'text-stone-700'}`}>
+              Espace d'étude
+            </span>
+          </div>
+
           {/* Dark / Night Mode Toggle Button (Placé directement DEVANT le bouton langue) */}
           <div className="flex flex-col items-center">
             <button
