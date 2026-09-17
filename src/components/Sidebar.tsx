@@ -34,7 +34,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
               <span className="font-black text-orange-500">Study</span>
               <span className="font-black text-sky-400 dark:text-blue-400">Cloud</span>
             </h1>
-            <p className="text-[11px] font-black uppercase tracking-widest mt-0.5 sidebar-brand-tagline" style={{ letterSpacing: '0.14em' }}>
+            <p className="text-[11px] font-black uppercase tracking-widest mt-0.5 sidebar-brand-tagline" style={{ letterSpacing: '0.14em', color: '#f59e0b' }}>
               DKD TECHNOLOGIES
             </p>
           </div>

@@ -407,10 +407,59 @@ p.brand-tagline,
 }
 
 .sidebar-brand-tagline {
-  color: #94a3b8;
+  color: #f59e0b !important;
 }
 .dark .sidebar-brand-tagline {
   color: #f59e0b !important;
+}
+
+/* ==========================================================================
+   DNA LOGO STYLES (Visibilité parfaite fond clair et fond sombre)
+   ========================================================================== */
+.dna-strand {
+  stroke: #ea580c;
+}
+.dna-strand-second {
+  stroke: #2563eb;
+}
+.dna-rung {
+  stroke: #2563eb;
+  opacity: 0.9;
+}
+.dna-rung-alt {
+  stroke: #ea580c;
+  opacity: 0.9;
+}
+.dna-rung-center {
+  stroke: #ea580c;
+}
+
+.sidebar-desktop .dna-strand,
+.dark .dna-strand,
+.dna-on-dark .dna-strand {
+  stroke: url(#scDnaGradDark);
+}
+.sidebar-desktop .dna-strand-second,
+.dark .dna-strand-second,
+.dna-on-dark .dna-strand-second {
+  stroke: url(#scDnaGradDark);
+}
+.sidebar-desktop .dna-rung,
+.dark .dna-rung,
+.dna-on-dark .dna-rung {
+  stroke: #FFFFFF;
+  opacity: 0.9;
+}
+.sidebar-desktop .dna-rung-alt,
+.dark .dna-rung-alt,
+.dna-on-dark .dna-rung-alt {
+  stroke: #FFFFFF;
+  opacity: 0.9;
+}
+.sidebar-desktop .dna-rung-center,
+.dark .dna-rung-center,
+.dna-on-dark .dna-rung-center {
+  stroke: #F38020;
 }
 
 .sidebar-nav-heading {

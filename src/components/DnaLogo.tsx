@@ -14,39 +14,52 @@ export function DnaLogo({ className, glow = false, style, ...props }: DnaLogoPro
       viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={`text-primary ${className || ''}`}
+      className={`shrink-0 ${className || ''}`}
       style={{
-        filter: glow ? 'drop-shadow(0 0 6px rgba(243, 128, 32, 0.75))' : undefined,
+        filter: glow ? 'drop-shadow(0 0 6px rgba(243, 128, 32, 0.6))' : undefined,
         ...style,
       }}
       {...props}
     >
       <defs>
-        <linearGradient id="scDnaGradStatic" x1="0%" y1="0%" x2="0%" y2="100%">
+        {/* Gradient pour fond sombre : Blanc et Orange lumineux */}
+        <linearGradient id="scDnaGradDark" x1="0%" y1="0%" x2="0%" y2="100%">
           <stop offset="0%" stopColor="#FFFFFF" />
           <stop offset="50%" stopColor="#F38020" />
           <stop offset="100%" stopColor="#FFFFFF" />
         </linearGradient>
+
+        {/* Gradient pour fond clair : Orange vif et saturé */}
+        <linearGradient id="scDnaGradLight" x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="#EA580C" />
+          <stop offset="50%" stopColor="#F97316" />
+          <stop offset="100%" stopColor="#EA580C" />
+        </linearGradient>
       </defs>
+
+      {/* Strand 1 (Orange Study) */}
       <path
         d="M8 3C8 3 8 10 12 12C16 14 16 21 16 21"
-        stroke="#F38020"
         strokeWidth="2.5"
         strokeLinecap="round"
-        style={{ stroke: 'url(#scDnaGradStatic)' }}
+        className="dna-strand"
       />
+
+      {/* Strand 2 (Cloud Blue en fond clair / Blanc-Orange en fond sombre) */}
       <path
         d="M16 3C16 3 16 10 12 12C8 14 8 21 8 21"
-        stroke="#F38020"
         strokeWidth="2.5"
         strokeLinecap="round"
-        style={{ stroke: 'url(#scDnaGradStatic)' }}
+        className="dna-strand-second"
       />
-      <line x1="10" y1="6" x2="14" y2="6" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" opacity="0.8" />
-      <line x1="10.5" y1="9" x2="13.5" y2="9" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
-      <line x1="11" y1="12" x2="13" y2="12" stroke="#F38020" strokeWidth="3" strokeLinecap="round" />
-      <line x1="10.5" y1="15" x2="13.5" y2="15" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
-      <line x1="10" y1="18" x2="14" y2="18" stroke="#FFFFFF" strokeWidth="1.5" strokeLinecap="round" opacity="0.8" />
+
+      {/* Rungs (Barreaux de liaison) */}
+      <line x1="10" y1="6" x2="14" y2="6" strokeWidth="1.8" strokeLinecap="round" className="dna-rung" />
+      <line x1="10.5" y1="9" x2="13.5" y2="9" strokeWidth="1.8" strokeLinecap="round" className="dna-rung-alt" />
+      <line x1="11" y1="12" x2="13" y2="12" strokeWidth="3" strokeLinecap="round" className="dna-rung-center" />
+      <line x1="10.5" y1="15" x2="13.5" y2="15" strokeWidth="1.8" strokeLinecap="round" className="dna-rung-alt" />
+      <line x1="10" y1="18" x2="14" y2="18" strokeWidth="1.8" strokeLinecap="round" className="dna-rung" />
     </svg>
   );
 }
+

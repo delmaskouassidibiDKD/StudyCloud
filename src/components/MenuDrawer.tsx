@@ -110,7 +110,7 @@ export const MenuDrawer: React.FC<MenuDrawerProps> = ({
             {/* Brand Header */}
             <div className="flex items-center justify-between pb-3 mb-3 border-b-2 border-stone-200 dark:border-[#1e293b]">
               <div className="flex items-center gap-2 notranslate">
-                <DnaLogo className="w-8 h-8 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
+                <DnaLogo className="w-8 h-8" />
                 <div className="flex flex-col truncate text-left leading-none mt-0.5">
                   <h1 className="brand-header font-extrabold text-[18px] md:text-[20px] tracking-tight truncate leading-none" style={{ fontFamily: 'Outfit, sans-serif' }}>
                     <span className="brand-study text-orange-600 dark:text-orange-500" style={{ color: '#ea580c' }}>Study</span><span className="brand-cloud text-blue-600 dark:text-blue-500" style={{ color: '#2563eb' }}>Cloud</span>
