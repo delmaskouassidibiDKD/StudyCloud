@@ -1337,7 +1337,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               }`}
             >
               <span>📚</span>
-              <span>Librairie</span>
+              <span>Marketplace</span>
             </button>
 
             <button
@@ -1376,7 +1376,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
               activeSubTab === 'ressources'
                 ? "Actualiser et découvrir d'autres recommandations adaptées"
                 : activeSubTab === 'librairie'
-                ? "Actualiser la librairie"
+                ? "Actualiser la marketplace"
                 : "Actualiser les liens publics"
             }
             className="px-2 sm:px-2.5 py-1 text-xs font-extrabold rounded-xl border-2 border-stone-800 dark:border-[#334155] bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-800 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1 sm:gap-1.5 shrink-0 disabled:opacity-50"
@@ -1599,7 +1599,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                     type="button"
                     onClick={() => setIsCartViewOpen(false)}
                     className="px-3.5 py-1.5 bg-white hover:bg-stone-100 active:bg-stone-200 text-stone-900 rounded-full border-2 border-stone-800 shadow-[2.5px_2.5px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center gap-2 shrink-0 active:translate-x-0.5 active:translate-y-0.5"
-                    title="Retour à la librairie"
+                    title="Retour à la marketplace"
                   >
                     <ArrowLeft className="w-4 h-4 stroke-[2.5] text-stone-900" />
                     <span className="font-black text-xs sm:text-sm text-stone-900 tracking-tight">Retour</span>
@@ -1621,7 +1621,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                       <ShoppingCart className="w-7 h-7 stroke-[1.8]" />
                     </div>
                     <h3 className="text-base font-extrabold text-stone-900 dark:text-white">Votre panier est vide</h3>
-                    <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm">Parcourez les produits de la librairie pour ajouter des articles à votre panier !</p>
+                    <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm">Parcourez les produits de la marketplace pour ajouter des articles à votre panier !</p>
                   </div>
                 ) : (
                   <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3 sm:gap-4 w-full">
@@ -2795,7 +2795,7 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
                 <h3 className="font-extrabold text-sm text-stone-900">
                   Autres produits
                 </h3>
-                <span className="text-[11px] text-stone-500 font-bold">📚 Librairie</span>
+                <span className="text-[11px] text-stone-500 font-bold">📚 Marketplace</span>
               </div>
 
               <div className="grid grid-cols-2 gap-3 pt-1 md:px-0">

@@ -14,7 +14,7 @@ interface SidebarProps {
 export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCount, onOpenUpload, publishStatus }) => {
   const navItems: Array<{ id: NavigationTab; label: string; icon: any; highlight?: boolean; badge?: string | number }> = [
     { id: 'folders' as NavigationTab, label: 'Tableau de bord', icon: LayoutDashboard },
-    { id: 'upload' as NavigationTab, label: 'Importer', icon: Upload, highlight: true },
+    { id: 'upload' as NavigationTab, label: 'Partager', icon: Upload, highlight: true },
     { id: 'shared' as NavigationTab, label: 'Liens Actifs', icon: Share2 },
     { id: 'library' as NavigationTab, label: 'Bibliothèque', icon: BookOpen },
     { id: 'settings' as NavigationTab, label: 'Profil', icon: UserCircle },
