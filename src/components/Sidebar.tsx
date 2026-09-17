@@ -28,10 +28,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
         style={{ backgroundColor: '#FEC3B5' }}
       >
         {/* Brand Header - Logo et Nom de l'application bien visibles */}
-        <div className="flex items-center gap-3 mb-8">
-          <div className="w-12 h-12 bg-black rounded-2xl flex items-center justify-center border-2 border-black shadow-[3px_3px_0px_0px_#000000] shrink-0">
-            <DnaLogo className="w-8 h-8" glow={true} />
-          </div>
+        <div className="flex items-center gap-2.5 mb-8">
+          <DnaLogo className="w-9 h-9 shrink-0 drop-shadow-[0_0_2px_rgba(0,0,0,0.9)]" glow={true} />
           <div className="notranslate flex flex-col justify-center">
             <h1 className="font-black tracking-tight text-[26px] leading-tight flex items-center select-none">
               <span className="font-black" style={{ color: '#ea580c' }}>Study</span>
