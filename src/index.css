@@ -441,6 +441,7 @@ p.brand-tagline,
 
 .sidebar-nav-text {
   color: #ffffff;
+  white-space: nowrap;
 }
 .sidebar-nav-btn.active .sidebar-nav-text {
   color: #1F4761 !important;

@@ -24,10 +24,10 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
     <>
       {/* Desktop Sidebar - Couleur pure #1F4761 en Jour / #070a13 en Sombre */}
       <aside 
-        className="hidden md:flex flex-col w-64 h-screen fixed top-0 left-0 overflow-y-auto p-6 pb-24 shrink-0 select-none z-40 border-r-2 border-[#153447] dark:border-[#1e293b] shadow-[2px_0px_5px_-2px_rgba(0,0,0,0.1)] transition-colors duration-300 sidebar-desktop"
+        className="hidden md:flex flex-col w-64 h-screen fixed top-0 left-0 overflow-y-auto px-3.5 py-6 pb-24 shrink-0 select-none z-40 border-r-2 border-[#153447] dark:border-[#1e293b] shadow-[2px_0px_5px_-2px_rgba(0,0,0,0.1)] transition-colors duration-300 sidebar-desktop"
       >
         {/* Brand Header - Logo et Nom de l'application bien visibles */}
-        <div className="flex items-center gap-2.5 mb-8">
+        <div className="flex items-center gap-2.5 px-1.5 mb-7">
           <DnaLogo className="w-9 h-9 shrink-0 drop-shadow-[0_0_2px_rgba(0,0,0,0.9)]" glow={true} />
           <div className="notranslate flex flex-col justify-center">
             <h1 className="font-black tracking-tight text-[26px] leading-tight flex items-center select-none">
@@ -40,9 +40,9 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
           </div>
         </div>
 
-        {/* Navigation links - Noms grands et parfaitement lisibles en Jour et Sombre */}
-        <nav className="space-y-2 flex-1">
-          <p className="text-[12px] font-black uppercase tracking-widest px-3 mb-2 sidebar-nav-heading">
+        {/* Navigation links - Noms sur une seule ligne parfaitement lisibles */}
+        <nav className="space-y-1.5 flex-1">
+          <p className="text-[12px] font-black uppercase tracking-widest px-2 mb-2 sidebar-nav-heading">
             Navigation
           </p>
           {navItems.map((item) => {
@@ -54,21 +54,21 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
                 onClick={() => {
                   setTab(item.id);
                 }}
-                className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl transition-all border-2 sidebar-nav-btn ${
+                className={`w-full flex items-center justify-between px-3 py-3 rounded-xl transition-all border-2 sidebar-nav-btn ${
                   isActive
                     ? 'active shadow-[3px_3px_0px_0px_rgba(0,0,0,0.2)]'
                     : 'border-transparent hover:bg-white/10 hover:border-white/20 dark:hover:bg-white/10 dark:hover:border-slate-700'
                 }`}
               >
-                <div className="flex items-center gap-3.5">
+                <div className="flex items-center gap-2.5 min-w-0">
                   <Icon 
-                    className={`w-6 h-6 stroke-[2.5] ${
+                    className={`w-5 h-5 shrink-0 stroke-[2.2] ${
                       isActive 
                         ? 'sidebar-nav-icon-active' 
                         : 'sidebar-nav-icon'
                     }`} 
                   />
-                  <span className="font-black text-[18px] tracking-tight sidebar-nav-text">
+                  <span className="font-black text-[15.5px] tracking-tight whitespace-nowrap sidebar-nav-text">
                     {item.label}
                   </span>
                 </div>
