@@ -22,23 +22,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
 
   return (
     <>
-      {/* Desktop Sidebar - Solide Opaque Dark #070a13 */}
-      <aside className="hidden md:flex flex-col w-64 h-screen fixed top-0 left-0 overflow-y-auto bg-[#F5F1E9] dark:bg-[#070a13] p-6 pb-24 shrink-0 select-none z-40 border-r-2 border-stone-800 dark:border-[#1e293b] shadow-[2px_0px_5px_-2px_rgba(0,0,0,0.1)] transition-colors duration-300">
+      {/* Desktop Sidebar - Couleur pure #FEC3B5 inspirée de l'image 2 */}
+      <aside 
+        className="hidden md:flex flex-col w-64 h-screen fixed top-0 left-0 overflow-y-auto p-6 pb-24 shrink-0 select-none z-40 border-r-2 border-stone-800 shadow-[2px_0px_5px_-2px_rgba(0,0,0,0.1)] transition-colors duration-300"
+        style={{ backgroundColor: '#FEC3B5' }}
+      >
         {/* Brand Header */}
         <div className="flex items-center gap-2 mb-8">
           <DnaLogo className="w-8 h-8 drop-shadow-[0_0_2px_rgba(0,0,0,1)]" glow={true} />
           <div className="notranslate">
             <h1 className="brand-header font-extrabold tracking-tight text-2xl leading-tight">
-              <span className="brand-study text-orange-600 dark:text-orange-500" style={{ color: '#ea580c' }}>Study</span>
-              <span className="brand-cloud text-blue-600 dark:text-blue-500" style={{ color: '#2563eb' }}>Cloud</span>
+              <span className="brand-study text-orange-600" style={{ color: '#ea580c' }}>Study</span>
+              <span className="brand-cloud text-blue-600" style={{ color: '#2563eb' }}>Cloud</span>
             </h1>
-            <p className="brand-tagline text-[9px] text-orange-400/90 dark:text-amber-400 font-bold uppercase tracking-widest mt-0.5" style={{ color: '#f59e0b' }}>DKD Technologies</p>
+            <p className="brand-tagline text-[9px] text-stone-800 font-bold uppercase tracking-widest mt-0.5" style={{ color: '#7c2d12' }}>DKD Technologies</p>
           </div>
         </div>
 
         {/* Navigation links */}
         <nav className="space-y-2 flex-1">
-          <p className="text-[11px] font-bold uppercase tracking-wider text-stone-500 dark:text-slate-400 px-3 mb-2">Navigation</p>
+          <p className="text-[11px] font-bold uppercase tracking-wider text-stone-700 px-3 mb-2">Navigation</p>
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
@@ -50,16 +53,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
                 }}
                 className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl font-bold text-base transition-all border-2 ${
                   isActive
-                    ? 'bg-orange-100 dark:bg-[#1e293b] border-stone-800 dark:border-orange-500/50 text-stone-900 dark:text-orange-400 shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none'
-                    : 'border-transparent text-stone-600 dark:text-slate-300 hover:bg-[#EBE5DA] dark:hover:bg-[#162033] hover:border-stone-800 dark:hover:border-[#1e293b] hover:text-stone-900 dark:hover:text-white'
+                    ? 'bg-white border-stone-800 text-stone-900 shadow-[3px_3px_0px_0px_#1c1917]'
+                    : 'border-transparent text-stone-800 hover:bg-black/5 hover:border-stone-800 hover:text-stone-900'
                 }`}
               >
                 <div className="flex items-center gap-3">
-                  <Icon className={`w-5 h-5 ${isActive ? 'text-orange-600 dark:text-orange-400' : 'text-stone-500 dark:text-slate-400'}`} />
+                  <Icon className={`w-5 h-5 ${isActive ? 'text-orange-600' : 'text-stone-700'}`} />
                   <span>{item.label}</span>
                 </div>
                 {item.badge !== undefined && (
-                  <span className="text-xs px-2 py-0.5 bg-stone-200 dark:bg-[#1e293b] border border-stone-800 dark:border-[#334155] rounded-md font-mono text-stone-800 dark:text-slate-200">
+                  <span className="text-xs px-2 py-0.5 bg-white/80 border border-stone-800 rounded-md font-mono text-stone-800">
                     {item.badge}
                   </span>
                 )}
@@ -69,13 +72,16 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
 
         </nav>
 
-        {/* Student Promo Card - Solide Dark #111a2e */}
-        <div className="bg-[#EBE5DA] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#1e293b] rounded-2xl p-4 mt-auto shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all">
-          <div className="flex items-center gap-2 text-orange-600 dark:text-orange-400 mb-1 font-bold text-xs">
+        {/* Student Promo Card */}
+        <div 
+          className="border-2 border-stone-800 rounded-2xl p-4 mt-auto shadow-[3px_3px_0px_0px_#1c1917] transition-all"
+          style={{ backgroundColor: '#FDB4A4' }}
+        >
+          <div className="flex items-center gap-2 text-orange-700 mb-1 font-bold text-xs">
             <Sparkles className="w-3.5 h-3.5" />
             <span>Version Étudiante 100% Gratuite</span>
           </div>
-          <p className="text-xs text-stone-600 dark:text-slate-400 leading-relaxed">
+          <p className="text-xs text-stone-700 leading-relaxed font-medium">
             Partagez vos dossiers de cours et TPs par lien direct en un clic, sans inscription pour vos camarades.
           </p>
         </div>
