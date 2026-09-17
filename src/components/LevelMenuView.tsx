@@ -455,7 +455,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
         </defs>
       </svg>
 
-      <div className="fixed top-[84px] md:top-[88px] left-4 right-4 md:left-[17.5rem] grid grid-cols-3 items-start z-40 pointer-events-none">
+      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] grid grid-cols-3 items-start z-40 pointer-events-none">
         <div className="flex flex-col items-start gap-1.5 pointer-events-auto justify-self-start">
           <button
             onClick={onBack}
@@ -543,7 +543,7 @@ export const LevelMenuView: React.FC<LevelMenuViewProps> = ({ onBack }) => {
         </div>
       </div>
 
-      <div className="w-full h-[calc(100vh-100px)] px-2 sm:px-4 pt-20 sm:pt-24 flex flex-col">
+      <div className="w-full h-[calc(100vh-100px)] px-2 sm:px-4 pt-11 sm:pt-12 flex flex-col">
         {selectedAnalysis === 'analyse globale' ? (
           <div className="w-full h-full py-4 overflow-y-auto">
             <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-2 gap-4 h-auto min-h-full pb-10">

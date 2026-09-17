@@ -425,7 +425,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
         className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 w-full md:w-[calc(100%-16rem)] text-white overflow-y-auto flex-col min-h-[calc(100vh-66px)] select-none transition-all duration-300 ease-in-out flex ${viewMode === 'editor' ? 'opacity-100 z-30 visible' : 'opacity-0 -z-50 invisible pointer-events-none'}`}
       >
         {/* Floating Fixed Buttons (No background bar) */}
-        <div className="fixed top-[84px] md:top-[88px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-50 pointer-events-none">
+        <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-50 pointer-events-none">
           <button
             onClick={handleSaveAndBack}
             className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-xs rounded-lg border-2 border-[#2D4A3E] shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
@@ -555,7 +555,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
       >
       
       {/* Fixed 3D Header - Solid Dark #070a13 */}
-      <div className="fixed top-[84px] md:top-[88px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none">
+      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none">
         <button
           onClick={onBack}
           className="pointer-events-auto flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
@@ -573,7 +573,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
       </div>
 
       {/* Main Content Area */}
-      <div className="w-full px-3 sm:px-6 pt-20 sm:pt-24">
+      <div className="w-full px-3 sm:px-6 pt-11 sm:pt-12">
         <div className="pt-1 pb-32 max-w-4xl mx-auto">
           {notes.length === 0 ? (
             <div className="text-center py-20 text-[#5C6B5A]">

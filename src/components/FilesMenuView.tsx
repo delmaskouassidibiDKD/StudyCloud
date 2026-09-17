@@ -965,7 +965,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       onDragOver={handleDragOver}
       onDragLeave={handleDragLeave}
       onDrop={handleDrop}
-      className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#C5B0A4] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-8 overflow-y-auto transition-colors duration-300 ${
+      className={`absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#C5B0A4] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 pb-8 pt-0 overflow-y-auto transition-colors duration-300 ${
         isDraggingOver ? 'ring-4 ring-emerald-500 ring-inset bg-emerald-50/20' : ''
       }`}
     >
@@ -986,8 +986,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         multiple 
         onChange={handleFileChange} 
       />
-      <div className="fixed top-[84px] md:top-[88px] left-4 right-4 md:left-[17.5rem] flex items-start justify-between z-40 pointer-events-none gap-2">
-        <div className="flex flex-col md:flex-row items-start md:items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">
+      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-start justify-between z-40 pointer-events-none gap-2">
+        <div className="flex items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">
           <button
             onClick={onBack}
             className="flex items-center gap-1 px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[10px] rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
@@ -1006,11 +1006,11 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           </button>
         </div>
 
-        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-stone-900 dark:text-stone-900 bg-amber-400 dark:bg-amber-500 px-3 py-1 rounded-lg border-2 border-stone-800 dark:border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] self-start mt-0.5">
+        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-stone-900 dark:text-stone-900 bg-amber-400 dark:bg-amber-500 px-3 py-1 rounded-lg border-2 border-stone-800 dark:border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] self-start">
           Mes fichiers
         </h1>
 
-        <div className="flex items-center gap-2 pointer-events-auto">
+        <div className="flex items-center gap-2 pointer-events-auto self-start">
           <div className="relative">
             <button
               onClick={() => setShowFilesMenuDropdown(!showFilesMenuDropdown)}
@@ -1091,7 +1091,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       </div>
 
       {isSearchOpen && (
-        <div className="fixed top-[84px] md:top-[88px] left-4 right-4 z-50 bg-white border-3 border-stone-900 px-4 py-3 flex items-center justify-center gap-3 shadow-2xl rounded-2xl max-w-xl mx-auto animate-fadeIn">
+        <div className="fixed top-[66px] md:top-[70px] left-4 right-4 z-50 bg-white border-3 border-stone-900 px-4 py-3 flex items-center justify-center gap-3 shadow-2xl rounded-2xl max-w-xl mx-auto animate-fadeIn">
           <div className="relative w-full flex items-center">
             <Search className="absolute left-3 w-4 h-4 text-stone-600" />
             <input
@@ -1118,7 +1118,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
 
       {/* Top Selection Action Bar */}
       {isSelectionMode && !classifyFileIds && (
-        <div className="fixed top-[84px] md:top-[88px] left-2 right-2 md:left-[17.5rem] max-w-4xl mx-auto z-[99999] bg-[#FDFBF7] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#334155] rounded-xl px-3 py-2 shadow-xl flex items-center justify-between gap-2 animate-fadeIn pointer-events-auto">
+        <div className="fixed top-[66px] md:top-[70px] left-2 right-2 md:left-[17.5rem] max-w-4xl mx-auto z-[99999] bg-[#FDFBF7] dark:bg-[#111a2e] border-2 border-stone-800 dark:border-[#334155] rounded-xl px-3 py-2 shadow-xl flex items-center justify-between gap-2 animate-fadeIn pointer-events-auto">
           <div className="flex items-center gap-1.5 shrink-0">
             <span className="bg-[#2D4A3E] text-white px-2 py-0.5 rounded-lg text-[11px] font-bold">
               {selectedFileIds.length} sélec.
@@ -1201,7 +1201,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
         </div>
       )}
 
-      <div className="w-full px-2 sm:px-4 pt-20 sm:pt-24">
+      <div className="w-full px-2 sm:px-4 pt-11 sm:pt-12">
         <div className="pt-1 pb-64 w-full max-w-7xl mx-auto">
           {importedFiles.length === 0 ? (
             <div className="text-center">

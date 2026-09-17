@@ -161,9 +161,9 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({ onBack, se
   );
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 py-8 overflow-y-auto transition-colors duration-300">
+    <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 px-4 pb-8 pt-0 overflow-y-auto transition-colors duration-300">
       {/* Top Header Bar */}
-      <div className="fixed top-[84px] md:top-[88px] left-4 right-4 md:left-[17.5rem] flex items-start justify-between z-40 pointer-events-none gap-2">
+      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-start justify-between z-40 pointer-events-none gap-2">
         <div className="flex items-center gap-1.5 md:gap-2 pointer-events-auto shrink-0">
           <button
             onClick={onBack}
@@ -174,11 +174,11 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({ onBack, se
           </button>
         </div>
 
-        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] dark:text-white bg-[#E8DFD0] dark:bg-[#070a13] px-3 py-1 rounded-lg border-2 border-[#2D4A3E] dark:border-[#1e293b] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none self-start mt-0.5">
+        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-[#2D4A3E] dark:text-white bg-[#E8DFD0] dark:bg-[#070a13] px-3 py-1 rounded-lg border-2 border-[#2D4A3E] dark:border-[#1e293b] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none self-start">
           Mes Favoris
         </h1>
 
-        <div className="flex items-center gap-2 pointer-events-auto">
+        <div className="flex items-center gap-2 pointer-events-auto self-start">
           {favoriteFiles.length > 0 && (
             <div className="flex items-center bg-white dark:bg-[#1e293b] rounded-xl border-2 border-[#2D4A3E] dark:border-[#334155] px-2.5 py-1 shadow-[1px_1px_0px_0px_#1c1917]">
               <Search className="w-3.5 h-3.5 text-stone-500 mr-1.5" />
@@ -199,7 +199,7 @@ export const FavoritesMenuView: React.FC<FavoritesMenuViewProps> = ({ onBack, se
         </div>
       </div>
 
-      <div className="w-full px-2 sm:px-4 pt-20 sm:pt-24">
+      <div className="w-full px-2 sm:px-4 pt-11 sm:pt-12">
         <div className="pt-1 pb-64 w-full max-w-7xl mx-auto">
           {favoriteFiles.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 text-center max-w-md mx-auto">
