@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Folder, Upload, Share2, BarChart3, Settings, BookOpen, Sparkles, LogOut, LayoutDashboard, UserCircle } from 'lucide-react';
+import { Folder, Upload, Share2, BarChart3, Settings, BookOpen, LogOut, LayoutDashboard, UserCircle } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { NavigationTab } from '../types';
 
@@ -22,28 +22,29 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
 
   return (
     <>
-      {/* Desktop Sidebar - Couleur pure #FEC3B5 */}
+      {/* Desktop Sidebar - Couleur pure #FEC3B5 en Jour / #070a13 en Sombre */}
       <aside 
-        className="hidden md:flex flex-col w-64 h-screen fixed top-0 left-0 overflow-y-auto p-6 pb-24 shrink-0 select-none z-40 border-r-2 border-black shadow-[2px_0px_5px_-2px_rgba(0,0,0,0.1)] transition-colors duration-300"
-        style={{ backgroundColor: '#FEC3B5' }}
+        className="hidden md:flex flex-col w-64 h-screen fixed top-0 left-0 overflow-y-auto p-6 pb-24 shrink-0 select-none z-40 border-r-2 border-black dark:border-[#1e293b] shadow-[2px_0px_5px_-2px_rgba(0,0,0,0.1)] transition-colors duration-300 sidebar-desktop"
       >
         {/* Brand Header - Logo et Nom de l'application bien visibles */}
         <div className="flex items-center gap-2.5 mb-8">
           <DnaLogo className="w-9 h-9 shrink-0 drop-shadow-[0_0_2px_rgba(0,0,0,0.9)]" glow={true} />
           <div className="notranslate flex flex-col justify-center">
             <h1 className="font-black tracking-tight text-[26px] leading-tight flex items-center select-none">
-              <span className="font-black" style={{ color: '#ea580c' }}>Study</span>
-              <span className="font-black" style={{ color: '#1d4ed8' }}>Cloud</span>
+              <span className="font-black text-orange-600 dark:text-orange-500">Study</span>
+              <span className="font-black text-blue-600 dark:text-blue-500">Cloud</span>
             </h1>
-            <p className="text-[11px] font-black uppercase tracking-widest mt-0.5" style={{ color: '#000000', letterSpacing: '0.14em' }}>
+            <p className="text-[11px] font-black uppercase tracking-widest mt-0.5 sidebar-brand-tagline" style={{ letterSpacing: '0.14em' }}>
               DKD TECHNOLOGIES
             </p>
           </div>
         </div>
 
-        {/* Navigation links - Noms grands et en noir bien pur (#000000) */}
+        {/* Navigation links - Noms grands et parfaitement lisibles en Jour et Sombre */}
         <nav className="space-y-2 flex-1">
-          <p className="text-[12px] font-black uppercase tracking-widest px-3 mb-2" style={{ color: '#000000' }}>Navigation</p>
+          <p className="text-[12px] font-black uppercase tracking-widest px-3 mb-2 sidebar-nav-heading">
+            Navigation
+          </p>
           {navItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
@@ -53,24 +54,26 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
                 onClick={() => {
                   setTab(item.id);
                 }}
-                className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl transition-all border-2 ${
+                className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl transition-all border-2 sidebar-nav-btn ${
                   isActive
-                    ? 'bg-white border-black shadow-[3px_3px_0px_0px_#000000]'
-                    : 'border-transparent hover:bg-black/10 hover:border-black'
+                    ? 'active shadow-[3px_3px_0px_0px_#000000]'
+                    : 'border-transparent hover:bg-black/10 hover:border-black dark:hover:bg-white/10 dark:hover:border-slate-700'
                 }`}
-                style={{ color: '#000000' }}
               >
                 <div className="flex items-center gap-3.5">
                   <Icon 
-                    className="w-6 h-6 stroke-[2.5]" 
-                    style={{ color: '#000000' }} 
+                    className={`w-6 h-6 stroke-[2.5] ${
+                      isActive 
+                        ? 'sidebar-nav-icon-active' 
+                        : 'sidebar-nav-icon'
+                    }`} 
                   />
-                  <span className="font-black text-[18px] tracking-tight" style={{ color: '#000000' }}>
+                  <span className="font-black text-[18px] tracking-tight sidebar-nav-text">
                     {item.label}
                   </span>
                 </div>
                 {item.badge !== undefined && (
-                  <span className="text-xs px-2 py-0.5 bg-white border-2 border-black rounded-md font-mono font-black shadow-[1px_1px_0px_0px_#000000]" style={{ color: '#000000' }}>
+                  <span className="text-xs px-2 py-0.5 bg-white border-2 border-black rounded-md font-mono font-black shadow-[1px_1px_0px_0px_#000000] text-black dark:bg-[#0f172a] dark:border-slate-600 dark:text-white dark:shadow-none">
                     {item.badge}
                   </span>
                 )}
@@ -78,20 +81,6 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
             );
           })}
         </nav>
-
-        {/* Student Promo Card */}
-        <div 
-          className="border-2 border-black rounded-2xl p-4 mt-auto shadow-[3px_3px_0px_0px_#000000] transition-all"
-          style={{ backgroundColor: '#FDB4A4' }}
-        >
-          <div className="flex items-center gap-2 mb-1 font-black text-xs" style={{ color: '#000000' }}>
-            <Sparkles className="w-4 h-4 text-orange-600" />
-            <span className="font-black" style={{ color: '#000000' }}>Version Étudiante 100% Gratuite</span>
-          </div>
-          <p className="text-xs leading-relaxed font-bold" style={{ color: '#000000' }}>
-            Partagez vos dossiers de cours et TPs par lien direct en un clic, sans inscription pour vos camarades.
-          </p>
-        </div>
       </aside>
 
       {/* Bottom Navigation Bar - Solide Opaque Dark #070a13 */}
