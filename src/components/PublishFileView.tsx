@@ -355,14 +355,7 @@ export const PublishFileView: React.FC<PublishFileViewProps> = ({ onBack, onPubl
           }
         } else if (isPdf) {
           try {
-            let pdfFile = rawFile;
-            try {
-              pdfFile = await watermarkPDF(rawFile);
-              rawFileMap.current.set(f.id, pdfFile);
-              await persistRawFile(f.id, pdfFile);
-            } catch (wErr) {
-              console.warn('Filigrane PDF omis:', wErr);
-            }
+            const pdfFile = rawFile;
 
             const arrayBuffer = await pdfFile.arrayBuffer();
             const typedarray = new Uint8Array(arrayBuffer);
