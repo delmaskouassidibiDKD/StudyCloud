@@ -716,7 +716,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
   return (
     <div 
-      className="absolute inset-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] h-full bg-[#FDFBF7] dark:bg-[#0b0f19] text-stone-900 dark:text-slate-100 overflow-y-auto overscroll-contain animate-fadeIn transition-colors duration-300"
+      className="absolute inset-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] h-full bg-[#DDDDDD] dark:bg-[#0b0f19] text-stone-900 dark:text-slate-100 overflow-y-auto overscroll-contain animate-fadeIn transition-colors duration-300"
       style={{ WebkitOverflowScrolling: 'touch' }}
     >
       {/* Toast Notification */}
@@ -745,7 +745,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
       )}
 
       {/* Sticky Top Bar (En-tête) - Solid Dark #070a13 */}
-      <div className="sticky top-0 left-0 right-0 z-40 bg-[#FDFBF7] dark:bg-[#070a13] px-4 py-2.5 flex items-center justify-between border-b border-stone-200/60 dark:border-[#1e293b]">
+      <div className="sticky top-0 left-0 right-0 z-40 bg-[#DDDDDD] dark:bg-[#070a13] px-4 py-2.5 flex items-center justify-between border-b border-stone-200/60 dark:border-[#1e293b] transition-colors">
         <button
           onClick={() => {
             if (!hasCreatedShop) {
@@ -763,7 +763,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
               onBack();
             }
           }}
-          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#FDFBF7] dark:bg-[#1e293b] hover:bg-orange-50 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-bold text-xs rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          className="flex items-center gap-1.5 px-3 py-1.5 bg-[#DDDDDD] dark:bg-[#1e293b] hover:bg-stone-300 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-bold text-xs rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
         >
           <ArrowLeft className="w-4 h-4 text-stone-900 dark:text-white" />
           <span>Retour</span>
@@ -779,7 +779,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
         {hasCreatedShop && activePage === 'main' ? (
           <button
             onClick={() => setIsRightDrawerOpen(true)}
-            className="p-2 bg-[#E8DFD0] dark:bg-[#1e293b] hover:bg-stone-200 dark:hover:bg-[#283852] text-stone-900 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer flex items-center justify-center"
+            className="p-2 bg-[#DDDDDD] dark:bg-[#1e293b] hover:bg-stone-300 dark:hover:bg-[#283852] text-stone-900 dark:text-white rounded-xl border-2 border-stone-800 dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer flex items-center justify-center"
             title="Menu latéral"
           >
             <Menu className="w-4 h-4 text-stone-900 dark:text-white" />
@@ -793,7 +793,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
               setShowPubSearchInput(!showPubSearchInput);
             }}
             className={`p-2 rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer flex items-center justify-center ${
-              showPubSearchInput ? 'bg-orange-200 text-stone-900' : 'bg-[#E8DFD0] hover:bg-stone-200 text-stone-900'
+              showPubSearchInput ? 'bg-orange-200 text-stone-900' : 'bg-[#DDDDDD] dark:bg-[#1e293b] hover:bg-stone-300 text-stone-900 dark:text-white'
             }`}
             title="Rechercher"
           >
@@ -1304,7 +1304,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
         {activePage === 'list' && (
           <div className="w-full animate-fadeIn">
             {/* Sticky Top Switcher: Mes publications & Boutique */}
-            <div className="sticky top-[51px] z-30 bg-[#FDFBF7]/95 dark:bg-[#070a13] backdrop-blur-xs px-4 py-2 md:py-4 border-b border-stone-200/60 dark:border-[#1e293b] shadow-xs">
+            <div className="sticky top-[51px] z-30 bg-[#DDDDDD]/95 dark:bg-[#070a13] backdrop-blur-xs px-4 py-2 md:py-4 border-b border-stone-200/60 dark:border-[#1e293b] shadow-xs transition-colors">
               <div className="max-w-3xl lg:max-w-4xl mx-auto flex items-center gap-2 bg-stone-100 dark:bg-[#111a2e] p-1.5 md:p-2 rounded-2xl border-2 border-stone-800 dark:border-[#1e293b] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none">
                 <button
                   type="button"
@@ -1322,8 +1322,8 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
                   onClick={() => setListSubView('boutique')}
                   className={`flex-1 py-2 md:py-3 font-extrabold text-xs md:text-sm rounded-xl md:rounded-2xl border-2 transition-all cursor-pointer ${
                     listSubView === 'boutique'
-                      ? 'bg-stone-900 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
-                      : 'bg-white text-stone-700 border-stone-300 hover:bg-stone-50'
+                      ? 'bg-stone-900 text-white border-stone-800 dark:border-emerald-500 shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
+                      : 'bg-white dark:bg-[#1e293b] text-stone-700 dark:text-slate-200 border-stone-300 dark:border-[#334155] hover:bg-stone-50 dark:hover:bg-[#283852]'
                   }`}
                 >
                   Boutique
@@ -1817,7 +1817,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
         {activePage === 'boosted-products' && (
           <div className="w-full animate-fadeIn">
             {/* Sticky Top Switcher: En cours de boost & Terminé */}
-            <div className="sticky top-[51px] z-30 bg-[#FDFBF7]/95 dark:bg-[#070a13] backdrop-blur-xs px-4 py-2 border-b border-stone-200/60 dark:border-[#1e293b] shadow-xs">
+            <div className="sticky top-[51px] z-30 bg-[#DDDDDD]/95 dark:bg-[#070a13] backdrop-blur-xs px-4 py-2 border-b border-stone-200/60 dark:border-[#1e293b] shadow-xs transition-colors">
               <div className="max-w-3xl lg:max-w-4xl mx-auto flex items-center gap-2 bg-stone-100 dark:bg-[#111a2e] p-1.5 md:p-2 rounded-2xl border-2 border-stone-800 dark:border-[#1e293b] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none">
                 <button
                   type="button"
@@ -1977,7 +1977,7 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
               animate={{ x: 0 }}
               exit={{ x: '100%' }}
               transition={{ type: 'tween', ease: 'easeOut', duration: 0.25 }}
-              className="absolute top-0 right-0 bottom-0 w-72 sm:w-80 md:w-96 bg-[#FDFBF7] dark:bg-[#0b0f19] border-l-3 border-stone-800 dark:border-[#1e293b] shadow-2xl p-5 flex flex-col justify-between pointer-events-auto overflow-y-auto text-left"
+              className="absolute top-0 right-0 bottom-0 w-72 sm:w-80 md:w-96 bg-[#DDDDDD] dark:bg-[#0b0f19] border-l-3 border-stone-800 dark:border-[#1e293b] shadow-2xl p-5 flex flex-col justify-between pointer-events-auto overflow-y-auto text-left"
             >
               <div className="space-y-5">
                 <div className="flex items-center justify-between pb-3 border-b-2 border-stone-200 dark:border-[#1e293b]">
@@ -2703,9 +2703,9 @@ export const ServiceProposalView: React.FC<ServiceProposalViewProps> = ({ onBack
 
       {/* Product Detail Full Screen View */}
       {selectedDetailProduct && (
-        <div className="fixed inset-0 md:left-64 z-[100000] bg-[#FAF8F5] flex flex-col animate-fadeIn overflow-y-auto text-left">
+        <div className="fixed inset-0 md:left-64 z-[100000] bg-[#DDDDDD] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-y-auto text-left transition-colors">
           {/* Top Sticky Header */}
-          <div className="sticky top-0 z-10 bg-white/95 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-stone-200/80 shadow-2xs">
+          <div className="sticky top-0 z-10 bg-[#DDDDDD]/95 dark:bg-[#070a13]/95 backdrop-blur-md px-4 py-3 flex items-center justify-between border-b border-stone-200/80 dark:border-[#1e293b] shadow-2xs transition-colors">
             <button
               type="button"
               onClick={() => { setSelectedDetailProduct(null); setActiveDetailImageIndex(0); setIsDescriptionExpanded(false); }}

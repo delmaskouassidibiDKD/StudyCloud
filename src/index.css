@@ -220,6 +220,13 @@ aside .brand-tagline,
   border-color: #1e293b !important;
 }
 
+/* En-têtes fixes et sticky en mode sombre solide #070a13 */
+.dark [class*="dark:bg-[#070a13]"],
+.dark .sticky[class*="dark:bg-[#070a13]"],
+.dark .fixed[class*="dark:bg-[#070a13]"] {
+  background-color: #070a13 !important;
+}
+
 /* CARTES, MODALES, MENUS DEROULANTS ET PANNEAUX (SOLIDE OPAQUE #111a2e) */
 .dark .bg-white,
 .dark [class*="bg-white/"],
