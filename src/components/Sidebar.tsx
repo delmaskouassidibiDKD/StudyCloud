@@ -22,17 +22,17 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
 
   return (
     <>
-      {/* Desktop Sidebar - Couleur pure #FEC3B5 en Jour / #070a13 en Sombre */}
+      {/* Desktop Sidebar - Couleur pure #1F4761 en Jour / #070a13 en Sombre */}
       <aside 
-        className="hidden md:flex flex-col w-64 h-screen fixed top-0 left-0 overflow-y-auto p-6 pb-24 shrink-0 select-none z-40 border-r-2 border-black dark:border-[#1e293b] shadow-[2px_0px_5px_-2px_rgba(0,0,0,0.1)] transition-colors duration-300 sidebar-desktop"
+        className="hidden md:flex flex-col w-64 h-screen fixed top-0 left-0 overflow-y-auto p-6 pb-24 shrink-0 select-none z-40 border-r-2 border-[#153447] dark:border-[#1e293b] shadow-[2px_0px_5px_-2px_rgba(0,0,0,0.1)] transition-colors duration-300 sidebar-desktop"
       >
         {/* Brand Header - Logo et Nom de l'application bien visibles */}
         <div className="flex items-center gap-2.5 mb-8">
           <DnaLogo className="w-9 h-9 shrink-0 drop-shadow-[0_0_2px_rgba(0,0,0,0.9)]" glow={true} />
           <div className="notranslate flex flex-col justify-center">
             <h1 className="font-black tracking-tight text-[26px] leading-tight flex items-center select-none">
-              <span className="font-black text-orange-600 dark:text-orange-500">Study</span>
-              <span className="font-black text-blue-600 dark:text-blue-500">Cloud</span>
+              <span className="font-black text-orange-500">Study</span>
+              <span className="font-black text-sky-400 dark:text-blue-400">Cloud</span>
             </h1>
             <p className="text-[11px] font-black uppercase tracking-widest mt-0.5 sidebar-brand-tagline" style={{ letterSpacing: '0.14em' }}>
               DKD TECHNOLOGIES
@@ -56,8 +56,8 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
                 }}
                 className={`w-full flex items-center justify-between px-4 py-3.5 rounded-xl transition-all border-2 sidebar-nav-btn ${
                   isActive
-                    ? 'active shadow-[3px_3px_0px_0px_#000000]'
-                    : 'border-transparent hover:bg-black/10 hover:border-black dark:hover:bg-white/10 dark:hover:border-slate-700'
+                    ? 'active shadow-[3px_3px_0px_0px_rgba(0,0,0,0.2)]'
+                    : 'border-transparent hover:bg-white/10 hover:border-white/20 dark:hover:bg-white/10 dark:hover:border-slate-700'
                 }`}
               >
                 <div className="flex items-center gap-3.5">

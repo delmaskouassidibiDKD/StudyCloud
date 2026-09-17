@@ -400,28 +400,28 @@ p.brand-tagline,
    SIDEBAR DESKTOP NAVIGATION (Visibilité parfaite Jour & Nuit)
    ========================================================================== */
 .sidebar-desktop {
-  background-color: #FEC3B5;
+  background-color: #1F4761;
 }
 .dark .sidebar-desktop {
   background-color: #070a13 !important;
 }
 
 .sidebar-brand-tagline {
-  color: #000000;
+  color: #94a3b8;
 }
 .dark .sidebar-brand-tagline {
   color: #f59e0b !important;
 }
 
 .sidebar-nav-heading {
-  color: #000000;
+  color: #94a3b8;
 }
 .dark .sidebar-nav-heading {
   color: #94a3b8 !important;
 }
 
 .sidebar-nav-btn {
-  color: #000000;
+  color: #ffffff;
 }
 .dark .sidebar-nav-btn {
   color: #ffffff !important;
@@ -429,8 +429,8 @@ p.brand-tagline,
 
 .sidebar-nav-btn.active {
   background-color: #ffffff;
-  border-color: #000000;
-  color: #000000;
+  border-color: #ffffff;
+  color: #1F4761;
 }
 .dark .sidebar-nav-btn.active {
   background-color: #1e293b !important;
@@ -440,21 +440,27 @@ p.brand-tagline,
 }
 
 .sidebar-nav-text {
-  color: #000000;
+  color: #ffffff;
+}
+.sidebar-nav-btn.active .sidebar-nav-text {
+  color: #1F4761 !important;
 }
 .dark .sidebar-nav-text {
   color: #ffffff !important;
 }
+.dark .sidebar-nav-btn.active .sidebar-nav-text {
+  color: #ffffff !important;
+}
 
 .sidebar-nav-icon {
-  color: #000000;
+  color: #ffffff;
 }
 .dark .sidebar-nav-icon {
   color: #ffffff !important;
 }
 
 .sidebar-nav-icon-active {
-  color: #ea580c;
+  color: #1F4761 !important;
 }
 .dark .sidebar-nav-icon-active {
   color: #fb923c !important;
