@@ -465,7 +465,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         <div className="w-full aspect-square bg-stone-900 dark:bg-slate-800/80 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/15 rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[0_8px_25px_rgba(0,0,0,0.45)] dark:hover:border-blue-400/40 dark:hover:shadow-[0_12px_30px_rgba(37,99,235,0.25)] flex items-center justify-center group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all relative">
           {iconContent}
         </div>
-        <span className="text-[11px] sm:text-xs md:text-sm font-extrabold text-stone-950 dark:text-blue-400 mt-1.5 sm:mt-2 text-center px-0.5 leading-snug tracking-wide w-full line-clamp-2 transition-colors">{label}</span>
+        <span className="text-[11px] sm:text-xs md:text-sm font-black text-black dark:text-white mt-1.5 sm:mt-2 text-center px-0.5 leading-snug tracking-wide w-full line-clamp-2 transition-colors">{label}</span>
       </div>
     );
   };
@@ -509,7 +509,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [newGradeCoeff, setNewGradeCoeff] = useState('');
 
   return (
-    <div className="flex flex-col items-center justify-start min-h-[75vh] px-2 sm:px-4 text-center pt-12 md:pt-14 pb-24">
+    <div className={`flex flex-col items-center justify-start min-h-[75vh] px-2 sm:px-4 text-center pt-12 md:pt-14 pb-24 w-full transition-colors duration-300 ${
+      viewMode === 'home' ? 'dashboard-main-bg' : ''
+    }`}>
       {/* Fixed Header bar with action buttons - Solid Dark #070a13 */}
       <div className={`fixed top-0 left-0 right-0 md:left-64 z-40 px-3 md:px-6 py-2 flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${
         isDarkMode 
@@ -1177,7 +1179,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'home' && (
         <div className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-2">
           <div className="flex items-center justify-between mb-3 px-2">
-            <span className="text-xs font-bold text-stone-500 dark:text-stone-400">Écran d'accueil</span>
+            <span className="text-xs font-black uppercase tracking-wider text-black dark:text-slate-300">Écran d'accueil</span>
           </div>
           {/* Sur mobile : 3 blocs par ligne disposés verticalement sans coupure | Sur desktop : ligne horizontale fluide */}
           <div className="grid grid-cols-3 gap-y-6 gap-x-2 sm:gap-x-4 justify-items-center w-full md:flex md:flex-row md:items-start md:justify-center md:gap-4 lg:gap-6 md:overflow-x-auto md:pb-4 md:pt-1 md:no-scrollbar">

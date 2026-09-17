@@ -1269,7 +1269,9 @@ export default function App() {
       />
 
       {/* Main Content Area */}
-      <div className="flex-1 flex flex-col min-h-dvh pb-20 md:pb-0 md:ml-64">
+      <div className={`flex-1 flex flex-col min-h-dvh pb-20 md:pb-0 md:ml-64 transition-colors duration-300 ${
+        currentTab === 'folders' ? 'dashboard-main-bg' : ''
+      }`}>
         <main className={`flex-1 ${currentTab === 'library' ? 'p-0 w-full' : 'p-6 md:p-8 max-w-7xl w-full mx-auto'}`}>
           {currentTab === 'folders' ? (
             <FoldersView
