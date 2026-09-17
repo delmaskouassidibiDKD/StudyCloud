@@ -1279,6 +1279,7 @@ export default function App() {
               searchQuery={searchQuery}
               setSearchQuery={setSearchQuery}
               setActivePreviewItem={setActivePreviewItem}
+              activePreviewItem={activePreviewItemState}
               onImportFile={() => {
                 handleSetTab('upload');
               }}

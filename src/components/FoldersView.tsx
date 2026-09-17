@@ -1,7 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, X, Search, Globe, Sun, Moon, BookOpen } from 'lucide-react';
 import { MenuDrawer } from './MenuDrawer';
-import { GeminiDrawer } from './GeminiDrawer';
+import { DelmasRobot } from './DelmasRobot';
+import { AssistantChat } from './AssistantChat';
 import { DnaLogo } from './DnaLogo';
 import { PricingView } from './PricingView';
 import { FilesMenuView } from './FilesMenuView';
@@ -26,6 +27,7 @@ interface FoldersViewProps {
   onImportFile?: () => void;
   onOpenPublishView?: () => void;
   setActivePreviewItem?: (item: any) => void;
+  activePreviewItem?: any;
   onOpenCreateShareLink?: (items: any[]) => void;
   onOpenStudySpace?: () => void;
 }
@@ -38,11 +40,12 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   onImportFile,
   onOpenPublishView,
   setActivePreviewItem,
+  activePreviewItem,
   onOpenCreateShareLink,
   onOpenStudySpace,
 }) => {
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
-  const [isGeminiOpen, setIsGeminiOpen] = useState(false);
+  const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
   const [currentLang, setCurrentLang] = useState('fr');
 
@@ -535,7 +538,23 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             onUpdateMatiereColor={handleUpdateMatiereColor}
             onSelectMatiere={(name) => setViewMode(`matiere-${name}`)}
           />
-          <GeminiDrawer isOpen={isGeminiOpen} onClose={() => setIsGeminiOpen(false)} />
+          {/* Delmas IA Overlay Modal - Remplace le menu Gemini par l'Assistant Delmas IA */}
+          {isAssistantOpen && (
+            <div 
+              className="fixed inset-0 z-[200000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4 md:p-6 animate-fadeIn"
+              onClick={() => setIsAssistantOpen(false)}
+            >
+              <div 
+                className="w-full h-full sm:max-w-3xl sm:h-[90vh] sm:max-h-[850px] bg-[#1e2024] sm:rounded-3xl sm:border sm:border-zinc-700/60 shadow-2xl flex flex-col overflow-hidden relative text-left"
+                onClick={(e) => e.stopPropagation()}
+              >
+                <AssistantChat 
+                  onClose={() => setIsAssistantOpen(false)} 
+                  activePreviewItem={activePreviewItem}
+                />
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-3">
@@ -637,23 +656,25 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             )}
           </div>
 
-          {/* Gemini button - Solid filled #1e293b, no transparency */}
+          {/* Delmas IA Button - Robot bleu animé identique au menu d'étude */}
           <div className="flex flex-col items-center">
             <button
-              onClick={() => setIsGeminiOpen(true)}
-              className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
-                isDarkMode
-                  ? 'bg-[#1e293b] hover:bg-[#283852] text-indigo-400 border-[#334155] shadow-sm'
-                  : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
-              }`}
-              title="Gemini"
+              onClick={() => setIsAssistantOpen(!isAssistantOpen)}
+              className="flex flex-col items-center justify-center cursor-pointer group active:scale-95 transition-all select-none shrink-0"
+              title={isAssistantOpen ? "Fermer Delmas IA" : "Ouvrir Delmas IA"}
             >
-              <svg className="w-4 h-4 text-indigo-400" viewBox="0 0 24 24" fill="currentColor">
-                <path d="M12 0C12 6.627 17.373 12 24 12C17.373 12 12 17.373 12 24C12 17.373 6.627 12 0 12C6.627 12 12 0 12 0Z"/>
-              </svg>
+              <div className={`relative p-0.5 rounded-full transition-all duration-200 ${
+                isAssistantOpen 
+                  ? 'ring-2 ring-blue-500 shadow-[0_0_12px_rgba(37,99,235,0.7)] scale-105' 
+                  : 'hover:scale-105 shadow-[0_2px_8px_rgba(37,99,235,0.3)]'
+              }`}>
+                <DelmasRobot size={38} />
+              </div>
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${isDarkMode ? 'text-white' : 'text-stone-700'}`}>
-              Gemini
+            <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap transition-colors ${
+              isAssistantOpen ? 'text-orange-500' : 'text-blue-600 dark:text-blue-400 group-hover:text-blue-700'
+            }`}>
+              delmas IA
             </span>
           </div>
 
