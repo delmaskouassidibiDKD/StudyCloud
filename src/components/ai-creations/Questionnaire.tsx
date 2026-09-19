@@ -61,9 +61,29 @@ function normalizeQuestions(input: any): QuestionQCM[] {
     else if (typeof q.correctAnswer === 'number') corrIdx = q.correctAnswer;
     else if (typeof q.bonneReponse === 'number') corrIdx = q.bonneReponse;
     else if (typeof q.correctIndex === 'string') corrIdx = parseInt(q.correctIndex, 10) || 0;
-    else if (typeof q.correctAnswer === 'string') {
-      const foundIdx = cleanOptions.findIndex((o: string) => o.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase());
-      if (foundIdx !== -1) corrIdx = foundIdx;
+    else if (typeof q.correctAnswer === 'string' || typeof q.correct_answer === 'string') {
+      const rawAns = String(q.correctAnswer || q.correct_answer).trim();
+      const letterIdx = ['a', 'b', 'c', 'd'].indexOf(rawAns.toLowerCase());
+      if (letterIdx !== -1 && letterIdx < cleanOptions.length) {
+        corrIdx = letterIdx;
+      } else {
+        const foundIdx = cleanOptions.findIndex((o: string) => o.trim().toLowerCase() === rawAns.toLowerCase());
+        if (foundIdx !== -1) corrIdx = foundIdx;
+      }
+    }
+
+    let explText = '';
+    if (typeof q.explanation === 'string') {
+      explText = q.explanation;
+    } else if (q.explanation && typeof q.explanation === 'object') {
+      const parts: string[] = [];
+      if (q.explanation.theory) parts.push(q.explanation.theory);
+      if (Array.isArray(q.explanation.examples) && q.explanation.examples.length > 0) {
+        parts.push(q.explanation.examples.map((ex: string, i: number) => `• Exemple ${i + 1} : ${ex}`).join('\n'));
+      }
+      explText = parts.join('\n\n') || JSON.stringify(q.explanation);
+    } else {
+      explText = q.explication || q.justification || '';
     }
 
     return {
@@ -71,7 +91,7 @@ function normalizeQuestions(input: any): QuestionQCM[] {
       question: q.question || q.texte || q.title || `Question n°${idx + 1}`,
       options: cleanOptions.length > 0 ? cleanOptions : ['Vrai', 'Faux'],
       correctIndex: Math.max(0, Math.min(corrIdx, (cleanOptions.length > 0 ? cleanOptions.length : 2) - 1)),
-      explanation: q.explanation || q.explication || q.justification || ''
+      explanation: explText
     };
   });
 }

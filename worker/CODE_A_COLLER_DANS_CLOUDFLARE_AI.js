@@ -489,8 +489,8 @@ RÈGLES DE DÉCISION :
    - Si l'étudiant demande de créer un contenu d'étude, OU si un module spécifique est demandé, OU s'il a cliqué sur un bouton d'action :
    - Ton mode est "creation".
    - Tu sélectionnes le 'creation_type' exact parmi les 12 modules :
-     * 'questionnaire' : QCM avec feedback immédiat
-     * 'questionnaire-test' : Questionnaire noté avec correction révélée à la fin
+     * 'questionnaire' : QCM formatif interactif (3 à 5 questions) avec feedback immédiat après chaque réponse
+     * 'questionnaire-test' : Questionnaire test / examen complet (5 à 10 questions notées) avec révélation des corrections et note finale sur 20
      * 'vrai-ou-faux' : Affirmations réflexes ciblées
      * 'vrai-ou-faux-test' : Test noté d'affirmations à cocher
      * 'carte-mentale' : Carte mentale arborescente dynamique
@@ -505,6 +505,25 @@ RÈGLES DE DÉCISION :
    - Dans "creation_data", fournis l'objet JSON complet et rigoureusement structuré correspondant au module.
 
 ======================================================================
+RÈGLES D'EXCELLENCE POUR LES QUESTIONNAIRES & TESTS ('questionnaire' et 'questionnaire-test') :
+======================================================================
+1. PROFONDEUR PÉDAGOGIQUE (ÉTUDES DE CAS ET MISES EN SITUATION) :
+   - Ne pose AUCUNE question de simple mémorisation brute ou de recopie de définition superficielle.
+   - Crée des questions de type "étude de cas", "résolution de problèmes", "analyse d'une situation clinique ou professionnelle" ou "mise en situation réelle" pour tester l'application des concepts en profondeur.
+   - Fournis 4 options crédibles (A, B, C, D) : 1 seule bonne réponse et 3 distracteurs intelligents ciblant les confusions classiques.
+
+2. CORRECTIONS DÉTAILLÉES AVEC DEUX EXEMPLES CONCRETS OBLIGATOIRES :
+   - Pour chaque question, l'explication (champ "explanation") ne doit JAMAIS se limiter à donner la bonne réponse.
+   - Elle doit obligatoirement :
+     a) Expliquer en détail le "pourquoi" théorique et scientifique.
+     b) Inclure DEUX EXEMPLES CONCRETS ET DISTINCTS (Exemple 1 et Exemple 2) illustrant la notion en situation réelle.
+   - Format de "explanation" :
+     "Explication théorique détaillée du concept...\n\n• Exemple 1 : [Situation concrète 1]\n• Exemple 2 : [Situation concrète 2]"
+
+3. ENRICHISSEMENT EXTERNE & CROISEMENT DE SAVOIRS :
+   - Ne te limite pas strictement aux mots du fichier. Tu es autorisé et encouragé à croiser le contenu du document avec des standards réels, des cas d'usage vérifiés et des notions complémentaires issues du même domaine pour maximiser la valeur pédagogique.
+
+======================================================================
 FORMAT STRICT DE SORTIE JSON :
 ======================================================================
 Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`json ... \`\`\`) :
@@ -517,9 +536,10 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
 }`;
 
     // Pipeline unifié d'exécution IA (Google Gemini 2.0 Flash + Fallback Workers AI)
-    async function executeAiPipeline(body, env, ai) {
+    async function executeAiPipeline(body, env, ai, db) {
       const userPrompt = body.message || body.prompt || body.text || "";
       const requestedType = (body.requested_type || body.toolType || body.type || body.taskType || "").toLowerCase().trim();
+      const currentUserId = body.userId || body.user_id;
 
       // Détection de la clé API Google Gemini
       let geminiApiKey = env?.["StudyCloud-gemini"] ||
@@ -543,6 +563,36 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         geminiApiKey = geminiApiKey.trim();
       }
 
+      // Extraction de l'historique des questions déjà posées pour la règle anti-doublons (D1)
+      let previousQuestionsText = "";
+      if (db && currentUserId) {
+        try {
+          const { results } = await db.prepare(`
+            SELECT content_json FROM ai_generated_contents
+            WHERE user_id = ? AND tool_type IN ('questionnaire', 'questionnaire-test')
+            ORDER BY created_at DESC LIMIT 5
+          `).bind(currentUserId).all();
+
+          if (results && results.length > 0) {
+            const prevList = [];
+            for (const r of results) {
+              try {
+                const parsed = JSON.parse(r.content_json);
+                const qs = Array.isArray(parsed?.questions) ? parsed.questions : (Array.isArray(parsed) ? parsed : []);
+                for (const q of qs) {
+                  if (q.question) prevList.push(q.question);
+                }
+              } catch {}
+            }
+            if (prevList.length > 0) {
+              previousQuestionsText = prevList.slice(0, 20).map((q, idx) => `${idx + 1}. "${q}"`).join("\n");
+            }
+          }
+        } catch (dbQErr) {
+          console.warn("[D1 History Questions]", dbQErr);
+        }
+      }
+
       // Extraction du document d'étude si présent
       const rawDocForGemini = (
         (typeof body.attachedFileContent === "string" && body.attachedFileContent) ||
@@ -556,6 +606,9 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
       let fullSystemPrompt = masterSystemPrompt;
       if (requestedType) {
         fullSystemPrompt = fullSystemPrompt.replace(/'\${requestedType \|\| ""}'/, `'${requestedType}'`);
+      }
+      if (previousQuestionsText) {
+        fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES QUESTIONS DÉJÀ POSÉES À CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions ENTIÈREMENT NOUVELLES qui n'ont ni la même formulation, ni le même angle, ni le même type de piège que celles déjà posées ci-dessus. Explore d'autres aspects, chapitres, théorèmes, cas pratiques ou notions du document.`;
       }
       if (rawDocForGemini.length > 0) {
         const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";
@@ -753,7 +806,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
       // Exécution asynchrone non bloquante en arrière-plan via ctx.waitUntil
       const runBackgroundTask = async () => {
         try {
-          const { formatted, usedEngine } = await executeAiPipeline(body, env, ai);
+          const { formatted, usedEngine } = await executeAiPipeline(body, env, ai, db);
           const resJsonStr = JSON.stringify({ ...formatted, model: usedEngine, taskId });
 
           if (db) {
@@ -828,7 +881,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
       const userId = body.userId || request.headers.get("x-user-id") || body.user_id || "default-user";
       const sessionId = body.sessionId || conversationId;
 
-      const { formatted, usedEngine } = await executeAiPipeline(body, env, ai);
+      const { formatted, usedEngine } = await executeAiPipeline(body, env, ai, db);
 
       // Enregistrement persistant dans D1 (Isolation stricte multi-utilisateurs)
       if (db) {
