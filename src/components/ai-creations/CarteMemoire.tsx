@@ -1,4 +1,4 @@
-import { useState, useMemo } from 'react';
+import { useState, useMemo, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import {
   RotateCw,
@@ -50,11 +50,32 @@ interface TestQuestion {
   options: string[];
 }
 
-export default function CarteMemoire() {
-  const [cards] = useState<Flashcard[]>(INITIAL_CARDS);
+function normalizeCards(input: any): Flashcard[] {
+  if (!input) return [];
+  const list = Array.isArray(input) ? input : (Array.isArray(input?.cards) ? input.cards : (Array.isArray(input?.data) ? input.data : []));
+  if (!Array.isArray(list) || list.length === 0) return [];
+
+  return list.map((c: any, i: number) => ({
+    id: c.id || `c_${i + 1}`,
+    front: c.front || c.recto || c.question || c.term || c.concept || `Notion ${i + 1}`,
+    back: c.back || c.verso || c.answer || c.definition || c.explication || '',
+    tag: c.tag || c.theme || c.category || 'Mémorisation'
+  }));
+}
+
+export default function CarteMemoire({ data }: { data?: any }) {
+  const dynamicCards = normalizeCards(data);
+  const cards: Flashcard[] = dynamicCards.length > 0 ? dynamicCards : INITIAL_CARDS;
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [masteredIds, setMasteredIds] = useState<Set<string>>(new Set());
+
+  useEffect(() => {
+    setCurrentIndex(0);
+    setIsFlipped(false);
+    setMasteredIds(new Set());
+    setIsTesting(false);
+  }, [data]);
 
   // Test mode state
   const [isTesting, setIsTesting] = useState(false);

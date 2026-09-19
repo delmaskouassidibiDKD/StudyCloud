@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useState, useMemo, useEffect } from 'react';
 import {
   Plus,
   RotateCcw,
@@ -92,40 +92,48 @@ const QUESTIONS: QuestionItem[] = [
   }
 ];
 
-const TOTAL_POINTS = QUESTIONS.reduce((sum, q) => sum + q.points, 0);
+function normalizeExercices(input: any): QuestionItem[] {
+  if (!input) return [];
+  const list = Array.isArray(input) ? input : (Array.isArray(input?.questions) ? input.questions : (Array.isArray(input?.exercises) ? input.exercises : (Array.isArray(input?.exercices) ? input.exercices : [])));
+  if (!Array.isArray(list) || list.length === 0) return [];
 
-export default function ExercicesEcrits() {
+  return list.map((q: any, idx: number) => ({
+    id: q.id || `eq_${idx + 1}`,
+    number: typeof q.number === 'number' ? q.number : idx + 1,
+    points: typeof q.points === 'number' ? q.points : 4,
+    question: q.question || q.enonce || q.texte || `Exercice n°${idx + 1}`,
+    keywords: Array.isArray(q.keywords) ? q.keywords : (q.motsCles || []),
+    sampleAnswer: q.sampleAnswer || q.corrigetype || q.reponse || q.correction || '',
+    hint: q.hint || q.indice || ''
+  }));
+}
+
+export default function ExercicesEcrits({ data, title }: { data?: any; title?: string }) {
+  const dynamicQuestions = useMemo(() => normalizeExercices(data), [data]);
+  const questionsList: QuestionItem[] = dynamicQuestions.length > 0 ? dynamicQuestions : QUESTIONS;
+  const courseTitle = data?.title || title || (dynamicQuestions.length > 0 ? (title || 'Exercices d’Application & Problèmes Rédigés') : COURSE_TITLE);
+  const totalPoints = questionsList.reduce((sum, q) => sum + q.points, 0);
+
   // Réponses saisies par l'utilisateur
   const [answers, setAnswers] = useState<Record<string, string[]>>(() => {
-    try {
-      const saved = localStorage.getItem('exercices_ecrits_answers');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed === 'object' && parsed !== null) return parsed;
-      }
-    } catch {
-      // ignore
-    }
     const initial: Record<string, string[]> = {};
-    QUESTIONS.forEach((q) => {
+    questionsList.forEach((q) => {
       initial[q.id] = ['', '', ''];
     });
     return initial;
   });
 
   // Évaluations par question
-  const [evaluations, setEvaluations] = useState<Record<string, EvaluationResult>>(() => {
-    try {
-      const saved = localStorage.getItem('exercices_ecrits_evaluations');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed === 'object' && parsed !== null) return parsed;
-      }
-    } catch {
-      // ignore
-    }
-    return {};
-  });
+  const [evaluations, setEvaluations] = useState<Record<string, EvaluationResult>>({});
+
+  useEffect(() => {
+    const fresh: Record<string, string[]> = {};
+    questionsList.forEach((q) => {
+      fresh[q.id] = ['', '', ''];
+    });
+    setAnswers(fresh);
+    setEvaluations({});
+  }, [data]);
 
   // État de chargement de l'analyse par question
   const [evaluatingId, setEvaluatingId] = useState<string | null>(null);
@@ -257,7 +265,7 @@ export default function ExercicesEcrits() {
   };
 
   const handleGradeQuestion = (questionId: string) => {
-    const q = QUESTIONS.find((item) => item.id === questionId);
+    const q = questionsList.find((item) => item.id === questionId);
     if (!q) return;
 
     const fullText = (answers[questionId] || []).join(' ').trim();
@@ -278,7 +286,7 @@ export default function ExercicesEcrits() {
     setEvaluatingId('all');
     setTimeout(() => {
       const updated = { ...evaluations };
-      QUESTIONS.forEach((q) => {
+      questionsList.forEach((q) => {
         const fullText = (answers[q.id] || []).join(' ').trim();
         if (fullText) {
           updated[q.id] = evaluateQuestion(fullText, q);
@@ -292,7 +300,7 @@ export default function ExercicesEcrits() {
   const handleResetAll = () => {
     if (window.confirm('Voulez-vous effacer l’ensemble de vos réponses et réinitialiser les corrections ?')) {
       const cleared: Record<string, string[]> = {};
-      QUESTIONS.forEach((q) => {
+      questionsList.forEach((q) => {
         cleared[q.id] = ['', '', ''];
       });
       saveAnswers(cleared);
@@ -302,19 +310,19 @@ export default function ExercicesEcrits() {
 
   const handleDownload = () => {
     let doc = `========================================================================\n`;
-    doc += `${COURSE_TITLE.toUpperCase()}\n`;
+    doc += `${courseTitle.toUpperCase()}\n`;
     doc += `FEUILLE D'EXERCICES RÉDACTIONNELS & CORRECTION DÉTAILLÉE\n`;
     doc += `Date : ${new Date().toLocaleDateString('fr-FR')}\n`;
-    doc += `Total épreuve : ${TOTAL_POINTS} points\n`;
+    doc += `Total épreuve : ${totalPoints} points\n`;
 
     const evaluatedCount = Object.keys(evaluations).length;
     const currentScore = Object.values(evaluations).reduce((acc: number, curr: any) => acc + (curr?.score || 0), 0);
     if (evaluatedCount > 0) {
-      doc += `Note obtenue : ${currentScore} / ${TOTAL_POINTS} points (${evaluatedCount}/${QUESTIONS.length} questions corrigées)\n`;
+      doc += `Note obtenue : ${currentScore} / ${totalPoints} points (${evaluatedCount}/${questionsList.length} questions corrigées)\n`;
     }
     doc += `========================================================================\n\n`;
 
-    QUESTIONS.forEach((q) => {
+    questionsList.forEach((q) => {
       const lines = (answers[q.id] || []).filter((l) => l.trim().length > 0);
       const evalData = evaluations[q.id];
 
@@ -384,10 +392,10 @@ export default function ExercicesEcrits() {
             </div>
             <div className="min-w-0">
               <h2 className="text-xs sm:text-sm font-bold text-stone-900 truncate">
-                {COURSE_TITLE}
+                {courseTitle}
               </h2>
               <span className="text-[11px] text-stone-500 hidden sm:inline-block">
-                Évaluation formative • 6 questions rédactionnelles
+                Évaluation formative • {questionsList.length} questions rédactionnelles
               </span>
             </div>
           </div>
@@ -403,10 +411,10 @@ export default function ExercicesEcrits() {
               <span className="text-stone-600 font-mono">
                 {totalGradedCount > 0 ? (
                   <span className="text-blue-700 font-bold">
-                    {totalEarnedScore} / {TOTAL_POINTS} pts
+                    {totalEarnedScore} / {totalPoints} pts
                   </span>
                 ) : (
-                  <span>Total : {TOTAL_POINTS} points</span>
+                  <span>Total : {totalPoints} points</span>
                 )}
               </span>
             </div>
@@ -458,7 +466,7 @@ export default function ExercicesEcrits() {
 
       {/* Contenu principal : liste des questions directement sur le fond de page */}
       <div className="max-w-4xl mx-auto px-4 sm:px-6 md:px-8 pt-6 space-y-12">
-        {QUESTIONS.map((item) => {
+        {questionsList.map((item) => {
           const lines = answers[item.id] || ['', '', ''];
           const fullAnswerText = lines.join(' ').trim();
           const hasWritten = fullAnswerText.length > 0;

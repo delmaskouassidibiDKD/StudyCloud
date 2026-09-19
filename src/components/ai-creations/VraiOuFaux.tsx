@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, X, RotateCcw, HelpCircle, CheckCircle2, AlertCircle } from 'lucide-react';
 import { AffirmationVraiFaux } from './types';
@@ -30,14 +30,43 @@ const INITIAL_AFFIRMATIONS: AffirmationVraiFaux[] = [
   }
 ];
 
-export default function VraiOuFaux({ data }: { data?: AffirmationVraiFaux[] | { affirmations?: AffirmationVraiFaux[] } }) {
-  const rawList = Array.isArray(data) ? data : (data?.affirmations || INITIAL_AFFIRMATIONS);
-  const affirmations: AffirmationVraiFaux[] = (rawList && rawList.length > 0) ? rawList : INITIAL_AFFIRMATIONS;
+function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
+  if (!input) return [];
+  const list = Array.isArray(input) ? input : (Array.isArray(input?.affirmations) ? input.affirmations : (Array.isArray(input?.data) ? input.data : []));
+  if (!Array.isArray(list) || list.length === 0) return [];
+
+  return list.map((a: any, idx: number) => {
+    let isTrueVal = true;
+    if (typeof a.isTrue === 'boolean') isTrueVal = a.isTrue;
+    else if (typeof a.reponse === 'boolean') isTrueVal = a.reponse;
+    else if (typeof a.correctAnswer === 'boolean') isTrueVal = a.correctAnswer;
+    else if (typeof a.isTrue === 'string') isTrueVal = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
+    else if (typeof a.reponse === 'string') isTrueVal = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
+
+    return {
+      id: a.id || `vf_${idx + 1}`,
+      statement: a.statement || a.affirmation || a.texte || a.question || `Affirmation n°${idx + 1}`,
+      isTrue: isTrueVal,
+      explanation: a.explanation || a.explication || a.justification || ''
+    };
+  });
+}
+
+export default function VraiOuFaux({ data }: { data?: any }) {
+  const dynamicList = normalizeAffirmations(data);
+  const affirmations: AffirmationVraiFaux[] = dynamicList.length > 0 ? dynamicList : INITIAL_AFFIRMATIONS;
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userChoice, setUserChoice] = useState<boolean | null>(null);
   const [score, setScore] = useState(0);
   const [completed, setCompleted] = useState(false);
+
+  useEffect(() => {
+    setCurrentIndex(0);
+    setUserChoice(null);
+    setScore(0);
+    setCompleted(false);
+  }, [data]);
 
   const current = affirmations[currentIndex] || affirmations[0];
 

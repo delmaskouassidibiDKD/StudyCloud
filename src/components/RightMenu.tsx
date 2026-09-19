@@ -384,7 +384,17 @@ export function RightMenu({
   const handleProposalClick = async (mod: ModuleDefinition) => {
     if (isGenerating) return;
 
-    const docName = activePreviewItem?.name || activePreviewItem?.title || 'Document sélectionné';
+    // Récupérer le document actif (via prop ou localStorage)
+    const previewItem = activePreviewItem || (() => {
+      try {
+        const stored = localStorage.getItem('studycloud_active_preview_item') || localStorage.getItem('unifolder_active_file');
+        return stored ? JSON.parse(stored) : null;
+      } catch {
+        return null;
+      }
+    })();
+
+    const docName = previewItem?.name || previewItem?.title || previewItem?.fileName || 'Document sélectionné';
     setIsGenerating(true);
     setGeneratingInfo({
       type: mod.id,
@@ -393,23 +403,25 @@ export function RightMenu({
     });
     setActiveTabModule(mod.id);
 
-    // Contrôleur d'annulation avec délai de sécurité automatique (25 secondes)
+    // Contrôleur d'annulation avec délai de sécurité augmenté à 60 secondes (pour grands documents)
     const controller = new AbortController();
     abortControllerRef.current = controller;
     const timeoutId = setTimeout(() => {
       controller.abort();
-    }, 25000);
+    }, 60000);
 
     try {
       // 1. Extraction éventuelle du texte du document sélectionné
       let extractedDocText = '';
-      if (activePreviewItem) {
+      if (previewItem) {
         try {
-          extractedDocText = await extractDocumentText(activePreviewItem);
-        } catch {}
+          extractedDocText = await extractDocumentText(previewItem);
+        } catch (err) {
+          console.warn('[RightMenu] Erreur extraction texte document:', err);
+        }
       }
 
-      const promptText = `Conçois un ${mod.label} complet et structuré basé sur le document d'étude "${docName}".`;
+      const promptText = `Conçois un ${mod.label} complet, inédit et rigoureusement structuré basé STRICTEMENT sur le document d'étude joint "${docName}". Ne réutilise aucun exemple générique prédéfini (pas d'exemples de mémoire ou neurosciences sauf si le document en traite). Analyse les notions réelles du document et génère le contenu adapté selon la structure JSON requise.`;
 
       // 2. Appel direct et prioritaire au Worker IA
       const res = await sendChatMessageToAi({
@@ -422,6 +434,10 @@ export function RightMenu({
         attachedFileName: docName,
         attachedFileContent: extractedDocText,
         file_content: extractedDocText,
+        fileContent: extractedDocText,
+        documentContent: extractedDocText,
+        fileName: docName,
+        file_name: docName,
         userId: localStorage.getItem('unifolder_user_id') || 'default-user',
         sessionId: 'creation-' + Date.now(),
         conversationId: 'creation-' + Date.now(),
@@ -433,7 +449,7 @@ export function RightMenu({
       const newCreation: AiCreation = {
         id: 'ai-' + Date.now(),
         userId: localStorage.getItem('unifolder_user_id') || 'default-user',
-        fileId: activePreviewItem?.id,
+        fileId: previewItem?.id,
         toolType: targetType,
         title: res.creation_title || `${mod.label} : ${docName}`,
         content: res.creation_data || null,
@@ -522,6 +538,7 @@ export function RightMenu({
   const renderActiveCreation = () => {
     const currentType = activeCreation?.toolType || activeTabModule;
     const currentData = activeCreation?.content;
+    const currentTitle = activeCreation?.title;
 
     switch (currentType) {
       case 'questionnaire':
@@ -533,29 +550,29 @@ export function RightMenu({
       case 'vrai-ou-faux-test':
         return <VraiOuFauxTest data={currentData} />;
       case 'carte-mentale':
-        return <CarteMentale />;
+        return <CarteMentale data={currentData} title={currentTitle} />;
       case 'carte-mentale-2':
-        return <CarteMentaleConceptuelle />;
+        return <CarteMentaleConceptuelle data={currentData} title={currentTitle} />;
       case 'carte-memoire':
       case 'flashcards':
-        return <CarteMemoire />;
+        return <CarteMemoire data={currentData} />;
       case 'resume':
       case 'summary':
-        return <Resume />;
+        return <Resume data={currentData} title={currentTitle} sourceFileName={activeCreation?.sourceFileName} />;
       case 'pdf':
       case 'document':
-        return <Pdf />;
+        return <Pdf data={currentData} title={currentTitle} />;
       case 'infographie':
       case 'infographic':
-        return <Infographie />;
+        return <Infographie data={currentData} title={currentTitle} />;
       case 'exercices-ecrits':
-        return <ExercicesEcrits />;
+        return <ExercicesEcrits data={currentData} title={currentTitle} />;
       case 'devoir-complet':
-        return <DevoirComplet />;
+        return <DevoirComplet data={currentData} title={currentTitle} />;
       case 'quiz':
         return <Questionnaire data={currentData} />;
       case 'mindmap':
-        return <CarteMentale />;
+        return <CarteMentale data={currentData} title={currentTitle} />;
       default:
         return <Questionnaire data={currentData} />;
     }
@@ -608,42 +625,6 @@ export function RightMenu({
           {isRightSidebarOpen ? <X className="w-4 h-4" /> : <Clock className="w-4 h-4" />}
         </button>
       </div>
-
-      {/* Barre de navigation horizontale à onglets (accessible dès qu'une création est active ou en cours) */}
-      {activeCreation && (
-        <div className="w-full bg-[#181a1e] border-b border-zinc-800 px-3 py-1.5 overflow-x-auto custom-scrollbar shrink-0 z-40">
-          <div className="flex items-center gap-1.5 min-w-max">
-            {MODULES.map((item) => {
-              const currentId = activeCreation?.toolType || activeTabModule;
-              const isActive = currentId === item.id;
-              const IconComp = item.icon;
-              return (
-                <button
-                  key={item.id}
-                  type="button"
-                  onClick={() => {
-                    setActiveTabModule(item.id);
-                    if (activeCreation) {
-                      setActiveCreation({
-                        ...activeCreation,
-                        toolType: item.id,
-                      });
-                    }
-                  }}
-                  className={`inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer ${
-                    isActive
-                      ? 'bg-orange-500 text-white shadow-xs'
-                      : 'text-zinc-400 hover:text-zinc-200 hover:bg-zinc-800/70'
-                  }`}
-                >
-                  <IconComp className="w-3.5 h-3.5 shrink-0" />
-                  <span>{item.label}</span>
-                </button>
-              );
-            })}
-          </div>
-        </div>
-      )}
 
       {/* Main Creation Area */}
       <div className="flex-1 w-full overflow-y-auto custom-scrollbar flex flex-col items-center justify-start min-h-0 bg-[#16181f] text-zinc-100">

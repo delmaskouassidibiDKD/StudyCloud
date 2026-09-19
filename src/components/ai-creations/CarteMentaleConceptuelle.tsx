@@ -654,15 +654,108 @@ const PRESET_PALETTES = [
   { name: 'Sunset Vif', col1: '#3B82F6', col2: '#F59E0B', col3: '#EF4444' }
 ];
 
-export default function CarteMentaleConceptuelle() {
-  const [selectedDatasetId, setSelectedDatasetId] = useState<string>('sage-femme-3col');
-  const [datasetsState, setDatasetsState] = useState<Record<string, ConceptMapDataset>>({
-    'sage-femme-3col': JSON.parse(JSON.stringify(DATASET_SAGE_FEMME_3COL)),
-    'sage-femme-6col': JSON.parse(JSON.stringify(DATASET_SAGE_FEMME_FULL)),
-    'original-concept-map': JSON.parse(JSON.stringify(DATASET_ORIGINAL_IMAGE))
+function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDataset | null {
+  if (!data) return null;
+  if (data.cards && Array.isArray(data.cards) && data.cards.length > 0) {
+    return {
+      id: 'ai-dataset',
+      name: data.name || data.title || fallbackTitle || 'Carte Conceptuelle',
+      badge: 'Généré par IA',
+      rootTitle: data.rootTitle || data.title || fallbackTitle || 'Carte Conceptuelle',
+      rootColor: data.rootColor || '#F59E0B',
+      cards: data.cards
+    };
+  }
+
+  const cols = Array.isArray(data.columns) ? data.columns : (Array.isArray(data.categories) ? data.categories : (Array.isArray(data.branches) ? data.branches : []));
+  if (cols.length === 0) return null;
+
+  const rootTitle = data.rootTitle || data.title || fallbackTitle || 'Carte Conceptuelle';
+  const palette = ['#06B6D4', '#10B981', '#EC4899', '#3B82F6', '#F59E0B', '#8B5CF6'];
+  const generatedCards: ConceptCard[] = [];
+  const colWidth = 280;
+  const startX = 200;
+
+  cols.slice(0, 6).forEach((col: any, cIdx: number) => {
+    const colId = `col_${cIdx + 1}`;
+    const colColor = palette[cIdx % palette.length];
+    const colTitle = col.title || col.name || col.label || `Colonne ${cIdx + 1}`;
+    const xPos = startX + cIdx * colWidth;
+
+    generatedCards.push({
+      id: colId,
+      parentId: 'root',
+      level: 1,
+      pillTitle: colTitle,
+      description: col.description || col.subtitle || 'Axe fondamental',
+      x: xPos,
+      y: 190,
+      width: 250,
+      height: 90,
+      pillWidth: Math.min(220, Math.max(120, colTitle.length * 9)),
+      color: colColor,
+      shadowColor: colColor
+    });
+
+    const items = Array.isArray(col.cards) ? col.cards : (Array.isArray(col.items) ? col.items : (Array.isArray(col.children) ? col.children : []));
+    let curY = 320;
+    items.forEach((item: any, iIdx: number) => {
+      const cardTitle = typeof item === 'string' ? item : (item.title || item.pillTitle || item.pillText || item.name || `Notion ${iIdx + 1}`);
+      const cardDesc = typeof item === 'string' ? '' : (item.description || item.desc || item.body || '');
+      generatedCards.push({
+        id: `${colId}_c_${iIdx + 1}`,
+        parentId: colId,
+        level: 2,
+        pillTitle: cardTitle,
+        description: cardDesc,
+        x: xPos,
+        y: curY,
+        width: 250,
+        height: cardDesc ? 100 : 70,
+        pillWidth: Math.min(200, Math.max(100, cardTitle.length * 8)),
+        color: colColor,
+        shadowColor: colColor
+      });
+      curY += cardDesc ? 120 : 85;
+    });
   });
 
-  const activeDataset = datasetsState[selectedDatasetId] || DATASET_SAGE_FEMME_3COL;
+  return {
+    id: 'ai-dataset',
+    name: rootTitle,
+    badge: 'Généré par IA',
+    rootTitle,
+    rootColor: '#F59E0B',
+    cards: generatedCards
+  };
+}
+
+export default function CarteMentaleConceptuelle({ data, title }: { data?: any; title?: string }) {
+  const dynamicDataset = useMemo(() => buildConceptMapDataset(data, title), [data, title]);
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>(dynamicDataset ? 'ai-dataset' : 'sage-femme-3col');
+  const [datasetsState, setDatasetsState] = useState<Record<string, ConceptMapDataset>>(() => {
+    const base: Record<string, ConceptMapDataset> = {
+      'sage-femme-3col': JSON.parse(JSON.stringify(DATASET_SAGE_FEMME_3COL)),
+      'sage-femme-6col': JSON.parse(JSON.stringify(DATASET_SAGE_FEMME_FULL)),
+      'original-concept-map': JSON.parse(JSON.stringify(DATASET_ORIGINAL_IMAGE))
+    };
+    if (dynamicDataset) {
+      base['ai-dataset'] = dynamicDataset;
+    }
+    return base;
+  });
+
+  useEffect(() => {
+    if (dynamicDataset) {
+      setDatasetsState((prev) => ({
+        ...prev,
+        'ai-dataset': dynamicDataset
+      }));
+      setSelectedDatasetId('ai-dataset');
+    }
+  }, [dynamicDataset]);
+
+  const activeDataset = datasetsState[selectedDatasetId] || (dynamicDataset || DATASET_SAGE_FEMME_3COL);
   const cards = activeDataset.cards;
 
   const [zoom, setZoom] = useState(0.85);

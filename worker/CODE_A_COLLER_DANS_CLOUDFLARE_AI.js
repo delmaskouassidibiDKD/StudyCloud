@@ -411,7 +411,7 @@ export default {
                 chat_message = parsed.chat_message || parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ J'ai généré votre création directement dans votre espace Création à droite !");
                 creation_type = parsed.creation_type || defaultType || "questionnaire";
                 creation_title = parsed.creation_title || "Création IA";
-                creation_data = parsed.creation_data || parsed;
+                creation_data = typeof parsed.creation_data === "string" ? (() => { try { return JSON.parse(parsed.creation_data); } catch { return parsed.creation_data; } })() : (parsed.creation_data || parsed);
               } else if (Array.isArray(parsed.questions)) {
                 decision = "creation";
                 creation_type = defaultType || "questionnaire";
@@ -436,6 +436,24 @@ export default {
                 creation_title = parsed.rootTitle || parsed.root?.text || "Carte Mentale";
                 creation_data = parsed;
                 chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre carte mentale est prête à droite !";
+              } else if (parsed.overview || Array.isArray(parsed.sections)) {
+                decision = "creation";
+                creation_type = defaultType || "resume";
+                creation_title = parsed.title || "Fiche de Synthèse";
+                creation_data = parsed;
+                chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre fiche de synthèse est prête à droite !";
+              } else if (Array.isArray(parsed.exercises) || Array.isArray(parsed.exercices)) {
+                decision = "creation";
+                creation_type = defaultType || "exercices-ecrits";
+                creation_title = parsed.title || "Exercices Écrits";
+                creation_data = parsed;
+                chat_message = parsed.chat_message || parsed.chat_response || "✨ Vos exercices écrits sont prêts à droite !";
+              } else if (parsed.baremeTotal || parsed.exercice1) {
+                decision = "creation";
+                creation_type = defaultType || "devoir-complet";
+                creation_title = parsed.title || "Devoir Complet";
+                creation_data = parsed;
+                chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre devoir complet d'examen est prêt à droite !";
               } else if (parsed.decision === "chat" || parsed.mode === "chat") {
                 decision = "chat";
                 chat_message = parsed.chat_message || parsed.chat_response || rawText;
@@ -569,7 +587,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
       let fullSystemPrompt = masterSystemPrompt;
       if (rawDocForGemini.length > 0) {
         const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";
-        fullSystemPrompt += `\n\n======================================================================\nDOCUMENT ATTACHÉ DE L'ÉTUDIANT ("${docTitle}") :\n${rawDocForGemini.slice(0, 80000)}\n======================================================================\nExploite fidèlement les notions de ce document pour tes réponses ou créations.`;
+        fullSystemPrompt += `\n\n======================================================================\nDOCUMENT ATTACHÉ DE L'ÉTUDIANT ("${docTitle}") :\n${rawDocForGemini.slice(0, 80000)}\n======================================================================\nCONSIGNE CAPITALE ET INCONTOURNABLE :\nTu DOIS analyser attentivement le texte du document ci-dessus et concevoir des exercices, questions, cartes ou résumés TOTALEMENT INÉDITS et DIRECTEMENT BASÉS sur les notions, théorèmes, formules et définitions réelles de ce document.\nIL EST STRICTEMENT INTERDIT de renvoyer les exemples types du code (par exemple les questions sur les neurosciences ou sage-femme, à moins que le document ne porte exactement sur cela).\nLe contenu créé doit correspondre fidèlement et exclusivement au document de l'étudiant !`;
       }
 
       let generatedContent = "";

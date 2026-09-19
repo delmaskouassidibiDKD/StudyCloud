@@ -223,7 +223,184 @@ const EXERCICE_4_VF = {
   ]
 };
 
-export default function DevoirComplet() {
+function normalizeExamData(data: any, title?: string) {
+  if (!data || typeof data !== 'object') {
+    return {
+      examHeader: {
+        ...EXAM_HEADER,
+        matiere: title || EXAM_HEADER.matiere
+      },
+      exercice1: EXERCICE_1_PROBLEM,
+      exercice2: EXERCICE_2_QCM,
+      exercice3: EXERCICE_3_QUESTIONS,
+      exercice4: EXERCICE_4_VF,
+    };
+  }
+
+  // En-tête officiel
+  const examHeader = {
+    institution: data.institution || EXAM_HEADER.institution,
+    sousTitre: data.sousTitre || data.subTitle || EXAM_HEADER.sousTitre,
+    duree: data.duree || data.duration || EXAM_HEADER.duree,
+    matiere: data.matiere || data.discipline || data.subject || title || EXAM_HEADER.matiere,
+    mention: data.mention || EXAM_HEADER.mention,
+    calculatrice: data.calculatrice || EXAM_HEADER.calculatrice,
+    baremeTotal: 20
+  };
+
+  // Exercice 1 (Problème / Étude de cas)
+  const rawEx1 = data.exercice1 || data.problem || data.partie1 || (Array.isArray(data.exercices) && data.exercices[0]);
+  let exercice1 = EXERCICE_1_PROBLEM;
+  if (rawEx1 && typeof rawEx1 === 'object') {
+    const rawQuestions = Array.isArray(rawEx1.questions) ? rawEx1.questions : [];
+    exercice1 = {
+      titre: rawEx1.titre || rawEx1.title || "EXERCICE 1 : ÉTUDE DE CAS & PROBLÈME D'ANALYSE",
+      points: Number(rawEx1.points) || 8,
+      enonce: rawEx1.enonce || rawEx1.context || rawEx1.contexte || EXERCICE_1_PROBLEM.enonce,
+      questions: rawQuestions.length > 0 ? rawQuestions.map((q: any, i: number) => ({
+        id: q.id || `p1_q${i + 1}`,
+        number: q.number || `${i + 1}.`,
+        points: Number(q.points) || (i === 0 ? 2 : 3),
+        texte: q.texte || q.question || q.text || `Question ${i + 1}`,
+        sampleAnswer: q.sampleAnswer || q.reponse || q.correction || q.answer || "Réponse détaillée attendue selon les principes vus en cours."
+      })) : EXERCICE_1_PROBLEM.questions
+    };
+  }
+
+  // Exercice 2 (QCM)
+  const rawEx2 = data.exercice2 || data.qcm || data.partie2 || (Array.isArray(data.exercices) && data.exercices[1]);
+  let exercice2 = EXERCICE_2_QCM;
+  if (rawEx2 && typeof rawEx2 === 'object') {
+    const rawQuestions = Array.isArray(rawEx2.questions) ? rawEx2.questions : [];
+    exercice2 = {
+      titre: rawEx2.titre || rawEx2.title || "EXERCICE 2 : QUESTIONS À CHOIX MULTIPLES",
+      points: Number(rawEx2.points) || 4,
+      consigne: rawEx2.consigne || "Pour chaque question, cochez la seule proposition exacte parmi les quatre choix proposés.",
+      questions: rawQuestions.length > 0 ? rawQuestions.map((q: any, i: number) => ({
+        id: q.id || `p2_q${i + 1}`,
+        number: q.number || `${i + 1}.`,
+        points: Number(q.points) || 1,
+        texte: q.texte || q.question || q.text || `Question ${i + 1}`,
+        options: Array.isArray(q.options) && q.options.length > 0 ? q.options : (Array.isArray(q.choices) ? q.choices : ["Option A", "Option B", "Option C", "Option D"]),
+        correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : (typeof q.bonne_reponse === 'number' ? q.bonne_reponse : 0),
+        explication: q.explication || q.explanation || q.justification || "Justification pédagogique selon le cours."
+      })) : EXERCICE_2_QCM.questions
+    };
+  }
+
+  // Exercice 3 (Questions rédigées)
+  const rawEx3 = data.exercice3 || data.questionsRedigees || data.synthese || data.partie3 || (Array.isArray(data.exercices) && data.exercices[2]);
+  let exercice3 = EXERCICE_3_QUESTIONS;
+  if (rawEx3 && typeof rawEx3 === 'object') {
+    const rawQuestions = Array.isArray(rawEx3.questions) ? rawEx3.questions : [];
+    exercice3 = {
+      titre: rawEx3.titre || rawEx3.title || "EXERCICE 3 : QUESTIONS DE SYNTHÈSE RÉDIGÉE",
+      points: Number(rawEx3.points) || 4,
+      consigne: rawEx3.consigne || "Répondez de manière précise et concise directement sur les lignes en pointillés réservées à cet effet.",
+      questions: rawQuestions.length > 0 ? rawQuestions.map((q: any, i: number) => ({
+        id: q.id || `p3_q${i + 1}`,
+        number: q.number || `${i + 1}.`,
+        points: Number(q.points) || 2,
+        texte: q.texte || q.question || q.text || `Question ${i + 1}`,
+        sampleAnswer: q.sampleAnswer || q.reponse || q.correction || "Explication argumentée et concrète."
+      })) : EXERCICE_3_QUESTIONS.questions
+    };
+  }
+
+  // Exercice 4 (Vrai / Faux)
+  const rawEx4 = data.exercice4 || data.vraiOuFaux || data.vf || data.partie4 || (Array.isArray(data.exercices) && data.exercices[3]);
+  let exercice4 = EXERCICE_4_VF;
+  if (rawEx4 && typeof rawEx4 === 'object') {
+    const rawQuestions = Array.isArray(rawEx4.questions) ? rawEx4.questions : [];
+    exercice4 = {
+      titre: rawEx4.titre || rawEx4.title || "EXERCICE 4 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
+      points: Number(rawEx4.points) || 4,
+      consigne: rawEx4.consigne || "Pour chaque affirmation ci-dessous, cochez VRAI ou FAUX.",
+      questions: rawQuestions.length > 0 ? rawQuestions.map((q: any, i: number) => ({
+        id: q.id || `p4_q${i + 1}`,
+        number: q.number || `${i + 1}.`,
+        points: Number(q.points) || 1,
+        texte: q.texte || q.affirmation || q.question || `Affirmation ${i + 1}`,
+        correctValue: typeof q.correctValue === 'boolean' ? q.correctValue : (typeof q.isTrue === 'boolean' ? q.isTrue : (q.reponse === true || q.reponse === 'VRAI' || q.reponse === 'true')),
+        explication: q.explication || q.explanation || "Explication conceptuelle."
+      })) : EXERCICE_4_VF.questions
+    };
+  }
+
+  // Cas où l'IA retourne une liste plate de questions
+  if (!rawEx1 && !rawEx2 && !rawEx3 && !rawEx4 && Array.isArray(data.questions) && data.questions.length >= 4) {
+    const qList = data.questions;
+    const qcmItems = qList.filter((q: any) => Array.isArray(q.options) && q.options.length > 0);
+    const vfItems = qList.filter((q: any) => typeof q.correctValue === 'boolean' || typeof q.isTrue === 'boolean' || (Array.isArray(q.options) && q.options.length === 2 && String(q.options[0]).toLowerCase().includes('vrai')));
+    const openItems = qList.filter((q: any) => !qcmItems.includes(q) && !vfItems.includes(q));
+
+    if (qcmItems.length > 0) {
+      exercice2 = {
+        titre: "EXERCICE 2 : QUESTIONS À CHOIX MULTIPLES",
+        points: 4,
+        consigne: "Pour chaque question, cochez la seule proposition exacte parmi les choix proposés.",
+        questions: qcmItems.slice(0, 4).map((q: any, i: number) => ({
+          id: `p2_q${i + 1}`,
+          number: `${i + 1}.`,
+          points: 1,
+          texte: q.texte || q.question || `Question ${i + 1}`,
+          options: q.options,
+          correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : 0,
+          explication: q.explication || "Explication basée sur le cours."
+        }))
+      };
+    }
+
+    if (vfItems.length > 0) {
+      exercice4 = {
+        titre: "EXERCICE 4 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
+        points: 4,
+        consigne: "Pour chaque affirmation ci-dessous, cochez VRAI ou FAUX.",
+        questions: vfItems.slice(0, 4).map((q: any, i: number) => ({
+          id: `p4_q${i + 1}`,
+          number: `${i + 1}.`,
+          points: 1,
+          texte: q.texte || q.question || q.affirmation || `Affirmation ${i + 1}`,
+          correctValue: typeof q.correctValue === 'boolean' ? q.correctValue : true,
+          explication: q.explication || "Explication basée sur le cours."
+        }))
+      };
+    }
+
+    if (openItems.length > 0) {
+      exercice1 = {
+        titre: "EXERCICE 1 : ÉTUDE DE CAS & PROBLÈME D'APPLICATION",
+        points: 8,
+        enonce: data.enonce || data.context || "À partir des notions et théorèmes étudiés dans le cours, analysez la situation et traitez les questions suivantes :",
+        questions: openItems.slice(0, 3).map((q: any, i: number) => ({
+          id: `p1_q${i + 1}`,
+          number: `${i + 1}.`,
+          points: i === 0 ? 2 : 3,
+          texte: q.texte || q.question || `Question ${i + 1}`,
+          sampleAnswer: q.sampleAnswer || q.reponse || "Réponse attendue."
+        }))
+      };
+      if (openItems.length > 3) {
+        exercice3 = {
+          titre: "EXERCICE 3 : QUESTIONS DE SYNTHÈSE RÉDIGÉE",
+          points: 4,
+          consigne: "Répondez de manière précise et synthétique directement sur votre copie.",
+          questions: openItems.slice(3, 5).map((q: any, i: number) => ({
+            id: `p3_q${i + 1}`,
+            number: `${i + 1}.`,
+            points: 2,
+            texte: q.texte || q.question || `Question ${i + 1}`,
+            sampleAnswer: q.sampleAnswer || q.reponse || "Réponse attendue."
+          }))
+        };
+      }
+    }
+  }
+
+  return { examHeader, exercice1, exercice2, exercice3, exercice4 };
+}
+
+export default function DevoirComplet({ data, title }: { data?: any; title?: string }) {
   // Navigation entre les 4 pages
   const [currentPage, setCurrentPage] = useState<number>(1);
 
@@ -231,21 +408,29 @@ export default function DevoirComplet() {
   const [secondsLeft, setSecondsLeft] = useState<number>(45 * 60);
   const [isTimerRunning, setIsTimerRunning] = useState<boolean>(true);
 
-  // Réponses saisies par l'élève
-  // Page 1 : réponses écrites du problème
-  const [answersP1, setAnswersP1] = useState<Record<string, string[]>>({
-    p1_q1: ['', '', ''],
-    p1_q2: ['', '', '', ''],
-    p1_q3: ['', '', '']
+  // Données actives de l'examen normalisées
+  const activeData = normalizeExamData(data, title);
+  const { examHeader, exercice1, exercice2, exercice3, exercice4 } = activeData;
+
+  // Initialisation dynamique des réponses
+  const [answersP1, setAnswersP1] = useState<Record<string, string[]>>(() => {
+    const init: Record<string, string[]> = {};
+    exercice1.questions.forEach((q) => {
+      init[q.id] = ['', '', ''];
+    });
+    return init;
   });
 
   // Page 2 : QCM (index de l'option choisie)
   const [answersP2, setAnswersP2] = useState<Record<string, number>>({});
 
   // Page 3 : questions rédigées courtes
-  const [answersP3, setAnswersP3] = useState<Record<string, string[]>>({
-    p3_q1: ['', '', ''],
-    p3_q2: ['', '', '']
+  const [answersP3, setAnswersP3] = useState<Record<string, string[]>>(() => {
+    const init: Record<string, string[]> = {};
+    exercice3.questions.forEach((q) => {
+      init[q.id] = ['', '', ''];
+    });
+    return init;
   });
 
   // Page 4 : Vrai / Faux
@@ -255,6 +440,27 @@ export default function DevoirComplet() {
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const [showCorrectionDetail, setShowCorrectionDetail] = useState<boolean>(false);
+
+  // Réinitialisation automatique lorsque data change
+  useEffect(() => {
+    const initP1: Record<string, string[]> = {};
+    exercice1.questions.forEach((q) => {
+      initP1[q.id] = ['', '', ''];
+    });
+    setAnswersP1(initP1);
+    setAnswersP2({});
+    const initP3: Record<string, string[]> = {};
+    exercice3.questions.forEach((q) => {
+      initP3[q.id] = ['', '', ''];
+    });
+    setAnswersP3(initP3);
+    setAnswersP4({});
+    setSecondsLeft(45 * 60);
+    setIsTimerRunning(true);
+    setIsSubmitted(false);
+    setShowCorrectionDetail(false);
+    setCurrentPage(1);
+  }, [data]);
 
   // Gestion du chronomètre
   useEffect(() => {
@@ -322,7 +528,7 @@ export default function DevoirComplet() {
   const calculateScores = () => {
     // Score Ex 1 (Problème /8) : basé sur la présence de rédaction et concepts
     let scoreP1 = 0;
-    EXERCICE_1_PROBLEM.questions.forEach((q) => {
+    exercice1.questions.forEach((q) => {
       const text = (answersP1[q.id] || []).join(' ').trim();
       if (text.length >= 60) scoreP1 += q.points;
       else if (text.length >= 25) scoreP1 += Math.round((q.points * 0.7) * 2) / 2;
@@ -331,7 +537,7 @@ export default function DevoirComplet() {
 
     // Score Ex 2 (QCM /4)
     let scoreP2 = 0;
-    EXERCICE_2_QCM.questions.forEach((q) => {
+    exercice2.questions.forEach((q) => {
       if (answersP2[q.id] === q.correctIndex) {
         scoreP2 += q.points;
       }
@@ -339,7 +545,7 @@ export default function DevoirComplet() {
 
     // Score Ex 3 (Questions écrites /4)
     let scoreP3 = 0;
-    EXERCICE_3_QUESTIONS.questions.forEach((q) => {
+    exercice3.questions.forEach((q) => {
       const text = (answersP3[q.id] || []).join(' ').trim();
       if (text.length >= 50) scoreP3 += q.points;
       else if (text.length >= 20) scoreP3 += 1.5;
@@ -348,7 +554,7 @@ export default function DevoirComplet() {
 
     // Score Ex 4 (Vrai/Faux /4)
     let scoreP4 = 0;
-    EXERCICE_4_VF.questions.forEach((q) => {
+    exercice4.questions.forEach((q) => {
       if (answersP4[q.id] === q.correctValue) {
         scoreP4 += q.points;
       }
@@ -377,9 +583,17 @@ export default function DevoirComplet() {
   // Réinitialisation de l'examen
   const handleResetExam = () => {
     if (window.confirm("Voulez-vous recommencer l'épreuve à zéro ? Vos réponses seront effacées.")) {
-      setAnswersP1({ p1_q1: ['', '', ''], p1_q2: ['', '', '', ''], p1_q3: ['', '', ''] });
+      const initP1: Record<string, string[]> = {};
+      exercice1.questions.forEach((q) => {
+        initP1[q.id] = ['', '', ''];
+      });
+      setAnswersP1(initP1);
       setAnswersP2({});
-      setAnswersP3({ p3_q1: ['', '', ''], p3_q2: ['', '', ''] });
+      const initP3: Record<string, string[]> = {};
+      exercice3.questions.forEach((q) => {
+        initP3[q.id] = ['', '', ''];
+      });
+      setAnswersP3(initP3);
       setAnswersP4({});
       setSecondsLeft(45 * 60);
       setIsTimerRunning(true);
@@ -543,13 +757,13 @@ export default function DevoirComplet() {
               {/* Gauche : DKD School Numérique */}
               <div className="text-left space-y-0.5">
                 <h2 className="font-serif font-black text-sm sm:text-base tracking-wide text-stone-900 uppercase">
-                  {EXAM_HEADER.institution}
+                  {examHeader.institution}
                 </h2>
                 <p className="text-[10px] sm:text-[11px] font-serif text-stone-600 tracking-wider uppercase">
-                  {EXAM_HEADER.sousTitre}
+                  {examHeader.sousTitre}
                 </p>
                 <p className="text-[11px] font-serif font-bold text-stone-800">
-                  {EXAM_HEADER.duree}
+                  {examHeader.duree}
                 </p>
               </div>
 
@@ -563,7 +777,7 @@ export default function DevoirComplet() {
             <div className="text-center py-1 sm:py-2">
               <div className="inline-block border-2 border-stone-900 px-6 sm:px-10 py-2">
                 <h1 className="text-base sm:text-xl font-serif font-black tracking-widest text-stone-900 uppercase">
-                  {EXAM_HEADER.matiere}
+                  {examHeader.matiere}
                 </h1>
               </div>
             </div>
@@ -571,14 +785,14 @@ export default function DevoirComplet() {
             {/* Consignes officielles et règle d'évaluation */}
             <div className="text-center space-y-1.5 pt-0.5">
               <p className="text-[11px] sm:text-xs font-serif italic text-stone-700">
-                {EXAM_HEADER.mention}
+                {examHeader.mention}
               </p>
               <p className="text-[10px] sm:text-[11px] font-serif italic text-stone-600">
-                {EXAM_HEADER.calculatrice} • Barème officiel sur {EXAM_HEADER.baremeTotal} points.
+                {examHeader.calculatrice} • Barème officiel sur {examHeader.baremeTotal} points.
               </p>
               <div className="inline-block bg-amber-50 border border-amber-200 rounded-md px-3 py-1 mt-1 text-center">
                 <p className="text-[10px] sm:text-[11px] font-serif font-bold text-amber-900">
-                  Consigne stricte : après l'heure écoulée (45 min), le sujet sera pris et soumis automatiquement pour la correction.
+                  Consigne stricte : après l'heure écoulée ({examHeader.duree}), le sujet sera pris et soumis automatiquement pour la correction.
                 </p>
               </div>
             </div>
@@ -595,7 +809,7 @@ export default function DevoirComplet() {
               <div id="exam-page-1" className="space-y-6">
                 <div className="border-b border-stone-300 pb-2">
                   <div className="inline-block border border-stone-900 px-3 py-1 text-xs sm:text-sm font-serif font-extrabold uppercase tracking-wider text-stone-900">
-                    {EXERCICE_1_PROBLEM.titre}
+                    {exercice1.titre}
                   </div>
                 </div>
 
@@ -605,7 +819,7 @@ export default function DevoirComplet() {
                     Énoncé de la situation :
                   </span>
                   <p className="whitespace-pre-line text-stone-800">
-                    {EXERCICE_1_PROBLEM.enonce}
+                    {exercice1.enonce}
                   </p>
                 </div>
 
@@ -615,7 +829,7 @@ export default function DevoirComplet() {
                     Questions à traiter :
                   </span>
                   <ol className="space-y-3 pl-2">
-                    {EXERCICE_1_PROBLEM.questions.map((q) => (
+                    {exercice1.questions.map((q) => (
                       <li key={q.id} className="text-xs sm:text-sm font-serif text-stone-900 flex items-start gap-2">
                         <span className="font-bold">{q.number}</span>
                         <div className="flex-1">
@@ -638,7 +852,7 @@ export default function DevoirComplet() {
                     </span>
                   </div>
 
-                  {EXERCICE_1_PROBLEM.questions.map((q) => {
+                  {exercice1.questions.map((q) => {
                     const lines = answersP1[q.id] || ['', '', ''];
 
                     return (
@@ -712,15 +926,15 @@ export default function DevoirComplet() {
               <div id="exam-page-2" className="space-y-6">
                 <div className="border-b border-stone-300 pb-2">
                   <div className="inline-block border border-stone-900 px-3 py-1 text-xs sm:text-sm font-serif font-extrabold uppercase tracking-wider text-stone-900">
-                    {EXERCICE_2_QCM.titre} ({EXERCICE_2_QCM.points} points)
+                    {exercice2.titre} ({exercice2.points} points)
                   </div>
                   <p className="text-xs font-serif italic text-stone-600 mt-2">
-                    {EXERCICE_2_QCM.consigne}
+                    {exercice2.consigne}
                   </p>
                 </div>
 
                 <div className="space-y-8">
-                  {EXERCICE_2_QCM.questions.map((q) => {
+                  {exercice2.questions.map((q) => {
                     const selectedIdx = answersP2[q.id];
 
                     return (
@@ -785,15 +999,15 @@ export default function DevoirComplet() {
               <div id="exam-page-3" className="space-y-6">
                 <div className="border-b border-stone-300 pb-2">
                   <div className="inline-block border border-stone-900 px-3 py-1 text-xs sm:text-sm font-serif font-extrabold uppercase tracking-wider text-stone-900">
-                    {EXERCICE_3_QUESTIONS.titre} ({EXERCICE_3_QUESTIONS.points} points)
+                    {exercice3.titre} ({exercice3.points} points)
                   </div>
                   <p className="text-xs font-serif italic text-stone-600 mt-2">
-                    {EXERCICE_3_QUESTIONS.consigne}
+                    {exercice3.consigne}
                   </p>
                 </div>
 
                 <div className="space-y-10">
-                  {EXERCICE_3_QUESTIONS.questions.map((q) => {
+                  {exercice3.questions.map((q) => {
                     const lines = answersP3[q.id] || ['', '', ''];
 
                     return (
@@ -864,15 +1078,15 @@ export default function DevoirComplet() {
               <div id="exam-page-4" className="space-y-6">
                 <div className="border-b border-stone-300 pb-2">
                   <div className="inline-block border border-stone-900 px-3 py-1 text-xs sm:text-sm font-serif font-extrabold uppercase tracking-wider text-stone-900">
-                    {EXERCICE_4_VF.titre} ({EXERCICE_4_VF.points} points)
+                    {exercice4.titre} ({exercice4.points} points)
                   </div>
                   <p className="text-xs font-serif italic text-stone-600 mt-2">
-                    {EXERCICE_4_VF.consigne}
+                    {exercice4.consigne}
                   </p>
                 </div>
 
                 <div className="space-y-6">
-                  {EXERCICE_4_VF.questions.map((q) => {
+                  {exercice4.questions.map((q) => {
                     const val = answersP4[q.id];
 
                     return (

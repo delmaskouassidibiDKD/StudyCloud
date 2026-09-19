@@ -1,16 +1,78 @@
 import { useState } from 'react';
 import { Printer, Download, ZoomIn, ZoomOut, RotateCcw, Check } from 'lucide-react';
 
-export default function Pdf() {
+function normalizePdfPages(data: any, title?: string) {
+  if (!data || typeof data !== 'object') return null;
+
+  const docTitle = data.title || title || "DOCUMENT OFFICIEL D'ÉTUDE";
+  const docSubtitle = data.subtitle || data.subject || "Support de cours et synthèse officielle";
+  const objective = data.objective || data.overview || data.description || "Comprendre, synthétiser et maîtriser l'ensemble des concepts abordés.";
+
+  const pages: Array<{ pageNumber: number; title: string; sections: Array<{ heading: string; body: string; points?: string[] }> }> = [];
+
+  if (Array.isArray(data.pages) && data.pages.length > 0) {
+    data.pages.forEach((p: any, idx: number) => {
+      pages.push({
+        pageNumber: idx + 2,
+        title: p.title || p.heading || `Partie ${idx + 1}`,
+        sections: Array.isArray(p.sections)
+          ? p.sections
+          : [{ heading: p.heading || p.title || `Chapitre ${idx + 1}`, body: p.body || p.content || (Array.isArray(p.content) ? p.content.join('\n\n') : '') }]
+      });
+    });
+  } else if (Array.isArray(data.sections) && data.sections.length > 0) {
+    const chunkSize = 2;
+    for (let i = 0; i < data.sections.length; i += chunkSize) {
+      const chunk = data.sections.slice(i, i + chunkSize);
+      pages.push({
+        pageNumber: pages.length + 2,
+        title: chunk.map((c: any) => c.heading || c.title).filter(Boolean).join(' • ') || `Partie ${pages.length + 1}`,
+        sections: chunk.map((c: any) => ({
+          heading: c.heading || c.title || 'Section',
+          body: c.body || c.content || '',
+          points: Array.isArray(c.points) ? c.points : (Array.isArray(c.bulletPoints) ? c.bulletPoints : undefined)
+        }))
+      });
+    }
+  }
+
+  if (pages.length === 0) return null;
+
+  return {
+    docTitle,
+    docSubtitle,
+    objective,
+    pages,
+    totalPages: pages.length + 1
+  };
+}
+
+export default function Pdf({ data, title }: { data?: any; title?: string }) {
   const [zoomLevel, setZoomLevel] = useState(100);
   const [downloaded, setDownloaded] = useState(false);
+
+  const dynamicDoc = normalizePdfPages(data, title);
 
   const handlePrint = () => {
     window.print();
   };
 
   const handleDownload = () => {
-    const textContent = `================================================================================
+    let textContent = '';
+    if (dynamicDoc) {
+      textContent = `================================================================================\n${dynamicDoc.docTitle.toUpperCase()}\n${dynamicDoc.docSubtitle}\n================================================================================\n\nOBJECTIF :\n${dynamicDoc.objective}\n\n`;
+      dynamicDoc.pages.forEach((p) => {
+        textContent += `--------------------------------------------------------------------------------\nPAGE ${p.pageNumber} — ${p.title}\n--------------------------------------------------------------------------------\n`;
+        p.sections.forEach((s) => {
+          textContent += `\n[ ${s.heading} ]\n${s.body}\n`;
+          if (s.points && s.points.length > 0) {
+            s.points.forEach((pt) => { textContent += `  • ${pt}\n`; });
+          }
+        });
+        textContent += '\n';
+      });
+    } else {
+      textContent = `================================================================================
 ÉNERGIE SOLAIRE PHOTOVOLTAÏQUE — MANUEL POUR TECHNICIENS
 SUPPORT APPRENANT — DOCUMENT OFFICIEL DE FORMATION
 Édité par les Drs TANOE & OYEDELE
@@ -95,12 +157,13 @@ PROCÉDURE CHRONOLOGIQUE DE MISE EN SERVICE (6 ÉTAPES) :
 
 [Fin du document officiel - Édition 2026]
 `;
+    }
 
     const blob = new Blob([textContent], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.download = 'Manuel_Technicien_Energie_Solaire_PV.txt';
+    link.download = dynamicDoc ? `${dynamicDoc.docTitle.replace(/[^a-zA-Z0-9]/g, '_')}.txt` : 'Manuel_Technicien_Energie_Solaire_PV.txt';
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -188,7 +251,7 @@ PROCÉDURE CHRONOLOGIQUE DE MISE EN SERVICE (6 ÉTAPES) :
             id="pdf-total-pages-badge"
             className="inline-flex items-center px-2.5 py-1.5 rounded-lg bg-stone-800 border border-stone-700 text-stone-300 text-xs font-medium shrink-0 select-none"
           >
-            5 pages
+            {dynamicDoc ? `${dynamicDoc.totalPages} pages` : '5 pages'}
           </div>
         </div>
       </div>
@@ -207,14 +270,144 @@ PROCÉDURE CHRONOLOGIQUE DE MISE EN SERVICE (6 ÉTAPES) :
         }}
         className="w-full max-w-3xl mx-auto px-3 sm:px-6 pt-6 space-y-12"
       >
-        {/* ============================================================ */}
-        {/* PAGE 1 : PAGE DE GARDE / COUVERTURE OFFICIELLE               */}
-        {/* ============================================================ */}
-        <article
-          id="pdf-page-1"
-          className="pdf-page relative bg-white w-full shadow-2xl border border-stone-300 rounded-sm mx-auto p-6 sm:p-10 md:p-12 flex flex-col justify-between text-stone-900 select-text"
-          style={{ minHeight: '960px' }}
-        >
+        {dynamicDoc ? (
+          <>
+            {/* PAGE 1 : COUVERTURE OFFICIELLE */}
+            <article
+              id="pdf-page-1"
+              className="pdf-page relative bg-white w-full shadow-2xl border border-stone-300 rounded-sm mx-auto p-6 sm:p-10 md:p-12 flex flex-col justify-between text-stone-900 select-text"
+              style={{ minHeight: '960px' }}
+            >
+              <header className="w-full flex items-center justify-between border-b border-stone-200 pb-4">
+                <div className="flex items-center gap-2">
+                  <div className="w-8 h-8 rounded bg-sky-700 flex items-center justify-center text-white font-black text-xs shadow-xs">
+                    DKD
+                  </div>
+                  <div>
+                    <span className="text-xs font-black text-stone-900 block leading-tight">StudyCloud</span>
+                    <span className="text-[9px] text-stone-500 block">Plateforme Universitaire</span>
+                  </div>
+                </div>
+                <div className="flex flex-col items-center">
+                  <span className="text-xs font-bold text-stone-700 uppercase tracking-wider">Édition Numérique</span>
+                  <span className="text-[8px] font-semibold text-stone-500">Document Certifié</span>
+                </div>
+                <div className="flex flex-col items-end">
+                  <span className="text-base font-black tracking-wider text-orange-600">STUDY</span>
+                  <span className="text-[8px] font-bold text-stone-500 uppercase tracking-wider">CLOUD</span>
+                </div>
+              </header>
+
+              <div className="my-auto py-8 space-y-8 text-center">
+                <div className="space-y-3">
+                  <span className="inline-block px-4 py-1 rounded-full bg-orange-100 text-orange-800 border border-orange-200 text-xs font-bold uppercase tracking-wider">
+                    DOCUMENT D'ÉTUDE OFFICIEL
+                  </span>
+                  <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-stone-900 tracking-tight uppercase font-serif">
+                    {dynamicDoc.docTitle}
+                  </h1>
+                  <p className="text-base sm:text-lg font-bold text-sky-800">
+                    {dynamicDoc.docSubtitle}
+                  </p>
+                </div>
+
+                <div className="w-full text-left bg-sky-50/90 border border-sky-200 rounded-xl p-5 space-y-2 max-w-lg mx-auto shadow-xs">
+                  <span className="text-xs font-black text-sky-950 uppercase tracking-wider block">
+                    OBJECTIF PÉDAGOGIQUE DU DOCUMENT :
+                  </span>
+                  <p className="text-xs sm:text-sm text-stone-800 leading-relaxed font-medium">
+                    {dynamicDoc.objective}
+                  </p>
+                </div>
+
+                <div className="w-full max-w-sm mx-auto space-y-2 text-left text-xs sm:text-sm text-stone-700 pt-4">
+                  <div className="flex items-end gap-2">
+                    <span className="font-bold text-stone-900 shrink-0">Apprenant :</span>
+                    <div className="grow border-b border-stone-400 pb-0.5 text-stone-500 italic text-xs">
+                      Espace de Travail Personnel
+                    </div>
+                  </div>
+                  <div className="flex items-end gap-2">
+                    <span className="font-bold text-stone-900 shrink-0">Année Académique :</span>
+                    <div className="grow border-b border-stone-400 pb-0.5 text-stone-600 font-mono text-xs">
+                      {new Date().getFullYear()}
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <footer className="w-full pt-3 border-t border-stone-300 flex items-center justify-between text-[10px] sm:text-xs text-stone-500">
+                <span className="truncate">Document certifié par StudyCloud</span>
+                <span className="font-bold font-mono text-stone-900 ml-2">1 / {dynamicDoc.totalPages}</span>
+              </footer>
+            </article>
+
+            {/* PAGES SUIVANTES DYNAMIQUES */}
+            {dynamicDoc.pages.map((p) => (
+              <article
+                key={p.pageNumber}
+                id={`pdf-page-${p.pageNumber}`}
+                className="pdf-page relative bg-white w-full shadow-2xl border border-stone-300 rounded-sm mx-auto p-6 sm:p-10 md:p-12 flex flex-col justify-between text-stone-900 select-text"
+                style={{ minHeight: '960px' }}
+              >
+                <header className="w-full flex items-center justify-between border-b border-stone-200 pb-3">
+                  <div className="flex items-center gap-1.5">
+                    <div className="w-6 h-6 rounded bg-sky-700 flex items-center justify-center text-white font-bold text-[10px]">
+                      SC
+                    </div>
+                    <span className="text-xs font-bold text-stone-800 truncate max-w-[250px]">{dynamicDoc.docTitle}</span>
+                  </div>
+                  <span className="text-xs font-bold text-orange-600 uppercase tracking-wider">Page {p.pageNumber}</span>
+                </header>
+
+                <div className="my-auto py-6 space-y-6">
+                  <div className="border-b-2 border-stone-900 pb-2">
+                    <h2 className="text-xl sm:text-2xl font-black text-stone-950 uppercase tracking-tight font-serif">
+                      {p.title}
+                    </h2>
+                  </div>
+
+                  <div className="space-y-5 text-xs sm:text-sm">
+                    {p.sections.map((sec, sIdx) => (
+                      <div key={sIdx} className="p-4 bg-stone-50 border border-stone-200 rounded-lg space-y-2">
+                        <h3 className="font-bold text-stone-900 text-sm flex items-center gap-2">
+                          <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
+                          {sec.heading}
+                        </h3>
+                        <p className="text-stone-700 leading-relaxed whitespace-pre-line">
+                          {sec.body}
+                        </p>
+                        {sec.points && sec.points.length > 0 && (
+                          <ul className="space-y-1.5 pl-4 pt-1">
+                            {sec.points.map((pt, ptIdx) => (
+                              <li key={ptIdx} className="text-stone-700 list-disc">
+                                {pt}
+                              </li>
+                            ))}
+                          </ul>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                </div>
+
+                <footer className="w-full pt-3 border-t border-stone-300 flex items-center justify-between text-[10px] sm:text-xs text-stone-500">
+                  <span className="truncate">{dynamicDoc.docTitle} • Page {p.pageNumber}</span>
+                  <span className="font-bold font-mono text-stone-900 ml-2">{p.pageNumber} / {dynamicDoc.totalPages}</span>
+                </footer>
+              </article>
+            ))}
+          </>
+        ) : (
+          <>
+            {/* ============================================================ */}
+            {/* PAGE 1 : PAGE DE GARDE / COUVERTURE OFFICIELLE               */}
+            {/* ============================================================ */}
+            <article
+              id="pdf-page-1"
+              className="pdf-page relative bg-white w-full shadow-2xl border border-stone-300 rounded-sm mx-auto p-6 sm:p-10 md:p-12 flex flex-col justify-between text-stone-900 select-text"
+              style={{ minHeight: '960px' }}
+            >
           {/* En-tête Logos Institutionnels */}
           <header className="w-full flex items-center justify-between border-b border-stone-200 pb-4">
             <div className="flex items-center gap-2">
@@ -743,7 +936,9 @@ PROCÉDURE CHRONOLOGIQUE DE MISE EN SERVICE (6 ÉTAPES) :
             <span className="font-bold font-mono text-stone-900 ml-2">5</span>
           </footer>
         </article>
-      </main>
-    </div>
+      </>
+    )}
+  </main>
+</div>
   );
 }

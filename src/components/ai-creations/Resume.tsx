@@ -1,11 +1,7 @@
-import { useState } from 'react';
+import React, { useState, useMemo } from 'react';
 import { Copy, Check, Download, FileText, Clock, BookOpen, BrainCircuit, Calendar, Layers, Lightbulb, CheckCircle2 } from 'lucide-react';
 
-export default function Resume() {
-  const [copied, setCopied] = useState(false);
-  const [downloaded, setDownloaded] = useState(false);
-
-  const fullText = `DOCUMENT DE SYNTHÈSE
+const DEFAULT_FULL_TEXT = `DOCUMENT DE SYNTHÈSE
 MÉTHODES COGNITIVES D'EXCELLENCE & STRATÉGIES D'APPRENTISSAGE
 Temps de lecture : ~ 4 min | Référence méthodologique
 
@@ -70,6 +66,57 @@ Le cerveau traite et stocke l'information via deux canaux complémentaires : le 
 Théorisée par le Pr. Robert Bjork, la règle d'or de l'apprentissage est la suivante :
 « Si la session de travail vous semble fluide, facile et sans effort, l'apprentissage réel est minime. C'est l'effort mesuré fourni pour chercher, relier et extraire l'information qui crée un ancrage neuronal durable. »
 `;
+
+export default function Resume({ data, title, sourceFileName }: { data?: any; title?: string; sourceFileName?: string }) {
+  const [copied, setCopied] = useState(false);
+  const [downloaded, setDownloaded] = useState(false);
+
+  const hasDynamicData = Boolean(
+    data && (
+      data.overview ||
+      data.summary ||
+      (Array.isArray(data.sections) && data.sections.length > 0) ||
+      (Array.isArray(data.keyPoints) && data.keyPoints.length > 0) ||
+      typeof data.text === 'string' ||
+      typeof data.content === 'string'
+    )
+  );
+
+  const docTitle = data?.title || title || (sourceFileName ? `Fiche de synthèse : ${sourceFileName}` : 'Méthodes Cognitives d’Excellence');
+  const docSubtitle = data?.overview || data?.summary || data?.description || (hasDynamicData ? 'Synthèse structurée et didactique des points clés de ce cours.' : 'Synthèse structurée des principes scientifiques de l\'apprentissage durable et des protocoles d\'ancrage mnésique rapide.');
+
+  const dynamicSections = useMemo(() => {
+    if (!data?.sections || !Array.isArray(data.sections)) return [];
+    return data.sections.map((sec: any, idx: number) => ({
+      number: sec.number || idx + 1,
+      heading: sec.heading || sec.title || sec.titre || `Axe clé n°${idx + 1}`,
+      body: sec.body || sec.content || sec.texte || '',
+      points: Array.isArray(sec.points) ? sec.points : (Array.isArray(sec.keyPoints) ? sec.keyPoints : (Array.isArray(sec.bulletPoints) ? sec.bulletPoints : [])),
+      protocolTitle: sec.protocolTitle || sec.highlightTitle || 'Points fondamentaux à retenir :'
+    }));
+  }, [data]);
+
+  const dynamicKeyPoints: string[] = useMemo(() => {
+    if (Array.isArray(data?.keyPoints)) return data.keyPoints;
+    if (Array.isArray(data?.pointsCles)) return data.pointsCles;
+    return [];
+  }, [data]);
+
+  const fullText = useMemo(() => {
+    if (!hasDynamicData) return DEFAULT_FULL_TEXT;
+    let out = `DOCUMENT DE SYNTHÈSE\n${docTitle.toUpperCase()}\n`;
+    if (docSubtitle) out += `\n${docSubtitle}\n`;
+    if (dynamicKeyPoints.length > 0) {
+      out += `\nPOINTS CLÉS :\n` + dynamicKeyPoints.map((p) => `• ${p}`).join('\n') + '\n';
+    }
+    dynamicSections.forEach((sec) => {
+      out += `\n=======================================================\n${sec.number}. ${sec.heading.toUpperCase()}\n=======================================================\n${sec.body}\n`;
+      if (sec.points && sec.points.length > 0) {
+        out += sec.points.map((p: string) => `  - ${p}`).join('\n') + '\n';
+      }
+    });
+    return out;
+  }, [hasDynamicData, docTitle, docSubtitle, dynamicKeyPoints, dynamicSections]);
 
   const handleCopy = () => {
     navigator.clipboard.writeText(fullText);
@@ -172,15 +219,66 @@ Théorisée par le Pr. Robert Bjork, la règle d'or de l'apprentissage est la su
           </div>
 
           <h1 className="text-2xl sm:text-3xl md:text-4xl font-extrabold text-stone-950 tracking-tight leading-tight">
-            Méthodes Cognitives d’Excellence
+            {docTitle}
           </h1>
           <p className="text-stone-600 text-sm sm:text-base leading-relaxed max-w-3xl">
-            Synthèse structurée des principes scientifiques de l'apprentissage durable et des protocoles d'ancrage mnésique rapide.
+            {docSubtitle}
           </p>
         </header>
 
-        {/* Section 1 : Rappel Actif */}
-        <section id="section-rappel-actif" className="space-y-4">
+        {/* Dynamic Key Points if available */}
+        {dynamicKeyPoints.length > 0 && (
+          <div className="p-4 sm:p-5 rounded-2xl bg-amber-500/10 border border-amber-500/30 space-y-2.5">
+            <h3 className="text-xs font-bold text-amber-600 uppercase tracking-wider flex items-center gap-1.5">
+              <Lightbulb className="w-4 h-4" /> Points clés essentiels
+            </h3>
+            <ul className="space-y-1.5 text-sm text-stone-800">
+              {dynamicKeyPoints.map((kp, kidx) => (
+                <li key={kidx} className="flex items-start gap-2">
+                  <CheckCircle2 className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+                  <span className="font-medium">{kp}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+        )}
+
+        {hasDynamicData && dynamicSections.length > 0 ? (
+          dynamicSections.map((sec, sidx) => (
+            <React.Fragment key={sidx}>
+              <section className="space-y-4">
+                <div className="flex items-center gap-3">
+                  <span className="w-8 h-8 rounded-xl bg-stone-900 text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-xs">
+                    {sec.number || sidx + 1}
+                  </span>
+                  <h2 className="text-xl sm:text-2xl font-bold text-stone-900 tracking-tight">
+                    {sec.heading}
+                  </h2>
+                </div>
+                <p className="text-stone-800 leading-relaxed text-base sm:text-lg whitespace-pre-line">
+                  {sec.body}
+                </p>
+                {sec.points && sec.points.length > 0 && (
+                  <div className="space-y-2 text-stone-700 text-sm sm:text-base leading-relaxed pl-2 border-l-2 border-stone-300">
+                    <p className="font-semibold text-stone-900">{sec.protocolTitle}</p>
+                    <ul className="space-y-2 list-none">
+                      {sec.points.map((pt: string, pidx: number) => (
+                        <li key={pidx} className="flex items-start gap-2">
+                          <CheckCircle2 className="w-4 h-4 text-stone-600 shrink-0 mt-1" />
+                          <span>{pt}</span>
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
+              </section>
+              {sidx < dynamicSections.length - 1 && <hr className="border-stone-200" />}
+            </React.Fragment>
+          ))
+        ) : (
+          <>
+            {/* Section 1 : Rappel Actif */}
+            <section id="section-rappel-actif" className="space-y-4">
           <div className="flex items-center gap-3">
             <span className="w-8 h-8 rounded-xl bg-stone-900 text-white font-bold text-sm flex items-center justify-center shrink-0 shadow-xs">
               1
@@ -343,6 +441,8 @@ Théorisée par le Pr. Robert Bjork, la règle d'or de l'apprentissage est la su
             </p>
           </div>
         </section>
+        </>
+        )}
       </article>
     </div>
   );

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, XCircle, RotateCcw, Award, ChevronRight, HelpCircle } from 'lucide-react';
 import { QuestionQCM } from './types';
@@ -42,15 +42,58 @@ const INITIAL_QUESTIONS: QuestionQCM[] = [
   }
 ];
 
-export default function Questionnaire({ data }: { data?: QuestionQCM[] | { questions?: QuestionQCM[] } }) {
-  const rawQuestions = Array.isArray(data) ? data : (data?.questions || INITIAL_QUESTIONS);
-  const questions: QuestionQCM[] = (rawQuestions && rawQuestions.length > 0) ? rawQuestions : INITIAL_QUESTIONS;
+function normalizeQuestions(input: any): QuestionQCM[] {
+  if (!input) return [];
+  const list = Array.isArray(input) ? input : (Array.isArray(input?.questions) ? input.questions : (Array.isArray(input?.data) ? input.data : []));
+  if (!Array.isArray(list) || list.length === 0) return [];
+
+  return list.map((q: any, idx: number) => {
+    const rawOptions = Array.isArray(q.options) ? q.options : (Array.isArray(q.choices) ? q.choices : (Array.isArray(q.reponses) ? q.reponses : []));
+    const cleanOptions = rawOptions.length >= 2 ? rawOptions.map(String) : [
+      q.optionA || 'Option A',
+      q.optionB || 'Option B',
+      q.optionC || 'Option C',
+      q.optionD || 'Option D'
+    ].filter(Boolean);
+
+    let corrIdx = 0;
+    if (typeof q.correctIndex === 'number') corrIdx = q.correctIndex;
+    else if (typeof q.correctAnswer === 'number') corrIdx = q.correctAnswer;
+    else if (typeof q.bonneReponse === 'number') corrIdx = q.bonneReponse;
+    else if (typeof q.correctIndex === 'string') corrIdx = parseInt(q.correctIndex, 10) || 0;
+    else if (typeof q.correctAnswer === 'string') {
+      const foundIdx = cleanOptions.findIndex((o: string) => o.trim().toLowerCase() === q.correctAnswer.trim().toLowerCase());
+      if (foundIdx !== -1) corrIdx = foundIdx;
+    }
+
+    return {
+      id: q.id || `q_${idx + 1}`,
+      question: q.question || q.texte || q.title || `Question n°${idx + 1}`,
+      options: cleanOptions.length > 0 ? cleanOptions : ['Vrai', 'Faux'],
+      correctIndex: Math.max(0, Math.min(corrIdx, (cleanOptions.length > 0 ? cleanOptions.length : 2) - 1)),
+      explanation: q.explanation || q.explication || q.justification || ''
+    };
+  });
+}
+
+export default function Questionnaire({ data }: { data?: any }) {
+  const dynamicQuestions = normalizeQuestions(data);
+  const questions: QuestionQCM[] = dynamicQuestions.length > 0 ? dynamicQuestions : INITIAL_QUESTIONS;
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
   const [showResult, setShowResult] = useState(false);
   const [score, setScore] = useState(0);
   const [isFinished, setIsFinished] = useState(false);
+
+  // Réinitialiser les réponses si un nouveau contenu est chargé
+  useEffect(() => {
+    setCurrentIndex(0);
+    setSelectedOption(null);
+    setShowResult(false);
+    setScore(0);
+    setIsFinished(false);
+  }, [data]);
 
   const currentQ = questions[currentIndex] || questions[0];
 

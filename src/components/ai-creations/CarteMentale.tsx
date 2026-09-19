@@ -702,9 +702,156 @@ function getInitialView() {
   };
 }
 
-export default function CarteMentale() {
+export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
+  if (!data) return INITIAL_NODES;
+  if (Array.isArray(data.nodes) && data.nodes.length > 0) return data.nodes;
+
+  let rootText = data.rootTitle || data.title || data.root?.text || data.root?.label || fallbackTitle || 'Carte Mentale';
+  let level1List: Array<{ text: string; children?: any[] }> = [];
+
+  if (Array.isArray(data.root?.children)) {
+    level1List = data.root.children;
+  } else if (Array.isArray(data.branches)) {
+    level1List = data.branches;
+  } else if (Array.isArray(data.concepts)) {
+    level1List = data.concepts;
+  } else if (Array.isArray(data.themes)) {
+    level1List = data.themes;
+  } else if (Array.isArray(data)) {
+    level1List = data;
+  }
+
+  if (level1List.length === 0) {
+    return INITIAL_NODES;
+  }
+
+  const result: MindNode[] = [];
+  const rootId = 'root';
+  result.push({
+    id: rootId,
+    parentId: null,
+    text: rootText,
+    x: 1220,
+    y: 640,
+    color: '#334155',
+    side: 'center',
+    isCentral: true,
+    width: Math.min(240, Math.max(160, rootText.length * 8))
+  });
+
+  const branchColors = [
+    '#0E5EBA', // Cobalt Blue
+    '#D11928', // Crimson Red
+    '#F57C00', // Amber
+    '#1E8238', // Forest Green
+    '#00AEC7', // Cyan
+    '#7B1FA2', // Purple
+    '#008EB0', // Teal
+    '#C2185B'  // Magenta
+  ];
+
+  const leftBranches: Array<{ item: any; origIdx: number }> = [];
+  const rightBranches: Array<{ item: any; origIdx: number }> = [];
+
+  level1List.forEach((item, idx) => {
+    if (idx % 2 === 0) {
+      leftBranches.push({ item, origIdx: idx });
+    } else {
+      rightBranches.push({ item, origIdx: idx });
+    }
+  });
+
+  // Position left branches
+  const leftCount = leftBranches.length;
+  const leftSpacing = Math.min(180, Math.max(90, 700 / (leftCount + 1)));
+  const leftStartY = 640 - ((leftCount - 1) * leftSpacing) / 2;
+
+  leftBranches.forEach(({ item, origIdx }, i) => {
+    const branchId = `b_l_${origIdx}`;
+    const branchText = item.text || item.title || item.label || item.name || `Branche ${origIdx + 1}`;
+    const branchY = leftStartY + i * leftSpacing;
+    const branchColor = branchColors[origIdx % branchColors.length];
+
+    result.push({
+      id: branchId,
+      parentId: rootId,
+      text: branchText,
+      x: 940,
+      y: branchY,
+      color: branchColor,
+      side: 'left',
+      width: Math.min(220, Math.max(120, branchText.length * 8))
+    });
+
+    const subList = Array.isArray(item.children) ? item.children : (Array.isArray(item.items) ? item.items : (Array.isArray(item.subconcepts) ? item.subconcepts : []));
+    if (subList.length > 0) {
+      const subSpacing = 44;
+      const subStartY = branchY - ((subList.length - 1) * subSpacing) / 2;
+      subList.forEach((sub: any, sIdx: number) => {
+        const subText = typeof sub === 'string' ? sub : (sub.text || sub.title || sub.name || `Sous-notion ${sIdx + 1}`);
+        result.push({
+          id: `${branchId}_sub_${sIdx}`,
+          parentId: branchId,
+          text: subText,
+          x: 660,
+          y: subStartY + sIdx * subSpacing,
+          color: branchColor,
+          side: 'left',
+          width: Math.min(200, Math.max(100, subText.length * 7.5))
+        });
+      });
+    }
+  });
+
+  // Position right branches
+  const rightCount = rightBranches.length;
+  const rightSpacing = Math.min(180, Math.max(90, 700 / (rightCount + 1)));
+  const rightStartY = 640 - ((rightCount - 1) * rightSpacing) / 2;
+
+  rightBranches.forEach(({ item, origIdx }, i) => {
+    const branchId = `b_r_${origIdx}`;
+    const branchText = item.text || item.title || item.label || item.name || `Branche ${origIdx + 1}`;
+    const branchY = rightStartY + i * rightSpacing;
+    const branchColor = branchColors[origIdx % branchColors.length];
+
+    result.push({
+      id: branchId,
+      parentId: rootId,
+      text: branchText,
+      x: 1540,
+      y: branchY,
+      color: branchColor,
+      side: 'right',
+      width: Math.min(220, Math.max(120, branchText.length * 8))
+    });
+
+    const subList = Array.isArray(item.children) ? item.children : (Array.isArray(item.items) ? item.items : (Array.isArray(item.subconcepts) ? item.subconcepts : []));
+    if (subList.length > 0) {
+      const subSpacing = 44;
+      const subStartY = branchY - ((subList.length - 1) * subSpacing) / 2;
+      subList.forEach((sub: any, sIdx: number) => {
+        const subText = typeof sub === 'string' ? sub : (sub.text || sub.title || sub.name || `Sous-notion ${sIdx + 1}`);
+        result.push({
+          id: `${branchId}_sub_${sIdx}`,
+          parentId: branchId,
+          text: subText,
+          x: 1820,
+          y: subStartY + sIdx * subSpacing,
+          color: branchColor,
+          side: 'right',
+          width: Math.min(200, Math.max(100, subText.length * 7.5))
+        });
+      });
+    }
+  });
+
+  return result;
+}
+
+export default function CarteMentale({ data, title }: { data?: any; title?: string }) {
+  const dynamicNodes = useMemo(() => buildMindNodes(data, title), [data, title]);
   const initialView = useMemo(() => getInitialView(), []);
-  const [nodes, setNodes] = useState<MindNode[]>(INITIAL_NODES);
+  const [nodes, setNodes] = useState<MindNode[]>(dynamicNodes);
   const [zoom, setZoom] = useState(initialView.zoom);
   const [pan, setPan] = useState(initialView.pan);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
@@ -712,6 +859,10 @@ export default function CarteMentale() {
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [editText, setEditText] = useState('');
   const [isFullscreen, setIsFullscreen] = useState(false);
+
+  useEffect(() => {
+    setNodes(dynamicNodes);
+  }, [dynamicNodes]);
 
   const containerRef = useRef<HTMLDivElement>(null);
   const isDraggingCanvasRef = useRef(false);
