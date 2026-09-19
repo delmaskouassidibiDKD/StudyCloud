@@ -683,13 +683,27 @@ TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
         };
       } else if (isAiAutonomousCreation) {
         const p = parseOrBuildAiCreation(targetToolType, rawResponseText, mainDocName, userText);
-        if (p.content && (p.content.questions?.length > 0 || p.content.overview || p.content.root || p.content.metrics || p.content.sections)) {
+        if (p.content && (p.content.questions?.length > 0 || p.content.overview || p.content.root || p.content.metrics || p.content.sections || p.content.affirmations || p.content.cards || p.content.exercises || p.content.exercices)) {
           creationParsed = {
             title: p.title,
             content: p.content,
             toolType: targetToolType,
           };
+        } else if (isCreation) {
+          creationParsed = {
+            title: p.title || `${targetToolType} : ${mainDocName}`,
+            content: p.content || null,
+            toolType: targetToolType,
+          };
         }
+      }
+
+      if (isCreation && !creationParsed) {
+        creationParsed = {
+          title: `${targetToolType} : ${mainDocName}`,
+          content: null,
+          toolType: targetToolType,
+        };
       }
 
       if (creationParsed && creationParsed.content) {
@@ -800,6 +814,7 @@ ${effectiveToolType === 'quiz' && newCreation.content?.questions?.length ? `📝
       console.error('[AssistantChat] Erreur appel IA:', err);
       setIsWaitingServer(false);
       setIsTyping(false);
+      window.dispatchEvent(new CustomEvent('ai-creation-error', { detail: { error: err.message } }));
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
         text: `⚠️ Erreur IA : ${err.message || 'Impossible de joindre le serveur'}.`,

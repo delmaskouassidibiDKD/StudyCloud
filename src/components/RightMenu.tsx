@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import {
   Maximize,
   Minimize,
@@ -19,7 +19,8 @@ import {
   ClipboardCheck,
   Sparkles
 } from 'lucide-react';
-import { StudyCloudAPI } from '../services/api';
+import { StudyCloudAPI, sendChatMessageToAi } from '../services/api';
+import { extractDocumentText } from '../services/documentTextExtractor';
 import { DnaLogo } from './DnaLogo';
 import { AiCreation, ModuleId } from './ai-creations/types';
 import Questionnaire from './ai-creations/Questionnaire';
@@ -200,6 +201,7 @@ export function RightMenu({
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingInfo, setGeneratingInfo] = useState<{ type: string; title: string; subtitle?: string } | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
+  const abortControllerRef = useRef<AbortController | null>(null);
   
   const [historyItems, setHistoryItems] = useState<any[]>(() => {
     try {
@@ -326,14 +328,21 @@ export function RightMenu({
       }
     };
 
+    const handleError = () => {
+      setIsGenerating(false);
+      setGeneratingInfo(null);
+    };
+
     window.addEventListener('ai-creation-start', handleStart as any);
     window.addEventListener('ai-creation-ready', handleReady as any);
     window.addEventListener('ai-creation-update', handleUpdate as any);
+    window.addEventListener('ai-creation-error', handleError as any);
 
     return () => {
       window.removeEventListener('ai-creation-start', handleStart as any);
       window.removeEventListener('ai-creation-ready', handleReady as any);
       window.removeEventListener('ai-creation-update', handleUpdate as any);
+      window.removeEventListener('ai-creation-error', handleError as any);
     };
   }, [activeCreation]);
 
@@ -372,28 +381,141 @@ export function RightMenu({
   };
 
   // Clic 1-clic direct sur l'un des 12 boutons officiels de création
-  const handleProposalClick = (mod: ModuleDefinition) => {
+  const handleProposalClick = async (mod: ModuleDefinition) => {
     if (isGenerating) return;
 
-    const docName = activePreviewItem?.name || 'Document sélectionné';
+    const docName = activePreviewItem?.name || activePreviewItem?.title || 'Document sélectionné';
     setIsGenerating(true);
     setGeneratingInfo({
       type: mod.id,
       title: mod.label,
-      subtitle: `Génération directe pour "${docName}"...`,
+      subtitle: `Conception de "${mod.label}" en cours...`,
     });
     setActiveTabModule(mod.id);
 
-    // Déclenche l'événement global avec requested_type direct pour Gemini
-    const promptText = `Génère ${mod.label} à partir du document "${docName}"`;
-    window.dispatchEvent(
-      new CustomEvent('auto-prompt', {
-        detail: {
-          prompt: promptText,
-          requested_type: mod.id,
-        },
-      })
-    );
+    // Contrôleur d'annulation avec délai de sécurité automatique (25 secondes)
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+    const timeoutId = setTimeout(() => {
+      controller.abort();
+    }, 25000);
+
+    try {
+      // 1. Extraction éventuelle du texte du document sélectionné
+      let extractedDocText = '';
+      if (activePreviewItem) {
+        try {
+          extractedDocText = await extractDocumentText(activePreviewItem);
+        } catch {}
+      }
+
+      const promptText = `Conçois un ${mod.label} complet et structuré basé sur le document d'étude "${docName}".`;
+
+      // 2. Appel direct et prioritaire au Worker IA
+      const res = await sendChatMessageToAi({
+        messages: [
+          { role: 'user', content: promptText }
+        ],
+        prompt: promptText,
+        message: promptText,
+        requested_type: mod.id,
+        attachedFileName: docName,
+        attachedFileContent: extractedDocText,
+        file_content: extractedDocText,
+        userId: localStorage.getItem('unifolder_user_id') || 'default-user',
+        sessionId: 'creation-' + Date.now(),
+        conversationId: 'creation-' + Date.now(),
+      });
+
+      clearTimeout(timeoutId);
+
+      const targetType = (res.creation_type as ModuleId) || mod.id;
+      const newCreation: AiCreation = {
+        id: 'ai-' + Date.now(),
+        userId: localStorage.getItem('unifolder_user_id') || 'default-user',
+        fileId: activePreviewItem?.id,
+        toolType: targetType,
+        title: res.creation_title || `${mod.label} : ${docName}`,
+        content: res.creation_data || null,
+        sourceFileName: docName,
+        createdAt: new Date().toISOString(),
+        version: 1,
+      };
+
+      setActiveCreation(newCreation);
+      setActiveTabModule(targetType);
+      setIsGenerating(false);
+      setGeneratingInfo(null);
+      abortControllerRef.current = null;
+
+      // Sauvegarde dans l'historique local et D1
+      setHistoryItems((prev: any[]) => {
+        const updated = [
+          {
+            id: newCreation.id,
+            toolType: newCreation.toolType,
+            title: newCreation.title,
+            dateStr: "À l'instant",
+            colorClass: 'text-orange-300',
+            desc: `Généré pour "${docName}"`,
+            pinned: false,
+            contentJson: newCreation.content,
+            sourceFileName: docName,
+          },
+          ...prev.filter(p => p.id !== newCreation.id),
+        ];
+        saveHistory(updated);
+        return updated;
+      });
+
+      try {
+        StudyCloudAPI.saveAiContent({
+          id: newCreation.id,
+          userId: localStorage.getItem('unifolder_user_id') || 'default-user',
+          fileId: newCreation.fileId || null,
+          toolType: newCreation.toolType,
+          title: newCreation.title,
+          contentJson: newCreation.content,
+          sourceFileName: newCreation.sourceFileName || '',
+          isPinned: false,
+        }).catch(() => {});
+      } catch {}
+
+      // Avertir l'assistant chat si ouvert
+      window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
+
+    } catch (err: any) {
+      clearTimeout(timeoutId);
+      console.warn('[RightMenu] Erreur ou délai dépassé lors de la création IA:', err);
+
+      // Si l'utilisateur a annulé manuellement
+      if (err.name === 'AbortError' && !abortControllerRef.current) {
+        setIsGenerating(false);
+        setGeneratingInfo(null);
+        return;
+      }
+
+      // En cas de délai dépassé ou erreur réseau, afficher immédiatement le module avec son modèle interactif
+      const fallbackCreation: AiCreation = {
+        id: 'ai-' + Date.now(),
+        userId: localStorage.getItem('unifolder_user_id') || 'default-user',
+        fileId: activePreviewItem?.id,
+        toolType: mod.id,
+        title: `${mod.label} : ${docName}`,
+        content: null,
+        sourceFileName: docName,
+        createdAt: new Date().toISOString(),
+        version: 1,
+      };
+
+      setActiveCreation(fallbackCreation);
+      setActiveTabModule(mod.id);
+      setIsGenerating(false);
+      setGeneratingInfo(null);
+      abortControllerRef.current = null;
+
+      window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: fallbackCreation } }));
+    }
   };
 
   // Rendu du composant correspondant au module actif
@@ -549,6 +671,21 @@ export function RightMenu({
               <span className="text-[11px] text-zinc-400 font-medium">
                 {generatingInfo?.subtitle || "Structuration des données en temps réel"}
               </span>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (abortControllerRef.current) {
+                    abortControllerRef.current.abort();
+                    abortControllerRef.current = null;
+                  }
+                  setIsGenerating(false);
+                  setGeneratingInfo(null);
+                }}
+                className="mt-4 px-4 py-1.5 rounded-xl text-xs font-semibold text-zinc-400 hover:text-white bg-[#22252e] hover:bg-[#2a2f3a] border border-zinc-700/60 transition-all cursor-pointer select-none active:scale-95"
+              >
+                Annuler la création
+              </button>
             </div>
           </div>
         ) : activeCreation ? (
