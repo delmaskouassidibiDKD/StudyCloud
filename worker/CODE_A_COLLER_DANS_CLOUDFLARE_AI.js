@@ -14,7 +14,7 @@
 // ============================================================================
 
 export default {
-  async fetch(request, env) {
+  async fetch(request, env, ctx) {
     const corsHeaders = {
       "Access-Control-Allow-Origin": "*",
       "Access-Control-Allow-Methods": "GET, POST, PUT, DELETE, OPTIONS",
@@ -43,7 +43,7 @@ export default {
     const db = env?.MON_D1_STUDYCLOUD || env?.["MON_D1-STUDYCLOUD"] || env?.DB;
     const bucket = env?.MON_R2_STUDYCLOUD || env?.["MON_R2-STUDYCLOUD"] || env?.BUCKET;
 
-    // Initialisation automatique des tables D1 pour le Worker IA
+    // Initialisation automatique des tables D1 pour le Worker IA (Isolation multi-utilisateurs)
     if (db && !globalThis._aiSchemaInit) {
       try {
         await db.batch([
@@ -51,7 +51,8 @@ export default {
           db.prepare(`CREATE TABLE IF NOT EXISTS messages (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, role TEXT NOT NULL, content TEXT NOT NULL, metadata TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`),
           db.prepare(`CREATE TABLE IF NOT EXISTS ai_creations (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, message_id TEXT, type TEXT NOT NULL, title TEXT, content TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`),
           db.prepare(`CREATE TABLE IF NOT EXISTS ai_generated_contents (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, file_id TEXT, tool_type TEXT NOT NULL, title TEXT NOT NULL, content_json TEXT NOT NULL DEFAULT '{}', source_file_name TEXT, is_pinned INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`),
-          db.prepare(`CREATE TABLE IF NOT EXISTS user_ai_workspace (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT NOT NULL, role TEXT NOT NULL, message_text TEXT NOT NULL, reaction TEXT DEFAULT NULL, attached_file_id TEXT, attached_file_name TEXT, attached_file_r2_key TEXT, attached_file_content TEXT, user_notes TEXT, is_pinned INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`)
+          db.prepare(`CREATE TABLE IF NOT EXISTS user_ai_workspace (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT NOT NULL, role TEXT NOT NULL, message_text TEXT NOT NULL, reaction TEXT DEFAULT NULL, attached_file_id TEXT, attached_file_name TEXT, attached_file_r2_key TEXT, attached_file_content TEXT, user_notes TEXT, is_pinned INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`),
+          db.prepare(`CREATE TABLE IF NOT EXISTS ai_tasks (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT, task_type TEXT NOT NULL, status TEXT NOT NULL, prompt TEXT, result_json TEXT, error_message TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`)
         ]);
         globalThis._aiSchemaInit = true;
       } catch (schemaErr) {
@@ -344,149 +345,106 @@ export default {
       });
     }
 
-    // ========================================================================
-    // POINT D'ENTRÉE PRINCIPAL DE L'IA : /api/ai/chat
-    // ========================================================================
-    if (request.method !== "POST") {
-      return new Response(JSON.stringify({ error: "Méthode non autorisée." }), {
-        status: 405,
-        headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
-      });
+    // Helper : formate et parse la décision et les données de création
+    function parseAiDecision(rawText, defaultType) {
+      let decision = "chat";
+      let chat_message = rawText;
+      let creation_type = null;
+      let creation_title = null;
+      let creation_data = null;
+
+      if (typeof rawText !== "string") {
+        rawText = String(rawText || "");
+      }
+
+      const jsonBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
+      const tagMatch = rawText.match(/<creation[^>]*>([\s\S]*?)<\/creation>/i);
+      const jsonRawCandidate = tagMatch ? tagMatch[1].trim() : (jsonBlockMatch ? jsonBlockMatch[1].trim() : (rawText.match(/(\{[\s\S]*\})/)?.[1]?.trim() || ""));
+
+      if (jsonRawCandidate) {
+        try {
+          let sanitized = jsonRawCandidate.replace(/,\s*([\]}])/g, '$1');
+          let parsed = JSON.parse(sanitized);
+
+          if (parsed && typeof parsed === "object") {
+            if (parsed.decision === "creation" || parsed.mode === "creation" || parsed.creation_type || parsed.creation_data) {
+              decision = "creation";
+              chat_message = parsed.chat_message || parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ J'ai généré votre création directement dans votre espace Création à droite !");
+              creation_type = parsed.creation_type || defaultType || "questionnaire";
+              creation_title = parsed.creation_title || "Création IA";
+              creation_data = typeof parsed.creation_data === "string" ? (() => { try { return JSON.parse(parsed.creation_data); } catch { return parsed.creation_data; } })() : (parsed.creation_data || parsed);
+            } else if (Array.isArray(parsed.questions)) {
+              decision = "creation";
+              creation_type = defaultType || "questionnaire";
+              creation_title = parsed.title || "Questionnaire interactif";
+              creation_data = parsed;
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Voici votre questionnaire interactif préparé à droite !";
+            } else if (Array.isArray(parsed.affirmations)) {
+              decision = "creation";
+              creation_type = defaultType || "vrai-ou-faux";
+              creation_title = parsed.title || "Vrai ou Faux";
+              creation_data = parsed;
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Voici vos affirmations Vrai ou Faux prêtes à droite !";
+            } else if (Array.isArray(parsed.cards)) {
+              decision = "creation";
+              creation_type = defaultType || "carte-memoire";
+              creation_title = parsed.title || "Cartes Mémoire";
+              creation_data = parsed;
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Vos flashcards sont disponibles dans l'espace Création !";
+            } else if (parsed.root || parsed.rootTitle) {
+              decision = "creation";
+              creation_type = defaultType || "carte-mentale";
+              creation_title = parsed.rootTitle || parsed.root?.text || "Carte Mentale";
+              creation_data = parsed;
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre carte mentale est prête à droite !";
+            } else if (parsed.overview || Array.isArray(parsed.sections)) {
+              decision = "creation";
+              creation_type = defaultType || "resume";
+              creation_title = parsed.title || "Fiche de Synthèse";
+              creation_data = parsed;
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre fiche de synthèse est prête à droite !";
+            } else if (Array.isArray(parsed.exercises) || Array.isArray(parsed.exercices)) {
+              decision = "creation";
+              creation_type = defaultType || "exercices-ecrits";
+              creation_title = parsed.title || "Exercices Écrits";
+              creation_data = parsed;
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Vos exercices écrits sont prêts à droite !";
+            } else if (parsed.baremeTotal || parsed.exercice1) {
+              decision = "creation";
+              creation_type = defaultType || "devoir-complet";
+              creation_title = parsed.title || "Devoir Complet";
+              creation_data = parsed;
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre devoir complet d'examen est prêt à droite !";
+            } else if (parsed.decision === "chat" || parsed.mode === "chat") {
+              decision = "chat";
+              chat_message = parsed.chat_message || parsed.chat_response || rawText;
+            }
+          }
+        } catch {
+          // En cas d'erreur de parsing, conserver mode chat
+        }
+      }
+
+      if (defaultType && decision !== "creation") {
+        decision = "creation";
+        creation_type = defaultType;
+        creation_title = "Création IA";
+      }
+
+      return {
+        decision,
+        mode: decision,
+        chat_message: chat_message || rawText,
+        chat_response: chat_message || rawText,
+        response: chat_message || rawText,
+        creation_type,
+        creation_title,
+        creation_data
+      };
     }
 
-    try {
-      const body = await request.json().catch(() => ({}));
-      const userPrompt = body.message || body.prompt || body.text || "";
-      const conversationId = body.conversation_id || body.conversationId || body.sessionId || "default-session";
-      const requestedType = (body.requested_type || body.toolType || body.type || "").toLowerCase().trim();
-      const userId = body.userId;
-      const sessionId = body.sessionId || conversationId;
-
-      // Détection de la clé API Google Gemini
-      let geminiApiKey = env?.["StudyCloud-gemini"] ||
-        env?.["studycloud-gemini"] ||
-        env?.["STUDYCLOUD_GEMINI"] ||
-        env?.["StudyCloud_gemini"] ||
-        env?.StudyCloud_gemini ||
-        env?.GEMINI_API_KEY ||
-        env?.GOOGLE_API_KEY ||
-        body.geminiApiKey;
-
-      if (!geminiApiKey && env && typeof env === "object") {
-        for (const [k, v] of Object.entries(env)) {
-          if (typeof v === "string" && /studycloud[-_]?gemini/i.test(k) && !v.startsWith("http")) {
-            geminiApiKey = v.trim();
-            break;
-          }
-        }
-      }
-      if (typeof geminiApiKey === "string") {
-        geminiApiKey = geminiApiKey.trim();
-      }
-
-      // Helper : formate et parse la décision et les données de création
-      function parseAiDecision(rawText, defaultType) {
-        let decision = "chat";
-        let chat_message = rawText;
-        let creation_type = null;
-        let creation_title = null;
-        let creation_data = null;
-
-        if (typeof rawText !== "string") {
-          rawText = String(rawText || "");
-        }
-
-        const jsonBlockMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-        const tagMatch = rawText.match(/<creation[^>]*>([\s\S]*?)<\/creation>/i);
-        const jsonRawCandidate = tagMatch ? tagMatch[1].trim() : (jsonBlockMatch ? jsonBlockMatch[1].trim() : (rawText.match(/(\{[\s\S]*\})/)?.[1]?.trim() || ""));
-
-        if (jsonRawCandidate) {
-          try {
-            let sanitized = jsonRawCandidate.replace(/,\s*([\]}])/g, '$1');
-            let parsed = JSON.parse(sanitized);
-
-            if (parsed && typeof parsed === "object") {
-              if (parsed.decision === "creation" || parsed.mode === "creation" || parsed.creation_type || parsed.creation_data) {
-                decision = "creation";
-                chat_message = parsed.chat_message || parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ J'ai généré votre création directement dans votre espace Création à droite !");
-                creation_type = parsed.creation_type || defaultType || "questionnaire";
-                creation_title = parsed.creation_title || "Création IA";
-                creation_data = typeof parsed.creation_data === "string" ? (() => { try { return JSON.parse(parsed.creation_data); } catch { return parsed.creation_data; } })() : (parsed.creation_data || parsed);
-              } else if (Array.isArray(parsed.questions)) {
-                decision = "creation";
-                creation_type = defaultType || "questionnaire";
-                creation_title = parsed.title || "Questionnaire interactif";
-                creation_data = parsed;
-                chat_message = parsed.chat_message || parsed.chat_response || "✨ Voici votre questionnaire interactif préparé à droite !";
-              } else if (Array.isArray(parsed.affirmations)) {
-                decision = "creation";
-                creation_type = defaultType || "vrai-ou-faux";
-                creation_title = parsed.title || "Vrai ou Faux";
-                creation_data = parsed;
-                chat_message = parsed.chat_message || parsed.chat_response || "✨ Voici vos affirmations Vrai ou Faux prêtes à droite !";
-              } else if (Array.isArray(parsed.cards)) {
-                decision = "creation";
-                creation_type = defaultType || "carte-memoire";
-                creation_title = parsed.title || "Cartes Mémoire";
-                creation_data = parsed;
-                chat_message = parsed.chat_message || parsed.chat_response || "✨ Vos flashcards sont disponibles dans l'espace Création !";
-              } else if (parsed.root || parsed.rootTitle) {
-                decision = "creation";
-                creation_type = defaultType || "carte-mentale";
-                creation_title = parsed.rootTitle || parsed.root?.text || "Carte Mentale";
-                creation_data = parsed;
-                chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre carte mentale est prête à droite !";
-              } else if (parsed.overview || Array.isArray(parsed.sections)) {
-                decision = "creation";
-                creation_type = defaultType || "resume";
-                creation_title = parsed.title || "Fiche de Synthèse";
-                creation_data = parsed;
-                chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre fiche de synthèse est prête à droite !";
-              } else if (Array.isArray(parsed.exercises) || Array.isArray(parsed.exercices)) {
-                decision = "creation";
-                creation_type = defaultType || "exercices-ecrits";
-                creation_title = parsed.title || "Exercices Écrits";
-                creation_data = parsed;
-                chat_message = parsed.chat_message || parsed.chat_response || "✨ Vos exercices écrits sont prêts à droite !";
-              } else if (parsed.baremeTotal || parsed.exercice1) {
-                decision = "creation";
-                creation_type = defaultType || "devoir-complet";
-                creation_title = parsed.title || "Devoir Complet";
-                creation_data = parsed;
-                chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre devoir complet d'examen est prêt à droite !";
-              } else if (parsed.decision === "chat" || parsed.mode === "chat") {
-                decision = "chat";
-                chat_message = parsed.chat_message || parsed.chat_response || rawText;
-              }
-            }
-          } catch {
-            // En cas d'erreur de parsing, conserver chat
-          }
-        }
-
-        // Si l'utilisateur avait explicitement cliqué sur un module 1-clic
-        if (defaultType && decision !== "creation") {
-          decision = "creation";
-          creation_type = defaultType;
-          creation_title = "Création IA";
-        }
-
-        return {
-          decision,
-          mode: decision,
-          chat_message: chat_message || rawText,
-          chat_response: chat_message || rawText,
-          response: chat_message || rawText,
-          creation_type,
-          creation_title,
-          creation_data
-        };
-      }
-
-      // ======================================================================
-      // 1. LE PROMPT SYSTÈME MAÎTRE (CONFORME AU SCHÉMA DÉCISIONNEL GEMINI)
-      // ======================================================================
-      const masterSystemPrompt = `Tu es l'intelligence artificielle centrale autonome de l'application de cours StudyCloud (développée par DKD Technologies).
+    // Le Prompt Système Maître officiel StudyCloud
+    const masterSystemPrompt = `Tu es l'intelligence artificielle centrale autonome de l'application de cours StudyCloud (développée par DKD Technologies).
 Ton rôle est d'analyser chaque prompt envoyé par l'étudiant et d'opérer la DÉCISION selon le flux officiel suivant :
 
 ======================================================================
@@ -528,7 +486,7 @@ RÈGLES DE DÉCISION :
    - Rédige toutes les formules scientifiques en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).
 
 2. DÉCISION "creation" (Création de module) :
-   - Si l'étudiant demande de créer un contenu d'étude, OU si un module spécifique est demandé ('${requestedType || ""}'), OU s'il a cliqué sur un bouton d'action :
+   - Si l'étudiant demande de créer un contenu d'étude, OU si un module spécifique est demandé, OU s'il a cliqué sur un bouton d'action :
    - Ton mode est "creation".
    - Tu sélectionnes le 'creation_type' exact parmi les 12 modules :
      * 'questionnaire' : QCM avec feedback immédiat
@@ -555,24 +513,35 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
   "chat_message": "Message textuel destiné au chat",
   "creation_type": "questionnaire" | "questionnaire-test" | "vrai-ou-faux" | "vrai-ou-faux-test" | "carte-mentale" | "carte-mentale-2" | "carte-memoire" | "resume" | "pdf" | "infographie" | "exercices-ecrits" | "devoir-complet" | null,
   "creation_title": "Titre explicite de la création (ou null si chat)",
-  "creation_data": {
-    // Si questionnaire ou questionnaire-test :
-    // { "questions": [ { "id": "q1", "question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..." } ] }
-    // Si vrai-ou-faux ou vrai-ou-faux-test :
-    // { "affirmations": [ { "id": "vf1", "statement": "...", "isTrue": true, "explanation": "..." } ] }
-    // Si carte-memoire :
-    // { "cards": [ { "id": "c1", "front": "...", "back": "...", "tag": "Thème" } ] }
-    // Si carte-mentale :
-    // { "root": { "id": "root", "text": "...", "children": [ { "id": "b1", "text": "...", "children": [] } ] } }
-    // Si resume :
-    // { "overview": "...", "keyPoints": ["..."], "sections": [ { "heading": "...", "body": "..." } ] }
-    // Si exercices-ecrits :
-    // { "questions": [ { "id": "e1", "number": 1, "points": 5, "question": "...", "sampleAnswer": "...", "hint": "..." } ] }
-    // Si devoir-complet :
-    // { "matiere": "...", "duree": "45 min", "totalPoints": 20, "questions": [ ... ] }
-    // null si mode chat
-  }
+  "creation_data": null
 }`;
+
+    // Pipeline unifié d'exécution IA (Google Gemini 2.0 Flash + Fallback Workers AI)
+    async function executeAiPipeline(body, env, ai) {
+      const userPrompt = body.message || body.prompt || body.text || "";
+      const requestedType = (body.requested_type || body.toolType || body.type || body.taskType || "").toLowerCase().trim();
+
+      // Détection de la clé API Google Gemini
+      let geminiApiKey = env?.["StudyCloud-gemini"] ||
+        env?.["studycloud-gemini"] ||
+        env?.["STUDYCLOUD_GEMINI"] ||
+        env?.["StudyCloud_gemini"] ||
+        env?.StudyCloud_gemini ||
+        env?.GEMINI_API_KEY ||
+        env?.GOOGLE_API_KEY ||
+        body.geminiApiKey;
+
+      if (!geminiApiKey && env && typeof env === "object") {
+        for (const [k, v] of Object.entries(env)) {
+          if (typeof v === "string" && /studycloud[-_]?gemini/i.test(k) && !v.startsWith("http")) {
+            geminiApiKey = v.trim();
+            break;
+          }
+        }
+      }
+      if (typeof geminiApiKey === "string") {
+        geminiApiKey = geminiApiKey.trim();
+      }
 
       // Extraction du document d'étude si présent
       const rawDocForGemini = (
@@ -585,17 +554,18 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
       ).trim();
 
       let fullSystemPrompt = masterSystemPrompt;
+      if (requestedType) {
+        fullSystemPrompt = fullSystemPrompt.replace(/'\${requestedType \|\| ""}'/, `'${requestedType}'`);
+      }
       if (rawDocForGemini.length > 0) {
         const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";
-        fullSystemPrompt += `\n\n======================================================================\nDOCUMENT ATTACHÉ DE L'ÉTUDIANT ("${docTitle}") :\n${rawDocForGemini.slice(0, 80000)}\n======================================================================\nCONSIGNE CAPITALE ET INCONTOURNABLE :\nTu DOIS analyser attentivement le texte du document ci-dessus et concevoir des exercices, questions, cartes ou résumés TOTALEMENT INÉDITS et DIRECTEMENT BASÉS sur les notions, théorèmes, formules et définitions réelles de ce document.\nIL EST STRICTEMENT INTERDIT de renvoyer les exemples types du code (par exemple les questions sur les neurosciences ou sage-femme, à moins que le document ne porte exactement sur cela).\nLe contenu créé doit correspondre fidèlement et exclusivement au document de l'étudiant !`;
+        fullSystemPrompt += `\n\n======================================================================\nDOCUMENT ATTACHÉ DE L'ÉTUDIANT ("${docTitle}") :\n${rawDocForGemini.slice(0, 80000)}\n======================================================================\nCONSIGNE CAPITALE ET INCONTOURNABLE :\nTu DOIS analyser attentivement le texte du document ci-dessus et concevoir des exercices, questions, cartes ou résumés TOTALEMENT INÉDITS et DIRECTEMENT BASÉS sur les notions, théorèmes, formules et définitions réelles de ce document.\nIL EST STRICTEMENT INTERDIT de renvoyer les exemples types du code.\nLe contenu créé doit correspondre fidèlement et exclusivement au document de l'étudiant !`;
       }
 
       let generatedContent = "";
       let usedEngine = "";
 
-      // ======================================================================
-      // EXÉCUTION 1 : APPEL DIRECT À GOOGLE GEMINI (CERVEAU PRINCIPAL)
-      // ======================================================================
+      // 1. APPEL À GOOGLE GEMINI (CERVEAU PRINCIPAL)
       if (geminiApiKey) {
         const geminiContents = [];
         const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
@@ -637,14 +607,11 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
             if (gResponse.ok) {
               const gData = await gResponse.json();
               const candidateText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (candidateText && candidateText.trim()) {
-                generatedContent = candidateText.trim();
+              if (candidateText && candidateText.trim().length > 0) {
+                generatedContent = candidateText;
                 usedEngine = `Google Gemini (${mod})`;
                 break;
               }
-            } else {
-              const errData = await gResponse.json().catch(() => ({}));
-              console.warn(`[Gemini ${mod}] Statut:`, gResponse.status, errData?.error?.message);
             }
           } catch (geminiErr) {
             console.warn(`[Gemini ${mod}] Exception:`, geminiErr);
@@ -652,30 +619,20 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         }
       }
 
-      // ======================================================================
-      // EXÉCUTION 2 : FALLBACK CLOUDFLARE WORKERS AI (SI GEMINI INDISPONIBLE)
-      // ======================================================================
+      // 2. FALLBACK VERS CLOUDFLARE WORKERS AI
       if (!generatedContent && ai && typeof ai.run === "function") {
-        const messages = [
-          { role: "system", content: fullSystemPrompt }
-        ];
-
-        let incomingHistory = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
-        let lastRole = "system";
-
-        for (const m of incomingHistory.slice(-8)) {
-          if (m && m.role && m.content && m.role !== "system") {
-            const role = m.role === "user" ? "user" : "assistant";
-            const content = String(m.content).trim();
-            if (content && (role !== lastRole || role === "assistant")) {
-              messages.push({ role, content });
-              lastRole = role;
-            }
+        const messages = [{ role: "system", content: fullSystemPrompt }];
+        const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+        for (const m of incomingHist.slice(-6)) {
+          if (m && m.role && m.content) {
+            messages.push({
+              role: m.role === "model" ? "assistant" : m.role,
+              content: String(m.content)
+            });
           }
         }
-
-        const currentPrompt = userPrompt.trim() || (requestedType ? `Génère le module ${requestedType}` : "Bonjour !");
-        if (currentPrompt) {
+        const currentPrompt = userPrompt || (requestedType ? `Génère le module ${requestedType}` : "Bonjour !");
+        if (!messages.some(m => m.role === "user" && m.content === currentPrompt)) {
           messages.push({ role: "user", content: currentPrompt });
         }
 
@@ -707,16 +664,186 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         throw new Error("Aucun modèle IA n'a pu répondre. Veuillez vérifier la variable StudyCloud-gemini dans votre Worker Cloudflare.");
       }
 
-      // Formatage et analyse de la réponse
       const formatted = parseAiDecision(generatedContent, requestedType);
+      return { formatted, usedEngine };
+    }
 
-      // Enregistrement persistant dans D1 si disponible
+    // ========================================================================
+    // GESTION DES TÂCHES ASYNCHRONES / PARALLÈLES : /api/ai/tasks
+    // ========================================================================
+    if (request.method === "GET" && path === "/api/ai/tasks") {
+      const taskId = url.searchParams.get("id") || url.searchParams.get("taskId");
+      const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
+
+      if (!db) {
+        return new Response(JSON.stringify({ success: true, data: [] }), { headers: corsHeaders });
+      }
+
+      if (taskId) {
+        try {
+          const task = await db.prepare("SELECT * FROM ai_tasks WHERE id = ?").bind(taskId).first();
+          if (!task) {
+            return new Response(JSON.stringify({ success: false, error: "Tâche non trouvée" }), {
+              status: 404,
+              headers: { "Content-Type": "application/json", ...corsHeaders }
+            });
+          }
+          let result = null;
+          if (task.result_json) {
+            try { result = JSON.parse(task.result_json); } catch { result = task.result_json; }
+          }
+          return new Response(JSON.stringify({
+            success: true,
+            task: { ...task, result }
+          }), {
+            headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: e.message }), {
+            status: 500, headers: { "Content-Type": "application/json", ...corsHeaders }
+          });
+        }
+      }
+
+      if (userId) {
+        try {
+          const { results } = await db.prepare("SELECT * FROM ai_tasks WHERE user_id = ? ORDER BY created_at DESC LIMIT 50").bind(userId).all();
+          const parsed = (results || []).map(t => {
+            let res = null;
+            if (t.result_json) {
+              try { res = JSON.parse(t.result_json); } catch { res = t.result_json; }
+            }
+            return { ...t, result: res };
+          });
+          return new Response(JSON.stringify({ success: true, tasks: parsed }), {
+            headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+          });
+        } catch (e) {
+          return new Response(JSON.stringify({ success: false, error: e.message, tasks: [] }), {
+            status: 500, headers: { "Content-Type": "application/json", ...corsHeaders }
+          });
+        }
+      }
+
+      return new Response(JSON.stringify({ error: "taskId ou userId requis" }), {
+        status: 400,
+        headers: { "Content-Type": "application/json", ...corsHeaders }
+      });
+    }
+
+    if (request.method === "POST" && path === "/api/ai/tasks") {
+      const body = await request.json().catch(() => ({}));
+      const userId = body.userId || request.headers.get("x-user-id") || body.user_id || "default-user";
+      const sessionId = body.sessionId || body.conversationId || "default-session";
+      const taskType = body.taskType || body.type || body.requested_type || "creation";
+      const prompt = body.prompt || body.message || "";
+      const taskId = body.taskId || crypto.randomUUID();
+
+      if (db) {
+        try {
+          await db.prepare(`
+            INSERT INTO ai_tasks (id, user_id, session_id, task_type, status, prompt, created_at, updated_at)
+            VALUES (?, ?, ?, ?, 'pending', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `).bind(taskId, userId, sessionId, taskType, prompt).run();
+        } catch (taskDbErr) {
+          console.warn("[AI Tasks D1] Erreur initialisation tâche:", taskDbErr);
+        }
+      }
+
+      // Exécution asynchrone non bloquante en arrière-plan via ctx.waitUntil
+      const runBackgroundTask = async () => {
+        try {
+          const { formatted, usedEngine } = await executeAiPipeline(body, env, ai);
+          const resJsonStr = JSON.stringify({ ...formatted, model: usedEngine, taskId });
+
+          if (db) {
+            await db.prepare(`
+              UPDATE ai_tasks
+              SET status = 'completed', result_json = ?, updated_at = CURRENT_TIMESTAMP
+              WHERE id = ?
+            `).bind(resJsonStr, taskId).run();
+
+            // Enregistrement dans l'historique de l'utilisateur
+            const aiMsgId = crypto.randomUUID();
+            await db.prepare(`
+              INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, created_at, updated_at)
+              VALUES (?, ?, ?, 'assistant', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            `).bind(aiMsgId, userId, sessionId, formatted.chat_message).run();
+
+            // Enregistrement dans les créations si module généré
+            if (formatted.decision === "creation" && formatted.creation_data) {
+              const contentStr = typeof formatted.creation_data === "string" ? formatted.creation_data : JSON.stringify(formatted.creation_data);
+              await db.prepare(`
+                INSERT INTO ai_generated_contents (id, user_id, file_id, tool_type, title, content_json, source_file_name, created_at, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+              `).bind(crypto.randomUUID(), userId, body.fileId || null, formatted.creation_type || taskType, formatted.creation_title || "Création IA", contentStr, body.attachedFileName || null).run();
+            }
+          }
+        } catch (taskErr) {
+          console.error(`[Background Task ${taskId} Error]:`, taskErr);
+          if (db) {
+            try {
+              await db.prepare(`
+                UPDATE ai_tasks
+                SET status = 'failed', error_message = ?, updated_at = CURRENT_TIMESTAMP
+                WHERE id = ?
+              `).bind(taskErr.message || String(taskErr), taskId).run();
+            } catch (e) {}
+          }
+        }
+      };
+
+      if (ctx && typeof ctx.waitUntil === "function") {
+        ctx.waitUntil(runBackgroundTask());
+      } else {
+        runBackgroundTask().catch(e => console.error("[Background task fallback err]:", e));
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        taskId,
+        status: "pending",
+        message: "Tâche asynchrone enregistrée et lancée avec succès en arrière-plan."
+      }), {
+        status: 202,
+        headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+      });
+    }
+
+    // ========================================================================
+    // POINT D'ENTRÉE DU CHAT IA : /api/ai/chat (SYNCHRONE)
+    // ========================================================================
+    if (request.method !== "POST") {
+      return new Response(JSON.stringify({ error: "Méthode non autorisée." }), {
+        status: 405,
+        headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+      });
+    }
+
+    try {
+      const body = await request.json().catch(() => ({}));
+      const userPrompt = body.message || body.prompt || body.text || "";
+      const conversationId = body.conversation_id || body.conversationId || body.sessionId || "default-session";
+      const requestedType = (body.requested_type || body.toolType || body.type || "").toLowerCase().trim();
+      const userId = body.userId || request.headers.get("x-user-id") || body.user_id || "default-user";
+      const sessionId = body.sessionId || conversationId;
+
+      const { formatted, usedEngine } = await executeAiPipeline(body, env, ai);
+
+      // Enregistrement persistant dans D1 (Isolation stricte multi-utilisateurs)
       if (db) {
         const userMsgId = crypto.randomUUID();
         const aiMsgId = crypto.randomUUID();
 
+        // 1. Conversations & Messages
         if (conversationId) {
           try {
+            await db.prepare(`
+              INSERT INTO conversations (id, user_id, title, created_at, updated_at)
+              VALUES (?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET updated_at = CURRENT_TIMESTAMP
+            `).bind(conversationId, userId, userPrompt.slice(0, 50) || "Discussion IA").run();
+
             await db.prepare(`
               INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
               VALUES (?, ?, 'user', ?, ?, CURRENT_TIMESTAMP)
@@ -733,23 +860,61 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
           }
         }
 
-        if (formatted.decision === "creation" && formatted.creation_data && conversationId) {
+        // 2. User AI Workspace (Historique par session & utilisateur)
+        try {
+          await db.prepare(`
+            INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, attached_file_name, created_at, updated_at)
+            VALUES (?, ?, ?, 'user', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `).bind(userMsgId, userId, sessionId, userPrompt, body.attachedFileName || null).run();
+
+          await db.prepare(`
+            INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, created_at, updated_at)
+            VALUES (?, ?, ?, 'assistant', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `).bind(aiMsgId, userId, sessionId, formatted.chat_message).run();
+        } catch (wsErr) {
+          console.warn("[AI D1] Erreur insertion user_ai_workspace:", wsErr);
+        }
+
+        // 3. AI Creations (Espace Créations)
+        if (formatted.decision === "creation" && formatted.creation_data) {
+          const creationId = body.creationId || crypto.randomUUID();
+          const contentStr = typeof formatted.creation_data === "string" ? formatted.creation_data : JSON.stringify(formatted.creation_data);
+
+          if (conversationId) {
+            try {
+              await db.prepare(`
+                INSERT INTO ai_creations (id, conversation_id, message_id, type, title, content, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO UPDATE SET title = excluded.title, content = excluded.content
+              `).bind(
+                creationId,
+                conversationId,
+                aiMsgId,
+                formatted.creation_type || "creation",
+                formatted.creation_title || "Création IA",
+                contentStr
+              ).run();
+            } catch (creatErr) {
+              console.warn("[AI D1] Erreur insertion ai_creations:", creatErr);
+            }
+          }
+
+          // 4. AI Generated Contents (par user_id)
           try {
-            const creationId = body.creationId || crypto.randomUUID();
             await db.prepare(`
-              INSERT INTO ai_creations (id, conversation_id, message_id, type, title, content, created_at)
-              VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-              ON CONFLICT(id) DO UPDATE SET title = excluded.title, content = excluded.content
+              INSERT INTO ai_generated_contents (id, user_id, file_id, tool_type, title, content_json, source_file_name, created_at, updated_at)
+              VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
             `).bind(
               creationId,
-              conversationId,
-              aiMsgId,
-              formatted.creation_type || "creation",
+              userId,
+              body.fileId || null,
+              formatted.creation_type || requestedType || "creation",
               formatted.creation_title || "Création IA",
-              typeof formatted.creation_data === "string" ? formatted.creation_data : JSON.stringify(formatted.creation_data)
+              contentStr,
+              body.attachedFileName || null
             ).run();
-          } catch (creatErr) {
-            console.warn("[AI D1] Erreur insertion ai_creations:", creatErr);
+          } catch (genErr) {
+            console.warn("[AI D1] Erreur insertion ai_generated_contents:", genErr);
           }
         }
       }

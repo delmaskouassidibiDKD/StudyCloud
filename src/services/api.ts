@@ -118,8 +118,11 @@ export async function sendChatMessageToAi(params: {
   const extractedDoc = params.attachedFileContent || params.file_content || params.fileContent || params.documentContent || params.documentText || '';
   const extractedDocName = params.attachedFileName || params.file_name || params.fileName || '';
 
+  const currentUserId = params.userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+
   const payload = {
     ...params,
+    userId: currentUserId,
     powerMode: isPowerMode,
     isPowerMode: isPowerMode,
     engine: isPowerMode ? 'gemini' : (params.engine || 'standard'),
@@ -147,6 +150,7 @@ export async function sendChatMessageToAi(params: {
     method: 'POST',
     headers: {
       'Content-Type': 'application/json',
+      'x-user-id': currentUserId,
     },
     body: JSON.stringify(payload),
   });
@@ -1102,6 +1106,37 @@ export const StudyCloudAPI = {
       method: 'POST',
       body: JSON.stringify(data),
     });
+  },
+
+  // --------------------------------------------------------------------------
+  // Tâches Asynchrones & Parallélisme IA (Non-bloquant, multi-tâches)
+  // --------------------------------------------------------------------------
+  async createAiBackgroundTask(params: {
+    userId?: string;
+    sessionId?: string;
+    taskType: string;
+    prompt: string;
+    attachedFileContent?: string;
+    attachedFileName?: string;
+  }) {
+    const currentUserId = params.userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+    return aiRequest<{ success: boolean; taskId: string; status: string; message: string }>('/api/ai/tasks', {
+      method: 'POST',
+      body: JSON.stringify({
+        ...params,
+        userId: currentUserId,
+      }),
+    });
+  },
+
+  async getAiTaskStatus(taskId: string, userId?: string) {
+    let endpoint = `/api/ai/tasks?taskId=${encodeURIComponent(taskId)}`;
+    if (userId) endpoint += `&userId=${encodeURIComponent(userId)}`;
+    return aiRequest<{ success: boolean; task: any }>(endpoint);
+  },
+
+  async getUserAiTasks(userId: string) {
+    return aiRequest<{ success: boolean; tasks: any[] }>(`/api/ai/tasks?userId=${encodeURIComponent(userId)}`);
   },
 
   // --------------------------------------------------------------------------
