@@ -82,7 +82,7 @@ export const MODULES: ModuleDefinition[] = [
     icon: CheckSquare,
     description: 'Affirmations ciblées pour tester les réflexes critiques.',
     category: 'evaluation',
-    badge: 'Réflexes Flash',
+    badge: 'Vrai / Faux',
     colorClass: 'bg-green-950/40 text-green-200 border-green-700/50 hover:bg-green-900/50 hover:border-green-500',
     borderColor: '#16a34a',
   },
@@ -92,7 +92,7 @@ export const MODULES: ModuleDefinition[] = [
     icon: FileCheck2,
     description: 'Liste d’affirmations à cocher : score et correction révélés après validation.',
     category: 'evaluation',
-    badge: 'Épreuve V/F',
+    badge: 'Test V/F',
     colorClass: 'bg-lime-950/40 text-lime-200 border-lime-700/50 hover:bg-lime-900/50 hover:border-lime-500',
     borderColor: '#65a30d',
   },
@@ -132,7 +132,7 @@ export const MODULES: ModuleDefinition[] = [
     icon: FileText,
     description: 'Fiche synthétique structurée avec surlignage didactique.',
     category: 'redaction',
-    badge: 'Fiche Synthèse',
+    badge: 'Fiche Résumé',
     colorClass: 'bg-blue-950/40 text-blue-200 border-blue-700/50 hover:bg-blue-900/50 hover:border-blue-500',
     borderColor: '#2563eb',
   },
@@ -152,7 +152,7 @@ export const MODULES: ModuleDefinition[] = [
     icon: BarChart2,
     description: 'Représentation visuelle des étapes et métriques cognitives.',
     category: 'concept',
-    badge: 'Visuel Clé',
+    badge: 'Infographie',
     colorClass: 'bg-cyan-950/40 text-cyan-200 border-cyan-700/50 hover:bg-cyan-900/50 hover:border-cyan-500',
     borderColor: '#0891b2',
   },
@@ -162,7 +162,7 @@ export const MODULES: ModuleDefinition[] = [
     icon: PenTool,
     description: 'Problèmes rédigés avec correction et conseils méthodologiques.',
     category: 'evaluation',
-    badge: 'Rédaction & Barème',
+    badge: 'Exercices',
     colorClass: 'bg-amber-950/40 text-amber-200 border-amber-700/50 hover:bg-amber-900/50 hover:border-amber-500',
     borderColor: '#d97706',
   },
@@ -172,10 +172,18 @@ export const MODULES: ModuleDefinition[] = [
     icon: ClipboardCheck,
     description: 'Épreuve complète chronométrée sur 20 points avec corrigé.',
     category: 'evaluation',
-    badge: 'Examen / 20 pts',
+    badge: 'Devoir / 20',
     colorClass: 'bg-purple-950/40 text-purple-200 border-purple-700/50 hover:bg-purple-900/50 hover:border-purple-500',
     borderColor: '#9333ea',
   }
+];
+
+export const CATEGORY_TABS = [
+  { id: 'all', label: 'Tous (12)' },
+  { id: 'evaluation', label: 'Évaluation' },
+  { id: 'concept', label: 'Concepts' },
+  { id: 'memorisation', label: 'Mémorisation' },
+  { id: 'redaction', label: 'Rédaction & PDF' },
 ];
 
 export function RightMenu({ 
@@ -191,6 +199,7 @@ export function RightMenu({
   const [activeTabModule, setActiveTabModule] = useState<ModuleId>('questionnaire');
   const [isGenerating, setIsGenerating] = useState(false);
   const [generatingInfo, setGeneratingInfo] = useState<{ type: string; title: string; subtitle?: string } | null>(null);
+  const [selectedCategory, setSelectedCategory] = useState<string>('all');
   
   const [historyItems, setHistoryItems] = useState<any[]>(() => {
     try {
@@ -515,7 +524,7 @@ export function RightMenu({
       )}
 
       {/* Main Creation Area */}
-      <div className="flex-1 w-full overflow-y-auto custom-scrollbar flex flex-col items-center justify-start min-h-0 bg-stone-50 text-stone-900">
+      <div className="flex-1 w-full overflow-y-auto custom-scrollbar flex flex-col items-center justify-start min-h-0 bg-[#16181f] text-zinc-100">
         {/* ÉTAT 1 : ANIMATION ADN PENDANT LA CRÉATION */}
         {isGenerating ? (
           <div className="flex flex-col items-center justify-center gap-6 animate-fadeIn h-full my-auto text-center px-4 max-w-sm py-12">
@@ -531,43 +540,64 @@ export function RightMenu({
             </div>
 
             <div className="flex flex-col items-center gap-2 mt-2">
-              <span className="text-orange-600 font-black text-xl tracking-wide animate-pulse">
+              <span className="text-orange-500 font-black text-xl tracking-wide animate-pulse">
                 Je suis en train de créer...
               </span>
-              <span className="text-xs sm:text-sm font-semibold text-stone-800">
+              <span className="text-xs sm:text-sm font-semibold text-zinc-200">
                 {generatingInfo?.title || "Génération du module IA"}
               </span>
-              <span className="text-[11px] text-stone-500 font-medium">
+              <span className="text-[11px] text-zinc-400 font-medium">
                 {generatingInfo?.subtitle || "Structuration des données en temps réel"}
               </span>
             </div>
           </div>
         ) : activeCreation ? (
           /* ÉTAT 2 : CRÉATION ACTIVE INTERACTIVE (RENDU DU MODULE SÉLECTIONNÉ) */
-          <div className="w-full h-full flex flex-col animate-fadeIn min-h-0">
+          <div className="w-full h-full flex flex-col animate-fadeIn min-h-0 bg-[#16181f]">
             <div className="flex-1 w-full overflow-y-auto custom-scrollbar scroll-smooth min-h-0">
               {renderActiveCreation()}
             </div>
           </div>
         ) : (
           /* ÉTAT 3 : LES 12 BOUTONS OFFICIELS DE CRÉATION 1-CLIC */
-          <div className="w-full max-w-4xl mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
-            <div className="text-center space-y-2 max-w-xl mx-auto pt-2">
-              <div className="inline-flex items-center gap-2 px-3 py-1 rounded-full bg-orange-100 border border-orange-200 text-orange-800 text-xs font-bold shadow-2xs">
-                <Sparkles className="w-3.5 h-3.5 text-orange-600" />
-                <span>12 Formats de Création IA</span>
-              </div>
-              <h2 className="text-xl sm:text-2xl font-black text-stone-900 tracking-tight">
+          <div className="w-full max-w-5xl mx-auto p-3 sm:p-5 lg:p-6 space-y-4 sm:space-y-5">
+            <div className="text-center space-y-1.5 max-w-xl mx-auto pt-1 sm:pt-2">
+              <h2 className="text-lg sm:text-2xl font-black text-zinc-100 tracking-tight">
                 Que souhaitez-vous concevoir ?
               </h2>
-              <p className="text-xs sm:text-sm text-stone-600">
+              <p className="text-xs sm:text-sm text-zinc-400 leading-relaxed max-w-md mx-auto">
                 Cliquez sur un outil ci-dessous pour lancer instantanément la création sans écrire à l’IA, ou demandez-le lui directement dans le chat.
               </p>
+
+              {/* Filtres thématiques par catégorie */}
+              <div className="flex items-center justify-center gap-1.5 flex-wrap pt-2">
+                {CATEGORY_TABS.map((cat) => (
+                  <button
+                    key={cat.id}
+                    type="button"
+                    onClick={() => setSelectedCategory(cat.id)}
+                    className={`px-3 py-1 rounded-full text-xs font-semibold transition-all cursor-pointer select-none ${
+                      selectedCategory === cat.id
+                        ? 'bg-orange-500 text-white shadow-xs'
+                        : 'bg-[#21242d] text-zinc-400 hover:text-zinc-200 border border-zinc-700/60 hover:border-zinc-500'
+                    }`}
+                  >
+                    {cat.label}
+                  </button>
+                ))}
+              </div>
             </div>
 
             {/* Grille responsive des 12 modules */}
-            <div id="ai-modules-grid" className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5">
-              {MODULES.map((mod, idx) => {
+            <div
+              id="ai-modules-grid"
+              className={`grid gap-3 w-full ${
+                isRightFullscreen
+                  ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'
+                  : 'grid-cols-1 min-[520px]:grid-cols-2'
+              }`}
+            >
+              {(selectedCategory === 'all' ? MODULES : MODULES.filter(m => m.category === selectedCategory)).map((mod, idx) => {
                 const IconComp = mod.icon;
                 return (
                   <button
@@ -575,34 +605,43 @@ export function RightMenu({
                     id={`btn-creation-module-${mod.id}`}
                     type="button"
                     onClick={() => handleProposalClick(mod)}
-                    className="group relative flex flex-col text-left p-4 rounded-xl border border-stone-200 bg-white hover:border-orange-500 hover:shadow-md transition-all duration-200 cursor-pointer active:scale-[0.99] select-none shadow-2xs"
-                    style={{ animationDelay: `${idx * 40}ms` }}
+                    className="group relative flex flex-col text-left p-3.5 sm:p-4 rounded-xl border border-zinc-700/60 bg-[#21242d] hover:bg-[#272b36] hover:border-orange-500/70 hover:shadow-lg hover:shadow-black/25 transition-all duration-200 cursor-pointer active:scale-[0.99] select-none shadow-xs"
+                    style={{ animationDelay: `${idx * 25}ms` }}
                   >
-                    <div className="flex items-center justify-between gap-2 mb-2.5">
+                    {/* En-tête : Icône stylisée + Badge court */}
+                    <div className="flex items-center justify-between gap-2 mb-2">
                       <div
-                        className="w-9 h-9 rounded-lg flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 shadow-2xs"
-                        style={{ backgroundColor: `${mod.borderColor}15`, color: mod.borderColor }}
+                        className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0 transition-transform group-hover:scale-105 shadow-2xs"
+                        style={{ backgroundColor: `${mod.borderColor}22`, color: mod.borderColor }}
                       >
-                        <IconComp className="w-5 h-5" />
+                        <IconComp className="w-4.5 h-4.5" />
                       </div>
                       <span
-                        className="text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider"
-                        style={{ backgroundColor: `${mod.borderColor}15`, color: mod.borderColor }}
+                        className="text-[10px] font-bold px-2 py-0.5 rounded-md uppercase tracking-wider shrink-0 whitespace-nowrap"
+                        style={{
+                          backgroundColor: `${mod.borderColor}18`,
+                          color: mod.borderColor,
+                          border: `1px solid ${mod.borderColor}35`
+                        }}
                       >
                         {mod.badge}
                       </span>
                     </div>
 
-                    <h3 className="text-sm font-bold text-stone-900 group-hover:text-orange-600 transition-colors">
+                    {/* Titre */}
+                    <h3 className="text-sm font-bold text-zinc-100 group-hover:text-orange-400 transition-colors line-clamp-1 mb-1">
                       {mod.label}
                     </h3>
-                    <p className="text-xs text-stone-500 line-clamp-2 mt-1 leading-relaxed">
+
+                    {/* Description */}
+                    <p className="text-xs text-zinc-400 line-clamp-2 leading-relaxed">
                       {mod.description}
                     </p>
 
-                    <div className="mt-3 pt-2.5 border-t border-stone-100 flex items-center justify-between text-[11px] font-semibold text-orange-600 opacity-0 group-hover:opacity-100 transition-opacity">
+                    {/* Footer / Bouton d'action */}
+                    <div className="mt-3 pt-2 border-t border-zinc-700/50 flex items-center justify-between text-[11px] font-semibold text-orange-400 opacity-80 group-hover:opacity-100 transition-opacity">
                       <span>Lancer la création</span>
-                      <span className="text-xs font-black">→</span>
+                      <span className="text-xs font-black transition-transform group-hover:translate-x-1">→</span>
                     </div>
                   </button>
                 );
