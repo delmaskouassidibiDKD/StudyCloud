@@ -1,4 +1,87 @@
-export type AiCreationType = 'summary' | 'quiz' | 'mindmap' | 'infographic' | 'document' | 'flashcards';
+export type ModuleId =
+  | 'questionnaire'
+  | 'questionnaire-test'
+  | 'vrai-ou-faux'
+  | 'vrai-ou-faux-test'
+  | 'carte-mentale'
+  | 'carte-mentale-2'
+  | 'carte-memoire'
+  | 'resume'
+  | 'pdf'
+  | 'infographie'
+  | 'exercices-ecrits'
+  | 'devoir-complet';
+
+export type AiCreationType = ModuleId | 'summary' | 'quiz' | 'mindmap' | 'infographic' | 'document' | 'flashcards';
+
+export interface ModuleNav {
+  id: ModuleId;
+  label: string;
+  iconName: string;
+  description: string;
+}
+
+export interface QuestionQCM {
+  id: string;
+  question: string;
+  options: string[];
+  correctIndex: number;
+  explanation: string;
+}
+
+export interface AffirmationVraiFaux {
+  id: string;
+  statement: string;
+  isTrue: boolean;
+  explanation: string;
+}
+
+export interface Flashcard {
+  id: string;
+  front: string;
+  back: string;
+  tag: string;
+}
+
+export interface MindMapNode {
+  id: string;
+  title?: string;
+  label?: string;
+  notes?: string;
+  details?: string;
+  color?: string;
+  isExpanded?: boolean;
+  children?: MindMapNode[];
+  [key: string]: any;
+}
+
+export interface WrittenExercise {
+  id: string;
+  title: string;
+  difficulty: 'Facile' | 'Moyen' | 'Avancé';
+  statement: string;
+  sampleAnswer: string;
+  tips: string[];
+}
+
+export interface QuestionItem {
+  id: string;
+  number: number;
+  points: number;
+  question: string;
+  keywords: string[];
+  sampleAnswer: string;
+  hint: string;
+}
+
+export interface EvaluationResult {
+  score: number;
+  maxScore: number;
+  status: 'excellent' | 'bon' | 'moyen' | 'insuffisant';
+  strengths: string[];
+  improvements: string[];
+  detailedFeedback: string;
+}
 
 export interface SummaryContent {
   overview: string;
@@ -21,15 +104,6 @@ export interface QuizContent {
   description?: string;
   difficulty?: 'Facile' | 'Moyen' | 'Avancé';
   questions: QuizQuestion[];
-}
-
-export interface MindMapNode {
-  id: string;
-  label: string;
-  details?: string;
-  color?: string;
-  isExpanded?: boolean;
-  children?: MindMapNode[];
 }
 
 export interface MindMapContent {
@@ -88,7 +162,7 @@ export interface AiCreation {
   fileId?: string;
   toolType: AiCreationType;
   title: string;
-  content: SummaryContent | QuizContent | MindMapContent | InfographicContent | DocumentContent | any;
+  content: any;
   sourceFileName?: string;
   isPinned?: boolean;
   createdAt?: string;

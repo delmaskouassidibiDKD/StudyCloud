@@ -2,8 +2,8 @@
 // STUDYCLOUD - CLOUDFLARE WORKERS AI (ASSISTANTE IA OFFICIELLE DKD)
 // ============================================================================
 // Domaine de déploiement : https://studycloud-ai.delmaskouassidibi.workers.dev
-// Liaison Workers AI : MON-STUDYCLOUD-ia (ou STUDYCLOUD-IA, AI)
-// Modèle IA principal : @cf/meta/llama-3.1-8b-instruct
+// Modèle IA principal : Google Gemini 2.0 Flash (avec fallback Cloudflare Llama 3.1)
+// Variable secrète requise dans Cloudflare : StudyCloud-gemini (Clé API Google Gemini)
 //
 // POUR METTRE À JOUR DANS CLOUDFLARE :
 // 1. Allez sur votre Cloudflare Dashboard > Workers & Pages > studycloud-ai.
@@ -11,16 +11,6 @@
 // 3. Copiez TOUT le code de ce fichier (Ctrl+A puis Ctrl+C).
 // 4. Collez-le dans l'éditeur Cloudflare (Ctrl+A puis Ctrl+V).
 // 5. Cliquez sur "Save and Deploy" (Enregistrer et déployer).
-// ============================================================================
-
-// ============================================================================
-// STUDYCLOUD - CLOUDFLARE WORKERS AI (ASSISTANTE IA OFFICIELLE DKD)
-// ============================================================================
-// Domaine de déploiement : https://studycloud-ai.delmaskouassidibi.workers.dev
-// Liaisons configurées dans Cloudflare :
-// - Workers AI : MON-STUDYCLOUD-ia (ou STUDYCLOUD-IA, AI)
-// - Base de données D1 : MON_D1_STUDYCLOUD (ou MON_D1-STUDYCLOUD, DB)
-// - Bucket R2 : MON_R2_STUDYCLOUD (ou MON_R2-STUDYCLOUD, BUCKET)
 // ============================================================================
 
 export default {
@@ -69,19 +59,24 @@ export default {
       }
     }
 
-
     // Requête GET : Test de santé et d'état du Worker IA
     if (request.method === "GET" && (path === "/" || path === "/health")) {
       const hasAi = Boolean(ai && typeof ai.run === "function");
-      const availableBindings = env && typeof env === "object" ? Object.keys(env) : [];
+      const geminiKeyPresent = Boolean(
+        env?.["StudyCloud-gemini"] ||
+        env?.["studycloud-gemini"] ||
+        env?.STUDYCLOUD_GEMINI ||
+        env?.GEMINI_API_KEY
+      );
       return new Response(JSON.stringify({
-        service: "StudyCloud Workers AI Assistant (DKD Technologies)",
-        status: hasAi ? "ready" : "missing_ai_binding",
-        model: "@cf/meta/llama-3.1-8b-instruct",
-        ai_binding_detected: hasAi,
+        service: "StudyCloud IA Assistant & Creation Engine (DKD Technologies)",
+        status: "ready",
+        brain: "Google Gemini 2.0 Flash (avec décision autonome)",
+        gemini_configured: geminiKeyPresent,
+        cf_ai_fallback: hasAi,
         d1_database: db ? "Connecté (MON_D1_STUDYCLOUD)" : "Non lié",
         r2_bucket: bucket ? "Connecté (MON_R2_STUDYCLOUD)" : "Non lié",
-        detected_bindings: availableBindings,
+        modules_count: 12,
         timestamp: new Date().toISOString()
       }), {
         headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
@@ -108,7 +103,7 @@ export default {
       });
     }
 
-    // Enregistrement des pouces (likes / dislikes)
+    // Enregistrement des réactions (likes / dislikes)
     if (request.method === "PUT" && path === "/api/ai/workspace/reaction") {
       const body = await request.json().catch(() => ({}));
       const { userId, messageId, reaction } = body;
@@ -122,7 +117,7 @@ export default {
       });
     }
 
-    // Retrait et suppression du document joint
+    // Retrait du document joint
     if (request.method === "DELETE" && path === "/api/ai/workspace/attachment") {
       const body = await request.json().catch(() => ({}));
       const { userId, fileId, r2Key } = body;
@@ -142,7 +137,7 @@ export default {
       });
     }
 
-    // Gestion des créations IA (résumés, cartes mémoire, quiz, cartes mentales)
+    // Gestion des créations IA (table ai_generated_contents)
     if (request.method === "GET" && path === "/api/ai-contents") {
       const userId = url.searchParams.get("userId");
       const toolType = url.searchParams.get("toolType");
@@ -160,13 +155,9 @@ export default {
         q += " AND file_id = ?";
         params.push(fileId);
       }
-      q += " ORDER BY is_pinned DESC, created_at DESC";
+      q += " ORDER BY is_pinned DESC, updated_at DESC";
       const { results } = await db.prepare(q).bind(...params).all();
-      const formatted = (results || []).map(r => ({
-        ...r,
-        contentJson: typeof r.content_json === "string" ? JSON.parse(r.content_json || "{}") : r.content_json
-      }));
-      return new Response(JSON.stringify({ success: true, data: formatted }), {
+      return new Response(JSON.stringify({ success: true, data: results || [] }), {
         headers: { "Content-Type": "application/json", ...corsHeaders }
       });
     }
@@ -177,22 +168,15 @@ export default {
       if (!userId || !toolType || !title) {
         return new Response(JSON.stringify({ error: "userId, toolType et title requis" }), { status: 400, headers: corsHeaders });
       }
-      if (!db) return new Response(JSON.stringify({ error: "D1 non configuré" }), { status: 500, headers: corsHeaders });
-
-      const contentId = id || crypto.randomUUID();
-      const jsonStr = typeof contentJson === "string" ? contentJson : JSON.stringify(contentJson || {});
-      await db.prepare(`
-        INSERT INTO ai_generated_contents (id, user_id, file_id, tool_type, title, content_json, source_file_name, is_pinned)
-        VALUES (?, ?, ?, ?, ?, ?, ?, ?)
-        ON CONFLICT(id) DO UPDATE SET
-          title = excluded.title,
-          content_json = excluded.content_json,
-          source_file_name = excluded.source_file_name,
-          is_pinned = excluded.is_pinned,
-          updated_at = CURRENT_TIMESTAMP
-      `).bind(contentId, userId, fileId || null, toolType, title, jsonStr, sourceFileName || null, isPinned ? 1 : 0).run();
-
-      return new Response(JSON.stringify({ success: true, data: { id: contentId } }), {
+      if (db) {
+        const contentStr = typeof contentJson === "string" ? contentJson : JSON.stringify(contentJson || {});
+        await db.prepare(`
+          INSERT INTO ai_generated_contents (id, user_id, file_id, tool_type, title, content_json, source_file_name, is_pinned, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          ON CONFLICT(id) DO UPDATE SET title = excluded.title, content_json = excluded.content_json, is_pinned = excluded.is_pinned, updated_at = CURRENT_TIMESTAMP
+        `).bind(id || crypto.randomUUID(), userId, fileId || null, toolType, title, contentStr, sourceFileName || null, isPinned ? 1 : 0).run();
+      }
+      return new Response(JSON.stringify({ success: true, message: "Contenu IA sauvegardé" }), {
         headers: { "Content-Type": "application/json", ...corsHeaders }
       });
     }
@@ -220,9 +204,7 @@ export default {
       });
     }
 
-    // ------------------------------------------------------------------------
-    // GESTION DES CONVERSATIONS (SESSIONS DE CHAT STYLE GEMINI)
-    // ------------------------------------------------------------------------
+    // Conversations de chat
     if (request.method === "GET" && path === "/api/ai/conversations") {
       const userId = url.searchParams.get("userId");
       if (!userId) return new Response(JSON.stringify({ error: "userId requis" }), { status: 400, headers: corsHeaders });
@@ -281,9 +263,7 @@ export default {
       });
     }
 
-    // ------------------------------------------------------------------------
-    // GESTION DES MESSAGES DE CONVERSATION (MÉMOIRE PERSISTANTE)
-    // ------------------------------------------------------------------------
+    // Messages de conversation
     if (request.method === "GET" && path === "/api/ai/messages") {
       const conversationId = url.searchParams.get("conversationId");
       if (!conversationId) return new Response(JSON.stringify({ error: "conversationId requis" }), { status: 400, headers: corsHeaders });
@@ -324,9 +304,7 @@ export default {
       });
     }
 
-    // ------------------------------------------------------------------------
-    // GESTION DES CRÉATIONS IA ASSOCIÉES (TABLE ai_creations)
-    // ------------------------------------------------------------------------
+    // Créations IA associées
     if (request.method === "GET" && path === "/api/ai/creations") {
       const conversationId = url.searchParams.get("conversationId");
       if (!conversationId) return new Response(JSON.stringify({ error: "conversationId requis" }), { status: 400, headers: corsHeaders });
@@ -366,6 +344,9 @@ export default {
       });
     }
 
+    // ========================================================================
+    // POINT D'ENTRÉE PRINCIPAL DE L'IA : /api/ai/chat
+    // ========================================================================
     if (request.method !== "POST") {
       return new Response(JSON.stringify({ error: "Méthode non autorisée." }), {
         status: 405,
@@ -374,29 +355,39 @@ export default {
     }
 
     try {
-      if (!ai || typeof ai.run !== "function") {
-        const bindingsList = env && typeof env === "object" ? Object.keys(env).join(", ") : "aucun";
-        return new Response(JSON.stringify({
-          success: false,
-          error: `Liaison Workers AI introuvable. Liaisons actuelles : [${bindingsList}]. Dans Cloudflare > Workers > Settings > Variables and Bindings > Workers AI, ajoutez 'MON-STUDYCLOUD-ia'.`
-        }), {
-          status: 500,
-          headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
-        });
-      }
-
       const body = await request.json().catch(() => ({}));
       const userPrompt = body.message || body.prompt || body.text || "";
       const conversationId = body.conversation_id || body.conversationId || body.sessionId || "default-session";
       const requestedType = (body.requested_type || body.toolType || body.type || "").toLowerCase().trim();
       const userId = body.userId;
       const sessionId = body.sessionId || conversationId;
-      const isPowerMode = Boolean(body.powerMode || body.engine === "gemini");
 
-      // Fonction helper : formate la réponse IA en routant intelligemment vers le Chat et/ou l'Espace Création
-      function formatAiResponsePayload(rawText, defaultType) {
-        let mode = "chat";
-        let chat_response = rawText;
+      // Détection de la clé API Google Gemini
+      let geminiApiKey = env?.["StudyCloud-gemini"] ||
+        env?.["studycloud-gemini"] ||
+        env?.["STUDYCLOUD_GEMINI"] ||
+        env?.["StudyCloud_gemini"] ||
+        env?.StudyCloud_gemini ||
+        env?.GEMINI_API_KEY ||
+        env?.GOOGLE_API_KEY ||
+        body.geminiApiKey;
+
+      if (!geminiApiKey && env && typeof env === "object") {
+        for (const [k, v] of Object.entries(env)) {
+          if (typeof v === "string" && /studycloud[-_]?gemini/i.test(k) && !v.startsWith("http")) {
+            geminiApiKey = v.trim();
+            break;
+          }
+        }
+      }
+      if (typeof geminiApiKey === "string") {
+        geminiApiKey = geminiApiKey.trim();
+      }
+
+      // Helper : formate et parse la décision et les données de création
+      function parseAiDecision(rawText, defaultType) {
+        let decision = "chat";
+        let chat_message = rawText;
         let creation_type = null;
         let creation_title = null;
         let creation_data = null;
@@ -413,292 +404,160 @@ export default {
           try {
             let sanitized = jsonRawCandidate.replace(/,\s*([\]}])/g, '$1');
             let parsed = JSON.parse(sanitized);
+
             if (parsed && typeof parsed === "object") {
-              if (parsed.mode === "creation" || parsed.creation_type || parsed.creation_data) {
-                mode = "creation";
-                chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ J'ai généré votre création directement dans votre espace à droite !");
-                creation_type = parsed.creation_type || defaultType || "quiz";
-                creation_title = parsed.creation_title || "Création";
+              if (parsed.decision === "creation" || parsed.mode === "creation" || parsed.creation_type || parsed.creation_data) {
+                decision = "creation";
+                chat_message = parsed.chat_message || parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ J'ai généré votre création directement dans votre espace Création à droite !");
+                creation_type = parsed.creation_type || defaultType || "questionnaire";
+                creation_title = parsed.creation_title || "Création IA";
                 creation_data = parsed.creation_data || parsed;
               } else if (Array.isArray(parsed.questions)) {
-                mode = "creation";
-                creation_type = "quiz";
-                creation_title = parsed.title || "Quiz interactif";
+                decision = "creation";
+                creation_type = defaultType || "questionnaire";
+                creation_title = parsed.title || "Questionnaire interactif";
                 creation_data = parsed;
-                chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici votre questionnaire interactif préparé à droite !");
-              } else if (parsed.root && (parsed.root.label || parsed.root.children)) {
-                mode = "creation";
-                creation_type = "mindmap";
-                creation_title = parsed.root.label || "Carte mentale";
+                chat_message = parsed.chat_message || parsed.chat_response || "✨ Voici votre questionnaire interactif préparé à droite !";
+              } else if (Array.isArray(parsed.affirmations)) {
+                decision = "creation";
+                creation_type = defaultType || "vrai-ou-faux";
+                creation_title = parsed.title || "Vrai ou Faux";
                 creation_data = parsed;
-                chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici votre carte mentale à droite !");
-              } else if (parsed.overview || Array.isArray(parsed.keyPoints)) {
-                mode = "creation";
-                creation_type = "summary";
-                creation_title = parsed.title || "Fiche de synthèse";
+                chat_message = parsed.chat_message || parsed.chat_response || "✨ Voici vos affirmations Vrai ou Faux prêtes à droite !";
+              } else if (Array.isArray(parsed.cards)) {
+                decision = "creation";
+                creation_type = defaultType || "carte-memoire";
+                creation_title = parsed.title || "Cartes Mémoire";
                 creation_data = parsed;
-                chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici votre résumé détaillé à droite !");
-              } else if (Array.isArray(parsed.metrics) || Array.isArray(parsed.keyConcepts)) {
-                mode = "creation";
-                creation_type = "infographic";
-                creation_title = parsed.mainTitle || "Infographie";
+                chat_message = parsed.chat_message || parsed.chat_response || "✨ Vos flashcards sont disponibles dans l'espace Création !";
+              } else if (parsed.root || parsed.rootTitle) {
+                decision = "creation";
+                creation_type = defaultType || "carte-mentale";
+                creation_title = parsed.rootTitle || parsed.root?.text || "Carte Mentale";
                 creation_data = parsed;
-                chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici vos repères visuels à droite !");
-              } else if (Array.isArray(parsed.sections)) {
-                mode = "creation";
-                creation_type = "document";
-                creation_title = parsed.title || "Fiche d'étude";
-                creation_data = parsed;
-                chat_response = parsed.chat_response || (rawText.replace(/```json[\s\S]*?```/gi, '').replace(/```[\s\S]*?```/gi, '').trim() || "✨ Voici votre fiche d'étude à droite !");
-              } else if (parsed.mode === "chat") {
-                mode = "chat";
-                chat_response = parsed.chat_response || rawText;
+                chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre carte mentale est prête à droite !";
+              } else if (parsed.decision === "chat" || parsed.mode === "chat") {
+                decision = "chat";
+                chat_message = parsed.chat_message || parsed.chat_response || rawText;
               }
             }
           } catch {
-            // Ignorer l'erreur JSON et conserver mode chat
+            // En cas d'erreur de parsing, conserver chat
           }
+        }
+
+        // Si l'utilisateur avait explicitement cliqué sur un module 1-clic
+        if (defaultType && decision !== "creation") {
+          decision = "creation";
+          creation_type = defaultType;
+          creation_title = "Création IA";
         }
 
         return {
-          mode,
-          chat_response: chat_response || rawText,
+          decision,
+          mode: decision,
+          chat_message: chat_message || rawText,
+          chat_response: chat_message || rawText,
+          response: chat_message || rawText,
           creation_type,
           creation_title,
-          creation_data,
-          response: chat_response || rawText
+          creation_data
         };
       }
 
-      // 1. SYSTEM PROMPT MAÎTRE : Cerveau central autonome de StudyCloud (DKD Technologies)
-      const masterSystemPrompt = `Tu es l'intelligence centrale autonome de l'application de cours StudyCloud (développée par DKD Technologies).
-Tu es directement connectée à deux espaces distincts de l'interface utilisateur de l'étudiant :
-1. LE CHAT (Fil de discussion textuel) : Pour les questions simples, les explications, les calculs, le cours et le dialogue général.
-2. L'ESPACE DE CRÉATION (Panneau droit interactif) : Pour concevoir et afficher les outils interactifs :
-   - 'quiz' : QCM et questionnaires interactifs
-   - 'mindmap' : Cartes mentales arborescentes
-   - 'summary' : Fiches de résumé et synthèses structurées
-   - 'infographic' : Infographies, chiffres clés et repères visuels
-   - 'document' : Fiches d'étude complètes et polycopiés
+      // ======================================================================
+      // 1. LE PROMPT SYSTÈME MAÎTRE (CONFORME AU SCHÉMA DÉCISIONNEL GEMINI)
+      // ======================================================================
+      const masterSystemPrompt = `Tu es l'intelligence artificielle centrale autonome de l'application de cours StudyCloud (développée par DKD Technologies).
+Ton rôle est d'analyser chaque prompt envoyé par l'étudiant et d'opérer la DÉCISION selon le flux officiel suivant :
 
-TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
-- Analyse précisément l'intention de l'étudiant :
-  * Si l'étudiant pose une question simple, demande une explication ou discute : ton mode est "chat".
-  * Si l'étudiant demande de créer ou générer un outil (QCM, quiz, carte mentale, résumé, infographie, fiche), OU si un type de création est demandé ('${requestedType || ""}'), OU s'il clique sur une action de création : ton mode est "creation".
+======================================================================
+FLUX DE DÉCISION OBLIGATOIRE :
+======================================================================
+[Prompt de l'utilisateur]
+        │
+        ▼
+[Gemini : analyse du prompt envoyé]
+        │
+        ▼
+    < DÉCISION >
+   ╱            ╲
+  ╱              ╲
+[DÉCISION: "chat"]      [DÉCISION: "creation"]
+(Menu de discussion)             │
+  -> Répondre simplement        ▼
+     dans le chat      < Choix de création en fonction du prompt >
+                        ├── 1. Questionnaire / Questionnaire Test (QCM interactif)
+                        ├── 2. Vrai ou Faux / Vrai ou Faux Test (Cartes réflexes)
+                        ├── 3. Carte Mentale / Carte Mentale 2 (Arborescence et blocs conceptuels)
+                        ├── 4. Carte Mémoire (Flashcards de mémorisation espacée)
+                        ├── 5. Résumé (Fiche de synthèse didactique)
+                        ├── 6. PDF (Document complet prêt pour export)
+                        ├── 7. Infographie (Repères visuels et métriques)
+                        ├── 8. Exercices Écrits (Problèmes rédigés avec corrigés types)
+                        └── 9. Devoir Complet (Épreuve complète chronométrée sur 20 points)
+                                │
+                                ▼
+                       [Résultat attendu dans le menu création]
 
-Pour que l'application sache directement où afficher chaque élément, structure TOUJOURS ta réponse sous le format JSON suivant (dans un bloc \`\`\`json ... \`\`\` ou en objet JSON) :
+======================================================================
+RÈGLES DE DÉCISION :
+======================================================================
+1. DÉCISION "chat" (Discussion) :
+   - Si l'étudiant pose une question de cours, demande une explication, fait un calcul, demande de l'aide générale ou discute :
+   - Ton mode est "chat".
+   - Tu fournis une réponse claire, bienveillante et pédagogique dans "chat_message".
+   - Rédige toutes les formules scientifiques en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).
+
+2. DÉCISION "creation" (Création de module) :
+   - Si l'étudiant demande de créer un contenu d'étude, OU si un module spécifique est demandé ('${requestedType || ""}'), OU s'il a cliqué sur un bouton d'action :
+   - Ton mode est "creation".
+   - Tu sélectionnes le 'creation_type' exact parmi les 12 modules :
+     * 'questionnaire' : QCM avec feedback immédiat
+     * 'questionnaire-test' : Questionnaire noté avec correction révélée à la fin
+     * 'vrai-ou-faux' : Affirmations réflexes ciblées
+     * 'vrai-ou-faux-test' : Test noté d'affirmations à cocher
+     * 'carte-mentale' : Carte mentale arborescente dynamique
+     * 'carte-mentale-2' : Carte conceptuelle en blocs hiérarchiques
+     * 'carte-memoire' : Flashcards de mémorisation espacée
+     * 'resume' : Fiche synthétique structurée
+     * 'pdf' : Polycopié ou document officiel imprimable
+     * 'infographie' : Repères visuels, chiffres clés et étapes
+     * 'exercices-ecrits' : Problèmes avec barème et corrigé type
+     * 'devoir-complet' : Examen complet sur 20 points
+   - Dans "chat_message", écris une courte phrase amicale confirmant la mise à disposition du module dans le menu création à droite.
+   - Dans "creation_data", fournis l'objet JSON complet et rigoureusement structuré correspondant au module.
+
+======================================================================
+FORMAT STRICT DE SORTIE JSON :
+======================================================================
+Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`json ... \`\`\`) :
 {
-  "mode": "chat" ou "creation",
-  "chat_response": "Ton message textuel pour le fil de chat (explication détaillée si mode chat, ou courte phrase d'accueil amicale si mode creation)",
-  "creation_type": "quiz" | "mindmap" | "summary" | "infographic" | "document" | null,
-  "creation_title": "Titre explicite de la création (ou null si mode chat)",
+  "decision": "chat" ou "creation",
+  "chat_message": "Message textuel destiné au chat",
+  "creation_type": "questionnaire" | "questionnaire-test" | "vrai-ou-faux" | "vrai-ou-faux-test" | "carte-mentale" | "carte-mentale-2" | "carte-memoire" | "resume" | "pdf" | "infographie" | "exercices-ecrits" | "devoir-complet" | null,
+  "creation_title": "Titre explicite de la création (ou null si chat)",
   "creation_data": {
-    // Si quiz : { "questions": [ { "id": "q-1", "question": "...", "options": ["A", "B", "C", "D"], "answerIndex": 0, "explanation": "..." } ] }
-    // Si mindmap : { "root": { "label": "Concept", "children": [ { "label": "Branche 1", "children": [] } ] } }
-    // Si summary : { "overview": "...", "keyPoints": ["..."], "definitions": [ { "term": "...", "definition": "..." } ], "rules": ["..."] }
-    // Si infographic : { "mainTitle": "...", "metrics": [ { "value": "100%", "label": "..." } ], "keyConcepts": [ { "title": "...", "desc": "..." } ] }
-    // Si document : { "title": "...", "sections": [ { "heading": "...", "body": "...", "bulletPoints": [] } ] }
+    // Si questionnaire ou questionnaire-test :
+    // { "questions": [ { "id": "q1", "question": "...", "options": ["A", "B", "C", "D"], "correctIndex": 0, "explanation": "..." } ] }
+    // Si vrai-ou-faux ou vrai-ou-faux-test :
+    // { "affirmations": [ { "id": "vf1", "statement": "...", "isTrue": true, "explanation": "..." } ] }
+    // Si carte-memoire :
+    // { "cards": [ { "id": "c1", "front": "...", "back": "...", "tag": "Thème" } ] }
+    // Si carte-mentale :
+    // { "root": { "id": "root", "text": "...", "children": [ { "id": "b1", "text": "...", "children": [] } ] } }
+    // Si resume :
+    // { "overview": "...", "keyPoints": ["..."], "sections": [ { "heading": "...", "body": "..." } ] }
+    // Si exercices-ecrits :
+    // { "questions": [ { "id": "e1", "number": 1, "points": 5, "question": "...", "sampleAnswer": "...", "hint": "..." } ] }
+    // Si devoir-complet :
+    // { "matiere": "...", "duree": "45 min", "totalPoints": 20, "questions": [ ... ] }
     // null si mode chat
   }
-}
+}`;
 
-RÈGLES D'EXCELLENCE :
-- Pas de blabla inutile ni de règles artificielles.
-- Si un document est fourni, exploite fidèlement ses notions réelles.
-- Rédige toutes les formules scientifiques en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).`;
-
-      // ------------------------------------------------------------------------
-      // CONDITIONS SELON LE CHOIX DE L'UTILISATEUR (BOUTON PUISSANT)
-      // ------------------------------------------------------------------------
-      // Condition 1 : Si l'utilisateur a choisi PUISSANT (bouton actif) :
-      //   -> On appelle la clé dont le nom de variable est 'StudyCloud-gemini'
-      //   -> On délègue la requête à Google Gemini 2.0 Flash
-      // Condition 2 : Si l'utilisateur n'a PAS choisi puissant (bouton inactif) :
-      //   -> On n'utilise PAS la clé StudyCloud-gemini, on n'appelle pas Gemini
-      //   -> On utilise l'IA principale (Cloudflare Workers AI Llama)
-      // ------------------------------------------------------------------------
-      if (isPowerMode) {
-        // Recherche de la clé API avec le nom de variable 'StudyCloud-gemini'
-        let geminiApiKey = env?.["StudyCloud-gemini"] ||
-          env?.["studycloud-gemini"] ||
-          env?.["STUDYCLOUD_GEMINI"] ||
-          env?.["StudyCloud_gemini"] ||
-          env?.StudyCloud_gemini ||
-          env?.GEMINI_API_KEY ||
-          env?.GOOGLE_API_KEY ||
-          body.geminiApiKey;
-
-        // Si le nom exact dans Cloudflare a une casse légèrement différente
-        if (!geminiApiKey && env && typeof env === "object") {
-          for (const [k, v] of Object.entries(env)) {
-            if (typeof v === "string" && /studycloud[-_]?gemini/i.test(k) && !v.startsWith("http")) {
-              geminiApiKey = v.trim();
-              break;
-            }
-          }
-        }
-
-        if (typeof geminiApiKey === "string") {
-          geminiApiKey = geminiApiKey.trim();
-        }
-
-        let lastGoogleError = "";
-
-        // 1. Appel direct API Google Gemini avec la clé StudyCloud-gemini
-        if (geminiApiKey) {
-          const rawDocForGemini = (
-            (typeof body.attachedFileContent === "string" && body.attachedFileContent) ||
-            (typeof body.file_content === "string" && body.file_content) ||
-            (typeof body.fileContent === "string" && body.fileContent) ||
-            (typeof body.documentContent === "string" && body.documentContent) ||
-            (typeof body.documentText === "string" && body.documentText) ||
-            ""
-          ).trim();
-
-          let geminiSystemText = masterSystemPrompt;
-          if (rawDocForGemini.length > 0) {
-            const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";
-            geminiSystemText += `\n\nCONTENU DU DOCUMENT JOINT ("${docTitle}") :\n${rawDocForGemini.slice(0, 80000)}\nFIN DU DOCUMENT.`;
-          }
-
-          const geminiContents = [];
-          const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
-          for (const m of incomingHist.slice(-8)) {
-            if (m && m.role && m.content && m.role !== "system") {
-              geminiContents.push({
-                role: m.role === "assistant" ? "model" : "user",
-                parts: [{ text: String(m.content) }]
-              });
-            }
-          }
-          geminiContents.push({
-            role: "user",
-            parts: [{ text: userPrompt || "Bonjour !" }]
-          });
-
-          let ansText = "";
-          let usedGeminiModel = "";
-          const candidateGeminiModels = [
-            "gemini-3.6-flash",
-            "gemini-3.5-flash",
-            "gemini-2.5-flash",
-            "gemini-1.5-flash",
-            "gemini-2.0-flash"
-          ];
-
-          for (const mod of candidateGeminiModels) {
-            try {
-              const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${geminiApiKey}`;
-              const gResponse = await fetch(geminiApiEndpoint, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  system_instruction: { parts: [{ text: geminiSystemText }] },
-                  contents: geminiContents,
-                  generationConfig: {
-                    temperature: 0.7,
-                    maxOutputTokens: 3500,
-                  }
-                })
-              });
-
-              if (gResponse.ok) {
-                const gData = await gResponse.json();
-                const candidateText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (candidateText && candidateText.trim()) {
-                  ansText = candidateText.trim();
-                  usedGeminiModel = mod;
-                  break;
-                }
-              } else {
-                const errData = await gResponse.json().catch(() => ({}));
-                lastGoogleError = errData?.error?.message || `Erreur HTTP ${gResponse.status}`;
-                console.warn(`[Gemini API Direct ${mod}] Erreur:`, gResponse.status, lastGoogleError);
-                if (gResponse.status === 404 || lastGoogleError.includes("no longer available") || lastGoogleError.includes("not found")) {
-                  continue;
-                }
-              }
-            } catch (geminiApiErr) {
-              lastGoogleError = geminiApiErr?.message || String(geminiApiErr);
-              console.warn(`[Gemini API Direct ${mod}] Exception:`, geminiApiErr);
-            }
-          }
-
-          if (ansText) {
-            const formatted = formatAiResponsePayload(ansText, requestedType);
-            return new Response(JSON.stringify({
-              success: true,
-              ...formatted,
-              model: `Google Gemini (${usedGeminiModel})`,
-              type: formatted.creation_type || requestedType || "text"
-            }), {
-              headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
-            });
-          }
-        }
-
-        // 2. Détection d'un service binding Cloudflare nommé 'StudyCloud-gemini' ou 'studycloud-gemini'
-        const rawGeminiBinding = env?.["StudyCloud-gemini"] || env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI;
-        if (rawGeminiBinding && typeof rawGeminiBinding.fetch === "function") {
-          try {
-            const geminiRes = await rawGeminiBinding.fetch(new Request("https://studycloud-gemini/", {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify(body)
-            }));
-            if (geminiRes.ok) {
-              const ct = geminiRes.headers.get("content-type") || "";
-              if (ct.includes("application/json")) {
-                const resData = await geminiRes.json();
-                return new Response(JSON.stringify(resData), {
-                  headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
-                });
-              } else {
-                const resText = await geminiRes.text();
-                if (resText && resText.trim()) {
-                  return new Response(JSON.stringify({
-                    success: true,
-                    response: resText.trim(),
-                    model: "Google Gemini 2.0 Flash (Mode Puissant)",
-                    type: requestedType || "text"
-                  }), {
-                    headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
-                  });
-                }
-              }
-            }
-          } catch (bindErr) {
-            console.warn("[Puissance] Erreur liaison service StudyCloud-gemini:", bindErr);
-          }
-        }
-
-        // Si la clé n'a pas pu répondre ou est manquante
-        if (lastGoogleError) {
-          return new Response(JSON.stringify({
-            success: false,
-            model: "Google Gemini (Erreur API)",
-            response: `⚡ **Mode Puissant : Erreur API**\n\nGoogle Gemini a renvoyé l'erreur suivante :\n> *${lastGoogleError}*\n\n👉 Vérifiez la valeur de votre variable \`StudyCloud-gemini\` dans votre Cloudflare Worker.`
-          }), {
-            headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
-          });
-        }
-
-        return new Response(JSON.stringify({
-          success: false,
-          model: "Google Gemini (Variable StudyCloud-gemini requise)",
-          response: "⚡ **Mode Puissant : Variable StudyCloud-gemini introuvable**\n\nPour utiliser le Mode Puissant, ajoutez la variable de secret **`StudyCloud-gemini`** dans votre Worker Cloudflare :\n\n👉 Rendez-vous dans **Cloudflare Dashboard > Workers & Pages > studycloud-ai > Settings > Variables and Secrets**,\npuis ajoutez un secret nommé **`StudyCloud-gemini`** contenant votre clé API Google Gemini."
-        }), {
-          headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
-        });
-      }
-
-      // ========================================================================
-      // CAS OÙ L'UTILISATEUR N'A PAS CHOISI PUISSANT :
-      // On n'utilise PAS StudyCloud-gemini. On utilise l'IA principale (Workers AI).
-      // ========================================================================
-
-      // Document support attaché si présent (supporte toutes les clés : attachedFileContent, file_content, etc.)
-      const rawDocContent = (
+      // Extraction du document d'étude si présent
+      const rawDocForGemini = (
         (typeof body.attachedFileContent === "string" && body.attachedFileContent) ||
         (typeof body.file_content === "string" && body.file_content) ||
         (typeof body.fileContent === "string" && body.fileContent) ||
@@ -707,109 +566,137 @@ RÈGLES D'EXCELLENCE :
         ""
       ).trim();
 
-      // INJECTION DIRECTE DU DOCUMENT DANS L'UNIQUE MESSAGE SYSTÈME (Obligatoire pour Cloudflare Workers AI)
       let fullSystemPrompt = masterSystemPrompt;
-      if (rawDocContent.length > 0) {
-        const docTitle = body.attachedFileName || body.file_name || body.fileName || body.documentName || "Document de cours";
-        const maxDocChars = 50000;
-        const cleanDocContent = rawDocContent.slice(0, maxDocChars);
-        fullSystemPrompt += `
-
-======================================================================
-DOCUMENT JOINT DE L'ÉLÈVE ("${docTitle}") - ANALYSE INTÉGRALE :
-======================================================================
-${cleanDocContent}
-======================================================================
-FIN DU DOCUMENT JOINT
-======================================================================
-DIRECTIVES POUR CE DOCUMENT :
-- Tu as le contenu ci-dessus à disposition.
-- Appuie-toi fidèlement sur les notions, définitions, théorèmes et formules du document.
-- Réponds avec clarté, pertinence et efficacité.`;
-      }
-
-      // Construction de la liste des messages avec un SEUL rôle système à l'indice 0
-      const messages = [
-        { role: "system", content: fullSystemPrompt }
-      ];
-
-      // Ajout de l'historique récent avec alternance stricte des rôles
-      let incomingHistory = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
-      let lastRole = "system";
-
-      for (const m of incomingHistory.slice(-8)) {
-        if (m && m.role && m.content && m.role !== "system") {
-          const role = m.role === "user" ? "user" : "assistant";
-          const content = String(m.content).trim();
-          if (content && (role !== lastRole || role === "assistant")) {
-            messages.push({ role, content });
-            lastRole = role;
-          }
-        }
-      }
-
-      // Message utilisateur actuel
-      const currentPrompt = userPrompt.trim() || (messages.length === 1 ? "Bonjour ! Peux-tu m'expliquer ce cours en détail ?" : "");
-      if (currentPrompt) {
-        if (lastRole === "user") {
-          const lastMsg = messages[messages.length - 1];
-          if (lastMsg && lastMsg.content !== currentPrompt) {
-            lastMsg.content = `${lastMsg.content}\n\n${currentPrompt}`;
-          }
-        } else {
-          messages.push({ role: "user", content: currentPrompt });
-        }
-      }
-
-      // Modèles candidats performants (priorité à Llama-3.1-8b pour une vitesse et une compatibilité maximale sans timeout)
-      const candidateModels = [
-        "@cf/meta/llama-3.1-8b-instruct",
-        "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-        "@cf/meta/llama-3-8b-instruct",
-        "@cf/mistral/mistral-7b-instruct-v0.2",
-        "@cf/qwen/qwen1.5-14b-chat-awq"
-      ];
-
-      // --- PASSE 1 : GÉNÉRATION INITIALE DE HAUTE QUALITÉ ---
-      let aiResult = null;
-      let usedModel = "";
-      let lastError = null;
-
-      for (const m of candidateModels) {
-        try {
-          aiResult = await ai.run(m, {
-            messages: messages,
-            max_tokens: 3000,
-            temperature: 0.7,
-          });
-          usedModel = m;
-          break;
-        } catch (err) {
-          lastError = err;
-          console.warn(`Modèle ${m} a échoué:`, err?.message || err);
-        }
-      }
-
-      if (!aiResult) {
-        throw lastError || new Error("Aucun modèle IA n'a pu répondre");
+      if (rawDocForGemini.length > 0) {
+        const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";
+        fullSystemPrompt += `\n\n======================================================================\nDOCUMENT ATTACHÉ DE L'ÉTUDIANT ("${docTitle}") :\n${rawDocForGemini.slice(0, 80000)}\n======================================================================\nExploite fidèlement les notions de ce document pour tes réponses ou créations.`;
       }
 
       let generatedContent = "";
-      if (typeof aiResult?.response === "string") {
-        generatedContent = aiResult.response;
-      } else if (typeof aiResult === "string") {
-        generatedContent = aiResult;
-      } else if (aiResult && typeof aiResult === "object") {
-        generatedContent = aiResult.response || aiResult.text || aiResult.result || JSON.stringify(aiResult);
+      let usedEngine = "";
+
+      // ======================================================================
+      // EXÉCUTION 1 : APPEL DIRECT À GOOGLE GEMINI (CERVEAU PRINCIPAL)
+      // ======================================================================
+      if (geminiApiKey) {
+        const geminiContents = [];
+        const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+        for (const m of incomingHist.slice(-8)) {
+          if (m && m.role && m.content && m.role !== "system") {
+            geminiContents.push({
+              role: m.role === "assistant" ? "model" : "user",
+              parts: [{ text: String(m.content) }]
+            });
+          }
+        }
+        geminiContents.push({
+          role: "user",
+          parts: [{ text: userPrompt || (requestedType ? `Génère le module ${requestedType}` : "Bonjour !") }]
+        });
+
+        const candidateGeminiModels = [
+          "gemini-2.0-flash",
+          "gemini-1.5-flash",
+          "gemini-2.5-flash"
+        ];
+
+        for (const mod of candidateGeminiModels) {
+          try {
+            const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${geminiApiKey}`;
+            const gResponse = await fetch(geminiApiEndpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                system_instruction: { parts: [{ text: fullSystemPrompt }] },
+                contents: geminiContents,
+                generationConfig: {
+                  temperature: 0.7,
+                  maxOutputTokens: 4000,
+                }
+              })
+            });
+
+            if (gResponse.ok) {
+              const gData = await gResponse.json();
+              const candidateText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (candidateText && candidateText.trim()) {
+                generatedContent = candidateText.trim();
+                usedEngine = `Google Gemini (${mod})`;
+                break;
+              }
+            } else {
+              const errData = await gResponse.json().catch(() => ({}));
+              console.warn(`[Gemini ${mod}] Statut:`, gResponse.status, errData?.error?.message);
+            }
+          } catch (geminiErr) {
+            console.warn(`[Gemini ${mod}] Exception:`, geminiErr);
+          }
+        }
       }
 
+      // ======================================================================
+      // EXÉCUTION 2 : FALLBACK CLOUDFLARE WORKERS AI (SI GEMINI INDISPONIBLE)
+      // ======================================================================
+      if (!generatedContent && ai && typeof ai.run === "function") {
+        const messages = [
+          { role: "system", content: fullSystemPrompt }
+        ];
 
-      // --- ÉTAPE 3 : SAUVEGARDE PERSISTANTE DANS D1 ---
+        let incomingHistory = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+        let lastRole = "system";
+
+        for (const m of incomingHistory.slice(-8)) {
+          if (m && m.role && m.content && m.role !== "system") {
+            const role = m.role === "user" ? "user" : "assistant";
+            const content = String(m.content).trim();
+            if (content && (role !== lastRole || role === "assistant")) {
+              messages.push({ role, content });
+              lastRole = role;
+            }
+          }
+        }
+
+        const currentPrompt = userPrompt.trim() || (requestedType ? `Génère le module ${requestedType}` : "Bonjour !");
+        if (currentPrompt) {
+          messages.push({ role: "user", content: currentPrompt });
+        }
+
+        const candidateModels = [
+          "@cf/meta/llama-3.1-8b-instruct",
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "@cf/mistral/mistral-7b-instruct-v0.2"
+        ];
+
+        for (const m of candidateModels) {
+          try {
+            const aiResult = await ai.run(m, {
+              messages,
+              max_tokens: 3500,
+              temperature: 0.7,
+            });
+            if (aiResult?.response) {
+              generatedContent = aiResult.response;
+              usedEngine = `Cloudflare Workers AI (${m})`;
+              break;
+            }
+          } catch (cfErr) {
+            console.warn(`[Workers AI ${m}] Exception:`, cfErr);
+          }
+        }
+      }
+
+      if (!generatedContent) {
+        throw new Error("Aucun modèle IA n'a pu répondre. Veuillez vérifier la variable StudyCloud-gemini dans votre Worker Cloudflare.");
+      }
+
+      // Formatage et analyse de la réponse
+      const formatted = parseAiDecision(generatedContent, requestedType);
+
+      // Enregistrement persistant dans D1 si disponible
       if (db) {
         const userMsgId = crypto.randomUUID();
         const aiMsgId = crypto.randomUUID();
 
-        // 1. Sauvegarde dans la table messages pour l'historique Gemini
         if (conversationId) {
           try {
             await db.prepare(`
@@ -820,68 +707,40 @@ DIRECTIVES POUR CE DOCUMENT :
             await db.prepare(`
               INSERT INTO messages (id, conversation_id, role, content, metadata, created_at)
               VALUES (?, ?, 'assistant', ?, ?, CURRENT_TIMESTAMP)
-            `).bind(aiMsgId, conversationId, generatedContent, JSON.stringify({ model: usedModel, type: requestedType || "text" })).run();
+            `).bind(aiMsgId, conversationId, formatted.chat_message, JSON.stringify({ model: usedEngine, decision: formatted.decision, type: formatted.creation_type })).run();
 
             await db.prepare("UPDATE conversations SET updated_at = CURRENT_TIMESTAMP WHERE id = ?").bind(conversationId).run();
           } catch (msgErr) {
-            console.warn("[Workspace AI] Erreur insertion messages D1:", msgErr);
+            console.warn("[AI D1] Erreur insertion messages:", msgErr);
           }
         }
 
-        // 2. Si c'est une création dédiée, sauvegarde dans la table ai_creations
-        if (requestedType && requestedType !== "text" && conversationId) {
+        if (formatted.decision === "creation" && formatted.creation_data && conversationId) {
           try {
             const creationId = body.creationId || crypto.randomUUID();
-            const creationTitle = `${requestedType.toUpperCase()} : ${(userPrompt || body.attachedFileName || "Création").slice(0, 50)}`;
             await db.prepare(`
               INSERT INTO ai_creations (id, conversation_id, message_id, type, title, content, created_at)
               VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
               ON CONFLICT(id) DO UPDATE SET title = excluded.title, content = excluded.content
-            `).bind(creationId, conversationId, aiMsgId, requestedType, creationTitle, generatedContent).run();
-          } catch (creatErr) {
-            console.warn("[Workspace AI] Erreur insertion ai_creations D1:", creatErr);
-          }
-        }
-
-        // 3. Sauvegarde de rétro-compatibilité dans user_ai_workspace
-        if (userId) {
-          try {
-            await db.prepare(`
-              INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, attached_file_id, attached_file_name, attached_file_r2_key, attached_file_content)
-              VALUES (?, ?, ?, 'user', ?, ?, ?, ?, ?)
             `).bind(
-              userMsgId,
-              userId,
-              sessionId,
-              userPrompt,
-              body.attachedFileId || null,
-              body.attachedFileName || null,
-              body.attachedFileR2Key || null,
-              body.attachedFileContent || null
-            ).run();
-
-            await db.prepare(`
-              INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text)
-              VALUES (?, ?, ?, 'assistant', ?)
-            `).bind(
+              creationId,
+              conversationId,
               aiMsgId,
-              userId,
-              sessionId,
-              generatedContent
+              formatted.creation_type || "creation",
+              formatted.creation_title || "Création IA",
+              typeof formatted.creation_data === "string" ? formatted.creation_data : JSON.stringify(formatted.creation_data)
             ).run();
-          } catch (dbSaveErr) {
-            console.warn("[Workspace AI] Erreur sauvegarde user_ai_workspace D1:", dbSaveErr);
+          } catch (creatErr) {
+            console.warn("[AI D1] Erreur insertion ai_creations:", creatErr);
           }
         }
       }
 
-      // --- 4. RETOUR AU FRONT-END ---
-      const formatted = formatAiResponsePayload(generatedContent, requestedType);
+      // Retour structuré au client StudyCloud
       return new Response(JSON.stringify({
         success: true,
         ...formatted,
-        type: formatted.creation_type || requestedType || "text",
-        model: usedModel,
+        model: usedEngine,
         timestamp: new Date().toISOString()
       }), {
         status: 200,
@@ -891,7 +750,7 @@ DIRECTIVES POUR CE DOCUMENT :
     } catch (err) {
       return new Response(JSON.stringify({
         success: false,
-        error: err.message || "Erreur interne lors de l'exécution de l'IA.",
+        error: err.message || "Erreur interne du Worker IA.",
         details: String(err)
       }), {
         status: 500,
@@ -900,4 +759,3 @@ DIRECTIVES POUR CE DOCUMENT :
     }
   }
 };
-

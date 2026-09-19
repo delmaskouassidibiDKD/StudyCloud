@@ -117,10 +117,11 @@ export async function watermarkPDF(file: File): Promise<File> {
     const creator = pdfDoc.getCreator() || '';
     const title = pdfDoc.getTitle() || '';
 
+    const keywordsStr = typeof keywords === 'string' ? keywords : (Array.isArray(keywords) ? keywords.join(' ') : '');
     const isAlreadyMarked =
-      keywords.includes('StudyCloud_Watermarked') ||
-      keywords.includes('DKD_Technologies_Watermark') ||
-      keywords.some((k) => k.toLowerCase().includes('studycloud')) ||
+      keywordsStr.includes('StudyCloud_Watermarked') ||
+      keywordsStr.includes('DKD_Technologies_Watermark') ||
+      keywordsStr.toLowerCase().includes('studycloud') ||
       producer.includes('StudyCloud') ||
       subject === 'StudyCloud_Watermarked' ||
       creator.includes('StudyCloud') ||

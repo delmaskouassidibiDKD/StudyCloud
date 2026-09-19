@@ -439,7 +439,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     }
   };
 
-  const sendMessage = async (textToSend: string) => {
+  const sendMessage = async (textToSend: string, requestedTypeOverride?: string) => {
     if (!textToSend.trim() || isTyping) return;
 
     const userText = textToSend.trim();
@@ -529,19 +529,50 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         setShowProposalBar(true);
       }
 
-      const isQuestionOrMeta = /^(pourquoi|comment|qu'est|est-ce|aide-moi|explique|quelles?|dis-moi)/i.test(userText.trim()) || /(dans le chat|dans la cr[eé]ation|dans l'interface|pourquoi l'ia)/i.test(userText);
+      const isQuestionOrMeta = !requestedTypeOverride && (/^(pourquoi|comment|qu'est|est-ce|aide-moi|explique|quelles?|dis-moi)/i.test(userText.trim()) || /(dans le chat|dans la cr[eé]ation|dans l'interface|pourquoi l'ia)/i.test(userText));
       const isIteration = !isQuestionOrMeta && Boolean(activeCreation && /(ajoute\s+(une?|\d+)|modifie\s+(le|la|cette|mon|ma)|supprime\s+(la|le|cette)|am[eé]liore\s+(le|la|ce)|corrige\s+(la|le)|mets?\s+à\s+jour|plus\s+de\s+questions|d[eé]taille\s+(le|la|ce))/i.test(userText));
-      const isCreation = !isIteration && !isQuestionOrMeta && /(cr[eé]e|g[eé]n[eé]re|fais(-moi)?|pr[eé]pare|[eé]labore|con[çc]ois|r[eé]sume|synth[eé]tise|questionnaire|quiz|qcm|carte mentale|mind ?map|infographie|exporte? (en )?(pdf|word)|fiche)/i.test(userText);
+      
+      let isCreation = Boolean(requestedTypeOverride);
+      let targetToolType: AiCreationType = (requestedTypeOverride as AiCreationType) || 'questionnaire';
 
-      let targetToolType: AiCreationType = 'summary';
-      if (/quiz|qcm|questionnaire|q\.c\.m|questions/i.test(userText)) {
-        targetToolType = 'quiz';
-      } else if (/carte mentale|mind ?map|sch[eé]ma|arborescence/i.test(userText)) {
-        targetToolType = 'mindmap';
-      } else if (/infographie|dashboard|tableau de bord|visuel/i.test(userText)) {
-        targetToolType = 'infographic';
-      } else if (/document|export|pdf|word|fiche d'[eé]tude/i.test(userText)) {
-        targetToolType = 'document';
+      if (!requestedTypeOverride && !isIteration && !isQuestionOrMeta) {
+        if (/questionnaire[- ]?test|test not[eé]/i.test(userText)) {
+          targetToolType = 'questionnaire-test';
+          isCreation = true;
+        } else if (/vrai\s+ou\s+faux\s+test|v\/f\s+test|test\s+vrai/i.test(userText)) {
+          targetToolType = 'vrai-ou-faux-test';
+          isCreation = true;
+        } else if (/vrai\s+(ou\s+)?faux|v\/f|affirmation/i.test(userText)) {
+          targetToolType = 'vrai-ou-faux';
+          isCreation = true;
+        } else if (/carte\s+mentale\s+2|conceptuelle|blocs/i.test(userText)) {
+          targetToolType = 'carte-mentale-2';
+          isCreation = true;
+        } else if (/carte\s+mentale|mind\s*map|arborescence/i.test(userText)) {
+          targetToolType = 'carte-mentale';
+          isCreation = true;
+        } else if (/carte\s+m[eé]moire|flashcard|r[eé]p[eé]tition espac[eé]e/i.test(userText)) {
+          targetToolType = 'carte-memoire';
+          isCreation = true;
+        } else if (/r[eé]sum[eé]|synth[eé]tise|fiche de synth[eè]se/i.test(userText)) {
+          targetToolType = 'resume';
+          isCreation = true;
+        } else if (/\bpdf\b|export|document officiel|polycopi[eé]/i.test(userText)) {
+          targetToolType = 'pdf';
+          isCreation = true;
+        } else if (/infographie|rep[eè]res? visuels?|chiffres? cl[eé]s?/i.test(userText)) {
+          targetToolType = 'infographie';
+          isCreation = true;
+        } else if (/exercices?\s+[eé]crits?|probl[eè]mes?|r[eé]daction/i.test(userText)) {
+          targetToolType = 'exercices-ecrits';
+          isCreation = true;
+        } else if (/devoir\s+complet|[eé]preuve\s+compl[eè]te|examen\s+20/i.test(userText)) {
+          targetToolType = 'devoir-complet';
+          isCreation = true;
+        } else if (/cr[eé]e|g[eé]n[eé]re|fais(-moi)?|pr[eé]pare|[eé]labore|con[çc]ois|quiz|qcm|questionnaire|questions/i.test(userText)) {
+          targetToolType = 'questionnaire';
+          isCreation = true;
+        }
       }
 
       if (isCreation) {
@@ -782,8 +813,9 @@ ${effectiveToolType === 'quiz' && newCreation.content?.questions?.length ? `📝
   useEffect(() => {
     const handleAutoPrompt = (e: any) => {
       const promptText = e.detail?.prompt;
+      const reqType = e.detail?.requested_type;
       if (promptText) {
-        sendMessage(promptText);
+        sendMessage(promptText, reqType);
       }
     };
     window.addEventListener('auto-prompt', handleAutoPrompt as any);

@@ -83,7 +83,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   };
 
   const handleBatchDownload = async () => {
-    const filesToDownload = matiereFiles.filter(f => selectedFileIds.includes(f.id));
+    const filesToDownload = importedFiles.filter(f => selectedFileIds.includes(f.id));
     for (const f of filesToDownload) {
       if (f.url) {
         await handleDownload(f.url, f.name);
@@ -95,7 +95,7 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
   };
 
   const handleBatchShare = () => {
-    const filesToShare = matiereFiles.filter(f => selectedFileIds.includes(f.id));
+    const filesToShare = importedFiles.filter(f => selectedFileIds.includes(f.id));
     if (onOpenCreateShareLink && filesToShare.length > 0) {
       onOpenCreateShareLink(filesToShare);
       setIsSelectionMode(false);

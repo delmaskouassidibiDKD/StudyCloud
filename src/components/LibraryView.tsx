@@ -21,10 +21,11 @@ const memoryThumbnailCache = new Map<string, string>();
 export interface DocTypeInfo {
   name: string;
   badgeClass: string;
-  cardBgClass: string;
+  cardBgClass?: string;
   cardBorderClass: string;
   cardShadowClass: string;
   accentTextClass: string;
+  cardBgStyle?: React.CSSProperties;
 }
 
 export function getDocTypeInfo(doc: any): DocTypeInfo {
