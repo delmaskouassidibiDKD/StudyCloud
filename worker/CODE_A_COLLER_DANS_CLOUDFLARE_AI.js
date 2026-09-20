@@ -420,10 +420,11 @@ export default {
               creation_title = mm.root_title || mm.rootTitle || mm.title || parsed.rootTitle || parsed.root?.text || "Carte Mentale";
               creation_data = parsed;
               chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre carte mentale est prête à droite !";
-            } else if (parsed.overview || Array.isArray(parsed.sections)) {
+            } else if (parsed.summary || parsed.overview || Array.isArray(parsed.sections)) {
               decision = "creation";
               creation_type = defaultType || "resume";
-              creation_title = parsed.title || "Fiche de Synthèse";
+              const sum = (parsed.summary && typeof parsed.summary === "object" && !Array.isArray(parsed.summary)) ? parsed.summary : parsed;
+              creation_title = sum.title || parsed.title || "Fiche de Synthèse";
               creation_data = parsed;
               chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre fiche de synthèse est prête à droite !";
             } else if (Array.isArray(parsed.exercises) || Array.isArray(parsed.exercices)) {
@@ -686,6 +687,46 @@ Tu dois impérativement respecter les règles strictes suivantes :
    }
 
 ======================================================================
+RÈGLES D'EXCELLENCE POUR LE RÉSUMÉ / FICHE DE SYNTHÈSE ('resume') :
+======================================================================
+Tu es un professeur expert, un rédacteur technique et un tuteur pédagogique de haut niveau. Ta mission est de générer un résumé structuré, approfondi et clair d'un document fourni par l'utilisateur, enrichi si nécessaire par des connaissances actualisées et vérifiées d'Internet sur le même sujet.
+
+Tu dois impérativement respecter les règles strictes suivantes :
+
+1. ÉVITER LES DOUBLONS (HISTORIQUE DES RÉSUMÉS DÉJÀ GÉNÉRÉS) :
+   - Prends en compte l'historique des résumés ou des versions déjà générés pour cet utilisateur et ce document.
+   - Si l'utilisateur demande un nouveau résumé ou une approche différente, propose un angle d'analyse inédit, insiste sur d'autres chapitres ou adopte une structure différente par rapport à l'historique.
+
+2. PROFONDEUR PÉDAGOGIQUE ET STRUCTURATION :
+   - Ne fais pas un résumé superficiel ou une simple liste de phrases. Divise le résumé en grandes sections logiques (ex: Introduction/Contexte, Concepts fondamentaux, Équations et principes clés, Applications pratiques, Limites ou perspectives).
+   - Explique les mécanismes sous-jacents en profondeur pour que l'utilisateur comprenne le "pourquoi" et le "comment".
+
+3. ENRICHISSEMENT EXTERNE (INTERNET) :
+   - Tu es explicitement autorisé et encouragé à compléter le contenu du fichier avec des standards industriels, des cas d'usage réels ou des définitions complémentaires trouvées sur Internet pour rendre le résumé plus complet et ancré dans le réel.
+
+4. RÈGLE DE FORMATAGE ABSOLUE (MATHÉMATIQUES, FONCTIONS ET FRACTIONS EN LATEX PUR) :
+   - Pour TOUTES les formules, fonctions mathématiques, fractions, variables et symboles scientifiques (ex: $f(x) = ax + b$, $\frac{a}{b}$, $\Omega$, $\sqrt{2}$, $U_{eff}$), tu DOIS utiliser exclusivement la syntaxe LaTeX standard (entre symboles dollar $...$ pour le texte ou doubles dollars $$...$$ pour les équations centrées).
+   - INTERDICTION FORMELLE d'utiliser du texte brut mal formaté ou des caractères corrompus (&, *, !, $$$) pour représenter des maths. Utilise toujours les balises LaTeX correctes (ex: \frac{num}{den}).
+
+5. STRUCTURE JSON REQUISE DANS "creation_data" :
+   {
+     "summary": {
+       "title": "Synthèse et Analyse du Document",
+       "overview": "Bref paragraphe d'introduction présentant les enjeux globaux du document.",
+       "sections": [
+         {
+           "section_title": "1. Principes Fondamentaux et Équations Clés",
+           "content": "Description détaillée de la section intégrant des formules : La fonction de transfert s'exprime par $H(j\\omega) = \\frac{1}{1 + j\\frac{\\omega}{\\omega_0}}$."
+         },
+         {
+           "section_title": "2. Applications et Cas Pratiques",
+           "content": "Analyse des applications industrielles et des cas d'usage réels..."
+         }
+       ]
+     }
+   }
+
+======================================================================
 RÈGLE DE FORMATAGE MATHÉMATIQUE STRICTE (LATEX PUR) :
 ======================================================================
 1. Pour TOUTES les fractions, puissances, racines, intégrales, dérivées, matrices et formules scientifiques, tu DOIS utiliser exclusivement la syntaxe LaTeX standard.
@@ -745,7 +786,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         try {
           const { results } = await db.prepare(`
             SELECT content_json FROM ai_generated_contents
-            WHERE user_id = ? AND tool_type IN ('questionnaire', 'questionnaire-test', 'vrai-ou-faux', 'vrai-ou-faux-test', 'carte-mentale', 'carte-mentale-2', 'carte-memoire')
+            WHERE user_id = ? AND tool_type IN ('questionnaire', 'questionnaire-test', 'vrai-ou-faux', 'vrai-ou-faux-test', 'carte-mentale', 'carte-mentale-2', 'carte-memoire', 'resume')
             ORDER BY created_at DESC LIMIT 8
           `).bind(currentUserId).all();
 
@@ -762,6 +803,10 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
                   ? parsed.flashcards
                   : Array.isArray(parsed?.cards)
                   ? parsed.cards
+                  : Array.isArray(parsed?.summary?.sections)
+                  ? parsed.summary.sections
+                  : Array.isArray(parsed?.sections)
+                  ? parsed.sections
                   : Array.isArray(parsed?.mind_map?.branches)
                   ? parsed.mind_map.branches
                   : Array.isArray(parsed?.branches)
@@ -770,8 +815,11 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
                   ? parsed
                   : [];
                 for (const item of items) {
-                  const text = item.question || item.statement || item.affirmation || item.front || item.recto || item.branch_title || item.title || item.texte;
+                  const text = item.question || item.statement || item.affirmation || item.front || item.recto || item.section_title || item.sectionTitle || item.branch_title || item.title || item.texte;
                   if (text) prevList.push(text);
+                }
+                if (parsed?.summary?.title || (parsed?.overview && typeof parsed?.overview === 'string')) {
+                  prevList.push(`Résumé précédent : ${parsed?.summary?.title || parsed?.title || parsed?.overview?.slice(0, 80)}`);
                 }
                 if (parsed?.mind_map?.root_title) {
                   prevList.push(`Carte mentale précédente : ${parsed.mind_map.root_title}`);
@@ -802,7 +850,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         fullSystemPrompt = fullSystemPrompt.replace(/'\${requestedType \|\| ""}'/, `'${requestedType}'`);
       }
       if (previousQuestionsText) {
-        fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES ÉLÉMENTS, QUESTIONS, CARTES MÉMOIRE OU CARTES DÉJÀ GÉNÉRÉS POUR CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions, affirmations, cartes mémoire (flashcards) ou axes de cartes mentales ENTIÈREMENT NOUVEAUX qui n'ont ni la même formulation, ni le même angle, ni la même organisation que les éléments déjà mémorisés ou générés ci-dessus. Explore d'autres aspects, chapitres, théorèmes, cas pratiques ou notions du document et enrichis avec Internet.`;
+        fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES ÉLÉMENTS, QUESTIONS, CARTES OU RÉSUMÉS DÉJÀ GÉNÉRÉS POUR CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions, affirmations, cartes mémoire (flashcards), axes de cartes mentales ou sections de résumés ENTIÈREMENT NOUVEAUX qui n'ont ni la même formulation, ni le même angle, ni la même organisation que les éléments déjà mémorisés ou générés ci-dessus. Si l'utilisateur demande un nouveau résumé, propose un angle d'analyse inédit, insiste sur d'autres chapitres ou adopte une structure différente par rapport à l'historique.`;
       }
       if (rawDocForGemini.length > 0) {
         const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";

@@ -6,36 +6,52 @@ export default function Resume({ data, title, sourceFileName }: { data?: any; ti
   const [copied, setCopied] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
 
+  // Normalisation des données pour accepter data.summary ou data directement
+  const actualData = useMemo(() => {
+    if (!data) return null;
+    if (data.summary && typeof data.summary === 'object' && !Array.isArray(data.summary)) {
+      return data.summary;
+    }
+    return data;
+  }, [data]);
+
   const hasDynamicData = Boolean(
-    data && (
-      data.overview ||
-      data.summary ||
-      (Array.isArray(data.sections) && data.sections.length > 0) ||
-      (Array.isArray(data.keyPoints) && data.keyPoints.length > 0) ||
-      typeof data.text === 'string' ||
-      typeof data.content === 'string'
+    actualData && (
+      actualData.overview ||
+      (typeof actualData.summary === 'string' && actualData.summary) ||
+      (Array.isArray(actualData.sections) && actualData.sections.length > 0) ||
+      (Array.isArray(actualData.keyPoints) && actualData.keyPoints.length > 0) ||
+      typeof actualData.text === 'string' ||
+      typeof actualData.content === 'string'
     )
   );
 
-  const docTitle = data?.title || title || (sourceFileName ? `Fiche de synthèse : ${sourceFileName}` : 'Fiche de synthèse');
-  const docSubtitle = data?.overview || data?.summary || data?.description || (hasDynamicData ? 'Synthèse structurée et didactique des points clés de ce cours.' : '');
+  const docTitle = actualData?.title || data?.title || title || (sourceFileName ? `Fiche de synthèse : ${sourceFileName}` : 'Fiche de synthèse');
+  const docSubtitle = actualData?.overview || (typeof actualData?.summary === 'string' ? actualData.summary : '') || actualData?.description || (hasDynamicData ? 'Synthèse structurée et didactique des points clés de ce cours.' : '');
 
   const dynamicSections = useMemo(() => {
-    if (!data?.sections || !Array.isArray(data.sections)) return [];
-    return data.sections.map((sec: any, idx: number) => ({
-      number: sec.number || idx + 1,
-      heading: sec.heading || sec.title || sec.titre || `Axe clé n°${idx + 1}`,
-      body: sec.body || sec.content || sec.texte || '',
-      points: Array.isArray(sec.points) ? sec.points : (Array.isArray(sec.keyPoints) ? sec.keyPoints : (Array.isArray(sec.bulletPoints) ? sec.bulletPoints : [])),
-      protocolTitle: sec.protocolTitle || sec.highlightTitle || 'Points fondamentaux à retenir :'
-    }));
-  }, [data]);
+    const rawSections = actualData?.sections || data?.sections;
+    if (!rawSections || !Array.isArray(rawSections)) return [];
+    return rawSections.map((sec: any, idx: number) => {
+      const heading = sec.section_title || sec.sectionTitle || sec.heading || sec.title || sec.titre || `Section ${idx + 1}`;
+      const body = sec.content || sec.body || sec.texte || '';
+      return {
+        number: sec.number || idx + 1,
+        heading,
+        body,
+        points: Array.isArray(sec.points) ? sec.points : (Array.isArray(sec.keyPoints) ? sec.keyPoints : (Array.isArray(sec.bulletPoints) ? sec.bulletPoints : [])),
+        protocolTitle: sec.protocolTitle || sec.highlightTitle || 'Points fondamentaux à retenir :'
+      };
+    });
+  }, [actualData, data]);
 
   const dynamicKeyPoints: string[] = useMemo(() => {
+    if (Array.isArray(actualData?.keyPoints)) return actualData.keyPoints;
     if (Array.isArray(data?.keyPoints)) return data.keyPoints;
+    if (Array.isArray(actualData?.pointsCles)) return actualData.pointsCles;
     if (Array.isArray(data?.pointsCles)) return data.pointsCles;
     return [];
-  }, [data]);
+  }, [actualData, data]);
 
   const fullText = useMemo(() => {
     if (!hasDynamicData) return "";
@@ -193,7 +209,7 @@ export default function Resume({ data, title, sourceFileName }: { data?: any; ti
                     {sec.number || sidx + 1}
                   </span>
                   <h2 className="text-xl sm:text-2xl font-bold text-stone-900 tracking-tight leading-relaxed break-words whitespace-normal">
-                    <MathText text={sec.heading} />
+                    <MathText text={sec.heading.replace(/^\s*\d+[\.\-\)]\s*/, '') || sec.heading} />
                   </h2>
                 </div>
                 <div className="text-stone-800 leading-relaxed text-base sm:text-lg whitespace-pre-line break-words w-full h-auto">
