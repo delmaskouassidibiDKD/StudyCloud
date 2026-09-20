@@ -35,7 +35,7 @@ import Resume from './ai-creations/Resume';
 import Pdf from './ai-creations/Pdf';
 import Infographie from './ai-creations/Infographie';
 import ExercicesEcrits from './ai-creations/ExercicesEcrits';
-import DevoirComplet from './ai-creations/DevoirComplet';
+import DevoirComplet, { normalizeExamData } from './ai-creations/DevoirComplet';
 
 interface RightMenuProps {
   isRightFullscreen: boolean;
@@ -693,6 +693,16 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
           }
         } catch (parseErr) {
           console.warn('[RightMenu] Erreur parsing secours creation:', parseErr);
+        }
+      }
+
+      // Normalisation défensive immédiate pour devoir-complet pour garantir les 3 fiches peuplées
+      if (targetType === 'devoir-complet') {
+        try {
+          effectiveContent = normalizeExamData(effectiveContent, docName);
+          effectiveTitle = `Épreuve Officielle d'Examen : ${docName}`;
+        } catch (normErr) {
+          console.warn('[RightMenu] Erreur normalisation devoir-complet:', normErr);
         }
       }
 

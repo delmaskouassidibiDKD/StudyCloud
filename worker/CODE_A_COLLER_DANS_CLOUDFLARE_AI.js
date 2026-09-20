@@ -631,7 +631,30 @@ export default {
               creation_title = mm.root_title || mm.rootTitle || mm.title || parsed.rootTitle || parsed.root?.text || "Carte Mentale";
               creation_data = parsed;
               chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre carte mentale est prête à droite !";
-            } else if (parsed.summary || parsed.overview || Array.isArray(parsed.sections)) {
+            } else if (
+              defaultType === "devoir-complet" ||
+              parsed.creation_type === "devoir-complet" ||
+              parsed.complete_exam ||
+              parsed.exam ||
+              parsed.devoir ||
+              parsed.baremeTotal ||
+              parsed.exercice1 ||
+              (Array.isArray(parsed.sections) && parsed.sections.some((s) => s?.questions || s?.problem_statement || s?.section_id?.includes('sec') || s?.title?.toLowerCase().includes('fiche') || s?.title?.toLowerCase().includes('partie')))
+            ) {
+              decision = "creation";
+              creation_type = "devoir-complet";
+              const ex = parsed.complete_exam || parsed.exam || parsed.devoir || parsed;
+              creation_title = ex.title || ex.matiere || parsed.title || "Épreuve Officielle d'Examen (20 pts)";
+              creation_data = parsed;
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre épreuve officielle d'examen sur 20 points (3 fiches) est prête dans l'espace Création !";
+            } else if (parsed.written_exercise || Array.isArray(parsed.exercises) || Array.isArray(parsed.exercices) || (defaultType === "exercices-ecrits" && Array.isArray(parsed.questions))) {
+              decision = "creation";
+              creation_type = "exercices-ecrits";
+              const we = parsed.written_exercise || parsed;
+              creation_title = we.title || parsed.title || "Exercice Écrit & Résolution de Problème";
+              creation_data = parsed;
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre exercice écrit et sa correction détaillée sont prêts dans l'espace Création !";
+            } else if (parsed.summary || parsed.overview || (defaultType === "resume" && Array.isArray(parsed.sections))) {
               decision = "creation";
               creation_type = defaultType || "resume";
               const sum = (parsed.summary && typeof parsed.summary === "object" && !Array.isArray(parsed.summary)) ? parsed.summary : parsed;
@@ -652,20 +675,6 @@ export default {
               creation_title = info.title || info.mainTitle || parsed.title || "Infographie Pédagogique";
               creation_data = parsed;
               chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre infographie visuelle et descriptive est prête dans l'espace Création !";
-            } else if (parsed.written_exercise || Array.isArray(parsed.exercises) || Array.isArray(parsed.exercices) || (defaultType === "exercices-ecrits" && Array.isArray(parsed.questions))) {
-              decision = "creation";
-              creation_type = "exercices-ecrits";
-              const we = parsed.written_exercise || parsed;
-              creation_title = we.title || parsed.title || "Exercice Écrit & Résolution de Problème";
-              creation_data = parsed;
-              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre exercice écrit et sa correction détaillée sont prêts dans l'espace Création !";
-            } else if (parsed.complete_exam || parsed.exam || parsed.devoir || parsed.baremeTotal || parsed.exercice1 || defaultType === "devoir-complet") {
-              decision = "creation";
-              creation_type = "devoir-complet";
-              const ex = parsed.complete_exam || parsed.exam || parsed.devoir || parsed;
-              creation_title = ex.title || ex.matiere || parsed.title || "Devoir Évaluatif d'Examen (20 pts)";
-              creation_data = parsed;
-              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre devoir complet d'évaluation sur 20 points est prêt dans l'espace Création !";
             } else if (parsed.decision === "chat" || parsed.mode === "chat") {
               decision = "chat";
               chat_message = parsed.chat_message || parsed.chat_response || rawText;

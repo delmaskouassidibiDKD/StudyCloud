@@ -112,6 +112,27 @@ export interface NormalizedSection {
 // NORMALISATION DYNAMIQUE DE L'ÉPREUVE
 // Supporte complete_exam.sections ET legacy exercice1..4
 // ==========================================
+export function extractCleanQuestionText(q: any): string {
+  if (!q) return '';
+  if (typeof q === 'string') return q.trim();
+  const text = q.texte || q.question || q.text || q.affirmation || q.statement || q.title || '';
+  return String(text).trim();
+}
+
+export function cleanExamTitle(rawTitle: string): string {
+  if (!rawTitle) return "ÉPREUVE OFFICIELLE D'EXAMEN";
+  return rawTitle
+    .replace(/^FICHE\s*D['’]ÉTUDE\s*:\s*/i, '')
+    .replace(/^Fiche\s*d['’][ée]tude\s*:\s*/i, '')
+    .replace(/^Épreuve\s*Officielle\s*d['’]Examen\s*:\s*/i, '')
+    .replace(/^Devoir\s*Complet\s*:\s*/i, '')
+    .trim() || "ÉPREUVE OFFICIELLE D'EXAMEN";
+}
+
+// ==========================================
+// NORMALISATION DYNAMIQUE DE L'ÉPREUVE
+// GARANTIT STRICTEMENT 3 FICHES PEUPLÉES ET ZÉRO ZONE VIDE
+// ==========================================
 export function normalizeExamData(data: any, title?: string) {
   const source =
     data?.complete_exam ||
@@ -124,7 +145,7 @@ export function normalizeExamData(data: any, title?: string) {
     data ||
     {};
 
-  const discipline =
+  const rawDiscipline =
     source.title ||
     source.matiere ||
     source.discipline ||
@@ -135,6 +156,8 @@ export function normalizeExamData(data: any, title?: string) {
     data?.subject ||
     title ||
     "ÉPREUVE OFFICIELLE D'EXAMEN";
+
+  const discipline = cleanExamTitle(rawDiscipline);
 
   let rawDuree = source.duree || source.duration || data?.duree || data?.duration;
   if (!rawDuree && (source.duration_minutes || data?.duration_minutes)) {
@@ -157,10 +180,11 @@ export function normalizeExamData(data: any, title?: string) {
   const rawEx1 = source.exercice1 || source.problem || source.partie1 || (Array.isArray(source.exercices) && source.exercices[0]);
   const rawEx2 = source.exercice2 || source.qcm || source.partie2 || (Array.isArray(source.exercices) && source.exercices[1]);
   const rawEx3 = source.exercice3 || source.vraiOuFaux || source.vf || source.partie3 || (Array.isArray(source.exercices) && source.exercices[2]);
-  const rawEx4 = source.exercice4 || source.vraiOuFaux || source.vf || source.partie4 || (Array.isArray(source.exercices) && source.exercices[3]);
+  const rawEx4 = source.exercice4 || (Array.isArray(source.exercices) && source.exercices[3]);
 
-  // Questions pour Fiche 1 (Problème & Calculs rédigés)
-  const rawQ1 = Array.isArray(rawEx1?.questions) ? rawEx1.questions : [];
+  // ========================================================================
+  // 1. FICHE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS (Questions Ouvertes)
+  // ========================================================================
   const defaultP1Questions: NormalizedQuestion[] = [
     {
       id: 'p1_q1',
@@ -168,14 +192,14 @@ export function normalizeExamData(data: any, title?: string) {
       type: 'open',
       points: 3,
       texte: `Analyser la situation technique et poser les équations théoriques fondamentales applicables à "${discipline}".`,
-      sampleAnswer: "Poser les hypothèses, énoncer les théorèmes applicables et détailler le modèle mathématique avec ses variables."
+      sampleAnswer: "Poser les hypothèses initiales, énoncer les théorèmes directeurs applicables et détailler le modèle mathématique avec ses variables."
     },
     {
       id: 'p1_q2',
       number: '2.',
       type: 'open',
       points: 3,
-      texte: "Effectuer l'application numérique et mener le calcul rigoureux étape par étape en précisant les grandeurs et unités.",
+      texte: "Effectuer l'application numérique et mener le calcul rigoureux étape par étape en précisant les grandeurs et unités exactes.",
       sampleAnswer: "Détailler les calculs intermédiaires, simplifier l'expression littérale et calculer la valeur numérique exacte."
     },
     {
@@ -183,24 +207,55 @@ export function normalizeExamData(data: any, title?: string) {
       number: '3.',
       type: 'open',
       points: 2,
-      texte: "Interpréter les résultats obtenus, analyser les limites physiques du montage et proposer une conclusion argumentée.",
-      sampleAnswer: "Commenter les ordres de grandeur, vérifier la cohérence physique et valider la plage de bon fonctionnement."
+      texte: "Interpréter les grandeurs obtenues, analyser les limites physiques de fonctionnement et proposer une conclusion argumentée.",
+      sampleAnswer: "Commenter les ordres de grandeur, vérifier la cohérence physique et valider la plage de bon fonctionnement du système."
     }
   ];
 
-  const exercice1Questions: NormalizedQuestion[] = rawQ1.length > 0
-    ? rawQ1.map((q: any, i: number) => ({
-        id: q.id || `p1_q${i + 1}`,
-        number: q.number || `${i + 1}.`,
+  // Trouver la source brute de Fiche 1
+  const s1Candidate = rawSections.find((s: any) => 
+    s?.title?.toLowerCase().includes('fiche 1') || 
+    s?.title?.toLowerCase().includes('partie 1') || 
+    s?.title?.toLowerCase().includes('problème') ||
+    s?.section_id === 'sec_1'
+  ) || rawSections[0] || rawEx1;
+
+  const rawQ1Candidates = Array.isArray(s1Candidate?.questions) 
+    ? s1Candidate.questions 
+    : (Array.isArray(rawEx1?.questions) ? rawEx1.questions : []);
+
+  // Filtrer rigoureusement les questions ayant un texte valide (>= 5 caractères)
+  const validQ1 = rawQ1Candidates.filter((q: any) => extractCleanQuestionText(q).length >= 5);
+
+  const fiche1Questions: NormalizedQuestion[] = validQ1.length >= 2
+    ? validQ1.map((q: any, i: number) => ({
+        id: (typeof q === 'object' && q.id) ? q.id : `p1_q${i + 1}`,
+        number: (typeof q === 'object' && q.number) ? q.number : `${i + 1}.`,
         type: 'open' as const,
-        points: Number(q.points) || (i === 0 ? 3 : (i === 1 ? 3 : 2)),
-        texte: q.texte || q.question || q.text || `Question ${i + 1}`,
-        sampleAnswer: q.sampleAnswer || q.reponse || q.correction || q.answer || "Démonstration théorique et calculs détaillés étape par étape."
+        points: Number(q?.points) || (i === 0 ? 3 : (i === 1 ? 3 : 2)),
+        texte: extractCleanQuestionText(q) || `Question d'analyse ${i + 1}`,
+        sampleAnswer: (typeof q === 'object' ? (q.sampleAnswer || q.reponse || q.correction || q.answer || '') : '') || "Démonstration théorique et calculs détaillés étape par étape."
       }))
     : defaultP1Questions;
 
-  // Questions pour Fiche 2 (QCM à cocher)
-  const rawQ2 = Array.isArray(rawEx2?.questions) ? rawEx2.questions : [];
+  const rawProblemStatement = s1Candidate?.problem_statement || s1Candidate?.enonce || s1Candidate?.context || s1Candidate?.contexte || rawEx1?.enonce || rawEx1?.context || "";
+  const fiche1Statement = rawProblemStatement && rawProblemStatement.trim().length >= 15
+    ? rawProblemStatement.trim()
+    : `Étude de cas approfondie et modélisation sur "${discipline}". Analysez attentivement les données ci-dessous et répondez aux questions en rédigeant vos démonstrations et calculs détaillés sur les lignes prévues à cet effet.`;
+
+  const fiche1Correction = s1Candidate?.correction ? {
+    steps: typeof s1Candidate.correction === 'string' ? s1Candidate.correction : (s1Candidate.correction.steps || s1Candidate.correction.explication || ''),
+    examples: Array.isArray(s1Candidate.correction.examples) && s1Candidate.correction.examples.length > 0 
+      ? s1Candidate.correction.examples 
+      : ["Exemple 1 : Cas concret d'application en laboratoire", "Exemple 2 : Dimensionnement pratique en situation industrielle"]
+  } : {
+    steps: `Corrigé type de la Fiche 1 : application rigoureuse des théorèmes de ${discipline}.`,
+    examples: ["Exemple 1 : Cas concret d'application en laboratoire", "Exemple 2 : Dimensionnement pratique en situation industrielle"]
+  };
+
+  // ========================================================================
+  // 2. FICHE 2 : QUESTIONNAIRE À CHOIX MULTIPLES (QCM à cocher)
+  // ========================================================================
   const defaultP2Questions: NormalizedQuestion[] = [
     {
       id: 'p2_q1',
@@ -209,9 +264,9 @@ export function normalizeExamData(data: any, title?: string) {
       points: 1.5,
       texte: `Quelle est la relation fondamentale ou la propriété caractéristique essentielle établie pour "${discipline}" ?`,
       options: [
-        "Elle découle de l'application rigoureuse des lois physiques fondamentales",
+        "Elle découle de l'application rigoureuse des lois physiques et théorèmes fondamentaux",
         "Elle dépend uniquement de grandeurs arbitraires non mesurables",
-        "Elle est nulle en toutes circonstances de régime linéaire",
+        "Elle est strictement nulle en toutes circonstances de régime linéaire",
         "Elle diverge sans condition de stabilité"
       ],
       correctIndex: 0,
@@ -264,26 +319,57 @@ export function normalizeExamData(data: any, title?: string) {
     }
   ];
 
-  const exercice2Questions: NormalizedQuestion[] = rawQ2.length > 0
-    ? rawQ2.map((q: any, i: number) => ({
-        id: q.id || `p2_q${i + 1}`,
-        number: q.number || `${i + 1}.`,
-        type: 'multiple_choice' as const,
-        points: Number(q.points) || 1.5,
-        texte: q.texte || q.question || q.text || `Question QCM n°${i + 1}`,
-        options: Array.isArray(q.options) && q.options.length >= 2
+  // Trouver la source brute de Fiche 2
+  const s2Candidate = rawSections.find((s: any) => 
+    s?.title?.toLowerCase().includes('fiche 2') || 
+    s?.title?.toLowerCase().includes('partie 2') || 
+    s?.title?.toLowerCase().includes('qcm') ||
+    s?.section_id === 'sec_2'
+  ) || rawSections[1] || rawEx2;
+
+  const rawQ2Candidates = Array.isArray(s2Candidate?.questions) 
+    ? s2Candidate.questions 
+    : (Array.isArray(rawEx2?.questions) ? rawEx2.questions : []);
+
+  const validQ2 = rawQ2Candidates.filter((q: any) => extractCleanQuestionText(q).length >= 5);
+
+  const fiche2Questions: NormalizedQuestion[] = validQ2.length >= 2
+    ? validQ2.map((q: any, i: number) => {
+        const rawOpts = Array.isArray(q.options) && q.options.length >= 2
           ? q.options
-          : (Array.isArray(q.choices) && q.choices.length >= 2
-            ? q.choices
-            : ["Proposition A détaillée", "Proposition B détaillée", "Proposition C détaillée", "Proposition D détaillée"]),
-        correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : (typeof q.correct_index === 'number' ? q.correct_index : (typeof q.bonne_reponse === 'number' ? q.bonne_reponse : 0)),
-        explication: q.explication || q.explanation || q.justification || "Justification théorique et analyse du cours."
-      }))
+          : (Array.isArray(q.choices) && q.choices.length >= 2 ? q.choices : null);
+        const options = rawOpts || [
+          "Proposition A argumentée et détaillée",
+          "Proposition B argumentée et détaillée",
+          "Proposition C argumentée et détaillée",
+          "Proposition D argumentée et détaillée"
+        ];
+        return {
+          id: (typeof q === 'object' && q.id) ? q.id : `p2_q${i + 1}`,
+          number: (typeof q === 'object' && q.number) ? q.number : `${i + 1}.`,
+          type: 'multiple_choice' as const,
+          points: Number(q?.points) || 1.5,
+          texte: extractCleanQuestionText(q) || `Question QCM n°${i + 1}`,
+          options: options,
+          correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : (typeof q.correct_index === 'number' ? q.correct_index : (typeof q.bonne_reponse === 'number' ? q.bonne_reponse : 0)),
+          explication: q.explication || q.explanation || q.justification || "Justification théorique et analyse du cours."
+        };
+      })
     : defaultP2Questions;
 
-  // Questions pour Fiche 3 (Vrai ou Faux à cocher)
-  const rawVFSource = rawEx3?.vraiOuFaux || rawEx3?.questions || rawEx4?.questions || source.vraiOuFaux || source.affirmations || [];
-  const rawQ3 = Array.isArray(rawVFSource) ? rawVFSource : [];
+  const fiche2Correction = s2Candidate?.correction ? {
+    steps: typeof s2Candidate.correction === 'string' ? s2Candidate.correction : (s2Candidate.correction.steps || s2Candidate.correction.explication || ''),
+    examples: Array.isArray(s2Candidate.correction.examples) && s2Candidate.correction.examples.length > 0 
+      ? s2Candidate.correction.examples 
+      : ["Exemple 1 : Vérification par calcul direct", "Exemple 2 : Élimination méthodique des pièges classiques"]
+  } : {
+    steps: `Corrigé type du QCM : justification analytique de chaque proposition exacte.`,
+    examples: ["Exemple 1 : Vérification par calcul direct", "Exemple 2 : Élimination méthodique des pièges classiques"]
+  };
+
+  // ========================================================================
+  // 3. FICHE 3 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX
+  // ========================================================================
   const defaultP3Questions: NormalizedQuestion[] = [
     {
       id: 'p3_q1',
@@ -323,159 +409,79 @@ export function normalizeExamData(data: any, title?: string) {
     }
   ];
 
-  const exercice3Questions: NormalizedQuestion[] = rawQ3.length > 0
-    ? rawQ3.map((q: any, i: number) => ({
-        id: q.id || `p3_q${i + 1}`,
-        number: q.number || `${i + 1}.`,
+  // Trouver la source brute de Fiche 3
+  const s3Candidate = rawSections.find((s: any) => 
+    s?.title?.toLowerCase().includes('fiche 3') || 
+    s?.title?.toLowerCase().includes('partie 3') || 
+    s?.title?.toLowerCase().includes('vrai') || 
+    s?.title?.toLowerCase().includes('faux') ||
+    s?.section_id === 'sec_3'
+  ) || rawSections[2] || rawSections[3] || rawEx3 || rawEx4;
+
+  const rawQ3Candidates = Array.isArray(s3Candidate?.questions) 
+    ? s3Candidate.questions 
+    : (Array.isArray(s3Candidate?.vraiOuFaux) 
+      ? s3Candidate.vraiOuFaux 
+      : (Array.isArray(rawEx3?.questions) 
+        ? rawEx3.questions 
+        : (Array.isArray(source.vraiOuFaux) ? source.vraiOuFaux : [])));
+
+  const validQ3 = rawQ3Candidates.filter((q: any) => extractCleanQuestionText(q).length >= 5);
+
+  const fiche3Questions: NormalizedQuestion[] = validQ3.length >= 2
+    ? validQ3.map((q: any, i: number) => ({
+        id: (typeof q === 'object' && q.id) ? q.id : `p3_q${i + 1}`,
+        number: (typeof q === 'object' && q.number) ? q.number : `${i + 1}.`,
         type: 'true_false' as const,
-        points: Number(q.points) || 1.5,
-        texte: q.texte || q.affirmation || q.question || `Affirmation scientifique n°${i + 1}`,
+        points: Number(q?.points) || 1.5,
+        texte: extractCleanQuestionText(q) || `Affirmation n°${i + 1}`,
         correctValue: typeof q.correctValue === 'boolean'
           ? q.correctValue
           : (typeof q.correct_answer === 'boolean'
             ? q.correct_answer
             : (typeof q.isTrue === 'boolean'
               ? q.isTrue
-              : (q.reponse === true || q.reponse === 'VRAI' || q.reponse === 'true'))),
-        explication: q.explication || q.explanation || "Démonstration théorique de la validité de l'affirmation."
+              : (q.reponse === true || q.reponse === 'VRAI' || q.reponse === 'true' || (i % 2 === 0)))),
+        explication: q.explication || q.explanation || "Démonstration théorique et conditions d'application de la règle."
       }))
     : defaultP3Questions;
 
-  // Construction STRICTE des 3 FICHES Officielles de l'Examen
-  let sections: NormalizedSection[] = [];
+  const fiche3Correction = s3Candidate?.correction ? {
+    steps: typeof s3Candidate.correction === 'string' ? s3Candidate.correction : (s3Candidate.correction.steps || s3Candidate.correction.explication || ''),
+    examples: Array.isArray(s3Candidate.correction.examples) && s3Candidate.correction.examples.length > 0 
+      ? s3Candidate.correction.examples 
+      : ["Exemple 1 : Cas d'application concrète", "Exemple 2 : Analyse critique du contre-exemple"]
+  } : {
+    steps: `Corrigé type de la Fiche 3 : analyse des conditions de validité des affirmations.`,
+    examples: ["Exemple 1 : Cas d'application concrète", "Exemple 2 : Analyse critique du contre-exemple"]
+  };
 
-  // Si l'IA a renvoyé des sections, on les harmonise rigoureusement selon les 3 types attendus
-  if (rawSections.length > 0) {
-    // 1ère Fiche : Problème avec questions ouvertes
-    const s1 = rawSections[0];
-    const s1QuestionsRaw = Array.isArray(s1?.questions) ? s1.questions : [];
-    const s1Questions: NormalizedQuestion[] = s1QuestionsRaw.length > 0
-      ? s1QuestionsRaw.map((q: any, qIdx: number) => ({
-          id: (typeof q === 'object' && q.id) ? q.id : `p1_q${qIdx + 1}`,
-          number: (typeof q === 'object' && q.number) ? q.number : `${qIdx + 1}.`,
-          type: 'open' as const,
-          texte: typeof q === 'string' ? q : (q.texte || q.question || q.text || `Question d'analyse ${qIdx + 1}`),
-          points: Number(q?.points) || (qIdx === 0 ? 3 : (qIdx === 1 ? 3 : 2)),
-          sampleAnswer: (typeof q === 'object' ? (q.sampleAnswer || q.reponse || q.correction || '') : '') || "Démonstration analytique et calcul rigoureux."
-        }))
-      : exercice1Questions;
-
-    sections.push({
-      id: s1?.section_id || 'sec_1',
-      title: s1?.title || "FICHE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS",
-      problem_statement: s1?.problem_statement || s1?.enonce || s1?.context || s1?.contexte || rawEx1?.enonce || `Étude de cas approfondie et modélisation sur "${discipline}". Analysez le montage et répondez aux questions ci-dessous.`,
-      questions: s1Questions,
-      correction: s1?.correction ? {
-        steps: typeof s1.correction === 'string' ? s1.correction : (s1.correction.steps || s1.correction.explication || ''),
-        examples: Array.isArray(s1.correction.examples) ? s1.correction.examples : []
-      } : {
-        steps: `Corrigé type de la Fiche 1 : application des lois fondamentales de ${discipline}.`,
-        examples: ["Exemple 1 : Cas concret d'application en laboratoire", "Exemple 2 : Dimensionnement pratique en situation industrielle"]
-      }
-    });
-
-    // 2ème Fiche : Questionnaire à Choix Multiples (QCM à cocher)
-    const s2 = rawSections[1];
-    const s2QuestionsRaw = Array.isArray(s2?.questions) ? s2.questions : [];
-    const s2Questions: NormalizedQuestion[] = s2QuestionsRaw.length > 0
-      ? s2QuestionsRaw.map((q: any, qIdx: number) => {
-          const opts = Array.isArray(q.options) && q.options.length >= 2
-            ? q.options
-            : (Array.isArray(q.choices) && q.choices.length >= 2 ? q.choices : ["Proposition A", "Proposition B", "Proposition C", "Proposition D"]);
-          return {
-            id: (typeof q === 'object' && q.id) ? q.id : `p2_q${qIdx + 1}`,
-            number: (typeof q === 'object' && q.number) ? q.number : `${qIdx + 1}.`,
-            type: 'multiple_choice' as const,
-            texte: typeof q === 'string' ? q : (q.texte || q.question || q.text || `Question QCM n°${qIdx + 1}`),
-            points: Number(q?.points) || 1.5,
-            options: opts,
-            correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : (typeof q.correct_index === 'number' ? q.correct_index : 0),
-            explication: q.explication || q.explanation || "Justification théorique de la proposition correcte."
-          };
-        })
-      : exercice2Questions;
-
-    sections.push({
-      id: s2?.section_id || 'sec_2',
-      title: s2?.title || "FICHE 2 : QUESTIONNAIRE À CHOIX MULTIPLES (QCM)",
-      problem_statement: s2?.problem_statement || s2?.enonce || "",
-      questions: s2Questions,
-      correction: s2?.correction ? {
-        steps: typeof s2.correction === 'string' ? s2.correction : (s2.correction.steps || s2.correction.explication || ''),
-        examples: Array.isArray(s2.correction.examples) ? s2.correction.examples : []
-      } : {
-        steps: `Corrigé type du QCM : justification analytique de chaque proposition exacte.`,
-        examples: ["Exemple 1 : Vérification par calcul direct", "Exemple 2 : Élimination méthodique des pièges classiques"]
-      }
-    });
-
-    // 3ème Fiche : Vrai ou Faux
-    const s3 = rawSections[2] || rawSections[3];
-    const s3QuestionsRaw = Array.isArray(s3?.questions) ? s3.questions : [];
-    const s3Questions: NormalizedQuestion[] = s3QuestionsRaw.length > 0
-      ? s3QuestionsRaw.map((q: any, qIdx: number) => ({
-          id: (typeof q === 'object' && q.id) ? q.id : `p3_q${qIdx + 1}`,
-          number: (typeof q === 'object' && q.number) ? q.number : `${qIdx + 1}.`,
-          type: 'true_false' as const,
-          texte: typeof q === 'string' ? q : (q.texte || q.affirmation || q.question || `Affirmation n°${qIdx + 1}`),
-          points: Number(q?.points) || 1.5,
-          correctValue: typeof q.correctValue === 'boolean'
-            ? q.correctValue
-            : (typeof q.correct_answer === 'boolean'
-              ? q.correct_answer
-              : (typeof q.isTrue === 'boolean' ? q.isTrue : (qIdx % 2 === 0))),
-          explication: q.explication || q.explanation || "Démonstration théorique et conditions d'application de la règle."
-        }))
-      : exercice3Questions;
-
-    sections.push({
-      id: s3?.section_id || 'sec_3',
-      title: s3?.title || "FICHE 3 : DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
-      problem_statement: s3?.problem_statement || s3?.enonce || "",
-      questions: s3Questions,
-      correction: s3?.correction ? {
-        steps: typeof s3.correction === 'string' ? s3.correction : (s3.correction.steps || s3.correction.explication || ''),
-        examples: Array.isArray(s3.correction.examples) ? s3.correction.examples : []
-      } : {
-        steps: `Corrigé type de la Fiche 3 : analyse des conditions de validité des affirmations.`,
-        examples: ["Exemple 1 : Cas d'application concrète", "Exemple 2 : Analyse critique du contre-exemple"]
-      }
-    });
-  } else {
-    // Si pas de sections explicites dans source, on génère directement les 3 FICHES OFFICIELLES
-    sections = [
-      {
-        id: 'sec_1',
-        title: rawEx1?.titre || rawEx1?.title || "FICHE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS",
-        problem_statement: rawEx1?.enonce || rawEx1?.context || rawEx1?.contexte || `Étude de cas approfondie et modélisation sur "${discipline}". Analysez le montage et répondez aux questions avec calculs détaillés.`,
-        questions: exercice1Questions,
-        correction: {
-          steps: `Démonstration complète pas à pas pour la Fiche 1.`,
-          examples: ["Exemple 1 : Cas d'application directe", "Exemple 2 : Dimensionnement technique"]
-        }
-      },
-      {
-        id: 'sec_2',
-        title: rawEx2?.titre || rawEx2?.title || "FICHE 2 : QUESTIONNAIRE À CHOIX MULTIPLES (QCM)",
-        problem_statement: "",
-        questions: exercice2Questions,
-        correction: {
-          steps: `Démonstrations des réponses exactes du QCM.`,
-          examples: ["Exemple 1 : Application directe", "Exemple 2 : Analyse d'un piège classique"]
-        }
-      },
-      {
-        id: 'sec_3',
-        title: rawEx3?.titre || rawEx3?.title || "FICHE 3 : DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
-        problem_statement: "",
-        questions: exercice3Questions,
-        correction: {
-          steps: `Justifications théoriques des affirmations Vrai ou Faux.`,
-          examples: ["Exemple 1 : Cas pratique", "Exemple 2 : Contre-exemple"]
-        }
-      }
-    ];
-  }
+  // ========================================================================
+  // GARANTIE ABSOLUE : EXACTEMENT 3 FICHES COMPLÈTES ET PEUPLÉES
+  // ========================================================================
+  const sections: NormalizedSection[] = [
+    {
+      id: 'sec_1',
+      title: "FICHE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS",
+      problem_statement: fiche1Statement,
+      questions: fiche1Questions,
+      correction: fiche1Correction
+    },
+    {
+      id: 'sec_2',
+      title: "FICHE 2 : QUESTIONNAIRE À CHOIX MULTIPLES (QCM)",
+      problem_statement: "",
+      questions: fiche2Questions,
+      correction: fiche2Correction
+    },
+    {
+      id: 'sec_3',
+      title: "FICHE 3 : DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
+      problem_statement: "",
+      questions: fiche3Questions,
+      correction: fiche3Correction
+    }
+  ];
 
   const examHeader = {
     institution: source.institution || data?.institution || "DKD School Numérique",
@@ -483,10 +489,7 @@ export function normalizeExamData(data: any, title?: string) {
     duree: formattedDuree,
     durationSeconds: durationSec,
     matiere: discipline,
-    mention:
-      source.mention ||
-      data?.mention ||
-      "Cette épreuve comporte 3 fiches d'évaluation structurées : Fiche 1 (Problème rédigé), Fiche 2 (QCM), Fiche 3 (Vrai ou Faux).",
+    mention: "Cette épreuve comporte 3 fiches d'évaluation structurées : Fiche 1 (Problème rédigé), Fiche 2 (QCM), Fiche 3 (Vrai ou Faux).",
     calculatrice: source.calculatrice || data?.calculatrice || "Tout modèle de calculatrice scientifique est autorisé.",
     baremeTotal: Number(source.baremeTotal || data?.baremeTotal) || 20
   };

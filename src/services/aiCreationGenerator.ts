@@ -901,18 +901,26 @@ export function parseOrBuildAiCreation(
           };
         }
         case 'devoir-complet': {
-          const hasExam = (dataObj.complete_exam && Array.isArray(dataObj.complete_exam.sections) && dataObj.complete_exam.sections.length > 0) ||
-            (Array.isArray(dataObj.sections) && dataObj.sections.length > 0) ||
-            (Array.isArray(dataObj.questions) && dataObj.questions.length > 0);
+          const rawSecs: any[] = Array.isArray(dataObj.complete_exam?.sections)
+            ? dataObj.complete_exam.sections
+            : (Array.isArray(dataObj.sections) ? dataObj.sections : []);
+          const totalValidQuestions = rawSecs.reduce((acc: number, s: any) => {
+            const qList = Array.isArray(s?.questions) ? s.questions : (Array.isArray(s?.vraiOuFaux) ? s.vraiOuFaux : []);
+            return acc + qList.filter((q: any) => {
+              const txt = typeof q === 'string' ? q : (q?.texte || q?.question || q?.affirmation || q?.text || '');
+              return String(txt).trim().length >= 5;
+            }).length;
+          }, 0);
+          const hasExam = rawSecs.length >= 3 && totalValidQuestions >= 5;
           if (hasExam) {
             return {
-              title: sanitizeText(parsed.creation_title || dataObj.title) || `Devoir Complet : ${safeDocName}`,
+              title: sanitizeText(parsed.creation_title || dataObj.title) || `Épreuve d'Examen : ${safeDocName}`,
               content: dataObj
             };
           }
           const fallbackDevoir = parseDevoirFromText(cleanText, safeDocName);
           return {
-            title: sanitizeText(parsed.creation_title || dataObj.title) || `Devoir Complet : ${safeDocName}`,
+            title: sanitizeText(parsed.creation_title || dataObj.title) || `Épreuve d'Examen : ${safeDocName}`,
             content: fallbackDevoir
           };
         }
