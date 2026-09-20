@@ -426,61 +426,73 @@ CONSIGNE : Conçois un exercice écrit de haut niveau avec énoncé contextualis
 
       case 'devoir-complet':
         return `${base}
-CONSIGNE STRICTE & INVIOLABLE : Conçois une épreuve d'examen officielle complète notée sur 20 points, composée OBLIGATOIREMENT de 3 FICHES D'ÉVALUATION DISTINCTES :
-1. FICHE 1 (Partie 1) : PROBLÈME MAJEUR & CALCULS RÉDIGÉS (8 points) - Énoncé de situation pratique / dimensionnement (avec schéma de montage ASCII si scientifique), suivi de 3 questions ouvertes nécessitant une réponse rédigée et des calculs dans les espaces prévus.
-2. FICHE 2 (Partie 2) : QUESTIONNAIRE À CHOIX MULTIPLES (QCM) (6 points) - 4 questions d'application avec 4 propositions de réponses développées chacune (la bonne réponse à cocher par l'élève).
-3. FICHE 3 (Partie 3) : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX (6 points) - 4 affirmations scientifiques et calculatoires où l'élève doit choisir si c'est VRAI ou FAUX.
+CONSIGNE MAÎTRESSE D'EXAMEN & DIRECTIVE PÉDAGOGIQUE INVIOLABLE :
+Tu es un professeur agrégé et concepteur officiel d'épreuves d'examen. Analyse le document '${docName}' pour concevoir une ÉPREUVE OFFICIELLE D'EXAMEN NOTÉE SUR 20 POINTS.
+SI LE TEXTE EST COURT OU TECHNIQUE (ex: électronique, AOP, physique, mathématiques...), MOBILISE TES CONNAISSANCES ENCYCLOPÉDIQUES SUR CE DOMAINE POUR CRÉER UN SUJET COMPLET ET RÉALISTE AVEC VRAIES VALEURS NUMÉRIQUES, SCHÉMA DU CIRCUIT EN ASCII ET CALCULS EXACTS.
+
+L'ÉPREUVE DOIT COMPORTER STRICTEMENT 3 EXERCICES (NI PLUS, NI MOINS) :
+1. EXERCICE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS (8 points) :
+   - Rédige OBLIGATOIREMENT un énoncé de mise en situation complet dans "problem_statement" AVANT les questions (avec contexte concret, valeurs chiffrées, formules en LaTeX $...$ et schéma ASCII du montage si applicable).
+   - Suivi de 3 questions ouvertes ("type": "open") de démonstration et d'application numérique avec barème (3 pts, 3 pts, 2 pts).
+2. EXERCICE 2 : QUESTIONNAIRE À CHOIX MULTIPLES — QCM (6 points) :
+   - 4 questions précises d'application et de calcul ("type": "multiple_choice") notées 1,5 point chacune.
+   - 4 propositions de réponses réelles, distinctes et argumentées par question.
+   - INTERDICTION FORMELLE d'écrire "Proposition A", "Option A", "Choix A". Écris de vraies valeurs ou formules !
+3. EXERCICE 3 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX (6 points) :
+   - 4 affirmations scientifiques et calculatoires ("type": "true_false") notées 1,5 point chacune.
+
+INTERDICTION STRICTE : N'utilise JAMAIS de placeholders ("Proposition A", "Option A", "Question d'évaluation conceptuelle", "Affirmation conceptuelle"). Tout doit être rédigé avec rigueur et précision.
 
 {
   "creation_type": "devoir-complet",
-  "creation_title": "Épreuve Officielle d'Examen (20 pts) : ${docName}",
+  "creation_title": "Épreuve Officielle d'Examen : ${docName}",
   "creation_data": {
     "title": "Épreuve Officielle d'Examen : ${docName}",
     "duree": "2h00",
     "duration_minutes": 120,
     "baremeTotal": 20,
-    "instructions": "L'épreuve comporte 3 fiches indépendantes. Justifiez avec rigueur toutes vos réponses et calculs.",
+    "instructions": "L'épreuve comporte exactement 3 exercices indépendants. Justifiez avec rigueur chaque étape de vos calculs.",
     "sections": [
       {
         "section_id": "sec_1",
-        "title": "FICHE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS",
-        "problem_statement": "Énoncé contextuel d'ingénierie complet avec valeurs chiffrées, formules en LaTeX $...$ et schéma de montage...",
+        "title": "EXERCICE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS (8 POINTS)",
+        "problem_statement": "On étudie le montage [description détaillée du circuit ou du problème, composants, valeurs $R_1 = 10\\ \\text{k}\\Omega, R_2 = 120\\ \\text{k}\\Omega, V_{cc} = \\pm 15\\ \\text{V}$, schéma de circuit ASCII]...",
         "questions": [
-          { "id": "p1_q1", "number": "1.", "type": "open", "points": 3, "texte": "Première question d'analyse théorique et de modélisation...", "sampleAnswer": "Démonstration complète pas à pas et résultat avec unité..." },
-          { "id": "p1_q2", "number": "2.", "type": "open", "points": 3, "texte": "Deuxième question de calcul numérique et dimensionnement...", "sampleAnswer": "Calcul méthodique et justification détaillée..." },
-          { "id": "p1_q3", "number": "3.", "type": "open", "points": 2, "texte": "Troisième question d'interprétation critique et de synthèse...", "sampleAnswer": "Analyse physique des grandeurs obtenues..." }
+          { "id": "p1_q1", "number": "1.", "type": "open", "points": 3, "texte": "Établir l'expression analytique de la grandeur $V_s$ en fonction des grandeurs d'entrée.", "sampleAnswer": "Démonstration complète pas à pas avec formules en LaTeX..." },
+          { "id": "p1_q2", "number": "2.", "type": "open", "points": 3, "texte": "Calculer la valeur numérique exacte pour la valeur nominale donnée.", "sampleAnswer": "Calcul méthodique détaillé et résultat avec son unité..." },
+          { "id": "p1_q3", "number": "3.", "type": "open", "points": 2, "texte": "Déterminer la limite de saturation ou de stabilité du système.", "sampleAnswer": "Analyse physique des conditions aux limites..." }
         ],
         "correction": {
-          "steps": "Corrigé complet et barème détaillé de la Fiche 1...",
-          "examples": ["Exemple 1 : Cas concret...", "Exemple 2 : Autre situation..."]
+          "steps": "Corrigé analytique étape par étape de l'Exercice 1...",
+          "examples": ["Exemple 1 : Cas concret d'application en laboratoire", "Exemple 2 : Dimensionnement pratique en situation réelle"]
         }
       },
       {
         "section_id": "sec_2",
-        "title": "FICHE 2 : QUESTIONNAIRE À CHOIX MULTIPLES (QCM)",
+        "title": "EXERCICE 2 : QUESTIONNAIRE À CHOIX MULTIPLES — QCM (6 POINTS)",
         "questions": [
-          { "id": "p2_q1", "number": "1.", "type": "multiple_choice", "points": 1.5, "texte": "Première question QCM d'application...", "options": ["Proposition A", "Proposition B", "Proposition C", "Proposition D"], "correctIndex": 0, "explication": "Démonstration de la bonne réponse..." },
-          { "id": "p2_q2", "number": "2.", "type": "multiple_choice", "points": 1.5, "texte": "Deuxième question QCM avec calcul...", "options": ["Proposition A", "Proposition B", "Proposition C", "Proposition D"], "correctIndex": 1, "explication": "Démonstration pas à pas..." },
-          { "id": "p2_q3", "number": "3.", "type": "multiple_choice", "points": 1.5, "texte": "Troisième question QCM...", "options": ["Proposition A", "Proposition B", "Proposition C", "Proposition D"], "correctIndex": 2, "explication": "Justification théorique..." },
-          { "id": "p2_q4", "number": "4.", "type": "multiple_choice", "points": 1.5, "texte": "Quatrième question QCM...", "options": ["Proposition A", "Proposition B", "Proposition C", "Proposition D"], "correctIndex": 0, "explication": "Justification théorique..." }
+          { "id": "p2_q1", "number": "1.", "type": "multiple_choice", "points": 1.5, "texte": "Quelle relation fondamentale caractérise le régime linéaire du montage ?", "options": ["$V^- = 0\\ \\text{V}$ (masse virtuelle)", "$V^- = V_e$", "$V^- = -14\\ \\text{V}$", "$V^- = V_s / 2$"], "correctIndex": 0, "explication": "Démonstration théorique de la bonne réponse..." },
+          { "id": "p2_q2", "number": "2.", "type": "multiple_choice", "points": 1.5, "texte": "Pour les valeurs numériques données, quelle est la valeur calculée ?", "options": ["$A_v = -12$", "$A_v = +12$", "$A_v = -0,083$", "$A_v = +13$"], "correctIndex": 0, "explication": "Calcul méthodique de la grandeur..." },
+          { "id": "p2_q3", "number": "3.", "type": "multiple_choice", "points": 1.5, "texte": "Quelle est l'impédance d'entrée caractéristique du montage ?", "options": ["$R_{in} = 10\\ \\text{k}\\Omega$", "$R_{in} = 130\\ \\text{k}\\Omega$", "$R_{in} \\to \\infty$", "$R_{in} = 0\\ \\Omega$"], "correctIndex": 0, "explication": "Justification théorique..." },
+          { "id": "p2_q4", "number": "4.", "type": "multiple_choice", "points": 1.5, "texte": "Si le paramètre de boucle est modifié, quelle est la conséquence mesurée ?", "options": ["Le montage sature à $-14\\ \\text{V}$", "Le montage reste à $-16\\ \\text{V}$", "La sortie s'annule", "La phase reste à $0^\\circ$"], "correctIndex": 0, "explication": "Analyse de la condition limite..." }
         ],
         "correction": {
-          "steps": "Justification synthétique des 4 questions du QCM...",
-          "examples": ["Exemple 1 : Application directe...", "Exemple 2 : Piège classique..."]
+          "steps": "Justification analytique de chaque question du QCM...",
+          "examples": ["Exemple 1 : Vérification par calcul direct", "Exemple 2 : Piège classique et contre-mesure"]
         }
       },
       {
         "section_id": "sec_3",
-        "title": "FICHE 3 : DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
+        "title": "EXERCICE 3 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX (6 POINTS)",
         "questions": [
-          { "id": "p3_q1", "number": "1.", "type": "true_false", "points": 1.5, "texte": "Première affirmation scientifique avec calcul chiffré...", "correct_answer": true, "explication": "Démonstration théorique..." },
-          { "id": "p3_q2", "number": "2.", "type": "true_false", "points": 1.5, "texte": "Deuxième affirmation avec condition aux limites...", "correct_answer": false, "explication": "Démonstration de l'erreur..." },
-          { "id": "p3_q3", "number": "3.", "type": "true_false", "points": 1.5, "texte": "Troisième affirmation scientifique...", "correct_answer": true, "explication": "Démonstration théorique..." },
-          { "id": "p3_q4", "number": "4.", "type": "true_false", "points": 1.5, "texte": "Quatrième affirmation calculatoire...", "correct_answer": false, "explication": "Contre-exemple détaillé..." }
+          { "id": "p3_q1", "number": "1.", "type": "true_false", "points": 1.5, "texte": "En régime linéaire, le courant de contre-réaction est égal au courant d'entrée.", "correct_answer": true, "explication": "Démonstration théorique..." },
+          { "id": "p3_q2", "number": "2.", "type": "true_false", "points": 1.5, "texte": "La tension de sortie peut dépasser les tensions d'alimentation sans saturation.", "correct_answer": false, "explication": "Démonstration de l'écrêtage physique..." },
+          { "id": "p3_q3", "number": "3.", "type": "true_false", "points": 1.5, "texte": "Dans un montage suiveur de tension, le gain en tension vaut rigoureusement +1.", "correct_answer": true, "explication": "Démonstration de l'étage tampon..." },
+          { "id": "p3_q4", "number": "4.", "type": "true_false", "points": 1.5, "texte": "Une boucle de réaction positive sur l'entrée (+) maintient le régime linéaire.", "correct_answer": false, "explication": "Démonstration du basculement en saturation..." }
         ],
         "correction": {
           "steps": "Synthèse théorique des affirmations Vrai ou Faux...",
-          "examples": ["Exemple 1 : Cas réel...", "Exemple 2 : Analyse critique..."]
+          "examples": ["Exemple 1 : Cas concret d'application", "Exemple 2 : Analyse critique du contre-exemple"]
         }
       }
     ]

@@ -20,6 +20,14 @@ import { DnaLogo } from '../DnaLogo';
 import { MathText } from '../MathText';
 import { CertificatExcellence, CertificateData } from './CertificatExcellence';
 import { gradeExamPaper } from '../../services/api';
+import {
+  detectExamDomain,
+  getDomainExamTemplate,
+  isGenericOrPlaceholderText,
+  cleanExamTitle
+} from '../../services/examDomainTemplates';
+
+export { cleanExamTitle, isGenericOrPlaceholderText };
 
 // ==========================================
 // COMPOSANT LOGO STUDYCLOUD / DKD TECHNOLOGIES
@@ -119,19 +127,9 @@ export function extractCleanQuestionText(q: any): string {
   return String(text).trim();
 }
 
-export function cleanExamTitle(rawTitle: string): string {
-  if (!rawTitle) return "ÉPREUVE OFFICIELLE D'EXAMEN";
-  return rawTitle
-    .replace(/^FICHE\s*D['’]ÉTUDE\s*:\s*/i, '')
-    .replace(/^Fiche\s*d['’][ée]tude\s*:\s*/i, '')
-    .replace(/^Épreuve\s*Officielle\s*d['’]Examen\s*:\s*/i, '')
-    .replace(/^Devoir\s*Complet\s*:\s*/i, '')
-    .trim() || "ÉPREUVE OFFICIELLE D'EXAMEN";
-}
-
 // ==========================================
 // NORMALISATION DYNAMIQUE DE L'ÉPREUVE
-// GARANTIT STRICTEMENT 3 FICHES PEUPLÉES ET ZÉRO ZONE VIDE
+// GARANTIT STRICTEMENT 3 EXERCICES PEUPLÉS ET ZÉRO PLACEHOLDER
 // ==========================================
 export function normalizeExamData(data: any, title?: string) {
   const source =
@@ -159,6 +157,10 @@ export function normalizeExamData(data: any, title?: string) {
 
   const discipline = cleanExamTitle(rawDiscipline);
 
+  // Détection du domaine scientifique (électronique AOP, mécanique, maths, etc.)
+  const domain = detectExamDomain(JSON.stringify(source) + ' ' + JSON.stringify(data || {}), discipline);
+  const domainDefaults = getDomainExamTemplate(domain, discipline);
+
   let rawDuree = source.duree || source.duration || data?.duree || data?.duration;
   if (!rawDuree && (source.duration_minutes || data?.duration_minutes)) {
     const mins = Number(source.duration_minutes || data?.duration_minutes);
@@ -180,40 +182,16 @@ export function normalizeExamData(data: any, title?: string) {
   const rawEx1 = source.exercice1 || source.problem || source.partie1 || (Array.isArray(source.exercices) && source.exercices[0]);
   const rawEx2 = source.exercice2 || source.qcm || source.partie2 || (Array.isArray(source.exercices) && source.exercices[1]);
   const rawEx3 = source.exercice3 || source.vraiOuFaux || source.vf || source.partie3 || (Array.isArray(source.exercices) && source.exercices[2]);
-  const rawEx4 = source.exercice4 || (Array.isArray(source.exercices) && source.exercices[3]);
+
+  // Registre de déduplication pour éviter qu'une question n'apparaisse deux fois
+  const seenQuestionTexts = new Set<string>();
+  const normalizeKey = (str: string) => str.toLowerCase().replace(/[^a-z0-9]/g, '').slice(0, 40);
 
   // ========================================================================
-  // 1. FICHE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS (Questions Ouvertes)
+  // 1. EXERCICE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS (Questions Ouvertes)
   // ========================================================================
-  const defaultP1Questions: NormalizedQuestion[] = [
-    {
-      id: 'p1_q1',
-      number: '1.',
-      type: 'open',
-      points: 3,
-      texte: `Analyser la situation technique et poser les équations théoriques fondamentales applicables à "${discipline}".`,
-      sampleAnswer: "Poser les hypothèses initiales, énoncer les théorèmes directeurs applicables et détailler le modèle mathématique avec ses variables."
-    },
-    {
-      id: 'p1_q2',
-      number: '2.',
-      type: 'open',
-      points: 3,
-      texte: "Effectuer l'application numérique et mener le calcul rigoureux étape par étape en précisant les grandeurs et unités exactes.",
-      sampleAnswer: "Détailler les calculs intermédiaires, simplifier l'expression littérale et calculer la valeur numérique exacte."
-    },
-    {
-      id: 'p1_q3',
-      number: '3.',
-      type: 'open',
-      points: 2,
-      texte: "Interpréter les grandeurs obtenues, analyser les limites physiques de fonctionnement et proposer une conclusion argumentée.",
-      sampleAnswer: "Commenter les ordres de grandeur, vérifier la cohérence physique et valider la plage de bon fonctionnement du système."
-    }
-  ];
-
-  // Trouver la source brute de Fiche 1
   const s1Candidate = rawSections.find((s: any) => 
+    s?.title?.toLowerCase().includes('exercice 1') ||
     s?.title?.toLowerCase().includes('fiche 1') || 
     s?.title?.toLowerCase().includes('partie 1') || 
     s?.title?.toLowerCase().includes('problème') ||
@@ -224,103 +202,51 @@ export function normalizeExamData(data: any, title?: string) {
     ? s1Candidate.questions 
     : (Array.isArray(rawEx1?.questions) ? rawEx1.questions : []);
 
-  // Filtrer rigoureusement les questions ayant un texte valide (>= 5 caractères)
-  const validQ1 = rawQ1Candidates.filter((q: any) => extractCleanQuestionText(q).length >= 5);
+  // Filtrer rigoureusement les questions : exclure tout placeholder générique
+  const validQ1 = rawQ1Candidates.filter((q: any) => {
+    const txt = extractCleanQuestionText(q);
+    return txt.length >= 10 && !isGenericOrPlaceholderText(txt);
+  });
 
   const fiche1Questions: NormalizedQuestion[] = validQ1.length >= 2
-    ? validQ1.map((q: any, i: number) => ({
-        id: (typeof q === 'object' && q.id) ? q.id : `p1_q${i + 1}`,
-        number: (typeof q === 'object' && q.number) ? q.number : `${i + 1}.`,
-        type: 'open' as const,
-        points: Number(q?.points) || (i === 0 ? 3 : (i === 1 ? 3 : 2)),
-        texte: extractCleanQuestionText(q) || `Question d'analyse ${i + 1}`,
-        sampleAnswer: (typeof q === 'object' ? (q.sampleAnswer || q.reponse || q.correction || q.answer || '') : '') || "Démonstration théorique et calculs détaillés étape par étape."
-      }))
-    : defaultP1Questions;
+    ? validQ1.slice(0, 3).map((q: any, i: number) => {
+        const text = extractCleanQuestionText(q);
+        seenQuestionTexts.add(normalizeKey(text));
+        return {
+          id: (typeof q === 'object' && q.id) ? q.id : `p1_q${i + 1}`,
+          number: (typeof q === 'object' && q.number) ? q.number : `${i + 1}.`,
+          type: 'open' as const,
+          points: Number(q?.points) || (i === 0 ? 3 : (i === 1 ? 3 : 2)),
+          texte: text,
+          sampleAnswer: (typeof q === 'object' ? (q.sampleAnswer || q.reponse || q.correction || q.answer || '') : '') || domainDefaults.s1.questions[i]?.sampleAnswer || "Démonstration théorique et calculs détaillés étape par étape."
+        };
+      })
+    : domainDefaults.s1.questions.map((q) => {
+        seenQuestionTexts.add(normalizeKey(q.texte));
+        return q;
+      });
 
   const rawProblemStatement = s1Candidate?.problem_statement || s1Candidate?.enonce || s1Candidate?.context || s1Candidate?.contexte || rawEx1?.enonce || rawEx1?.context || "";
-  const fiche1Statement = rawProblemStatement && rawProblemStatement.trim().length >= 15
+  const isStatementValid = rawProblemStatement && rawProblemStatement.trim().length >= 40 && !isGenericOrPlaceholderText(rawProblemStatement);
+  const fiche1Statement = isStatementValid
     ? rawProblemStatement.trim()
-    : `Étude de cas approfondie et modélisation sur "${discipline}". Analysez attentivement les données ci-dessous et répondez aux questions en rédigeant vos démonstrations et calculs détaillés sur les lignes prévues à cet effet.`;
+    : domainDefaults.s1.problem_statement || `Étude de cas approfondie et modélisation sur "${discipline}". Analysez attentivement les données ci-dessous et répondez aux questions en rédigeant vos démonstrations et calculs détaillés sur les lignes prévues à cet effet.`;
 
-  const fiche1Correction = s1Candidate?.correction ? {
-    steps: typeof s1Candidate.correction === 'string' ? s1Candidate.correction : (s1Candidate.correction.steps || s1Candidate.correction.explication || ''),
+  const fiche1Correction = s1Candidate?.correction && typeof s1Candidate.correction === 'object' ? {
+    steps: s1Candidate.correction.steps || s1Candidate.correction.explication || domainDefaults.s1.correction?.steps || '',
     examples: Array.isArray(s1Candidate.correction.examples) && s1Candidate.correction.examples.length > 0 
       ? s1Candidate.correction.examples 
-      : ["Exemple 1 : Cas concret d'application en laboratoire", "Exemple 2 : Dimensionnement pratique en situation industrielle"]
-  } : {
-    steps: `Corrigé type de la Fiche 1 : application rigoureuse des théorèmes de ${discipline}.`,
-    examples: ["Exemple 1 : Cas concret d'application en laboratoire", "Exemple 2 : Dimensionnement pratique en situation industrielle"]
+      : domainDefaults.s1.correction?.examples || ["Exemple 1 : Cas concret d'application", "Exemple 2 : Dimensionnement pratique"]
+  } : domainDefaults.s1.correction || {
+    steps: `Corrigé analytique de l'Exercice 1 : application rigoureuse des théorèmes de ${discipline}.`,
+    examples: ["Exemple 1 : Cas concret d'application", "Exemple 2 : Dimensionnement pratique"]
   };
 
   // ========================================================================
-  // 2. FICHE 2 : QUESTIONNAIRE À CHOIX MULTIPLES (QCM à cocher)
+  // 2. EXERCICE 2 : QUESTIONNAIRE À CHOIX MULTIPLES (QCM à cocher)
   // ========================================================================
-  const defaultP2Questions: NormalizedQuestion[] = [
-    {
-      id: 'p2_q1',
-      number: '1.',
-      type: 'multiple_choice',
-      points: 1.5,
-      texte: `Quelle est la relation fondamentale ou la propriété caractéristique essentielle établie pour "${discipline}" ?`,
-      options: [
-        "Elle découle de l'application rigoureuse des lois physiques et théorèmes fondamentaux",
-        "Elle dépend uniquement de grandeurs arbitraires non mesurables",
-        "Elle est strictement nulle en toutes circonstances de régime linéaire",
-        "Elle diverge sans condition de stabilité"
-      ],
-      correctIndex: 0,
-      explication: "La relation découle directement de l'application des théorèmes directeurs du cours."
-    },
-    {
-      id: 'p2_q2',
-      number: '2.',
-      type: 'multiple_choice',
-      points: 1.5,
-      texte: "Dans des conditions nominales de fonctionnement, comment évolue la grandeur de sortie lors d'une variation d'entrée ?",
-      options: [
-        "Elle répond proportionnellement selon le coefficient de transfert ou gain établi",
-        "Elle demeure parfaitement constante sans aucun temps de propagation",
-        "Elle s'inverse sans respecter la relation de phase ou de signe",
-        "Elle s'annule instantanément par effet d'amortissement critique"
-      ],
-      correctIndex: 0,
-      explication: "En régime linéaire d'amplification ou de transformation, la sortie suit la relation linéaire $V_s = A_v \\cdot V_e$."
-    },
-    {
-      id: 'p2_q3',
-      number: '3.',
-      type: 'multiple_choice',
-      points: 1.5,
-      texte: "Quel paramètre détermine la limite de validité ou la saturation du système ?",
-      options: [
-        "Les tensions d'alimentation ou les butées limites des composants",
-        "La fréquence minimale théoriquement nulle",
-        "La température absolue ambiante uniquement",
-        "Le choix arbitraire de la masse de référence"
-      ],
-      correctIndex: 0,
-      explication: "La saturation intervient lorsque la tension de sortie atteint les rails d'alimentation $\\pm V_{sat}$."
-    },
-    {
-      id: 'p2_q4',
-      number: '4.',
-      type: 'multiple_choice',
-      points: 1.5,
-      texte: "Quelle est la conséquence directe d'une modification des composants passifs de rétroaction ?",
-      options: [
-        "Le gain et la bande passante du système sont directement modifiés",
-        "Le signal d'entrée est totalement supprimé sans atténuation",
-        "La phase reste figée à zéro degré sans condition",
-        "Le rendement devient supérieur à l'unité"
-      ],
-      correctIndex: 0,
-      explication: "Le rapport des résistances ou impédances fixe directement le facteur d'amplification."
-    }
-  ];
-
-  // Trouver la source brute de Fiche 2
   const s2Candidate = rawSections.find((s: any) => 
+    s?.title?.toLowerCase().includes('exercice 2') ||
     s?.title?.toLowerCase().includes('fiche 2') || 
     s?.title?.toLowerCase().includes('partie 2') || 
     s?.title?.toLowerCase().includes('qcm') ||
@@ -331,92 +257,70 @@ export function normalizeExamData(data: any, title?: string) {
     ? s2Candidate.questions 
     : (Array.isArray(rawEx2?.questions) ? rawEx2.questions : []);
 
-  const validQ2 = rawQ2Candidates.filter((q: any) => extractCleanQuestionText(q).length >= 5);
+  const validQ2 = rawQ2Candidates.filter((q: any) => {
+    const txt = extractCleanQuestionText(q);
+    const key = normalizeKey(txt);
+    if (txt.length < 10 || isGenericOrPlaceholderText(txt) || seenQuestionTexts.has(key)) return false;
+    return true;
+  });
 
   const fiche2Questions: NormalizedQuestion[] = validQ2.length >= 2
-    ? validQ2.map((q: any, i: number) => {
+    ? validQ2.slice(0, 4).map((q: any, i: number) => {
+        const text = extractCleanQuestionText(q);
+        seenQuestionTexts.add(normalizeKey(text));
+
         const rawOpts = Array.isArray(q.options) && q.options.length >= 2
           ? q.options
           : (Array.isArray(q.choices) && q.choices.length >= 2 ? q.choices : null);
-        const options = rawOpts || [
-          "Proposition A argumentée et détaillée",
-          "Proposition B argumentée et détaillée",
-          "Proposition C argumentée et détaillée",
-          "Proposition D argumentée et détaillée"
-        ];
+        
+        // Vérification anti-placeholder : si les options contiennent "Proposition A" ou sont vides, utiliser le domaine
+        const hasPlaceholderOpts = !rawOpts || rawOpts.some((opt: any) => isGenericOrPlaceholderText(opt));
+        const finalOptions = hasPlaceholderOpts
+          ? (domainDefaults.s2.questions[i]?.options || [
+              "Option exacte validée par la démonstration théorique",
+              "Deuxième hypothèse alternative non conforme",
+              "Troisième proposition divergente",
+              "Quatrième cas limite exclu"
+            ])
+          : rawOpts.map((opt: any) => String(opt).trim());
+
         return {
           id: (typeof q === 'object' && q.id) ? q.id : `p2_q${i + 1}`,
           number: (typeof q === 'object' && q.number) ? q.number : `${i + 1}.`,
           type: 'multiple_choice' as const,
           points: Number(q?.points) || 1.5,
-          texte: extractCleanQuestionText(q) || `Question QCM n°${i + 1}`,
-          options: options,
+          texte: text,
+          options: finalOptions,
           correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : (typeof q.correct_index === 'number' ? q.correct_index : (typeof q.bonne_reponse === 'number' ? q.bonne_reponse : 0)),
-          explication: q.explication || q.explanation || q.justification || "Justification théorique et analyse du cours."
+          explication: q.explication || q.explanation || q.justification || domainDefaults.s2.questions[i]?.explication || "Justification théorique et analyse du cours."
         };
       })
-    : defaultP2Questions;
+    : domainDefaults.s2.questions.map((q) => {
+        seenQuestionTexts.add(normalizeKey(q.texte));
+        return q;
+      });
 
-  const fiche2Correction = s2Candidate?.correction ? {
-    steps: typeof s2Candidate.correction === 'string' ? s2Candidate.correction : (s2Candidate.correction.steps || s2Candidate.correction.explication || ''),
+  const fiche2Correction = s2Candidate?.correction && typeof s2Candidate.correction === 'object' ? {
+    steps: s2Candidate.correction.steps || s2Candidate.correction.explication || domainDefaults.s2.correction?.steps || '',
     examples: Array.isArray(s2Candidate.correction.examples) && s2Candidate.correction.examples.length > 0 
       ? s2Candidate.correction.examples 
-      : ["Exemple 1 : Vérification par calcul direct", "Exemple 2 : Élimination méthodique des pièges classiques"]
-  } : {
+      : domainDefaults.s2.correction?.examples || ["Exemple 1 : Vérification par calcul direct", "Exemple 2 : Élimination des pièges classiques"]
+  } : domainDefaults.s2.correction || {
     steps: `Corrigé type du QCM : justification analytique de chaque proposition exacte.`,
-    examples: ["Exemple 1 : Vérification par calcul direct", "Exemple 2 : Élimination méthodique des pièges classiques"]
+    examples: ["Exemple 1 : Vérification par calcul direct", "Exemple 2 : Élimination des pièges classiques"]
   };
 
   // ========================================================================
-  // 3. FICHE 3 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX
+  // 3. EXERCICE 3 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX
   // ========================================================================
-  const defaultP3Questions: NormalizedQuestion[] = [
-    {
-      id: 'p3_q1',
-      number: '1.',
-      type: 'true_false',
-      points: 1.5,
-      texte: `En régime linéaire de fonctionnement, la différence de potentiel différentielle entre les entrées est considérée comme quasi nulle (\\varepsilon \\approx 0).`,
-      correctValue: true,
-      explication: "VRAI : En fonctionnement linéaire avec rétroaction négative, la boucle asservit la tension différentielle à zéro ($V^+ \\approx V^-$)."
-    },
-    {
-      id: 'p3_q2',
-      number: '2.',
-      type: 'true_false',
-      points: 1.5,
-      texte: "La tension de sortie peut dépasser sans limite les tensions d'alimentation fournies au circuit.",
-      correctValue: false,
-      explication: "FAUX : La tension de sortie est obligatoirement écrêtée et bornée par les tensions de saturation $\\pm V_{sat}$."
-    },
-    {
-      id: 'p3_q3',
-      number: '3.',
-      type: 'true_false',
-      points: 1.5,
-      texte: "Le produit gain-bande passante demeure approximativement constant pour un amplificateur opérationnel donné.",
-      correctValue: true,
-      explication: "VRAI : Une augmentation du gain entraîne une diminution proportionnelle de la bande passante utile."
-    },
-    {
-      id: 'p3_q4',
-      number: '4.',
-      type: 'true_false',
-      points: 1.5,
-      texte: "Une résistance de rétroaction infinie stabilise le montage dans un état linéaire sans basculement.",
-      correctValue: false,
-      explication: "FAUX : En boucle ouverte (sans rétroaction), le composant fonctionne en comparateur non linéaire et sature immédiatement."
-    }
-  ];
-
-  // Trouver la source brute de Fiche 3
   const s3Candidate = rawSections.find((s: any) => 
+    s?.title?.toLowerCase().includes('exercice 3') ||
     s?.title?.toLowerCase().includes('fiche 3') || 
     s?.title?.toLowerCase().includes('partie 3') || 
     s?.title?.toLowerCase().includes('vrai') || 
     s?.title?.toLowerCase().includes('faux') ||
     s?.section_id === 'sec_3'
-  ) || rawSections[2] || rawSections[3] || rawEx3 || rawEx4;
+  ) || rawSections[2] || rawEx3;
 
   const rawQ3Candidates = Array.isArray(s3Candidate?.questions) 
     ? s3Candidate.questions 
@@ -426,57 +330,69 @@ export function normalizeExamData(data: any, title?: string) {
         ? rawEx3.questions 
         : (Array.isArray(source.vraiOuFaux) ? source.vraiOuFaux : [])));
 
-  const validQ3 = rawQ3Candidates.filter((q: any) => extractCleanQuestionText(q).length >= 5);
+  const validQ3 = rawQ3Candidates.filter((q: any) => {
+    const txt = extractCleanQuestionText(q);
+    const key = normalizeKey(txt);
+    if (txt.length < 10 || isGenericOrPlaceholderText(txt) || seenQuestionTexts.has(key)) return false;
+    return true;
+  });
 
   const fiche3Questions: NormalizedQuestion[] = validQ3.length >= 2
-    ? validQ3.map((q: any, i: number) => ({
-        id: (typeof q === 'object' && q.id) ? q.id : `p3_q${i + 1}`,
-        number: (typeof q === 'object' && q.number) ? q.number : `${i + 1}.`,
-        type: 'true_false' as const,
-        points: Number(q?.points) || 1.5,
-        texte: extractCleanQuestionText(q) || `Affirmation n°${i + 1}`,
-        correctValue: typeof q.correctValue === 'boolean'
-          ? q.correctValue
-          : (typeof q.correct_answer === 'boolean'
-            ? q.correct_answer
-            : (typeof q.isTrue === 'boolean'
-              ? q.isTrue
-              : (q.reponse === true || q.reponse === 'VRAI' || q.reponse === 'true' || (i % 2 === 0)))),
-        explication: q.explication || q.explanation || "Démonstration théorique et conditions d'application de la règle."
-      }))
-    : defaultP3Questions;
+    ? validQ3.slice(0, 4).map((q: any, i: number) => {
+        const text = extractCleanQuestionText(q);
+        seenQuestionTexts.add(normalizeKey(text));
+        return {
+          id: (typeof q === 'object' && q.id) ? q.id : `p3_q${i + 1}`,
+          number: (typeof q === 'object' && q.number) ? q.number : `${i + 1}.`,
+          type: 'true_false' as const,
+          points: Number(q?.points) || 1.5,
+          texte: text,
+          correctValue: typeof q.correctValue === 'boolean'
+            ? q.correctValue
+            : (typeof q.correct_answer === 'boolean'
+              ? q.correct_answer
+              : (typeof q.isTrue === 'boolean'
+                ? q.isTrue
+                : (q.reponse === true || q.reponse === 'VRAI' || q.reponse === 'true' || (i % 2 === 0)))),
+          explication: q.explication || q.explanation || domainDefaults.s3.questions[i]?.explication || "Démonstration théorique et conditions d'application de la règle."
+        };
+      })
+    : domainDefaults.s3.questions.map((q) => {
+        seenQuestionTexts.add(normalizeKey(q.texte));
+        return q;
+      });
 
-  const fiche3Correction = s3Candidate?.correction ? {
-    steps: typeof s3Candidate.correction === 'string' ? s3Candidate.correction : (s3Candidate.correction.steps || s3Candidate.correction.explication || ''),
+  const fiche3Correction = s3Candidate?.correction && typeof s3Candidate.correction === 'object' ? {
+    steps: s3Candidate.correction.steps || s3Candidate.correction.explication || domainDefaults.s3.correction?.steps || '',
     examples: Array.isArray(s3Candidate.correction.examples) && s3Candidate.correction.examples.length > 0 
       ? s3Candidate.correction.examples 
-      : ["Exemple 1 : Cas d'application concrète", "Exemple 2 : Analyse critique du contre-exemple"]
-  } : {
+      : domainDefaults.s3.correction?.examples || ["Exemple 1 : Cas d'application concrète", "Exemple 2 : Analyse critique du contre-exemple"]
+  } : domainDefaults.s3.correction || {
     steps: `Corrigé type de la Fiche 3 : analyse des conditions de validité des affirmations.`,
     examples: ["Exemple 1 : Cas d'application concrète", "Exemple 2 : Analyse critique du contre-exemple"]
   };
 
   // ========================================================================
-  // GARANTIE ABSOLUE : EXACTEMENT 3 FICHES COMPLÈTES ET PEUPLÉES
+  // GARANTIE ABSOLUE : EXACTEMENT 3 EXERCICES COMPLETS ET PEUPLÉS (PAS PLUS NI MOINS)
   // ========================================================================
   const sections: NormalizedSection[] = [
     {
       id: 'sec_1',
-      title: "FICHE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS",
+      title: "EXERCICE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS (8 POINTS)",
       problem_statement: fiche1Statement,
       questions: fiche1Questions,
       correction: fiche1Correction
     },
     {
       id: 'sec_2',
-      title: "FICHE 2 : QUESTIONNAIRE À CHOIX MULTIPLES (QCM)",
+      title: "EXERCICE 2 : QUESTIONNAIRE À CHOIX MULTIPLES — QCM (6 POINTS)",
       problem_statement: "",
       questions: fiche2Questions,
       correction: fiche2Correction
     },
     {
       id: 'sec_3',
-      title: "FICHE 3 : DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
+      title: "EXERCICE 3 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX (6 POINTS)",
       problem_statement: "",
       questions: fiche3Questions,
       correction: fiche3Correction
@@ -489,7 +405,7 @@ export function normalizeExamData(data: any, title?: string) {
     duree: formattedDuree,
     durationSeconds: durationSec,
     matiere: discipline,
-    mention: "Cette épreuve comporte 3 fiches d'évaluation structurées : Fiche 1 (Problème rédigé), Fiche 2 (QCM), Fiche 3 (Vrai ou Faux).",
+    mention: "Cette épreuve comporte exactement 3 exercices structurés : Exercice 1 (Problème rédigé avec calculs), Exercice 2 (QCM), Exercice 3 (Vrai ou Faux).",
     calculatrice: source.calculatrice || data?.calculatrice || "Tout modèle de calculatrice scientifique est autorisé.",
     baremeTotal: Number(source.baremeTotal || data?.baremeTotal) || 20
   };
@@ -822,7 +738,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                       : 'text-stone-300 hover:text-white'
                   }`}
                 >
-                  Fiche {pNum}
+                  Exercice {pNum}
                 </button>
               ))}
             </div>
@@ -993,12 +909,12 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                   DKD School Numérique • {examHeader.matiere}
                 </span>
                 <span className="text-xs font-serif font-bold text-stone-800">
-                  Fiche {currentPage} / {totalPages} • {examHeader.duree}
+                  Exercice {currentPage} / {totalPages} • {examHeader.duree}
                 </span>
               </div>
               <div className="text-right shrink-0">
                 <span className="text-xs font-serif font-bold text-stone-700 bg-stone-100 px-2.5 py-1 rounded border border-stone-200">
-                  Page {currentPage}/{totalPages}
+                  Exercice {currentPage}/{totalPages}
                 </span>
               </div>
             </header>
@@ -1018,11 +934,11 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
 
               {/* Énoncé / Problème pratique si présent (s'étire dynamiquement) */}
               {activeSection.problem_statement && (
-                <div className="bg-stone-50/80 p-4 sm:p-5 border-l-4 border-stone-800 text-stone-800 text-xs sm:text-sm font-serif leading-relaxed space-y-2 h-auto break-words overflow-visible">
+                <div className="bg-stone-50/90 p-4 sm:p-5 border-l-4 border-stone-800 text-stone-900 text-xs sm:text-sm font-serif leading-relaxed space-y-2.5 h-auto break-words overflow-visible rounded-r-lg shadow-2xs">
                   <span className="font-bold uppercase tracking-wider text-xs block text-stone-900">
                     Énoncé de la situation & données du problème :
                   </span>
-                  <div className="text-stone-800 leading-relaxed break-words whitespace-pre-line">
+                  <div className="text-stone-800 leading-relaxed break-words whitespace-pre-wrap font-sans text-xs sm:text-[13px] bg-white/70 p-3.5 rounded border border-stone-200">
                     <MathText text={activeSection.problem_statement} />
                   </div>
                 </div>
