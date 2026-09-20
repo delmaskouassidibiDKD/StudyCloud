@@ -196,27 +196,38 @@ export default function QuestionnaireTest({ data }: { data?: any }) {
     setIsSubmitted(false);
   }, [data]);
 
-  // Affichage d'un espace prêt et récepteur si aucune question n'a été générée par l'IA
+  // Affichage en cas d'erreur ou si aucune question n'est encore générée
   if (questions.length === 0) {
+    const isError = Boolean(data?.error);
+    const errorMsg = data?.errorMessage;
+
     return (
       <div id="module-questionnaire-test" className="w-full max-w-4xl mx-auto p-6 md:p-8 space-y-6">
-        <div id="questionnaire-test-empty-card" className="w-full bg-white border border-stone-200 rounded-2xl p-8 md:p-12 text-center space-y-4 shadow-xs">
-          <div className="w-16 h-16 mx-auto rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-600">
-            <HelpCircle className="w-8 h-8" />
+        <div id="questionnaire-test-empty-card" className="w-full bg-white border border-stone-200 rounded-2xl p-8 md:p-12 text-center space-y-5 shadow-xs">
+          <div className={`w-16 h-16 mx-auto rounded-2xl border flex items-center justify-center ${isError ? 'bg-rose-50 border-rose-200 text-rose-600' : 'bg-stone-100 border-stone-200 text-stone-600'}`}>
+            {isError ? <XCircle className="w-8 h-8" /> : <HelpCircle className="w-8 h-8" />}
           </div>
           <div className="space-y-2">
             <h3 className="text-xl md:text-2xl font-bold text-stone-900">
-              Questionnaire Test (Évaluation notée)
+              {isError ? "La génération de l'évaluation a rencontré un obstacle" : "Questionnaire Test (Évaluation notée)"}
             </h3>
             <p className="text-stone-500 text-sm md:text-base max-w-lg mx-auto leading-relaxed">
-              Espace d'évaluation prêt. Demandez à l'IA de générer un test ou examen complet à partir de votre cours. Les questions notées, les options à cocher, le score final et le corrigé détaillé s'afficheront ici.
+              {isError
+                ? (errorMsg || "Le service d'IA a mis trop de temps à répondre ou le document n'a pas pu être analysé.")
+                : "Espace d'évaluation prêt. Cliquez sur le bouton ci-dessous pour lancer la conception du test noté à partir de votre cours."}
             </p>
           </div>
-          <div className="pt-2 flex justify-center">
-            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-600">
-              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
-              Conteneur adaptatif étirable pour tout sujet ou problème complexe
-            </span>
+          <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                window.dispatchEvent(new CustomEvent('trigger-creation-generate', { detail: { type: 'questionnaire-test' } }));
+              }}
+              className="px-5 py-2.5 bg-amber-500 hover:bg-amber-600 active:scale-95 text-white font-semibold rounded-xl text-sm transition-all shadow-sm cursor-pointer flex items-center gap-2"
+            >
+              <RotateCcw className="w-4 h-4" />
+              {isError ? "Relancer le test" : "Générer le test noté maintenant"}
+            </button>
           </div>
         </div>
       </div>

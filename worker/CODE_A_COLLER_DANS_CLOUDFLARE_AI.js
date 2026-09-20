@@ -462,7 +462,61 @@ export default {
             }
           }
         } catch {
-          // En cas d'erreur de parsing, conserver mode chat
+          // En cas d'erreur de parsing, tenter l'extraction directe
+        }
+      }
+
+      // Extraction de secours à partir du texte brut si le JSON était incomplet, tronqué ou malformé
+      if (!creation_data && rawText) {
+        if (defaultType === "questionnaire" || defaultType === "questionnaire-test" || defaultType === "quiz" || (!defaultType && (rawText.includes("Option A") || rawText.includes("A)") || rawText.includes("A.")))) {
+          const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+          const extractedQuestions = [];
+          let currentQ = null;
+
+          for (const line of lines) {
+            const qMatch = line.match(/^(?:(?:\*{1,2}|#{1,4}\s*)?(?:Question\s*)?(\d+)[.:\)]\s*(?:\*{1,2})?|Q(\d+)[:\.-])\s*(.*)/i);
+            const optMatch = line.match(/^(?:[-*•]\s*)?(?:(?:\*{1,2})?([A-Da-d1-4])[.:\)\-]\s*(?:\*{1,2})?|\(([A-Da-d1-4])\)|\[([A-Da-d1-4])\])\s*(.*)/i);
+            const ansMatch = line.match(/(?:(?:bonne|correcte?)\s+)?r[eé]ponse(?:\s+correcte)?\s*[:=]\s*[*_`]*([A-Da-d1-4])/i) || line.match(/Answer\s*[:=]\s*[*_`]*([A-Da-d1-4])/i);
+            const explMatch = line.match(/(?:explication|justification|pourquoi|note|remarque)\s*[:=]\s*(.*)/i);
+
+            if (qMatch && !optMatch) {
+              if (currentQ && currentQ.options.length >= 2) {
+                extractedQuestions.push(currentQ);
+              }
+              const qTitle = qMatch[3] || qMatch[1] || line;
+              currentQ = {
+                id: `q_${extractedQuestions.length + 1}`,
+                question: qTitle.replace(/^\*{1,2}|\*{1,2}$/g, '').trim(),
+                options: [],
+                correctIndex: 0,
+                explanation: ''
+              };
+            } else if (optMatch && currentQ) {
+              const optText = (optMatch[4] || optMatch[3] || optMatch[2] || optMatch[1] || '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim();
+              if (optText) {
+                currentQ.options.push(optText);
+              }
+            } else if (ansMatch && currentQ) {
+              const char = (ansMatch[1] || '').toUpperCase();
+              if (char >= 'A' && char <= 'D') {
+                currentQ.correctIndex = char.charCodeAt(0) - 65;
+              } else if (char >= '1' && char <= '4') {
+                currentQ.correctIndex = parseInt(char, 10) - 1;
+              }
+            } else if (explMatch && currentQ) {
+              currentQ.explanation = explMatch[1].trim();
+            }
+          }
+          if (currentQ && currentQ.options.length >= 2) {
+            extractedQuestions.push(currentQ);
+          }
+
+          if (extractedQuestions.length > 0) {
+            decision = "creation";
+            creation_type = defaultType || "questionnaire";
+            creation_title = "Questionnaire interactif";
+            creation_data = { questions: extractedQuestions };
+          }
         }
       }
 

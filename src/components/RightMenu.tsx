@@ -21,6 +21,7 @@ import {
 } from 'lucide-react';
 import { StudyCloudAPI, sendChatMessageToAi } from '../services/api';
 import { extractDocumentText } from '../services/documentTextExtractor';
+import { parseOrBuildAiCreation } from '../services/aiCreationGenerator';
 import { DnaLogo } from './DnaLogo';
 import { AiCreation, ModuleId } from './ai-creations/types';
 import Questionnaire from './ai-creations/Questionnaire';
@@ -333,16 +334,24 @@ export function RightMenu({
       setGeneratingInfo(null);
     };
 
+    const handleTrigger = (e: any) => {
+      const type = e?.detail?.type || 'questionnaire';
+      const mod = MODULES.find(m => m.id === type) || MODULES[0];
+      handleProposalClick(mod);
+    };
+
     window.addEventListener('ai-creation-start', handleStart as any);
     window.addEventListener('ai-creation-ready', handleReady as any);
     window.addEventListener('ai-creation-update', handleUpdate as any);
     window.addEventListener('ai-creation-error', handleError as any);
+    window.addEventListener('trigger-creation-generate', handleTrigger as any);
 
     return () => {
       window.removeEventListener('ai-creation-start', handleStart as any);
       window.removeEventListener('ai-creation-ready', handleReady as any);
       window.removeEventListener('ai-creation-update', handleUpdate as any);
       window.removeEventListener('ai-creation-error', handleError as any);
+      window.removeEventListener('trigger-creation-generate', handleTrigger as any);
     };
   }, [activeCreation]);
 
@@ -403,12 +412,12 @@ export function RightMenu({
     });
     setActiveTabModule(mod.id);
 
-    // Contrôleur d'annulation avec délai de sécurité augmenté à 60 secondes (pour grands documents)
+    // Contrôleur d'annulation avec délai de sécurité augmenté à 120 secondes (pour l'analyse de grands documents)
     const controller = new AbortController();
     abortControllerRef.current = controller;
     const timeoutId = setTimeout(() => {
       controller.abort();
-    }, 60000);
+    }, 120000);
 
     try {
       // 1. Extraction éventuelle du texte du document sélectionné
@@ -446,13 +455,30 @@ export function RightMenu({
       clearTimeout(timeoutId);
 
       const targetType = (res.creation_type as ModuleId) || mod.id;
+      let effectiveContent = res.creation_data || null;
+      let effectiveTitle = res.creation_title || `${mod.label} : ${docName}`;
+
+      // Si creation_data est vide, tenter une extraction de secours à partir du texte brut retourné par l'IA
+      if (!effectiveContent && (res.response || (res as any).text)) {
+        try {
+          const rawText = res.response || (res as any).text || '';
+          const parsedCreation = parseOrBuildAiCreation(targetType as any, rawText, docName, promptText);
+          if (parsedCreation && parsedCreation.content) {
+            effectiveContent = parsedCreation.content;
+            if (parsedCreation.title) effectiveTitle = parsedCreation.title;
+          }
+        } catch (parseErr) {
+          console.warn('[RightMenu] Erreur parsing secours creation:', parseErr);
+        }
+      }
+
       const newCreation: AiCreation = {
         id: 'ai-' + Date.now(),
         userId: localStorage.getItem('unifolder_user_id') || 'default-user',
         fileId: previewItem?.id,
         toolType: targetType,
-        title: res.creation_title || `${mod.label} : ${docName}`,
-        content: res.creation_data || null,
+        title: effectiveTitle,
+        content: effectiveContent,
         sourceFileName: docName,
         createdAt: new Date().toISOString(),
         version: 1,
@@ -511,14 +537,21 @@ export function RightMenu({
         return;
       }
 
-      // En cas de délai dépassé ou erreur réseau, afficher immédiatement le module avec son modèle interactif
+      const isTimeout = err.name === 'AbortError' || err.message?.includes('aborted');
       const fallbackCreation: AiCreation = {
         id: 'ai-' + Date.now(),
         userId: localStorage.getItem('unifolder_user_id') || 'default-user',
         fileId: activePreviewItem?.id,
         toolType: mod.id,
         title: `${mod.label} : ${docName}`,
-        content: null,
+        content: {
+          error: true,
+          errorMessage: isTimeout
+            ? "Le délai de traitement a été dépassé (2 min). L'analyse du document et la conception de l'exercice ont pris plus de temps que prévu."
+            : (err.message || "Une erreur de communication est survenue avec le service d'IA."),
+          canRetry: true,
+          failedModId: mod.id
+        },
         sourceFileName: docName,
         createdAt: new Date().toISOString(),
         version: 1,
