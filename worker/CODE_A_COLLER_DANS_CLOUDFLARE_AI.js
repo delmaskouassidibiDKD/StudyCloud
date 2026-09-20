@@ -551,9 +551,15 @@ RÈGLES D'EXCELLENCE POUR LES QUESTIONNAIRES & TESTS ('questionnaire' et 'questi
 1. PROFONDEUR PÉDAGOGIQUE (ÉTUDES DE CAS ET MISES EN SITUATION) :
    - Ne pose AUCUNE question de simple mémorisation brute ou de recopie de définition superficielle.
    - Crée des questions de type "étude de cas", "résolution de problèmes", "analyse d'une situation clinique ou professionnelle" ou "mise en situation réelle" pour tester l'application des concepts en profondeur.
-   - Fournis 4 options crédibles (A, B, C, D) : 1 seule bonne réponse et 3 distracteurs intelligents ciblant les confusions classiques.
+   - Fournis 4 options crédibles : 1 seule bonne réponse et 3 distracteurs intelligents ciblant les confusions classiques.
 
-2. CORRECTIONS DÉTAILLÉES AVEC DEUX EXEMPLES CONCRETS OBLIGATOIRES :
+2. RÈGLE STRICTE SUR LES PROPOSITIONS DE RÉPONSES (INTERDICTION DES PLACEHOLDERS 'Option A') :
+   - INTERDICTION FORMELLE ET STRICTE d'écrire 'Option A', 'Option B', 'Option C', 'Option D', ou simplement les lettres 'A', 'B', 'C', 'D' dans le tableau "options".
+   - Tu DOIS IMPÉRATIVEMENT rédiger le texte complet, explicite, détaillé et argumenté de chaque proposition de réponse dans le tableau "options".
+   - L'étudiant doit lire de vraies phrases de réponses complètes pour pouvoir réfléchir et choisir.
+   - Chaque option doit être un énoncé substantiel (ex: "La puissance maximale diminue en raison des pertes Joule dans les câbles et de l'échauffement des cellules").
+
+3. CORRECTIONS DÉTAILLÉES AVEC DEUX EXEMPLES CONCRETS OBLIGATOIRES :
    - Pour chaque question, l'explication (champ "explanation") ne doit JAMAIS se limiter à donner la bonne réponse.
    - Elle doit obligatoirement :
      a) Expliquer en détail le "pourquoi" théorique et scientifique.
@@ -561,8 +567,30 @@ RÈGLES D'EXCELLENCE POUR LES QUESTIONNAIRES & TESTS ('questionnaire' et 'questi
    - Format de "explanation" :
      "Explication théorique détaillée du concept...\n\n• Exemple 1 : [Situation concrète 1]\n• Exemple 2 : [Situation concrète 2]"
 
-3. ENRICHISSEMENT EXTERNE & CROISEMENT DE SAVOIRS :
+4. RÈGLE DE FORMATAGE ABSOLUE (MATHÉMATIQUES, FONCTIONS ET FRACTIONS EN LATEX PUR) :
+   - Pour TOUTES les formules, fractions, grandeurs et équations dans les questions, options et explications, utilise la syntaxe LaTeX standard ($...$).
+
+5. ENRICHISSEMENT EXTERNE & CROISEMENT DE SAVOIRS :
    - Ne te limite pas strictement aux mots du fichier. Tu es autorisé et encouragé à croiser le contenu du document avec des standards réels, des cas d'usage vérifiés et des notions complémentaires issues du même domaine pour maximiser la valeur pédagogique.
+
+6. STRUCTURE JSON REQUISE DANS "creation_data" :
+{
+  "title": "Questionnaire Évaluatif : [Titre du cours / sujet]",
+  "questions": [
+    {
+      "id": "q_1",
+      "question": "Énoncé complet et contextualisé de la question ou problème pratique (avec LaTeX $\\frac{a}{b}$ si formule)...",
+      "options": [
+        "Texte complet et développé de la 1ère proposition (JAMAIS juste 'Option A')",
+        "Texte complet et développé de la 2ème proposition (JAMAIS juste 'Option B')",
+        "Texte complet et développé de la 3ème proposition (JAMAIS juste 'Option C')",
+        "Texte complet et développé de la 4ème proposition (JAMAIS juste 'Option D')"
+      ],
+      "correctIndex": 0,
+      "explanation": "Démonstration théorique approfondie expliquant pourquoi la proposition est exacte...\n\n• Exemple 1 : [Cas d'application concret dans une installation réelle]\n• Exemple 2 : [Deuxième cas réel illustrant le phénomène]"
+    }
+  ]
+}
 
 ======================================================================
 RÈGLES D'EXCELLENCE POUR LE VRAI OU FAUX ('vrai-ou-faux' et 'vrai-ou-faux-test') :

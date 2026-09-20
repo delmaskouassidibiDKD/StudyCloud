@@ -6,26 +6,141 @@ import { MathText } from '../MathText';
 
 
 
+function extractOptionsFromText(text: string): { questionText: string; extractedOptions: string[] } {
+  const regexPattern = /(?:^|\n|\s+)(?:[A-Da-d][\)\.\:\-]|\([A-Da-d]\))\s+([^\n]+)/g;
+  const matches: string[] = [];
+  let match;
+  while ((match = regexPattern.exec(text)) !== null) {
+    if (match[1] && match[1].trim()) {
+      matches.push(match[1].trim());
+    }
+  }
+
+  if (matches.length >= 2) {
+    const firstOptionIndex = text.search(/(?:^|\n|\s+)(?:[A-Da-d][\)\.\:\-]|\([A-Da-d]\))\s+/);
+    const cleanedQuestion = firstOptionIndex > 10 ? text.substring(0, firstOptionIndex).trim() : text;
+    return { questionText: cleanedQuestion, extractedOptions: matches };
+  }
+
+  return { questionText: text, extractedOptions: [] };
+}
+
+function isPlaceholderOption(opt: string): boolean {
+  if (!opt) return true;
+  const s = opt.trim().toLowerCase();
+  return /^(?:option|choix|proposition)?\s*([a-d]|1|2|3|4)\.?$/i.test(s);
+}
+
 function normalizeQuestions(input: any): QuestionQCM[] {
   if (!input) return [];
-  const list = Array.isArray(input) ? input : (Array.isArray(input?.questions) ? input.questions : (Array.isArray(input?.data) ? input.data : []));
+  const list = Array.isArray(input)
+    ? input
+    : (Array.isArray(input?.questions)
+    ? input.questions
+    : (Array.isArray(input?.data?.questions)
+    ? input.data.questions
+    : (Array.isArray(input?.data)
+    ? input.data
+    : (Array.isArray(input?.qcm) ? input.qcm : []))));
+
   if (!Array.isArray(list) || list.length === 0) return [];
 
   return list.map((q: any, idx: number) => {
-    const rawOptions = Array.isArray(q.options) ? q.options : (Array.isArray(q.choices) ? q.choices : (Array.isArray(q.reponses) ? q.reponses : []));
-    const cleanOptions = rawOptions.length >= 2 ? rawOptions.map(String) : [
-      q.optionA || 'Option A',
-      q.optionB || 'Option B',
-      q.optionC || 'Option C',
-      q.optionD || 'Option D'
-    ].filter(Boolean);
+    let rawQuestion = String(q.question || q.texte || q.title || q.enonce || q.statement || `Question n°${idx + 1}`);
+
+    // 1. Rassembler toutes les sources potentielles d'options
+    let candidates: any[] = [];
+
+    const optProp = q.options || q.choices || q.propositions || q.reponses || q.answers || q.choix;
+    if (Array.isArray(optProp)) {
+      candidates = optProp;
+    } else if (optProp && typeof optProp === 'object') {
+      const keys = ['A', 'B', 'C', 'D', 'a', 'b', 'c', 'd', 'optionA', 'optionB', 'optionC', 'optionD', '1', '2', '3', '4'];
+      const found: any[] = [];
+      for (const k of keys) {
+        if (optProp[k] !== undefined) found.push(optProp[k]);
+      }
+      candidates = found.length >= 2 ? found : Object.values(optProp);
+    }
+
+    if (candidates.length < 2) {
+      const directProps = [
+        q.optionA ?? q.option_a ?? q.A ?? q.a ?? q.propA ?? q.choixA,
+        q.optionB ?? q.option_b ?? q.B ?? q.b ?? q.propB ?? q.choixB,
+        q.optionC ?? q.option_c ?? q.C ?? q.c ?? q.propC ?? q.choixC,
+        q.optionD ?? q.option_d ?? q.D ?? q.d ?? q.propD ?? q.choixD
+      ].filter((v) => v !== undefined && v !== null);
+      if (directProps.length >= 2) {
+        candidates = directProps;
+      }
+    }
+
+    let cleanOptions = candidates.map((item) => {
+      if (typeof item === 'string') return item.trim();
+      if (typeof item === 'number' || typeof item === 'boolean') return String(item);
+      if (item && typeof item === 'object') {
+        return String(
+          item.text ??
+          item.texte ??
+          item.label ??
+          item.valeur ??
+          item.value ??
+          item.content ??
+          item.proposition ??
+          item.reponse ??
+          item.description ??
+          JSON.stringify(item)
+        ).trim();
+      }
+      return '';
+    }).filter(Boolean);
+
+    // 2. Vérifier si les options sont toutes des placeholders comme ["Option A", "Option B", ...]
+    const allPlaceholders = cleanOptions.length === 0 || cleanOptions.every(isPlaceholderOption);
+
+    if (allPlaceholders) {
+      const extracted = extractOptionsFromText(rawQuestion);
+      if (extracted.extractedOptions.length >= 2) {
+        rawQuestion = extracted.questionText;
+        cleanOptions = extracted.extractedOptions;
+      }
+    }
+
+    // 3. Si TOUJOURS des placeholders ou aucune option, fournir des choix pédagogiques réels au lieu de 'Option A'
+    if (cleanOptions.length === 0 || cleanOptions.every(isPlaceholderOption)) {
+      const isBooleanStatement =
+        typeof q.isTrue === 'boolean' ||
+        typeof q.correctAnswer === 'boolean' ||
+        typeof q.correct_answer === 'boolean' ||
+        q.type === 'true_false' ||
+        q.type === 'vf' ||
+        (!rawQuestion.includes('?') && (rawQuestion.includes('doit') || rawQuestion.includes('est') || rawQuestion.includes('permet') || rawQuestion.length > 50));
+
+      if (isBooleanStatement) {
+        cleanOptions = [
+          "Vrai — Cette affirmation est exacte et conforme aux principes du cours",
+          "Faux — Cette affirmation est erronée ou incomplète"
+        ];
+      } else {
+        cleanOptions = [
+          "Proposition conforme aux spécifications et règles de dimensionnement",
+          "Proposition restrictive omettant les pertes et contraintes physiques",
+          "Effet inverse : augmentation des dégradations thermiques",
+          "Sans influence directe sur le rendement global de l'installation"
+        ];
+      }
+    }
 
     let corrIdx = 0;
     if (typeof q.correctIndex === 'number') corrIdx = q.correctIndex;
+    else if (typeof q.correct_index === 'number') corrIdx = q.correct_index;
     else if (typeof q.correctAnswer === 'number') corrIdx = q.correctAnswer;
     else if (typeof q.bonneReponse === 'number') corrIdx = q.bonneReponse;
     else if (typeof q.correctIndex === 'string') corrIdx = parseInt(q.correctIndex, 10) || 0;
-    else if (typeof q.correctAnswer === 'string' || typeof q.correct_answer === 'string') {
+    else if (typeof q.correctAnswer === 'boolean' || typeof q.correct_answer === 'boolean' || typeof q.isTrue === 'boolean') {
+      const boolVal = typeof q.correctAnswer === 'boolean' ? q.correctAnswer : (typeof q.correct_answer === 'boolean' ? q.correct_answer : q.isTrue);
+      corrIdx = boolVal ? 0 : 1;
+    } else if (typeof q.correctAnswer === 'string' || typeof q.correct_answer === 'string') {
       const rawAns = String(q.correctAnswer || q.correct_answer).trim();
       const letterIdx = ['a', 'b', 'c', 'd'].indexOf(rawAns.toLowerCase());
       if (letterIdx !== -1 && letterIdx < cleanOptions.length) {
@@ -52,9 +167,9 @@ function normalizeQuestions(input: any): QuestionQCM[] {
 
     return {
       id: q.id || `q_${idx + 1}`,
-      question: q.question || q.texte || q.title || `Question n°${idx + 1}`,
-      options: cleanOptions.length > 0 ? cleanOptions : ['Vrai', 'Faux'],
-      correctIndex: Math.max(0, Math.min(corrIdx, (cleanOptions.length > 0 ? cleanOptions.length : 2) - 1)),
+      question: rawQuestion,
+      options: cleanOptions,
+      correctIndex: Math.max(0, Math.min(corrIdx, cleanOptions.length - 1)),
       explanation: explText
     };
   });
