@@ -426,19 +426,64 @@ CONSIGNE : Conçois un exercice écrit de haut niveau avec énoncé contextualis
 
       case 'devoir-complet':
         return `${base}
-CONSIGNE : Conçois une épreuve d'examen officielle complète notée sur 20 points, avec barème détaillé, calculs, formules et corrigé intégral.
+CONSIGNE STRICTE & INVIOLABLE : Conçois une épreuve d'examen officielle complète notée sur 20 points, composée OBLIGATOIREMENT de 3 FICHES D'ÉVALUATION DISTINCTES :
+1. FICHE 1 (Partie 1) : PROBLÈME MAJEUR & CALCULS RÉDIGÉS (8 points) - Énoncé de situation pratique / dimensionnement (avec schéma de montage ASCII si scientifique), suivi de 3 questions ouvertes nécessitant une réponse rédigée et des calculs dans les espaces prévus.
+2. FICHE 2 (Partie 2) : QUESTIONNAIRE À CHOIX MULTIPLES (QCM) (6 points) - 4 questions d'application avec 4 propositions de réponses développées chacune (la bonne réponse à cocher par l'élève).
+3. FICHE 3 (Partie 3) : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX (6 points) - 4 affirmations scientifiques et calculatoires où l'élève doit choisir si c'est VRAI ou FAUX.
+
 {
   "creation_type": "devoir-complet",
-  "creation_title": "Devoir Évaluatif d'Examen (20 pts) : ${docName}",
+  "creation_title": "Épreuve Officielle d'Examen (20 pts) : ${docName}",
   "creation_data": {
-    "title": "Devoir d'Examen : ${docName}",
+    "title": "Épreuve Officielle d'Examen : ${docName}",
     "duree": "2h00",
+    "duration_minutes": 120,
     "baremeTotal": 20,
-    "instructions": "Rédigez avec soin en justifiant toutes vos réponses et calculs.",
-    "exercice1": { "titre": "Partie 1 : Contrôle des connaissances", "bareme": 5, "questions": [] },
-    "exercice2": { "titre": "Partie 2 : Analyse et méthode", "bareme": 5, "questions": [] },
-    "exercice3": { "titre": "Partie 3 : Résolution de problème et calculs", "bareme": 6, "questions": [] },
-    "exercice4": { "titre": "Partie 4 : Synthèse", "bareme": 4, "questions": [] }
+    "instructions": "L'épreuve comporte 3 fiches indépendantes. Justifiez avec rigueur toutes vos réponses et calculs.",
+    "sections": [
+      {
+        "section_id": "sec_1",
+        "title": "FICHE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS",
+        "problem_statement": "Énoncé contextuel d'ingénierie complet avec valeurs chiffrées, formules en LaTeX $...$ et schéma de montage...",
+        "questions": [
+          { "id": "p1_q1", "number": "1.", "type": "open", "points": 3, "texte": "Première question d'analyse théorique et de modélisation...", "sampleAnswer": "Démonstration complète pas à pas et résultat avec unité..." },
+          { "id": "p1_q2", "number": "2.", "type": "open", "points": 3, "texte": "Deuxième question de calcul numérique et dimensionnement...", "sampleAnswer": "Calcul méthodique et justification détaillée..." },
+          { "id": "p1_q3", "number": "3.", "type": "open", "points": 2, "texte": "Troisième question d'interprétation critique et de synthèse...", "sampleAnswer": "Analyse physique des grandeurs obtenues..." }
+        ],
+        "correction": {
+          "steps": "Corrigé complet et barème détaillé de la Fiche 1...",
+          "examples": ["Exemple 1 : Cas concret...", "Exemple 2 : Autre situation..."]
+        }
+      },
+      {
+        "section_id": "sec_2",
+        "title": "FICHE 2 : QUESTIONNAIRE À CHOIX MULTIPLES (QCM)",
+        "questions": [
+          { "id": "p2_q1", "number": "1.", "type": "multiple_choice", "points": 1.5, "texte": "Première question QCM d'application...", "options": ["Proposition A", "Proposition B", "Proposition C", "Proposition D"], "correctIndex": 0, "explication": "Démonstration de la bonne réponse..." },
+          { "id": "p2_q2", "number": "2.", "type": "multiple_choice", "points": 1.5, "texte": "Deuxième question QCM avec calcul...", "options": ["Proposition A", "Proposition B", "Proposition C", "Proposition D"], "correctIndex": 1, "explication": "Démonstration pas à pas..." },
+          { "id": "p2_q3", "number": "3.", "type": "multiple_choice", "points": 1.5, "texte": "Troisième question QCM...", "options": ["Proposition A", "Proposition B", "Proposition C", "Proposition D"], "correctIndex": 2, "explication": "Justification théorique..." },
+          { "id": "p2_q4", "number": "4.", "type": "multiple_choice", "points": 1.5, "texte": "Quatrième question QCM...", "options": ["Proposition A", "Proposition B", "Proposition C", "Proposition D"], "correctIndex": 0, "explication": "Justification théorique..." }
+        ],
+        "correction": {
+          "steps": "Justification synthétique des 4 questions du QCM...",
+          "examples": ["Exemple 1 : Application directe...", "Exemple 2 : Piège classique..."]
+        }
+      },
+      {
+        "section_id": "sec_3",
+        "title": "FICHE 3 : DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
+        "questions": [
+          { "id": "p3_q1", "number": "1.", "type": "true_false", "points": 1.5, "texte": "Première affirmation scientifique avec calcul chiffré...", "correct_answer": true, "explication": "Démonstration théorique..." },
+          { "id": "p3_q2", "number": "2.", "type": "true_false", "points": 1.5, "texte": "Deuxième affirmation avec condition aux limites...", "correct_answer": false, "explication": "Démonstration de l'erreur..." },
+          { "id": "p3_q3", "number": "3.", "type": "true_false", "points": 1.5, "texte": "Troisième affirmation scientifique...", "correct_answer": true, "explication": "Démonstration théorique..." },
+          { "id": "p3_q4", "number": "4.", "type": "true_false", "points": 1.5, "texte": "Quatrième affirmation calculatoire...", "correct_answer": false, "explication": "Contre-exemple détaillé..." }
+        ],
+        "correction": {
+          "steps": "Synthèse théorique des affirmations Vrai ou Faux...",
+          "examples": ["Exemple 1 : Cas réel...", "Exemple 2 : Analyse critique..."]
+        }
+      }
+    ]
   }
 }`;
 
@@ -546,16 +591,31 @@ CONSIGNE : Rédige un document d'étude officiel complet pour export PDF.
 
       case 'infographie':
         return `${base}
-CONSIGNE : Structure une infographie pédagogique avec repères visuels et étapes clés.
+CONSIGNE : Structure une infographie pédagogique complète, ultra-visuelle et structurée avec des chiffres clés, des étapes méthodologiques détaillées et des repères essentiels.
 {
   "creation_type": "infographie",
   "creation_title": "Infographie : ${docName}",
   "creation_data": {
     "title": "Infographie : ${docName}",
-    "visual_style": "Design moderne et structuré",
-    "sections": [
-      { "step": 1, "heading": "Étape 1", "description": "Détails..." }
-    ]
+    "subtitle": "Structure visuelle et repères conceptuels",
+    "visual_style": "Design technique moderne, schématique et épuré",
+    "image_prompt": "Infographie scientifique moderne sur ${docName} avec diagrammes et composants",
+    "metrics": [
+      { "value": "100%", "label": "Notions clés", "color": "#3B82F6" },
+      { "value": "Méthode", "label": "Rigueur de calcul", "color": "#10B981" },
+      { "value": "Formules", "label": "Lois directrices", "color": "#F97316" }
+    ],
+    "steps": [
+      { "step": 1, "heading": "1. Principe Fondamental", "description": "Explication détaillée de la première notion clé du cours avec formules LaTeX $...$...", "badge": "Fondement", "color": "#3B82F6" },
+      { "step": 2, "heading": "2. Lois & Équations Directrices", "description": "Développement analytique et relations mathématiques exactes...", "badge": "Calcul", "color": "#10B981" },
+      { "step": 3, "heading": "3. Montages Pratiques & Comportement", "description": "Analyse du comportement physique et configurations en situation réelle...", "badge": "Pratique", "color": "#F97316" },
+      { "step": 4, "heading": "4. Synthèse & Points de Vigilance", "description": "Règles de dimensionnement, erreurs classiques et points clés d'examen...", "badge": "Synthèse", "color": "#8B5CF6" }
+    ],
+    "highlights": [
+      { "type": "tip", "title": "Conseil Clé", "text": "Règle essentielle à retenir pour les calculs." },
+      { "type": "warning", "title": "Point de Vigilance", "text": "Piège fréquent à éviter lors de l'application des lois." }
+    ],
+    "conclusion": "Bilan synthétique des notions abordées dans cette infographie."
   }
 }`;
 

@@ -153,230 +153,326 @@ export function normalizeExamData(data: any, title?: string) {
     ? source.sections
     : (Array.isArray(data?.sections) ? data.sections : []);
 
-  let sections: NormalizedSection[] = [];
-
-  if (rawSections.length > 0) {
-    sections = rawSections.map((sec: any, sIdx: number) => {
-      const secId = sec.section_id || `sec_${sIdx + 1}`;
-      const secTitle = sec.title || `Partie ${sIdx + 1}`;
-      const problemStatement = sec.problem_statement || sec.enonce || sec.context || sec.contexte || '';
-
-      const rawQList = Array.isArray(sec.questions) ? sec.questions : [];
-      const questions: NormalizedQuestion[] = rawQList.map((q: any, qIdx: number) => {
-        const qId = (typeof q === 'object' && q.id) ? q.id : `${secId}_q${qIdx + 1}`;
-        const qNum = (typeof q === 'object' && q.number) ? q.number : `${qIdx + 1}.`;
-
-        if (typeof q === 'string') {
-          return {
-            id: qId,
-            number: qNum,
-            type: 'open',
-            texte: q,
-            points: 2,
-            sampleAnswer: ''
-          };
-        }
-
-        const isTrueFalse =
-          q.type === 'true_false' ||
-          q.type === 'vf' ||
-          typeof q.correct_answer === 'boolean' ||
-          typeof q.correctValue === 'boolean';
-
-        const isMultipleChoice =
-          q.type === 'multiple_choice' ||
-          q.type === 'qcm' ||
-          (Array.isArray(q.options) && q.options.length > 0) ||
-          (Array.isArray(q.choices) && q.choices.length > 0);
-
-        if (isTrueFalse) {
-          return {
-            id: qId,
-            number: qNum,
-            type: 'true_false',
-            texte: q.question || q.texte || `Affirmation ${qIdx + 1}`,
-            points: Number(q.points) || 1,
-            correctValue:
-              typeof q.correct_answer === 'boolean'
-                ? q.correct_answer
-                : typeof q.correctValue === 'boolean'
-                ? q.correctValue
-                : true,
-            explication: q.explication || q.explanation || ''
-          };
-        }
-
-        if (isMultipleChoice) {
-          const opts = Array.isArray(q.options) ? q.options : (Array.isArray(q.choices) ? q.choices : []);
-          return {
-            id: qId,
-            number: qNum,
-            type: 'multiple_choice',
-            texte: q.question || q.texte || `Question ${qIdx + 1}`,
-            points: Number(q.points) || 1,
-            options: opts,
-            correctIndex:
-              typeof q.correct_index === 'number'
-                ? q.correct_index
-                : typeof q.correctIndex === 'number'
-                ? q.correctIndex
-                : 0,
-            explication: q.explication || q.explanation || ''
-          };
-        }
-
-        return {
-          id: qId,
-          number: qNum,
-          type: 'open',
-          texte: q.question || q.texte || `Question ${qIdx + 1}`,
-          points: Number(q.points) || 2,
-          sampleAnswer: q.sampleAnswer || q.reponse || q.correction || ''
-        };
-      });
-
-      const secCorrection = sec.correction
-        ? {
-            steps: typeof sec.correction === 'string' ? sec.correction : (sec.correction.steps || sec.correction.explication || ''),
-            examples: Array.isArray(sec.correction.examples) ? sec.correction.examples : []
-          }
-        : undefined;
-
-      return {
-        id: secId,
-        title: secTitle,
-        problem_statement: problemStatement,
-        questions,
-        correction: secCorrection
-      };
-    });
-  }
-
-  // Si pas de sections explicites, synthétise depuis rawEx1..4
+  // Extraction d'exercices nommés si présents (exercice1, exercice2, etc.)
   const rawEx1 = source.exercice1 || source.problem || source.partie1 || (Array.isArray(source.exercices) && source.exercices[0]);
   const rawEx2 = source.exercice2 || source.qcm || source.partie2 || (Array.isArray(source.exercices) && source.exercices[1]);
-  const rawEx3 = source.exercice3 || source.questionsRedigees || source.synthese || source.partie3 || (Array.isArray(source.exercices) && source.exercices[2]);
+  const rawEx3 = source.exercice3 || source.vraiOuFaux || source.vf || source.partie3 || (Array.isArray(source.exercices) && source.exercices[2]);
   const rawEx4 = source.exercice4 || source.vraiOuFaux || source.vf || source.partie4 || (Array.isArray(source.exercices) && source.exercices[3]);
 
+  // Questions pour Fiche 1 (Problème & Calculs rédigés)
   const rawQ1 = Array.isArray(rawEx1?.questions) ? rawEx1.questions : [];
-  const exercice1 = {
-    titre: rawEx1?.titre || rawEx1?.title || "EXERCICE 1 : PROBLÈME MAJEUR & ÉTUDE DE CAS TECHNIQUE",
-    points: Number(rawEx1?.points) || 8,
-    enonce: rawEx1?.enonce || rawEx1?.context || rawEx1?.contexte || "",
-    questions:
-      rawQ1.length > 0
-        ? rawQ1.map((q: any, i: number) => ({
-            id: q.id || `p1_q${i + 1}`,
-            number: q.number || `${i + 1}.`,
-            points: Number(q.points) || (i === 0 ? 2 : 3),
-            texte: q.texte || q.question || q.text || `Question ${i + 1}`,
-            sampleAnswer: q.sampleAnswer || q.reponse || q.correction || q.answer || ""
-          }))
-        : [
-            { id: 'p1_q1', number: '1.', points: 2, texte: "Analyse théorique et modélisation du problème.", sampleAnswer: "" },
-            { id: 'p1_q2', number: '2.', points: 3, texte: "Développement analytique et calculs rigoureux.", sampleAnswer: "" },
-            { id: 'p1_q3', number: '3.', points: 3, texte: "Interprétation critique et synthèse globale.", sampleAnswer: "" }
-          ]
-  };
+  const defaultP1Questions: NormalizedQuestion[] = [
+    {
+      id: 'p1_q1',
+      number: '1.',
+      type: 'open',
+      points: 3,
+      texte: `Analyser la situation technique et poser les équations théoriques fondamentales applicables à "${discipline}".`,
+      sampleAnswer: "Poser les hypothèses, énoncer les théorèmes applicables et détailler le modèle mathématique avec ses variables."
+    },
+    {
+      id: 'p1_q2',
+      number: '2.',
+      type: 'open',
+      points: 3,
+      texte: "Effectuer l'application numérique et mener le calcul rigoureux étape par étape en précisant les grandeurs et unités.",
+      sampleAnswer: "Détailler les calculs intermédiaires, simplifier l'expression littérale et calculer la valeur numérique exacte."
+    },
+    {
+      id: 'p1_q3',
+      number: '3.',
+      type: 'open',
+      points: 2,
+      texte: "Interpréter les résultats obtenus, analyser les limites physiques du montage et proposer une conclusion argumentée.",
+      sampleAnswer: "Commenter les ordres de grandeur, vérifier la cohérence physique et valider la plage de bon fonctionnement."
+    }
+  ];
 
+  const exercice1Questions: NormalizedQuestion[] = rawQ1.length > 0
+    ? rawQ1.map((q: any, i: number) => ({
+        id: q.id || `p1_q${i + 1}`,
+        number: q.number || `${i + 1}.`,
+        type: 'open' as const,
+        points: Number(q.points) || (i === 0 ? 3 : (i === 1 ? 3 : 2)),
+        texte: q.texte || q.question || q.text || `Question ${i + 1}`,
+        sampleAnswer: q.sampleAnswer || q.reponse || q.correction || q.answer || "Démonstration théorique et calculs détaillés étape par étape."
+      }))
+    : defaultP1Questions;
+
+  // Questions pour Fiche 2 (QCM à cocher)
   const rawQ2 = Array.isArray(rawEx2?.questions) ? rawEx2.questions : [];
-  const exercice2 = {
-    titre: rawEx2?.titre || rawEx2?.title || "EXERCICE 2 : QUESTIONS À CHOIX MULTIPLES",
-    points: Number(rawEx2?.points) || 4,
-    consigne: rawEx2?.consigne || "Pour chaque question, cochez la seule proposition exacte parmi les quatre choix proposés.",
-    questions:
-      rawQ2.length > 0
-        ? rawQ2.map((q: any, i: number) => ({
-            id: q.id || `p2_q${i + 1}`,
-            number: q.number || `${i + 1}.`,
-            points: Number(q.points) || 1,
-            texte: q.texte || q.question || q.text || `Question ${i + 1}`,
-            options: Array.isArray(q.options) && q.options.length > 0 ? q.options : (Array.isArray(q.choices) ? q.choices : ["Proposition A", "Proposition B", "Proposition C", "Proposition D"]),
-            correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : (typeof q.bonne_reponse === 'number' ? q.bonne_reponse : 0),
-            explication: q.explication || q.explanation || q.justification || ""
-          }))
-        : [1, 2, 3, 4].map((num) => ({
-            id: `p2_q${num}`,
-            number: `${num}.`,
-            points: 1,
-            texte: `Question d'évaluation conceptuelle n°${num}`,
-            options: ["Proposition A", "Proposition B", "Proposition C", "Proposition D"],
-            correctIndex: 0,
-            explication: ""
-          }))
-  };
+  const defaultP2Questions: NormalizedQuestion[] = [
+    {
+      id: 'p2_q1',
+      number: '1.',
+      type: 'multiple_choice',
+      points: 1.5,
+      texte: `Quelle est la relation fondamentale ou la propriété caractéristique essentielle établie pour "${discipline}" ?`,
+      options: [
+        "Elle découle de l'application rigoureuse des lois physiques fondamentales",
+        "Elle dépend uniquement de grandeurs arbitraires non mesurables",
+        "Elle est nulle en toutes circonstances de régime linéaire",
+        "Elle diverge sans condition de stabilité"
+      ],
+      correctIndex: 0,
+      explication: "La relation découle directement de l'application des théorèmes directeurs du cours."
+    },
+    {
+      id: 'p2_q2',
+      number: '2.',
+      type: 'multiple_choice',
+      points: 1.5,
+      texte: "Dans des conditions nominales de fonctionnement, comment évolue la grandeur de sortie lors d'une variation d'entrée ?",
+      options: [
+        "Elle répond proportionnellement selon le coefficient de transfert ou gain établi",
+        "Elle demeure parfaitement constante sans aucun temps de propagation",
+        "Elle s'inverse sans respecter la relation de phase ou de signe",
+        "Elle s'annule instantanément par effet d'amortissement critique"
+      ],
+      correctIndex: 0,
+      explication: "En régime linéaire d'amplification ou de transformation, la sortie suit la relation linéaire $V_s = A_v \\cdot V_e$."
+    },
+    {
+      id: 'p2_q3',
+      number: '3.',
+      type: 'multiple_choice',
+      points: 1.5,
+      texte: "Quel paramètre détermine la limite de validité ou la saturation du système ?",
+      options: [
+        "Les tensions d'alimentation ou les butées limites des composants",
+        "La fréquence minimale théoriquement nulle",
+        "La température absolue ambiante uniquement",
+        "Le choix arbitraire de la masse de référence"
+      ],
+      correctIndex: 0,
+      explication: "La saturation intervient lorsque la tension de sortie atteint les rails d'alimentation $\\pm V_{sat}$."
+    },
+    {
+      id: 'p2_q4',
+      number: '4.',
+      type: 'multiple_choice',
+      points: 1.5,
+      texte: "Quelle est la conséquence directe d'une modification des composants passifs de rétroaction ?",
+      options: [
+        "Le gain et la bande passante du système sont directement modifiés",
+        "Le signal d'entrée est totalement supprimé sans atténuation",
+        "La phase reste figée à zéro degré sans condition",
+        "Le rendement devient supérieur à l'unité"
+      ],
+      correctIndex: 0,
+      explication: "Le rapport des résistances ou impédances fixe directement le facteur d'amplification."
+    }
+  ];
 
-  const rawQ3 = Array.isArray(rawEx3?.questions) ? rawEx3.questions : [];
-  const exercice3 = {
-    titre: rawEx3?.titre || rawEx3?.title || "EXERCICE 3 : QUESTIONS DE SYNTHÈSE RÉDIGÉE",
-    points: Number(rawEx3?.points) || 4,
-    consigne: rawEx3?.consigne || "Répondez de manière précise et concise directement sur votre copie.",
-    questions:
-      rawQ3.length > 0
-        ? rawQ3.map((q: any, i: number) => ({
-            id: q.id || `p3_q${i + 1}`,
-            number: q.number || `${i + 1}.`,
-            points: Number(q.points) || 2,
-            texte: q.texte || q.question || q.text || `Question ${i + 1}`,
-            sampleAnswer: q.sampleAnswer || q.reponse || q.correction || ""
-          }))
-        : [
-            { id: 'p3_q1', number: '1.', points: 2, texte: "Synthèse conceptuelle et démonstration rédigée.", sampleAnswer: "" },
-            { id: 'p3_q2', number: '2.', points: 2, texte: "Analyse des conditions d'application ou étude critique.", sampleAnswer: "" }
-          ]
-  };
+  const exercice2Questions: NormalizedQuestion[] = rawQ2.length > 0
+    ? rawQ2.map((q: any, i: number) => ({
+        id: q.id || `p2_q${i + 1}`,
+        number: q.number || `${i + 1}.`,
+        type: 'multiple_choice' as const,
+        points: Number(q.points) || 1.5,
+        texte: q.texte || q.question || q.text || `Question QCM n°${i + 1}`,
+        options: Array.isArray(q.options) && q.options.length >= 2
+          ? q.options
+          : (Array.isArray(q.choices) && q.choices.length >= 2
+            ? q.choices
+            : ["Proposition A détaillée", "Proposition B détaillée", "Proposition C détaillée", "Proposition D détaillée"]),
+        correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : (typeof q.correct_index === 'number' ? q.correct_index : (typeof q.bonne_reponse === 'number' ? q.bonne_reponse : 0)),
+        explication: q.explication || q.explanation || q.justification || "Justification théorique et analyse du cours."
+      }))
+    : defaultP2Questions;
 
-  const rawQ4 = Array.isArray(rawEx4?.questions) ? rawEx4.questions : [];
-  const exercice4 = {
-    titre: rawEx4?.titre || rawEx4?.title || "EXERCICE 4 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
-    points: Number(rawEx4?.points) || 4,
-    consigne: rawEx4?.consigne || "Pour chaque affirmation ci-dessous, cochez VRAI ou FAUX.",
-    questions:
-      rawQ4.length > 0
-        ? rawQ4.map((q: any, i: number) => ({
-            id: q.id || `p4_q${i + 1}`,
-            number: q.number || `${i + 1}.`,
-            points: Number(q.points) || 1,
-            texte: q.texte || q.affirmation || q.question || `Affirmation ${i + 1}`,
-            correctValue: typeof q.correctValue === 'boolean' ? q.correctValue : (typeof q.isTrue === 'boolean' ? q.isTrue : q.reponse === true || q.reponse === 'VRAI' || q.reponse === 'true'),
-            explication: q.explication || q.explanation || ""
-          }))
-        : [1, 2, 3, 4].map((num) => ({
-            id: `p4_q${num}`,
-            number: `${num}.`,
-            points: 1,
-            texte: `Affirmation conceptuelle ou cas limite n°${num}`,
-            correctValue: num % 2 === 0,
-            explication: ""
-          }))
-  };
+  // Questions pour Fiche 3 (Vrai ou Faux à cocher)
+  const rawVFSource = rawEx3?.vraiOuFaux || rawEx3?.questions || rawEx4?.questions || source.vraiOuFaux || source.affirmations || [];
+  const rawQ3 = Array.isArray(rawVFSource) ? rawVFSource : [];
+  const defaultP3Questions: NormalizedQuestion[] = [
+    {
+      id: 'p3_q1',
+      number: '1.',
+      type: 'true_false',
+      points: 1.5,
+      texte: `En régime linéaire de fonctionnement, la différence de potentiel différentielle entre les entrées est considérée comme quasi nulle (\\varepsilon \\approx 0).`,
+      correctValue: true,
+      explication: "VRAI : En fonctionnement linéaire avec rétroaction négative, la boucle asservit la tension différentielle à zéro ($V^+ \\approx V^-$)."
+    },
+    {
+      id: 'p3_q2',
+      number: '2.',
+      type: 'true_false',
+      points: 1.5,
+      texte: "La tension de sortie peut dépasser sans limite les tensions d'alimentation fournies au circuit.",
+      correctValue: false,
+      explication: "FAUX : La tension de sortie est obligatoirement écrêtée et bornée par les tensions de saturation $\\pm V_{sat}$."
+    },
+    {
+      id: 'p3_q3',
+      number: '3.',
+      type: 'true_false',
+      points: 1.5,
+      texte: "Le produit gain-bande passante demeure approximativement constant pour un amplificateur opérationnel donné.",
+      correctValue: true,
+      explication: "VRAI : Une augmentation du gain entraîne une diminution proportionnelle de la bande passante utile."
+    },
+    {
+      id: 'p3_q4',
+      number: '4.',
+      type: 'true_false',
+      points: 1.5,
+      texte: "Une résistance de rétroaction infinie stabilise le montage dans un état linéaire sans basculement.",
+      correctValue: false,
+      explication: "FAUX : En boucle ouverte (sans rétroaction), le composant fonctionne en comparateur non linéaire et sature immédiatement."
+    }
+  ];
 
-  if (sections.length === 0) {
+  const exercice3Questions: NormalizedQuestion[] = rawQ3.length > 0
+    ? rawQ3.map((q: any, i: number) => ({
+        id: q.id || `p3_q${i + 1}`,
+        number: q.number || `${i + 1}.`,
+        type: 'true_false' as const,
+        points: Number(q.points) || 1.5,
+        texte: q.texte || q.affirmation || q.question || `Affirmation scientifique n°${i + 1}`,
+        correctValue: typeof q.correctValue === 'boolean'
+          ? q.correctValue
+          : (typeof q.correct_answer === 'boolean'
+            ? q.correct_answer
+            : (typeof q.isTrue === 'boolean'
+              ? q.isTrue
+              : (q.reponse === true || q.reponse === 'VRAI' || q.reponse === 'true'))),
+        explication: q.explication || q.explanation || "Démonstration théorique de la validité de l'affirmation."
+      }))
+    : defaultP3Questions;
+
+  // Construction STRICTE des 3 FICHES Officielles de l'Examen
+  let sections: NormalizedSection[] = [];
+
+  // Si l'IA a renvoyé des sections, on les harmonise rigoureusement selon les 3 types attendus
+  if (rawSections.length > 0) {
+    // 1ère Fiche : Problème avec questions ouvertes
+    const s1 = rawSections[0];
+    const s1QuestionsRaw = Array.isArray(s1?.questions) ? s1.questions : [];
+    const s1Questions: NormalizedQuestion[] = s1QuestionsRaw.length > 0
+      ? s1QuestionsRaw.map((q: any, qIdx: number) => ({
+          id: (typeof q === 'object' && q.id) ? q.id : `p1_q${qIdx + 1}`,
+          number: (typeof q === 'object' && q.number) ? q.number : `${qIdx + 1}.`,
+          type: 'open' as const,
+          texte: typeof q === 'string' ? q : (q.texte || q.question || q.text || `Question d'analyse ${qIdx + 1}`),
+          points: Number(q?.points) || (qIdx === 0 ? 3 : (qIdx === 1 ? 3 : 2)),
+          sampleAnswer: (typeof q === 'object' ? (q.sampleAnswer || q.reponse || q.correction || '') : '') || "Démonstration analytique et calcul rigoureux."
+        }))
+      : exercice1Questions;
+
+    sections.push({
+      id: s1?.section_id || 'sec_1',
+      title: s1?.title || "FICHE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS",
+      problem_statement: s1?.problem_statement || s1?.enonce || s1?.context || s1?.contexte || rawEx1?.enonce || `Étude de cas approfondie et modélisation sur "${discipline}". Analysez le montage et répondez aux questions ci-dessous.`,
+      questions: s1Questions,
+      correction: s1?.correction ? {
+        steps: typeof s1.correction === 'string' ? s1.correction : (s1.correction.steps || s1.correction.explication || ''),
+        examples: Array.isArray(s1.correction.examples) ? s1.correction.examples : []
+      } : {
+        steps: `Corrigé type de la Fiche 1 : application des lois fondamentales de ${discipline}.`,
+        examples: ["Exemple 1 : Cas concret d'application en laboratoire", "Exemple 2 : Dimensionnement pratique en situation industrielle"]
+      }
+    });
+
+    // 2ème Fiche : Questionnaire à Choix Multiples (QCM à cocher)
+    const s2 = rawSections[1];
+    const s2QuestionsRaw = Array.isArray(s2?.questions) ? s2.questions : [];
+    const s2Questions: NormalizedQuestion[] = s2QuestionsRaw.length > 0
+      ? s2QuestionsRaw.map((q: any, qIdx: number) => {
+          const opts = Array.isArray(q.options) && q.options.length >= 2
+            ? q.options
+            : (Array.isArray(q.choices) && q.choices.length >= 2 ? q.choices : ["Proposition A", "Proposition B", "Proposition C", "Proposition D"]);
+          return {
+            id: (typeof q === 'object' && q.id) ? q.id : `p2_q${qIdx + 1}`,
+            number: (typeof q === 'object' && q.number) ? q.number : `${qIdx + 1}.`,
+            type: 'multiple_choice' as const,
+            texte: typeof q === 'string' ? q : (q.texte || q.question || q.text || `Question QCM n°${qIdx + 1}`),
+            points: Number(q?.points) || 1.5,
+            options: opts,
+            correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : (typeof q.correct_index === 'number' ? q.correct_index : 0),
+            explication: q.explication || q.explanation || "Justification théorique de la proposition correcte."
+          };
+        })
+      : exercice2Questions;
+
+    sections.push({
+      id: s2?.section_id || 'sec_2',
+      title: s2?.title || "FICHE 2 : QUESTIONNAIRE À CHOIX MULTIPLES (QCM)",
+      problem_statement: s2?.problem_statement || s2?.enonce || "",
+      questions: s2Questions,
+      correction: s2?.correction ? {
+        steps: typeof s2.correction === 'string' ? s2.correction : (s2.correction.steps || s2.correction.explication || ''),
+        examples: Array.isArray(s2.correction.examples) ? s2.correction.examples : []
+      } : {
+        steps: `Corrigé type du QCM : justification analytique de chaque proposition exacte.`,
+        examples: ["Exemple 1 : Vérification par calcul direct", "Exemple 2 : Élimination méthodique des pièges classiques"]
+      }
+    });
+
+    // 3ème Fiche : Vrai ou Faux
+    const s3 = rawSections[2] || rawSections[3];
+    const s3QuestionsRaw = Array.isArray(s3?.questions) ? s3.questions : [];
+    const s3Questions: NormalizedQuestion[] = s3QuestionsRaw.length > 0
+      ? s3QuestionsRaw.map((q: any, qIdx: number) => ({
+          id: (typeof q === 'object' && q.id) ? q.id : `p3_q${qIdx + 1}`,
+          number: (typeof q === 'object' && q.number) ? q.number : `${qIdx + 1}.`,
+          type: 'true_false' as const,
+          texte: typeof q === 'string' ? q : (q.texte || q.affirmation || q.question || `Affirmation n°${qIdx + 1}`),
+          points: Number(q?.points) || 1.5,
+          correctValue: typeof q.correctValue === 'boolean'
+            ? q.correctValue
+            : (typeof q.correct_answer === 'boolean'
+              ? q.correct_answer
+              : (typeof q.isTrue === 'boolean' ? q.isTrue : (qIdx % 2 === 0))),
+          explication: q.explication || q.explanation || "Démonstration théorique et conditions d'application de la règle."
+        }))
+      : exercice3Questions;
+
+    sections.push({
+      id: s3?.section_id || 'sec_3',
+      title: s3?.title || "FICHE 3 : DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
+      problem_statement: s3?.problem_statement || s3?.enonce || "",
+      questions: s3Questions,
+      correction: s3?.correction ? {
+        steps: typeof s3.correction === 'string' ? s3.correction : (s3.correction.steps || s3.correction.explication || ''),
+        examples: Array.isArray(s3.correction.examples) ? s3.correction.examples : []
+      } : {
+        steps: `Corrigé type de la Fiche 3 : analyse des conditions de validité des affirmations.`,
+        examples: ["Exemple 1 : Cas d'application concrète", "Exemple 2 : Analyse critique du contre-exemple"]
+      }
+    });
+  } else {
+    // Si pas de sections explicites dans source, on génère directement les 3 FICHES OFFICIELLES
     sections = [
       {
         id: 'sec_1',
-        title: exercice1.titre,
-        problem_statement: exercice1.enonce,
-        questions: exercice1.questions.map((q) => ({ ...q, type: 'open' as const })),
-        correction: undefined
+        title: rawEx1?.titre || rawEx1?.title || "FICHE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS",
+        problem_statement: rawEx1?.enonce || rawEx1?.context || rawEx1?.contexte || `Étude de cas approfondie et modélisation sur "${discipline}". Analysez le montage et répondez aux questions avec calculs détaillés.`,
+        questions: exercice1Questions,
+        correction: {
+          steps: `Démonstration complète pas à pas pour la Fiche 1.`,
+          examples: ["Exemple 1 : Cas d'application directe", "Exemple 2 : Dimensionnement technique"]
+        }
       },
       {
         id: 'sec_2',
-        title: exercice2.titre,
-        questions: exercice2.questions.map((q) => ({ ...q, type: 'multiple_choice' as const })),
-        correction: undefined
+        title: rawEx2?.titre || rawEx2?.title || "FICHE 2 : QUESTIONNAIRE À CHOIX MULTIPLES (QCM)",
+        problem_statement: "",
+        questions: exercice2Questions,
+        correction: {
+          steps: `Démonstrations des réponses exactes du QCM.`,
+          examples: ["Exemple 1 : Application directe", "Exemple 2 : Analyse d'un piège classique"]
+        }
       },
       {
         id: 'sec_3',
-        title: exercice3.titre,
-        questions: exercice3.questions.map((q) => ({ ...q, type: 'open' as const })),
-        correction: undefined
-      },
-      {
-        id: 'sec_4',
-        title: exercice4.titre,
-        questions: exercice4.questions.map((q) => ({ ...q, type: 'true_false' as const })),
-        correction: undefined
+        title: rawEx3?.titre || rawEx3?.title || "FICHE 3 : DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
+        problem_statement: "",
+        questions: exercice3Questions,
+        correction: {
+          steps: `Justifications théoriques des affirmations Vrai ou Faux.`,
+          examples: ["Exemple 1 : Cas pratique", "Exemple 2 : Contre-exemple"]
+        }
       }
     ];
   }
@@ -390,13 +486,12 @@ export function normalizeExamData(data: any, title?: string) {
     mention:
       source.mention ||
       data?.mention ||
-      source.instructions ||
-      `Cette épreuve comporte ${sections.length} partie(s) d'évaluation structurée(s).`,
+      "Cette épreuve comporte 3 fiches d'évaluation structurées : Fiche 1 (Problème rédigé), Fiche 2 (QCM), Fiche 3 (Vrai ou Faux).",
     calculatrice: source.calculatrice || data?.calculatrice || "Tout modèle de calculatrice scientifique est autorisé.",
     baremeTotal: Number(source.baremeTotal || data?.baremeTotal) || 20
   };
 
-  return { examHeader, sections, exercice1, exercice2, exercice3, exercice4 };
+  return { examHeader, sections, exercice1: rawEx1, exercice2: rawEx2, exercice3: rawEx3 };
 }
 
 export default function DevoirComplet({ data, title }: { data?: any; title?: string }) {
@@ -718,13 +813,13 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                   key={pNum}
                   id={`btn-page-tab-${pNum}`}
                   onClick={() => setCurrentPage(pNum)}
-                  className={`px-2.5 py-0.5 rounded text-xs font-semibold transition-all cursor-pointer ${
+                  className={`px-3 py-1 rounded text-xs font-serif font-bold transition-all cursor-pointer ${
                     currentPage === pNum
-                      ? 'bg-white text-stone-900 shadow-xs'
-                      : 'text-stone-400 hover:text-stone-200'
+                      ? 'bg-amber-400 text-stone-950 shadow-xs'
+                      : 'text-stone-300 hover:text-white'
                   }`}
                 >
-                  P.{pNum}
+                  Fiche {pNum}
                 </button>
               ))}
             </div>

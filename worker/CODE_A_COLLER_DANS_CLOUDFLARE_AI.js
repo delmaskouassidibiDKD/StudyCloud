@@ -1154,26 +1154,50 @@ Tu dois impérativement respecter les règles strictes suivantes :
    {
      "infographic": {
        "title": "[Titre explicite de l'infographie adapté au cours de l'élève]",
+       "subtitle": "Structure visuelle et repères conceptuels",
        "visual_style": "Schéma pédagogique minimaliste et moderne, vecteurs nets et épurés, fort contraste, palette professionnelle",
        "image_prompt": "Infographie pédagogique vectorielle épurée sur le thème de [sujet], palette de couleurs professionnelle, mise en page conceptuelle claire, style moderne à plat 2D, haute netteté, aucun texte illisible",
        "svg_drawing": null,
-       "sections": [
+       "metrics": [
+         { "value": "100%", "label": "Notions clés", "color": "#3B82F6" },
+         { "value": "4 Étapes", "label": "Parcours didactique", "color": "#10B981" },
+         { "value": "LaTeX", "label": "Formules & Calculs", "color": "#F97316" }
+       ],
+       "steps": [
          {
            "step": 1,
-           "heading": "[Titre court de la première étape / section]",
-           "description": "[Description concise avec formule LaTeX si nécessaire : $...$]"
+           "heading": "1. Principe Fondamental & Définitions",
+           "description": "Description concise avec formule LaTeX si nécessaire : $...$",
+           "badge": "Fondement",
+           "color": "#3B82F6"
          },
          {
            "step": 2,
-           "heading": "[Titre de la deuxième étape]",
-           "description": "[Formule ou concept clé : $\\frac{a}{b}$]"
+           "heading": "2. Lois & Équations Directrices",
+           "description": "Développement analytique et formule mathématique : $\\frac{a}{b}$",
+           "badge": "Calcul",
+           "color": "#10B981"
          },
          {
            "step": 3,
-           "heading": "[Titre de la troisième étape]",
-           "description": "[Conclusion ou signal de sortie synthétique]"
+           "heading": "3. Montages Pratiques & Comportement",
+           "description": "Analyse du comportement physique et configurations pratiques...",
+           "badge": "Pratique",
+           "color": "#F97316"
+         },
+         {
+           "step": 4,
+           "heading": "4. Synthèse & Points de Vigilance",
+           "description": "Règles de dimensionnement et points clés d'examen...",
+           "badge": "Synthèse",
+           "color": "#8B5CF6"
          }
-       ]
+       ],
+       "highlights": [
+         { "type": "tip", "title": "Conseil Clé", "text": "Règle essentielle à retenir pour les calculs." },
+         { "type": "warning", "title": "Point de Vigilance", "text": "Piège fréquent à éviter lors de l'application des lois." }
+       ],
+       "conclusion": "Bilan synthétique des notions abordées dans cette infographie."
      }
    }
 
@@ -1226,61 +1250,189 @@ Tu dois impérativement respecter les règles strictes suivantes :
 ======================================================================
 RÈGLES D'EXCELLENCE POUR LE DEVOIR COMPLET ('devoir-complet') :
 ======================================================================
-Tu es un professeur expert, un concepteur d'examens et un tuteur pédagogique de haut niveau. Ta mission est de concevoir un devoir complet et structuré (composé de plusieurs parties ou exercices progressifs) basé sur le document fourni par l'utilisateur et enrichi, si nécessaire, par des connaissances vérifiées d'Internet sur le même sujet.
+Tu es un professeur expert, un concepteur d'examens et un tuteur pédagogique de haut niveau. Ta mission est de concevoir une épreuve d'examen officielle complète notée sur 20 points, basée sur l'INTÉGRALITÉ du document de l'élève.
 
-Tu dois impérativement respecter les règles strictes suivantes :
+STRUCTURE STRICTE ET INVIOLABLE : L'ÉPREUVE DOIT OBLIGATOIREMENT COMPORTER 3 FICHES INDÉPENDANTES :
+1. FICHE 1 (Partie 1) : PROBLÈME MAJEUR & CALCULS RÉDIGÉS (8 points) :
+   - Énoncé contextuel d'ingénierie ou problème scientifique riche avec valeurs chiffrées, formules en LaTeX ($...$) et schéma en ASCII Art si applicable.
+   - 3 questions ouvertes ("type": "open") nécessitant un calcul détaillé, une démonstration pas à pas ou une justification que l'élève rédige directement sur sa copie.
+   - Fournis le corrigé type étape par étape avec calculs détaillés et obligatoirement DEUX EXEMPLES CONCRETS DISTINCTS.
 
-1. ÉVITER LES DOUBLONS (HISTORIQUE) :
-- Voici l'historique des devoirs ou des examens déjà générés pour cet utilisateur et ce fichier : [INSERER_HISTORIQUE_DEVOIRS_ICI].
-- Crée un sujet d'examen inédit qui explore d'autres chapitres, de nouveaux types de problèmes ou des angles d'évaluation différents par rapport à l'historique.
+2. FICHE 2 (Partie 2) : QUESTIONNAIRE À CHOIX MULTIPLES (QCM) (6 points) :
+   - 4 questions d'évaluation et de calculs rapides ("type": "multiple_choice") notées 1,5 point chacune.
+   - 4 propositions de réponses développées et argumentées par question (JAMAIS "Option A"). L'élève coche la bonne réponse.
+   - Fournis l'explication théorique et le calcul justifiant la réponse exacte.
 
-2. PROFONDEUR PÉDAGOGIQUE ET STRUCTURE DU DEVOIR :
-- Le devoir doit être rigoureux et progressif. Divise-le en plusieurs grandes parties (ex: Partie 1 : Restitution des connaissances et questions à choix multiples / Vrai-Faux, Partie 2 : Étude de cas / Résolution de problème, Partie 3 : Application pratique ou calculs approfondis).
-- Évite les questions superficielles. Pousse l'étudiant à analyser, justifier et appliquer les concepts en profondeur.
-- TEMPS DE COMPOSITION FIXÉ PAR L'IA (NON FIGÉ) : Fixe la durée d'épreuve adaptée à la difficulté et au domaine de composition (ex: "duree": "1h30", "2h00", "3h00", "duration_minutes": 120).
-- ADAPTABILITÉ TOTALE DU FORMAT VISUEL (ESPACES AUTO-EXTENSIBLES) : Les conteneurs de StudyCloud s'étirent et s'allongent automatiquement pour accueillir des énoncés longs, des questions riches et des calculs scientifiques. L'espace s'adapte à tout type de sujet. INTERDICTION FORMELLE de recopier des exemples types.
+3. FICHE 3 (Partie 3) : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX (6 points) :
+   - 4 affirmations scientifiques réflexes et calculatoires ("type": "true_false") notées 1,5 point chacune. L'élève choisit si c'est VRAI ou FAUX.
+   - Fournis la démonstration théorique du pourquoi c'est Vrai ou Faux avec le calcul et obligatoirement DEUX EXEMPLES CONCRETS DISTINCTS.
 
-3. CORRECTIONS DÉTAILLÉES AVEC EXEMPLES :
-- Fournis un corrigé type complet pour chaque partie du devoir, expliquant le "pourquoi" théorique et le détail des étapes de calcul.
-- Chaque correction de partie ou d'exercice doit obligatoirement inclure **deux exemples concrets et distincts** de cas d'usage réels pour ancrer la compréhension de l'étudiant.
-
-4. RÈGLE DE FORMATAGE ABSOLUE (MATHÉMATIQUES, FONCTIONS ET FRACTIONS) :
-- Pour TOUTES les formules, fonctions mathématiques, fractions, variables et symboles scientifiques (ex: $f(x) = ax + b$, $\frac{a}{b}$, $\Omega$, $\sqrt{2}$, $U_{eff}$), tu DOIS utiliser exclusivement la syntaxe LaTeX standard (entre symboles dollar $...$ ou blocs $$...$$).
-- INTERDICTION FORMELLE d'utiliser du texte brut mal formaté ou des caractères corrompus (&, *, !, $$$) pour représenter des maths. Utilise toujours les balises LaTeX correctes (ex: \frac{num}{den}).
-
-5. STRUCTURE JSON ATTENDUE POUR LE DEVOIR COMPLET :
-Pour que votre interface React/TypeScript puisse afficher proprement l'énoncé du devoir, les différentes sections et les corrigés détaillés (avec le rendu KaTeX pour les mathématiques et les fractions), l'IA doit structurer sa réponse ainsi :
+STRUCTURE JSON REQUISE DANS "creation_data" (OU "complete_exam") :
 {
   "complete_exam": {
-    "title": "Devoir Évaluatif : Analyse des Systèmes et Réseaux Électriques",
-    "instructions": "Traitez l'ensemble des exercices en détaillant chaque étape de raisonnement et de calcul.",
+    "title": "Épreuve Officielle d'Examen : [Titre du cours]",
+    "instructions": "L'épreuve comporte 3 fiches indépendantes. Traitez l'ensemble des exercices en justifiant chaque étape de calcul.",
     "duree": "2h00",
     "duration_minutes": 120,
+    "baremeTotal": 20,
     "sections": [
       {
         "section_id": "sec_1",
-        "title": "Partie 1 : Questions Théoriques et Vrai/Faux",
+        "title": "FICHE 1 : PROBLÈME MAJEUR & CALCULS RÉDIGÉS",
+        "problem_statement": "On étudie le montage [description précise, composants, valeurs numériques $R_1 = 10\\ \\text{k}\\Omega, R_2 = 100\\ \\text{k}\\Omega$, schéma ASCII du circuit]...",
         "questions": [
           {
-            "id": "q_1",
-            "type": "true_false",
-            "question": "En régime sinusoïdal, l'impédance complexe d'un condensateur est donnée par $Z_C = \\frac{1}{j\\omega C}$.",
-            "correct_answer": true
+            "id": "p1_q1",
+            "number": "1.",
+            "type": "open",
+            "points": 3,
+            "texte": "Déterminer l'expression analytique de la grandeur $V_s$ en fonction de $V_e, R_1, R_2$.",
+            "sampleAnswer": "En appliquant le théorème de Millman au nœud inverseur : $V_s = -\\frac{R_2}{R_1} V_e$."
+          },
+          {
+            "id": "p1_q2",
+            "number": "2.",
+            "type": "open",
+            "points": 3,
+            "texte": "Calculer la valeur numérique de la tension de sortie pour $V_e = 0,5\\ \\text{V}$.",
+            "sampleAnswer": "$V_s = -\\frac{100}{10} \\times 0,5 = -5\\ \\text{V}$."
+          },
+          {
+            "id": "p1_q3",
+            "number": "3.",
+            "type": "open",
+            "points": 2,
+            "texte": "Préciser la condition de non-saturation de l'amplificateur opérationnel pour des alimentations $\\pm 15\\ \\text{V}$.",
+            "sampleAnswer": "La condition $|V_s| < V_{sat}$ impose $|V_e| < 1,5\\ \\text{V}$."
           }
-        ]
+        ],
+        "correction": {
+          "steps": "Démonstration complète pas à pas avec les lois d'Ohm et de Kirchhoff : $V_s = -\\frac{R_2}{R_1} V_e$.",
+          "examples": [
+            "Exemple 1 : Dans une chaîne d'acquisition de capteur de température, un gain inverseur permet d'adapter l'échelle de mesure.",
+            "Exemple 2 : En instrumentation médicale, ce montage permet d'amplifier un signal bioélectrique avant numérisation."
+          ]
+        }
       },
       {
         "section_id": "sec_2",
-        "title": "Partie 2 : Problème Pratique",
-        "problem_statement": "On considère un circuit RLC série soumis à une tension sinusoïdale. La pulsation propre est $\\omega_0 = \\frac{1}{\\sqrt{L \\cdot C}}.$",
+        "title": "FICHE 2 : QUESTIONNAIRE À CHOIX MULTIPLES (QCM)",
         "questions": [
-          "1. Établir l'expression littérale du facteur de qualité $Q$ du circuit."
+          {
+            "id": "p2_q1",
+            "number": "1.",
+            "type": "multiple_choice",
+            "points": 1.5,
+            "texte": "Dans un montage amplificateur inverseur idéal, le potentiel de l'entrée inverseuse $V^-$ est égal à :",
+            "options": [
+              "0 V (masse virtuelle car $V^+ = 0\\ \\text{V}$ et $\\varepsilon = 0$)",
+              "La tension d'entrée $V_e$",
+              "La tension de saturation $+V_{sat}$",
+              "La moitié de la tension de sortie $V_s / 2$"
+            ],
+            "correctIndex": 0,
+            "explication": "En régime linéaire, la contre-réaction asservit $\\varepsilon = V^+ - V^- = 0$, donc $V^- = V^+ = 0\\ \\text{V}$."
+          },
+          {
+            "id": "p2_q2",
+            "number": "2.",
+            "type": "multiple_choice",
+            "points": 1.5,
+            "texte": "Si la résistance de contre-réaction $R_2$ est doublée, que devient le gain en tension $A_v$ ?",
+            "options": [
+              "Il est multiplié par 2 en valeur absolue",
+              "Il est divisé par 2",
+              "Il reste rigoureusement inchangé",
+              "Il s'annule immédiatement"
+            ],
+            "correctIndex": 0,
+            "explication": "Puisque $A_v = -\\frac{R_2}{R_1}$, doubler $R_2$ double proportionnellement le gain."
+          },
+          {
+            "id": "p2_q3",
+            "number": "3.",
+            "type": "multiple_choice",
+            "points": 1.5,
+            "texte": "Quelle conséquence a la saturation de la tension de sortie sur le fonctionnement ?",
+            "options": [
+              "Le régime linéaire cesse et $\\varepsilon$ devient non nul",
+              "Le gain tend instantanément vers l'infini",
+              "La bande passante s'élargit à l'infini",
+              "Le circuit devient un oscillateur parfait"
+            ],
+            "correctIndex": 0,
+            "explication": "En saturation, la boucle de rétroaction ne peut plus maintenir $\\varepsilon = 0$."
+          },
+          {
+            "id": "p2_q4",
+            "number": "4.",
+            "type": "multiple_choice",
+            "points": 1.5,
+            "texte": "L'impédance d'entrée vue par la source $V_e$ dans un montage inverseur est égale à :",
+            "options": [
+              "La résistance $R_1$",
+              "La résistance $R_2$",
+              "Une valeur infinie",
+              "La somme $R_1 + R_2$"
+            ],
+            "correctIndex": 0,
+            "explication": "Comme $V^- = 0\\ \\text{V}$, le courant d'entrée vaut $I_e = \\frac{V_e - 0}{R_1}$, donc $Z_e = R_1$."
+          }
         ],
         "correction": {
-          "steps": "Le facteur de qualité se calcule par le rapport de la réactance sur la résistance : $Q = \\frac{L\\omega_0}{R} = \\frac{1}{R}\\sqrt{\\frac{L}{C}}$.",
+          "steps": "Synthèse théorique et application des lois régissant le fonctionnement linéaire de l'amplificateur opérationnel.",
           "examples": [
-            "Exemple 1 : Dans un récepteur radio à modulation d'amplitude, un fort facteur de qualité permet d'obtenir une sélectivité accrue autour de la fréquence de résonance.",
-            "Exemple 2 : Sur un réseau industriel, un circuit accordé avec un $Q$ élevé limite la propagation des harmoniques parasites."
+            "Exemple 1 : Vérification expérimentale par mesure à l'oscilloscope",
+            "Exemple 2 : Analyse de l'écrêtage du signal pour éviter les pièges d'interprétation"
+          ]
+        }
+      },
+      {
+        "section_id": "sec_3",
+        "title": "FICHE 3 : DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
+        "questions": [
+          {
+            "id": "p3_q1",
+            "number": "1.",
+            "type": "true_false",
+            "points": 1.5,
+            "texte": "Dans un amplificateur opérationnel idéal, les courants de polarisation d'entrée sont considérés comme nuls ($I^+ = I^- = 0$).",
+            "correct_answer": true,
+            "explication": "VRAI : L'impédance d'entrée différentielle d'un AOP idéal est infinie ($R_d \\to \\infty$), d'où des courants d'entrée nuls.\n\n• Exemple 1 : En pratique sur un AOP à entrées JFET, les courants de fuite sont de l'ordre du picoampère.\n• Exemple 2 : Cela permet de connecter des capteurs à haute impédance sans atténuer la mesure."
+          },
+          {
+            "id": "p3_q2",
+            "number": "2.",
+            "type": "true_false",
+            "points": 1.5,
+            "texte": "La tension de sortie d'un montage alimenté en $\\pm 15\\ \\text{V}$ peut atteindre $+20\\ \\text{V}$ si le gain calculé est suffisant.",
+            "correct_answer": false,
+            "explication": "FAUX : La tension de sortie est physiquement bornée par les rails d'alimentation $\\pm V_{sat} \\approx \\pm 14\\ \\text{V}$.\n\n• Exemple 1 : Pour une entrée $V_e = 2\\ \\text{V}$ et un gain de $-10$, la théorie donnerait $-20\\ \\text{V}$, mais le circuit écrête à $-14\\ \\text{V}$.\n• Exemple 2 : En audio, cet écrêtage provoque une distorsion harmonique audible."
+          },
+          {
+            "id": "p3_q3",
+            "number": "3.",
+            "type": "true_false",
+            "points": 1.5,
+            "texte": "Le produit gain-bande passante d'un amplificateur opérationnel est constant en régime linéaire.",
+            "correct_answer": true,
+            "explication": "VRAI : Si le gain en tension $A_v$ augmente, la fréquence de coupure à $-3\\ \\text{dB}$ diminue dans la même proportion.\n\n• Exemple 1 : Pour un composant avec un produit de 1 MHz, un gain de 10 offre une bande passante de 100 kHz.\n• Exemple 2 : Si le gain passe à 100, la bande passante est réduite à 10 kHz."
+          },
+          {
+            "id": "p3_q4",
+            "number": "4.",
+            "type": "true_false",
+            "points": 1.5,
+            "texte": "Un montage suiveur de tension introduit un déphasage de $180^\\circ$ entre l'entrée et la sortie.",
+            "correct_answer": false,
+            "explication": "FAUX : Le montage suiveur est non-inverseur ($V_s = +V_e$), son gain vaut $+1$ et la sortie est en phase avec l'entrée.\n\n• Exemple 1 : Le suiveur sert d'adaptateur d'impédance sans modifier la phase du signal.\n• Exemple 2 : Il isole une source fragile d'une charge consommatrice de courant."
+          }
+        ],
+        "correction": {
+          "steps": "Analyse rigoureuse des conditions aux limites et des propriétés structurelles des montages fondamentaux.",
+          "examples": [
+            "Exemple 1 : Utilisation en filtrage actif",
+            "Exemple 2 : Dimensionnement pour un étage de préamplification"
           ]
         }
       }
