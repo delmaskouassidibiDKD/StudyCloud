@@ -31,606 +31,143 @@ export interface MindNode {
 }
 
 // Nodes with layout precisely matching Image 2 (Carte_mentaleimage10.png)
+// Nœuds initiaux neutres et adaptatifs prêts pour toute matière
 const INITIAL_NODES: MindNode[] = [
-  // Central Root Node
+  // Nœud central dynamique neutre
   {
     id: 'root',
     parentId: null,
-    text: 'Projet site web\nsage femme',
+    text: 'Sujet Principal',
     x: 1220,
     y: 640,
     color: '#334155',
     side: 'center',
     isCentral: true,
-    width: 176
+    width: 200
   },
-
-  // 1. TOP LEFT - pages obligatoires (Cobalt Blue #0E5EBA)
+  // Branche 1 (Haut gauche)
   {
-    id: 'pages-obligatoires',
+    id: 'b_l_0',
     parentId: 'root',
-    text: 'pages obligatoires',
+    text: 'Axe 1 : Notions Fondamentales',
     x: 940,
-    y: 280,
+    y: 460,
     color: '#0E5EBA',
     side: 'left',
-    width: 145
+    width: 220
   },
   {
-    id: 'mentions-legales',
-    parentId: 'pages-obligatoires',
-    text: 'mentions légales',
-    x: 680,
-    y: 255,
-    color: '#0E5EBA',
-    side: 'left',
-    width: 125
-  },
-  {
-    id: 'plan-du-site',
-    parentId: 'pages-obligatoires',
-    text: 'plan du site',
-    x: 680,
-    y: 305,
-    color: '#0E5EBA',
-    side: 'left',
-    width: 95
-  },
-
-  // 2. MID-TOP LEFT - Rééducation / Après la naissance (Crimson Red #D11928)
-  {
-    id: 'reeducation',
-    parentId: 'root',
-    text: 'Rééducation / Après\nla naissance',
-    x: 910,
-    y: 470,
-    color: '#D11928',
-    side: 'left',
-    width: 160
-  },
-  {
-    id: 'visite-postnatal',
-    parentId: 'reeducation',
-    text: 'visite postnatal',
-    x: 660,
-    y: 380,
-    color: '#D11928',
-    side: 'left',
-    width: 115
-  },
-  {
-    id: 'prado',
-    parentId: 'visite-postnatal',
-    text: 'Prado',
-    x: 450,
-    y: 380,
-    color: '#D11928',
-    side: 'left',
-    width: 55
-  },
-  {
-    id: 'soins-post-accouchement',
-    parentId: 'reeducation',
-    text: 'soins post accouchement',
-    x: 660,
+    id: 'b_l_0_sub_0',
+    parentId: 'b_l_0',
+    text: 'Définitions et principes clés',
+    x: 640,
     y: 430,
-    color: '#D11928',
-    side: 'left',
-    width: 170
-  },
-  {
-    id: 'perine',
-    parentId: 'soins-post-accouchement',
-    text: 'périné',
-    x: 410,
-    y: 430,
-    color: '#D11928',
-    side: 'left',
-    width: 55
-  },
-  {
-    id: 'soins-bebe-maman',
-    parentId: 'reeducation',
-    text: 'Soins bébé/maman',
-    x: 660,
-    y: 480,
-    color: '#D11928',
-    side: 'left',
-    width: 135
-  },
-  {
-    id: 'haptonomie-postnatal',
-    parentId: 'reeducation',
-    text: 'Haptonomie post natal',
-    x: 660,
-    y: 530,
-    color: '#D11928',
-    side: 'left',
-    width: 165
-  },
-  {
-    id: 'soutien-allaitement',
-    parentId: 'reeducation',
-    text: 'soutien allaitement',
-    x: 660,
-    y: 580,
-    color: '#D11928',
-    side: 'left',
-    width: 140
-  },
-  {
-    id: 'vos-questions-reeduc',
-    parentId: 'reeducation',
-    text: 'vos questions',
-    x: 660,
-    y: 630,
-    color: '#D11928',
-    side: 'left',
-    width: 105
-  },
-
-  // 3. MID-BOTTOM LEFT - Qui suis-je ?/contact (Amber #F57C00)
-  {
-    id: 'qui-suis-je',
-    parentId: 'root',
-    text: 'Qui suis-je ?/contact',
-    x: 890,
-    y: 760,
-    color: '#F57C00',
-    side: 'left',
-    width: 160
-  },
-  {
-    id: 'biographie',
-    parentId: 'qui-suis-je',
-    text: 'Biographie (150 mots)',
-    x: 630,
-    y: 700,
-    color: '#F57C00',
-    side: 'left',
-    width: 155
-  },
-  {
-    id: 'decouvrir-cabinet',
-    parentId: 'qui-suis-je',
-    text: 'Découvrir le cabinet (photo\ndiaporama)',
-    x: 580,
-    y: 755,
-    color: '#F57C00',
+    color: '#0E5EBA',
     side: 'left',
     width: 200
   },
   {
-    id: 'carte-acces',
-    parentId: 'qui-suis-je',
-    text: 'carte d’accès (google\nmap) + itinéraire + parking',
-    x: 520,
-    y: 830,
-    color: '#F57C00',
+    id: 'b_l_0_sub_1',
+    parentId: 'b_l_0',
+    text: 'Hypothèses d’application',
+    x: 640,
+    y: 490,
+    color: '#0E5EBA',
     side: 'left',
-    width: 255
+    width: 190
   },
+  // Branche 2 (Bas gauche)
   {
-    id: 'adresse',
-    parentId: 'qui-suis-je',
-    text: 'Adresse',
-    x: 630,
-    y: 900,
-    color: '#F57C00',
-    side: 'left',
-    width: 75
-  },
-
-  // 4. BOTTOM LEFT - Autres services (Purple #7B1FA2)
-  {
-    id: 'autres-services-stem',
+    id: 'b_l_1',
     parentId: 'root',
-    text: 'Autres services',
-    x: 980,
-    y: 910,
-    color: '#7B1FA2',
+    text: 'Axe 2 : Méthodes & Formules',
+    x: 940,
+    y: 820,
+    color: '#D11928',
     side: 'left',
-    width: 125
+    width: 220
   },
   {
-    id: 'soins-domicile',
-    parentId: 'autres-services-stem',
-    text: 'Soins à domicile',
-    x: 730,
-    y: 900,
-    color: '#7B1FA2',
+    id: 'b_l_1_sub_0',
+    parentId: 'b_l_1',
+    text: 'Équations directrices',
+    x: 640,
+    y: 790,
+    color: '#D11928',
     side: 'left',
-    width: 125
+    width: 180
   },
   {
-    id: 'massage-bio',
-    parentId: 'autres-services-stem',
-    text: 'massage bio',
-    x: 730,
-    y: 940,
-    color: '#7B1FA2',
+    id: 'b_l_1_sub_1',
+    parentId: 'b_l_1',
+    text: 'Conditions de validité',
+    x: 640,
+    y: 850,
+    color: '#D11928',
     side: 'left',
-    width: 95
+    width: 180
   },
+  // Branche 3 (Haut droite)
   {
-    id: 'atelier-portage',
-    parentId: 'autres-services-stem',
-    text: 'atelier portage',
-    x: 730,
-    y: 980,
-    color: '#7B1FA2',
-    side: 'left',
-    width: 105
-  },
-  {
-    id: 'seances-sophrologie',
-    parentId: 'autres-services-stem',
-    text: 'Séances de sophrologie',
-    x: 690,
-    y: 1020,
-    color: '#7B1FA2',
-    side: 'left',
-    width: 165
-  },
-  {
-    id: 'seance-yoga',
-    parentId: 'autres-services-stem',
-    text: 'Séance de Yoga',
-    x: 690,
-    y: 1060,
-    color: '#7B1FA2',
-    side: 'left',
-    width: 115
-  },
-
-  // 5. BOTTOM CENTER - Blog (Deep Forest Green #1B6327)
-  {
-    id: 'blog',
+    id: 'b_r_0',
     parentId: 'root',
-    text: 'Blog',
-    x: 1220,
-    y: 980,
-    color: '#1B6327',
+    text: 'Axe 3 : Applications Pratiques',
+    x: 1540,
+    y: 460,
+    color: '#1E8238',
     side: 'right',
-    width: 45
+    width: 220
   },
   {
-    id: 'actu-gyneco',
-    parentId: 'blog',
-    text: 'Actu gynéco/sage-femme',
-    x: 1370,
-    y: 980,
-    color: '#1B6327',
-    side: 'right',
-    width: 175
-  },
-  {
-    id: 'blog-grossesse',
-    parentId: 'blog',
-    text: 'Grossesse',
-    x: 1370,
-    y: 1020,
-    color: '#1B6327',
-    side: 'right',
-    width: 85
-  },
-  {
-    id: 'blog-naissance',
-    parentId: 'blog',
-    text: 'Naissance',
-    x: 1370,
-    y: 1060,
-    color: '#1B6327',
-    side: 'right',
-    width: 85
-  },
-  {
-    id: 'blog-suivi-post-natal',
-    parentId: 'blog',
-    text: 'Suivi post natal',
-    x: 1370,
-    y: 1100,
-    color: '#1B6327',
-    side: 'right',
-    width: 120
-  },
-  {
-    id: 'blog-scop',
-    parentId: 'blog',
-    text: 'le scop de la sage-femme',
-    x: 1370,
-    y: 1140,
-    color: '#1B6327',
+    id: 'b_r_0_sub_0',
+    parentId: 'b_r_0',
+    text: 'Cas d’étude concret',
+    x: 1820,
+    y: 430,
+    color: '#1E8238',
     side: 'right',
     width: 180
   },
-
-  // 6. BOTTOM RIGHT - Prépa à la naissance (Green #1E8238)
   {
-    id: 'prepa-naissance',
+    id: 'b_r_0_sub_1',
+    parentId: 'b_r_0',
+    text: 'Exemple d’application',
+    x: 1820,
+    y: 490,
+    color: '#1E8238',
+    side: 'right',
+    width: 180
+  },
+  // Branche 4 (Bas droite)
+  {
+    id: 'b_r_1',
     parentId: 'root',
-    text: 'Prépa à la naissance',
-    x: 1470,
-    y: 920,
-    color: '#1E8238',
+    text: 'Axe 4 : Limites & Synthèse',
+    x: 1540,
+    y: 820,
+    color: '#7B1FA2',
     side: 'right',
-    width: 155
+    width: 210
   },
   {
-    id: 'entretien-prenatal',
-    parentId: 'prepa-naissance',
-    text: 'Entretien prénatal',
-    x: 1740,
-    y: 920,
-    color: '#1E8238',
+    id: 'b_r_1_sub_0',
+    parentId: 'b_r_1',
+    text: 'Pièges fréquents à éviter',
+    x: 1820,
+    y: 790,
+    color: '#7B1FA2',
     side: 'right',
-    width: 125
+    width: 200
   },
   {
-    id: 'haptonomie-prepa',
-    parentId: 'prepa-naissance',
-    text: 'haptonomie',
-    x: 1740,
-    y: 960,
-    color: '#1E8238',
+    id: 'b_r_1_sub_1',
+    parentId: 'b_r_1',
+    text: 'Points à retenir pour examen',
+    x: 1820,
+    y: 850,
+    color: '#7B1FA2',
     side: 'right',
-    width: 95
-  },
-  {
-    id: 'vos-questions-prepa',
-    parentId: 'prepa-naissance',
-    text: 'vos questions (4 ou 6)',
-    x: 1740,
-    y: 1000,
-    color: '#1E8238',
-    side: 'right',
-    width: 155
-  },
-  {
-    id: 'prepa-allaitement',
-    parentId: 'prepa-naissance',
-    text: 'préparation à l’allaitement',
-    x: 1740,
-    y: 1045,
-    color: '#1E8238',
-    side: 'right',
-    width: 175
-  },
-
-  // 7. MID-BOTTOM RIGHT - Grossesse (Cyan #00AEC7)
-  {
-    id: 'grossesse',
-    parentId: 'root',
-    text: 'Grossesse',
-    x: 1470,
-    y: 700,
-    color: '#00AEC7',
-    side: 'right',
-    width: 95
-  },
-  {
-    id: 'grossesse-suivi',
-    parentId: 'grossesse',
-    text: 'Suivi',
-    x: 1690,
-    y: 700,
-    color: '#00AEC7',
-    side: 'right',
-    width: 55
-  },
-  {
-    id: 'suivi-mensuel',
-    parentId: 'grossesse-suivi',
-    text: 'mensuel',
-    x: 1840,
-    y: 680,
-    color: '#00AEC7',
-    side: 'right',
-    width: 70
-  },
-  {
-    id: 'suivi-trimestriel',
-    parentId: 'grossesse-suivi',
-    text: 'trimestriel',
-    x: 1840,
-    y: 720,
-    color: '#00AEC7',
-    side: 'right',
-    width: 80
-  },
-  {
-    id: 'grossesse-diagnostic',
-    parentId: 'grossesse',
-    text: 'diagnostic',
-    x: 1690,
-    y: 760,
-    color: '#00AEC7',
-    side: 'right',
-    width: 80
-  },
-  {
-    id: 'grossesse-monitoring',
-    parentId: 'grossesse',
-    text: 'monitoring',
-    x: 1690,
-    y: 800,
-    color: '#00AEC7',
-    side: 'right',
-    width: 85
-  },
-  {
-    id: 'grossesse-questions',
-    parentId: 'grossesse',
-    text: 'vos questions (4 ou 6)',
-    x: 1690,
-    y: 840,
-    color: '#00AEC7',
-    side: 'right',
-    width: 155
-  },
-
-  // 8. MID-TOP RIGHT - Gynécologie (Royal Blue #0070DF)
-  {
-    id: 'gynecologie',
-    parentId: 'root',
-    text: 'Gynécologie',
-    x: 1460,
-    y: 470,
-    color: '#0070DF',
-    side: 'right',
-    width: 100
-  },
-  {
-    id: 'suivi-au-feminin',
-    parentId: 'gynecologie',
-    text: 'Suivi au féminin',
-    x: 1690,
-    y: 400,
-    color: '#0070DF',
-    side: 'right',
-    width: 125
-  },
-  {
-    id: 'intro-questce',
-    parentId: 'suivi-au-feminin',
-    text: 'Intro : qu’est-ce que c’est',
-    x: 1940,
-    y: 340,
-    color: '#0070DF',
-    side: 'right',
-    width: 170
-  },
-  {
-    id: 'qui-peut-beneficier',
-    parentId: 'suivi-au-feminin',
-    text: 'Qui peut en bénéficier ?',
-    x: 1940,
-    y: 380,
-    color: '#0070DF',
-    side: 'right',
-    width: 160
-  },
-  {
-    id: 'role-sage-femme',
-    parentId: 'suivi-au-feminin',
-    text: 'Le rôle de la sage-femme dans le\nsuivi gynéco et ce qu’elle peut faire',
-    x: 1940,
-    y: 440,
-    color: '#0070DF',
-    side: 'right',
-    width: 240
-  },
-  {
-    id: 'contraception',
-    parentId: 'gynecologie',
-    text: 'Contraception',
-    x: 1690,
-    y: 540,
-    color: '#0070DF',
-    side: 'right',
-    width: 110
-  },
-  {
-    id: 'pilule',
-    parentId: 'contraception',
-    text: 'Pilule',
-    x: 1900,
-    y: 520,
-    color: '#0070DF',
-    side: 'right',
-    width: 55
-  },
-  {
-    id: 'stetilet',
-    parentId: 'contraception',
-    text: 'stetilet',
-    x: 1900,
-    y: 560,
-    color: '#0070DF',
-    side: 'right',
-    width: 65
-  },
-  {
-    id: 'vos-questions-gyneco',
-    parentId: 'gynecologie',
-    text: 'Vos questions',
-    x: 1690,
-    y: 605,
-    color: '#0070DF',
-    side: 'right',
-    width: 105
-  },
-
-  // 9. TOP RIGHT - Accueil (Teal Blue #008EB0)
-  {
-    id: 'accueil',
-    parentId: 'root',
-    text: 'Accueil',
-    x: 1470,
-    y: 220,
-    color: '#008EB0',
-    side: 'right',
-    width: 75
-  },
-  {
-    id: 'accueil-gyneco',
-    parentId: 'accueil',
-    text: 'Gynéocologie',
-    x: 1680,
-    y: 120,
-    color: '#008EB0',
-    side: 'right',
-    width: 110
-  },
-  {
-    id: 'accueil-suivi-grossesse',
-    parentId: 'accueil',
-    text: 'Suivi de grossesse',
-    x: 1680,
-    y: 160,
-    color: '#008EB0',
-    side: 'right',
-    width: 135
-  },
-  {
-    id: 'accueil-prepa-naissance',
-    parentId: 'accueil',
-    text: 'Préparation à la naissance',
-    x: 1680,
-    y: 200,
-    color: '#008EB0',
-    side: 'right',
-    width: 175
-  },
-  {
-    id: 'accueil-reeducation',
-    parentId: 'accueil',
-    text: 'Rééducation',
-    x: 1680,
-    y: 240,
-    color: '#008EB0',
-    side: 'right',
-    width: 95
-  },
-  {
-    id: 'accueil-relation-parent-enfant',
-    parentId: 'accueil',
-    text: 'relation parent/enfant',
-    x: 1680,
-    y: 280,
-    color: '#008EB0',
-    side: 'right',
-    width: 155
-  },
-  {
-    id: 'accueil-autres-services',
-    parentId: 'accueil',
-    text: 'Mes autres services',
-    x: 1680,
-    y: 320,
-    color: '#008EB0',
-    side: 'right',
-    width: 145
+    width: 220
   }
 ];
 
@@ -732,6 +269,7 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
 
   const result: MindNode[] = [];
   const rootId = 'root';
+  const rootWidth = Math.min(360, Math.max(180, Math.round(rootText.length * 9.5 + 36)));
   result.push({
     id: rootId,
     parentId: null,
@@ -741,7 +279,7 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
     color: '#334155',
     side: 'center',
     isCentral: true,
-    width: Math.min(260, Math.max(160, rootText.length * 8))
+    width: rootWidth
   });
 
   const branchColors = [
@@ -768,7 +306,7 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
 
   // Position left branches
   const leftCount = leftBranches.length;
-  const leftSpacing = Math.min(180, Math.max(90, 700 / (leftCount + 1)));
+  const leftSpacing = Math.min(220, Math.max(110, 780 / (leftCount + 1)));
   const leftStartY = 640 - ((leftCount - 1) * leftSpacing) / 2;
 
   leftBranches.forEach(({ item, origIdx }, i) => {
@@ -776,6 +314,7 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
     const branchText = item.branch_title || item.branchTitle || item.text || item.title || item.label || item.name || `Branche ${origIdx + 1}`;
     const branchY = leftStartY + i * leftSpacing;
     const branchColor = branchColors[origIdx % branchColors.length];
+    const branchWidth = Math.min(380, Math.max(140, Math.round(branchText.length * 8.5 + 24)));
 
     result.push({
       id: branchId,
@@ -785,24 +324,29 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
       y: branchY,
       color: branchColor,
       side: 'left',
-      width: Math.min(240, Math.max(120, branchText.length * 8))
+      width: branchWidth
     });
 
     const subList = Array.isArray(item.nodes) ? item.nodes : (Array.isArray(item.children) ? item.children : (Array.isArray(item.items) ? item.items : (Array.isArray(item.subconcepts) ? item.subconcepts : [])));
     if (subList.length > 0) {
-      const subSpacing = 44;
+      const hasLongSub = subList.some((s: any) => {
+        const str = typeof s === 'string' ? s : (s.text || s.title || '');
+        return str.length > 30 || str.includes('$') || str.includes('\n');
+      });
+      const subSpacing = hasLongSub ? 52 : 44;
       const subStartY = branchY - ((subList.length - 1) * subSpacing) / 2;
       subList.forEach((sub: any, sIdx: number) => {
         const subText = typeof sub === 'string' ? sub : (sub.text || sub.title || sub.name || `Sous-notion ${sIdx + 1}`);
+        const subWidth = Math.min(420, Math.max(110, Math.round(subText.length * 8 + 22)));
         result.push({
           id: `${branchId}_sub_${sIdx}`,
           parentId: branchId,
           text: subText,
-          x: 660,
+          x: Math.min(680, 940 - branchWidth - 30),
           y: subStartY + sIdx * subSpacing,
           color: branchColor,
           side: 'left',
-          width: Math.min(240, Math.max(100, subText.length * 7.5))
+          width: subWidth
         });
       });
     }
@@ -810,7 +354,7 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
 
   // Position right branches
   const rightCount = rightBranches.length;
-  const rightSpacing = Math.min(180, Math.max(90, 700 / (rightCount + 1)));
+  const rightSpacing = Math.min(220, Math.max(110, 780 / (rightCount + 1)));
   const rightStartY = 640 - ((rightCount - 1) * rightSpacing) / 2;
 
   rightBranches.forEach(({ item, origIdx }, i) => {
@@ -818,6 +362,7 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
     const branchText = item.branch_title || item.branchTitle || item.text || item.title || item.label || item.name || `Branche ${origIdx + 1}`;
     const branchY = rightStartY + i * rightSpacing;
     const branchColor = branchColors[origIdx % branchColors.length];
+    const branchWidth = Math.min(380, Math.max(140, Math.round(branchText.length * 8.5 + 24)));
 
     result.push({
       id: branchId,
@@ -827,24 +372,29 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
       y: branchY,
       color: branchColor,
       side: 'right',
-      width: Math.min(240, Math.max(120, branchText.length * 8))
+      width: branchWidth
     });
 
     const subList = Array.isArray(item.nodes) ? item.nodes : (Array.isArray(item.children) ? item.children : (Array.isArray(item.items) ? item.items : (Array.isArray(item.subconcepts) ? item.subconcepts : [])));
     if (subList.length > 0) {
-      const subSpacing = 44;
+      const hasLongSub = subList.some((s: any) => {
+        const str = typeof s === 'string' ? s : (s.text || s.title || '');
+        return str.length > 30 || str.includes('$') || str.includes('\n');
+      });
+      const subSpacing = hasLongSub ? 52 : 44;
       const subStartY = branchY - ((subList.length - 1) * subSpacing) / 2;
       subList.forEach((sub: any, sIdx: number) => {
         const subText = typeof sub === 'string' ? sub : (sub.text || sub.title || sub.name || `Sous-notion ${sIdx + 1}`);
+        const subWidth = Math.min(420, Math.max(110, Math.round(subText.length * 8 + 22)));
         result.push({
           id: `${branchId}_sub_${sIdx}`,
           parentId: branchId,
           text: subText,
-          x: 1820,
+          x: Math.max(1800, 1540 + branchWidth + 30),
           y: subStartY + sIdx * subSpacing,
           color: branchColor,
           side: 'right',
-          width: Math.min(240, Math.max(100, subText.length * 7.5))
+          width: subWidth
         });
       });
     }
@@ -870,6 +420,7 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
   }, [dynamicNodes]);
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const hasUserInteractedRef = useRef(false);
   const isDraggingCanvasRef = useRef(false);
   const isDraggingNodeRef = useRef(false);
   const draggedNodeIdRef = useRef<string | null>(null);
@@ -936,9 +487,13 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
     [childrenMap]
   );
 
-  // Fit to screen calculation
-  const fitToScreen = useCallback((targetNodes: MindNode[] = nodes) => {
+  // Fit to screen calculation - Only fits when forced or before user interaction
+  const fitToScreen = useCallback((force = false, targetNodes: MindNode[] = nodes) => {
     if (!containerRef.current) return;
+    if (!force && hasUserInteractedRef.current) return;
+    if (force) {
+      hasUserInteractedRef.current = false;
+    }
     const rect = containerRef.current.getBoundingClientRect();
     const containerW = rect.width || window.innerWidth;
     const containerH = rect.height || (window.innerHeight - 64);
@@ -966,23 +521,17 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
     setPan({ x: newPanX, y: newPanY });
   }, [nodes]);
 
-  // Robust observer to fit immediately and on resize
+  // Initial fit without intrusive ResizeObserver that resets zoom on selection
   useEffect(() => {
-    fitToScreen();
+    fitToScreen(true);
 
-    const t1 = setTimeout(() => fitToScreen(), 60);
-    const t2 = setTimeout(() => fitToScreen(), 260);
-
-    let observer: ResizeObserver | null = null;
-    if (containerRef.current) {
-      observer = new ResizeObserver(() => {
-        fitToScreen();
-      });
-      observer.observe(containerRef.current);
-    }
+    const t1 = setTimeout(() => fitToScreen(true), 80);
+    const t2 = setTimeout(() => fitToScreen(true), 280);
 
     const handleWindowResize = () => {
-      fitToScreen();
+      if (!hasUserInteractedRef.current) {
+        fitToScreen(true);
+      }
     };
 
     window.addEventListener('resize', handleWindowResize);
@@ -990,19 +539,19 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
     return () => {
       clearTimeout(t1);
       clearTimeout(t2);
-      if (observer) observer.disconnect();
       window.removeEventListener('resize', handleWindowResize);
     };
-  }, [fitToScreen]);
+  }, [dynamicNodes]);
 
-  // Zoom buttons
+  // Zoom buttons with expanded max zoom to 3.5 (350%)
   const handleZoom = (delta: number) => {
+    hasUserInteractedRef.current = true;
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
 
-    const nextZoom = Math.min(Math.max(zoom + delta, 0.12), 2.5);
+    const nextZoom = Math.min(Math.max(zoom + delta, 0.10), 3.5);
     const newPanX = centerX - (centerX - pan.x) * (nextZoom / zoom);
     const newPanY = centerY - (centerY - pan.y) * (nextZoom / zoom);
 
@@ -1011,9 +560,10 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
   };
 
   const handleResetPositions = () => {
+    hasUserInteractedRef.current = false;
     setNodes(INITIAL_NODES);
     setCollapsedNodes({});
-    setTimeout(() => fitToScreen(INITIAL_NODES), 20);
+    setTimeout(() => fitToScreen(true, INITIAL_NODES), 20);
   };
 
   // Toggle collapse
@@ -1040,16 +590,17 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
     setCollapsedNodes({});
   };
 
-  // Mouse wheel zoom
+  // Mouse wheel zoom with preservation
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
+    hasUserInteractedRef.current = true;
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
-    const nextZoom = Math.min(Math.max(zoom * zoomFactor, 0.12), 2.5);
+    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.88;
+    const nextZoom = Math.min(Math.max(zoom * zoomFactor, 0.10), 3.5);
 
     const newPanX = mouseX - (mouseX - pan.x) * (nextZoom / zoom);
     const newPanY = mouseY - (mouseY - pan.y) * (nextZoom / zoom);
@@ -1065,6 +616,7 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
 
     // Multi-touch pinch-to-zoom init
     if (activePointersRef.current.size === 2) {
+      hasUserInteractedRef.current = true;
       isDraggingCanvasRef.current = false;
       isDraggingNodeRef.current = false;
       const pts = Array.from(activePointersRef.current.values()) as { x: number; y: number }[];
@@ -1075,6 +627,7 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
     }
 
     if (!isDraggingNodeRef.current) {
+      hasUserInteractedRef.current = true;
       isDraggingCanvasRef.current = true;
       dragStartPosRef.current = { x: e.clientX, y: e.clientY };
       initialPanRef.current = { ...pan };
@@ -1083,6 +636,7 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
 
   const handleNodePointerDown = (nodeId: string, e: React.PointerEvent) => {
     e.stopPropagation();
+    isDraggingCanvasRef.current = false;
     activePointersRef.current.set(e.pointerId, { x: e.clientX, y: e.clientY });
 
     if (activePointersRef.current.size === 1) {
@@ -1253,7 +807,7 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = 'carte-mentale-sage-femme.svg';
+    a.download = 'carte-mentale.svg';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -1331,7 +885,7 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
           {/* Fit to Screen ("Ajuster") */}
           <button
             id="btn-mm-fit"
-            onClick={() => fitToScreen()}
+            onClick={() => fitToScreen(true)}
             className="inline-flex items-center gap-1 px-2 py-1 rounded-lg hover:bg-slate-100 text-slate-700 text-xs font-semibold transition-colors active:scale-95"
             title="Recentrer et adapter la carte à l'écran"
           >
@@ -1590,10 +1144,12 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
               const children = childrenMap.get(node.id) || [];
               const hasChildren = children.length > 0;
               const isCollapsed = collapsedNodes[node.id];
-              const nodeWidth = node.width || 120;
+              const calcWidth = Math.max(120, Math.min(480, Math.round(node.text.length * 8.5 + 24)));
+              const nodeWidth = node.width ? Math.max(node.width, calcWidth) : calcWidth;
 
               // CENTRAL ROOT BOX (Matches Image 2 exactly)
               if (node.isCentral) {
+                const centralW = Math.max(node.width || 180, Math.min(420, Math.round(node.text.length * 9.5 + 36)));
                 return (
                   <g
                     key={node.id}
@@ -1601,12 +1157,16 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
                     transform={`translate(${node.x}, ${node.y})`}
                     onPointerDown={(e) => handleNodePointerDown(node.id, e)}
                     onDoubleClick={() => startEditing(node)}
-                    className="cursor-grab active:cursor-grabbing"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedNodeId(node.id);
+                    }}
+                    className="cursor-pointer select-none"
                   >
                     <rect
-                      x={-(node.width || 176) / 2}
+                      x={-centralW / 2}
                       y={-35}
-                      width={node.width || 176}
+                      width={centralW}
                       height={70}
                       rx={16}
                       fill="#FFFFFF"
@@ -1669,8 +1229,24 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
                     e.stopPropagation();
                     setSelectedNodeId(node.id);
                   }}
-                  className="cursor-grab active:cursor-grabbing"
+                  className="cursor-pointer select-none"
                 >
+                  {/* Invisible Hitbox covering entire idea area for PC mouse click & dragging */}
+                  <rect
+                    x={isRightSide ? node.x - 6 : node.x - nodeWidth - 6}
+                    y={lines.length > 1 ? node.y - 32 : node.y - 24}
+                    width={nodeWidth + 12}
+                    height={lines.length > 1 ? 44 : 34}
+                    fill="transparent"
+                    style={{ pointerEvents: 'all' }}
+                    className="cursor-pointer"
+                    onPointerDown={(e) => handleNodePointerDown(node.id, e)}
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setSelectedNodeId(node.id);
+                    }}
+                  />
+
                   {/* Horizontal Baseline Underline */}
                   <line
                     x1={underlineStartX}
@@ -1685,9 +1261,9 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
                   {/* Selection Highlight */}
                   {isSelected && (
                     <rect
-                      x={isRightSide ? node.x - 3 : node.x - nodeWidth - 3}
+                      x={isRightSide ? node.x - 4 : node.x - nodeWidth - 4}
                       y={node.y - 28}
-                      width={nodeWidth + 6}
+                      width={nodeWidth + 8}
                       height={34}
                       rx={6}
                       fill={node.color}
@@ -1708,7 +1284,7 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
                       className="pointer-events-none overflow-visible select-none"
                     >
                       <div
-                        className={`text-[12.5px] font-medium text-slate-800 truncate select-none ${
+                        className={`text-[12.5px] font-medium text-slate-800 select-none ${
                           isRightSide ? 'text-left' : 'text-right'
                         }`}
                       >

@@ -49,37 +49,37 @@ export interface ConceptMapDataset {
   cards: ConceptCard[];
 }
 
-// 1. DATASET 1: SAGE-FEMME - 3 PILIERS MAJEURS (Matching Image 3-Column Template)
-const DATASET_SAGE_FEMME_3COL: ConceptMapDataset = {
-  id: 'sage-femme-3col',
-  name: 'Projet Sage-Femme (3 Piliers)',
-  badge: 'Recommandé',
-  rootTitle: 'PROJET SITE WEB SAGE-FEMME',
+// 1. DATASET UNIVERSEL PAR DÉFAUT (Structure 3 Piliers Neutre et Adaptative)
+const DATASET_DEFAULT_3COL: ConceptMapDataset = {
+  id: 'modele-3col',
+  name: 'Modèle 3 Piliers (Conceptuel)',
+  badge: 'Universel',
+  rootTitle: 'CARTE CONCEPTUELLE',
   rootColor: '#F59E0B',
   cards: [
-    // --- COLONNE 1 : GYNÉCOLOGIE & PRÉVENTION (Cyan) ---
+    // --- COLONNE 1 : NOTIONS & FONDEMENTS (Cyan) ---
     {
-      id: 'col-gyneco',
+      id: 'col-notions',
       parentId: 'root',
       level: 1,
-      pillTitle: 'SUIVI & GYNÉCOLOGIE',
+      pillTitle: 'NOTIONS & PRINCIPES',
       description:
-        'Accompagnement gynécologique de prévention tout au long de la vie de la femme : frottis, prescription de contraception et écoute bienveillante.',
+        'Définitions indispensables, principes fondamentaux et postulats de base nécessaires à la compréhension.',
       x: 320,
       y: 225,
-      width: 260,
+      width: 270,
       height: 155,
       pillWidth: 195,
-      color: '#06B6D4', // Cyan
+      color: '#06B6D4',
       shadowColor: '#22D3EE'
     },
     {
-      id: 'sub-suivi-feminin',
-      parentId: 'col-gyneco',
+      id: 'sub-definitions',
+      parentId: 'col-notions',
       level: 2,
-      pillTitle: 'SUIVI AU FÉMININ',
+      pillTitle: 'DÉFINITIONS CLÉS',
       description:
-        'Consultation annuelle, frottis cervico-utérin, palpation mammaire et orientation personnalisée selon les besoins.',
+        'Terminologie précise, concepts majeurs et théorèmes directeurs du chapitre.',
       x: 180,
       y: 470,
       width: 240,
@@ -89,554 +89,111 @@ const DATASET_SAGE_FEMME_3COL: ConceptMapDataset = {
       shadowColor: '#22D3EE'
     },
     {
-      id: 'sub-contraception',
-      parentId: 'col-gyneco',
+      id: 'sub-formules',
+      parentId: 'col-notions',
       level: 2,
-      pillTitle: 'CONTRACEPTION',
+      pillTitle: 'FORMULES & LOIS',
       description:
-        'Choix de la contraception adaptée : pilule, pose/retrait de stérilet (DIU), implant sous-cutané et suivi d’efficacité.',
+        'Relations mathématiques, lois physiques ou règles directrices à retenir.',
       x: 460,
       y: 470,
       width: 240,
       height: 150,
-      pillWidth: 160,
+      pillWidth: 180,
       color: '#06B6D4',
       shadowColor: '#22D3EE'
     },
 
-    // --- COLONNE 2 : GROSSESSE & PRÉPARATION (Vert Émeraude) ---
+    // --- COLONNE 2 : MÉTHODOLOGIE & APPLICATION (Vert Émeraude) ---
     {
-      id: 'col-grossesse',
+      id: 'col-methodes',
       parentId: 'root',
       level: 1,
-      pillTitle: 'GROSSESSE & NAISSANCE',
+      pillTitle: 'MÉTHODES & PROTOCOLES',
       description:
-        'Suivi médical de la femme enceinte de la déclaration à l’accouchement : consultations mensuelles, échographies et préparation globale.',
+        'Démarche méthodique de résolution, étapes de calcul et modélisation des problèmes.',
       x: 760,
       y: 225,
-      width: 260,
+      width: 270,
       height: 155,
       pillWidth: 205,
-      color: '#10B981', // Vert émeraude
+      color: '#10B981',
       shadowColor: '#34D399'
     },
     {
-      id: 'sub-suivi-mensuel',
-      parentId: 'col-grossesse',
+      id: 'sub-demarche',
+      parentId: 'col-methodes',
       level: 2,
-      pillTitle: 'SUIVI PRÉNATAL',
+      pillTitle: 'ÉTAPES DE RÉSOLUTION',
       description:
-        'Consultations mensuelles obligatoires, suivi biologique, monitoring fœtal et déclaration administrative de grossesse.',
+        'Procédure systématique pas à pas pour identifier les variables et appliquer la bonne démarche.',
       x: 620,
       y: 470,
       width: 240,
       height: 150,
-      pillWidth: 160,
+      pillWidth: 175,
       color: '#10B981',
       shadowColor: '#34D399'
     },
     {
-      id: 'sub-prepa-naissance',
-      parentId: 'col-grossesse',
+      id: 'sub-exemples',
+      parentId: 'col-methodes',
       level: 2,
-      pillTitle: 'PRÉPARATION NAISSANCE',
+      pillTitle: 'CAS PRATIQUES & TYPES',
       description:
-        'Entretien prénatal précoce (EPP), séances d’haptonomie, sophrologie, gestion des contractions et accueil du nouveau-né.',
+        'Exercices représentatifs, illustrations concrètes et applications sur le terrain.',
       x: 900,
       y: 470,
       width: 240,
       height: 150,
-      pillWidth: 185,
+      pillWidth: 180,
       color: '#10B981',
       shadowColor: '#34D399'
     },
 
-    // --- COLONNE 3 : POSTNATAL & RÉÉDUCATION (Rose / Magenta) ---
+    // --- COLONNE 3 : SYNTHÈSE & VIGILANCE (Rose / Magenta) ---
     {
-      id: 'col-postnatal',
+      id: 'col-synthese',
       parentId: 'root',
       level: 1,
-      pillTitle: 'POSTNATAL & RÉÉDUCATION',
+      pillTitle: 'SYNTHÈSE & VIGILANCE',
       description:
-        'Soutien bienveillant au retour à domicile : programme Prado, pesée du bébé, accompagnement de l’allaitement et rééducation périnéale.',
+        'Bilan des acquis, conditions de validité des hypothèses et pièges fréquents à contourner.',
       x: 1200,
       y: 225,
-      width: 260,
+      width: 270,
       height: 155,
-      pillWidth: 215,
-      color: '#EC4899', // Rose/Magenta
-      shadowColor: '#F472B6'
-    },
-    {
-      id: 'sub-visites-prado',
-      parentId: 'col-postnatal',
-      level: 2,
-      pillTitle: 'VISITES PRADO & BÉBÉ',
-      description:
-        'Visites à domicile dès la sortie de la maternité, surveillance de la cicatrisation, poids du bébé et soutien de l’allaitement maternel.',
-      x: 1060,
-      y: 470,
-      width: 240,
-      height: 150,
-      pillWidth: 180,
-      color: '#EC4899',
-      shadowColor: '#F472B6'
-    },
-    {
-      id: 'sub-reeducation-perinee',
-      parentId: 'col-postnatal',
-      level: 2,
-      pillTitle: 'RÉÉDUCATION PÉRINÉE',
-      description:
-        '10 séances personnalisées en CMP (connaissance et maîtrise du périnée) ou électrostimulation/biofeedback post-accouchement.',
-      x: 1340,
-      y: 470,
-      width: 240,
-      height: 150,
-      pillWidth: 185,
-      color: '#EC4899',
-      shadowColor: '#F472B6'
-    }
-  ]
-};
-
-// 2. DATASET 2: SAGE-FEMME - VUE ÉTENDUE (6 COLONNES COMPLÈTES)
-const DATASET_SAGE_FEMME_FULL: ConceptMapDataset = {
-  id: 'sage-femme-6col',
-  name: 'Projet Sage-Femme (Vue Complète)',
-  badge: 'Complet',
-  rootTitle: 'PROJET SITE WEB SAGE-FEMME',
-  rootColor: '#F59E0B',
-  cards: [
-    // 1. Pages obligatoires & Accueil (Cobalt Blue)
-    {
-      id: 'col-accueil',
-      parentId: 'root',
-      level: 1,
-      pillTitle: 'ACCUEIL & LÉGAL',
-      description:
-        'Page d’accueil attractive présentant l’ensemble des spécialités, mentions légales obligatoires et plan du site.',
-      x: 200,
-      y: 225,
-      width: 240,
-      height: 150,
-      pillWidth: 165,
-      color: '#0284C7',
-      shadowColor: '#38BDF8'
-    },
-    {
-      id: 'sub-accueil-1',
-      parentId: 'col-accueil',
-      level: 2,
-      pillTitle: 'MENTIONS LÉGALES',
-      description:
-        'Identité RPPS, ordre professionnel des sages-femmes, hébergeur et politique RGPD.',
-      x: 100,
-      y: 465,
-      width: 210,
-      height: 140,
-      pillWidth: 150,
-      color: '#0284C7',
-      shadowColor: '#38BDF8'
-    },
-    {
-      id: 'sub-accueil-2',
-      parentId: 'col-accueil',
-      level: 2,
-      pillTitle: 'PRÉSENTATION OFFRE',
-      description:
-        'Mise en valeur claire des motifs de consultation et prise de rendez-vous en ligne.',
-      x: 300,
-      y: 465,
-      width: 210,
-      height: 140,
-      pillWidth: 165,
-      color: '#0284C7',
-      shadowColor: '#38BDF8'
-    },
-
-    // 2. Gynécologie
-    {
-      id: 'col-gyneco-6',
-      parentId: 'root',
-      level: 1,
-      pillTitle: 'GYNÉCOLOGIE',
-      description:
-        'Suivi de prévention de la jeune fille à la femme ménopausée, contraception et bilans réguliers.',
-      x: 520,
-      y: 225,
-      width: 240,
-      height: 150,
-      pillWidth: 150,
-      color: '#2563EB',
-      shadowColor: '#60A5FA'
-    },
-    {
-      id: 'sub-gyneco-6-1',
-      parentId: 'col-gyneco-6',
-      level: 2,
-      pillTitle: 'DÉPISTAGE & FROTTIS',
-      description:
-        'Frottis cervico-utérin tous les 3 ans, palpation mammaire et bilan sérologique.',
-      x: 420,
-      y: 465,
-      width: 210,
-      height: 140,
-      pillWidth: 160,
-      color: '#2563EB',
-      shadowColor: '#60A5FA'
-    },
-    {
-      id: 'sub-gyneco-6-2',
-      parentId: 'col-gyneco-6',
-      level: 2,
-      pillTitle: 'PRESCRIPTIONS',
-      description:
-        'Pilules, stérilets cuivre/hormonal, implants et contraception d’urgence.',
-      x: 620,
-      y: 465,
-      width: 210,
-      height: 140,
-      pillWidth: 150,
-      color: '#2563EB',
-      shadowColor: '#60A5FA'
-    },
-
-    // 3. Grossesse
-    {
-      id: 'col-grossesse-6',
-      parentId: 'root',
-      level: 1,
-      pillTitle: 'GROSSESSE',
-      description:
-        'Surveillance de la grossesse normale, déclaration, bilans sanguins mensuels et monitoring.',
-      x: 840,
-      y: 225,
-      width: 240,
-      height: 150,
-      pillWidth: 140,
-      color: '#059669',
-      shadowColor: '#34D399'
-    },
-    {
-      id: 'sub-grossesse-6-1',
-      parentId: 'col-grossesse-6',
-      level: 2,
-      pillTitle: 'SUIVI MÉDICAL',
-      description:
-        'Consultation mensuelle, tension, hauteur utérine et bruits du cœur du fœtus.',
-      x: 740,
-      y: 465,
-      width: 210,
-      height: 140,
-      pillWidth: 140,
-      color: '#059669',
-      shadowColor: '#34D399'
-    },
-    {
-      id: 'sub-grossesse-6-2',
-      parentId: 'col-grossesse-6',
-      level: 2,
-      pillTitle: 'MONITORING',
-      description:
-        'Enregistrement du rythme cardiaque fœtal au cabinet ou à domicile sur prescription.',
-      x: 940,
-      y: 465,
-      width: 210,
-      height: 140,
-      pillWidth: 140,
-      color: '#059669',
-      shadowColor: '#34D399'
-    },
-
-    // 4. Prépa Naissance
-    {
-      id: 'col-prepa-6',
-      parentId: 'root',
-      level: 1,
-      pillTitle: 'PRÉPA NAISSANCE',
-      description:
-        'Les 8 séances de préparation à la parentalité : respiration, postures, haptonomie et allaitement.',
-      x: 1160,
-      y: 225,
-      width: 240,
-      height: 150,
-      pillWidth: 165,
-      color: '#16A34A',
-      shadowColor: '#4ADE80'
-    },
-    {
-      id: 'sub-prepa-6-1',
-      parentId: 'col-prepa-6',
-      level: 2,
-      pillTitle: 'ENTRETIEN PRÉNATAL',
-      description:
-        'Entretien du 4e mois pour aborder les émotions, le projet de naissance et les attentes.',
-      x: 1060,
-      y: 465,
-      width: 210,
-      height: 140,
-      pillWidth: 160,
-      color: '#16A34A',
-      shadowColor: '#4ADE80'
-    },
-    {
-      id: 'sub-prepa-6-2',
-      parentId: 'col-prepa-6',
-      level: 2,
-      pillTitle: 'HAPTONOMIE',
-      description:
-        'Communication affective in utero entre les deux parents et le bébé dès 4 mois.',
-      x: 1260,
-      y: 465,
-      width: 210,
-      height: 140,
-      pillWidth: 145,
-      color: '#16A34A',
-      shadowColor: '#4ADE80'
-    },
-
-    // 5. Rééducation & Postnatal
-    {
-      id: 'col-reeduc-6',
-      parentId: 'root',
-      level: 1,
-      pillTitle: 'RÉÉDUCATION',
-      description:
-        'Rééducation post-natale du périnée et de la sangle abdominale avec méthode douce.',
-      x: 1480,
-      y: 225,
-      width: 240,
-      height: 150,
-      pillWidth: 150,
-      color: '#D946EF',
-      shadowColor: '#F0ABFC'
-    },
-    {
-      id: 'sub-reeduc-6-1',
-      parentId: 'col-reeduc-6',
-      level: 2,
-      pillTitle: 'VISITE POSTNATALE',
-      description:
-        'Examen médical complet 6 à 8 semaines après l’accouchement.',
-      x: 1380,
-      y: 465,
-      width: 210,
-      height: 140,
-      pillWidth: 160,
-      color: '#D946EF',
-      shadowColor: '#F0ABFC'
-    },
-    {
-      id: 'sub-reeduc-6-2',
-      parentId: 'col-reeduc-6',
-      level: 2,
-      pillTitle: 'PÉRINÉE & SPORT',
-      description:
-        'Reprise du tonus musculaire périnéal avant toute reprise d’activité sportive.',
-      x: 1580,
-      y: 465,
-      width: 210,
-      height: 140,
-      pillWidth: 160,
-      color: '#D946EF',
-      shadowColor: '#F0ABFC'
-    },
-
-    // 6. Cabinet, Contact & Blog
-    {
-      id: 'col-cabinet-6',
-      parentId: 'root',
-      level: 1,
-      pillTitle: 'CABINET & CONTACT',
-      description:
-        'Biographie professionnelle de la praticienne, plan d’accès Google Map, parking et articles de blog.',
-      x: 1800,
-      y: 225,
-      width: 240,
-      height: 150,
-      pillWidth: 175,
-      color: '#F97316',
-      shadowColor: '#FDBA74'
-    },
-    {
-      id: 'sub-cabinet-6-1',
-      parentId: 'col-cabinet-6',
-      level: 2,
-      pillTitle: 'PLAN D’ACCÈS',
-      description:
-        'Localisation précise, stationnement gratuit et accessibilité personnes à mobilité réduite.',
-      x: 1700,
-      y: 465,
-      width: 210,
-      height: 140,
-      pillWidth: 150,
-      color: '#F97316',
-      shadowColor: '#FDBA74'
-    },
-    {
-      id: 'sub-cabinet-6-2',
-      parentId: 'col-cabinet-6',
-      level: 2,
-      pillTitle: 'BLOG DU CABINET',
-      description:
-        'Conseils d’hygiène, réponses aux questions fréquentes et actualités périnatalité.',
-      x: 1900,
-      y: 465,
-      width: 210,
-      height: 140,
-      pillWidth: 155,
-      color: '#F97316',
-      shadowColor: '#FDBA74'
-    }
-  ]
-};
-
-// 3. DATASET 3: TEMPLATE ORIGINAL DE L'IMAGE ("CONCEPT MAP")
-const DATASET_ORIGINAL_IMAGE: ConceptMapDataset = {
-  id: 'original-concept-map',
-  name: 'Modèle Image (Concept Map)',
-  badge: 'Template Image',
-  rootTitle: 'CONCEPT MAP',
-  rootColor: '#F59E0B',
-  cards: [
-    // Column 1
-    {
-      id: 'orig-col-1',
-      parentId: 'root',
-      level: 1,
-      pillTitle: 'IDENTIFY YOUR PASSION',
-      description:
-        'Discover what you’re truly passionate about. Consider your interests, skills, and values to determine what career path aligns with your aspirations.',
-      x: 320,
-      y: 225,
-      width: 260,
-      height: 160,
       pillWidth: 200,
-      color: '#06B6D4',
-      shadowColor: '#22D3EE'
-    },
-    {
-      id: 'orig-sub-1-1',
-      parentId: 'orig-col-1',
-      level: 2,
-      pillTitle: 'SELF REFLECTION',
-      description:
-        'Reflect on your strengths, weaknesses, and interests to gain clarity about your career direction.',
-      x: 180,
-      y: 470,
-      width: 240,
-      height: 150,
-      pillWidth: 160,
-      color: '#06B6D4',
-      shadowColor: '#22D3EE'
-    },
-    {
-      id: 'orig-sub-1-2',
-      parentId: 'orig-col-1',
-      level: 2,
-      pillTitle: 'RESEARCH',
-      description:
-        'Conduct thorough research about different industries and professions to explore various career options.',
-      x: 460,
-      y: 470,
-      width: 240,
-      height: 150,
-      pillWidth: 140,
-      color: '#06B6D4',
-      shadowColor: '#22D3EE'
-    },
-
-    // Column 2
-    {
-      id: 'orig-col-2',
-      parentId: 'root',
-      level: 1,
-      pillTitle: 'SET CLEAR GOALS',
-      description:
-        'Define specific and achievable career goals. Break them down into smaller milestones to keep yourself motivated and focused on your journey towards the job.',
-      x: 760,
-      y: 225,
-      width: 260,
-      height: 160,
-      pillWidth: 180,
-      color: '#10B981',
-      shadowColor: '#34D399'
-    },
-    {
-      id: 'orig-sub-2-1',
-      parentId: 'orig-col-2',
-      level: 2,
-      pillTitle: 'SMART GOALS',
-      description:
-        'Specific, Measurable, Achievable, Time-bound goals to ensure clarity and effectiveness in goal-setting.',
-      x: 620,
-      y: 470,
-      width: 240,
-      height: 150,
-      pillWidth: 150,
-      color: '#10B981',
-      shadowColor: '#34D399'
-    },
-    {
-      id: 'orig-sub-2-2',
-      parentId: 'orig-col-2',
-      level: 2,
-      pillTitle: 'ACTION PLAN',
-      description:
-        'Develop a detailed action plan outlining the steps you need to take to achieve each of your career goals.',
-      x: 900,
-      y: 470,
-      width: 240,
-      height: 150,
-      pillWidth: 150,
-      color: '#10B981',
-      shadowColor: '#34D399'
-    },
-
-    // Column 3
-    {
-      id: 'orig-col-3',
-      parentId: 'root',
-      level: 1,
-      pillTitle: 'RELEVANT EXPERIENCE',
-      description:
-        'Acquire practical experience and skills relevant to your desired job. Seek internships, volunteer opportunities, or roles in your field enhance your qualifications.',
-      x: 1200,
-      y: 225,
-      width: 260,
-      height: 160,
-      pillWidth: 210,
       color: '#EC4899',
       shadowColor: '#F472B6'
     },
     {
-      id: 'orig-sub-3-1',
-      parentId: 'orig-col-3',
+      id: 'sub-pieges',
+      parentId: 'col-synthese',
       level: 2,
-      pillTitle: 'INTERNSHIPS',
+      pillTitle: 'PIÈGES À ÉVITER',
       description:
-        'Seek out internships or apprenticeships in your desired field to gain practical experience and expand your professional network.',
+        'Confusions courantes, approximations erronées et erreurs types d’examen.',
       x: 1060,
       y: 470,
       width: 240,
       height: 150,
-      pillWidth: 150,
+      pillWidth: 160,
       color: '#EC4899',
       shadowColor: '#F472B6'
     },
     {
-      id: 'orig-sub-3-2',
-      parentId: 'orig-col-3',
+      id: 'sub-bilan',
+      parentId: 'col-synthese',
       level: 2,
-      pillTitle: 'SKILL DEVELOPMENT',
+      pillTitle: 'RÉSUMÉ RETENU',
       description:
-        'Invest in acquiring new skills or enhancing existing ones through workshops, courses, or online learning platforms.',
+        'Synthèse rapide des points clés à maîtriser le jour de l’évaluation.',
       x: 1340,
       y: 470,
       width: 240,
       height: 150,
-      pillWidth: 175,
+      pillWidth: 160,
       color: '#EC4899',
       shadowColor: '#F472B6'
     }
@@ -644,9 +201,7 @@ const DATASET_ORIGINAL_IMAGE: ConceptMapDataset = {
 };
 
 const ALL_DATASETS: ConceptMapDataset[] = [
-  DATASET_SAGE_FEMME_3COL,
-  DATASET_SAGE_FEMME_FULL,
-  DATASET_ORIGINAL_IMAGE
+  DATASET_DEFAULT_3COL
 ];
 
 const PRESET_PALETTES = [
@@ -664,7 +219,7 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
       id: 'ai-dataset',
       name: actualData.name || actualData.title || fallbackTitle || 'Carte Conceptuelle',
       badge: 'Généré par IA',
-      rootTitle: actualData.root_title || actualData.rootTitle || actualData.title || fallbackTitle || 'Carte Conceptuelle',
+      rootTitle: (actualData.root_title || actualData.rootTitle || actualData.title || fallbackTitle || 'CARTE CONCEPTUELLE').toUpperCase(),
       rootColor: actualData.rootColor || '#F59E0B',
       cards: actualData.cards
     };
@@ -679,32 +234,17 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
     : [];
   if (cols.length === 0) return null;
 
-  const rootTitle = actualData.root_title || actualData.rootTitle || actualData.title || fallbackTitle || 'Carte Conceptuelle';
+  const rootTitle = (actualData.root_title || actualData.rootTitle || actualData.title || fallbackTitle || 'CARTE CONCEPTUELLE').toUpperCase();
   const palette = ['#06B6D4', '#10B981', '#EC4899', '#3B82F6', '#F59E0B', '#8B5CF6'];
   const generatedCards: ConceptCard[] = [];
-  const colWidth = 280;
-  const startX = 200;
+
+  let currentX = 220;
 
   cols.slice(0, 6).forEach((col: any, cIdx: number) => {
     const colId = `col_${cIdx + 1}`;
     const colColor = palette[cIdx % palette.length];
-    const colTitle = col.branch_title || col.title || col.name || col.label || `Axe ${cIdx + 1}`;
-    const xPos = startX + cIdx * colWidth;
-
-    generatedCards.push({
-      id: colId,
-      parentId: 'root',
-      level: 1,
-      pillTitle: colTitle,
-      description: col.description || col.subtitle || 'Axe fondamental',
-      x: xPos,
-      y: 190,
-      width: 250,
-      height: 90,
-      pillWidth: Math.min(220, Math.max(120, colTitle.length * 9)),
-      color: colColor,
-      shadowColor: colColor
-    });
+    const colTitle = (col.branch_title || col.title || col.name || col.label || `Axe ${cIdx + 1}`).toUpperCase();
+    const colDesc = col.description || col.subtitle || col.summary || 'Axe fondamental';
 
     const items = Array.isArray(col.nodes)
       ? col.nodes
@@ -715,26 +255,64 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
       : Array.isArray(col.children)
       ? col.children
       : [];
-    let curY = 320;
+
+    let maxW = Math.max(260, Math.min(380, colTitle.length * 9 + 40));
+    items.forEach((item: any) => {
+      const itTitle = typeof item === 'string' ? '' : (item.title || item.pillTitle || item.name || '');
+      const itDesc = typeof item === 'string' ? item : (item.description || item.desc || item.body || item.title || '');
+      if (itDesc.length > 90 || itDesc.includes('$')) {
+        maxW = Math.max(maxW, 300);
+      }
+      if (itTitle.length > 20) {
+        maxW = Math.max(maxW, Math.min(360, itTitle.length * 8.5 + 40));
+      }
+    });
+
+    const colWidth = maxW;
+    const colHeight = Math.max(120, Math.min(220, 70 + Math.ceil(colDesc.length / 28) * 20));
+    const colPillW = Math.max(140, Math.min(colWidth - 20, colTitle.length * 8.5 + 30));
+
+    generatedCards.push({
+      id: colId,
+      parentId: 'root',
+      level: 1,
+      pillTitle: colTitle,
+      description: colDesc,
+      x: currentX + colWidth / 2,
+      y: 225,
+      width: colWidth,
+      height: colHeight,
+      pillWidth: colPillW,
+      color: colColor,
+      shadowColor: colColor
+    });
+
+    let curY = 225 + colHeight / 2 + 55;
     items.forEach((item: any, iIdx: number) => {
-      const cardTitle = typeof item === 'string' ? item : (item.title || item.pillTitle || item.pillText || item.name || `Notion ${iIdx + 1}`);
+      const cardTitle = (typeof item === 'string' ? `Point ${iIdx + 1}` : (item.title || item.pillTitle || item.pillText || item.name || `Point ${iIdx + 1}`)).toUpperCase();
       const cardDesc = typeof item === 'string' ? item : (item.description || item.desc || item.body || item.title || '');
+      
+      const cardH = Math.max(120, Math.min(320, 75 + Math.ceil(cardDesc.length / 26) * 22));
+      const cardPillW = Math.max(120, Math.min(colWidth - 20, cardTitle.length * 8.5 + 26));
+
       generatedCards.push({
         id: `${colId}_c_${iIdx + 1}`,
         parentId: colId,
         level: 2,
-        pillTitle: typeof item === 'string' ? `Point ${iIdx + 1}` : cardTitle,
+        pillTitle: cardTitle,
         description: cardDesc,
-        x: xPos,
-        y: curY,
-        width: 250,
-        height: cardDesc ? 110 : 70,
-        pillWidth: Math.min(200, Math.max(100, (typeof item === 'string' ? `Point ${iIdx + 1}` : cardTitle).length * 8)),
+        x: currentX + colWidth / 2,
+        y: curY + cardH / 2,
+        width: colWidth,
+        height: cardH,
+        pillWidth: cardPillW,
         color: colColor,
         shadowColor: colColor
       });
-      curY += cardDesc ? 130 : 85;
+      curY += cardH + 35;
     });
+
+    currentX += colWidth + 50;
   });
 
   return {
@@ -749,12 +327,10 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
 
 export default function CarteMentaleConceptuelle({ data, title }: { data?: any; title?: string }) {
   const dynamicDataset = useMemo(() => buildConceptMapDataset(data, title), [data, title]);
-  const [selectedDatasetId, setSelectedDatasetId] = useState<string>(dynamicDataset ? 'ai-dataset' : 'sage-femme-3col');
+  const [selectedDatasetId, setSelectedDatasetId] = useState<string>(dynamicDataset ? 'ai-dataset' : 'modele-3col');
   const [datasetsState, setDatasetsState] = useState<Record<string, ConceptMapDataset>>(() => {
     const base: Record<string, ConceptMapDataset> = {
-      'sage-femme-3col': JSON.parse(JSON.stringify(DATASET_SAGE_FEMME_3COL)),
-      'sage-femme-6col': JSON.parse(JSON.stringify(DATASET_SAGE_FEMME_FULL)),
-      'original-concept-map': JSON.parse(JSON.stringify(DATASET_ORIGINAL_IMAGE))
+      'modele-3col': JSON.parse(JSON.stringify(DATASET_DEFAULT_3COL))
     };
     if (dynamicDataset) {
       base['ai-dataset'] = dynamicDataset;
@@ -772,7 +348,7 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
     }
   }, [dynamicDataset]);
 
-  const activeDataset = datasetsState[selectedDatasetId] || (dynamicDataset || DATASET_SAGE_FEMME_3COL);
+  const activeDataset = datasetsState[selectedDatasetId] || (dynamicDataset || DATASET_DEFAULT_3COL);
   const cards = activeDataset.cards;
 
   const [zoom, setZoom] = useState(0.85);
@@ -786,6 +362,7 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
   const [collapsedParents, setCollapsedParents] = useState<Record<string, boolean>>({});
 
   const containerRef = useRef<HTMLDivElement>(null);
+  const hasUserInteractedRef = useRef(false);
   const isDraggingCanvasRef = useRef(false);
   const isDraggingCardRef = useRef(false);
   const draggedCardIdRef = useRef<string | null>(null);
@@ -870,9 +447,13 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
     };
   }, [cards, rootBox, isCardVisible]);
 
-  // Fit to screen
-  const fitToScreen = useCallback(() => {
+  // Fit to screen - only fits when forced or before user interaction
+  const fitToScreen = useCallback((force = false) => {
     if (!containerRef.current) return;
+    if (!force && hasUserInteractedRef.current) return;
+    if (force) {
+      hasUserInteractedRef.current = false;
+    }
     const rect = containerRef.current.getBoundingClientRect();
     const containerW = rect.width || window.innerWidth;
     const containerH = rect.height || (window.innerHeight - 64);
@@ -897,21 +478,22 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
     setPan({ x: newPanX, y: newPanY });
   }, [calculateBounds]);
 
-  // Initial fit and window resize observer
+  // Initial fit without resetting zoom on selection
   useEffect(() => {
-    fitToScreen();
-    const t = setTimeout(() => fitToScreen(), 120);
+    fitToScreen(true);
+    const t = setTimeout(() => fitToScreen(true), 120);
     return () => clearTimeout(t);
-  }, [fitToScreen, selectedDatasetId]);
+  }, [dynamicDataset]);
 
-  // Zoom handlers
+  // Zoom handlers with expanded max zoom to 3.5 (350%)
   const handleZoom = (delta: number) => {
+    hasUserInteractedRef.current = true;
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const centerX = rect.width / 2;
     const centerY = rect.height / 2;
 
-    const nextZoom = Math.min(Math.max(zoom + delta, 0.18), 2.2);
+    const nextZoom = Math.min(Math.max(zoom + delta, 0.10), 3.5);
     const newPanX = centerX - (centerX - pan.x) * (nextZoom / zoom);
     const newPanY = centerY - (centerY - pan.y) * (nextZoom / zoom);
 
@@ -920,31 +502,28 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
   };
 
   const handleReset = () => {
-    const original =
-      selectedDatasetId === 'sage-femme-3col'
-        ? DATASET_SAGE_FEMME_3COL
-        : selectedDatasetId === 'sage-femme-6col'
-        ? DATASET_SAGE_FEMME_FULL
-        : DATASET_ORIGINAL_IMAGE;
+    hasUserInteractedRef.current = false;
+    const original = DATASET_DEFAULT_3COL;
 
     setDatasetsState((prev) => ({
       ...prev,
       [selectedDatasetId]: JSON.parse(JSON.stringify(original))
     }));
     setCollapsedParents({});
-    setTimeout(() => fitToScreen(), 40);
+    setTimeout(() => fitToScreen(true), 40);
   };
 
-  // Mouse wheel zoom
+  // Mouse wheel zoom with preservation
   const handleWheel = (e: React.WheelEvent) => {
     e.preventDefault();
+    hasUserInteractedRef.current = true;
     if (!containerRef.current) return;
     const rect = containerRef.current.getBoundingClientRect();
     const mouseX = e.clientX - rect.left;
     const mouseY = e.clientY - rect.top;
 
-    const zoomFactor = e.deltaY < 0 ? 1.08 : 0.92;
-    const nextZoom = Math.min(Math.max(zoom * zoomFactor, 0.18), 2.2);
+    const zoomFactor = e.deltaY < 0 ? 1.15 : 0.88;
+    const nextZoom = Math.min(Math.max(zoom * zoomFactor, 0.10), 3.5);
 
     const newPanX = mouseX - (mouseX - pan.x) * (nextZoom / zoom);
     const newPanY = mouseY - (mouseY - pan.y) * (nextZoom / zoom);
@@ -1173,7 +752,7 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `carte-conceptuelle-${selectedDatasetId}.svg`;
+    a.download = 'carte-conceptuelle.svg';
     a.click();
     URL.revokeObjectURL(url);
   };
@@ -1254,7 +833,7 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
           {/* Zoom Out */}
           <button
             id="btn-cm-zoom-out"
-            onClick={() => handleZoom(-0.15)}
+            onClick={() => handleZoom(-0.2)}
             className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-800 transition-colors active:scale-95"
             title="Zoom arrière"
           >
@@ -1269,7 +848,7 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
           {/* Zoom In */}
           <button
             id="btn-cm-zoom-in"
-            onClick={() => handleZoom(0.15)}
+            onClick={() => handleZoom(0.2)}
             className="p-1.5 rounded-lg hover:bg-slate-100 text-slate-800 transition-colors active:scale-95"
             title="Zoom avant"
           >
@@ -1281,7 +860,7 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
           {/* Fit Screen ("Ajuster") */}
           <button
             id="btn-cm-fit"
-            onClick={fitToScreen}
+            onClick={() => fitToScreen(true)}
             className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg bg-slate-100 hover:bg-slate-200 text-slate-900 text-xs font-bold transition-colors active:scale-95"
             title="Recentrer et adapter la carte"
           >
@@ -1528,7 +1107,7 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
           </g>
 
           {/* 
-            2. ROOT NODE (CONCEPT MAP / PROJET SITE WEB SAGE-FEMME)
+            2. ROOT NODE (CARTE CONCEPTUELLE)
             - Rounded pill/box with dark 2px outline
             - Offset golden/amber solid 3D shadow (shifted +6, +6)
           */}
