@@ -918,13 +918,11 @@ Tu dois impérativement respecter les règles strictes suivantes :
 - Pour TOUTES les formules, fonctions mathématiques, fractions, variables et symboles scientifiques (ex: $f(x) = ax + b$, $\frac{a}{b}$, $\Omega$, $\sqrt{2}$, $U_{eff}$), tu DOIS utiliser exclusivement la syntaxe LaTeX standard (entre symboles dollar $...$ ou blocs $$...$$).
 - INTERDICTION FORMELLE d'utiliser du texte brut mal formaté ou des caractères corrompus (&, *, !, $$$) pour représenter des maths. Utilise toujours les balises LaTeX correctes (ex: \frac{num}{den}).
 
-5. LANGUE :
-- Rédige TOUJOURS en FRANÇAIS par défaut.
-
-6. STRUCTURE JSON ATTENDUE POUR LE DEVOIR COMPLET DANS "creation_data" :
+5. STRUCTURE JSON ATTENDUE POUR LE DEVOIR COMPLET :
+Pour que votre interface React/TypeScript puisse afficher proprement l'énoncé du devoir, les différentes sections et les corrigés détaillés (avec le rendu KaTeX pour les mathématiques et les fractions), l'IA doit structurer sa réponse ainsi :
 {
   "complete_exam": {
-    "title": "Devoir Évaluatif : [Titre du devoir adapté au document de l'élève]",
+    "title": "Devoir Évaluatif : Analyse des Systèmes et Réseaux Électriques",
     "instructions": "Traitez l'ensemble des exercices en détaillant chaque étape de raisonnement et de calcul.",
     "duree": "2h00",
     "duration_minutes": 120,
@@ -939,14 +937,7 @@ Tu dois impérativement respecter les règles strictes suivantes :
             "question": "En régime sinusoïdal, l'impédance complexe d'un condensateur est donnée par $Z_C = \\frac{1}{j\\omega C}$.",
             "correct_answer": true
           }
-        ],
-        "correction": {
-          "steps": "Le condensateur s'oppose aux variations de tension : en régime harmonique, l'impédance complexe est $Z_C = \\frac{1}{j\\omega C}$.",
-          "examples": [
-            "Exemple 1 : Dans un filtre passe-bas RC, l'impédance capacitive décroît avec la fréquence pour dériver les harmoniques parasites vers la masse.",
-            "Exemple 2 : Sur un réseau industriel de distribution électrique, des batteries de condensateurs compensent l'énergie réactive inductive des moteurs."
-          ]
-        }
+        ]
       },
       {
         "section_id": "sec_2",
