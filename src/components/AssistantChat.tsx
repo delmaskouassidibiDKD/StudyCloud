@@ -891,9 +891,10 @@ TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
       setIsWaitingServer(false);
       setIsTyping(false);
       window.dispatchEvent(new CustomEvent('ai-creation-error', { detail: { error: err.message } }));
+      const isFriendlyMsg = err.message && (err.message.includes("StudyCloud") || err.message.includes("disponible"));
       const errorMsg: Message = {
         id: (Date.now() + 1).toString(),
-        text: `⚠️ Erreur IA : ${err.message || 'Impossible de joindre le serveur'}.`,
+        text: isFriendlyMsg ? `⚠️ ${err.message}` : `⚠️ Erreur IA : ${err.message || "L'assistante StudyCloud n'est pas disponible pour le moment."}.`,
         sender: 'ai',
         isStreaming: false,
       };

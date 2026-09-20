@@ -61,20 +61,79 @@ export default {
       }
     }
 
+    // ========================================================================
+    // HELPER UNIVERSEL : RÉCUPÉRATION ET NORMALISATION MULTI-CLÉS GEMINI (1 à 4)
+    // ========================================================================
+    function getAvailableGeminiKeys(customEnv, clientKey) {
+      const keys = [];
+      const addKey = (k) => {
+        if (typeof k === "string") {
+          const clean = k.trim();
+          if (clean.length > 15 && !clean.startsWith("http") && !keys.includes(clean)) {
+            keys.push(clean);
+          }
+        }
+      };
+
+      // 1. Clé principale (1)
+      addKey(customEnv?.["StudyCloud-gemini"]);
+      addKey(customEnv?.["studycloud-gemini"]);
+      addKey(customEnv?.STUDYCLOUD_GEMINI);
+      addKey(customEnv?.StudyCloud_gemini);
+      addKey(customEnv?.GEMINI_API_KEY);
+      addKey(customEnv?.GOOGLE_API_KEY);
+
+      // 2. Clé 2 (studycloud-gemini-2)
+      addKey(customEnv?.["studycloud-gemini-2"]);
+      addKey(customEnv?.["StudyCloud-gemini-2"]);
+      addKey(customEnv?.["STUDYCLOUD_GEMINI_2"]);
+      addKey(customEnv?.["studycloud_gemini_2"]);
+      addKey(customEnv?.["studycloud-gemini2"]);
+      addKey(customEnv?.["StudyCloud-gemini2"]);
+
+      // 3. Clé 3 (studycloud-gemini-3)
+      addKey(customEnv?.["studycloud-gemini-3"]);
+      addKey(customEnv?.["StudyCloud-gemini-3"]);
+      addKey(customEnv?.["STUDYCLOUD_GEMINI_3"]);
+      addKey(customEnv?.["studycloud_gemini_3"]);
+      addKey(customEnv?.["studycloud-gemini3"]);
+      addKey(customEnv?.["StudyCloud-gemini3"]);
+
+      // 4. Clé 4 (studycloud-gemini-4)
+      addKey(customEnv?.["studycloud-gemini-4"]);
+      addKey(customEnv?.["StudyCloud-gemini-4"]);
+      addKey(customEnv?.["STUDYCLOUD_GEMINI_4"]);
+      addKey(customEnv?.["studycloud_gemini_4"]);
+      addKey(customEnv?.["studycloud-gemini4"]);
+      addKey(customEnv?.["StudyCloud-gemini4"]);
+
+      // Balayage dynamique dans customEnv pour toute autre variable gemini
+      if (customEnv && typeof customEnv === "object") {
+        for (const [k, v] of Object.entries(customEnv)) {
+          if (typeof v === "string" && /gemini/i.test(k) && !/worker/i.test(k) && !/url/i.test(k)) {
+            addKey(v);
+          }
+        }
+      }
+
+      // Clé optionnelle passée par le client
+      if (clientKey) {
+        addKey(clientKey);
+      }
+
+      return keys;
+    }
+
     // Requête GET : Test de santé et d'état du Worker IA
     if (request.method === "GET" && (path === "/" || path === "/health")) {
       const hasAi = Boolean(ai && typeof ai.run === "function");
-      const geminiKeyPresent = Boolean(
-        env?.["StudyCloud-gemini"] ||
-        env?.["studycloud-gemini"] ||
-        env?.STUDYCLOUD_GEMINI ||
-        env?.GEMINI_API_KEY
-      );
+      const geminiKeys = getAvailableGeminiKeys(env);
       return new Response(JSON.stringify({
         service: "StudyCloud IA Assistant & Creation Engine (DKD Technologies)",
         status: "ready",
-        brain: "Google Gemini 2.0 Flash (avec décision autonome)",
-        gemini_configured: geminiKeyPresent,
+        brain: "Google Gemini 2.0 Flash (Multi-Clés avec Basculement Automatique)",
+        gemini_keys_count: geminiKeys.length,
+        gemini_configured: geminiKeys.length > 0,
         cf_ai_fallback: hasAi,
         d1_database: db ? "Connecté (MON_D1_STUDYCLOUD)" : "Non lié",
         r2_bucket: bucket ? "Connecté (MON_R2_STUDYCLOUD)" : "Non lié",
@@ -85,47 +144,41 @@ export default {
       });
     }
 
-    // Endpoint de diagnostic de connectivité IA : /api/ai/debug
+    // Endpoint de diagnostic de connectivité IA : /api/ai/debug (Diagnostic détaillé par clé)
     if (request.method === "GET" && path === "/api/ai/debug") {
-      let testGeminiApiKey = env?.["StudyCloud-gemini"] ||
-        env?.["studycloud-gemini"] ||
-        env?.["STUDYCLOUD_GEMINI"] ||
-        env?.["StudyCloud_gemini"] ||
-        env?.StudyCloud_gemini ||
-        env?.GEMINI_API_KEY ||
-        env?.GOOGLE_API_KEY;
+      const geminiKeys = getAvailableGeminiKeys(env);
+      const keyReports = [];
 
-      if (!testGeminiApiKey && env && typeof env === "object") {
-        for (const [k, v] of Object.entries(env)) {
-          if (typeof v === "string" && /studycloud[-_]?gemini/i.test(k) && !v.startsWith("http")) {
-            testGeminiApiKey = v.trim();
-            break;
-          }
-        }
-      }
-
-      if (typeof testGeminiApiKey === "string") {
-        testGeminiApiKey = testGeminiApiKey.trim();
-      }
-
-      let geminiStatus = "no_key";
-      let geminiResponse = null;
-
-      if (testGeminiApiKey) {
+      for (let i = 0; i < geminiKeys.length; i++) {
+        const k = geminiKeys[i];
+        let status = "inconnu";
+        let detail = null;
         try {
-          const testEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${testGeminiApiKey}`;
+          const testEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${k}`;
           const gTest = await fetch(testEndpoint, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
-              contents: [{ parts: [{ text: "Bonjour en un mot" }] }]
+              contents: [{ parts: [{ text: "ping" }] }]
             })
           });
-          geminiStatus = `HTTP ${gTest.status}`;
-          geminiResponse = await gTest.text();
-        } catch (gErr) {
-          geminiStatus = "Exception: " + gErr.message;
+          status = `HTTP ${gTest.status}`;
+          if (gTest.ok) {
+            const data = await gTest.json();
+            detail = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "OK";
+          } else {
+            detail = (await gTest.text()).slice(0, 200);
+          }
+        } catch (e) {
+          status = "Exception";
+          detail = e.message;
         }
+        keyReports.push({
+          keyNumber: i + 1,
+          prefix: `${k.slice(0, 6)}...${k.slice(-4)}`,
+          status,
+          detail
+        });
       }
 
       let cfAiStatus = "not_bound";
@@ -141,10 +194,8 @@ export default {
       }
 
       return new Response(JSON.stringify({
-        geminiConfigured: Boolean(testGeminiApiKey),
-        geminiKeyPrefix: testGeminiApiKey ? `${testGeminiApiKey.slice(0, 6)}...${testGeminiApiKey.slice(-4)}` : null,
-        geminiStatus,
-        geminiResponse: geminiResponse ? geminiResponse.slice(0, 500) : null,
+        totalKeysDetected: geminiKeys.length,
+        keys: keyReports,
         cfAiStatus,
         timestamp: new Date().toISOString()
       }), {
@@ -1197,27 +1248,8 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
       const requestedType = (body.requested_type || body.toolType || body.type || body.taskType || "").toLowerCase().trim();
       const currentUserId = body.userId || body.user_id;
 
-      // Détection de la clé API Google Gemini
-      let geminiApiKey = env?.["StudyCloud-gemini"] ||
-        env?.["studycloud-gemini"] ||
-        env?.["STUDYCLOUD_GEMINI"] ||
-        env?.["StudyCloud_gemini"] ||
-        env?.StudyCloud_gemini ||
-        env?.GEMINI_API_KEY ||
-        env?.GOOGLE_API_KEY ||
-        body.geminiApiKey;
-
-      if (!geminiApiKey && env && typeof env === "object") {
-        for (const [k, v] of Object.entries(env)) {
-          if (typeof v === "string" && /studycloud[-_]?gemini/i.test(k) && !v.startsWith("http")) {
-            geminiApiKey = v.trim();
-            break;
-          }
-        }
-      }
-      if (typeof geminiApiKey === "string") {
-        geminiApiKey = geminiApiKey.trim();
-      }
+      // Détection de toutes les clés Google Gemini configurées (studycloud-gemini, studycloud-gemini-2, 3, 4, etc.)
+      const geminiKeys = getAvailableGeminiKeys(env, body.geminiApiKey);
 
       // Extraction de l'historique des questions et affirmations déjà posées pour la règle anti-doublons (D1)
       let previousQuestionsText = "";
@@ -1328,9 +1360,10 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
 
       let generatedContent = "";
       let usedEngine = "";
+      const debugErrors = [];
 
-      // 1. APPEL À GOOGLE GEMINI (CERVEAU PRINCIPAL)
-      if (geminiApiKey) {
+      // 1. APPEL À GOOGLE GEMINI (AVEC BASCULEMENT INTELLIGENT MULTI-CLÉS GEMINI 1 à 4)
+      if (geminiKeys.length > 0) {
         const geminiContents = [];
         const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
         for (const m of incomingHist.slice(-8)) {
@@ -1346,7 +1379,6 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
           parts: [{ text: userPrompt || (requestedType ? `Génère le module ${requestedType}` : "Bonjour !") }]
         });
 
-        const debugErrors = [];
         const candidateGeminiModels = [
           "gemini-2.0-flash",
           "gemini-1.5-flash",
@@ -1354,51 +1386,70 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
           "gemini-2.0-flash-lite"
         ];
 
-        for (const mod of candidateGeminiModels) {
-          try {
-            const generationConfig = {
-              temperature: body.isDirectCreation ? 0.3 : 0.7,
-              maxOutputTokens: 6000,
-            };
-            if (body.isDirectCreation) {
-              generationConfig.responseMimeType = "application/json";
-            }
+        const generationConfig = {
+          temperature: body.isDirectCreation ? 0.3 : 0.7,
+          maxOutputTokens: 6000,
+        };
+        if (body.isDirectCreation) {
+          generationConfig.responseMimeType = "application/json";
+        }
 
-            const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${geminiApiKey}`;
-            const gResponse = await fetch(geminiApiEndpoint, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                system_instruction: { parts: [{ text: fullSystemPrompt }] },
-                contents: geminiContents,
-                generationConfig: generationConfig
-              })
-            });
+        // BASCULEMENT EN BOUCLE : On commence par la première clé disponible.
+        // Si elle réussit, ON NE PASSE PAS À UNE AUTRE CLÉ !
+        // Si elle échoue ou est surchargée (429, 400, 403, 500, etc.), on bascule automatiquement sur la suivante.
+        for (let kIdx = 0; kIdx < geminiKeys.length; kIdx++) {
+          const activeKey = geminiKeys[kIdx];
+          let keySucceeded = false;
 
-            if (gResponse.ok) {
-              const gData = await gResponse.json();
-              const candidateText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (candidateText && candidateText.trim().length > 0) {
-                generatedContent = candidateText;
-                usedEngine = `Google Gemini (${mod})`;
-                break;
+          for (const mod of candidateGeminiModels) {
+            try {
+              const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${activeKey}`;
+              const gResponse = await fetch(geminiApiEndpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  system_instruction: { parts: [{ text: fullSystemPrompt }] },
+                  contents: geminiContents,
+                  generationConfig: generationConfig
+                })
+              });
+
+              if (gResponse.ok) {
+                const gData = await gResponse.json();
+                const candidateText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (candidateText && candidateText.trim().length > 0) {
+                  generatedContent = candidateText;
+                  usedEngine = `Google Gemini (${mod} • Clé #${kIdx + 1})`;
+                  keySucceeded = true;
+                  break; // Succès ! Sortir des modèles
+                } else {
+                  const finishReason = gData?.candidates?.[0]?.finishReason || gData?.promptFeedback?.blockReason || "aucun texte";
+                  debugErrors.push(`[Clé #${kIdx + 1} • ${mod}] Blocage: ${finishReason}`);
+                }
               } else {
-                const finishReason = gData?.candidates?.[0]?.finishReason || gData?.promptFeedback?.blockReason || "aucun texte";
-                debugErrors.push(`[Gemini ${mod}] Blocage/Finition: ${finishReason}`);
+                const errTxt = await gResponse.text().catch(() => "");
+                debugErrors.push(`[Clé #${kIdx + 1} • ${mod} HTTP ${gResponse.status}] ${errTxt.slice(0, 160)}`);
+                console.warn(`[Gemini Clé #${kIdx + 1} • ${mod}] Status ${gResponse.status}:`, errTxt);
+
+                // Si quota/surcharge (429) ou problème de clé (400, 403), basculer immédiatement sur la clé Gemini suivante
+                if (gResponse.status === 429 || gResponse.status === 400 || gResponse.status === 403) {
+                  break;
+                }
               }
-            } else {
-              const errTxt = await gResponse.text().catch(() => "");
-              debugErrors.push(`[Gemini ${mod} HTTP ${gResponse.status}] ${errTxt.slice(0, 200)}`);
-              console.warn(`[Gemini ${mod}] Status ${gResponse.status}:`, errTxt);
+            } catch (geminiErr) {
+              debugErrors.push(`[Clé #${kIdx + 1} • ${mod} Exception] ${geminiErr.message}`);
+              console.warn(`[Gemini Clé #${kIdx + 1} • ${mod}] Exception:`, geminiErr);
             }
-          } catch (geminiErr) {
-            debugErrors.push(`[Gemini ${mod} Exception] ${geminiErr.message}`);
-            console.warn(`[Gemini ${mod}] Exception:`, geminiErr);
+          }
+
+          // Si la clé active a fonctionné sans problème, ON NE PASSE PAS à une autre clé !
+          if (keySucceeded && generatedContent) {
+            break;
           }
         }
       }
 
-      // 2. FALLBACK VERS CLOUDFLARE WORKERS AI
+      // 2. FALLBACK VERS CLOUDFLARE WORKERS AI (Si toutes les clés Gemini ont échoué)
       if (!generatedContent && ai && typeof ai.run === "function") {
         const trimmedSystemPrompt = fullSystemPrompt.length > 7000
           ? fullSystemPrompt.slice(0, 7000) + "\n\n[... Document synthétisé pour Workers AI ...]"
@@ -1446,11 +1497,10 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         }
       }
 
+      // 3. SI RIEN N'A PU FONCTIONNER : Message utilisateur clair et bienveillant
       if (!generatedContent) {
-        const fullErrReport = debugErrors.length > 0
-          ? `Aucun modèle IA n'a pu répondre. [Détails: ${debugErrors.join(" | ")}]`
-          : "Aucun modèle IA n'a pu répondre. Veuillez vérifier la variable StudyCloud-gemini dans votre Worker Cloudflare.";
-        throw new Error(fullErrReport);
+        console.error("[StudyCloud AI Échec Global]", debugErrors.join(" | "));
+        throw new Error("L'assistante StudyCloud n'est pas disponible pour le moment.");
       }
 
       const formatted = parseAiDecision(generatedContent, requestedType);
@@ -1740,9 +1790,9 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         ? "Bon travail d'ensemble. Les notions fondamentales sont acquises, poursuivez vos efforts d'approfondissement."
         : "Copie insuffisante. Révisez attentivement les points clés du cours et reprenez la correction détaillée.";
 
-      // Appel de notation avancée par Google Gemini / Workers AI si configuré
-      let geminiApiKey = env?.["StudyCloud-gemini"] || env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.GEMINI_API_KEY;
-      if (geminiApiKey) {
+      // Appel de notation avancée par Google Gemini avec basculement automatique multi-clés (1 à 4)
+      const geminiKeysForGrading = getAvailableGeminiKeys(env);
+      if (geminiKeysForGrading.length > 0) {
         try {
           const rawSections = Array.isArray(exam.sections)
             ? exam.sections
@@ -1802,41 +1852,57 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
   }
 };`;
 
-          const gResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ role: "user", parts: [{ text: gradingPrompt }] }],
-              generationConfig: { temperature: 0.2, maxOutputTokens: 2000 }
-            })
-          });
 
-          if (gResp.ok) {
-            const gJson = await gResp.json();
-            const rawG = gJson?.candidates?.[0]?.content?.parts?.[0]?.text || "";
-            const cleanG = rawG.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
-            const parsedG = JSON.parse(cleanG);
+          let gradingSuccess = false;
+          for (let kIdx = 0; kIdx < geminiKeysForGrading.length; kIdx++) {
+            const activeGradingKey = geminiKeysForGrading[kIdx];
+            for (const mod of ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"]) {
+              try {
+                const gResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${activeGradingKey}`, {
+                  method: "POST",
+                  headers: { "Content-Type": "application/json" },
+                  body: JSON.stringify({
+                    contents: [{ role: "user", parts: [{ text: gradingPrompt }] }],
+                    generationConfig: { temperature: 0.2, maxOutputTokens: 2000 }
+                  })
+                });
 
-            if (typeof parsedG.scoreTotal === "number") {
-              finalScoreTotal = Math.min(20, Math.max(0, parsedG.scoreTotal));
-              if (typeof parsedG.scoreP1 === "number") finalScoreP1 = parsedG.scoreP1;
-              if (typeof parsedG.scoreP2 === "number") finalScoreP2 = parsedG.scoreP2;
-              if (typeof parsedG.scoreP3 === "number") finalScoreP3 = parsedG.scoreP3;
-              if (typeof parsedG.scoreP4 === "number") finalScoreP4 = parsedG.scoreP4;
-              if (parsedG.feedbackGlobal) finalFeedbackGlobal = parsedG.feedbackGlobal;
+                if (gResp.ok) {
+                  const gJson = await gResp.json();
+                  const rawG = gJson?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+                  const cleanG = rawG.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
+                  const parsedG = JSON.parse(cleanG);
 
-              if (parsedG.questionsFeedback && typeof parsedG.questionsFeedback === "object") {
-                for (const [qid, qdata] of Object.entries(parsedG.questionsFeedback)) {
-                  if (ex1Feedbacks[qid] && typeof qdata.points === "number") {
-                    ex1Feedbacks[qid].points = qdata.points;
-                    if (qdata.feedback) ex1Feedbacks[qid].feedback = qdata.feedback;
-                  }
-                  if (ex3Feedbacks[qid] && typeof qdata.points === "number") {
-                    ex3Feedbacks[qid].points = qdata.points;
-                    if (qdata.feedback) ex3Feedbacks[qid].feedback = qdata.feedback;
+                  if (typeof parsedG.scoreTotal === "number") {
+                    finalScoreTotal = Math.min(20, Math.max(0, parsedG.scoreTotal));
+                    if (typeof parsedG.scoreP1 === "number") finalScoreP1 = parsedG.scoreP1;
+                    if (typeof parsedG.scoreP2 === "number") finalScoreP2 = parsedG.scoreP2;
+                    if (typeof parsedG.scoreP3 === "number") finalScoreP3 = parsedG.scoreP3;
+                    if (typeof parsedG.scoreP4 === "number") finalScoreP4 = parsedG.scoreP4;
+                    if (parsedG.feedbackGlobal) finalFeedbackGlobal = parsedG.feedbackGlobal;
+
+                    if (parsedG.questionsFeedback && typeof parsedG.questionsFeedback === "object") {
+                      for (const [qid, qdata] of Object.entries(parsedG.questionsFeedback)) {
+                        if (ex1Feedbacks[qid] && typeof qdata.points === "number") {
+                          ex1Feedbacks[qid].points = qdata.points;
+                          if (qdata.feedback) ex1Feedbacks[qid].feedback = qdata.feedback;
+                        }
+                        if (ex3Feedbacks[qid] && typeof qdata.points === "number") {
+                          ex3Feedbacks[qid].points = qdata.points;
+                          if (qdata.feedback) ex3Feedbacks[qid].feedback = qdata.feedback;
+                        }
+                      }
+                    }
+                    gradingSuccess = true;
+                    break;
                   }
                 }
+              } catch (e) {
+                console.warn(`[Gemini Grading Clé #${kIdx + 1} • ${mod}]`, e);
               }
+            }
+            if (gradingSuccess) {
+              break; // Ne pas basculer sur une autre clé si celle-ci a fonctionné
             }
           }
         } catch (geminiGradeErr) {
