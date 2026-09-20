@@ -86,6 +86,52 @@ function cleanChatText(text: string): string {
   return clean;
 }
 
+function ChatRecommendationCard({ recoType }: { recoType: string }) {
+  const norm = recoType.trim().toLowerCase();
+  let cardTitle = 'Fiches & exercices de révision';
+  let cardDesc = 'Un ensemble interactif optimisé pour mémoriser rapidement les concepts clés de ce chapitre.';
+
+  if (norm.includes('flashcard') || norm.includes('carte')) {
+    cardTitle = 'Flashcards & cartes mémoire';
+    cardDesc = 'Un jeu de cartes interactif pour associer rapidement chaque formule et notion essentielle.';
+  } else if (norm.includes('diaporama') || norm.includes('présentation')) {
+    cardTitle = 'Guide visuel & diaporama';
+    cardDesc = 'Une présentation pas-à-pas illustrant les propriétés fondamentales et la méthode de résolution.';
+  } else if (norm.includes('quiz') || norm.includes('qcm')) {
+    cardTitle = "Quiz d'entraînement interactif";
+    cardDesc = 'Testez vos connaissances avec 10 questions corrigées pas à pas.';
+  } else if (norm.includes('mindmap') || norm.includes('mentale')) {
+    cardTitle = 'Carte mentale synthétique';
+    cardDesc = 'Une vue arborescente pour visualiser toutes les connexions entre les théorèmes.';
+  }
+
+  return (
+    <div className="my-3 p-4 rounded-2xl bg-[#23262d] border border-zinc-700/80 shadow-md flex flex-col gap-2 w-full">
+      <div className="flex items-center justify-between">
+        <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-[11px] font-bold text-zinc-300">
+          <Layers className="w-3.5 h-3.5 text-orange-400" />
+          <span className="capitalize">Recommandé : {norm}</span>
+        </div>
+      </div>
+      <h4 className="text-sm font-bold text-white leading-tight">{cardTitle}</h4>
+      <p className="text-xs text-zinc-400 leading-relaxed">{cardDesc}</p>
+      <div className="pt-1">
+        <button
+          type="button"
+          onClick={() => {
+            window.dispatchEvent(new CustomEvent('auto-prompt', {
+              detail: { prompt: `Crée une création de type ${norm} sur ce cours` }
+            }));
+          }}
+          className="px-4 py-1.5 rounded-full bg-white text-zinc-900 hover:bg-zinc-200 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer"
+        >
+          Ajouter
+        </button>
+      </div>
+    </div>
+  );
+}
+
 const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: boolean; isStreaming?: boolean }) => {
   const [expanded, setExpanded] = useState(false);
 
@@ -112,7 +158,7 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
     );
   }
 
-  // Normalisation préalable pour éviter de découper les formules LaTeX $$...$$ multi-lignes
+  // Normalisation préalable pour KaTeX et nettoyage des résidus JSON
   const normalizedDisplayText = useMemo(() => {
     if (!displayText) return '';
     let cleaned = displayText;
@@ -144,48 +190,7 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
           // Détection d'une carte de recommandation interactive (ex: Recommandé : flashcards)
           const recoMatch = trimmed.match(/^(?:\[?💡?\s*Recommand[ée]\s*:\s*([a-zA-ZÀ-ÿ\s]+)\]?)/i);
           if (recoMatch) {
-            const recoType = recoMatch[1].trim().toLowerCase();
-            let cardTitle = `Fiches & exercices de révision`;
-            let cardDesc = `Un ensemble interactif optimisé pour mémoriser rapidement les concepts clés de ce chapitre.`;
-            if (recoType.includes('flashcard') || recoType.includes('carte')) {
-              cardTitle = `Flashcards & cartes mémoire`;
-              cardDesc = `Un jeu de cartes interactif pour associer rapidement chaque formule et notion essentielle.`;
-            } else if (recoType.includes('diaporama') || recoType.includes('présentation')) {
-              cardTitle = `Guide visuel & diaporama`;
-              cardDesc = `Une présentation pas-à-pas illustrant les propriétés fondamentales et la méthode de résolution.`;
-            } else if (recoType.includes('quiz') || recoType.includes('qcm')) {
-              cardTitle = `Quiz d'entraînement interactif`;
-              cardDesc = `Testez vos connaissances avec 10 questions corrigées pas à pas.`;
-            } else if (recoType.includes('mindmap') || recoType.includes('mentale')) {
-              cardTitle = `Carte mentale synthétique`;
-              cardDesc = `Une vue arborescente pour visualiser toutes les connexions entre les théorèmes.`;
-            }
-
-            return (
-              <div key={idx} className="my-3 p-4 rounded-2xl bg-[#23262d] border border-zinc-700/80 shadow-md flex flex-col gap-2 w-full">
-                <div className="flex items-center justify-between">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-[11px] font-bold text-zinc-300">
-                    <Layers className="w-3.5 h-3.5 text-orange-400" />
-                    <span className="capitalize">Recommandé : {recoType}</span>
-                  </div>
-                </div>
-                <h4 className="text-sm font-bold text-white leading-tight">{cardTitle}</h4>
-                <p className="text-xs text-zinc-400 leading-relaxed">{cardDesc}</p>
-                <div className="pt-1">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      window.dispatchEvent(new CustomEvent('auto-prompt', {
-                        detail: { prompt: `Crée une création de type ${recoType} sur ce cours` }
-                      }));
-                    }}
-                    className="px-4 py-1.5 rounded-full bg-white text-zinc-900 hover:bg-zinc-200 text-xs font-bold transition-all shadow-sm active:scale-95 cursor-pointer"
-                  >
-                    Ajouter
-                  </button>
-                </div>
-              </div>
-            );
+            return <ChatRecommendationCard key={idx} recoType={recoMatch[1]} />;
           }
 
           // Rendu des titres Markdown (H1, H2, H3)
@@ -211,7 +216,7 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
             );
           }
 
-          // Ligne normale avec formules mathématiques KaTeX
+          // Ligne normale avec KaTeX
           return (
             <div key={idx} className="whitespace-pre-wrap break-words">
               <MathText text={line} inline={true} />
@@ -244,7 +249,9 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   // Session courante (Style Gemini)
   const [currentConversationId, setCurrentConversationId] = useState<string>(() => {
-    return localStorage.getItem('studycloud_current_conversation_id') || ('conv-' + Date.now());
+    const saved = localStorage.getItem('studycloud_current_conversation_id');
+    if (saved && !saved.startsWith('creation-')) return saved;
+    return 'conv-' + Date.now();
   });
   const [currentConversationTitle, setCurrentConversationTitle] = useState<string>('Nouvelle discussion');
 
@@ -279,9 +286,11 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const typingTimerRef = useRef<any>(null);
 
-  // Sauvegarde ID de session courante
+  // Sauvegarde ID de session courante (uniquement si ce n'est pas une création directe)
   useEffect(() => {
-    localStorage.setItem('studycloud_current_conversation_id', currentConversationId);
+    if (!currentConversationId.startsWith('creation-')) {
+      localStorage.setItem('studycloud_current_conversation_id', currentConversationId);
+    }
   }, [currentConversationId]);
 
   useEffect(() => {
@@ -299,13 +308,20 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     try {
       const res = await StudyCloudAPI.getAiConversations(currentUserId);
       if (res && res.success && Array.isArray(res.data)) {
-        setConversations(res.data);
+        // Filtrer strictement les conversations réelles du chat en éliminant les créations directes
+        const filtered = res.data.filter((c: any) => !c.id?.startsWith('creation-') && !c.title?.startsWith('Conçois un '));
+        setConversations(filtered);
       }
     } catch (e) {
       // Fallback localStorage
       const local = localStorage.getItem('studycloud_conversations_cache');
       if (local) {
-        try { setConversations(JSON.parse(local)); } catch {}
+        try {
+          const parsed = JSON.parse(local);
+          if (Array.isArray(parsed)) {
+            setConversations(parsed.filter((c: any) => !c.id?.startsWith('creation-') && !c.title?.startsWith('Conçois un ')));
+          }
+        } catch {}
       }
     }
   };
@@ -316,6 +332,10 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
 
   // Chargement des messages de la conversation active
   const loadConversationMessages = async (convId: string) => {
+    if (!convId || convId.startsWith('creation-')) {
+      setMessages([]);
+      return;
+    }
     try {
       const res = await StudyCloudAPI.getAiConversationMessages(convId);
       if (res && res.success && Array.isArray(res.data) && res.data.length > 0) {
@@ -346,7 +366,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
         }
       }
 
-      // Recharger également la dernière création associée à cette conversation
+      // Recharger également la dernière création associée à cette conversation si elle vient du chat
       const crRes = await StudyCloudAPI.getAiConversationCreations(convId);
       if (crRes && crRes.success && Array.isArray(crRes.data) && crRes.data.length > 0) {
         const lastCreation = crRes.data[0];
@@ -363,7 +383,6 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
           createdAt: lastCreation.created_at,
         };
         setActiveCreation(restoredCreation);
-        window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: restoredCreation } }));
       }
     } catch (e) {
       console.warn('[AssistantChat] Erreur chargement messages:', e);
@@ -374,12 +393,11 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
     loadConversationMessages(currentConversationId);
   }, [currentConversationId]);
 
-  // Synchronisation avec les créations actives du panneau droit
+  // Synchronisation avec les créations actives du panneau droit UNIQUEMENT si issues du chat
   useEffect(() => {
     const handleReady = (e: any) => {
-      if (e.detail?.creation) {
+      if (e.detail?.creation && e.detail?.isFromChat) {
         setActiveCreation(e.detail.creation);
-        // Sauvegarder dans ai_creations dans D1
         StudyCloudAPI.saveAiCreationRecord({
           id: e.detail.creation.id,
           conversationId: currentConversationId,
@@ -390,7 +408,7 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       }
     };
     const handleUpdate = (e: any) => {
-      if (e.detail?.updatedContent && activeCreation) {
+      if (e.detail?.updatedContent && activeCreation && e.detail?.isFromChat) {
         setActiveCreation(prev => prev ? { ...prev, content: e.detail.updatedContent } : null);
         StudyCloudAPI.saveAiCreationRecord({
           id: activeCreation.id,

@@ -19,7 +19,7 @@ import {
   ClipboardCheck,
   Sparkles
 } from 'lucide-react';
-import { StudyCloudAPI, sendChatMessageToAi } from '../services/api';
+import { StudyCloudAPI, generateDirectAiCreation } from '../services/api';
 import { extractDocumentText } from '../services/documentTextExtractor';
 import { parseOrBuildAiCreation } from '../services/aiCreationGenerator';
 import { DnaLogo } from './DnaLogo';
@@ -389,7 +389,176 @@ export function RightMenu({
     setIsRightSidebarOpen(false);
   };
 
-  // Clic 1-clic direct sur l'un des 12 boutons officiels de création
+  // Génère un prompt rigoureusement typé pour le module avec schéma JSON strict
+  const getModuleCreationPrompt = (modId: string, modLabel: string, docName: string) => {
+    const base = `Tu es l'IA éducative d'excellence de StudyCloud (DKD Technologies). Ta mission est de concevoir un module "${modLabel}" complet, inédit, approfondi et directement basé sur le document d'étude joint "${docName}".
+RÈGLE ABSOLUE : Analyse le contenu réel du cours et génère STRICTEMENT un objet JSON valide conforme au schéma ci-dessous, sans texte avant ou après.`;
+
+    switch (modId) {
+      case 'exercices-ecrits':
+        return `${base}
+CONSIGNE : Conçois un exercice écrit de haut niveau avec énoncé contextualisé, questions numérotées, et corrigé pas à pas avec deux exemples concrets distincts.
+{
+  "creation_type": "exercices-ecrits",
+  "creation_title": "Exercices Écrits : ${docName}",
+  "creation_data": {
+    "title": "Exercice Pratique : ${docName}",
+    "context": "Énoncé et données du problème (avec formules LaTeX si applicable)...",
+    "questions": [
+      "1. Première question détaillée...",
+      "2. Deuxième question d'application ou de calcul...",
+      "3. Troisième question d'interprétation..."
+    ],
+    "correction": {
+      "steps": "Démonstration complète pas à pas et calculs intermédiaires...",
+      "examples": [
+        "Exemple 1 : Cas concret illustrant l'application de la notion",
+        "Exemple 2 : Deuxième exemple pratique en situation réelle"
+      ]
+    }
+  }
+}`;
+
+      case 'devoir-complet':
+        return `${base}
+CONSIGNE : Conçois une épreuve d'examen officielle complète notée sur 20 points, avec barème détaillé et corrigé intégral.
+{
+  "creation_type": "devoir-complet",
+  "creation_title": "Devoir Évaluatif d'Examen (20 pts) : ${docName}",
+  "creation_data": {
+    "title": "Devoir d'Examen : ${docName}",
+    "duree": "2h00",
+    "baremeTotal": 20,
+    "instructions": "Rédigez avec soin en justifiant toutes vos réponses.",
+    "exercice1": { "titre": "Partie 1 : Contrôle des connaissances", "bareme": 5, "questions": [] },
+    "exercice2": { "titre": "Partie 2 : Analyse et méthode", "bareme": 5, "questions": [] },
+    "exercice3": { "titre": "Partie 3 : Résolution de problème", "bareme": 6, "questions": [] },
+    "exercice4": { "titre": "Partie 4 : Synthèse", "bareme": 4, "questions": [] }
+  }
+}`;
+
+      case 'questionnaire':
+      case 'questionnaire-test':
+        return `${base}
+CONSIGNE : Conçois 5 questions à choix multiples stimulantes. Rédige 4 propositions développées par question (JAMAIS 'Option A').
+{
+  "creation_type": "${modId}",
+  "creation_title": "Questionnaire : ${docName}",
+  "creation_data": {
+    "title": "Questionnaire : ${docName}",
+    "questions": [
+      {
+        "id": "q_1",
+        "question": "Énoncé complet...",
+        "options": ["Proposition 1", "Proposition 2", "Proposition 3", "Proposition 4"],
+        "correctIndex": 0,
+        "explanation": "Démonstration théorique détaillée...\n\n• Exemple 1 : ...\n• Exemple 2 : ..."
+      }
+    ]
+  }
+}`;
+
+      case 'vrai-ou-faux':
+      case 'vrai-ou-faux-test':
+        return `${base}
+CONSIGNE : Conçois 6 affirmations réflexes équilibrées (~50% Vrai, ~50% Faux) avec pièges intelligents et explications théoriques détaillées.
+{
+  "creation_type": "${modId}",
+  "creation_title": "Vrai ou Faux : ${docName}",
+  "creation_data": {
+    "title": "Vrai ou Faux : ${docName}",
+    "affirmations": [
+      {
+        "id": "vf_1",
+        "statement": "Affirmation ciblée...",
+        "isTrue": true,
+        "explanation": "Justification théorique...\n\n• Exemple 1 : ...\n• Exemple 2 : ..."
+      }
+    ]
+  }
+}`;
+
+      case 'carte-memoire':
+        return `${base}
+CONSIGNE : Conçois 8 cartes mémoire (flashcards) avec recto percutant et verso détaillé.
+{
+  "creation_type": "carte-memoire",
+  "creation_title": "Cartes Mémoire : ${docName}",
+  "creation_data": {
+    "title": "Cartes Mémoire : ${docName}",
+    "cards": [
+      { "id": "card_1", "front": "Question ou formule clé", "back": "Explication complète et application" }
+    ]
+  }
+}`;
+
+      case 'carte-mentale':
+      case 'carte-mentale-2':
+        return `${base}
+CONSIGNE : Conçois une carte mentale hiérarchique avec au moins 4 branches structurées.
+{
+  "creation_type": "${modId}",
+  "creation_title": "Carte Mentale : ${docName}",
+  "creation_data": {
+    "root_title": "${docName}",
+    "branches": [
+      { "title": "Axe 1", "description": "Synthèse", "subBranches": ["Point A", "Point B"] }
+    ]
+  }
+}`;
+
+      case 'resume':
+        return `${base}
+CONSIGNE : Conçois une fiche de synthèse didactique divisée en grands chapitres avec points clés.
+{
+  "creation_type": "resume",
+  "creation_title": "Fiche de Synthèse : ${docName}",
+  "creation_data": {
+    "title": "Fiche de Synthèse : ${docName}",
+    "overview": "Introduction générale au document...",
+    "keyPoints": ["Point clé 1", "Point clé 2"],
+    "sections": [
+      { "section_title": "1. Notions fondamentales", "content": "Développement complet..." }
+    ]
+  }
+}`;
+
+      case 'pdf':
+        return `${base}
+CONSIGNE : Rédige un document d'étude officiel complet pour export PDF.
+{
+  "creation_type": "pdf",
+  "creation_title": "Document d'Étude : ${docName}",
+  "creation_data": {
+    "title": "Document d'Étude : ${docName}",
+    "chapters": [
+      { "heading": "1. Introduction et Principes", "content": "Contenu exhaustif..." }
+    ]
+  }
+}`;
+
+      case 'infographie':
+        return `${base}
+CONSIGNE : Structure une infographie pédagogique avec repères visuels et étapes clés.
+{
+  "creation_type": "infographie",
+  "creation_title": "Infographie : ${docName}",
+  "creation_data": {
+    "title": "Infographie : ${docName}",
+    "visual_style": "Design moderne et structuré",
+    "sections": [
+      { "step": 1, "heading": "Étape 1", "description": "Détails..." }
+    ]
+  }
+}`;
+
+      default:
+        return `${base}
+Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
+    }
+  };
+
+  // Clic 1-clic direct sur l'un des 12 boutons officiels de création (100% DÉCOUPLÉ DU CHAT)
   const handleProposalClick = async (mod: ModuleDefinition) => {
     if (isGenerating) return;
 
@@ -412,7 +581,6 @@ export function RightMenu({
     });
     setActiveTabModule(mod.id);
 
-    // Contrôleur d'annulation manuel (AUCUN délai/timeout automatique : l'IA dispose de tout le temps nécessaire)
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
@@ -427,37 +595,31 @@ export function RightMenu({
         }
       }
 
-      const promptText = `Conçois un ${mod.label} complet, inédit et rigoureusement structuré basé STRICTEMENT sur le document d'étude joint "${docName}". Ne réutilise aucun exemple générique prédéfini (pas d'exemples de mémoire ou neurosciences sauf si le document en traite). Analyse les notions réelles du document et génère le contenu adapté selon la structure JSON requise.`;
+      const promptText = getModuleCreationPrompt(mod.id, mod.label, docName);
 
-      // 2. Appel direct et prioritaire au Worker IA
-      const res = await sendChatMessageToAi({
-        messages: [
-          { role: 'user', content: promptText }
-        ],
+      // 2. Appel DIRECT et DÉCOUPLÉ au moteur IA (JAMAIS injecté dans le Chat)
+      const res = await generateDirectAiCreation({
+        toolType: mod.id,
+        docName: docName,
+        docContent: extractedDocText,
         prompt: promptText,
-        message: promptText,
-        requested_type: mod.id,
-        attachedFileName: docName,
-        attachedFileContent: extractedDocText,
-        file_content: extractedDocText,
-        fileContent: extractedDocText,
-        documentContent: extractedDocText,
-        fileName: docName,
-        file_name: docName,
         userId: localStorage.getItem('unifolder_user_id') || 'default-user',
-        sessionId: 'creation-' + Date.now(),
-        conversationId: 'creation-' + Date.now(),
       });
 
       const targetType = (res.creation_type as ModuleId) || mod.id;
       let effectiveContent = res.creation_data || null;
       let effectiveTitle = res.creation_title || `${mod.label} : ${docName}`;
 
-      // Si creation_data est vide, tenter une extraction de secours à partir du texte brut retourné par l'IA
-      if (!effectiveContent && (res.response || (res as any).text)) {
+      // Si creation_data est vide ou incomplet, parsing et normalisation intelligents
+      const isCreationDataEmpty = !effectiveContent || (typeof effectiveContent === 'object' && Object.keys(effectiveContent).length === 0);
+      if (isCreationDataEmpty || res.rawText) {
         try {
-          const rawText = res.response || (res as any).text || '';
-          const parsedCreation = parseOrBuildAiCreation(targetType as any, rawText, docName, promptText);
+          const parsedCreation = parseOrBuildAiCreation(
+            targetType as any,
+            res.rawText || JSON.stringify(effectiveContent || {}),
+            docName,
+            promptText
+          );
           if (parsedCreation && parsedCreation.content) {
             effectiveContent = parsedCreation.content;
             if (parsedCreation.title) effectiveTitle = parsedCreation.title;
@@ -518,13 +680,11 @@ export function RightMenu({
         }).catch(() => {});
       } catch {}
 
-      // Avertir l'assistant chat si ouvert
-      window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
+      // REMARQUE : Aucun événement vers le Chat n'est émis ici pour garantir le découplage total !
 
     } catch (err: any) {
       console.warn('[RightMenu] Erreur lors de la création IA:', err);
 
-      // Si l'utilisateur a annulé manuellement
       if (err.name === 'AbortError' && !abortControllerRef.current) {
         setIsGenerating(false);
         setGeneratingInfo(null);
@@ -553,8 +713,6 @@ export function RightMenu({
       setIsGenerating(false);
       setGeneratingInfo(null);
       abortControllerRef.current = null;
-
-      window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: fallbackCreation } }));
     }
   };
 

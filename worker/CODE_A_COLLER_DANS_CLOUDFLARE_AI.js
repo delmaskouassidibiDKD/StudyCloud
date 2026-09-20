@@ -1287,6 +1287,14 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
 
         for (const mod of candidateGeminiModels) {
           try {
+            const generationConfig = {
+              temperature: body.isDirectCreation ? 0.3 : 0.7,
+              maxOutputTokens: 6000,
+            };
+            if (body.isDirectCreation) {
+              generationConfig.responseMimeType = "application/json";
+            }
+
             const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${geminiApiKey}`;
             const gResponse = await fetch(geminiApiEndpoint, {
               method: "POST",
@@ -1294,10 +1302,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
               body: JSON.stringify({
                 system_instruction: { parts: [{ text: fullSystemPrompt }] },
                 contents: geminiContents,
-                generationConfig: {
-                  temperature: 0.7,
-                  maxOutputTokens: 4000,
-                }
+                generationConfig: generationConfig
               })
             });
 
@@ -1907,9 +1912,10 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
       if (db) {
         const userMsgId = crypto.randomUUID();
         const aiMsgId = crypto.randomUUID();
+        const shouldSaveInChat = !body.isDirectCreation && !body.skipChatHistory;
 
-        // 1. Conversations & Messages
-        if (conversationId) {
+        // 1. Conversations & Messages (EXCLUSIVEMENT pour le Chat interactif, JAMAIS pour les créations directes)
+        if (shouldSaveInChat && conversationId) {
           try {
             await db.prepare(`
               INSERT INTO conversations (id, user_id, title, created_at, updated_at)
@@ -1933,19 +1939,21 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
           }
         }
 
-        // 2. User AI Workspace (Historique par session & utilisateur)
-        try {
-          await db.prepare(`
-            INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, attached_file_name, created_at, updated_at)
-            VALUES (?, ?, ?, 'user', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-          `).bind(userMsgId, userId, sessionId, userPrompt, body.attachedFileName || null).run();
+        // 2. User AI Workspace (Historique par session & utilisateur - uniquement pour le chat)
+        if (shouldSaveInChat) {
+          try {
+            await db.prepare(`
+              INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, attached_file_name, created_at, updated_at)
+              VALUES (?, ?, ?, 'user', ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            `).bind(userMsgId, userId, sessionId, userPrompt, body.attachedFileName || null).run();
 
-          await db.prepare(`
-            INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, created_at, updated_at)
-            VALUES (?, ?, ?, 'assistant', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-          `).bind(aiMsgId, userId, sessionId, formatted.chat_message).run();
-        } catch (wsErr) {
-          console.warn("[AI D1] Erreur insertion user_ai_workspace:", wsErr);
+            await db.prepare(`
+              INSERT INTO user_ai_workspace (id, user_id, session_id, role, message_text, created_at, updated_at)
+              VALUES (?, ?, ?, 'assistant', ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            `).bind(aiMsgId, userId, sessionId, formatted.chat_message).run();
+          } catch (wsErr) {
+            console.warn("[AI D1] Erreur insertion user_ai_workspace:", wsErr);
+          }
         }
 
         // 3. AI Creations (Espace Créations)
@@ -1953,7 +1961,8 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
           const creationId = body.creationId || crypto.randomUUID();
           const contentStr = typeof formatted.creation_data === "string" ? formatted.creation_data : JSON.stringify(formatted.creation_data);
 
-          if (conversationId) {
+          // Insérer dans ai_creations uniquement si la création provient du chat interactif
+          if (shouldSaveInChat && conversationId) {
             try {
               await db.prepare(`
                 INSERT INTO ai_creations (id, conversation_id, message_id, type, title, content, created_at)

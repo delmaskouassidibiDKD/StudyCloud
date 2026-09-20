@@ -1,4 +1,14 @@
-import { AiCreationType, SummaryContent, QuizContent, MindMapContent, InfographicContent, DocumentContent, MindMapNode } from '../components/ai-creations/types';
+import {
+  AiCreationType,
+  SummaryContent,
+  QuizContent,
+  MindMapContent,
+  InfographicContent,
+  DocumentContent,
+  MindMapNode,
+  AffirmationVraiFaux,
+  Flashcard,
+} from '../components/ai-creations/types';
 import { safeJsonParse } from './api';
 
 /**
@@ -352,6 +362,288 @@ function parseDocumentFromText(rawText: string, safeDocName: string): DocumentCo
 }
 
 /**
+ * Extraction dynamique de Vrai ou Faux à partir du texte brut de l'IA
+ */
+function parseVraiOuFauxFromText(rawText: string, safeDocName: string): { affirmations: AffirmationVraiFaux[] } {
+  const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+  const affirmations: AffirmationVraiFaux[] = [];
+  let currentItem: Partial<AffirmationVraiFaux> | null = null;
+
+  for (const line of lines) {
+    const numMatch = line.match(/^(?:(?:\*{1,2}|#{1,4}\s*)?(?:Affirmation\s*)?(\d+)[:\.\)]\s*(?:\*{1,2})?|[-*•]\s+)(.*)/i);
+    const vfMatch = line.match(/\b(Vrai|Faux|True|False)\b/i);
+    const explMatch = line.match(/(?:explication|justification|car|pourquoi|note)\s*[:=]\s*(.*)/i);
+
+    if (numMatch) {
+      if (currentItem && currentItem.statement) {
+        affirmations.push({
+          id: currentItem.id || `vf_${affirmations.length + 1}`,
+          statement: currentItem.statement,
+          isTrue: currentItem.isTrue ?? true,
+          explanation: currentItem.explanation || `Validé par l'analyse du document "${safeDocName}".`,
+        });
+      }
+      const rawStmt = numMatch[2] || numMatch[1] || line;
+      let isTrue = true;
+      if (/\b(?:faux|false)\b/i.test(rawStmt)) isTrue = false;
+      else if (/\b(?:vrai|true)\b/i.test(rawStmt)) isTrue = true;
+
+      const cleanStmt = rawStmt
+        .replace(/\b(?:vrai|faux|true|false)\b/gi, '')
+        .replace(/[:\-–—\(\)\[\]*]/g, ' ')
+        .trim();
+
+      currentItem = {
+        id: `vf_${affirmations.length + 1}`,
+        statement: cleanStmt || `Affirmation sur ${safeDocName}`,
+        isTrue,
+        explanation: '',
+      };
+    } else if (explMatch && currentItem) {
+      currentItem.explanation = explMatch[1].trim();
+    } else if (vfMatch && currentItem) {
+      currentItem.isTrue = /vrai|true/i.test(vfMatch[1]);
+    }
+  }
+
+  if (currentItem && currentItem.statement) {
+    affirmations.push({
+      id: currentItem.id || `vf_${affirmations.length + 1}`,
+      statement: currentItem.statement,
+      isTrue: currentItem.isTrue ?? true,
+      explanation: currentItem.explanation || `Validé par l'analyse du document "${safeDocName}".`,
+    });
+  }
+
+  if (affirmations.length < 2) {
+    const sentences = rawText
+      .split(/(?<=[.?!])\s+/)
+      .map(s => s.trim().replace(/^[-*#\d\.\s]+/, ''))
+      .filter(s => s.length > 25 && s.length < 200);
+
+    sentences.slice(0, 6).forEach((s, idx) => {
+      affirmations.push({
+        id: `vf_${idx + 1}`,
+        statement: s,
+        isTrue: idx % 2 === 0,
+        explanation: `Cette affirmation est basée sur les notions présentées dans le document "${safeDocName}".`,
+      });
+    });
+  }
+
+  return { affirmations };
+}
+
+/**
+ * Extraction dynamique de Flashcards à partir du texte brut de l'IA
+ */
+function parseFlashcardsFromText(rawText: string, safeDocName: string): { flashcards: Flashcard[] } {
+  const cards: Flashcard[] = [];
+  const blocks = rawText.split(/(?:\n\s*---\s*\n|\n\s*===\s*\n|\n(?=(?:Carte|\*\*Carte|Flashcard|\*\*Flashcard)\s*\d+))/i);
+
+  for (const block of blocks) {
+    const rectoMatch = block.match(/(?:Recto|Question|Concept|Terme|Front|Q)\s*[:=]\s*([^\n]+)/i);
+    const versoMatch = block.match(/(?:Verso|R[eé]ponse|D[eé]finition|Back|R)\s*[:=]\s*([\s\S]+?)(?=(?:Exemple|\n\n|$))/i);
+    const exampleMatch = block.match(/Exemple[s]?\s*[:=]\s*([\s\S]+)/i);
+
+    if (rectoMatch && versoMatch) {
+      const front = rectoMatch[1].trim().replace(/^\*{1,2}|\*{1,2}$/g, '');
+      const back = versoMatch[1].trim();
+      const examples = exampleMatch ? [exampleMatch[1].trim().slice(0, 150)] : [];
+
+      cards.push({
+        id: `card_${cards.length + 1}`,
+        front,
+        back,
+        tag: safeDocName.split('.')[0] || 'Général',
+        definition: back,
+        examples,
+      });
+    }
+  }
+
+  if (cards.length < 2) {
+    const lines = rawText.split('\n').map(l => l.trim()).filter(Boolean);
+    for (const line of lines) {
+      const defMatch = line.match(/^(?:[-*•\d\.]+\s*)?\*{1,2}([^*:]{2,50})\*{1,2}\s*[:–—\-]\s*(.+)/);
+      if (defMatch && cards.length < 10) {
+        cards.push({
+          id: `card_${cards.length + 1}`,
+          front: defMatch[1].trim(),
+          back: defMatch[2].trim(),
+          tag: safeDocName.split('.')[0] || 'Notion',
+          definition: defMatch[2].trim(),
+          examples: [],
+        });
+      }
+    }
+  }
+
+  if (cards.length === 0) {
+    cards.push({
+      id: 'card_1',
+      front: `Synthèse : ${safeDocName}`,
+      back: rawText.slice(0, 250) || `Notions clés du document "${safeDocName}".`,
+      tag: 'Général',
+      definition: rawText.slice(0, 250),
+      examples: [],
+    });
+  }
+
+  return { flashcards: cards };
+}
+
+/**
+ * Extraction dynamique d'Exercices Écrits à partir du texte brut de l'IA
+ */
+function parseExercicesFromText(rawText: string, safeDocName: string): any {
+  let context = '';
+  let correctionSteps = '';
+  const examples: string[] = [];
+  const questions: Array<{ id: string; number: number; text: string }> = [];
+
+  const corrSplit = rawText.split(/(?:#{1,3}\s*|\*{1,2}\s*)?(?:Corrig[eé]|Correction|R[eé]solution d[eé]taill[eé]e|Solutions?)[:\s]/i);
+  const statementPart = corrSplit[0] || rawText;
+  if (corrSplit.length > 1) {
+    correctionSteps = corrSplit.slice(1).join('\n\n').trim();
+  }
+
+  const lines = statementPart.split('\n').map(l => l.trim()).filter(Boolean);
+  const contextLines: string[] = [];
+
+  for (const line of lines) {
+    const qMatch = line.match(/^(?:(?:\*{1,2}|#{1,4}\s*)?(?:Question|Exercice|Partie)\s*(\d+)[:\.\)]\s*(?:\*{1,2})?|(\d+)[\.\)]\s+)(.*)/i);
+    if (qMatch) {
+      const qNum = parseInt(qMatch[1] || qMatch[2] || String(questions.length + 1), 10);
+      const qText = (qMatch[3] || qMatch[0] || '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim();
+      questions.push({
+        id: `q_${questions.length + 1}`,
+        number: qNum || (questions.length + 1),
+        text: qText || `Question ${questions.length + 1}`,
+      });
+    } else if (questions.length === 0) {
+      if (!line.startsWith('#') && !line.toLowerCase().startsWith('titre')) {
+        contextLines.push(line);
+      }
+    }
+  }
+
+  context = contextLines.slice(0, 5).join('\n\n').trim() || `Exercice d'application et de réflexion basé sur le cours "${safeDocName}".`;
+
+  if (questions.length === 0) {
+    questions.push(
+      {
+        id: 'q_1',
+        number: 1,
+        text: `Analyser les notions fondamentales et formules présentées dans "${safeDocName}".`,
+      },
+      {
+        id: 'q_2',
+        number: 2,
+        text: 'Appliquer la méthode de résolution aux cas concrets dérivés du document.',
+      }
+    );
+  }
+
+  if (!correctionSteps) {
+    correctionSteps = `Résolution détaillée issue du cours "${safeDocName}" :\n` +
+      questions.map((q, idx) => `**Solution Question ${idx + 1} :**\nAppliquer les principes clés du document pour résoudre cette étape en justifiant par les formules du cours.`).join('\n\n');
+  }
+
+  const exMatches = rawText.match(/Exemple\s*\d*\s*[:=]\s*([^\n]+)/gi);
+  if (exMatches && exMatches.length > 0) {
+    exMatches.slice(0, 3).forEach(ex => examples.push(ex.replace(/^Exemple\s*\d*\s*[:=]\s*/i, '').trim()));
+  } else {
+    examples.push(
+      `Exemple concret 1 : Cas pratique d'application directe des concepts de "${safeDocName}".`,
+      `Exemple concret 2 : Cas particulier et méthode de vérification des résultats.`
+    );
+  }
+
+  return {
+    written_exercise: {
+      title: `Exercices Écrits : ${safeDocName}`,
+      context,
+      questions,
+      correction: {
+        steps: correctionSteps,
+        examples,
+      },
+    },
+  };
+}
+
+/**
+ * Extraction dynamique de Devoir Complet à partir du texte brut de l'IA
+ */
+function parseDevoirFromText(rawText: string, safeDocName: string): any {
+  const secSplits = rawText.split(/(?:^|\n)(?=(?:#{1,3}\s*|\*{1,2}\s*)?(?:Partie|Exercice|Section)\s+[A-Z0-9])/i).filter(s => s.trim().length > 10);
+  const sections: any[] = [];
+  const rawSections = secSplits.length > 0 ? secSplits : [rawText];
+
+  rawSections.slice(0, 4).forEach((secText, sIdx) => {
+    const secLines = secText.trim().split('\n').map(l => l.trim()).filter(Boolean);
+    const secTitle = secLines[0].replace(/^#{1,3}\s*|\*{1,2}/g, '').trim() || `Partie ${sIdx + 1} : Problème d'évaluation`;
+    const secQuestions: any[] = [];
+    const secStatementLines: string[] = [];
+
+    for (const line of secLines.slice(1)) {
+      const qMatch = line.match(/^(?:(?:\*{1,2}|#{1,4}\s*)?(?:Question\s*)?(\d+)[\.\)]\s*(?:\*{1,2})?|[-*•]\s+)(.*)/i);
+      const pointsMatch = line.match(/\((\d+(?:[,.]\d+)?)\s*pts?\)/i) || line.match(/\[(\d+(?:[,.]\d+)?)\s*points?\]/i);
+      const points = pointsMatch ? Math.round(parseFloat(pointsMatch[1].replace(',', '.'))) : 3;
+
+      if (qMatch) {
+        secQuestions.push({
+          id: `q_${sIdx + 1}_${secQuestions.length + 1}`,
+          number: `${secQuestions.length + 1}`,
+          type: 'open',
+          texte: (qMatch[2] || line).replace(/\(\d+.*pts?\)/i, '').replace(/^\*{1,2}|\*{1,2}$/g, '').trim(),
+          points: points || 3,
+          sampleAnswer: `Éléments de réponse attendus selon les notions clés du cours "${safeDocName}".`,
+          explication: 'Justifier par les calculs, propriétés ou théorèmes applicables.',
+        });
+      } else if (secQuestions.length === 0) {
+        secStatementLines.push(line);
+      }
+    }
+
+    if (secQuestions.length === 0) {
+      secQuestions.push({
+        id: `q_${sIdx + 1}_1`,
+        number: '1',
+        type: 'open',
+        texte: `Démontrer et expliquer les concepts centraux abordés dans cette partie sur "${safeDocName}".`,
+        points: 4,
+        sampleAnswer: 'Raisonnement rigoureux s\'appuyant sur le cours.',
+        explication: 'Préciser les hypothèses et démarches.',
+      });
+    }
+
+    sections.push({
+      id: `sec_${sIdx + 1}`,
+      title: secTitle,
+      problem_statement: secStatementLines.slice(0, 4).join('\n\n') || `Mise en situation d'évaluation pour la ${secTitle}.`,
+      questions: secQuestions,
+      correction: {
+        steps: `Barème et corrigé type pour ${secTitle} : validation des étapes méthodologiques et de la clarté du raisonnement.`,
+        examples: [`Exemple d'application type de ${secTitle}`],
+      },
+    });
+  });
+
+  const totalPoints = sections.reduce((acc, sec) => acc + (sec.questions?.reduce((sum: number, q: any) => sum + (q.points || 0), 0) || 0), 0) || 20;
+
+  return {
+    complete_exam: {
+      title: `ÉPREUVE OFFICIELLE : ${safeDocName}`,
+      duree: '2h00',
+      baremeTotal: totalPoints,
+      sections,
+    },
+  };
+}
+
+/**
  * ============================================================================
  * POINT D'ENTRÉE DU PARSEUR INTELLIGENT DE CRÉATIONS IA
  * ============================================================================
@@ -420,27 +712,64 @@ export function parseOrBuildAiCreation(
           break;
         }
         case 'vrai-ou-faux': {
+          const rawAff = Array.isArray(dataObj) ? dataObj : (dataObj.affirmations || dataObj.data);
+          if (Array.isArray(rawAff) && rawAff.length > 0) {
+            return {
+              title: sanitizeText(parsed.creation_title || dataObj.title) || `Vrai ou Faux : ${safeDocName}`,
+              content: dataObj
+            };
+          }
+          const fallbackVF = parseVraiOuFauxFromText(cleanText, safeDocName);
           return {
             title: sanitizeText(parsed.creation_title || dataObj.title) || `Vrai ou Faux : ${safeDocName}`,
-            content: dataObj
+            content: fallbackVF
           };
         }
         case 'carte-memoire': {
+          const rawCards = Array.isArray(dataObj) ? dataObj : (dataObj.flashcards || dataObj.cards || dataObj.data);
+          if (Array.isArray(rawCards) && rawCards.length > 0) {
+            return {
+              title: sanitizeText(parsed.creation_title || dataObj.title) || `Cartes Mémoire : ${safeDocName}`,
+              content: dataObj
+            };
+          }
+          const fallbackCards = parseFlashcardsFromText(cleanText, safeDocName);
           return {
             title: sanitizeText(parsed.creation_title || dataObj.title) || `Cartes Mémoire : ${safeDocName}`,
-            content: dataObj
+            content: fallbackCards
           };
         }
         case 'exercices-ecrits': {
+          const hasQuestions = (dataObj.written_exercise && Array.isArray(dataObj.written_exercise.questions) && dataObj.written_exercise.questions.length > 0) ||
+            (Array.isArray(dataObj.questions) && dataObj.questions.length > 0) ||
+            (Array.isArray(dataObj.exercises) && dataObj.exercises.length > 0) ||
+            (Array.isArray(dataObj.exercices) && dataObj.exercices.length > 0);
+          if (hasQuestions) {
+            return {
+              title: sanitizeText(parsed.creation_title || dataObj.title) || `Exercices Écrits : ${safeDocName}`,
+              content: dataObj
+            };
+          }
+          const fallbackEx = parseExercicesFromText(cleanText, safeDocName);
           return {
             title: sanitizeText(parsed.creation_title || dataObj.title) || `Exercices Écrits : ${safeDocName}`,
-            content: dataObj
+            content: fallbackEx
           };
         }
         case 'devoir-complet': {
+          const hasExam = (dataObj.complete_exam && Array.isArray(dataObj.complete_exam.sections) && dataObj.complete_exam.sections.length > 0) ||
+            (Array.isArray(dataObj.sections) && dataObj.sections.length > 0) ||
+            (Array.isArray(dataObj.questions) && dataObj.questions.length > 0);
+          if (hasExam) {
+            return {
+              title: sanitizeText(parsed.creation_title || dataObj.title) || `Devoir Complet : ${safeDocName}`,
+              content: dataObj
+            };
+          }
+          const fallbackDevoir = parseDevoirFromText(cleanText, safeDocName);
           return {
             title: sanitizeText(parsed.creation_title || dataObj.title) || `Devoir Complet : ${safeDocName}`,
-            content: dataObj
+            content: fallbackDevoir
           };
         }
         case 'summary': {
@@ -506,6 +835,18 @@ export function parseOrBuildAiCreation(
   if (['questionnaire', 'questionnaire-test', 'qcm', 'quiz'].includes(normType)) {
     const parsedQuiz = parseQuizFromText(cleanText, safeDocName);
     return { title: parsedQuiz.title, content: parsedQuiz };
+  } else if (['vrai-ou-faux', 'vrai-ou-faux-test'].includes(normType)) {
+    const parsedVF = parseVraiOuFauxFromText(cleanText, safeDocName);
+    return { title: `Vrai ou Faux : ${safeDocName}`, content: parsedVF };
+  } else if (['carte-memoire', 'flashcards'].includes(normType)) {
+    const parsedCards = parseFlashcardsFromText(cleanText, safeDocName);
+    return { title: `Cartes Mémoire : ${safeDocName}`, content: parsedCards };
+  } else if (['exercices-ecrits'].includes(normType)) {
+    const parsedEx = parseExercicesFromText(cleanText, safeDocName);
+    return { title: `Exercices Écrits : ${safeDocName}`, content: parsedEx };
+  } else if (['devoir-complet'].includes(normType)) {
+    const parsedDevoir = parseDevoirFromText(cleanText, safeDocName);
+    return { title: `Devoir Complet : ${safeDocName}`, content: parsedDevoir };
   } else if (['resume', 'summary'].includes(normType)) {
     const parsedSummary = parseSummaryFromText(cleanText, safeDocName);
     return { title: `Fiche de Résumé : ${safeDocName}`, content: parsedSummary };

@@ -368,6 +368,109 @@ export async function sendChatMessageToAi(params: {
 }
 
 /**
+ * Appel direct et exclusif au moteur IA pour les 12 créations du menu droit.
+ * Cette fonction est STRICTEMENT DÉCOUPLÉE du Chat :
+ * - Aucun message ni session n'est injecté dans les tables 'conversations', 'messages', 'user_ai_workspace'
+ * - Aucun texte de prompt ni message assistant ne pollue l'historique du chat
+ * - Retourne directement les données structurées pour le panneau de création.
+ */
+export async function generateDirectAiCreation(params: {
+  toolType: string;
+  docName: string;
+  docContent: string;
+  prompt: string;
+  userId?: string;
+  powerMode?: boolean;
+}): Promise<{
+  success: boolean;
+  creation_type: string;
+  creation_title: string;
+  creation_data: any;
+  model?: string;
+  rawText?: string;
+}> {
+  const isPowerMode = Boolean(params.powerMode ?? (localStorage.getItem('studycloud_ai_power_mode') === 'true'));
+  const userGeminiApiKey = getGeminiApiKey().trim();
+  const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
+  const currentUserId = params.userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+
+  const payload = {
+    isDirectCreation: true,
+    skipChatHistory: true,
+    requested_type: params.toolType,
+    toolType: params.toolType,
+    type: params.toolType,
+    prompt: params.prompt,
+    message: params.prompt,
+    attachedFileName: params.docName,
+    fileName: params.docName,
+    file_name: params.docName,
+    attachedFileContent: params.docContent,
+    file_content: params.docContent,
+    fileContent: params.docContent,
+    documentContent: params.docContent,
+    documentText: params.docContent,
+    userId: currentUserId,
+    powerMode: isPowerMode,
+    isPowerMode: isPowerMode,
+    engine: isPowerMode ? 'gemini' : 'standard',
+    geminiApiKey: userGeminiApiKey,
+  };
+
+  const response = await fetch(dedicatedAiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': currentUserId,
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: response.statusText }));
+    throw new Error(err.error || `Erreur API Création IA (${response.status})`);
+  }
+
+  const data = await response.json();
+  let rawText = '';
+  if (typeof data.response === 'string') rawText = data.response;
+  else if (typeof data.chat_message === 'string') rawText = data.chat_message;
+  else if (typeof data.text === 'string') rawText = data.text;
+  else rawText = JSON.stringify(data);
+
+  let creationData = data.creation_data;
+  if (typeof creationData === 'string') {
+    creationData = safeJsonParse(creationData);
+  }
+
+  // Si pas encore d'objet creation_data, tenter d'extraire le JSON du texte
+  if (!creationData || (typeof creationData === 'object' && Object.keys(creationData).length === 0)) {
+    try {
+      const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || rawText.match(/(\{[\s\S]*\})/);
+      if (jsonMatch) {
+        const candidate = jsonMatch[1] || jsonMatch[0];
+        const parsed = safeJsonParse(candidate);
+        if (parsed && typeof parsed === 'object') {
+          creationData = parsed.creation_data || (parsed.questions || parsed.affirmations || parsed.cards || parsed.root || parsed.overview || parsed.sections || parsed.exercises || parsed.exercices || parsed.written_exercise || parsed.complete_exam ? parsed : null);
+        }
+      }
+    } catch {}
+  }
+
+  const creationType = data.creation_type || params.toolType;
+  const creationTitle = data.creation_title || data.title || `${params.toolType.toUpperCase()} : ${params.docName}`;
+
+  return {
+    success: data.success !== false,
+    creation_type: creationType,
+    creation_title: creationTitle,
+    creation_data: creationData,
+    model: data.model,
+    rawText,
+  };
+}
+
+/**
  * Enregistre la réaction (pouce levé ou pouce baissé) de l'élève pour le modèle IA
  */
 export async function saveAiReaction(params: {

@@ -6,68 +6,70 @@ export default function Resume({ data, title, sourceFileName }: { data?: any; ti
   const [copied, setCopied] = useState(false);
   const [downloaded, setDownloaded] = useState(false);
 
-  // Normalisation des données pour accepter data.summary ou data directement
-  const actualData = useMemo(() => {
-    if (!data) return null;
-    if (data.summary && typeof data.summary === 'object' && !Array.isArray(data.summary)) {
-      return data.summary;
-    }
-    return data;
-  }, [data]);
+  // Normalisation unifiée et robuste des données
+  const parsedSummary = useMemo(() => {
+    const raw = data?.summary && typeof data.summary === 'object' && !Array.isArray(data.summary)
+      ? data.summary
+      : data;
 
-  const hasDynamicData = Boolean(
-    actualData && (
-      actualData.overview ||
-      (typeof actualData.summary === 'string' && actualData.summary) ||
-      (Array.isArray(actualData.sections) && actualData.sections.length > 0) ||
-      (Array.isArray(actualData.keyPoints) && actualData.keyPoints.length > 0) ||
-      typeof actualData.text === 'string' ||
-      typeof actualData.content === 'string'
-    )
-  );
+    const hasData = Boolean(
+      raw && (
+        raw.overview ||
+        (typeof raw.summary === 'string' && raw.summary) ||
+        (Array.isArray(raw.sections) && raw.sections.length > 0) ||
+        (Array.isArray(raw.keyPoints) && raw.keyPoints.length > 0) ||
+        typeof raw.text === 'string' ||
+        typeof raw.content === 'string'
+      )
+    );
 
-  const docTitle = actualData?.title || data?.title || title || (sourceFileName ? `Fiche de synthèse : ${sourceFileName}` : 'Fiche de synthèse');
-  const docSubtitle = actualData?.overview || (typeof actualData?.summary === 'string' ? actualData.summary : '') || actualData?.description || (hasDynamicData ? 'Synthèse structurée et didactique des points clés de ce cours.' : '');
+    const safeTitle = raw?.title || data?.title || title || (sourceFileName ? `Fiche de synthèse : ${sourceFileName}` : 'Fiche de synthèse');
+    const safeSubtitle = raw?.overview || (typeof raw?.summary === 'string' ? raw.summary : '') || raw?.description || (hasData ? 'Synthèse structurée et didactique des points clés de ce cours.' : '');
 
-  const dynamicSections = useMemo(() => {
-    const rawSections = actualData?.sections || data?.sections;
-    if (!rawSections || !Array.isArray(rawSections)) return [];
-    return rawSections.map((sec: any, idx: number) => {
-      const heading = sec.section_title || sec.sectionTitle || sec.heading || sec.title || sec.titre || `Section ${idx + 1}`;
-      const body = sec.content || sec.body || sec.texte || '';
-      return {
-        number: sec.number || idx + 1,
-        heading,
-        body,
-        points: Array.isArray(sec.points) ? sec.points : (Array.isArray(sec.keyPoints) ? sec.keyPoints : (Array.isArray(sec.bulletPoints) ? sec.bulletPoints : [])),
-        protocolTitle: sec.protocolTitle || sec.highlightTitle || 'Points fondamentaux à retenir :'
-      };
-    });
-  }, [actualData, data]);
+    const rawSections = raw?.sections || data?.sections;
+    const sections = Array.isArray(rawSections)
+      ? rawSections.map((sec: any, idx: number) => ({
+          number: sec.number || idx + 1,
+          heading: sec.section_title || sec.sectionTitle || sec.heading || sec.title || sec.titre || `Section ${idx + 1}`,
+          body: sec.content || sec.body || sec.texte || '',
+          points: Array.isArray(sec.points) ? sec.points : (Array.isArray(sec.keyPoints) ? sec.keyPoints : (Array.isArray(sec.bulletPoints) ? sec.bulletPoints : [])),
+          protocolTitle: sec.protocolTitle || sec.highlightTitle || 'Points fondamentaux à retenir :'
+        }))
+      : [];
 
-  const dynamicKeyPoints: string[] = useMemo(() => {
-    if (Array.isArray(actualData?.keyPoints)) return actualData.keyPoints;
-    if (Array.isArray(data?.keyPoints)) return data.keyPoints;
-    if (Array.isArray(actualData?.pointsCles)) return actualData.pointsCles;
-    if (Array.isArray(data?.pointsCles)) return data.pointsCles;
-    return [];
-  }, [actualData, data]);
+    const rawKeyPoints = Array.isArray(raw?.keyPoints) ? raw.keyPoints : (Array.isArray(data?.keyPoints) ? data.keyPoints : (Array.isArray(raw?.pointsCles) ? raw.pointsCles : []));
+    const keyPoints = Array.isArray(rawKeyPoints) ? rawKeyPoints : [];
+
+    return {
+      hasData,
+      title: safeTitle,
+      subtitle: safeSubtitle,
+      sections,
+      keyPoints,
+    };
+  }, [data, title, sourceFileName]);
+
+  const docTitle = parsedSummary.title;
+  const docSubtitle = parsedSummary.subtitle;
+  const hasDynamicData = parsedSummary.hasData;
+  const dynamicSections = parsedSummary.sections;
+  const dynamicKeyPoints = parsedSummary.keyPoints;
 
   const fullText = useMemo(() => {
-    if (!hasDynamicData) return "";
-    let out = `DOCUMENT DE SYNTHÈSE\n${docTitle.toUpperCase()}\n`;
-    if (docSubtitle) out += `\n${docSubtitle}\n`;
-    if (dynamicKeyPoints.length > 0) {
-      out += `\nPOINTS CLÉS :\n` + dynamicKeyPoints.map((p) => `• ${p}`).join('\n') + '\n';
+    if (!parsedSummary.hasData) return '';
+    let out = `DOCUMENT DE SYNTHÈSE\n${parsedSummary.title.toUpperCase()}\n`;
+    if (parsedSummary.subtitle) out += `\n${parsedSummary.subtitle}\n`;
+    if (parsedSummary.keyPoints.length > 0) {
+      out += `\nPOINTS CLÉS :\n` + parsedSummary.keyPoints.map((p) => `• ${p}`).join('\n') + '\n';
     }
-    dynamicSections.forEach((sec) => {
+    parsedSummary.sections.forEach((sec) => {
       out += `\n=======================================================\n${sec.number}. ${sec.heading.toUpperCase()}\n=======================================================\n${sec.body}\n`;
       if (sec.points && sec.points.length > 0) {
         out += sec.points.map((p: string) => `  - ${p}`).join('\n') + '\n';
       }
     });
     return out;
-  }, [hasDynamicData, docTitle, docSubtitle, dynamicKeyPoints, dynamicSections]);
+  }, [parsedSummary]);
 
   const handleCopy = () => {
     if (!fullText) return;

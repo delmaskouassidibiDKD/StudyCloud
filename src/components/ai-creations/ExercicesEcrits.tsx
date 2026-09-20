@@ -157,24 +157,19 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
   const [showCorrection, setShowCorrection] = useState(true);
   const [isFullCorrectionMode, setIsFullCorrectionMode] = useState(false);
 
-  // Réponses rédigées par l'étudiant sous chaque question
-  const [answers, setAnswers] = useState<Record<string, string[]>>(() => {
-    const initial: Record<string, string[]> = {};
-    exercise.questions.forEach((q) => {
-      initial[q.id] = ['', '', ''];
-    });
-    return initial;
-  });
-
+  // Réponses rédigées par l'étudiant sous chaque question (sans closure dépendante au montage)
+  const [answers, setAnswers] = useState<Record<string, string[]>>({});
   const [downloaded, setDownloaded] = useState(false);
 
   useEffect(() => {
     const fresh: Record<string, string[]> = {};
-    exercise.questions.forEach((q) => {
-      fresh[q.id] = ['', '', ''];
-    });
+    if (exercise?.questions) {
+      exercise.questions.forEach((q) => {
+        fresh[q.id] = ['', '', ''];
+      });
+    }
     setAnswers(fresh);
-  }, [data]);
+  }, [exercise]);
 
   const updateLine = (questionId: string, lineIndex: number, text: string) => {
     const lines = [...(answers[questionId] || ['', '', ''])];
