@@ -10,7 +10,7 @@
 // - Formulaire interactif pour modifier le stockage de bienvenue et payant de chaque utilisateur avec sauvegarde D1 en temps réel.
 // ============================================================================
 
-function formatBytes(bytes, decimals = 2) {
+function formatBytes(bytes, decimals = 1) {
   if (!bytes || bytes <= 0 || isNaN(bytes)) return '0 Octets';
   const k = 1024;
   const dm = decimals < 0 ? 0 : decimals;
@@ -601,25 +601,27 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
     WHERE sf.user_id = ?
   `, [userId], { folders_count: 0, files_count: 0, total_bytes: 0 });
 
-  // 5. BOUTIQUE : PRODUITS
+  // 5. BOUTIQUE : PRODUITS PUBLIES POUR LES COMMANDES (Images & données écrites)
   const shopStats = await safeFirst(db, `
-    SELECT COUNT(*) AS products_count, COALESCE(SUM(LENGTH(description) + LENGTH(COALESCE(image_urls_json, ''))), 0) AS d1_text_bytes
+    SELECT COUNT(*) AS products_count, 
+           COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(description, '')) + LENGTH(COALESCE(price, '')) + LENGTH(COALESCE(image_urls_json, ''))), 0) AS d1_text_bytes
     FROM products WHERE seller_id = ?
   `, [userId], { products_count: 0, d1_text_bytes: 0 });
+  const shopImagesBytes = (shopStats.products_count || 0) * 120000;
 
-  // 6. CONTENUS GENERES PAR L'IA
+  // 6. CONTENUS GENERES PAR L'IA (Fiches mémoires, résumés, quiz...)
   const aiContentsStats = await safeFirst(db, `
     SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(content_json, ''))), 0) AS d1_text_bytes
     FROM ai_generated_contents WHERE user_id = ?
   `, [userId], { count: 0, d1_text_bytes: 0 });
 
-  // 7. ESPACE DE TRAVAIL IA / WORKSPACE
+  // 7. ESPACE DE TRAVAIL IA / WORKSPACE (Brouillons, notes, fichiers attachés)
   const aiWorkspaceStats = await safeFirst(db, `
     SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(message_text) + LENGTH(COALESCE(attached_file_content, '')) + LENGTH(COALESCE(user_notes, ''))), 0) AS d1_text_bytes
     FROM user_ai_workspace WHERE user_id = ?
   `, [userId], { count: 0, d1_text_bytes: 0 });
 
-  // 8. DISCUSSIONS & CHAT IA (Messages reçus / envoyés exemptés)
+  // 8. DISCUSSIONS & CHAT IA ENREGISTREES (Conversations et messages IA)
   const chatStats = await safeFirst(db, `
     SELECT COUNT(DISTINCT c.id) AS conversations_count, COUNT(m.id) AS messages_count, COALESCE(SUM(LENGTH(m.content) + LENGTH(COALESCE(m.metadata, ''))), 0) AS d1_text_bytes
     FROM conversations c LEFT JOIN messages m ON m.conversation_id = c.id
@@ -650,36 +652,38 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
     FROM grades WHERE user_id = ?
   `, [userId], { count: 0, d1_text_bytes: 0 });
 
-  // 13. CALENDRIER & SESSIONS
+  // 13. CALENDRIER & SESSIONS D'ETUDE (HORLOGE)
   const calendarStats = await safeFirst(db, `SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(title)), 0) AS d1_text_bytes FROM calendar_events WHERE user_id = ?`, [userId], { count: 0, d1_text_bytes: 0 });
   const studySessionsStats = await safeFirst(db, `SELECT COUNT(*) AS count, COALESCE(SUM(duration_seconds), 0) AS total_study_seconds FROM study_sessions WHERE user_id = ?`, [userId], { count: 0, total_study_seconds: 0 });
 
-  // 14. AVATAR
+  // 14. AVATAR / ICONE PERSONNALISEE
   const hasCustomAvatar = user.avatar_url && (user.avatar_url.includes('avatars/') || user.avatar_url.startsWith('http') || user.avatar_url.startsWith('data:image'));
   const avatarEstimatedBytes = hasCustomAvatar ? 85000 : 0;
 
   // Profil
   const userProfileBytes = (user.name?.length || 0) + (user.email?.length || 0) + (user.school?.length || 0) + (user.filiere?.length || 0) + (user.phone?.length || 0) + 120;
 
-  // Calculs R2 Brut & Net
-  const grossR2Bytes = (filesStats.total_bytes || 0) + (pubStats.total_bytes || 0) + (shareStats.total_bytes || 0) + avatarEstimatedBytes;
-  const exemptR2Bytes = (pubStats.total_bytes || 0); // Fichiers publiés dans le menu Ressources pour tout le monde
-  const netR2Bytes = Math.max(0, grossR2Bytes - exemptR2Bytes);
+  // CALCULS R2 DIRECTS :
+  // Net R2 (Facturé) : fichiers personnels + liens partagés + avatar + images boutique
+  // Fichiers de ressources publiques (published_documents) STRICTEMENT EXCLUS du net facturé
+  const netR2Bytes = (filesStats.total_bytes || 0) + (shareStats.total_bytes || 0) + avatarEstimatedBytes + shopImagesBytes;
+  const exemptR2Bytes = (pubStats.total_bytes || 0);
+  const grossR2Bytes = netR2Bytes + exemptR2Bytes;
 
-  // Calculs D1 Brut & Net
-  const userD1TextBytes = (shopStats.d1_text_bytes || 0) + (aiContentsStats.d1_text_bytes || 0) + (aiWorkspaceStats.d1_text_bytes || 0) +
-                          (chatStats.d1_text_bytes || 0) + (notesStats.d1_text_bytes || 0) + (matieresStats.d1_text_bytes || 0) + 
-                          (scheduleStats.d1_text_bytes || 0) + (gradesStats.d1_text_bytes || 0) + (calendarStats.d1_text_bytes || 0) + userProfileBytes;
+  // CALCULS D1 DIRECTS :
+  // Net D1 (Facturé) : textes personnels + créations IA + discussions + bloc-notes + boutique + horloge + profil + SQLite row overhead
+  const netD1TextBytes = (shopStats.d1_text_bytes || 0) + (aiContentsStats.d1_text_bytes || 0) + (aiWorkspaceStats.d1_text_bytes || 0) +
+                         (chatStats.d1_text_bytes || 0) + (notesStats.d1_text_bytes || 0) + (matieresStats.d1_text_bytes || 0) + 
+                         (scheduleStats.d1_text_bytes || 0) + (gradesStats.d1_text_bytes || 0) + (calendarStats.d1_text_bytes || 0) + userProfileBytes;
 
-  const userD1Rows = (filesStats.total_count || 0) + (pubStats.count || 0) + (shareStats.folders_count || 0) + (shareStats.files_count || 0) +
-                     (shopStats.products_count || 0) + (aiContentsStats.count || 0) + (aiWorkspaceStats.count || 0) +
-                     (chatStats.conversations_count || 0) + (chatStats.messages_count || 0) + (notesStats.count || 0) + 
-                     (matieresStats.count || 0) + (scheduleStats.slots_count || 0) + (gradesStats.count || 0) + (calendarStats.count || 0) + (studySessionsStats.count || 0) + 1;
+  const netD1Rows = (filesStats.total_count || 0) + (shareStats.folders_count || 0) + (shareStats.files_count || 0) +
+                    (shopStats.products_count || 0) + (aiContentsStats.count || 0) + (aiWorkspaceStats.count || 0) +
+                    (chatStats.conversations_count || 0) + (chatStats.messages_count || 0) + (notesStats.count || 0) + 
+                    (matieresStats.count || 0) + (scheduleStats.slots_count || 0) + (gradesStats.count || 0) + (calendarStats.count || 0) + (studySessionsStats.count || 0) + 1;
 
-  const grossD1Bytes = userD1TextBytes + (userD1Rows * 128);
+  const netD1Bytes = netD1TextBytes + (netD1Rows * 128);
 
-  // Éléments D1 exemptés (strictement non comptés ni pénalisés) :
-  // (Les messages et interactions IA font partie intégrante du stockage payé par l'utilisateur)
+  // Éléments D1 exemptés (strictement non comptés ni pénalisés dans le net) :
   // 1. Fichiers publiés comme ressource dans le menu ressources
   const pubDocsD1Bytes = (pubStats.count * 128) + (pubStats.count * 350);
   // 2. Nombre de vues des fichiers
@@ -692,20 +696,20 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
   const exemptD1Bytes = pubDocsD1Bytes + viewsD1Bytes + downloadsD1Bytes + wordCountD1Bytes;
   const exemptD1Rows = (pubStats.count || 0) + (viewsInteractionsStats.count || 0) + (pubDownloadsStats.count || 0) + (wordCountStats.count || 0);
 
-  const netD1Bytes = Math.max(0, grossD1Bytes - exemptD1Bytes);
-  const netD1Rows = Math.max(0, userD1Rows - exemptD1Rows);
+  const grossD1Bytes = netD1Bytes + exemptD1Bytes;
+  const userD1Rows = netD1Rows + exemptD1Rows;
 
   // Totaux Brut & Net
-  const grossTotalBytes = grossR2Bytes + grossD1Bytes;
   const netTotalBytes = netR2Bytes + netD1Bytes;
+  const grossTotalBytes = grossR2Bytes + grossD1Bytes;
   const totalExemptBytes = exemptR2Bytes + exemptD1Bytes;
 
   const grossUsagePercentage = totalAllowedBytes > 0 
-    ? Math.min(100, parseFloat(((grossTotalBytes / totalAllowedBytes) * 100).toFixed(2)))
+    ? Math.min(100, parseFloat(((grossTotalBytes / totalAllowedBytes) * 100).toFixed(1)))
     : 0;
 
   const netUsagePercentage = totalAllowedBytes > 0 
-    ? Math.min(100, parseFloat(((netTotalBytes / totalAllowedBytes) * 100).toFixed(2)))
+    ? Math.min(100, parseFloat(((netTotalBytes / totalAllowedBytes) * 100).toFixed(1)))
     : 0;
 
   // Dictionnaire individuel table par table pour cet utilisateur
@@ -1679,10 +1683,13 @@ function renderDashboardHtml(data) {
           </div>
 
           <div class="text-right self-start sm:self-auto bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
-            <div class="text-xs font-mono font-bold text-orange-400">Total : \${displayTotalFormatted} / \${q.totalAllowedFormatted}</div>
-            <div class="text-[10px] text-slate-400">Consommation : \${displayUsagePercentage}%</div>
-            \${isNet && exempted.totalBytes > 0 ? \`
+            <div class="text-xs font-mono font-bold text-orange-400">Total : \${s.net ? s.net.totalFormatted : s.totalFormatted} / \${q.totalAllowedFormatted}</div>
+            <div class="text-[10px] text-slate-400">Consommation : \${s.net ? s.net.usagePercentage : s.usagePercentage}%</div>
+            \${exempted.totalBytes > 0 ? \`
               <div class="text-[9px] font-mono text-emerald-400 font-bold">🎁 +\${exempted.totalFormatted} offerts</div>
+            \` : ''}
+            \${!isNet ? \`
+              <div class="text-[9px] font-mono text-amber-400 font-bold">Audit Brut CF : \${s.gross.totalFormatted}</div>
             \` : ''}
           </div>
         </div>
@@ -1693,27 +1700,27 @@ function renderDashboardHtml(data) {
             <button 
               onclick="setUserStorageViewMode('net')"
               class="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer \${isNet ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-1 ring-emerald-400' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}"
-              title="Affiche le vrai stockage personnel avec les ressources publiques, messages et statistiques déduits"
+              title="Affiche le vrai stockage personnel facturé (identique à 100% à l'application mobile)"
             >
-              <span>⚡</span> Vrai Stockage Réel (Déduit & Non Pénalisé)
+              <span>⚡</span> Vrai Stockage Réel (Conforme Application)
             </button>
             <button 
               onclick="setUserStorageViewMode('gross')"
-              class="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer \${!isNet ? 'bg-orange-600 text-white shadow-md shadow-orange-600/30 ring-1 ring-orange-400' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}"
-              title="Affiche l'intégralité brute absolue de tous les octets Cloudflare"
+              class="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer \${!isNet ? 'bg-amber-700 text-white shadow-md shadow-amber-700/30 ring-1 ring-amber-400' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}"
+              title="Audit technique brut Cloudflare (incluant ressources communautaires gratuites et statistiques)"
             >
-              <span>📦</span> Stockage Brut Total (Tout Inclus)
+              <span>🔍</span> Audit Brut Cloudflare (Ressources Incluses)
             </button>
           </div>
 
           <div class="text-[11px] font-mono flex items-center gap-2 px-1">
             \${isNet ? \`
               <span class="inline-flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20 font-bold">
-                🎁 \${exempted.totalFormatted} offerts non décomptés
+                ✅ Stockage Réel Facturé (100% synchronisé avec l'application)
               </span>
             \` : \`
-              <span class="inline-flex items-center gap-1 text-orange-400 bg-orange-500/10 px-2.5 py-1 rounded-md border border-orange-500/20 font-bold">
-                📦 Vue technique brute Cloudflare
+              <span class="inline-flex items-center gap-1 text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/20 font-bold">
+                ⚠️ Audit brut serveur Cloudflare (Non facturé à l'étudiant)
               </span>
             \`}
           </div>
@@ -1740,22 +1747,22 @@ function renderDashboardHtml(data) {
             </div>
           </div>
         \` : \`
-          <div class="p-3 rounded-xl bg-orange-950/25 border border-orange-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs shadow-inner">
+          <div class="p-3 rounded-xl bg-amber-950/25 border border-amber-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs shadow-inner">
             <div class="flex items-start gap-2.5">
-              <span class="text-xl shrink-0 mt-0.5">📦</span>
+              <span class="text-xl shrink-0 mt-0.5">🔍</span>
               <div>
                 <div class="font-bold text-white flex items-center gap-2">
-                  <span>Stockage Physique Brut Exhaustif :</span>
-                  <span class="text-orange-400 font-black font-mono text-xs sm:text-sm">\${displayTotalFormatted}</span>
+                  <span>Audit Technique Disque Brut Cloudflare :</span>
+                  <span class="text-amber-400 font-black font-mono text-xs sm:text-sm">\${s.gross.totalFormatted}</span>
                 </div>
                 <p class="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
-                  Affiche la totalité absolue de tous les octets physiques enregistrés pour cet utilisateur sur Cloudflare (incluant toutes ses ressources publiques, messages et statistiques) avant déduction de l'espace communautaire.
+                  Affiche la totalité absolue de tous les octets physiques enregistrés pour cet utilisateur sur Cloudflare (incluant toutes ses ressources publiques, messages et statistiques). <strong>L'utilisateur n'est facturé que sur son Vrai Stockage Réel (\${s.net.totalFormatted}).</strong>
                 </p>
               </div>
             </div>
             <div class="flex flex-wrap gap-1.5 shrink-0 font-mono text-[10px]">
-              <span class="bg-slate-950/80 text-orange-300 px-2 py-1 rounded border border-slate-800">R2 Brut : \${displayR2Formatted}</span>
-              <span class="bg-slate-950/80 text-orange-300 px-2 py-1 rounded border border-slate-800">D1 Brut : \${displayD1Formatted} (\${displayD1Rows} lignes)</span>
+              <span class="bg-slate-950/80 text-amber-300 px-2 py-1 rounded border border-slate-800">R2 Brut : \${displayR2Formatted}</span>
+              <span class="bg-slate-950/80 text-amber-300 px-2 py-1 rounded border border-slate-800">D1 Brut : \${displayD1Formatted} (\${displayD1Rows} lignes)</span>
             </div>
           </div>
         \`}

@@ -2252,7 +2252,7 @@ async function getUserStorageDetails(db, userId) {
   const totalAllowedMb = parseFloat((welcomeTotalMb + paidTotalMb + bonusTotalMb).toFixed(2));
   const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
 
-  // 2. Fichiers personnels de cours et sessions
+  // 2. Fichiers personnels de cours et documents
   let personalFilesBytes = 0;
   let personalFilesCount = 0;
   try {
@@ -2261,7 +2261,51 @@ async function getUserStorageDetails(db, userId) {
     personalFilesBytes = Number(fRes?.s || 0);
   } catch (e) {}
 
-  // 3. Données & fiches (notes, matières, planning, notes d'évaluations, contenus IA)
+  // Fichiers des liens et dossiers partagés personnels
+  let shareFilesBytes = 0;
+  let shareFilesCount = 0;
+  try {
+    const sfRes = await db.prepare(`
+      SELECT COUNT(sff.id) AS c, COALESCE(SUM(sff.size), 0) AS s 
+      FROM shared_folders sf 
+      JOIN shared_folder_files sff ON sff.shared_folder_id = sf.id 
+      WHERE sf.user_id = ?
+    `).bind(userId).first();
+    shareFilesCount = Number(sfRes?.c || 0);
+    shareFilesBytes = Number(sfRes?.s || 0);
+  } catch (e) {}
+
+  // Profil et icône/avatar personnalisé
+  let avatarBytes = 0;
+  let userProfileRow = null;
+  try {
+    userProfileRow = await db.prepare("SELECT avatar_url, name, email, phone, school, filiere FROM users WHERE id = ?").bind(userId).first();
+    if (userProfileRow?.avatar_url && (userProfileRow.avatar_url.includes('avatars/') || userProfileRow.avatar_url.startsWith('http') || userProfileRow.avatar_url.startsWith('data:image'))) {
+      avatarBytes = 85000;
+    }
+  } catch (e) {}
+
+  // Boutique : Produits publiés pour les commandes (images R2 & données écrites D1)
+  let shopProductsCount = 0;
+  let shopTextBytes = 0;
+  let shopImagesBytes = 0;
+  try {
+    const pRes = await db.prepare(`
+      SELECT COUNT(*) AS c, 
+             COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(description, '')) + LENGTH(COALESCE(price, '')) + LENGTH(COALESCE(image_urls_json, ''))), 0) AS tb 
+      FROM products WHERE seller_id = ?
+    `).bind(userId).first();
+    shopProductsCount = Number(pRes?.c || 0);
+    shopTextBytes = Number(pRes?.tb || 0);
+    shopImagesBytes = shopProductsCount * 120000;
+  } catch (e) {}
+
+  // Total Stockage Documents & Fichiers (R2 Net Facturé)
+  // STRICTEMENT EXCLUS : published_documents (ressources publiques de la bibliothèque)
+  const filesUsedBytes = personalFilesBytes + shareFilesBytes + avatarBytes + shopImagesBytes;
+  const filesUsedCount = personalFilesCount + shareFilesCount + (avatarBytes > 0 ? 1 : 0) + shopProductsCount;
+
+  // 3. Données & fiches d'étude (D1 Net Facturé)
   // Strictement sans compter les éléments exemptés (ressources partagées publiques, vues, téléchargements, compteurs mots)
   let notesBytes = 0, notesCount = 0;
   try {
@@ -2312,6 +2356,13 @@ async function getUserStorageDetails(db, userId) {
     calendarBytes = Number(calRes?.s || 0);
   } catch (e) {}
 
+  // Horloge & sessions d'étude
+  let studySessionsCount = 0;
+  try {
+    const ssRes = await db.prepare("SELECT COUNT(*) AS c FROM study_sessions WHERE user_id = ?").bind(userId).first();
+    studySessionsCount = Number(ssRes?.c || 0);
+  } catch (e) {}
+
   // Discussions & messages IA (inclus dans le stockage payant de données de l'utilisateur)
   let chatBytes = 0, chatMessagesCount = 0;
   try {
@@ -2325,11 +2376,14 @@ async function getUserStorageDetails(db, userId) {
     chatBytes = Number(chatRes?.mb || 0);
   } catch (e) {}
 
-  const personalDataTextBytes = notesBytes + matieresBytes + scheduleBytes + gradesBytes + aiContentsBytes + aiWorkspaceBytes + calendarBytes + chatBytes;
-  const personalDataRows = notesCount + matieresCount + scheduleCount + gradesCount + aiContentsCount + aiWorkspaceCount + calendarCount + chatMessagesCount;
-  const personalDataBytes = personalDataTextBytes + (personalDataRows * 128);
+  // Profil
+  const profileBytes = (userProfileRow?.name?.length || 0) + (userProfileRow?.email?.length || 0) + (userProfileRow?.school?.length || 0) + (userProfileRow?.filiere?.length || 0) + (userProfileRow?.phone?.length || 0) + 120;
 
-  // 4. Nombre de mots de l'utilisateur
+  const personalDataTextBytes = notesBytes + matieresBytes + scheduleBytes + gradesBytes + aiContentsBytes + aiWorkspaceBytes + calendarBytes + chatBytes + shopTextBytes + profileBytes;
+  const personalDataRows = notesCount + matieresCount + scheduleCount + gradesCount + aiContentsCount + aiWorkspaceCount + calendarCount + chatMessagesCount + shopProductsCount + studySessionsCount + 1;
+  const dataUsedBytes = personalDataTextBytes + (personalDataRows * 128);
+
+  // 4. Nombre de mots de l'utilisateur (exempté du quota de stockage)
   let wordsUsed = 0;
   try {
     const wRes = await db.prepare("SELECT COALESCE(SUM(word_count), 0) AS total_words FROM user_word_counts WHERE user_id = ?").bind(userId).first();
@@ -2341,8 +2395,6 @@ async function getUserStorageDetails(db, userId) {
   const wordsPercentage = wordsMax > 0 ? Math.min(100, parseFloat(((wordsUsed / wordsMax) * 100).toFixed(1))) : 0;
 
   // Calculs totaux
-  const filesUsedBytes = personalFilesBytes;
-  const dataUsedBytes = personalDataBytes;
   const totalUsedBytes = filesUsedBytes + dataUsedBytes;
 
   const totalUsedMb = parseFloat((totalUsedBytes / (1024 * 1024)).toFixed(3));
@@ -2379,7 +2431,7 @@ async function getUserStorageDetails(db, userId) {
     filesStorage: {
       name: "Stockage Documents & Fichiers",
       subtitle: "Cours personnels, polycopiés, documents PDF et supports d'étude déposés",
-      count: personalFilesCount,
+      count: filesUsedCount,
       usedBytes: filesUsedBytes,
       usedMb: filesUsedMb,
       usedFormatted: formatBytes(filesUsedBytes),
