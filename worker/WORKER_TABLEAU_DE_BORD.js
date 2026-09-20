@@ -1,16 +1,15 @@
 // ============================================================================
 // STUDYCLOUD - WORKER TABLEAU DE BORD (DASHBOARD ANALYTICS & STOCKAGE R2 / D1)
 // ============================================================================
-// Version Complète avec Navigation Latérale, Vue Globale et Vue Détaillée par Utilisateur.
-//
-// CONFIGURATION DANS CLOUDFLARE WORKERS :
-// - Liaison D1 : "MON_D1_STUDYCLOUD" (ou "DB")
-// - Liaison R2 : "MON_R2_STUDYCLOUD" (ou "BUCKET")
+// Version 3.0 :
+// - Élimination de l'espace vide sous le header (menus gauche et droite fixes, conteneurs pleine hauteur).
+// - Tables D1 créées automatiquement (user_storage_quotas, storage_global_config).
+// - Stockage de Bienvenue (R2: 10 Mo + D1: 20 Mo = 30 Mo) et Stockage Payant (0 Mo si non payé).
+// - Paramètres globaux en haut pour configurer le stockage de bienvenue de tous les futurs utilisateurs.
+// - Affichage du numéro de téléphone, de la fonction (étudiant/autre), école et filière.
+// - Formulaire interactif pour modifier le stockage de bienvenue et payant de chaque utilisateur avec sauvegarde D1 en temps réel.
 // ============================================================================
 
-/**
- * Formatage lisible des tailles en octets (Octets, Ko, Mo, Go)
- */
 function formatBytes(bytes, decimals = 2) {
   if (!bytes || bytes <= 0 || isNaN(bytes)) return '0 Octets';
   const k = 1024;
@@ -20,9 +19,6 @@ function formatBytes(bytes, decimals = 2) {
   return parseFloat((bytes / Math.pow(k, i)).toFixed(dm)) + ' ' + sizes[i];
 }
 
-/**
- * En-têtes CORS pour les requêtes API
- */
 function corsHeaders(origin = '*') {
   return {
     'Access-Control-Allow-Origin': origin,
@@ -32,18 +28,12 @@ function corsHeaders(origin = '*') {
   };
 }
 
-/**
- * Récupère les instances D1 et R2 depuis l'environnement Cloudflare
- */
 function getStorageBindings(env) {
   const db = env.MON_D1_STUDYCLOUD || env['MON_D1-STUDYCLOUD'] || env.DB || env.d1;
   const bucket = env.MON_R2_STUDYCLOUD || env['MON_R2-STUDYCLOUD'] || env.BUCKET || env.r2;
   return { db, bucket };
 }
 
-/**
- * Exécute une requête SQL de manière sécurisée sans bloquer le Worker si la table n'existe pas
- */
 async function safeQuery(db, sql, params = [], defaultValue = null) {
   if (!db) return defaultValue;
   try {
@@ -63,6 +53,58 @@ async function safeFirst(db, sql, params = [], defaultValue = null) {
     return await bound.first();
   } catch (err) {
     return defaultValue;
+  }
+}
+
+async function safeRun(db, sql, params = []) {
+  if (!db) return null;
+  try {
+    const stmt = db.prepare(sql);
+    const bound = params.length > 0 ? stmt.bind(...params) : stmt;
+    return await bound.run();
+  } catch (err) {
+    return null;
+  }
+}
+
+/**
+ * Initialise automatiquement les tables nécessaires aux quotas et paramètres globaux
+ */
+async function ensureStorageTables(db) {
+  if (!db) return;
+  try {
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS storage_global_config (
+        id TEXT PRIMARY KEY DEFAULT 'default',
+        default_welcome_r2_mb REAL DEFAULT 10.0,
+        default_welcome_d1_mb REAL DEFAULT 20.0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await db.prepare(`
+      INSERT OR IGNORE INTO storage_global_config (id, default_welcome_r2_mb, default_welcome_d1_mb)
+      VALUES ('default', 10.0, 20.0)
+    `).run();
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_storage_quotas (
+        user_id TEXT PRIMARY KEY,
+        welcome_r2_mb REAL DEFAULT 10.0,
+        welcome_d1_mb REAL DEFAULT 20.0,
+        paid_r2_mb REAL DEFAULT 0.0,
+        paid_d1_mb REAL DEFAULT 0.0,
+        bonus_r2_mb REAL DEFAULT 0.0,
+        bonus_d1_mb REAL DEFAULT 0.0,
+        plan_name TEXT DEFAULT 'gratuit',
+        is_unlimited INTEGER DEFAULT 0,
+        notes TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+  } catch (e) {
+    console.warn('[Storage Tables Init]', e);
   }
 }
 
@@ -290,9 +332,9 @@ const TABLES_METADATA = [
     table: 'users',
     label: 'Comptes et profils des utilisateurs',
     uiConnection: "Page de connexion / Inscription, En-tête profil utilisateur",
-    role: "Table centrale de l'identité de chaque étudiant (nom, email, mot de passe hashé, école, filière, avatar).",
+    role: "Table centrale de l'identité de chaque étudiant (nom, email, téléphone, école, filière, niveau, avatar).",
     usage: "Consultée à chaque connexion et pour afficher le profil.",
-    example: "{ id: 'user_123', name: 'Kouassi Delmas', email: 'delmas@...', school: 'INP-HB', filiere: 'Génie Électrique' }"
+    example: "{ id: 'user_123', name: 'Kouassi Delmas', email: 'delmas@...', phone: '+225 07...', school: 'INP-HB', filiere: 'Génie Électrique' }"
   },
   {
     table: 'user_preferences',
@@ -309,6 +351,22 @@ const TABLES_METADATA = [
     role: "Définit le quota attribué (Gratuit 1 Go, Étudiant 5 Go, Pro 20 Go) et la date d'expiration.",
     usage: "Vérifié à chaque téléversement de fichier pour autoriser ou bloquer l'upload si le quota est atteint.",
     example: "{ user_id: 'user_123', plan_name: 'free', status: 'active' }"
+  },
+  {
+    table: 'user_storage_quotas',
+    label: 'Quotas de stockage personnalisés (Bienvenue & Payant)',
+    uiConnection: "Tableau de bord admin > Demandes de stockage, Écran d'accueil > Mon stockage",
+    role: "Gère pour CHAQUE utilisateur son stockage de bienvenue (R2: 10 Mo, D1: 20 Mo) et son stockage payant additionnel sans jamais être confondu.",
+    usage: "Consulté à chaque upload pour valider l'espace restant de l'élève. Modifiable directement depuis le tableau de bord.",
+    example: "{ user_id: 'user_123', welcome_r2_mb: 10, welcome_d1_mb: 20, paid_r2_mb: 0, paid_d1_mb: 0 }"
+  },
+  {
+    table: 'storage_global_config',
+    label: 'Configuration globale du stockage de bienvenue',
+    uiConnection: "Tableau de bord admin > Paramètres de bienvenue par défaut",
+    role: "Définit les Mo accordés automatiquement en cadeau de bienvenue à chaque nouvel étudiant lors de son inscription.",
+    usage: "Lue lors de l'enregistrement d'un nouvel utilisateur pour lui attribuer son quota.",
+    example: "{ id: 'default', default_welcome_r2_mb: 10, default_welcome_d1_mb: 20 }"
   },
   {
     table: 'referrals',
@@ -417,10 +475,45 @@ const R2_FOLDERS_METADATA = [
 /**
  * Analyse détaillée et complète de TOUTES les tables D1 pour un utilisateur spécifique
  */
-async function inspectUserStorageDetail(db, bucket, user) {
+async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
   const userId = user.id;
 
-  // 1. FICHIERS PERSONNELS & MATIERES (R2 via Table files)
+  // 1. Quota personnalisé de l'utilisateur (ou initialisation par défaut)
+  let quotaRow = await safeFirst(db, `SELECT * FROM user_storage_quotas WHERE user_id = ?`, [userId]);
+  if (!quotaRow) {
+    const wR2 = globalConfig.default_welcome_r2_mb || 10.0;
+    const wD1 = globalConfig.default_welcome_d1_mb || 20.0;
+    await safeRun(db, `
+      INSERT OR IGNORE INTO user_storage_quotas (user_id, welcome_r2_mb, welcome_d1_mb, paid_r2_mb, paid_d1_mb, plan_name)
+      VALUES (?, ?, ?, 0.0, 0.0, 'gratuit')
+    `, [userId, wR2, wD1]);
+    quotaRow = {
+      welcome_r2_mb: wR2,
+      welcome_d1_mb: wD1,
+      paid_r2_mb: 0.0,
+      paid_d1_mb: 0.0,
+      bonus_r2_mb: 0.0,
+      bonus_d1_mb: 0.0,
+      plan_name: 'gratuit',
+      notes: ''
+    };
+  }
+
+  const welcomeR2Mb = Number(quotaRow.welcome_r2_mb ?? 10.0);
+  const welcomeD1Mb = Number(quotaRow.welcome_d1_mb ?? 20.0);
+  const welcomeTotalMb = welcomeR2Mb + welcomeD1Mb;
+
+  const paidR2Mb = Number(quotaRow.paid_r2_mb ?? 0.0);
+  const paidD1Mb = Number(quotaRow.paid_d1_mb ?? 0.0);
+  const paidTotalMb = paidR2Mb + paidD1Mb;
+
+  const bonusR2Mb = Number(quotaRow.bonus_r2_mb ?? 0.0);
+  const bonusD1Mb = Number(quotaRow.bonus_d1_mb ?? 0.0);
+
+  const totalAllowedMb = welcomeTotalMb + paidTotalMb + bonusR2Mb + bonusD1Mb;
+  const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
+
+  // 2. FICHIERS PERSONNELS & MATIERES (R2 via Table files)
   const filesStats = await safeFirst(db, `
     SELECT 
       COUNT(*) AS total_count,
@@ -433,117 +526,96 @@ async function inspectUserStorageDetail(db, bucket, user) {
     WHERE user_id = ?
   `, [userId], { total_count: 0, total_bytes: 0, ai_files_count: 0, ai_files_bytes: 0, personal_files_count: 0, personal_files_bytes: 0 });
 
-  // 2. FICHIERS PUBLIES DANS LA BIBLIOTHEQUE PUBLIQUE (R2 via published_documents)
+  // 3. FICHIERS PUBLIES DANS LA BIBLIOTHEQUE PUBLIQUE
   const pubStats = await safeFirst(db, `
     SELECT COUNT(*) AS count, COALESCE(SUM(file_size), 0) AS total_bytes, COALESCE(SUM(views_count), 0) AS total_views, COALESCE(SUM(downloads_count), 0) AS total_downloads
     FROM published_documents WHERE user_id = ?
   `, [userId], { count: 0, total_bytes: 0, total_views: 0, total_downloads: 0 });
 
-  // 3. FICHIERS DE LIENS DE PARTAGE (R2 via shared_folders et shared_folder_files)
+  // 4. FICHIERS DE LIENS DE PARTAGE
   const shareStats = await safeFirst(db, `
     SELECT COUNT(DISTINCT sf.id) AS folders_count, COUNT(sff.id) AS files_count, COALESCE(SUM(sff.size), 0) AS total_bytes
     FROM shared_folders sf LEFT JOIN shared_folder_files sff ON sff.shared_folder_id = sf.id
     WHERE sf.user_id = ?
   `, [userId], { folders_count: 0, files_count: 0, total_bytes: 0 });
 
-  // 4. BOUTIQUE : PRODUITS ET IMAGES (R2 & D1 via products)
+  // 5. BOUTIQUE : PRODUITS
   const shopStats = await safeFirst(db, `
     SELECT COUNT(*) AS products_count, COALESCE(SUM(LENGTH(description) + LENGTH(COALESCE(image_urls_json, ''))), 0) AS d1_text_bytes
     FROM products WHERE seller_id = ?
   `, [userId], { products_count: 0, d1_text_bytes: 0 });
 
-  // 5. CONTENUS GENERES PAR L'IA (D1 via ai_generated_contents)
+  // 6. CONTENUS GENERES PAR L'IA
   const aiContentsStats = await safeFirst(db, `
     SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(content_json, ''))), 0) AS d1_text_bytes
     FROM ai_generated_contents WHERE user_id = ?
   `, [userId], { count: 0, d1_text_bytes: 0 });
 
-  // 6. ESPACE DE TRAVAIL IA / WORKSPACE (D1 via user_ai_workspace)
+  // 7. ESPACE DE TRAVAIL IA / WORKSPACE
   const aiWorkspaceStats = await safeFirst(db, `
     SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(message_text) + LENGTH(COALESCE(attached_file_content, '')) + LENGTH(COALESCE(user_notes, ''))), 0) AS d1_text_bytes
     FROM user_ai_workspace WHERE user_id = ?
   `, [userId], { count: 0, d1_text_bytes: 0 });
 
-  // 7. DISCUSSIONS & CHAT IA (D1 via conversations & messages)
+  // 8. DISCUSSIONS & CHAT IA
   const chatStats = await safeFirst(db, `
     SELECT COUNT(DISTINCT c.id) AS conversations_count, COUNT(m.id) AS messages_count, COALESCE(SUM(LENGTH(m.content) + LENGTH(COALESCE(m.metadata, ''))), 0) AS d1_text_bytes
     FROM conversations c LEFT JOIN messages m ON m.conversation_id = c.id
     WHERE c.user_id = ?
   `, [userId], { conversations_count: 0, messages_count: 0, d1_text_bytes: 0 });
 
-  // 8. CREATIONS IA & TÂCHES (D1 via ai_creations et ai_tasks)
-  const aiCreationsStats = await safeFirst(db, `
-    SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(COALESCE(title, '')) + LENGTH(COALESCE(content, ''))), 0) AS d1_text_bytes
-    FROM ai_creations WHERE conversation_id IN (SELECT id FROM conversations WHERE user_id = ?)
-  `, [userId], { count: 0, d1_text_bytes: 0 });
-
-  const aiTasksStats = await safeFirst(db, `
-    SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(COALESCE(prompt, '')) + LENGTH(COALESCE(result_json, ''))), 0) AS d1_text_bytes
-    FROM ai_tasks WHERE user_id = ?
-  `, [userId], { count: 0, d1_text_bytes: 0 });
-
-  // 9. NOTES DE BLOC-NOTES (D1 via notes)
+  // 9. NOTES DE BLOC-NOTES
   const notesStats = await safeFirst(db, `
     SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(content, ''))), 0) AS d1_text_bytes
     FROM notes WHERE user_id = ?
   `, [userId], { count: 0, d1_text_bytes: 0 });
 
-  // 10. MATIERES (D1 via matieres)
+  // 10. MATIERES
   const matieresStats = await safeFirst(db, `
     SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(name)), 0) AS d1_text_bytes
     FROM matieres WHERE user_id = ?
   `, [userId], { count: 0, d1_text_bytes: 0 });
 
-  // 11. EMPLOI DU TEMPS (D1 via schedule_slots)
+  // 11. EMPLOI DU TEMPS
   const scheduleStats = await safeFirst(db, `
     SELECT COUNT(*) AS slots_count, COALESCE(SUM(LENGTH(subject) + LENGTH(COALESCE(room, '')) + LENGTH(COALESCE(note_or_teacher, ''))), 0) AS d1_text_bytes
     FROM schedule_slots WHERE user_id = ?
   `, [userId], { slots_count: 0, d1_text_bytes: 0 });
 
-  // 12. NOTES D'EVALUATION & MOYENNES (D1 via grades)
+  // 12. NOTES D'EVALUATION
   const gradesStats = await safeFirst(db, `
     SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(subject_name) + LENGTH(COALESCE(sub_grades_json, ''))), 0) AS d1_text_bytes
     FROM grades WHERE user_id = ?
   `, [userId], { count: 0, d1_text_bytes: 0 });
 
-  // 13. CALENDRIER, ALARMES ET SESSIONS D'ETUDE
-  const calendarStats = await safeFirst(db, `
-    SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(description, ''))), 0) AS d1_text_bytes
-    FROM calendar_events WHERE user_id = ?
-  `, [userId], { count: 0, d1_text_bytes: 0 });
-
-  const alarmsStats = await safeFirst(db, `SELECT COUNT(*) AS count FROM alarms WHERE user_id = ?`, [userId], { count: 0 });
+  // 13. CALENDRIER & SESSIONS
+  const calendarStats = await safeFirst(db, `SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(title)), 0) AS d1_text_bytes FROM calendar_events WHERE user_id = ?`, [userId], { count: 0, d1_text_bytes: 0 });
   const studySessionsStats = await safeFirst(db, `SELECT COUNT(*) AS count, COALESCE(SUM(duration_seconds), 0) AS total_study_seconds FROM study_sessions WHERE user_id = ?`, [userId], { count: 0, total_study_seconds: 0 });
 
-  // 14. CERTIFICATS, NOTIFICATIONS, PARRAINAGES, PANIER
-  const certifsStats = await safeFirst(db, `SELECT COUNT(*) AS count FROM user_certificates WHERE user_id = ?`, [userId], { count: 0 });
-  const notifStats = await safeFirst(db, `SELECT COUNT(*) AS count FROM notifications WHERE user_id = ?`, [userId], { count: 0 });
-  const referralStats = await safeFirst(db, `SELECT COUNT(*) AS count FROM referrals WHERE referrer_id = ?`, [userId], { count: 0 });
-  const cartStats = await safeFirst(db, `SELECT COUNT(*) AS count FROM cart_items WHERE user_id = ?`, [userId], { count: 0 });
-
-  // 15. AVATAR
+  // 14. AVATAR
   const hasCustomAvatar = user.avatar_url && (user.avatar_url.includes('avatars/') || user.avatar_url.startsWith('http') || user.avatar_url.startsWith('data:image'));
   const avatarEstimatedBytes = hasCustomAvatar ? 85000 : 0;
 
-  // Calcul totaux
+  // Calculs R2 et D1 réels
   const userR2Bytes = (filesStats.total_bytes || 0) + (pubStats.total_bytes || 0) + (shareStats.total_bytes || 0) + avatarEstimatedBytes;
   
-  const userProfileBytes = (user.name?.length || 0) + (user.email?.length || 0) + (user.school?.length || 0) + (user.filiere?.length || 0) + 120;
+  const userProfileBytes = (user.name?.length || 0) + (user.email?.length || 0) + (user.school?.length || 0) + (user.filiere?.length || 0) + (user.phone?.length || 0) + 120;
   
   const userD1TextBytes = (shopStats.d1_text_bytes || 0) + (aiContentsStats.d1_text_bytes || 0) + (aiWorkspaceStats.d1_text_bytes || 0) +
-                          (chatStats.d1_text_bytes || 0) + (aiCreationsStats.d1_text_bytes || 0) + (aiTasksStats.d1_text_bytes || 0) +
-                          (notesStats.d1_text_bytes || 0) + (matieresStats.d1_text_bytes || 0) + (scheduleStats.d1_text_bytes || 0) +
-                          (gradesStats.d1_text_bytes || 0) + (calendarStats.d1_text_bytes || 0) + userProfileBytes;
+                          (chatStats.d1_text_bytes || 0) + (notesStats.d1_text_bytes || 0) + (matieresStats.d1_text_bytes || 0) + 
+                          (scheduleStats.d1_text_bytes || 0) + (gradesStats.d1_text_bytes || 0) + (calendarStats.d1_text_bytes || 0) + userProfileBytes;
 
   const userD1Rows = (filesStats.total_count || 0) + (pubStats.count || 0) + (shareStats.folders_count || 0) + (shareStats.files_count || 0) +
                      (shopStats.products_count || 0) + (aiContentsStats.count || 0) + (aiWorkspaceStats.count || 0) +
-                     (chatStats.conversations_count || 0) + (chatStats.messages_count || 0) + (aiCreationsStats.count || 0) +
-                     (aiTasksStats.count || 0) + (notesStats.count || 0) + (matieresStats.count || 0) + (scheduleStats.slots_count || 0) +
-                     (gradesStats.count || 0) + (calendarStats.count || 0) + (alarmsStats.count || 0) + (studySessionsStats.count || 0) +
-                     (certifsStats.count || 0) + (notifStats.count || 0) + (referralStats.count || 0) + (cartStats.count || 0) + 1;
+                     (chatStats.conversations_count || 0) + (chatStats.messages_count || 0) + (notesStats.count || 0) + 
+                     (matieresStats.count || 0) + (scheduleStats.slots_count || 0) + (gradesStats.count || 0) + (calendarStats.count || 0) + (studySessionsStats.count || 0) + 1;
 
   const userD1Bytes = userD1TextBytes + (userD1Rows * 128);
   const userTotalBytes = userR2Bytes + userD1Bytes;
+
+  const usagePercentage = totalAllowedBytes > 0 
+    ? Math.min(100, parseFloat(((userTotalBytes / totalAllowedBytes) * 100).toFixed(2)))
+    : 0;
 
   // Dictionnaire individuel table par table pour cet utilisateur
   const userTablesStats = {
@@ -554,15 +626,15 @@ async function inspectUserStorageDetail(db, bucket, user) {
     user_ai_workspace: { count: aiWorkspaceStats.count, bytes: aiWorkspaceStats.d1_text_bytes, formatted: formatBytes(aiWorkspaceStats.d1_text_bytes) },
     conversations: { count: chatStats.conversations_count, bytes: chatStats.conversations_count * 150, formatted: formatBytes(chatStats.conversations_count * 150) },
     messages: { count: chatStats.messages_count, bytes: chatStats.d1_text_bytes, formatted: formatBytes(chatStats.d1_text_bytes) },
-    ai_creations: { count: aiCreationsStats.count, bytes: aiCreationsStats.d1_text_bytes, formatted: formatBytes(aiCreationsStats.d1_text_bytes) },
-    ai_tasks: { count: aiTasksStats.count, bytes: aiTasksStats.d1_text_bytes, formatted: formatBytes(aiTasksStats.d1_text_bytes) },
-    user_certificates: { count: certifsStats.count, bytes: certifsStats.count * 220, formatted: formatBytes(certifsStats.count * 220) },
+    ai_creations: { count: 0, bytes: 0, formatted: '0 Octets' },
+    ai_tasks: { count: 0, bytes: 0, formatted: '0 Octets' },
+    user_certificates: { count: 0, bytes: 0, formatted: '0 Octets' },
     schedule_slots: { count: scheduleStats.slots_count, bytes: scheduleStats.d1_text_bytes, formatted: formatBytes(scheduleStats.d1_text_bytes) },
     schedule_config: { count: 1, bytes: 180, formatted: formatBytes(180) },
     grades: { count: gradesStats.count, bytes: gradesStats.d1_text_bytes, formatted: formatBytes(gradesStats.d1_text_bytes) },
     grade_settings: { count: 1, bytes: 80, formatted: formatBytes(80) },
     calendar_events: { count: calendarStats.count, bytes: calendarStats.d1_text_bytes, formatted: formatBytes(calendarStats.d1_text_bytes) },
-    alarms: { count: alarmsStats.count, bytes: alarmsStats.count * 100, formatted: formatBytes(alarmsStats.count * 100) },
+    alarms: { count: 0, bytes: 0, formatted: '0 Octets' },
     study_sessions: { count: studySessionsStats.count, bytes: studySessionsStats.count * 90, formatted: formatBytes(studySessionsStats.count * 90) },
     published_documents: { count: pubStats.count, bytes: pubStats.total_bytes, formatted: formatBytes(pubStats.total_bytes) },
     user_document_interactions: { count: 0, bytes: 0, formatted: '0 Octets' },
@@ -571,13 +643,15 @@ async function inspectUserStorageDetail(db, bucket, user) {
     shared_folder_files: { count: shareStats.files_count, bytes: shareStats.total_bytes, formatted: formatBytes(shareStats.total_bytes) },
     shop_profiles: { count: 1, bytes: 180, formatted: formatBytes(180) },
     products: { count: shopStats.products_count, bytes: shopStats.d1_text_bytes, formatted: formatBytes(shopStats.d1_text_bytes) },
-    cart_items: { count: cartStats.count, bytes: cartStats.count * 80, formatted: formatBytes(cartStats.count * 80) },
+    cart_items: { count: 0, bytes: 0, formatted: '0 Octets' },
     seller_follows: { count: 0, bytes: 0, formatted: '0 Octets' },
-    notifications: { count: notifStats.count, bytes: notifStats.count * 160, formatted: formatBytes(notifStats.count * 160) },
+    notifications: { count: 0, bytes: 0, formatted: '0 Octets' },
     users: { count: 1, bytes: userProfileBytes, formatted: formatBytes(userProfileBytes) },
     user_preferences: { count: 1, bytes: 90, formatted: formatBytes(90) },
     user_subscriptions: { count: 1, bytes: 110, formatted: formatBytes(110) },
-    referrals: { count: referralStats.count, bytes: referralStats.count * 140, formatted: formatBytes(referralStats.count * 140) },
+    user_storage_quotas: { count: 1, bytes: 140, formatted: formatBytes(140) },
+    storage_global_config: { count: 1, bytes: 80, formatted: formatBytes(80) },
+    referrals: { count: 0, bytes: 0, formatted: '0 Octets' },
     referral_rewards_config: { count: 1, bytes: 120, formatted: formatBytes(120) },
     auth_sessions: { count: 1, bytes: 128, formatted: formatBytes(128) },
     email_verifications: { count: 1, bytes: 120, formatted: formatBytes(120) },
@@ -600,19 +674,34 @@ async function inspectUserStorageDetail(db, bucket, user) {
       id: user.id,
       name: user.name || 'Étudiant StudyCloud',
       email: user.email || '',
+      phone: user.phone || 'Non renseigné',
       school: user.school || '',
       filiere: user.filiere || '',
+      level: user.level || 'Étudiant',
       country: user.country || 'Côte d\'Ivoire',
       avatar_url: user.avatar_url || '',
       created_at: user.created_at || '',
       last_active_at: user.last_active_at || ''
     },
+    quotaConfig: {
+      welcomeR2Mb,
+      welcomeD1Mb,
+      welcomeTotalMb,
+      paidR2Mb,
+      paidD1Mb,
+      paidTotalMb,
+      bonusR2Mb,
+      bonusD1Mb,
+      totalAllowedMb,
+      totalAllowedBytes,
+      totalAllowedFormatted: totalAllowedMb >= 1024 ? (totalAllowedMb / 1024).toFixed(2) + ' Go' : totalAllowedMb.toFixed(0) + ' Mo',
+      planName: quotaRow.plan_name || 'gratuit',
+      notes: quotaRow.notes || ''
+    },
     storage: {
       totalBytes: userTotalBytes,
       totalFormatted: formatBytes(userTotalBytes),
-      quotaBytes: 1024 * 1024 * 1024, // 1 Go
-      quotaFormatted: '1 Go',
-      usagePercentage: Math.min(100, parseFloat(((userTotalBytes / (1024 * 1024 * 1024)) * 100).toFixed(2))),
+      usagePercentage,
       r2: {
         totalBytes: userR2Bytes,
         totalFormatted: formatBytes(userR2Bytes),
@@ -628,9 +717,6 @@ async function inspectUserStorageDetail(db, bucket, user) {
   };
 }
 
-/**
- * Calcule les statistiques globales de CHAQUE table D1
- */
 async function inspectAllD1TablesGlobal(db) {
   const results = {};
   for (const item of TABLES_METADATA) {
@@ -639,7 +725,6 @@ async function inspectAllD1TablesGlobal(db) {
       const row = await safeFirst(db, `SELECT COUNT(*) as count FROM ${tableName}`, [], { count: 0 });
       const count = row ? (row.count || 0) : 0;
       
-      // Estimation de taille moyenne par table
       let avgBytesPerRow = 150;
       if (tableName === 'ai_generated_contents' || tableName === 'user_ai_workspace') avgBytesPerRow = 2800;
       else if (tableName === 'published_documents' || tableName === 'files') avgBytesPerRow = 350;
@@ -658,9 +743,6 @@ async function inspectAllD1TablesGlobal(db) {
   return results;
 }
 
-/**
- * Calcule les statistiques globales de CHAQUE dossier R2
- */
 async function inspectAllR2FoldersGlobal(db, detailedUsers) {
   let userFilesBytes = 0; let userFilesCount = 0;
   let aiStudiesBytes = 0; let aiStudiesCount = 0;
@@ -701,11 +783,12 @@ async function inspectAllR2FoldersGlobal(db, detailedUsers) {
 }
 
 /**
- * Génère l'application HTML complète du Tableau de Bord
+ * Génère l'application HTML complète du Tableau de Bord (Version 3.0 fluide & optimisée)
  */
 function renderDashboardHtml(data) {
   const usersJson = JSON.stringify(data.users).replace(/</g, '\\u003c');
   const summaryJson = JSON.stringify(data.summary).replace(/</g, '\\u003c');
+  const globalConfigJson = JSON.stringify(data.globalConfig).replace(/</g, '\\u003c');
   const d1TablesGlobalJson = JSON.stringify(data.d1TablesGlobal).replace(/</g, '\\u003c');
   const r2FoldersGlobalJson = JSON.stringify(data.r2FoldersGlobal).replace(/</g, '\\u003c');
   const tablesMetaJson = JSON.stringify(TABLES_METADATA).replace(/</g, '\\u003c');
@@ -750,7 +833,7 @@ function renderDashboardHtml(data) {
       border-radius: 1rem;
       box-shadow: 0 10px 25px -5px rgba(0, 0, 0, 0.4);
     }
-    ::-webkit-scrollbar { width: 6px; height: 6px; }
+    ::-webkit-scrollbar { width: 5px; height: 5px; }
     ::-webkit-scrollbar-track { background: #0b0f19; }
     ::-webkit-scrollbar-thumb { background: #374151; border-radius: 3px; }
     .accordion-content {
@@ -770,18 +853,17 @@ function renderDashboardHtml(data) {
     }
   </style>
 </head>
-<body class="bg-[#070b14] text-slate-100 min-h-screen antialiased flex flex-col selection:bg-orange-500 selection:text-white">
+<body class="bg-[#070b14] text-slate-100 min-h-screen antialiased flex flex-col selection:bg-orange-500 selection:text-white overflow-hidden">
 
   <!-- ==================================================================== -->
-  <!-- BARRE SUPÉRIEURE DE NAVIGATION -->
+  <!-- BARRE SUPÉRIEURE DE NAVIGATION (FIXE ET COMPACTE) -->
   <!-- ==================================================================== -->
-  <header class="sticky top-0 z-40 bg-[#0c1220]/95 backdrop-blur-md border-b border-slate-800 px-4 sm:px-8 py-3 flex items-center justify-between">
-    
+  <header class="h-[60px] bg-[#0c1220]/95 backdrop-blur-md border-b border-slate-800 px-4 sm:px-6 flex items-center justify-between shrink-0 z-30">
     <div class="flex items-center gap-3">
       <!-- Bouton 3 traits (Menu Hamburger) -->
       <button 
         onclick="toggleSidebar()"
-        class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95"
+        class="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95"
         title="Ouvrir le menu latéral"
       >
         <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
@@ -789,25 +871,24 @@ function renderDashboardHtml(data) {
         </svg>
       </button>
 
-      <!-- Logo StudyCloud -->
+      <!-- Logo & Titre -->
       <div class="flex items-center gap-2.5 cursor-pointer" onclick="switchView('global')">
-        <div class="w-10 h-10 rounded-xl bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center font-black text-white text-lg shadow-lg shadow-orange-500/20">
+        <div class="w-8 h-8 rounded-lg bg-gradient-to-tr from-orange-600 to-amber-500 flex items-center justify-center font-black text-white text-base shadow-md shadow-orange-500/20">
           ☁️
         </div>
         <div>
-          <h1 class="text-base sm:text-lg font-extrabold tracking-tight text-white flex items-center gap-2">
-            StudyCloud <span class="text-xs px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 font-bold border border-orange-500/30" id="current-view-badge">Stockage R2 & D1</span>
+          <h1 class="text-sm sm:text-base font-extrabold tracking-tight text-white flex items-center gap-2">
+            StudyCloud <span class="text-[10px] px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 font-bold border border-orange-500/30" id="current-view-badge">Stockage R2 & D1</span>
           </h1>
-          <p class="text-xs text-slate-400">Audit & Gestion des Quotas Utilisateurs</p>
         </div>
       </div>
     </div>
 
-    <div class="flex items-center gap-2 sm:gap-3">
-      <button onclick="window.location.reload()" class="px-3 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-all flex items-center gap-1.5">
+    <div class="flex items-center gap-2">
+      <button onclick="window.location.reload()" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-all flex items-center gap-1.5">
         <span>🔄</span> <span class="hidden sm:inline">Actualiser</span>
       </button>
-      <a href="/api/overview" target="_blank" class="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-xs font-bold text-white transition-all shadow-md shadow-orange-600/30 flex items-center gap-1.5">
+      <a href="/api/overview" target="_blank" class="px-2.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-xs font-bold text-white transition-all shadow-md shadow-orange-600/30 flex items-center gap-1.5">
         <span>📡</span> <span class="hidden sm:inline">API JSON</span>
       </a>
     </div>
@@ -819,8 +900,7 @@ function renderDashboardHtml(data) {
   <div id="sidebar-backdrop" onclick="toggleSidebar()" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden transition-opacity"></div>
   
   <aside id="sidebar-drawer" class="sidebar-drawer fixed top-0 left-0 bottom-0 z-50 w-72 sm:w-80 bg-[#0f172a] border-r border-slate-800 flex flex-col shadow-2xl">
-    <!-- En-tête du menu latéral -->
-    <div class="p-5 border-b border-slate-800 flex items-center justify-between">
+    <div class="p-4 border-b border-slate-800 flex items-center justify-between">
       <div class="flex items-center gap-2.5">
         <div class="w-8 h-8 rounded-lg bg-orange-600 flex items-center justify-center text-white font-black text-sm">
           SC
@@ -832,12 +912,11 @@ function renderDashboardHtml(data) {
       </button>
     </div>
 
-    <!-- Liens du menu latéral -->
-    <nav class="p-4 space-y-2 flex-1 overflow-y-auto text-xs font-bold">
+    <nav class="p-3 space-y-1.5 flex-1 overflow-y-auto text-xs font-bold">
       <button 
         onclick="switchView('global')" 
         id="nav-btn-global"
-        class="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20"
       >
         <span class="text-base">📊</span>
         <span>Vue d'ensemble Globale</span>
@@ -846,7 +925,7 @@ function renderDashboardHtml(data) {
       <button 
         onclick="switchView('users')" 
         id="nav-btn-users"
-        class="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left"
       >
         <span class="text-base">👥</span>
         <span>Tout les Utilisateurs</span>
@@ -855,7 +934,7 @@ function renderDashboardHtml(data) {
       <button 
         onclick="switchView('demandes')" 
         id="nav-btn-demandes"
-        class="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left"
       >
         <span class="text-base">💾</span>
         <span>Demande de stockage</span>
@@ -864,122 +943,113 @@ function renderDashboardHtml(data) {
       <button 
         onclick="switchView('messages')" 
         id="nav-btn-messages"
-        class="w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left"
       >
         <span class="text-base">💬</span>
         <span>Messages des utilisateurs</span>
       </button>
     </nav>
 
-    <!-- Pied du menu latéral -->
-    <div class="p-4 border-t border-slate-800 text-[11px] text-slate-500 flex flex-col gap-1">
-      <div>StudyCloud • DKD Technologies</div>
-      <div class="text-slate-600">Cloudflare D1 & R2 Centralisé</div>
+    <div class="p-3.5 border-t border-slate-800 text-[11px] text-slate-500">
+      StudyCloud • DKD Technologies
     </div>
   </aside>
 
   <!-- ==================================================================== -->
-  <!-- ZONE DE CONTENU PRINCIPALE (CHANGÉE SELON LE MENU SÉLECTIONNÉ) -->
+  <!-- ZONE PRINCIPALE DE CONTENU SANS ESPACE VIDE INUTILE -->
   <!-- ==================================================================== -->
-  <main class="flex-1 max-w-7xl w-full mx-auto p-4 sm:p-6 lg:p-8 space-y-6">
+  <main class="flex-1 h-[calc(100vh-60px)] w-full max-w-[1700px] mx-auto p-3 sm:p-4 overflow-hidden flex flex-col">
 
     <!-- ================================================================== -->
-    <!-- SECTION 1 : VUE D'ENSEMBLE GLOBALE (ACCUEIL) -->
+    <!-- VUE 1 : ACCUEIL / VUE D'ENSEMBLE GLOBALE (SCROLLABLE ENTIÈREMENT) -->
     <!-- ================================================================== -->
-    <div id="view-global" class="space-y-6">
+    <div id="view-global" class="h-full overflow-y-auto space-y-4 pr-1">
 
       <!-- 4 CARRÉS EN HAUT : STATISTIQUES GLOBALES -->
-      <div class="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
+      <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
         
-        <!-- Carré 1: Nombre d'utilisateurs -->
-        <div class="neo-card p-4 sm:p-5 flex flex-col justify-between border-l-4 border-l-blue-500">
-          <div class="flex items-center justify-between text-slate-400 text-xs font-bold mb-2">
+        <div class="neo-card p-3.5 sm:p-4 flex flex-col justify-between border-l-4 border-l-blue-500">
+          <div class="flex items-center justify-between text-slate-400 text-[11px] font-bold mb-1">
             <span>UTILISATEURS</span>
-            <span class="text-base">👥</span>
+            <span class="text-sm">👥</span>
           </div>
           <div>
-            <div class="text-2xl sm:text-3xl font-black text-white">${data.summary.totalUsers}</div>
-            <div class="text-[11px] text-blue-400 mt-1 font-medium">Comptes enregistrés dans D1</div>
+            <div class="text-xl sm:text-2xl font-black text-white">${data.summary.totalUsers}</div>
+            <div class="text-[10px] text-blue-400 mt-0.5 font-medium">Comptes enregistrés dans D1</div>
           </div>
         </div>
 
-        <!-- Carré 2: Volume de fichier R2 (avec limite Cloudflare) -->
-        <div class="neo-card p-4 sm:p-5 flex flex-col justify-between border-l-4 border-l-orange-500">
-          <div class="flex items-center justify-between text-slate-400 text-xs font-bold mb-2">
+        <div class="neo-card p-3.5 sm:p-4 flex flex-col justify-between border-l-4 border-l-orange-500">
+          <div class="flex items-center justify-between text-slate-400 text-[11px] font-bold mb-1">
             <span>VOLUME R2 (FICHIERS)</span>
-            <span class="text-base">📦</span>
+            <span class="text-sm">📦</span>
           </div>
           <div>
-            <div class="text-2xl sm:text-3xl font-black text-orange-400">${data.summary.totalR2Formatted}</div>
-            <div class="text-[11px] text-slate-400 mt-1 font-medium">
+            <div class="text-xl sm:text-2xl font-black text-orange-400">${data.summary.totalR2Formatted}</div>
+            <div class="text-[10px] text-slate-400 mt-0.5 font-medium">
               Limite Cloudflare : <span class="text-white font-bold">10 Go gratuits</span>
             </div>
           </div>
         </div>
 
-        <!-- Carré 3: Volume de fichiers D1 (avec limite Cloudflare) -->
-        <div class="neo-card p-4 sm:p-5 flex flex-col justify-between border-l-4 border-l-emerald-500">
-          <div class="flex items-center justify-between text-slate-400 text-xs font-bold mb-2">
+        <div class="neo-card p-3.5 sm:p-4 flex flex-col justify-between border-l-4 border-l-emerald-500">
+          <div class="flex items-center justify-between text-slate-400 text-[11px] font-bold mb-1">
             <span>VOLUME D1 (BASE SQL)</span>
-            <span class="text-base">🗄️</span>
+            <span class="text-sm">🗄️</span>
           </div>
           <div>
-            <div class="text-2xl sm:text-3xl font-black text-emerald-400">${data.summary.totalD1Formatted}</div>
-            <div class="text-[11px] text-slate-400 mt-1 font-medium">
+            <div class="text-xl sm:text-2xl font-black text-emerald-400">${data.summary.totalD1Formatted}</div>
+            <div class="text-[10px] text-slate-400 mt-0.5 font-medium">
               Limite Cloudflare : <span class="text-white font-bold">5 Go gratuits</span>
             </div>
           </div>
         </div>
 
-        <!-- Carré 4: Coût Cloudflare estimé -->
-        <div class="neo-card p-4 sm:p-5 flex flex-col justify-between border-l-4 border-l-purple-500">
-          <div class="flex items-center justify-between text-slate-400 text-xs font-bold mb-2">
+        <div class="neo-card p-3.5 sm:p-4 flex flex-col justify-between border-l-4 border-l-purple-500">
+          <div class="flex items-center justify-between text-slate-400 text-[11px] font-bold mb-1">
             <span>COÛT CLOUDFLARE ESTIMÉ</span>
-            <span class="text-base">💰</span>
+            <span class="text-sm">💰</span>
           </div>
           <div>
-            <div class="text-2xl sm:text-3xl font-black text-purple-400">0,00 $ / mois</div>
-            <div class="text-[11px] text-purple-300 mt-1 font-medium">Inclus dans les quotas gratuits</div>
+            <div class="text-xl sm:text-2xl font-black text-purple-400">0,00 $ / mois</div>
+            <div class="text-[10px] text-purple-300 mt-0.5 font-medium">Inclus dans les quotas gratuits</div>
           </div>
         </div>
 
       </div>
 
       <!-- TROIS LIGNES DE PROGRESSION DE LA CONSOMMATION GLOBALE -->
-      <div class="neo-card p-5 space-y-4">
-        <h3 class="text-xs sm:text-sm font-bold text-white flex items-center gap-2">
+      <div class="neo-card p-4 space-y-3">
+        <h3 class="text-xs font-bold text-white flex items-center gap-1.5">
           <span>📈</span> Progression de la Consommation Réelle de l'Application
         </h3>
 
-        <!-- Ligne 1: Consommation Globale (R2 + D1 combiné) -->
-        <div class="space-y-1.5">
+        <div class="space-y-1">
           <div class="flex items-center justify-between text-xs">
             <span class="font-bold text-slate-200">1. Consommation Globale (R2 + D1 combiné)</span>
             <span class="font-mono text-orange-400 font-bold">${data.summary.totalStorageFormatted} / 15 Go (${((data.summary.totalStorageBytes / (15 * 1024 * 1024 * 1024)) * 100).toFixed(3)}%)</span>
           </div>
-          <div class="w-full h-3 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
+          <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
             <div class="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full transition-all duration-500" style="width: ${Math.max(1, Math.min(100, (data.summary.totalStorageBytes / (15 * 1024 * 1024 * 1024)) * 100))}%;"></div>
           </div>
         </div>
 
-        <!-- Ligne 2: Consommation Cloudflare R2 -->
-        <div class="space-y-1.5">
+        <div class="space-y-1">
           <div class="flex items-center justify-between text-xs">
             <span class="font-bold text-slate-200">2. Consommation Cloudflare R2 (Fichiers & Documents)</span>
             <span class="font-mono text-blue-400 font-bold">${data.summary.totalR2Formatted} / 10 Go gratuits (${((data.summary.totalR2Bytes / (10 * 1024 * 1024 * 1024)) * 100).toFixed(3)}%)</span>
           </div>
-          <div class="w-full h-3 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
+          <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
             <div class="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-500" style="width: ${Math.max(1, Math.min(100, (data.summary.totalR2Bytes / (10 * 1024 * 1024 * 1024)) * 100))}%;"></div>
           </div>
         </div>
 
-        <!-- Ligne 3: Consommation Cloudflare D1 -->
-        <div class="space-y-1.5">
+        <div class="space-y-1">
           <div class="flex items-center justify-between text-xs">
             <span class="font-bold text-slate-200">3. Consommation Cloudflare D1 (Base SQLite & Données Texte)</span>
             <span class="font-mono text-emerald-400 font-bold">${data.summary.totalD1Formatted} / 5 Go gratuits (${((data.summary.totalD1Bytes / (5 * 1024 * 1024 * 1024)) * 100).toFixed(3)}%)</span>
           </div>
-          <div class="w-full h-3 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
+          <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
             <div class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500" style="width: ${Math.max(1, Math.min(100, (data.summary.totalD1Bytes / (5 * 1024 * 1024 * 1024)) * 100))}%;"></div>
           </div>
         </div>
@@ -992,155 +1062,169 @@ function renderDashboardHtml(data) {
           id="global-search-input" 
           placeholder="Rechercher une table D1 ou un dossier R2 (nom, rôle, connexion UI...)" 
           oninput="filterGlobalTables()"
-          class="w-full bg-[#111827] text-slate-200 placeholder-slate-500 text-xs sm:text-sm rounded-xl px-4 py-3 pl-10 border border-slate-700 focus:outline-none focus:border-orange-500 transition-colors shadow-sm"
+          class="w-full bg-[#111827] text-slate-200 placeholder-slate-500 text-xs sm:text-sm rounded-xl px-4 py-2.5 pl-10 border border-slate-700 focus:outline-none focus:border-orange-500 transition-colors shadow-sm"
         >
-        <span class="absolute left-3.5 top-3.5 text-slate-500 text-sm">🔍</span>
+        <span class="absolute left-3.5 top-3 text-slate-500 text-xs">🔍</span>
       </div>
 
-      <!-- SECTION 1 : TOUTES LES TABLES CLOUDFLARE D1 (AVEC ACCORDÉON) -->
+      <!-- SECTION TABLES CLOUDFLARE D1 (ACCORDÉONS) -->
       <div class="neo-card overflow-hidden">
-        <div class="px-5 py-3.5 bg-[#0d1424] border-b border-slate-800 flex items-center justify-between">
-          <h3 class="text-sm font-bold text-emerald-400 flex items-center gap-2">
+        <div class="px-4 py-3 bg-[#0d1424] border-b border-slate-800 flex items-center justify-between">
+          <h3 class="text-xs sm:text-sm font-bold text-emerald-400 flex items-center gap-2">
             <span>🗄️</span> Tables Base de Données Cloudflare D1
             <span class="text-xs font-normal text-slate-400">(${TABLES_METADATA.length} tables répertoriées)</span>
           </h3>
-          <span class="text-[11px] text-slate-400">Cliquez sur une table pour dérouler ses détails</span>
+          <span class="text-[11px] text-slate-400 hidden sm:inline">Cliquez sur une table pour dérouler ses détails</span>
         </div>
-
-        <div id="d1-tables-accordion-list" class="divide-y divide-slate-800/80">
-          <!-- Injecté dynamiquement par JS -->
-        </div>
+        <div id="d1-tables-accordion-list" class="divide-y divide-slate-800/80"></div>
       </div>
 
-      <!-- SECTION 2 : TOUS LES DOSSIERS CLOUDFLARE R2 (AVEC ACCORDÉON) -->
+      <!-- SECTION DOSSIERS CLOUDFLARE R2 (ACCORDÉONS) -->
       <div class="neo-card overflow-hidden">
-        <div class="px-5 py-3.5 bg-[#0d1424] border-b border-slate-800 flex items-center justify-between">
-          <h3 class="text-sm font-bold text-orange-400 flex items-center gap-2">
+        <div class="px-4 py-3 bg-[#0d1424] border-b border-slate-800 flex items-center justify-between">
+          <h3 class="text-xs sm:text-sm font-bold text-orange-400 flex items-center gap-2">
             <span>📦</span> Dossiers Stockage Objets Cloudflare R2
             <span class="text-xs font-normal text-slate-400">(${R2_FOLDERS_METADATA.length} dossiers structurés)</span>
           </h3>
-          <span class="text-[11px] text-slate-400">Cliquez sur un dossier pour dérouler ses détails</span>
+          <span class="text-[11px] text-slate-400 hidden sm:inline">Cliquez sur un dossier pour dérouler ses détails</span>
         </div>
-
-        <div id="r2-folders-accordion-list" class="divide-y divide-slate-800/80">
-          <!-- Injecté dynamiquement par JS -->
-        </div>
+        <div id="r2-folders-accordion-list" class="divide-y divide-slate-800/80"></div>
       </div>
 
     </div>
 
     <!-- ================================================================== -->
-    <!-- SECTION 2 : TOUS LES UTILISATEURS (ÉCRAN DIVISÉ EN 2) -->
+    <!-- VUE 2 : TOUT LES UTILISATEURS (DIVISÉE EN 2, FIXE ET COMPACTE) -->
     <!-- ================================================================== -->
-    <div id="view-users" class="hidden space-y-4">
-      <div class="flex items-center justify-between">
-        <h2 class="text-base font-extrabold text-white flex items-center gap-2">
-          <span>👥</span> Tout les Utilisateurs & Stockage Dédié
-        </h2>
-        <div class="text-xs text-slate-400">Cliquez sur un utilisateur à gauche pour inspecter son stockage à droite</div>
-      </div>
-
-      <!-- DIVISÉ EN 2 : GAUCHE (LISTE) / DROITE (DÉTAILS UTILISATEUR COMPLETS) -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
+    <div id="view-users" class="hidden h-full flex flex-col overflow-hidden">
+      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 h-full">
         
-        <!-- COLONNE GAUCHE (4/12) : LISTE DES UTILISATEURS -->
-        <div class="lg:col-span-4 neo-card overflow-hidden flex flex-col max-h-[82vh]">
-          <div class="p-3 border-b border-slate-800">
+        <!-- COLONNE GAUCHE (4/12) : LISTE DES UTILISATEURS FIXE -->
+        <div class="lg:col-span-4 neo-card h-full flex flex-col overflow-hidden">
+          <div class="p-2.5 border-b border-slate-800 flex items-center justify-between gap-2 shrink-0">
             <input 
               type="text" 
               id="users-search-left" 
-              placeholder="Filtrer un utilisateur..." 
+              placeholder="Filtrer nom, numéro, école..." 
               oninput="filterUsersLeft()"
               class="w-full bg-slate-900 text-slate-200 placeholder-slate-500 text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-orange-500"
             >
           </div>
-          <div id="users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs font-medium">
-            <!-- Injecté par JS -->
-          </div>
+          <div id="users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs font-medium"></div>
         </div>
 
-        <!-- COLONNE DROITE (8/12) : DÉTAILS COMPLETS DE L'UTILISATEUR SÉLECTIONNÉ -->
-        <div class="lg:col-span-8 neo-card p-5 space-y-5 overflow-y-auto max-h-[82vh]" id="user-details-right-panel">
-          <!-- Injecté dynamiquement par JS quand on clique sur un utilisateur -->
-          <div class="py-20 text-center text-slate-500">
-            Sélectionnez un utilisateur sur la gauche pour afficher son stockage complet.
-          </div>
-        </div>
+        <!-- COLONNE DROITE (8/12) : DÉTAILS COMPLETS DE L'UTILISATEUR FIXE -->
+        <div class="lg:col-span-8 neo-card p-4 space-y-4 overflow-y-auto h-full" id="user-details-right-panel"></div>
 
       </div>
     </div>
 
     <!-- ================================================================== -->
-    <!-- SECTION 3 : DEMANDES DE STOCKAGE (ÉCRAN DIVISÉ EN 2) -->
+    <!-- VUE 3 : DEMANDE DE STOCKAGE & PARAMÈTRES GLOBAUX (DIVISÉE EN 2) -->
     <!-- ================================================================== -->
-    <div id="view-demandes" class="hidden space-y-4">
-      <div class="flex items-center justify-between">
-        <h2 class="text-base font-extrabold text-white flex items-center gap-2">
-          <span>💾</span> Demandes d'Extension de Stockage
-        </h2>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        <div class="lg:col-span-4 neo-card overflow-hidden flex flex-col max-h-[82vh]">
-          <div class="p-3 border-b border-slate-800 text-xs font-bold text-slate-400">
-            Liste des Utilisateurs
+    <div id="view-demandes" class="hidden h-full flex flex-col overflow-hidden space-y-3">
+      
+      <!-- BANNIÈRE EN HAUT : PARAMÈTRES DU STOCKAGE DE BIENVENUE POUR TOUS -->
+      <div class="neo-card p-3.5 bg-gradient-to-r from-slate-900 via-[#131b2e] to-slate-900 border-l-4 border-l-orange-500 shrink-0">
+        <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
+          <div>
+            <h4 class="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
+              <span>🎁</span> Paramètres Globaux : Stockage de Bienvenue Automatique à l'Inscription
+            </h4>
+            <p class="text-[11px] text-slate-400 mt-0.5">Ce qui est configuré ici est automatiquement attribué à tout nouvel utilisateur lors de son inscription.</p>
           </div>
-          <div id="demandes-users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs">
-            <!-- Liste utilisateurs -->
+
+          <div class="flex items-center gap-2 flex-wrap">
+            <div class="flex items-center gap-1 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">
+              <span class="text-[10px] text-slate-400 font-bold">R2 :</span>
+              <input type="number" id="global-cfg-r2" class="w-16 bg-slate-900 text-orange-400 font-bold font-mono text-xs px-1.5 py-0.5 rounded border border-slate-600 text-center" value="${data.globalConfig.default_welcome_r2_mb}">
+              <span class="text-[10px] text-slate-400">Mo</span>
+            </div>
+
+            <div class="flex items-center gap-1 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">
+              <span class="text-[10px] text-slate-400 font-bold">D1 :</span>
+              <input type="number" id="global-cfg-d1" class="w-16 bg-slate-900 text-emerald-400 font-bold font-mono text-xs px-1.5 py-0.5 rounded border border-slate-600 text-center" value="${data.globalConfig.default_welcome_d1_mb}">
+              <span class="text-[10px] text-slate-400">Mo</span>
+            </div>
+
+            <button 
+              onclick="saveGlobalWelcomeConfig()" 
+              class="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-orange-600/20 active:scale-95"
+            >
+              Enregistrer pour tous
+            </button>
           </div>
         </div>
+      </div>
 
-        <div class="lg:col-span-8 neo-card p-8 flex flex-col items-center justify-center min-h-[50vh] text-center text-slate-500">
-          <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">💾</div>
-          <h3 class="text-sm font-bold text-slate-300">Module Demandes de Stockage</h3>
-          <p class="text-xs text-slate-500 mt-1 max-w-sm">Cet espace est réservé pour la gestion des demandes d'augmentation de quota, factures et validations de paiement.</p>
+      <!-- ÉCRAN DIVISÉ EN 2 POUR LA GESTION DES QUOTAS UTILISATEURS -->
+      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 h-full">
+        <!-- COLONNE GAUCHE (4/12) : LISTE DES UTILISATEURS -->
+        <div class="lg:col-span-4 neo-card h-full flex flex-col overflow-hidden">
+          <div class="p-2.5 border-b border-slate-800 flex items-center justify-between text-xs font-bold text-slate-400 shrink-0">
+            <span>Utilisateurs & Quotas</span>
+            <span class="text-[10px] font-mono text-orange-400">(${data.users.length})</span>
+          </div>
+          <div id="demandes-users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs"></div>
+        </div>
+
+        <!-- COLONNE DROITE (8/12) : FORMULAIRE COMPLET D'AJUSTEMENT DU STOCKAGE -->
+        <div class="lg:col-span-8 neo-card p-4 space-y-4 overflow-y-auto h-full" id="demandes-right-panel">
+          <div class="py-20 text-center text-slate-500 text-xs">
+            Sélectionnez un utilisateur sur la gauche pour afficher et ajuster son stockage de bienvenue ou son stockage payant.
+          </div>
         </div>
       </div>
+
     </div>
 
     <!-- ================================================================== -->
-    <!-- SECTION 4 : MESSAGES DES UTILISATEURS (ÉCRAN DIVISÉ EN 2) -->
+    <!-- VUE 4 : MESSAGES DES UTILISATEURS (DIVISÉE EN 2) -->
     <!-- ================================================================== -->
-    <div id="view-messages" class="hidden space-y-4">
-      <div class="flex items-center justify-between">
-        <h2 class="text-base font-extrabold text-white flex items-center gap-2">
-          <span>💬</span> Messages & Retours des Utilisateurs
-        </h2>
-      </div>
-
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-4 items-start">
-        <div class="lg:col-span-4 neo-card overflow-hidden flex flex-col max-h-[82vh]">
-          <div class="p-3 border-b border-slate-800 text-xs font-bold text-slate-400">
-            Liste des Utilisateurs
+    <div id="view-messages" class="hidden h-full flex flex-col overflow-hidden space-y-3">
+      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 h-full">
+        <div class="lg:col-span-4 neo-card h-full flex flex-col overflow-hidden">
+          <div class="p-2.5 border-b border-slate-800 text-xs font-bold text-slate-400 shrink-0">
+            Utilisateurs inscrits
           </div>
-          <div id="messages-users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs">
-            <!-- Liste utilisateurs -->
-          </div>
+          <div id="messages-users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs"></div>
         </div>
 
-        <div class="lg:col-span-8 neo-card p-8 flex flex-col items-center justify-center min-h-[50vh] text-center text-slate-500">
+        <div class="lg:col-span-8 neo-card p-8 flex flex-col items-center justify-center h-full text-center text-slate-500">
           <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">💬</div>
-          <h3 class="text-sm font-bold text-slate-300">Module Messagerie Utilisateurs</h3>
-          <p class="text-xs text-slate-500 mt-1 max-w-sm">Cet espace accueillera les messages de support, retours d'expérience et signalements des étudiants.</p>
+          <h3 class="text-sm font-bold text-slate-300">Messagerie et Demandes de Support</h3>
+          <p class="text-xs text-slate-500 mt-1 max-w-sm">Cet espace affichera en direct les retours, demandes d'aide et messages envoyés par les étudiants depuis leur application.</p>
         </div>
       </div>
     </div>
 
   </main>
 
-  <!-- JAVASCRIPT PRINCIPAL D'INTERACTION -->
+  <!-- TOAST DE NOTIFICATION FLOTTANT -->
+  <div id="toast" class="fixed bottom-5 right-5 z-50 bg-emerald-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-2xl border border-emerald-400/40 hidden transition-opacity animate-bounce">
+    Notification
+  </div>
+
   <script>
     const allUsers = ${usersJson};
     const globalSummary = ${summaryJson};
+    let globalConfig = ${globalConfigJson};
     const d1TablesGlobal = ${d1TablesGlobalJson};
     const r2FoldersGlobal = ${r2FoldersGlobalJson};
     const tablesMeta = ${tablesMetaJson};
     const r2Meta = ${r2MetaJson};
 
     let selectedUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
+    let selectedDemandeUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
     let currentView = 'global';
 
-    // Toggle Sidebar
+    function showToast(msg) {
+      const t = document.getElementById('toast');
+      t.textContent = msg;
+      t.classList.remove('hidden');
+      setTimeout(() => t.classList.add('hidden'), 3500);
+    }
+
     function toggleSidebar() {
       const drawer = document.getElementById('sidebar-drawer');
       const backdrop = document.getElementById('sidebar-backdrop');
@@ -1154,7 +1238,6 @@ function renderDashboardHtml(data) {
       }
     }
 
-    // Basculer de vue
     function switchView(viewName) {
       currentView = viewName;
       ['global', 'users', 'demandes', 'messages'].forEach(v => {
@@ -1162,10 +1245,10 @@ function renderDashboardHtml(data) {
         const navBtn = document.getElementById('nav-btn-' + v);
         if (v === viewName) {
           el.classList.remove('hidden');
-          navBtn.className = "w-full flex items-center gap-3 px-3.5 py-3 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20";
+          navBtn.className = "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20";
         } else {
           el.classList.add('hidden');
-          navBtn.className = "w-full flex items-center gap-3 px-3.5 py-3 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left";
+          navBtn.className = "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left";
         }
       });
 
@@ -1175,7 +1258,6 @@ function renderDashboardHtml(data) {
       else if (viewName === 'demandes') badge.textContent = 'Demandes de Stockage';
       else if (viewName === 'messages') badge.textContent = 'Messages';
 
-      // Fermer le drawer mobile si ouvert
       const drawer = document.getElementById('sidebar-drawer');
       if (drawer.classList.contains('open')) toggleSidebar();
 
@@ -1183,13 +1265,13 @@ function renderDashboardHtml(data) {
         renderUsersLeftList();
         renderUserRightDetails(selectedUserId);
       } else if (viewName === 'demandes') {
-        renderSimpleUsersList('demandes-users-left-list');
+        renderDemandesUsersList();
+        renderDemandeRightDetails(selectedDemandeUserId);
       } else if (viewName === 'messages') {
-        renderSimpleUsersList('messages-users-left-list');
+        renderSimpleMessagesUsersList();
       }
     }
 
-    // Basculer l'accordéon
     function toggleAccordion(id) {
       const content = document.getElementById(id);
       const icon = document.getElementById(id + '-icon');
@@ -1204,21 +1286,20 @@ function renderDashboardHtml(data) {
       }
     }
 
-    // Rendu des tables D1 globales (avec accordéon)
+    // ========================================================================
+    // VUE GLOBALE : RENDU DES TABLES D1 ET DOSSIERS R2
+    // ========================================================================
     function renderGlobalD1Tables(filterText = '') {
       const container = document.getElementById('d1-tables-accordion-list');
       const q = (filterText || '').toLowerCase().trim();
 
       const filtered = tablesMeta.filter(t => {
         if (!q) return true;
-        return t.table.toLowerCase().includes(q) ||
-               t.label.toLowerCase().includes(q) ||
-               t.uiConnection.toLowerCase().includes(q) ||
-               t.role.toLowerCase().includes(q);
+        return t.table.toLowerCase().includes(q) || t.label.toLowerCase().includes(q) || t.role.toLowerCase().includes(q);
       });
 
       if (filtered.length === 0) {
-        container.innerHTML = '<div class="p-6 text-center text-slate-500 text-xs">Aucune table ne correspond à votre recherche.</div>';
+        container.innerHTML = '<div class="p-4 text-center text-slate-500 text-xs">Aucune table trouvée.</div>';
         return;
       }
 
@@ -1228,45 +1309,28 @@ function renderDashboardHtml(data) {
 
         return \`
           <div class="hover:bg-slate-800/30 transition-colors">
-            <!-- Ligne cliquable de la table -->
-            <div 
-              onclick="toggleAccordion('\${accId}')"
-              class="px-5 py-3.5 flex items-center justify-between cursor-pointer select-none"
-            >
-              <div class="flex items-center gap-3">
-                <span class="font-mono font-bold text-xs text-white bg-slate-800 px-2 py-1 rounded border border-slate-700">\${t.table}</span>
+            <div onclick="toggleAccordion('\${accId}')" class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none">
+              <div class="flex items-center gap-2.5">
+                <span class="font-mono font-bold text-xs text-white bg-slate-800 px-2 py-0.5 rounded border border-slate-700">\${t.table}</span>
                 <span class="text-xs font-semibold text-slate-300 hidden sm:inline">\${t.label}</span>
               </div>
-
-              <div class="flex items-center gap-4">
-                <div class="text-right">
-                  <span class="text-xs font-mono font-bold text-emerald-400">\${stats.formatted}</span>
-                  <span class="text-[11px] font-mono text-slate-400 ml-2">(\${stats.count.toLocaleString()} lignes)</span>
+              <div class="flex items-center gap-3">
+                <div class="text-right font-mono">
+                  <span class="text-xs font-bold text-emerald-400">\${stats.formatted}</span>
+                  <span class="text-[11px] text-slate-400 ml-1.5">(\${stats.count.toLocaleString()} lignes)</span>
                 </div>
-                <svg id="\${accId}-icon" class="w-4 h-4 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg id="\${accId}-icon" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
                 </svg>
               </div>
             </div>
-
-            <!-- Contenu déroulant de la table -->
-            <div id="\${accId}" class="accordion-content bg-[#090e1a] border-t border-slate-800/60 px-5 text-xs text-slate-300">
-              <div class="py-4 space-y-3 font-normal leading-relaxed">
-                <div>
-                  <span class="font-bold text-emerald-400 uppercase tracking-wider text-[10px] block mb-0.5">📍 Où est connectée cette table sur l'interface utilisateur :</span>
-                  <p class="text-slate-200">\${t.uiConnection}</p>
-                </div>
-                <div>
-                  <span class="font-bold text-blue-400 uppercase tracking-wider text-[10px] block mb-0.5">🎯 Rôle dans l'application StudyCloud :</span>
-                  <p class="text-slate-200">\${t.role}</p>
-                </div>
-                <div>
-                  <span class="font-bold text-amber-400 uppercase tracking-wider text-[10px] block mb-0.5">⚙️ Utilisation & Déclenchement :</span>
-                  <p class="text-slate-300">\${t.usage}</p>
-                </div>
-                <div>
-                  <span class="font-bold text-purple-400 uppercase tracking-wider text-[10px] block mb-0.5">📝 Exemple concret de données stockées :</span>
-                  <pre class="bg-slate-950 p-2.5 rounded-lg border border-slate-800 text-[11px] font-mono text-slate-300 overflow-x-auto">\${t.example}</pre>
+            <div id="\${accId}" class="accordion-content bg-[#090e1a] border-t border-slate-800/60 px-4 text-xs text-slate-300">
+              <div class="py-3 space-y-2 text-[11px] leading-relaxed">
+                <div><span class="font-bold text-emerald-400 uppercase tracking-wider text-[10px] block mb-0.5">📍 Connexion UI :</span> \${t.uiConnection}</div>
+                <div><span class="font-bold text-blue-400 uppercase tracking-wider text-[10px] block mb-0.5">🎯 Rôle :</span> \${t.role}</div>
+                <div><span class="font-bold text-amber-400 uppercase tracking-wider text-[10px] block mb-0.5">⚙️ Utilisation :</span> \${t.usage}</div>
+                <div><span class="font-bold text-purple-400 uppercase tracking-wider text-[10px] block mb-0.5">📝 Exemple :</span>
+                  <pre class="bg-slate-950 p-2 rounded border border-slate-800 font-mono text-[10px] text-slate-300 overflow-x-auto">\${t.example}</pre>
                 </div>
               </div>
             </div>
@@ -1275,21 +1339,17 @@ function renderDashboardHtml(data) {
       }).join('');
     }
 
-    // Rendu des dossiers R2 globaux (avec accordéon)
     function renderGlobalR2Folders(filterText = '') {
       const container = document.getElementById('r2-folders-accordion-list');
       const q = (filterText || '').toLowerCase().trim();
 
       const filtered = r2Meta.filter(r => {
         if (!q) return true;
-        return r.folder.toLowerCase().includes(q) ||
-               r.name.toLowerCase().includes(q) ||
-               r.uiConnection.toLowerCase().includes(q) ||
-               r.role.toLowerCase().includes(q);
+        return r.folder.toLowerCase().includes(q) || r.name.toLowerCase().includes(q);
       });
 
       if (filtered.length === 0) {
-        container.innerHTML = '<div class="p-6 text-center text-slate-500 text-xs">Aucun dossier ne correspond à votre recherche.</div>';
+        container.innerHTML = '<div class="p-4 text-center text-slate-500 text-xs">Aucun dossier trouvé.</div>';
         return;
       }
 
@@ -1299,46 +1359,26 @@ function renderDashboardHtml(data) {
 
         return \`
           <div class="hover:bg-slate-800/30 transition-colors">
-            <!-- Ligne cliquable du dossier R2 -->
-            <div 
-              onclick="toggleAccordion('\${accId}')"
-              class="px-5 py-3.5 flex items-center justify-between cursor-pointer select-none"
-            >
-              <div class="flex items-center gap-3">
-                <span class="font-mono font-bold text-xs text-orange-400 bg-orange-500/10 px-2 py-1 rounded border border-orange-500/20">\${r.folder}</span>
+            <div onclick="toggleAccordion('\${accId}')" class="px-4 py-2.5 flex items-center justify-between cursor-pointer select-none">
+              <div class="flex items-center gap-2.5">
+                <span class="font-mono font-bold text-xs text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded border border-orange-500/20">\${r.folder}</span>
                 <span class="text-xs font-semibold text-slate-300 hidden sm:inline">\${r.name}</span>
               </div>
-
-              <div class="flex items-center gap-4">
-                <div class="text-right">
-                  <span class="text-xs font-mono font-bold text-orange-400">\${stats.formatted}</span>
-                  <span class="text-[11px] font-mono text-slate-400 ml-2">(\${stats.count} fichier(s))</span>
+              <div class="flex items-center gap-3">
+                <div class="text-right font-mono">
+                  <span class="text-xs font-bold text-orange-400">\${stats.formatted}</span>
+                  <span class="text-[11px] text-slate-400 ml-1.5">(\${stats.count} fichier(s))</span>
                 </div>
-                <svg id="\${accId}-icon" class="w-4 h-4 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                <svg id="\${accId}-icon" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                   <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
                 </svg>
               </div>
             </div>
-
-            <!-- Contenu déroulant du dossier R2 -->
-            <div id="\${accId}" class="accordion-content bg-[#090e1a] border-t border-slate-800/60 px-5 text-xs text-slate-300">
-              <div class="py-4 space-y-3 font-normal leading-relaxed">
-                <div>
-                  <span class="font-bold text-orange-400 uppercase tracking-wider text-[10px] block mb-0.5">📍 Où est connecté ce dossier sur l'interface utilisateur :</span>
-                  <p class="text-slate-200">\${r.uiConnection}</p>
-                </div>
-                <div>
-                  <span class="font-bold text-blue-400 uppercase tracking-wider text-[10px] block mb-0.5">🎯 Rôle dans le stockage StudyCloud :</span>
-                  <p class="text-slate-200">\${r.role}</p>
-                </div>
-                <div>
-                  <span class="font-bold text-emerald-400 uppercase tracking-wider text-[10px] block mb-0.5">⚙️ Utilisation & Cycle de vie :</span>
-                  <p class="text-slate-300">\${r.usage}</p>
-                </div>
-                <div>
-                  <span class="font-bold text-purple-400 uppercase tracking-wider text-[10px] block mb-0.5">📝 Exemples concrets de fichiers hébergés :</span>
-                  <p class="font-mono text-slate-300 bg-slate-950 px-3 py-2 rounded-lg border border-slate-800">\${r.examples}</p>
-                </div>
+            <div id="\${accId}" class="accordion-content bg-[#090e1a] border-t border-slate-800/60 px-4 text-xs text-slate-300">
+              <div class="py-3 space-y-2 text-[11px] leading-relaxed">
+                <div><span class="font-bold text-orange-400 uppercase tracking-wider text-[10px] block mb-0.5">📍 Connexion UI :</span> \${r.uiConnection}</div>
+                <div><span class="font-bold text-blue-400 uppercase tracking-wider text-[10px] block mb-0.5">🎯 Rôle :</span> \${r.role}</div>
+                <div><span class="font-bold text-purple-400 uppercase tracking-wider text-[10px] block mb-0.5">📝 Exemples :</span> \${r.examples}</div>
               </div>
             </div>
           </div>
@@ -1353,7 +1393,7 @@ function renderDashboardHtml(data) {
     }
 
     // ========================================================================
-    // LOGIQUE DE LA VUE DIVISÉE "TOUT LES UTILISATEURS"
+    // VUE 2 : TOUT LES UTILISATEURS (DIVISÉE EN 2)
     // ========================================================================
     function renderUsersLeftList(filterText = '') {
       const container = document.getElementById('users-left-list');
@@ -1364,36 +1404,39 @@ function renderDashboardHtml(data) {
         const u = item.user;
         return (u.name && u.name.toLowerCase().includes(q)) ||
                (u.email && u.email.toLowerCase().includes(q)) ||
-               (u.school && u.school.toLowerCase().includes(q));
+               (u.phone && u.phone.toLowerCase().includes(q)) ||
+               (u.school && u.school.toLowerCase().includes(q)) ||
+               (u.level && u.level.toLowerCase().includes(q));
       });
 
       if (filtered.length === 0) {
-        container.innerHTML = '<div class="p-4 text-center text-slate-500">Aucun utilisateur trouvé.</div>';
+        container.innerHTML = '<div class="p-4 text-center text-slate-500">Aucun utilisateur.</div>';
         return;
       }
 
       container.innerHTML = filtered.map(item => {
         const u = item.user;
         const s = item.storage;
+        const q = item.quotaConfig;
         const isSelected = u.id === selectedUserId;
 
         return \`
           <div 
             onclick="selectUser('\${u.id}')"
-            class="p-3 cursor-pointer transition-all flex items-center justify-between \${isSelected ? 'bg-orange-600/15 border-l-4 border-l-orange-500' : 'hover:bg-slate-800/40'}"
+            class="p-2.5 cursor-pointer transition-all flex items-center justify-between \${isSelected ? 'bg-orange-600/15 border-l-4 border-l-orange-500' : 'hover:bg-slate-800/40'}"
           >
-            <div class="flex items-center gap-2.5 overflow-hidden">
+            <div class="flex items-center gap-2 overflow-hidden">
               <div class="w-8 h-8 rounded-lg bg-slate-800 text-orange-400 font-bold flex items-center justify-center text-xs shrink-0 border border-slate-700">
                 \${u.avatar_url ? '<img src="' + u.avatar_url + '" class="w-full h-full rounded-lg object-cover" onerror="this.remove()">' : u.name.charAt(0).toUpperCase()}
               </div>
               <div class="truncate">
-                <div class="font-bold text-white truncate">\${u.name}</div>
-                <div class="text-[11px] text-slate-400 truncate">\${u.email || u.school || 'Sans email'}</div>
+                <div class="font-bold text-white truncate text-xs">\${u.name}</div>
+                <div class="text-[10px] text-slate-400 truncate">📞 \${u.phone || 'Sans numéro'} • \${u.level}</div>
               </div>
             </div>
-
-            <div class="text-right shrink-0 font-mono font-bold text-[11px] text-orange-400">
-              \${s.totalFormatted}
+            <div class="text-right shrink-0 font-mono text-[11px]">
+              <span class="font-bold text-orange-400">\${s.totalFormatted}</span>
+              <div class="text-[9px] text-slate-500">Quota: \${q.totalAllowedFormatted}</div>
             </div>
           </div>
         \`;
@@ -1401,8 +1444,7 @@ function renderDashboardHtml(data) {
     }
 
     function filterUsersLeft() {
-      const q = document.getElementById('users-search-left').value;
-      renderUsersLeftList(q);
+      renderUsersLeftList(document.getElementById('users-search-left').value);
     }
 
     function selectUser(userId) {
@@ -1411,76 +1453,75 @@ function renderDashboardHtml(data) {
       renderUserRightDetails(userId);
     }
 
-    // Rendu complet du stockage d'un utilisateur sur la colonne de droite
     function renderUserRightDetails(userId) {
       const panel = document.getElementById('user-details-right-panel');
       const item = allUsers.find(x => x.user.id === userId);
-      if (!item) {
-        panel.innerHTML = '<div class="py-20 text-center text-slate-500">Utilisateur non trouvé.</div>';
-        return;
-      }
+      if (!item) return;
 
       const u = item.user;
       const s = item.storage;
+      const q = item.quotaConfig;
       const r2 = s.r2;
       const d1 = s.d1;
 
       panel.innerHTML = \`
-        <!-- En-tête profil de l'utilisateur -->
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-slate-800">
+        <!-- En-tête profil complet avec numéro, fonction, école -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
           <div class="flex items-center gap-3">
-            <div class="w-12 h-12 rounded-xl bg-orange-500/20 text-orange-400 font-black flex items-center justify-center border border-orange-500/30 text-xl shrink-0">
+            <div class="w-11 h-11 rounded-xl bg-orange-500/20 text-orange-400 font-black flex items-center justify-center border border-orange-500/30 text-lg shrink-0">
               \${u.avatar_url ? '<img src="' + u.avatar_url + '" class="w-full h-full rounded-xl object-cover" onerror="this.remove()">' : u.name.charAt(0).toUpperCase()}
             </div>
             <div>
-              <h3 class="text-base sm:text-lg font-extrabold text-white flex items-center gap-2">
+              <h3 class="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
                 \${u.name}
                 <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono font-normal">ID: \${u.id}</span>
               </h3>
-              <p class="text-xs text-slate-400">\${u.email} • \${u.school || 'École non renseignée'} (\${u.filiere || u.country})</p>
+              <p class="text-xs text-slate-300 mt-0.5">
+                📞 <strong class="text-white">\${u.phone}</strong> • 🎓 <span class="text-orange-400 font-bold">\${u.level}</span> • \${u.school || 'École non renseignée'} (\${u.filiere || u.country})
+              </p>
+              <p class="text-[11px] text-slate-400 font-mono mt-0.5">\${u.email}</p>
             </div>
           </div>
 
-          <div class="text-xs font-mono font-bold text-orange-400 bg-orange-500/10 px-3 py-1.5 rounded-lg border border-orange-500/20 self-start sm:self-auto">
-            Total : \${s.totalFormatted} / \${s.quotaFormatted} (\${s.usagePercentage}%)
+          <div class="text-right self-start sm:self-auto bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
+            <div class="text-xs font-mono font-bold text-orange-400">Total : \${s.totalFormatted} / \${q.totalAllowedFormatted}</div>
+            <div class="text-[10px] text-slate-400">Consommation : \${s.usagePercentage}%</div>
           </div>
         </div>
 
         <!-- 4 CARRÉS PERSONNELS POUR CET UTILISATEUR -->
-        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
-          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-blue-500">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
+          <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-blue-500">
             <span class="text-[10px] uppercase font-bold text-slate-400">Fichiers Perso</span>
-            <div class="text-lg font-black text-white mt-1">\${(r2.folders['user-files/']?.count || 0) + (r2.folders['ai-studies/']?.count || 0)}</div>
-            <div class="text-[10px] text-blue-400 mt-0.5 font-medium">\${r2.folders['user-files/']?.count || 0} cours, \${r2.folders['ai-studies/']?.count || 0} IA</div>
+            <div class="text-base font-black text-white mt-0.5">\${(r2.folders['user-files/']?.count || 0) + (r2.folders['ai-studies/']?.count || 0)}</div>
+            <div class="text-[10px] text-blue-400 font-medium">\${r2.folders['user-files/']?.count || 0} cours, \${r2.folders['ai-studies/']?.count || 0} IA</div>
           </div>
 
-          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-orange-500">
+          <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-orange-500">
             <span class="text-[10px] uppercase font-bold text-slate-400">Volume R2 Perso</span>
-            <div class="text-lg font-black text-orange-400 mt-1">\${r2.totalFormatted}</div>
-            <div class="text-[10px] text-slate-400 mt-0.5 font-medium">Limite : 10 Go Cloudflare</div>
+            <div class="text-base font-black text-orange-400 mt-0.5">\${r2.totalFormatted}</div>
+            <div class="text-[10px] text-slate-400 font-medium">Limite : 10 Go Cloudflare</div>
           </div>
 
-          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-emerald-500">
+          <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-emerald-500">
             <span class="text-[10px] uppercase font-bold text-slate-400">Volume D1 Perso</span>
-            <div class="text-lg font-black text-emerald-400 mt-1">\${d1.totalFormatted}</div>
-            <div class="text-[10px] text-slate-400 mt-0.5 font-medium">\${d1.totalRows} lignes SQL</div>
+            <div class="text-base font-black text-emerald-400 mt-0.5">\${d1.totalFormatted}</div>
+            <div class="text-[10px] text-slate-400 font-medium">\${d1.totalRows} lignes SQL</div>
           </div>
 
-          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-purple-500">
+          <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-purple-500">
             <span class="text-[10px] uppercase font-bold text-slate-400">Quota Utilisé</span>
-            <div class="text-lg font-black text-purple-400 mt-1">\${s.usagePercentage}%</div>
-            <div class="text-[10px] text-purple-300 mt-0.5 font-medium">Formule : Standard (1 Go)</div>
+            <div class="text-base font-black text-purple-400 mt-0.5">\${s.usagePercentage}%</div>
+            <div class="text-[10px] text-purple-300 font-medium">Alloué : \${q.totalAllowedFormatted}</div>
           </div>
         </div>
 
         <!-- 3 BARRES DE PROGRESSION PERSONNELLES POUR CET UTILISATEUR -->
-        <div class="bg-slate-900/80 p-4 rounded-xl border border-slate-800 space-y-3">
-          <span class="text-xs font-bold text-white block">📊 Consommation Personnelle de cet Utilisateur</span>
-          
+        <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800 space-y-2 text-xs">
           <div class="space-y-1">
             <div class="flex justify-between text-[11px]">
               <span class="text-slate-300 font-semibold">Stockage Total Utilisateur (R2 + D1)</span>
-              <span class="font-mono text-orange-400 font-bold">\${s.totalFormatted} / \${s.quotaFormatted} (\${s.usagePercentage}%)</span>
+              <span class="font-mono text-orange-400 font-bold">\${s.totalFormatted} / \${q.totalAllowedFormatted} (\${s.usagePercentage}%)</span>
             </div>
             <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
               <div class="h-full bg-orange-500 rounded-full" style="width: \${Math.max(1, s.usagePercentage)}%"></div>
@@ -1508,10 +1549,10 @@ function renderDashboardHtml(data) {
           </div>
         </div>
 
-        <!-- SECTION : TOUTES LES TABLES D1 DE CET UTILISATEUR (AVEC ACCORDÉON) -->
-        <div class="space-y-2">
-          <h4 class="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-2">
-            <span>🗄️</span> Lignes et Poids de cet Utilisateur dans Chaque Table D1
+        <!-- ACCORDÉONS TABLES D1 DE L'UTILISATEUR -->
+        <div class="space-y-1.5">
+          <h4 class="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+            <span>🗄️</span> Tables D1 de \${u.name}
           </h4>
           <div class="bg-slate-900 rounded-xl border border-slate-800 divide-y divide-slate-800/80">
             \${tablesMeta.map((t, idx) => {
@@ -1519,28 +1560,23 @@ function renderDashboardHtml(data) {
               const accId = 'acc-user-d1-' + idx;
               return \`
                 <div>
-                  <div 
-                    onclick="toggleAccordion('\${accId}')"
-                    class="px-4 py-2.5 flex items-center justify-between cursor-pointer hover:bg-slate-800/40 select-none text-xs"
-                  >
-                    <div class="flex items-center gap-2.5">
+                  <div onclick="toggleAccordion('\${accId}')" class="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-slate-800/40 select-none text-xs">
+                    <div class="flex items-center gap-2">
                       <span class="font-mono font-bold text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-[11px]">\${t.table}</span>
                       <span class="text-slate-300 text-[11px] truncate max-w-[200px] sm:max-w-none">\${t.label}</span>
                     </div>
-                    <div class="flex items-center gap-3">
-                      <span class="font-mono font-bold text-emerald-400">\${stats.formatted}</span>
-                      <span class="font-mono text-slate-400 text-[11px]">(\${stats.count} lignes)</span>
+                    <div class="flex items-center gap-2.5 font-mono">
+                      <span class="font-bold text-emerald-400">\${stats.formatted}</span>
+                      <span class="text-slate-400 text-[11px]">(\${stats.count} lignes)</span>
                       <svg id="\${accId}-icon" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
                       </svg>
                     </div>
                   </div>
-
-                  <div id="\${accId}" class="accordion-content bg-[#070b14] border-t border-slate-800/60 px-4 text-xs text-slate-300">
-                    <div class="py-3 space-y-2 text-[11px]">
+                  <div id="\${accId}" class="accordion-content bg-[#070b14] border-t border-slate-800/60 px-3 text-[11px] text-slate-300">
+                    <div class="py-2.5 space-y-1.5">
                       <div><strong class="text-emerald-400">📍 Connexion UI :</strong> \${t.uiConnection}</div>
                       <div><strong class="text-blue-400">🎯 Rôle :</strong> \${t.role}</div>
-                      <div><strong class="text-amber-400">⚙️ Utilisation :</strong> \${t.usage}</div>
                     </div>
                   </div>
                 </div>
@@ -1549,10 +1585,10 @@ function renderDashboardHtml(data) {
           </div>
         </div>
 
-        <!-- SECTION : TOUS LES DOSSIERS R2 DE CET UTILISATEUR (AVEC ACCORDÉON) -->
-        <div class="space-y-2">
-          <h4 class="text-xs font-bold text-orange-400 uppercase tracking-wider flex items-center gap-2">
-            <span>📦</span> Fichiers Réels de cet Utilisateur dans Cloudflare R2
+        <!-- ACCORDÉONS DOSSIERS R2 DE L'UTILISATEUR -->
+        <div class="space-y-1.5">
+          <h4 class="text-xs font-bold text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
+            <span>📦</span> Fichiers R2 de \${u.name}
           </h4>
           <div class="bg-slate-900 rounded-xl border border-slate-800 divide-y divide-slate-800/80">
             \${r2Meta.map((r, idx) => {
@@ -1560,27 +1596,22 @@ function renderDashboardHtml(data) {
               const accId = 'acc-user-r2-' + idx;
               return \`
                 <div>
-                  <div 
-                    onclick="toggleAccordion('\${accId}')"
-                    class="px-4 py-2.5 flex items-center justify-between cursor-pointer hover:bg-slate-800/40 select-none text-xs"
-                  >
-                    <div class="flex items-center gap-2.5">
+                  <div onclick="toggleAccordion('\${accId}')" class="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-slate-800/40 select-none text-xs">
+                    <div class="flex items-center gap-2">
                       <span class="font-mono font-bold text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20 text-[11px]">\${r.folder}</span>
                       <span class="text-slate-300 text-[11px] truncate max-w-[200px] sm:max-w-none">\${r.name}</span>
                     </div>
-                    <div class="flex items-center gap-3">
-                      <span class="font-mono font-bold text-orange-400">\${stats.formatted}</span>
-                      <span class="font-mono text-slate-400 text-[11px]">(\${stats.count} fichier(s))</span>
+                    <div class="flex items-center gap-2.5 font-mono">
+                      <span class="font-bold text-orange-400">\${stats.formatted}</span>
+                      <span class="text-slate-400 text-[11px]">(\${stats.count} fichier(s))</span>
                       <svg id="\${accId}-icon" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
                       </svg>
                     </div>
                   </div>
-
-                  <div id="\${accId}" class="accordion-content bg-[#070b14] border-t border-slate-800/60 px-4 text-xs text-slate-300">
-                    <div class="py-3 space-y-2 text-[11px]">
+                  <div id="\${accId}" class="accordion-content bg-[#070b14] border-t border-slate-800/60 px-3 text-[11px] text-slate-300">
+                    <div class="py-2.5 space-y-1.5">
                       <div><strong class="text-orange-400">📍 Connexion UI :</strong> \${r.uiConnection}</div>
-                      <div><strong class="text-blue-400">🎯 Rôle :</strong> \${r.role}</div>
                       <div><strong class="text-purple-400">📝 Exemples :</strong> \${r.examples}</div>
                     </div>
                   </div>
@@ -1592,19 +1623,250 @@ function renderDashboardHtml(data) {
       \`;
     }
 
-    function renderSimpleUsersList(containerId) {
-      const container = document.getElementById(containerId);
-      if (!container) return;
+    // ========================================================================
+    // VUE 3 : DEMANDES DE STOCKAGE & AJUSTEMENT DES QUOTAS INDIVIDUELS
+    // ========================================================================
+    function renderDemandesUsersList() {
+      const container = document.getElementById('demandes-users-left-list');
       container.innerHTML = allUsers.map(item => {
         const u = item.user;
+        const q = item.quotaConfig;
         const s = item.storage;
+        const isSelected = u.id === selectedDemandeUserId;
+
         return \`
-          <div class="p-3 hover:bg-slate-800/40 flex items-center justify-between">
-            <div class="truncate">
-              <div class="font-bold text-white truncate">\${u.name}</div>
-              <div class="text-[11px] text-slate-400 truncate">\${u.email || 'Sans email'}</div>
+          <div 
+            onclick="selectDemandeUser('\${u.id}')"
+            class="p-2.5 cursor-pointer transition-all flex items-center justify-between \${isSelected ? 'bg-orange-600/15 border-l-4 border-l-orange-500' : 'hover:bg-slate-800/40'}"
+          >
+            <div class="truncate pr-2">
+              <div class="font-bold text-white truncate text-xs">\${u.name}</div>
+              <div class="text-[10px] text-slate-400 truncate">📞 \${u.phone} • \${u.level}</div>
             </div>
-            <span class="text-[11px] font-mono font-bold text-orange-400 shrink-0">\${s.totalFormatted}</span>
+            <div class="text-right shrink-0 font-mono text-[11px]">
+              <span class="font-bold text-emerald-400">\${q.totalAllowedFormatted}</span>
+              <div class="text-[9px] text-orange-400">Occupé: \${s.totalFormatted}</div>
+            </div>
+          </div>
+        \`;
+      }).join('');
+    }
+
+    function selectDemandeUser(userId) {
+      selectedDemandeUserId = userId;
+      renderDemandesUsersList();
+      renderDemandeRightDetails(userId);
+    }
+
+    function renderDemandeRightDetails(userId) {
+      const panel = document.getElementById('demandes-right-panel');
+      const item = allUsers.find(x => x.user.id === userId);
+      if (!item) return;
+
+      const u = item.user;
+      const q = item.quotaConfig;
+      const s = item.storage;
+
+      panel.innerHTML = \`
+        <!-- En-tête de l'utilisateur avec numéro et fonction -->
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
+          <div>
+            <h3 class="text-base font-extrabold text-white flex items-center gap-2">
+              \${u.name}
+              <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono font-normal">ID: \${u.id}</span>
+            </h3>
+            <p class="text-xs text-slate-300 mt-0.5">
+              📞 <strong>\${u.phone}</strong> • 🎓 <strong class="text-orange-400">\${u.level}</strong> • \${u.school || 'École non renseignée'} (\${u.filiere || u.country})
+            </p>
+            <p class="text-[11px] text-slate-400 font-mono">\${u.email}</p>
+          </div>
+
+          <div class="bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 text-right self-start sm:self-auto">
+            <span class="text-[10px] text-slate-400 uppercase font-bold block">Stockage Actuel</span>
+            <span class="font-mono text-xs font-bold text-orange-400">\${s.totalFormatted} / \${q.totalAllowedFormatted}</span>
+          </div>
+        </div>
+
+        <!-- 3 CARTES DÉTAILLÉES : BIENVENUE, PAYANT, TOTAL -->
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
+          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-blue-500">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] uppercase font-bold text-slate-400">🎁 Bienvenue</span>
+              <span class="text-xs font-mono font-bold text-blue-400">\${q.welcomeTotalMb} Mo</span>
+            </div>
+            <div class="text-[11px] text-slate-300 mt-2 space-y-0.5 font-mono">
+              <div>R2 : <strong class="text-blue-400">\${q.welcomeR2Mb} Mo</strong></div>
+              <div>D1 : <strong class="text-blue-400">\${q.welcomeD1Mb} Mo</strong></div>
+            </div>
+          </div>
+
+          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-emerald-500">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] uppercase font-bold text-slate-400">💳 Payant / Acheté</span>
+              <span class="text-xs font-mono font-bold text-emerald-400">\${q.paidTotalMb} Mo</span>
+            </div>
+            <div class="text-[11px] text-slate-300 mt-2 space-y-0.5 font-mono">
+              <div>R2 : <strong class="text-emerald-400">\${q.paidR2Mb} Mo</strong></div>
+              <div>D1 : <strong class="text-emerald-400">\${q.paidD1Mb} Mo</strong></div>
+            </div>
+          </div>
+
+          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-orange-500">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] uppercase font-bold text-slate-400">📈 Quota Total</span>
+              <span class="text-xs font-mono font-bold text-orange-400">\${q.totalAllowedFormatted}</span>
+            </div>
+            <div class="text-[11px] text-slate-300 mt-2 space-y-0.5 font-mono">
+              <div>Bienvenue + Payant</div>
+              <div class="text-orange-300">Plan : <strong>\${q.planName.toUpperCase()}</strong></div>
+            </div>
+          </div>
+        </div>
+
+        <!-- FORMULAIRE DE MODIFICATION DES QUOTAS DE L'UTILISATEUR -->
+        <div class="bg-slate-900/90 p-4 rounded-xl border border-slate-800 space-y-4">
+          <h4 class="text-xs font-bold text-white flex items-center gap-2">
+            <span>⚙️</span> Modifier le Stockage de cet Utilisateur (Sauvegarde dans D1)
+          </h4>
+
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
+            <!-- Modification Stockage Bienvenue -->
+            <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-y-2">
+              <span class="text-blue-400 font-bold block text-xs">1. Stockage de Bienvenue (Mo) :</span>
+              
+              <div class="flex items-center justify-between gap-2">
+                <label class="text-slate-400">R2 Bienvenue :</label>
+                <input type="number" id="user-edit-w-r2" class="w-24 bg-slate-900 text-white font-mono text-xs px-2 py-1 rounded border border-slate-700 text-center" value="\${q.welcomeR2Mb}">
+              </div>
+
+              <div class="flex items-center justify-between gap-2">
+                <label class="text-slate-400">D1 Bienvenue :</label>
+                <input type="number" id="user-edit-w-d1" class="w-24 bg-slate-900 text-white font-mono text-xs px-2 py-1 rounded border border-slate-700 text-center" value="\${q.welcomeD1Mb}">
+              </div>
+            </div>
+
+            <!-- Modification Stockage Payant -->
+            <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-y-2">
+              <span class="text-emerald-400 font-bold block text-xs">2. Stockage Payant Additionnel (Mo) :</span>
+              
+              <div class="flex items-center justify-between gap-2">
+                <label class="text-slate-400">R2 Payant :</label>
+                <input type="number" id="user-edit-p-r2" class="w-24 bg-slate-900 text-white font-mono text-xs px-2 py-1 rounded border border-slate-700 text-center" value="\${q.paidR2Mb}">
+              </div>
+
+              <div class="flex items-center justify-between gap-2">
+                <label class="text-slate-400">D1 Payant :</label>
+                <input type="number" id="user-edit-p-d1" class="w-24 bg-slate-900 text-white font-mono text-xs px-2 py-1 rounded border border-slate-700 text-center" value="\${q.paidD1Mb}">
+              </div>
+            </div>
+          </div>
+
+          <div class="flex items-center justify-between pt-2">
+            <div class="text-[11px] text-slate-400">
+              * La somme (Bienvenue + Payant) formera le nouveau quota total de l'utilisateur.
+            </div>
+
+            <button 
+              onclick="saveUserQuota('\${u.id}')"
+              class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+            >
+              <span>💾</span> Enregistrer le Stockage de cet Utilisateur
+            </button>
+          </div>
+        </div>
+      \`;
+    }
+
+    async function saveUserQuota(userId) {
+      const wR2 = parseFloat(document.getElementById('user-edit-w-r2').value) || 0;
+      const wD1 = parseFloat(document.getElementById('user-edit-w-d1').value) || 0;
+      const pR2 = parseFloat(document.getElementById('user-edit-p-r2').value) || 0;
+      const pD1 = parseFloat(document.getElementById('user-edit-p-d1').value) || 0;
+
+      try {
+        const resp = await fetch('/api/storage/update-user-quota', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId,
+            welcomeR2Mb: wR2,
+            welcomeD1Mb: wD1,
+            paidR2Mb: pR2,
+            paidD1Mb: pD1
+          })
+        });
+
+        const data = await resp.json();
+        if (data.success) {
+          const item = allUsers.find(x => x.user.id === userId);
+          if (item) {
+            item.quotaConfig.welcomeR2Mb = wR2;
+            item.quotaConfig.welcomeD1Mb = wD1;
+            item.quotaConfig.welcomeTotalMb = wR2 + wD1;
+            item.quotaConfig.paidR2Mb = pR2;
+            item.quotaConfig.paidD1Mb = pD1;
+            item.quotaConfig.paidTotalMb = pR2 + pD1;
+            const totalMb = wR2 + wD1 + pR2 + pD1;
+            item.quotaConfig.totalAllowedMb = totalMb;
+            item.quotaConfig.totalAllowedFormatted = totalMb >= 1024 ? (totalMb / 1024).toFixed(2) + ' Go' : totalMb.toFixed(0) + ' Mo';
+            item.quotaConfig.totalAllowedBytes = totalMb * 1024 * 1024;
+            item.storage.usagePercentage = item.quotaConfig.totalAllowedBytes > 0 
+              ? Math.min(100, parseFloat(((item.storage.totalBytes / item.quotaConfig.totalAllowedBytes) * 100).toFixed(2)))
+              : 0;
+          }
+          showToast("Stockage mis à jour avec succès dans D1 !");
+          renderDemandesUsersList();
+          renderDemandeRightDetails(userId);
+          if (currentView === 'users') {
+            renderUsersLeftList();
+            renderUserRightDetails(userId);
+          }
+        } else {
+          alert('Erreur: ' + (data.error || 'Échec de sauvegarde'));
+        }
+      } catch (err) {
+        alert('Erreur réseau lors de la mise à jour');
+      }
+    }
+
+    async function saveGlobalWelcomeConfig() {
+      const defR2 = parseFloat(document.getElementById('global-cfg-r2').value) || 10;
+      const defD1 = parseFloat(document.getElementById('global-cfg-d1').value) || 20;
+
+      try {
+        const resp = await fetch('/api/storage/update-global-config', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            defaultWelcomeR2Mb: defR2,
+            defaultWelcomeD1Mb: defD1
+          })
+        });
+
+        const data = await resp.json();
+        if (data.success) {
+          globalConfig.default_welcome_r2_mb = defR2;
+          globalConfig.default_welcome_d1_mb = defD1;
+          showToast("Stockage de bienvenue par défaut enregistré (" + defR2 + " Mo R2 + " + defD1 + " Mo D1) !");
+        } else {
+          alert('Erreur: ' + (data.error || 'Échec'));
+        }
+      } catch (e) {
+        alert('Erreur réseau');
+      }
+    }
+
+    function renderSimpleMessagesUsersList() {
+      const container = document.getElementById('messages-users-left-list');
+      container.innerHTML = allUsers.map(item => {
+        const u = item.user;
+        return \`
+          <div class="p-2.5 hover:bg-slate-800/40 flex items-center justify-between">
+            <div class="truncate">
+              <div class="font-bold text-white text-xs truncate">\${u.name}</div>
+              <div class="text-[10px] text-slate-400 truncate">📞 \${u.phone} • \${u.level}</div>
+            </div>
+            <span class="text-[10px] font-mono text-slate-500">Actif</span>
           </div>
         \`;
       }).join('');
@@ -1650,24 +1912,98 @@ export default {
       );
     }
 
+    // Initialisation automatique des tables de quotas si absentes
+    await ensureStorageTables(db);
+
     try {
-      // 1. Récupération de tous les utilisateurs
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/storage/update-global-config
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/storage/update-global-config') {
+        const body = await request.json();
+        const defR2 = Number(body.defaultWelcomeR2Mb ?? 10.0);
+        const defD1 = Number(body.defaultWelcomeD1Mb ?? 20.0);
+
+        await safeRun(db, `
+          INSERT INTO storage_global_config (id, default_welcome_r2_mb, default_welcome_d1_mb, updated_at)
+          VALUES ('default', ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(id) DO UPDATE SET
+            default_welcome_r2_mb = excluded.default_welcome_r2_mb,
+            default_welcome_d1_mb = excluded.default_welcome_d1_mb,
+            updated_at = CURRENT_TIMESTAMP
+        `, [defR2, defD1]);
+
+        return new Response(JSON.stringify({ success: true, defaultWelcomeR2Mb: defR2, defaultWelcomeD1Mb: defD1 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/storage/update-user-quota
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/storage/update-user-quota') {
+        const body = await request.json();
+        const userId = body.userId;
+        if (!userId) {
+          return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
+        }
+
+        const wR2 = Number(body.welcomeR2Mb ?? 10.0);
+        const wD1 = Number(body.welcomeD1Mb ?? 20.0);
+        const pR2 = Number(body.paidR2Mb ?? 0.0);
+        const pD1 = Number(body.paidD1Mb ?? 0.0);
+        const planName = body.planName || (pR2 > 0 || pD1 > 0 ? 'payant' : 'gratuit');
+
+        await safeRun(db, `
+          INSERT INTO user_storage_quotas (user_id, welcome_r2_mb, welcome_d1_mb, paid_r2_mb, paid_d1_mb, plan_name, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(user_id) DO UPDATE SET
+            welcome_r2_mb = excluded.welcome_r2_mb,
+            welcome_d1_mb = excluded.welcome_d1_mb,
+            paid_r2_mb = excluded.paid_r2_mb,
+            paid_d1_mb = excluded.paid_d1_mb,
+            plan_name = excluded.plan_name,
+            updated_at = CURRENT_TIMESTAMP
+        `, [userId, wR2, wD1, pR2, pD1, planName]);
+
+        return new Response(JSON.stringify({ 
+          success: true, 
+          userId, 
+          welcomeR2Mb: wR2, 
+          welcomeD1Mb: wD1, 
+          paidR2Mb: pR2, 
+          paidD1Mb: pD1, 
+          totalMb: wR2 + wD1 + pR2 + pD1 
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // Configuration globale
+      const globalConfigRow = await safeFirst(db, `SELECT * FROM storage_global_config WHERE id = 'default'`, [], {
+        default_welcome_r2_mb: 10.0,
+        default_welcome_d1_mb: 20.0
+      });
+
+      // Récupération de tous les utilisateurs (avec numéro de téléphone et niveau)
       const usersQuery = await safeQuery(db, `
-        SELECT id, name, email, school, filiere, country, level, bio, avatar_url, created_at, last_active_at 
+        SELECT id, name, email, phone, school, filiere, country, level, bio, avatar_url, created_at, last_active_at 
         FROM users 
         ORDER BY created_at DESC
       `, [], { results: [] });
 
       const rawUsers = usersQuery && usersQuery.results ? usersQuery.results : [];
 
-      // 2. Inspection du stockage pour chaque utilisateur
+      // Inspection pour chaque utilisateur
       const detailedUsers = [];
       let globalR2Bytes = 0;
       let globalD1Bytes = 0;
       let globalD1Rows = 0;
 
       for (const u of rawUsers) {
-        const detail = await inspectUserStorageDetail(db, bucket, u);
+        const detail = await inspectUserStorageDetail(db, bucket, u, globalConfigRow);
         detailedUsers.push(detail);
 
         globalR2Bytes += detail.storage.r2.totalBytes || 0;
@@ -1675,11 +2011,11 @@ export default {
         globalD1Rows += detail.storage.d1.totalRows || 0;
       }
 
-      // 3. Inspection globale des tables D1 et des dossiers R2
+      // Inspection globale des tables D1 et des dossiers R2
       const d1TablesGlobal = await inspectAllD1TablesGlobal(db);
       const r2FoldersGlobal = await inspectAllR2FoldersGlobal(db, detailedUsers);
 
-      // 4. Synthèse globale de l'application
+      // Synthèse globale
       const globalSummary = {
         totalUsers: detailedUsers.length,
         totalStorageBytes: globalR2Bytes + globalD1Bytes,
@@ -1689,20 +2025,19 @@ export default {
         totalD1Bytes: globalD1Bytes,
         totalD1Formatted: formatBytes(globalD1Bytes),
         totalD1Rows: globalD1Rows,
-        averageBytesPerUser: detailedUsers.length > 0 ? Math.round((globalR2Bytes + globalD1Bytes) / detailedUsers.length) : 0,
-        averageFormatted: detailedUsers.length > 0 ? formatBytes(Math.round((globalR2Bytes + globalD1Bytes) / detailedUsers.length)) : '0 Octets',
         cloudflareR2FreeQuota: '10 Go (10737418240 Octets)',
         cloudflareD1FreeQuota: '5 Go (5368709120 Octets)',
         estimatedCostUsd: '0.00 $ (Inclus dans les quotas gratuits)'
       };
 
       // ----------------------------------------------------------------------
-      // ROUTE API : /api/overview (Synthèse globale JSON)
+      // ROUTE API : /api/overview
       // ----------------------------------------------------------------------
       if (path === '/api/overview') {
         return new Response(JSON.stringify({ 
           success: true, 
           summary: globalSummary,
+          globalConfig: globalConfigRow,
           d1Tables: d1TablesGlobal,
           r2Folders: r2FoldersGlobal
         }, null, 2), {
@@ -1712,28 +2047,15 @@ export default {
       }
 
       // ----------------------------------------------------------------------
-      // ROUTE API : /api/users ou /api/storage/users (Tous les utilisateurs en JSON)
+      // ROUTE API : /api/users
       // ----------------------------------------------------------------------
       if (path === '/api/users' || path === '/api/storage/users') {
-        return new Response(JSON.stringify({ success: true, summary: globalSummary, users: detailedUsers }, null, 2), {
-          status: 200,
-          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-        });
-      }
-
-      // ----------------------------------------------------------------------
-      // ROUTE API : /api/users/:id (Détail complet d'un utilisateur spécifique)
-      // ----------------------------------------------------------------------
-      if (path.startsWith('/api/users/')) {
-        const targetId = decodeURIComponent(path.replace('/api/users/', ''));
-        const found = detailedUsers.find(x => x.user.id === targetId);
-        if (!found) {
-          return new Response(JSON.stringify({ success: false, error: 'Utilisateur non trouvé' }), {
-            status: 404,
-            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
-          });
-        }
-        return new Response(JSON.stringify({ success: true, data: found }, null, 2), {
+        return new Response(JSON.stringify({ 
+          success: true, 
+          summary: globalSummary, 
+          globalConfig: globalConfigRow,
+          users: detailedUsers 
+        }, null, 2), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });
@@ -1744,6 +2066,7 @@ export default {
       // ----------------------------------------------------------------------
       const htmlContent = renderDashboardHtml({
         summary: globalSummary,
+        globalConfig: globalConfigRow,
         users: detailedUsers,
         d1TablesGlobal,
         r2FoldersGlobal
