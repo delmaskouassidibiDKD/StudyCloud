@@ -1120,10 +1120,16 @@ function renderDashboardHtml(data) {
     ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
     ::-webkit-scrollbar-thumb:hover { background: #f97316; }
     * { scrollbar-width: thin; scrollbar-color: #374151 #070b14; }
-    html { scroll-behavior: smooth; }
+    html, body {
+      height: 100vh;
+      max-height: 100vh;
+      overflow: hidden !important;
+      margin: 0;
+      padding: 0;
+    }
   </style>
 </head>
-<body class="bg-[#070b14] text-slate-100 min-h-screen antialiased flex flex-col selection:bg-orange-500 selection:text-white">
+<body class="bg-[#070b14] text-slate-100 h-screen max-h-screen overflow-hidden antialiased flex flex-col selection:bg-orange-500 selection:text-white">
 
   <!-- ==================================================================== -->
   <!-- BARRE SUPÉRIEURE DE NAVIGATION (STICKY ET TOUJOURS ACCESSIBLE) -->
@@ -1255,12 +1261,12 @@ function renderDashboardHtml(data) {
   <!-- ==================================================================== -->
   <!-- ZONE PRINCIPALE DE CONTENU SANS ESPACE VIDE ET PARFAITEMENT SCROLLABLE -->
   <!-- ==================================================================== -->
-  <main class="flex-1 w-full max-w-[1700px] mx-auto p-3 sm:p-5 flex flex-col min-h-0 overflow-hidden">
+  <main class="h-[calc(100vh-60px)] max-h-[calc(100vh-60px)] w-full max-w-[1700px] mx-auto p-2 sm:p-3 flex flex-col min-h-0 overflow-hidden">
 
     <!-- ================================================================== -->
     <!-- VUE 1 : ACCUEIL / VUE D'ENSEMBLE GLOBALE (DÉFILEMENT NATUREL) -->
     <!-- ================================================================== -->
-    <div id="view-global" class="w-full space-y-5 pb-12">
+    <div id="view-global" class="w-full h-full overflow-y-auto space-y-5 pb-12 pr-1 overscroll-contain">
 
       <!-- 4 CARRÉS EN HAUT : STATISTIQUES GLOBALES -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
@@ -1393,27 +1399,28 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <!-- VUE 2 : TOUT LES UTILISATEURS (DIVISÉE EN 2, COLONNES SCROLLABLES INDÉPENDANTES, PAGE FIXE) -->
     <!-- ================================================================== -->
-    <div id="view-users" class="hidden w-full flex-1 flex flex-col space-y-2.5 overflow-hidden h-[calc(100vh-80px)]">
-      
+    <div id="view-users" class="hidden w-full h-full flex flex-col min-h-0 overflow-hidden">
       <!-- DEUX COLONNES SCROLLABLES INDÉPENDANTES (LA PAGE EXTÉRIEURE NE BOUGE PAS) -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 h-full min-h-0 overflow-hidden">
         
         <!-- COLONNE GAUCHE (4/12) : LISTE DES NOMS SCROLLABLE INDÉPENDANTE -->
-        <div class="lg:col-span-4 neo-card h-[280px] lg:h-full flex flex-col overflow-hidden shrink-0">
-          <div class="p-2 border-b border-slate-800 shrink-0">
+        <div class="md:col-span-4 neo-card h-full flex flex-col min-h-0 overflow-hidden">
+          <div class="p-2.5 border-b border-slate-800 shrink-0">
             <input 
               type="text" 
               id="users-search-left" 
               placeholder="Filtrer nom, numéro, école..." 
               oninput="filterUsersLeft()"
-              class="w-full bg-slate-900 text-slate-200 placeholder-slate-500 text-xs rounded-lg px-3 py-1.5 border border-slate-700 focus:outline-none focus:border-orange-500"
+              class="w-full bg-slate-900 text-slate-200 placeholder-slate-500 text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-orange-500"
             >
           </div>
-          <div id="users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs font-medium"></div>
+          <!-- ÉLÉMENTS SCROLLABLES GAUCHE (UNIQUEMENT LA LISTE QUI DÉFILE) -->
+          <div id="users-left-list" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/60 text-xs font-medium overscroll-contain"></div>
         </div>
 
         <!-- COLONNE DROITE (8/12) : DÉTAILS COMPLETS ET DONNÉES SCROLLABLES INDÉPENDANTS -->
-        <div class="lg:col-span-8 neo-card p-4 space-y-4 overflow-y-auto h-[480px] lg:h-full" id="user-details-right-panel"></div>
+        <!-- ÉLÉMENTS SCROLLABLES DROITE (UNIQUEMENT LE CONTENU QUI DÉFILE) -->
+        <div class="md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="user-details-right-panel"></div>
 
       </div>
     </div>
@@ -1421,7 +1428,7 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <!-- VUE 3 : DEMANDE DE STOCKAGE & PARAMÈTRES GLOBAUX (COLONNES SCROLLABLES INDÉPENDANTES, PAGE FIXE) -->
     <!-- ================================================================== -->
-    <div id="view-demandes" class="hidden w-full flex-1 flex flex-col space-y-2.5 overflow-hidden h-[calc(100vh-80px)]">
+    <div id="view-demandes" class="hidden w-full h-full flex flex-col space-y-2 min-h-0 overflow-hidden">
       
       <!-- BANNIÈRE EN HAUT : PARAMÈTRES DU STOCKAGE DE BIENVENUE POUR TOUS -->
       <div class="neo-card p-2.5 sm:p-3 bg-gradient-to-r from-slate-900 via-[#131b2e] to-slate-900 border-l-4 border-l-orange-500 shrink-0">
@@ -1460,18 +1467,20 @@ function renderDashboardHtml(data) {
       </div>
 
       <!-- ÉCRAN DIVISÉ EN 2 POUR LA GESTION DES QUOTAS UTILISATEURS -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
         <!-- COLONNE GAUCHE (4/12) : LISTE DES UTILISATEURS SCROLLABLE -->
-        <div class="lg:col-span-4 neo-card h-[280px] lg:h-full flex flex-col overflow-hidden shrink-0">
+        <div class="md:col-span-4 neo-card h-full flex flex-col min-h-0 overflow-hidden">
           <div class="p-2.5 border-b border-slate-800 flex items-center justify-between text-xs font-bold text-slate-400 shrink-0">
             <span>Utilisateurs & Quotas</span>
             <span class="text-[10px] font-mono text-orange-400">(${data.users.length})</span>
           </div>
-          <div id="demandes-users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs"></div>
+          <!-- ÉLÉMENTS SCROLLABLES GAUCHE (UNIQUEMENT LA LISTE QUI DÉFILE) -->
+          <div id="demandes-users-left-list" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/60 text-xs overscroll-contain"></div>
         </div>
 
         <!-- COLONNE DROITE (8/12) : FORMULAIRE COMPLET D'AJUSTEMENT DU STOCKAGE SCROLLABLE -->
-        <div class="lg:col-span-8 neo-card p-4 space-y-4 overflow-y-auto h-[480px] lg:h-full" id="demandes-right-panel">
+        <!-- ÉLÉMENTS SCROLLABLES DROITE (UNIQUEMENT LE CONTENU QUI DÉFILE) -->
+        <div class="md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="demandes-right-panel">
           <div class="py-20 text-center text-slate-500 text-xs">
             Sélectionnez un utilisateur sur la gauche pour afficher et ajuster son stockage de bienvenue ou son stockage payant.
           </div>
@@ -1483,16 +1492,19 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <!-- VUE 4 : MESSAGES DES UTILISATEURS (DIVISÉE EN 2) -->
     <!-- ================================================================== -->
-    <div id="view-messages" class="hidden w-full flex-1 flex flex-col overflow-hidden h-[calc(100vh-80px)]">
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
-        <div class="lg:col-span-4 neo-card h-[280px] lg:h-full flex flex-col overflow-hidden shrink-0">
+    <div id="view-messages" class="hidden w-full h-full flex flex-col min-h-0 overflow-hidden">
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 h-full min-h-0 overflow-hidden">
+        <!-- COLONNE GAUCHE (4/12) : LISTE DES UTILISATEURS SCROLLABLE -->
+        <div class="md:col-span-4 neo-card h-full flex flex-col min-h-0 overflow-hidden">
           <div class="p-2.5 border-b border-slate-800 text-xs font-bold text-slate-400 shrink-0">
             Utilisateurs inscrits
           </div>
-          <div id="messages-users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs"></div>
+          <!-- ÉLÉMENTS SCROLLABLES GAUCHE (UNIQUEMENT LA LISTE QUI DÉFILE) -->
+          <div id="messages-users-left-list" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/60 text-xs overscroll-contain"></div>
         </div>
 
-        <div class="lg:col-span-8 neo-card p-8 overflow-y-auto flex flex-col items-center justify-center h-[480px] lg:h-full text-center text-slate-500">
+        <!-- COLONNE DROITE (8/12) : MESSAGES SCROLLABLE -->
+        <div class="md:col-span-8 neo-card p-8 h-full min-h-0 overflow-y-auto overscroll-contain flex flex-col items-center justify-center text-center text-slate-500">
           <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">💬</div>
           <h3 class="text-sm font-bold text-slate-300">Messagerie et Demandes de Support</h3>
           <p class="text-xs text-slate-500 mt-1 max-w-sm">Cet espace affichera en direct les retours, demandes d'aide et messages envoyés par les étudiants depuis leur application.</p>
@@ -1503,7 +1515,7 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <!-- VUE 5 : SIGNALEMENTS & RETOURS -->
     <!-- ================================================================== -->
-    <div id="view-signalements" class="hidden w-full flex-1 flex flex-col overflow-hidden h-[calc(100vh-80px)]">
+    <div id="view-signalements" class="hidden w-full h-full flex flex-col min-h-0 overflow-hidden">
       <div class="flex-1 overflow-y-auto p-4 space-y-4">
         <div class="neo-card p-6 flex flex-col items-center justify-center text-center text-slate-500 min-h-[300px]">
           <div class="w-20 h-20 rounded-2xl bg-red-500/10 text-4xl flex items-center justify-center mb-4">🚩</div>
@@ -1535,7 +1547,7 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <!-- VUE 6 : ABONNEMENTS & FORFAITS -->
     <!-- ================================================================== -->
-    <div id="view-abonnements" class="hidden w-full flex-1 flex flex-col overflow-hidden h-[calc(100vh-80px)]">
+    <div id="view-abonnements" class="hidden w-full h-full flex flex-col min-h-0 overflow-hidden">
       <div class="flex-1 overflow-y-auto p-4 space-y-4">
         <div class="neo-card p-6 flex flex-col items-center justify-center text-center text-slate-500 min-h-[300px]">
           <div class="w-20 h-20 rounded-2xl bg-purple-500/10 text-4xl flex items-center justify-center mb-4">💳</div>
@@ -1567,7 +1579,7 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <!-- VUE 7 : STATISTIQUES & MÉTRIQUES -->
     <!-- ================================================================== -->
-    <div id="view-statistiques" class="hidden w-full flex-1 flex flex-col overflow-hidden h-[calc(100vh-80px)]">
+    <div id="view-statistiques" class="hidden w-full h-full flex flex-col min-h-0 overflow-hidden">
       <div class="flex-1 overflow-y-auto p-4 space-y-4">
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
           <div class="neo-card p-4 border-l-4 border-l-blue-500">
