@@ -15,33 +15,7 @@ import {
   RotateCcw
 } from 'lucide-react';
 import { Flashcard } from './types';
-
-const INITIAL_CARDS: Flashcard[] = [
-  {
-    id: 'c1',
-    front: 'Qu’est-ce que le « Rappel Actif » (Active Recall) ?',
-    back: 'Une méthode d’apprentissage consistant à stimuler activement sa mémoire lors du processus d’apprentissage, plutôt que de relire passivement un document.',
-    tag: 'Méthodologie'
-  },
-  {
-    id: 'c2',
-    front: 'Quel est le principe de la « Répétition Espacée » ?',
-    back: 'Réviser une notion à intervalles de temps de plus en plus longs pour contrer la courbe de l’oubli d’Hermann Ebbinghaus.',
-    tag: 'Neurosciences'
-  },
-  {
-    id: 'c3',
-    front: 'En quoi consiste la « Technique Pomodoro » ?',
-    back: 'Fractionner son travail en sessions intenses de 25 minutes de concentration absolue, entrecoupées de 5 minutes de pause réparatrice.',
-    tag: 'Gestion du temps'
-  },
-  {
-    id: 'c4',
-    front: 'Qu’est-ce que le « Double Codage » de Paivio ?',
-    back: 'Associer des représentations verbales (mots, définitions) à des représentations visuelles (schémas, icônes) pour ancrer doublement l’information.',
-    tag: 'Cognition'
-  }
-];
+import { MathText } from '../MathText';
 
 interface TestQuestion {
   cardId: string;
@@ -65,7 +39,7 @@ function normalizeCards(input: any): Flashcard[] {
 
 export default function CarteMemoire({ data }: { data?: any }) {
   const dynamicCards = normalizeCards(data);
-  const cards: Flashcard[] = dynamicCards.length > 0 ? dynamicCards : INITIAL_CARDS;
+  const cards: Flashcard[] = dynamicCards;
   const [currentIndex, setCurrentIndex] = useState(0);
   const [isFlipped, setIsFlipped] = useState(false);
   const [masteredIds, setMasteredIds] = useState<Set<string>>(new Set());
@@ -76,6 +50,33 @@ export default function CarteMemoire({ data }: { data?: any }) {
     setMasteredIds(new Set());
     setIsTesting(false);
   }, [data]);
+
+  // Si aucune carte mémoire n'est encore générée par l'IA
+  if (cards.length === 0) {
+    return (
+      <div id="module-carte-memoire" className="w-full max-w-4xl mx-auto p-6 md:p-8 space-y-6">
+        <div id="carte-memoire-empty-card" className="w-full bg-white border border-stone-200 rounded-2xl p-8 md:p-12 text-center space-y-4 shadow-xs">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-600">
+            <GraduationCap className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl md:text-2xl font-bold text-stone-900">
+              Cartes Mémoire (Flashcards)
+            </h3>
+            <p className="text-stone-500 text-sm md:text-base max-w-lg mx-auto leading-relaxed">
+              Espace prêt à recevoir vos cartes de mémorisation. Demandez à l'IA d'extraire les définitions, formules et notions clés de votre cours. Les cartes interactives recto / verso apparaîtront ici.
+            </p>
+          </div>
+          <div className="pt-2 flex justify-center">
+            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-600">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              Espace adaptatif auto-extensible pour toute notion ou formule
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   // Test mode state
   const [isTesting, setIsTesting] = useState(false);
@@ -220,13 +221,13 @@ export default function CarteMemoire({ data }: { data?: any }) {
                 <span className="inline-block text-xs font-semibold tracking-wider uppercase text-amber-700 bg-amber-50 px-2.5 py-1 rounded-full mb-3">
                   Question
                 </span>
-                <p className="text-lg sm:text-xl md:text-2xl font-bold text-stone-900 leading-snug">
-                  {currentQ.front}
-                </p>
+                <div className="text-lg sm:text-xl md:text-2xl font-bold text-stone-900 leading-relaxed break-words whitespace-normal">
+                  <MathText text={currentQ.front} />
+                </div>
               </div>
 
               {/* Options */}
-              <div className="space-y-3">
+              <div className="space-y-3 w-full">
                 {currentQ.options.map((option, idx) => {
                   const isSelected = selectedOption === option;
                   const isCorrect = option === currentQ.correctAnswer;
@@ -250,13 +251,13 @@ export default function CarteMemoire({ data }: { data?: any }) {
                       key={idx}
                       disabled={isAnswerSubmitted}
                       onClick={() => setSelectedOption(option)}
-                      className={`w-full text-left p-4 rounded-xl border transition-all flex items-start gap-3 ${optionStyle}`}
+                      className={`w-full h-auto min-h-[56px] text-left p-4 rounded-xl border transition-all flex items-start gap-3 cursor-pointer ${optionStyle}`}
                     >
                       <span className="w-6 h-6 rounded-full border border-stone-300 flex items-center justify-center shrink-0 text-xs font-bold mt-0.5">
                         {String.fromCharCode(65 + idx)}
                       </span>
-                      <span className="text-sm sm:text-base leading-relaxed flex-1">
-                        {option}
+                      <span className="text-sm sm:text-base leading-relaxed flex-1 min-w-0 text-left break-words whitespace-normal">
+                        <MathText text={option} inline={true} />
                       </span>
                       {isAnswerSubmitted && isCorrect && (
                         <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 mt-0.5" />
@@ -398,25 +399,23 @@ export default function CarteMemoire({ data }: { data?: any }) {
         <div
           id="flashcard-interactive-box"
           onClick={toggleFlip}
-          className="w-full max-w-xl min-h-[280px] sm:min-h-[320px] cursor-pointer perspective-1000 select-none group"
+          className="w-full max-w-2xl min-h-[300px] h-auto cursor-pointer perspective-1000 select-none group"
         >
           <motion.div
             id="flashcard-motion-wrapper"
             animate={{ rotateY: isFlipped ? 180 : 0 }}
             transition={{ duration: 0.45, ease: 'easeInOut' }}
-            className="w-full h-full min-h-[280px] sm:min-h-[320px] relative rounded-2xl border border-stone-200 bg-white p-8 shadow-xs flex flex-col justify-between transform-style-3d hover:shadow-md transition-shadow"
+            className="w-full h-auto min-h-[300px] relative rounded-2xl border border-stone-200 bg-white p-6 sm:p-8 shadow-xs flex flex-col justify-between transform-style-3d hover:shadow-md transition-shadow"
           >
-            {/* L'élément supérieur (étiquette et indicateur Recto/Verso) a été retiré selon la demande */}
-
-            <div className="my-auto py-8 text-center">
+            <div className="my-auto py-6 text-center w-full">
               {!isFlipped ? (
-                <p id="flashcard-front-text" className="text-xl md:text-2xl font-semibold text-stone-900 leading-snug">
-                  {current.front}
-                </p>
+                <div id="flashcard-front-text" className="text-xl md:text-2xl font-semibold text-stone-900 leading-relaxed break-words whitespace-normal">
+                  <MathText text={current.front} />
+                </div>
               ) : (
-                <p id="flashcard-back-text" className="text-base md:text-lg font-normal text-stone-800 leading-relaxed [transform:rotateY(180deg)]">
-                  {current.back}
-                </p>
+                <div id="flashcard-back-text" className="text-base md:text-lg font-normal text-stone-800 leading-relaxed break-words whitespace-normal [transform:rotateY(180deg)]">
+                  <MathText text={current.back} />
+                </div>
               )}
             </div>
 
@@ -432,7 +431,7 @@ export default function CarteMemoire({ data }: { data?: any }) {
         </div>
 
         {/* Evaluation buttons */}
-        <div id="flashcard-evaluation-row" className="flex items-center gap-3 w-full max-w-xl justify-center">
+        <div id="flashcard-evaluation-row" className="flex items-center gap-3 w-full max-w-2xl justify-center">
           <button
             id="btn-card-to-review"
             onClick={() => markMastered(false)}

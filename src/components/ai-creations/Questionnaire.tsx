@@ -4,44 +4,7 @@ import { CheckCircle2, XCircle, RotateCcw, Award, ChevronRight, HelpCircle } fro
 import { QuestionQCM } from './types';
 import { MathText } from '../MathText';
 
-const INITIAL_QUESTIONS: QuestionQCM[] = [
-  {
-    id: 'q1',
-    question: 'Quelle est la méthode principale pour ancrer une notion dans la mémoire à long terme ?',
-    options: [
-      'Relire passivement son cours plusieurs fois de suite',
-      'La répétition espacée couplée au rappel actif',
-      'Souligner l’intégralité des phrases en couleur',
-      'Écouter un cours en dormant'
-    ],
-    correctIndex: 1,
-    explanation: 'Le rappel actif (active recall) force le cerveau à récupérer l’information, renforçant les connexions synaptiques de façon prouvée.'
-  },
-  {
-    id: 'q2',
-    question: 'Dans une carte mentale, comment s’organisent idéalement les idées ?',
-    options: [
-      'De manière linéaire, sous forme de colonnes de texte brut',
-      'En tableau de chiffres décroissants',
-      'De manière arborescente et rayonnante à partir d’un centre',
-      'Dans un ordre alphabétique strict'
-    ],
-    correctIndex: 2,
-    explanation: 'Une carte mentale reproduit le schéma associatif de la pensée avec un cœur thématique et des ramifications secondaires.'
-  },
-  {
-    id: 'q3',
-    question: 'Quelle est la technique de Feynman pour maîtriser un concept complexe ?',
-    options: [
-      'L’expliquer en des termes simples comme à un enfant de 10 ans',
-      'Apprendre par cœur les définitions du dictionnaire',
-      'Lire le livre le plus vite possible sans pause',
-      'Prendre des notes uniquement avec des acronymes'
-    ],
-    correctIndex: 0,
-    explanation: 'La technique Feynman met en lumière nos lacunes en nous obligeant à vulgariser avec des mots très simples et clairs.'
-  }
-];
+
 
 function normalizeQuestions(input: any): QuestionQCM[] {
   if (!input) return [];
@@ -99,7 +62,7 @@ function normalizeQuestions(input: any): QuestionQCM[] {
 
 export default function Questionnaire({ data }: { data?: any }) {
   const dynamicQuestions = normalizeQuestions(data);
-  const questions: QuestionQCM[] = dynamicQuestions.length > 0 ? dynamicQuestions : INITIAL_QUESTIONS;
+  const questions: QuestionQCM[] = dynamicQuestions;
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [selectedOption, setSelectedOption] = useState<number | null>(null);
@@ -115,6 +78,33 @@ export default function Questionnaire({ data }: { data?: any }) {
     setScore(0);
     setIsFinished(false);
   }, [data]);
+
+  // Si aucune question n'est encore générée par l'IA : affichage d'un espace prêt et adaptable
+  if (questions.length === 0) {
+    return (
+      <div id="module-questionnaire" className="w-full max-w-4xl mx-auto p-6 md:p-8 space-y-6">
+        <div id="questionnaire-empty-card" className="w-full bg-white border border-stone-200 rounded-2xl p-8 md:p-12 text-center space-y-4 shadow-xs">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-600">
+            <HelpCircle className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl md:text-2xl font-bold text-stone-900">
+              Questionnaire interactif
+            </h3>
+            <p className="text-stone-500 text-sm md:text-base max-w-lg mx-auto leading-relaxed">
+              Espace prêt à recevoir les questions de l'IA. Envoyez une consigne ou votre document dans le chat pour générer automatiquement les questions, les choix multiples et les corrections détaillées adaptées à votre sujet.
+            </p>
+          </div>
+          <div className="pt-2 flex justify-center">
+            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-600">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              Format visuel adaptatif prêt pour tout type d'exercice ou problème
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const currentQ = questions[currentIndex] || questions[0];
 
@@ -163,7 +153,7 @@ export default function Questionnaire({ data }: { data?: any }) {
           id="questionnaire-finished-panel"
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white border border-stone-200 rounded-xl p-8 text-center space-y-5 shadow-xs"
+          className="bg-white border border-stone-200 rounded-2xl p-8 text-center space-y-5 shadow-xs"
         >
           <div id="questionnaire-award-icon" className="w-16 h-16 mx-auto rounded-full bg-amber-50 border border-amber-200 flex items-center justify-center text-amber-700">
             <Award className="w-8 h-8" />
@@ -185,12 +175,12 @@ export default function Questionnaire({ data }: { data?: any }) {
         </motion.div>
       ) : (
         <div id="questionnaire-body" className="space-y-6">
-          <div id="question-card" className="bg-white border border-stone-200 rounded-xl p-6 md:p-8 space-y-6 shadow-xs">
-            <div id="question-text" className="text-lg md:text-xl font-semibold text-stone-900 leading-snug">
+          <div id="question-card" className="w-full h-auto min-h-fit bg-white border border-stone-200 rounded-2xl p-6 md:p-8 space-y-6 shadow-xs flex flex-col justify-start">
+            <div id="question-text" className="w-full h-auto text-left text-lg md:text-xl font-semibold text-stone-900 leading-relaxed break-words whitespace-normal">
               <MathText text={currentQ.question} />
             </div>
 
-            <div id="question-options-list" className="space-y-3">
+            <div id="question-options-list" className="space-y-3 w-full">
               {currentQ.options.map((option, idx) => {
                 const isSelected = selectedOption === idx;
                 const isCorrect = idx === currentQ.correctIndex;
@@ -212,9 +202,9 @@ export default function Questionnaire({ data }: { data?: any }) {
                     id={`btn-option-${currentIndex}-${idx}`}
                     onClick={() => handleSelect(idx)}
                     disabled={selectedOption !== null}
-                    className={`w-full text-left p-4 rounded-lg border text-sm md:text-base font-medium flex items-center justify-between transition-all cursor-pointer ${optionStyle}`}
+                    className={`w-full h-auto min-h-[56px] text-left p-4 md:p-5 rounded-xl border text-sm md:text-base font-medium flex items-center justify-between gap-4 transition-all cursor-pointer ${optionStyle}`}
                   >
-                    <span className="flex-1 mr-2"><MathText text={option} inline={true} /></span>
+                    <span className="flex-1 min-w-0 text-left leading-relaxed break-words whitespace-normal"><MathText text={option} inline={true} /></span>
                     {showResult && isCorrect && <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 ml-2" />}
                     {showResult && isSelected && !isCorrect && <XCircle className="w-5 h-5 text-rose-600 shrink-0 ml-2" />}
                   </button>
@@ -229,10 +219,10 @@ export default function Questionnaire({ data }: { data?: any }) {
                   initial={{ opacity: 0, height: 0 }}
                   animate={{ opacity: 1, height: 'auto' }}
                   exit={{ opacity: 0, height: 0 }}
-                  className="p-4 rounded-lg bg-stone-100 border border-stone-200 text-sm text-stone-800 space-y-1"
+                  className="w-full h-auto p-5 md:p-6 rounded-xl bg-stone-100 border border-stone-200 text-sm text-stone-800 space-y-2 leading-relaxed break-words whitespace-normal"
                 >
                   <p className="font-semibold text-stone-900">Explication didactique :</p>
-                  <div className="text-stone-800 text-sm leading-relaxed">
+                  <div className="text-stone-800 text-sm leading-relaxed break-words whitespace-normal">
                     <MathText text={currentQ.explanation} />
                   </div>
                 </motion.div>

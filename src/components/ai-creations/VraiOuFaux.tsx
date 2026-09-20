@@ -4,33 +4,6 @@ import { Check, X, RotateCcw, HelpCircle, CheckCircle2, AlertCircle } from 'luci
 import { AffirmationVraiFaux } from './types';
 import { MathText } from '../MathText';
 
-const INITIAL_AFFIRMATIONS: AffirmationVraiFaux[] = [
-  {
-    id: 'vf1',
-    statement: 'La relecture passive surlignée au feutre est la méthode la plus efficace pour réviser un examen.',
-    isTrue: false,
-    explanation: 'Faux : C’est une illusion de compétence fréquente. L’effort de restitution active et les tests pratiques sont prouvés bien plus durables.'
-  },
-  {
-    id: 'vf2',
-    statement: 'Espacer les sessions de révision dans le temps (courbe d’Ebbinghaus) ralentit significativement l’oubli.',
-    isTrue: true,
-    explanation: 'Vrai : La répétition espacée réactive les souvenirs juste avant leur dégradation, consolidant l’empreinte mémorielle.'
-  },
-  {
-    id: 'vf3',
-    statement: 'Le cerveau humain retient mieux les informations lorsqu’elles sont reliées à des images ou des schémas visuels.',
-    isTrue: true,
-    explanation: 'Vrai : Le principe du double codage (mots + visuels/infographies) double les voies d’accès au souvenir.'
-  },
-  {
-    id: 'vf4',
-    statement: 'Faire du multitâche (travailler tout en consultant ses réseaux sociaux) n’impacte pas la mémorisation si on est jeune.',
-    isTrue: false,
-    explanation: 'Faux : Le multitâche fragmente l’attention sélective et empêche le transfert des données vers la mémoire de travail profonde.'
-  }
-];
-
 function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
   if (!input) return [];
   const list = Array.isArray(input) ? input : (Array.isArray(input?.affirmations) ? input.affirmations : (Array.isArray(input?.data) ? input.data : []));
@@ -55,7 +28,7 @@ function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
 
 export default function VraiOuFaux({ data }: { data?: any }) {
   const dynamicList = normalizeAffirmations(data);
-  const affirmations: AffirmationVraiFaux[] = dynamicList.length > 0 ? dynamicList : INITIAL_AFFIRMATIONS;
+  const affirmations: AffirmationVraiFaux[] = dynamicList;
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [userChoice, setUserChoice] = useState<boolean | null>(null);
@@ -68,6 +41,33 @@ export default function VraiOuFaux({ data }: { data?: any }) {
     setScore(0);
     setCompleted(false);
   }, [data]);
+
+  // Si aucune affirmation n'a encore été générée par l'IA
+  if (affirmations.length === 0) {
+    return (
+      <div id="module-vrai-ou-faux" className="w-full max-w-4xl mx-auto p-6 md:p-8 space-y-6">
+        <div id="vrai-faux-empty-card" className="w-full bg-white border border-stone-200 rounded-2xl p-8 md:p-12 text-center space-y-4 shadow-xs">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-600">
+            <HelpCircle className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl md:text-2xl font-bold text-stone-900">
+              Vrai ou Faux (Cartes réflexes)
+            </h3>
+            <p className="text-stone-500 text-sm md:text-base max-w-lg mx-auto leading-relaxed">
+              Espace prêt pour les affirmations. Demandez à l'IA d'extraire les affirmations Vrai ou Faux de votre cours pour tester vos réflexes d'apprentissage avec justifications détaillées.
+            </p>
+          </div>
+          <div className="pt-2 flex justify-center">
+            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-600">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              Conteneur adaptatif étirable pour toute longueur d'affirmation
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const current = affirmations[currentIndex] || affirmations[0];
 
@@ -113,7 +113,7 @@ export default function VraiOuFaux({ data }: { data?: any }) {
           id="vrai-faux-result-panel"
           initial={{ opacity: 0, scale: 0.96 }}
           animate={{ opacity: 1, scale: 1 }}
-          className="bg-white border border-stone-200 rounded-xl p-8 text-center space-y-5 shadow-xs"
+          className="bg-white border border-stone-200 rounded-2xl p-8 text-center space-y-5 shadow-xs"
         >
           <div id="vrai-faux-result-icon" className="w-16 h-16 mx-auto rounded-full bg-emerald-50 border border-emerald-200 flex items-center justify-center text-emerald-700">
             <CheckCircle2 className="w-8 h-8" />
@@ -135,19 +135,19 @@ export default function VraiOuFaux({ data }: { data?: any }) {
         </motion.div>
       ) : (
         <div id="vrai-faux-interactive-card" className="space-y-6">
-          <div className="bg-white border border-stone-200 rounded-xl p-6 md:p-8 space-y-8 shadow-xs">
-            <div id="affirmation-container" className="min-h-[100px] flex items-center justify-center text-center">
-              <blockquote id="affirmation-text" className="text-lg md:text-xl font-medium text-stone-900 max-w-2xl leading-relaxed">
+          <div className="w-full h-auto min-h-fit bg-white border border-stone-200 rounded-2xl p-6 md:p-8 space-y-8 shadow-xs flex flex-col justify-start">
+            <div id="affirmation-container" className="w-full h-auto py-6 px-2 flex items-center justify-center text-center">
+              <blockquote id="affirmation-text" className="text-lg md:text-2xl font-semibold text-stone-900 w-full leading-relaxed break-words whitespace-normal">
                 « <MathText text={current.statement} inline={true} /> »
               </blockquote>
             </div>
 
-            <div id="vrai-faux-buttons-grid" className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div id="vrai-faux-buttons-grid" className="grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
               <button
                 id="btn-choice-vrai"
                 onClick={() => handleAnswer(true)}
                 disabled={userChoice !== null}
-                className={`py-4 px-6 rounded-xl border text-base font-semibold flex items-center justify-center gap-3 transition-all cursor-pointer ${
+                className={`w-full py-4 sm:py-5 px-6 rounded-xl border text-base sm:text-lg font-semibold flex items-center justify-center gap-3 transition-all cursor-pointer ${
                   userChoice === null
                     ? 'border-stone-300 bg-stone-50 hover:bg-emerald-50 hover:border-emerald-400 text-stone-800'
                     : current.isTrue
@@ -165,7 +165,7 @@ export default function VraiOuFaux({ data }: { data?: any }) {
                 id="btn-choice-faux"
                 onClick={() => handleAnswer(false)}
                 disabled={userChoice !== null}
-                className={`py-4 px-6 rounded-xl border text-base font-semibold flex items-center justify-center gap-3 transition-all cursor-pointer ${
+                className={`w-full py-4 sm:py-5 px-6 rounded-xl border text-base sm:text-lg font-semibold flex items-center justify-center gap-3 transition-all cursor-pointer ${
                   userChoice === null
                     ? 'border-stone-300 bg-stone-50 hover:bg-rose-50 hover:border-rose-400 text-stone-800'
                     : !current.isTrue
@@ -186,7 +186,7 @@ export default function VraiOuFaux({ data }: { data?: any }) {
                   id="vrai-faux-feedback"
                   initial={{ opacity: 0, y: 8 }}
                   animate={{ opacity: 1, y: 0 }}
-                  className={`p-4 rounded-xl border flex items-start gap-3 ${
+                  className={`p-4 sm:p-5 rounded-xl border flex items-start gap-3 w-full h-auto leading-relaxed break-words whitespace-normal ${
                     userChoice === current.isTrue
                       ? 'bg-emerald-50/70 border-emerald-200 text-emerald-950'
                       : 'bg-rose-50/70 border-rose-200 text-rose-950'
@@ -197,11 +197,11 @@ export default function VraiOuFaux({ data }: { data?: any }) {
                   ) : (
                     <AlertCircle className="w-5 h-5 text-rose-600 shrink-0 mt-0.5" />
                   )}
-                  <div className="space-y-1 text-sm">
+                  <div className="space-y-1.5 text-sm sm:text-base flex-1 min-w-0">
                     <p className="font-semibold">
                       {userChoice === current.isTrue ? 'Exact ! Bien vu.' : 'Erreur.'}
                     </p>
-                    <div className="text-stone-800 leading-relaxed">
+                    <div className="text-stone-800 leading-relaxed break-words whitespace-normal">
                       <MathText text={current.explanation} />
                     </div>
                   </div>

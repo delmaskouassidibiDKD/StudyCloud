@@ -13,45 +13,6 @@ import {
 import { QuestionQCM } from './types';
 import { MathText } from '../MathText';
 
-const INITIAL_QUESTIONS: QuestionQCM[] = [
-  {
-    id: 'q1',
-    question: 'Quelle est la méthode principale pour ancrer une notion dans la mémoire à long terme ?',
-    options: [
-      'Relire passivement son cours plusieurs fois de suite',
-      'La répétition espacée couplée au rappel actif',
-      'Souligner l’intégralité des phrases en couleur',
-      'Écouter un cours en dormant'
-    ],
-    correctIndex: 1,
-    explanation: 'Le rappel actif (active recall) force le cerveau à récupérer l’information, renforçant les connexions synaptiques de façon prouvée.'
-  },
-  {
-    id: 'q2',
-    question: 'Dans une carte mentale, comment s’organisent idéalement les idées ?',
-    options: [
-      'De manière linéaire, sous forme de colonnes de texte brut',
-      'En tableau de chiffres décroissants',
-      'De manière arborescente et rayonnante à partir d’un centre',
-      'Dans un ordre alphabétique strict'
-    ],
-    correctIndex: 2,
-    explanation: 'Une carte mentale reproduit le schéma associatif de la pensée avec un cœur thématique et des ramifications secondaires.'
-  },
-  {
-    id: 'q3',
-    question: 'Quelle est la technique de Feynman pour maîtriser un concept complexe ?',
-    options: [
-      'L’expliquer en des termes simples comme à un enfant de 10 ans',
-      'Apprendre par cœur les définitions du dictionnaire',
-      'Lire le livre le plus vite possible sans pause',
-      'Prendre des notes uniquement avec des acronymes'
-    ],
-    correctIndex: 0,
-    explanation: 'La technique Feynman met en lumière nos lacunes en nous obligeant à vulgariser avec des mots très simples et clairs.'
-  }
-];
-
 function normalizeQuestions(input: any): QuestionQCM[] {
   if (!input) return [];
   const list = Array.isArray(input) ? input : (Array.isArray(input?.questions) ? input.questions : (Array.isArray(input?.data) ? input.data : []));
@@ -108,7 +69,7 @@ function normalizeQuestions(input: any): QuestionQCM[] {
 
 export default function QuestionnaireTest({ data }: { data?: any }) {
   const dynamicQuestions = normalizeQuestions(data);
-  const questions: QuestionQCM[] = dynamicQuestions.length > 0 ? dynamicQuestions : INITIAL_QUESTIONS;
+  const questions: QuestionQCM[] = dynamicQuestions;
 
   const [currentIndex, setCurrentIndex] = useState(0);
   const [answers, setAnswers] = useState<Record<number, number>>({});
@@ -119,6 +80,33 @@ export default function QuestionnaireTest({ data }: { data?: any }) {
     setAnswers({});
     setIsSubmitted(false);
   }, [data]);
+
+  // Affichage d'un espace prêt et récepteur si aucune question n'a été générée par l'IA
+  if (questions.length === 0) {
+    return (
+      <div id="module-questionnaire-test" className="w-full max-w-4xl mx-auto p-6 md:p-8 space-y-6">
+        <div id="questionnaire-test-empty-card" className="w-full bg-white border border-stone-200 rounded-2xl p-8 md:p-12 text-center space-y-4 shadow-xs">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-600">
+            <HelpCircle className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl md:text-2xl font-bold text-stone-900">
+              Questionnaire Test (Évaluation notée)
+            </h3>
+            <p className="text-stone-500 text-sm md:text-base max-w-lg mx-auto leading-relaxed">
+              Espace d'évaluation prêt. Demandez à l'IA de générer un test ou examen complet à partir de votre cours. Les questions notées, les options à cocher, le score final et le corrigé détaillé s'afficheront ici.
+            </p>
+          </div>
+          <div className="pt-2 flex justify-center">
+            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-600">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              Conteneur adaptatif étirable pour tout sujet ou problème complexe
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const currentQ = questions[currentIndex] || questions[0];
   const answeredCount = Object.keys(answers).length;
@@ -224,13 +212,13 @@ export default function QuestionnaireTest({ data }: { data?: any }) {
             animate={{ opacity: 1, y: 0 }}
             transition={{ duration: 0.2 }}
             id="questionnaire-test-card"
-            className="bg-white border border-stone-200 rounded-xl p-6 md:p-8 space-y-6 shadow-xs"
+            className="w-full h-auto min-h-fit bg-white border border-stone-200 rounded-2xl p-6 md:p-8 space-y-6 shadow-xs flex flex-col justify-start"
           >
-            <div id="questionnaire-test-question-text" className="text-lg md:text-xl font-semibold text-stone-900 leading-snug">
+            <div id="questionnaire-test-question-text" className="w-full h-auto text-left text-lg md:text-xl font-semibold text-stone-900 leading-relaxed break-words whitespace-normal">
               <MathText text={currentQ.question} />
             </div>
 
-            <div id="questionnaire-test-options-list" className="space-y-3">
+            <div id="questionnaire-test-options-list" className="space-y-3 w-full">
               {currentQ.options.map((option, idx) => {
                 const isSelected = answers[currentIndex] === idx;
 
@@ -239,13 +227,13 @@ export default function QuestionnaireTest({ data }: { data?: any }) {
                     key={idx}
                     id={`btn-test-option-${currentIndex}-${idx}`}
                     onClick={() => handleSelectOption(idx)}
-                    className={`w-full text-left p-4 rounded-lg border text-sm md:text-base font-medium flex items-center justify-between transition-all cursor-pointer ${
+                    className={`w-full h-auto min-h-[56px] text-left p-4 md:p-5 rounded-xl border text-sm md:text-base font-medium flex items-center justify-between gap-4 transition-all cursor-pointer ${
                       isSelected
                         ? 'border-stone-900 bg-stone-100/80 text-stone-950 ring-1 ring-stone-900 shadow-xs'
                         : 'border-stone-200 bg-stone-50/50 hover:bg-stone-100 text-stone-800'
                     }`}
                   >
-                    <span className="flex-1 mr-2"><MathText text={option} inline={true} /></span>
+                    <span className="flex-1 min-w-0 text-left leading-relaxed break-words whitespace-normal"><MathText text={option} inline={true} /></span>
                     <div
                       className={`w-5 h-5 rounded-full border flex items-center justify-center shrink-0 ml-3 transition-colors ${
                         isSelected
@@ -354,14 +342,14 @@ export default function QuestionnaireTest({ data }: { data?: any }) {
                   <div
                     key={q.id}
                     id={`correction-card-${qIndex + 1}`}
-                    className={`bg-white border rounded-xl p-6 space-y-4 shadow-xs ${
+                    className={`w-full h-auto bg-white border rounded-2xl p-6 md:p-7 space-y-5 shadow-xs ${
                       isCorrect ? 'border-emerald-200' : 'border-rose-200'
                     }`}
                   >
                     <div className="flex items-start justify-between gap-4">
-                      <div className="space-y-1">
-                        <span className="text-xs font-semibold text-stone-500">Question {qIndex + 1}</span>
-                        <div className="font-semibold text-stone-900 text-base">
+                      <div className="space-y-1.5 flex-1 min-w-0">
+                        <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">Question {qIndex + 1}</span>
+                        <div className="font-semibold text-stone-900 text-base md:text-lg leading-relaxed break-words whitespace-normal">
                           <MathText text={q.question} />
                         </div>
                       </div>
@@ -386,7 +374,7 @@ export default function QuestionnaireTest({ data }: { data?: any }) {
                       </div>
                     </div>
 
-                    <div className="space-y-2 pt-1">
+                    <div className="space-y-2.5 pt-1 w-full">
                       {q.options.map((option, optIdx) => {
                         const isUserChoice = userAnswer === optIdx;
                         const isCorrectAnswer = optIdx === q.correctIndex;
@@ -402,9 +390,9 @@ export default function QuestionnaireTest({ data }: { data?: any }) {
                         return (
                           <div
                             key={optIdx}
-                            className={`p-3 rounded-lg border text-sm flex items-center justify-between ${optClass}`}
+                            className={`p-3.5 sm:p-4 rounded-xl border text-sm md:text-base flex items-center justify-between gap-3 w-full h-auto break-words whitespace-normal ${optClass}`}
                           >
-                            <span className="flex-1 mr-2"><MathText text={option} inline={true} /></span>
+                            <span className="flex-1 min-w-0 text-left leading-relaxed break-words whitespace-normal"><MathText text={option} inline={true} /></span>
                             <div className="flex items-center gap-2 ml-2 shrink-0">
                               {isUserChoice && !isCorrect && (
                                 <span className="text-xs text-rose-700 font-semibold flex items-center gap-1">
@@ -423,11 +411,11 @@ export default function QuestionnaireTest({ data }: { data?: any }) {
                       })}
                     </div>
 
-                    <div className="p-3.5 rounded-lg bg-stone-100 border border-stone-200 text-sm text-stone-800 space-y-1">
+                    <div className="p-4 md:p-5 rounded-xl bg-stone-100 border border-stone-200 text-sm text-stone-800 space-y-2 w-full h-auto leading-relaxed break-words whitespace-normal">
                       <p className="font-semibold text-stone-900 text-xs uppercase tracking-wider">
                         Explication didactique :
                       </p>
-                      <div className="text-stone-800 text-sm leading-relaxed">
+                      <div className="text-stone-800 text-sm leading-relaxed break-words whitespace-normal">
                         <MathText text={q.explanation} />
                       </div>
                     </div>

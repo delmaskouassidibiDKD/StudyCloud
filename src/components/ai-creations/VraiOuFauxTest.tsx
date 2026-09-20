@@ -10,39 +10,7 @@ import {
   ListFilter
 } from 'lucide-react';
 import { AffirmationVraiFaux } from './types';
-
-const STATEMENTS: AffirmationVraiFaux[] = [
-  {
-    id: 'vft1',
-    statement: 'La relecture passive surlignée au feutre est la méthode la plus efficace pour réviser un examen.',
-    isTrue: false,
-    explanation: 'Faux : C’est une illusion de compétence fréquente. L’effort de restitution active et les tests pratiques sont prouvés bien plus durables.'
-  },
-  {
-    id: 'vft2',
-    statement: 'Espacer les sessions de révision dans le temps (courbe d’Ebbinghaus) ralentit significativement l’oubli.',
-    isTrue: true,
-    explanation: 'Vrai : La répétition espacée réactive les souvenirs juste avant leur dégradation, consolidant l’empreinte mémorielle.'
-  },
-  {
-    id: 'vft3',
-    statement: 'Le cerveau humain retient mieux les informations lorsqu’elles sont reliées à des images ou des schémas visuels.',
-    isTrue: true,
-    explanation: 'Vrai : Le principe du double codage (mots + visuels/infographies) double les voies d’accès au souvenir.'
-  },
-  {
-    id: 'vft4',
-    statement: 'Faire du multitâche (travailler tout en consultant ses réseaux sociaux) n’impacte pas la mémorisation si on est jeune.',
-    isTrue: false,
-    explanation: 'Faux : Le multitâche fragmente l’attention sélective et empêche le transfert des données vers la mémoire de travail profonde.'
-  },
-  {
-    id: 'vft5',
-    statement: 'Un sommeil de qualité après une session de travail participe activement à la consolidation synaptique des acquis.',
-    isTrue: true,
-    explanation: 'Vrai : Durant les phases de sommeil lent profond et paradoxal, le cerveau réactive et stabilise durablement les réseaux neuronaux stimulés en journée.'
-  }
-];
+import { MathText } from '../MathText';
 
 function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
   if (!input) return [];
@@ -68,7 +36,7 @@ function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
 
 export default function VraiOuFauxTest({ data }: { data?: any }) {
   const dynamicList = normalizeAffirmations(data);
-  const affirmations: AffirmationVraiFaux[] = dynamicList.length > 0 ? dynamicList : STATEMENTS;
+  const affirmations: AffirmationVraiFaux[] = dynamicList;
 
   const [answers, setAnswers] = useState<Record<string, boolean>>({});
   const [isSubmitted, setIsSubmitted] = useState(false);
@@ -77,6 +45,33 @@ export default function VraiOuFauxTest({ data }: { data?: any }) {
     setAnswers({});
     setIsSubmitted(false);
   }, [data]);
+
+  // Si aucune affirmation n'est encore générée par l'IA
+  if (affirmations.length === 0) {
+    return (
+      <div id="module-vrai-ou-faux-test" className="w-full max-w-4xl mx-auto p-6 md:p-8 space-y-6">
+        <div id="vrai-faux-test-empty-card" className="w-full bg-white border border-stone-200 rounded-2xl p-8 md:p-12 text-center space-y-4 shadow-xs">
+          <div className="w-16 h-16 mx-auto rounded-2xl bg-stone-100 border border-stone-200 flex items-center justify-center text-stone-600">
+            <ListFilter className="w-8 h-8" />
+          </div>
+          <div className="space-y-2">
+            <h3 className="text-xl md:text-2xl font-bold text-stone-900">
+              Vrai ou Faux Test (Évaluation notée)
+            </h3>
+            <p className="text-stone-500 text-sm md:text-base max-w-lg mx-auto leading-relaxed">
+              Espace d'évaluation prêt. Demandez à l'IA de générer une série d'affirmations à cocher pour tester vos connaissances. Vos réponses seront validées avec score et corrigé complet.
+            </p>
+          </div>
+          <div className="pt-2 flex justify-center">
+            <span className="inline-flex items-center gap-2 px-4 py-2 rounded-xl bg-stone-50 border border-stone-200 text-xs font-semibold text-stone-600">
+              <span className="w-2 h-2 rounded-full bg-amber-500 animate-pulse" />
+              Conteneur adaptatif étirable pour toute série d'exercices
+            </span>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const answeredCount = Object.keys(answers).length;
   const isAllAnswered = answeredCount === affirmations.length;
@@ -179,7 +174,7 @@ export default function VraiOuFauxTest({ data }: { data?: any }) {
             <div
               key={item.id}
               id={`statement-card-${item.id}`}
-              className={`bg-white border rounded-xl p-5 sm:p-6 transition-all shadow-xs space-y-4 ${
+              className={`w-full h-auto min-h-fit bg-white border rounded-2xl p-5 sm:p-6 transition-all shadow-xs space-y-4 ${
                 isSubmitted
                   ? isCorrect
                     ? 'border-emerald-200 bg-emerald-50/15'
@@ -190,13 +185,13 @@ export default function VraiOuFauxTest({ data }: { data?: any }) {
               }`}
             >
               <div className="flex items-start justify-between gap-4">
-                <div className="space-y-1.5 flex-1">
+                <div className="space-y-1.5 flex-1 min-w-0">
                   <span className="text-xs font-bold text-stone-500 uppercase tracking-wider">
                     Affirmation {index + 1}
                   </span>
-                  <p className="text-base sm:text-lg font-semibold text-stone-900 leading-snug">
-                    {item.statement}
-                  </p>
+                  <div className="text-base sm:text-lg font-semibold text-stone-900 leading-relaxed break-words whitespace-normal">
+                    <MathText text={item.statement} />
+                  </div>
                 </div>
 
                 {isSubmitted && (
@@ -223,14 +218,14 @@ export default function VraiOuFauxTest({ data }: { data?: any }) {
               </div>
 
               {/* Action buttons / Choices (Vrai / Faux) */}
-              <div id={`choices-container-${item.id}`} className="grid grid-cols-2 gap-3 pt-1">
+              <div id={`choices-container-${item.id}`} className="grid grid-cols-2 gap-3 pt-1 w-full">
                 {/* VRAI BUTTON */}
                 <button
                   type="button"
                   id={`btn-choice-vrai-${item.id}`}
                   disabled={isSubmitted}
                   onClick={() => handleSelect(item.id, true)}
-                  className={`p-3.5 rounded-lg border text-sm sm:text-base font-semibold flex items-center justify-center gap-2 transition-all ${
+                  className={`p-3.5 sm:p-4 rounded-xl border text-sm sm:text-base font-semibold flex items-center justify-center gap-2 transition-all ${
                     userChoice === true
                       ? isSubmitted
                         ? item.isTrue
@@ -255,7 +250,7 @@ export default function VraiOuFauxTest({ data }: { data?: any }) {
                   id={`btn-choice-faux-${item.id}`}
                   disabled={isSubmitted}
                   onClick={() => handleSelect(item.id, false)}
-                  className={`p-3.5 rounded-lg border text-sm sm:text-base font-semibold flex items-center justify-center gap-2 transition-all ${
+                  className={`p-3.5 sm:p-4 rounded-xl border text-sm sm:text-base font-semibold flex items-center justify-center gap-2 transition-all ${
                     userChoice === false
                       ? isSubmitted
                         ? !item.isTrue
@@ -279,7 +274,7 @@ export default function VraiOuFauxTest({ data }: { data?: any }) {
               {isSubmitted && (
                 <div
                   id={`explanation-${item.id}`}
-                  className="mt-3 p-3.5 rounded-lg bg-stone-100/90 border border-stone-200 text-sm text-stone-800 space-y-1.5"
+                  className="mt-3 p-4 rounded-xl bg-stone-100 border border-stone-200 text-sm text-stone-800 space-y-2 w-full h-auto leading-relaxed break-words whitespace-normal"
                 >
                   <div className="flex items-center gap-2">
                     <span className="text-xs font-bold uppercase tracking-wider text-stone-700">
@@ -298,9 +293,9 @@ export default function VraiOuFauxTest({ data }: { data?: any }) {
                       • Votre réponse : <strong>{userChoice ? 'Vrai' : 'Faux'}</strong>
                     </span>
                   </div>
-                  <p className="text-stone-700 leading-relaxed text-sm pt-0.5">
-                    {item.explanation}
-                  </p>
+                  <div className="text-stone-800 leading-relaxed text-sm pt-0.5 break-words whitespace-normal">
+                    <MathText text={item.explanation} />
+                  </div>
                 </div>
               )}
             </div>
