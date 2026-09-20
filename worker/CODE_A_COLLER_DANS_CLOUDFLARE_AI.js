@@ -441,12 +441,13 @@ export default {
               creation_title = info.title || info.mainTitle || parsed.title || "Infographie Pédagogique";
               creation_data = parsed;
               chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre infographie visuelle et descriptive est prête dans l'espace Création !";
-            } else if (Array.isArray(parsed.exercises) || Array.isArray(parsed.exercices) || (defaultType === "exercices-ecrits" && Array.isArray(parsed.questions))) {
+            } else if (parsed.written_exercise || Array.isArray(parsed.exercises) || Array.isArray(parsed.exercices) || (defaultType === "exercices-ecrits" && Array.isArray(parsed.questions))) {
               decision = "creation";
               creation_type = "exercices-ecrits";
-              creation_title = parsed.title || "Exercices Écrits";
+              const we = parsed.written_exercise || parsed;
+              creation_title = we.title || parsed.title || "Exercice Écrit & Résolution de Problème";
               creation_data = parsed;
-              chat_message = parsed.chat_message || parsed.chat_response || "✨ Vos exercices écrits et problèmes rédigés sont prêts dans l'espace Création !";
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre exercice écrit et sa correction détaillée sont prêts dans l'espace Création !";
             } else if (parsed.baremeTotal || parsed.exercice1) {
               decision = "creation";
               creation_type = defaultType || "devoir-complet";
@@ -847,59 +848,48 @@ Tu dois impérativement respecter les règles strictes suivantes :
 ======================================================================
 RÈGLES D'EXCELLENCE POUR LES EXERCICES ÉCRITS ('exercices-ecrits') :
 ======================================================================
-Tu es un professeur évaluateur et un concepteur d'épreuves académiques de haut niveau. Ta mission est de générer une série d'exercices d'application, de problèmes rédigés et de questions de synthèse basés sur le document de l'élève, enrichis si nécessaire par des connaissances scientifiques et méthodologiques vérifiées d'Internet sur le même sujet.
+Tu es un professeur expert et un tuteur pédagogique de haut niveau. Ta mission est de concevoir un exercice écrit d'application ou de résolution de problème approfondi, basé sur le document fourni par l'utilisateur et enrichi, si nécessaire, par des connaissances vérifiées d'Internet sur le même sujet.
 
 Tu dois impérativement respecter les règles strictes suivantes :
 
-1. ADAPTABILITÉ TOTALE DU FORMAT VISUEL & LIBERTÉ CONCEPTUELLE (AUCUN SUJET PRÉ-FIGÉ) :
-   - Les espaces d'affichage dans StudyCloud sont 100% dynamiques et auto-extensibles : l'espace s'agrandit, s'allonge et s'étire pour recevoir tout type de problème ou énoncé long, complexe et structuré. Ce n'est pas l'écriture qui se compresse ou s'adapte, mais le conteneur visuel qui s'étire pour accueillir des énoncés détaillés, des mises en situation et des démonstrations complètes.
-   - INTERDICTION FORMELLE de recopier des questions pré-écrites ou des exemples types (ex: sciences cognitives, Ebbinghaus, Feynman, filtres électroniques). Le format visuel est neutre et s'adapte à TOUT type de sujet (mathématiques, physique, chimie, SVT, droit, médecine, économie, histoire, littérature, etc.).
+1. ÉVITER LES DOUBLONS (HISTORIQUE) :
+- Prends en compte l'historique des exercices déjà générés pour cet utilisateur et ce fichier.
+- Crée un exercice inédit qui explore un autre aspect, un autre chapitre ou un nouveau cas pratique par rapport à l'historique.
 
-2. ÉVITER LES DOUBLONS (HISTORIQUE DES EXERCICES DÉJÀ GÉNÉRÉS) :
-   - Prends en compte l'historique des exercices et devoirs déjà générés pour cet utilisateur et ce document.
-   - Tu dois concevoir de NOUVEAUX exercices qui abordent d'autres chapitres, d'autres équations, d'autres problèmes d'application ou d'autres études de cas.
+2. PROFONDEUR PÉDAGOGIQUE ET TYPE D'EXERCICE :
+- Ne pose pas de questions scolaires simplistes. Propose un exercice de type "étude de cas", "problème technique" ou "mise en situation professionnelle" qui pousse l'étudiant à mobiliser ses compétences d'analyse et de calcul.
+- Divise l'exercice en plusieurs parties progressives (ex: Partie A : Analyse théorique, Partie B : Application numérique / résolution, Partie C : Interprétation des résultats).
+- ADAPTABILITÉ TOTALE DU FORMAT VISUEL (ESPACES AUTO-EXTENSIBLES) : Les conteneurs de StudyCloud s'étirent et s'allongent automatiquement pour accueillir des énoncés longs, des mises en situation riches et des équations complexes. L'espace s'adapte à tout type de sujet. INTERDICTION FORMELLE de recopier des exemples types (ex: filtres électroniques si le cours porte sur de la biologie, du droit ou de l'économie).
 
-3. PROFONDEUR PÉDAGOGIQUE & BARÈME EN POINTS :
-   - Génère 3 à 5 exercices rédactionnels progressifs et formateurs.
-   - Attribue un barème précis en points à chaque exercice (ex: 3, 4 ou 5 points par question).
-   - Chaque exercice doit comporter :
-     * "question" : L'énoncé complet, détaillé et contextualisé du problème (pas de question simpliste ou tronquée ; formule un vrai cas pratique ou une démonstration avec toutes les données nécessaires).
-     * "points" : Le nombre de points alloué.
-     * "keywords" : Liste de 6 à 12 mots-clés essentiels et termes scientifiques ou conceptuels attendus dans la copie pour la notation automatique.
-     * "hint" : Un conseil méthodologique ou une piste de réflexion guidant l'élève sans donner directement la réponse.
-     * "sampleAnswer" : Le corrigé type complet, rédigé avec une rigueur exemplaire, détaillant chaque étape de calcul, chaque argument et la conclusion finale.
+3. CORRECTION DÉTAILLÉE AVEC DEUX EXEMPLES CONCRETS OBLIGATOIRES :
+- Fournis un corrigé complet, étape par étape ("steps"), expliquant le "pourquoi" théorique et le détail des calculs ou raisonnements.
+- Le corrigé doit obligatoirement inclure DEUX EXEMPLES CONCRETS ET DISTINCTS ("examples" : Exemple 1 et Exemple 2) d'application ou de cas réels pour ancrer la compréhension de l'étudiant.
 
 4. RÈGLE DE FORMATAGE ABSOLUE (MATHÉMATIQUES, FONCTIONS ET FRACTIONS EN LATEX PUR) :
-   - Pour TOUTES les formules, fonctions mathématiques, fractions, variables et symboles scientifiques (ex: $f(x) = ax + b$, $\frac{a}{b}$, $\Omega$, $\sqrt{2}$, $U_{eff}$, $\lim_{x \to 0}$), tu DOIS utiliser exclusivement la syntaxe LaTeX standard (entre symboles dollar $...$ ou $$...$$).
-   - INTERDICTION FORMELLE d'utiliser du texte brut mal formaté ou des caractères corrompus (&, *, !, $$$$$) pour représenter des maths. Utilise toujours les balises LaTeX (ex: \frac{num}{den}).
+- Pour TOUTES les formules, fonctions mathématiques, fractions, variables et symboles scientifiques (ex: $f(x) = ax + b$, $\frac{a}{b}$, $\Omega$, $\sqrt{2}$, $U_{eff}$), tu DOIS utiliser exclusivement la syntaxe LaTeX standard (entre symboles dollar $...$ ou blocs $$...$$).
+- INTERDICTION FORMELLE d'utiliser du texte brut mal formaté ou des caractères corrompus (&, *, !, $$$) pour représenter des maths. Utilise toujours les balises LaTeX correctes (ex: \frac{num}{den}).
 
 5. LANGUE :
-   - Rédige TOUJOURS en FRANÇAIS par défaut (ou dans la langue de l'utilisateur).
+- Rédige TOUJOURS en FRANÇAIS par défaut (ou dans la langue de l'utilisateur).
 
 6. STRUCTURE JSON REQUISE DANS "creation_data" :
-   {
-     "title": "[Titre de la Feuille d'Exercices Rédigés Adapté au Cours de l'Élève]",
-     "exercises": [
-       {
-         "id": "ex_1",
-         "number": 1,
-         "points": 4,
-         "question": "[Énoncé détaillé, clair et complet du problème ou de la question rédactionnelle avec formules LaTeX $\\frac{a}{b}$ si matière scientifique...]",
-         "keywords": ["[mot-clé 1]", "[mot-clé 2]", "[notion clé 3]", "[terme technique 4]"],
-         "hint": "[Conseil méthodologique ou piste de réflexion pour guider l'élève sans donner la solution brute]",
-         "sampleAnswer": "[Démonstration rédigée complète, explication pas à pas et résultat rigoureux de référence avec formules LaTeX $\\frac{a}{b}$]"
-       },
-       {
-         "id": "ex_2",
-         "number": 2,
-         "points": 4,
-         "question": "[Deuxième énoncé de problème d'application ou cas pratique approfondi...]",
-         "keywords": ["[mot-clé 1]", "[mot-clé 2]"],
-         "hint": "[Piste de réflexion pour l'exercice 2]",
-         "sampleAnswer": "[Corrigé type rédigé complet étape par étape]"
-       }
-     ]
-   }
+{
+  "written_exercise": {
+    "title": "Exercice Pratique : [Titre du sujet adapté au cours de l'élève]",
+    "context": "[Contexte clinique, technique ou énoncé général avec formules LaTeX $\\frac{a}{b}$ si applicables]",
+    "questions": [
+      "1. [Première question ou Partie A avec formules LaTeX...]",
+      "2. [Deuxième question ou Partie B avec calculs ou raisonnement...]"
+    ],
+    "correction": {
+      "steps": "Étape par étape : [Démonstration complète pas à pas, justifications théoriques et calculs intermédiaires en LaTeX $\\frac{a}{b}$]",
+      "examples": [
+        "Exemple 1 : [Premier cas concret distinct illustrant l'application réelle de la notion]",
+        "Exemple 2 : [Deuxième exemple concret distinct ancrant la compréhension]"
+      ]
+    }
+  }
+}
 
 ======================================================================
 RÈGLE DE FORMATAGE MATHÉMATIQUE STRICTE (LATEX PUR) :
@@ -1016,6 +1006,12 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
                 }
                 if (parsed?.infographic?.title || parsed?.title) {
                   prevList.push(`Infographie précédente : ${parsed?.infographic?.title || parsed?.title}`);
+                }
+                if (parsed?.written_exercise?.title) {
+                  prevList.push(`Exercice précédent : ${parsed.written_exercise.title}`);
+                }
+                if (parsed?.written_exercise?.context) {
+                  prevList.push(parsed.written_exercise.context.slice(0, 120));
                 }
                 if (parsed?.exercises && parsed?.title) {
                   prevList.push(`Exercices précédents : ${parsed.title}`);

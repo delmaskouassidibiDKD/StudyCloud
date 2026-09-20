@@ -5,149 +5,187 @@ import {
   Printer,
   Download,
   Check,
-  Send,
   Sparkles,
   Award,
   CheckCircle2,
-  AlertCircle,
   BookOpen,
   GraduationCap,
   Lightbulb,
-  PenLine
+  PenLine,
+  Eye,
+  EyeOff,
+  Columns,
+  Maximize2
 } from 'lucide-react';
 import { MathText } from '../MathText';
 
-interface QuestionItem {
+export interface QuestionData {
   id: string;
   number: number;
-  points: number;
-  question: string;
-  keywords: string[];
-  sampleAnswer: string;
-  hint: string;
+  text: string;
 }
 
-interface EvaluationResult {
-  score: number;
-  maxScore: number;
-  status: 'excellent' | 'bon' | 'moyen' | 'insuffisant';
-  strengths: string[];
-  improvements: string[];
-  detailedFeedback: string;
+export interface NormalizedExercise {
+  title: string;
+  context: string;
+  questions: QuestionData[];
+  correction: {
+    steps: string;
+    examples: string[];
+  };
+  isTemplate: boolean;
 }
 
-// Gabarit visuel neutre lorsque aucun exercice n'a encore été généré par l'IA
-// Permet à l'étudiant et à l'IA de voir immédiatement la disposition visuelle adaptable
-const EMPTY_TEMPLATE_QUESTIONS: QuestionItem[] = [
-  {
-    id: 'tpl_1',
-    number: 1,
-    points: 4,
-    question: "Espace d'exercice rédactionnel prêt : cet espace s'étire et s'allonge automatiquement selon la longueur de votre problème, de votre énoncé ou de vos formules scientifiques en LaTeX (ex : $\\frac{a}{b}$ ou $f(x) = ax + b$). Demandez à l'IA dans le chat de générer des exercices écrits sur votre cours !",
-    keywords: [],
-    sampleAnswer: "",
-    hint: "Les conseils méthodologiques et pistes de réflexion apparaîtront ici pour guider votre démarche étape par étape."
+// Gabarit visuel neutre par défaut lorsque aucun exercice n'a encore été généré
+const EMPTY_TEMPLATE_EXERCISE: NormalizedExercise = {
+  title: "Exercice Pratique & Résolution de Problème",
+  context: "Espace d'énoncé et de contexte : cet espace est 100% dynamique et s'étire automatiquement selon la longueur de votre sujet, de votre mise en situation ou de vos équations mathématiques en LaTeX (ex : $H(j\\omega) = \\frac{1}{1 + j\\frac{\\omega}{\\omega_0}}$). Demandez à l'IA dans le chat de concevoir un exercice écrit sur votre cours !",
+  questions: [
+    {
+      id: 'q_1',
+      number: 1,
+      text: "Première question ou Partie A : Analyse théorique, modélisation ou démonstration (avec rendu KaTeX pour toutes les formules : $\\frac{a}{b}$, $\\sqrt{2}$, etc.)."
+    },
+    {
+      id: 'q_2',
+      number: 2,
+      text: "Deuxième question ou Partie B : Application numérique, calculs détaillés ou interprétation des résultats."
+    }
+  ],
+  correction: {
+    steps: "La résolution étape par étape détaillant les démonstrations théoriques et les calculs s'affichera ici après génération.",
+    examples: [
+      "Exemple 1 : Premier cas concret distinct illustrant la notion en situation réelle.",
+      "Exemple 2 : Deuxième exemple concret distinct ancrant la compréhension."
+    ]
   },
-  {
-    id: 'tpl_2',
-    number: 2,
-    points: 4,
-    question: "Deuxième espace de problème extensible : adapté pour tout type de matière (mathématiques, physique, SVT, droit, médecine, économie, littérature). L'espace de rédaction ci-dessous s'adapte à votre réponse.",
-    keywords: [],
-    sampleAnswer: "",
-    hint: ""
+  isTemplate: true
+};
+
+function normalizeWrittenExercise(input: any, fallbackTitle?: string): NormalizedExercise {
+  if (!input || (typeof input === 'object' && Object.keys(input).length === 0)) {
+    return {
+      ...EMPTY_TEMPLATE_EXERCISE,
+      title: fallbackTitle || EMPTY_TEMPLATE_EXERCISE.title
+    };
   }
-];
 
-function normalizeExercices(input: any): QuestionItem[] {
-  if (!input) return [];
-  const raw = input?.creation_data || input?.exercises_document || input;
-  const list = Array.isArray(raw)
-    ? raw
-    : (Array.isArray(raw?.exercises)
-      ? raw.exercises
-      : (Array.isArray(raw?.exercices)
-        ? raw.exercices
-        : (Array.isArray(raw?.questions)
-          ? raw.questions
-          : [])));
+  // 1. Déballage éventuel de wrappers (creation_data, written_exercise, etc.)
+  const root = input?.written_exercise || input?.creation_data?.written_exercise || input?.creation_data || input;
 
-  if (!Array.isArray(list) || list.length === 0) return [];
+  if (root?.written_exercise) {
+    return normalizeWrittenExercise(root.written_exercise, fallbackTitle);
+  }
 
-  return list.map((q: any, idx: number) => ({
-    id: q.id || `eq_${idx + 1}`,
-    number: typeof q.number === 'number' ? q.number : idx + 1,
-    points: typeof q.points === 'number' ? q.points : (typeof q.bareme === 'number' ? q.bareme : 4),
-    question: q.question || q.enonce || q.texte || q.problem || `Exercice n°${idx + 1}`,
-    keywords: Array.isArray(q.keywords)
-      ? q.keywords
-      : (Array.isArray(q.motsCles) ? q.motsCles : (Array.isArray(q.mots_cles) ? q.mots_cles : [])),
-    sampleAnswer: q.sampleAnswer || q.corrigetype || q.reponse || q.correction || q.solution || '',
-    hint: q.hint || q.indice || q.conseil || ''
-  }));
+  const title = root?.title || fallbackTitle || "Exercice Pratique d'Application";
+  const context = root?.context || root?.enonce || root?.description || root?.overview || "";
+
+  // 2. Normalisation des questions
+  let questions: QuestionData[] = [];
+
+  if (Array.isArray(root?.questions)) {
+    questions = root.questions.map((q: any, idx: number) => {
+      if (typeof q === 'string') {
+        return {
+          id: `q_${idx + 1}`,
+          number: idx + 1,
+          text: q
+        };
+      }
+      return {
+        id: q.id || `q_${idx + 1}`,
+        number: typeof q.number === 'number' ? q.number : idx + 1,
+        text: q.text || q.question || q.enonce || `Question ${idx + 1}`
+      };
+    });
+  } else if (Array.isArray(root?.exercises) || Array.isArray(root?.exercices)) {
+    const list = root.exercises || root.exercices;
+    questions = list.map((item: any, idx: number) => ({
+      id: item.id || `q_${idx + 1}`,
+      number: item.number || idx + 1,
+      text: item.question || item.enonce || item.text || `Question ${idx + 1}`
+    }));
+  }
+
+  if (questions.length === 0) {
+    questions = [
+      {
+        id: 'q_1',
+        number: 1,
+        text: "Analyser la situation proposée et résoudre le problème posé."
+      }
+    ];
+  }
+
+  // 3. Normalisation de la correction (steps + 2 examples)
+  let steps = "";
+  let examples: string[] = [];
+
+  if (root?.correction) {
+    if (typeof root.correction === 'string') {
+      steps = root.correction;
+    } else if (typeof root.correction === 'object') {
+      steps = root.correction.steps || root.correction.explanation || root.correction.solution || "";
+      if (Array.isArray(root.correction.examples)) {
+        examples = root.correction.examples.map((ex: any) => String(ex || ''));
+      }
+    }
+  } else if (root?.sampleAnswer) {
+    steps = root.sampleAnswer;
+  } else if (Array.isArray(root?.exercises) && root.exercises.some((e: any) => e.sampleAnswer)) {
+    steps = root.exercises
+      .map((e: any, i: number) => `**Question ${i + 1} :**\n${e.sampleAnswer || ''}`)
+      .join('\n\n');
+  }
+
+  return {
+    title,
+    context,
+    questions,
+    correction: {
+      steps: steps || "Correction détaillée en attente de génération.",
+      examples
+    },
+    isTemplate: false
+  };
 }
 
 export default function ExercicesEcrits({ data, title }: { data?: any; title?: string }) {
-  const dynamicQuestions = useMemo(() => normalizeExercices(data), [data]);
-  const isTemplateMode = dynamicQuestions.length === 0;
-  const questionsList: QuestionItem[] = isTemplateMode ? EMPTY_TEMPLATE_QUESTIONS : dynamicQuestions;
+  const exercise = useMemo(() => normalizeWrittenExercise(data, title), [data, title]);
 
-  const courseTitle = data?.title || title || (isTemplateMode ? 'Feuille d’Exercices Rédigés & Problèmes d’Application' : (title || 'Exercices d’Application & Problèmes Rédigés'));
-  const totalPoints = questionsList.reduce((sum, q) => sum + q.points, 0);
+  // Mode d'affichage de la correction côte à côte
+  const [showCorrection, setShowCorrection] = useState(true);
+  const [isFullCorrectionMode, setIsFullCorrectionMode] = useState(false);
 
-  // Réponses saisies par l'utilisateur
+  // Réponses rédigées par l'étudiant sous chaque question
   const [answers, setAnswers] = useState<Record<string, string[]>>(() => {
     const initial: Record<string, string[]> = {};
-    questionsList.forEach((q) => {
+    exercise.questions.forEach((q) => {
       initial[q.id] = ['', '', ''];
     });
     return initial;
   });
 
-  // Évaluations par question
-  const [evaluations, setEvaluations] = useState<Record<string, EvaluationResult>>({});
+  const [downloaded, setDownloaded] = useState(false);
 
   useEffect(() => {
     const fresh: Record<string, string[]> = {};
-    questionsList.forEach((q) => {
+    exercise.questions.forEach((q) => {
       fresh[q.id] = ['', '', ''];
     });
     setAnswers(fresh);
-    setEvaluations({});
   }, [data]);
-
-  // État de chargement de l'analyse par question
-  const [evaluatingId, setEvaluatingId] = useState<string | null>(null);
-  const [downloaded, setDownloaded] = useState(false);
-
-  const saveAnswers = (newAnswers: Record<string, string[]>) => {
-    setAnswers(newAnswers);
-    try {
-      localStorage.setItem('exercices_ecrits_answers', JSON.stringify(newAnswers));
-    } catch {
-      // ignore
-    }
-  };
-
-  const saveEvaluations = (newEvals: Record<string, EvaluationResult>) => {
-    setEvaluations(newEvals);
-    try {
-      localStorage.setItem('exercices_ecrits_evaluations', JSON.stringify(newEvals));
-    } catch {
-      // ignore
-    }
-  };
 
   const updateLine = (questionId: string, lineIndex: number, text: string) => {
     const lines = [...(answers[questionId] || ['', '', ''])];
     lines[lineIndex] = text;
-    saveAnswers({ ...answers, [questionId]: lines });
+    setAnswers((prev) => ({ ...prev, [questionId]: lines }));
   };
 
   const addLine = (questionId: string) => {
     const lines = [...(answers[questionId] || ['', '', ''])];
     lines.push('');
-    saveAnswers({ ...answers, [questionId]: lines });
+    setAnswers((prev) => ({ ...prev, [questionId]: lines }));
     setTimeout(() => {
       const newIndex = lines.length - 1;
       const el = document.getElementById(`input-${questionId}-${newIndex}`);
@@ -172,7 +210,7 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
       e.preventDefault();
       const lines = [...(answers[questionId] || [])];
       lines.splice(lineIndex, 1);
-      saveAnswers({ ...answers, [questionId]: lines });
+      setAnswers((prev) => ({ ...prev, [questionId]: lines }));
       setTimeout(() => {
         const prevIndex = Math.max(0, lineIndex - 1);
         document.getElementById(`input-${questionId}-${prevIndex}`)?.focus();
@@ -180,171 +218,61 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
     }
   };
 
-  // Analyse et correction intelligente de la réponse rédigée
-  const evaluateQuestion = (text: string, q: QuestionItem): EvaluationResult => {
-    const trimmed = text.trim().toLowerCase();
-    if (trimmed.length < 15) {
-      return {
-        score: 0.5,
-        maxScore: q.points,
-        status: 'insuffisant',
-        strengths: ['Tentative de rédaction enregistrée.'],
-        improvements: ['Votre réponse est trop courte : développez votre démarche et formulez des explications complètes.'],
-        detailedFeedback: 'La réponse manque d’éléments démonstratifs pour valider le barème de la question.'
-      };
-    }
-
-    const matchedKeywords = (q.keywords || []).filter((k) => trimmed.includes(k.toLowerCase()));
-    const matchRatio = (q.keywords && q.keywords.length > 0)
-      ? Math.min(1, matchedKeywords.length / Math.min(q.keywords.length, 4))
-      : 0.75;
-
-    const wordCount = trimmed.split(/\s+/).filter(Boolean).length;
-    let lengthFactor = 0.5;
-    if (wordCount >= 30) lengthFactor = 1.0;
-    else if (wordCount >= 16) lengthFactor = 0.8;
-    else if (wordCount >= 8) lengthFactor = 0.6;
-
-    const rawScore = q.points * (matchRatio * 0.65 + lengthFactor * 0.35);
-    const finalScore = Math.max(1, Math.min(q.points, Math.round(rawScore * 2) / 2));
-
-    let status: 'excellent' | 'bon' | 'moyen' | 'insuffisant' = 'moyen';
-    if (finalScore >= q.points * 0.85) status = 'excellent';
-    else if (finalScore >= q.points * 0.65) status = 'bon';
-    else if (finalScore >= q.points * 0.4) status = 'moyen';
-    else status = 'insuffisant';
-
-    const strengths: string[] = [];
-    if (matchedKeywords.length >= 2) {
-      strengths.push(`Bonne mobilisation de termes clés attendus : ${matchedKeywords.slice(0, 3).join(', ')}.`);
-    }
-    if (wordCount >= 18) {
-      strengths.push('Explication structurée et vocabulaire pertinent.');
-    }
-    if (strengths.length === 0) {
-      strengths.push('Effort de synthèse et réponse bien ciblée sur le sujet.');
-    }
-
-    const improvements: string[] = [];
-    if (finalScore < q.points) {
-      const missing = (q.keywords || []).filter((k) => !matchedKeywords.includes(k)).slice(0, 3);
-      if (missing.length > 0) {
-        improvements.push(`Pour atteindre la note maximale (${q.points}/${q.points}), intégrez les notions : ${missing.join(', ')}.`);
-      }
-      if (q.sampleAnswer) {
-        improvements.push('Consultez le corrigé type officiel ci-dessous pour enrichir votre argumentaire.');
-      }
-    }
-
-    return {
-      score: finalScore,
-      maxScore: q.points,
-      status,
-      strengths,
-      improvements,
-      detailedFeedback:
-        finalScore >= q.points * 0.8
-          ? 'Excellente réponse : votre analyse est rigoureuse, précise et conforme aux exigences de l’épreuve.'
-          : 'Bonne tentative dans l’ensemble, mais certains mécanismes explicatifs méritent d’être approfondis.'
-    };
-  };
-
-  const handleGradeQuestion = (questionId: string) => {
-    const q = questionsList.find((item) => item.id === questionId);
-    if (!q) return;
-
-    const fullText = (answers[questionId] || []).join(' ').trim();
-    if (!fullText) return;
-
-    setEvaluatingId(questionId);
-
-    setTimeout(() => {
-      const result = evaluateQuestion(fullText, q);
-      const updated = { ...evaluations, [questionId]: result };
-      saveEvaluations(updated);
-      setEvaluatingId(null);
-    }, 600);
-  };
-
-  const handleGradeAll = () => {
-    setEvaluatingId('all');
-    setTimeout(() => {
-      const updated = { ...evaluations };
-      questionsList.forEach((q) => {
-        const fullText = (answers[q.id] || []).join(' ').trim();
-        if (fullText) {
-          updated[q.id] = evaluateQuestion(fullText, q);
-        }
-      });
-      saveEvaluations(updated);
-      setEvaluatingId(null);
-    }, 800);
-  };
-
   const handleResetAll = () => {
-    if (window.confirm('Voulez-vous effacer l’ensemble de vos réponses et réinitialiser les corrections ?')) {
+    if (window.confirm('Voulez-vous effacer l’ensemble de vos réponses rédigées sur cette feuille ?')) {
       const cleared: Record<string, string[]> = {};
-      questionsList.forEach((q) => {
+      exercise.questions.forEach((q) => {
         cleared[q.id] = ['', '', ''];
       });
-      saveAnswers(cleared);
-      saveEvaluations({});
+      setAnswers(cleared);
     }
   };
 
   const handleDownload = () => {
     let doc = `========================================================================\n`;
-    doc += `${courseTitle.toUpperCase()}\n`;
-    doc += `FEUILLE D'EXERCICES RÉDACTIONNELS & CORRECTION DÉTAILLÉE\n`;
+    doc += `${exercise.title.toUpperCase()}\n`;
+    doc += `EXERCICE ÉCRIT & CORRECTION DÉTAILLÉE (STUDYCLOUD)\n`;
     doc += `Date : ${new Date().toLocaleDateString('fr-FR')}\n`;
-    doc += `Total épreuve : ${totalPoints} points\n`;
-
-    const evaluatedCount = Object.keys(evaluations).length;
-    const currentScore = Object.values(evaluations).reduce((acc: number, curr: any) => acc + (curr?.score || 0), 0);
-    if (evaluatedCount > 0) {
-      doc += `Note obtenue : ${currentScore} / ${totalPoints} points (${evaluatedCount}/${questionsList.length} questions corrigées)\n`;
-    }
     doc += `========================================================================\n\n`;
 
-    questionsList.forEach((q) => {
-      const lines = (answers[q.id] || []).filter((l) => l.trim().length > 0);
-      const evalData = evaluations[q.id];
+    if (exercise.context) {
+      doc += `[ ÉNONCÉ & CONTEXTE DU PROBLÈME ]\n`;
+      doc += `${exercise.context}\n\n`;
+      doc += `------------------------------------------------------------------------\n\n`;
+    }
 
-      doc += `------------------------------------------------------------------------\n`;
-      doc += `QUESTION ${q.number} (Barème : ${q.points} points) :\n`;
-      doc += `${q.question}\n\n`;
-      doc += `VOTRE RÉPONSE ÉCRITE :\n`;
+    doc += `[ QUESTIONS & VOS RÉPONSES ÉCRITES ]\n`;
+    exercise.questions.forEach((q) => {
+      doc += `Question ${q.number} : ${q.text}\n`;
+      const lines = (answers[q.id] || []).filter((l) => l.trim().length > 0);
       if (lines.length > 0) {
         lines.forEach((l, idx) => {
-          doc += `  ${idx + 1}. ${l}\n`;
+          doc += `   ${idx + 1}. ${l}\n`;
         });
       } else {
-        doc += `  [Aucune réponse saisie]\n`;
+        doc += `   [Aucune réponse saisie]\n`;
       }
       doc += `\n`;
-
-      if (evalData) {
-        doc += `ANALYSE DU CORRECTEUR (Note : ${evalData.score} / ${evalData.maxScore} pts) :\n`;
-        doc += `  • Bilan : ${evalData.detailedFeedback}\n`;
-        doc += `  • Points forts : ${evalData.strengths.join(' | ')}\n`;
-        if (evalData.improvements.length > 0) {
-          doc += `  • Axes d'amélioration : ${evalData.improvements.join(' | ')}\n`;
-        }
-        doc += `\n`;
-      }
-
-      if (q.sampleAnswer) {
-        doc += `CORRIGÉ TYPE DE RÉFÉRENCE :\n`;
-        doc += `${q.sampleAnswer}\n\n`;
-      }
     });
+
+    doc += `========================================================================\n`;
+    doc += `[ CORRECTION DÉTAILLÉE ÉTAPE PAR ÉTAPE ]\n`;
+    doc += `${exercise.correction.steps}\n\n`;
+
+    if (exercise.correction.examples.length > 0) {
+      doc += `[ DEUX EXEMPLES CONCRETS D'APPLICATION ]\n`;
+      exercise.correction.examples.forEach((ex, idx) => {
+        doc += `• ${ex}\n`;
+      });
+      doc += `\n`;
+    }
 
     const blob = new Blob([doc], { type: 'text/plain;charset=utf-8' });
     const url = URL.createObjectURL(blob);
     const a = document.createElement('a');
     a.href = url;
-    const safeName = courseTitle.replace(/[^a-zA-Z0-9_-]/g, '_');
-    a.download = `${safeName}_Exercices.txt`;
+    const safeName = exercise.title.replace(/[^a-zA-Z0-9_-]/g, '_');
+    a.download = `${safeName}_Exercice_Correction.txt`;
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -357,63 +285,59 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
     window.print();
   };
 
-  // Calcul du score global
-  const totalEarnedScore = Object.values(evaluations).reduce((acc: number, curr: any) => acc + (curr?.score || 0), 0);
-  const totalGradedCount = Object.keys(evaluations).length;
-
   return (
     <div id="module-exercices-ecrits" className="w-full pb-24 min-h-full">
       {/* 
         Barre d'outils FIXE (sticky) en haut lors du défilement
-        Fond sombre élégant avec texte blanc contrasté
       */}
       <div
         id="exercices-fixed-toolbar"
         className="sticky top-[53px] sm:top-[57px] z-20 w-full bg-[#23252a]/95 backdrop-blur-md border-b border-zinc-700/60 px-4 sm:px-6 py-2.5 sm:py-3 transition-all text-white shadow-sm"
       >
-        <div className="max-w-4xl mx-auto flex flex-wrap items-center justify-between gap-2 sm:gap-4">
-          {/* Nom du cours / En-tête */}
+        <div className="max-w-6xl mx-auto flex flex-wrap items-center justify-between gap-2 sm:gap-4">
+          {/* Titre de l'exercice */}
           <div className="flex items-center gap-2.5 min-w-0">
             <div className="w-8 h-8 rounded-lg bg-amber-500 text-stone-950 flex items-center justify-center shrink-0 font-bold shadow-xs">
               <GraduationCap className="w-4 h-4" />
             </div>
             <div className="min-w-0">
-              <h2 className="text-xs sm:text-sm font-bold text-white truncate">
-                {courseTitle}
+              <h2 className="text-xs sm:text-sm font-bold text-white truncate max-w-[280px] sm:max-w-md">
+                {exercise.title}
               </h2>
               <span className="text-[11px] text-zinc-400 hidden sm:inline-block">
-                {!isTemplateMode
-                  ? `Évaluation formative • ${questionsList.length} questions rédactionnelles`
-                  : "Gabarit d'exercices adaptatif • En attente de votre sujet"}
+                {!exercise.isTemplate
+                  ? `Étude de cas approfondie • ${exercise.questions.length} question${exercise.questions.length > 1 ? 's' : ''}`
+                  : "Gabarit adaptatif neutre • En attente de votre sujet"}
               </span>
             </div>
           </div>
 
-          {/* Indicateur de barème total + Actions */}
+          {/* Boutons d'actions et affichage côte à côte */}
           <div className="flex items-center gap-2 sm:gap-3 shrink-0">
-            {/* Badge Note / Barème */}
-            <div
-              id="exercices-score-badge"
-              className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-zinc-800 border border-zinc-700 text-xs font-semibold shadow-2xs"
+            {/* Toggle Afficher / Masquer la correction côte à côte */}
+            <button
+              id="btn-toggle-correction"
+              type="button"
+              onClick={() => setShowCorrection(!showCorrection)}
+              className={`inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg text-xs font-semibold transition-all cursor-pointer shadow-xs ${
+                showCorrection
+                  ? 'bg-blue-600 text-white hover:bg-blue-500'
+                  : 'bg-zinc-800 text-zinc-200 border border-zinc-700 hover:bg-zinc-700'
+              }`}
+              title={showCorrection ? "Masquer la colonne correction" : "Afficher la correction côte à côte"}
             >
-              <Award className="w-3.5 h-3.5 text-amber-400" />
-              <span className="text-zinc-200 font-mono">
-                {totalGradedCount > 0 ? (
-                  <span className="text-amber-400 font-bold">
-                    {totalEarnedScore} / {totalPoints} pts
-                  </span>
-                ) : (
-                  <span>Total : {totalPoints} points</span>
-                )}
+              <Columns className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">
+                {showCorrection ? "Mode Côte à Côte" : "Afficher le Corrigé"}
               </span>
-            </div>
+            </button>
 
             {/* Bouton Télécharger */}
             <button
               id="btn-download-exercices"
               onClick={handleDownload}
               className="inline-flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-lg bg-amber-500 hover:bg-amber-400 text-stone-950 text-xs font-bold transition-all shadow-xs active:scale-95 cursor-pointer"
-              title="Télécharger la feuille d'exercices et les corrections"
+              title="Télécharger la feuille d'exercice et sa correction détaillée"
             >
               {downloaded ? (
                 <>
@@ -444,7 +368,7 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
               id="btn-reset-exercices"
               onClick={handleResetAll}
               className="p-1.5 rounded-lg bg-zinc-800 border border-zinc-700 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-colors shadow-2xs cursor-pointer"
-              title="Effacer et réinitialiser tout"
+              title="Effacer mes réponses rédigées"
               aria-label="Réinitialiser"
             >
               <RotateCcw className="w-3.5 h-3.5" />
@@ -454,30 +378,29 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
       </div>
 
       {/* 
-        FEUILLE D'EXERCICES BLANCHE & HAUT CONTRASTE :
-        RÉSOUT DÉFINITIVEMENT LE BUG DU FOND SOMBRE / ÉNONCÉS INVISIBLES.
-        Toutes les questions et les formules s'affichent sur une page blanche éclatante,
-        avec des conteneurs qui s'étirent et s'allongent dynamiquement selon la longueur du problème.
+        FEUILLE D'EXERCICE ACADÉMIQUE BLANCHE À FORT CONTRASTE :
+        Affiche l'énoncé d'un côté et la correction détaillée de l'autre
+        (avec rendu KaTeX pour les mathématiques et les fractions).
       */}
       <div className="w-full flex justify-center py-4 sm:py-6 px-2 sm:px-4 md:px-6">
-        <div className="w-full max-w-4xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-stone-200 text-stone-900 p-5 sm:p-8 md:p-10 space-y-10">
+        <div className="w-full max-w-6xl bg-white rounded-2xl sm:rounded-3xl shadow-2xl border border-stone-200 text-stone-900 p-5 sm:p-8 md:p-10 space-y-8">
 
-          {/* En-tête de la feuille académique */}
+          {/* En-tête officiel de l'épreuve */}
           <div className="text-center space-y-2 border-b border-stone-200 pb-6">
             <div className="inline-flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-amber-50 text-amber-900 text-xs font-bold uppercase tracking-wider border border-amber-200/80">
               <Sparkles className="w-3.5 h-3.5 text-amber-600" />
-              Évaluation Formative & Problèmes Rédigés
+              Exercice d'Application & Résolution de Problème
             </div>
             <h1 className="text-xl sm:text-2xl md:text-3xl font-black text-stone-900 tracking-tight leading-tight">
-              <MathText text={courseTitle} />
+              <MathText text={exercise.title} />
             </h1>
             <p className="text-xs sm:text-sm text-stone-600 max-w-2xl mx-auto leading-relaxed">
-              Feuille officielle d'entraînement rédactionnel. Rédigez vos démarches complètes, calculs intermédiaires et démonstrations. L'espace s'étire automatiquement.
+              Travail méthodique de rédaction et d'analyse. Rédigez vos étapes de raisonnement dans l'espace extensible ci-dessous et comparez avec la correction détaillée.
             </p>
           </div>
 
-          {/* Message si aucun exercice n'a encore été généré (Mode gabarit adaptatif neutre) */}
-          {isTemplateMode && (
+          {/* Bannière en mode gabarit neutre si aucun document n'a encore été généré */}
+          {exercise.isTemplate && (
             <div className="p-4 rounded-2xl bg-amber-50 border border-amber-200 flex items-start gap-3 text-amber-900 shadow-2xs">
               <Lightbulb className="w-5 h-5 text-amber-600 shrink-0 mt-0.5" />
               <div className="space-y-1 text-left">
@@ -485,289 +408,196 @@ export default function ExercicesEcrits({ data, title }: { data?: any; title?: s
                   Gabarit visuel interactif prêt
                 </h3>
                 <p className="text-xs text-amber-800 leading-relaxed">
-                  Le format ci-dessous est 100% adaptable à tout type de sujet. Les espaces s'étirent pour recevoir des énoncés longs et des équations mathématiques en LaTeX. Demandez à l'IA dans le chat : <em>« Génère des exercices écrits sur mon cours »</em> pour remplir cette feuille automatiquement !
+                  Ce format d'exercice s'adapte à tout sujet. Il affiche l'énoncé d'un côté et la correction détaillée de l'autre avec KaTeX. Demandez à l'IA dans le chat : <em>« Génère un exercice écrit sur mon cours »</em> pour remplir automatiquement cette feuille !
                 </p>
               </div>
             </div>
           )}
 
-          {/* Liste des questions & problèmes */}
-          <div className="space-y-12">
-            {questionsList.map((item) => {
-              const lines = answers[item.id] || ['', '', ''];
-              const fullAnswerText = lines.join(' ').trim();
-              const hasWritten = fullAnswerText.length > 0;
-              const evalData = evaluations[item.id];
-              const isEvaluating = evaluatingId === item.id || evaluatingId === 'all';
-
-              return (
-                <section
-                  key={item.id}
-                  id={`question-section-${item.id}`}
-                  className="space-y-4 border-b border-stone-200 pb-10 last:border-b-0 scroll-mt-28"
-                >
-                  {/* En-tête de la question avec poids et barème */}
-                  <div className="flex flex-wrap items-center justify-between gap-2 pb-1 border-b border-stone-100">
-                    <div className="flex items-center gap-2">
-                      <span className="text-xs uppercase tracking-wider font-extrabold text-blue-700 bg-blue-50 px-2.5 py-1 rounded-md border border-blue-200 shadow-2xs">
-                        Question {item.number}
-                      </span>
-                      <span className="text-xs font-semibold text-stone-600 bg-stone-100 px-2.5 py-1 rounded-md border border-stone-200">
-                        Barème : {item.points} point{item.points > 1 ? 's' : ''}
-                      </span>
-                    </div>
-
-                    {evalData && (
-                      <span className="inline-flex items-center gap-1.5 text-xs font-bold px-3 py-1 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200 shadow-2xs">
-                        <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                        Note : {evalData.score} / {evalData.maxScore} pts
-                      </span>
-                    )}
+          {/* 
+            DISPOSITION DOUBLE VOLET :
+            - Colonne 1 : Énoncé du problème & Espace d'écriture de l'étudiant
+            - Colonne 2 : Correction détaillée étape par étape & 2 exemples concrets
+          */}
+          <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
+            
+            {/* ================================================================= */}
+            {/* COLONNE GAUCHE : ÉNONCÉ & ESPACE DE RÉDACTION                     */}
+            {/* ================================================================= */}
+            <div className={showCorrection ? "lg:col-span-7 space-y-6" : "lg:col-span-12 space-y-6"}>
+              
+              {/* Contexte / Mise en situation de l'exercice */}
+              {exercise.context && (
+                <div className="w-full bg-gradient-to-br from-amber-50/70 to-orange-50/40 border border-amber-200/90 rounded-2xl p-5 sm:p-6 space-y-2.5 shadow-2xs">
+                  <div className="flex items-center gap-2 text-amber-900 font-bold text-xs uppercase tracking-wider">
+                    <BookOpen className="w-4 h-4 text-amber-600" />
+                    <span>Contexte & Données du problème :</span>
                   </div>
-
-                  {/* 
-                    Énoncé de la question :
-                    - S'ÉTIRE AUTOMATIQUEMENT (h-auto, min-h-0, sans hauteur fixe).
-                    - 100% LISIBLE : texte sombre text-stone-900 sur fond clair bg-stone-50.
-                    - Support complet des formules mathématiques KaTeX via <MathText />.
-                  */}
-                  <div className="w-full bg-stone-50 border border-stone-200/80 rounded-2xl p-4 sm:p-6 space-y-3 shadow-2xs">
-                    <div className="flex items-start gap-3">
-                      <span className="font-black text-stone-900 text-base sm:text-lg shrink-0 mt-0.5">
-                        {item.number}.
-                      </span>
-                      <div className="w-full min-h-0 h-auto text-stone-900 text-sm sm:text-base font-medium leading-relaxed select-text break-words">
-                        <MathText text={item.question} />
-                      </div>
-                    </div>
-
-                    {/* Indice / Conseil méthodologique si disponible */}
-                    {item.hint && (
-                      <div className="pt-2.5 border-t border-stone-200 flex items-start gap-2.5 text-xs sm:text-sm text-amber-900 bg-amber-50/70 p-3 rounded-xl border border-amber-200/70">
-                        <Lightbulb className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
-                        <div className="leading-relaxed">
-                          <span className="font-bold text-amber-950">Conseil méthodologique : </span>
-                          <MathText text={item.hint} />
-                        </div>
-                      </div>
-                    )}
+                  <div className="text-stone-900 text-sm sm:text-base font-medium leading-relaxed select-text break-words">
+                    <MathText text={exercise.context} />
                   </div>
+                </div>
+              )}
 
-                  {/* Lignes d'écriture en pointillés de l'étudiant */}
-                  <div id={`question-lines-${item.id}`} className="space-y-2.5 pt-2 pl-2 sm:pl-4">
-                    <div className="text-xs font-semibold text-stone-500 uppercase tracking-wider flex items-center gap-1.5 pb-1">
-                      <PenLine className="w-3.5 h-3.5 text-blue-600" />
-                      Votre réponse rédigée :
-                    </div>
+              {/* Questions de l'exercice */}
+              <div className="space-y-8 pt-2">
+                <div className="flex items-center justify-between border-b border-stone-200 pb-2">
+                  <h3 className="text-sm font-extrabold uppercase tracking-wider text-stone-800 flex items-center gap-2">
+                    <PenLine className="w-4 h-4 text-blue-600" />
+                    <span>Questions & Rédaction de la Copie</span>
+                  </h3>
+                  <span className="text-xs text-stone-500 font-medium">
+                    {exercise.questions.length} question{exercise.questions.length > 1 ? 's' : ''} à traiter
+                  </span>
+                </div>
 
-                    {lines.map((lineText, lineIdx) => {
-                      const isLastLine = lineIdx === lines.length - 1;
+                {exercise.questions.map((q) => {
+                  const lines = answers[q.id] || ['', '', ''];
 
-                      return (
-                        <div key={lineIdx} className="w-full flex items-center gap-2 group">
-                          <div className="flex-1 relative flex items-center">
-                            <input
-                              id={`input-${item.id}-${lineIdx}`}
-                              type="text"
-                              value={lineText}
-                              onChange={(e) => updateLine(item.id, lineIdx, (e.target as HTMLInputElement).value)}
-                              onKeyDown={(e) => handleKeyDown(e, item.id, lineIdx, lines.length)}
-                              placeholder={
-                                lineIdx === 0 && lineText === ''
-                                  ? 'Rédigez votre réponse ou démonstration ici avec votre clavier...'
-                                  : ''
-                              }
-                              className="w-full bg-transparent border-b-2 border-dotted border-stone-300 group-hover:border-stone-400 focus:border-blue-600 focus:border-solid focus:outline-hidden py-1.5 px-1 text-stone-900 text-sm sm:text-base font-sans tracking-wide transition-colors placeholder:text-stone-400 placeholder:italic"
-                            />
-                          </div>
-
-                          {/* Bouton petit plus bleu à la fin de la dernière ligne */}
-                          {isLastLine && (
-                            <button
-                              id={`btn-add-line-${item.id}`}
-                              type="button"
-                              onClick={() => addLine(item.id)}
-                              className="w-6 h-6 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs cursor-pointer transition-transform ml-1"
-                              title="Ajouter une ligne supplémentaire"
-                              aria-label="Ajouter une ligne"
-                            >
-                              <Plus className="w-4 h-4 stroke-[2.5]" />
-                            </button>
-                          )}
-                        </div>
-                      );
-                    })}
-
-                    {/* Zone d'envoi à la correction */}
-                    <div className="pt-3 flex flex-wrap items-center justify-between gap-3">
-                      {hasWritten ? (
-                        <button
-                          id={`btn-submit-correction-${item.id}`}
-                          type="button"
-                          disabled={isEvaluating}
-                          onClick={() => handleGradeQuestion(item.id)}
-                          className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-700 active:scale-95 text-white text-xs sm:text-sm font-semibold shadow-xs transition-all cursor-pointer disabled:opacity-50"
-                        >
-                          {isEvaluating ? (
-                            <>
-                              <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                              <span>Analyse de votre rédaction en cours...</span>
-                            </>
-                          ) : evalData ? (
-                            <>
-                              <Sparkles className="w-3.5 h-3.5" />
-                              <span>Réévaluer ma réponse ({item.points} pts)</span>
-                            </>
-                          ) : (
-                            <>
-                              <Send className="w-3.5 h-3.5" />
-                              <span>Envoyer à la correction ({item.points} pts)</span>
-                            </>
-                          )}
-                        </button>
-                      ) : (
-                        <span className="text-xs text-stone-500 italic flex items-center gap-1.5">
-                          <span className="w-2 h-2 rounded-full bg-stone-300 inline-block" />
-                          Rédigez votre réponse ci-dessus pour l’envoyer à la correction.
-                        </span>
-                      )}
-
-                      <span className="text-[11px] text-stone-400 italic">
-                        Touche Entrée pour passer à la ligne suivante
-                      </span>
-                    </div>
-
-                    {/* Résultats après analyse par le correcteur */}
-                    {evalData && (
-                      <div
-                        id={`evaluation-result-${item.id}`}
-                        className="mt-4 p-4 sm:p-5 rounded-2xl bg-stone-50 border border-stone-200 shadow-xs space-y-4 animate-in fade-in duration-200"
-                      >
-                        {/* Bilan de la note */}
-                        <div className="flex flex-wrap items-center justify-between gap-2 pb-2.5 border-b border-stone-200">
-                          <div className="flex items-center gap-2">
-                            <span className="w-2.5 h-2.5 rounded-full bg-emerald-500" />
-                            <h4 className="text-xs sm:text-sm font-bold text-stone-900">
-                              Résultats de l'analyse du correcteur
-                            </h4>
-                          </div>
-                          <span className="text-xs sm:text-sm font-black text-blue-700 bg-blue-50 px-2.5 py-0.5 rounded-md border border-blue-200">
-                            Note : {evalData.score} / {evalData.maxScore} points
+                  return (
+                    <section
+                      key={q.id}
+                      id={`question-card-${q.id}`}
+                      className="space-y-4 border-b border-stone-200/80 pb-8 last:border-b-0 scroll-mt-28"
+                    >
+                      {/* En-tête et Énoncé de la question */}
+                      <div className="w-full bg-stone-50 border border-stone-200/90 rounded-2xl p-4 sm:p-5 space-y-2 shadow-2xs">
+                        <div className="flex items-start gap-2.5">
+                          <span className="inline-flex items-center justify-center w-6 h-6 rounded-full bg-blue-600 text-white font-bold text-xs shrink-0 mt-0.5 shadow-2xs">
+                            {q.number}
                           </span>
+                          <div className="w-full text-stone-900 text-sm sm:text-base font-semibold leading-relaxed select-text break-words">
+                            <MathText text={q.text} />
+                          </div>
                         </div>
-
-                        {/* Appréciation pédagogique */}
-                        <div className="text-xs sm:text-sm text-stone-800 leading-relaxed font-medium">
-                          <MathText text={evalData.detailedFeedback} />
-                        </div>
-
-                        {/* Points forts constatés */}
-                        {evalData.strengths.length > 0 && (
-                          <div className="space-y-1.5">
-                            <span className="text-[11px] uppercase tracking-wider font-bold text-emerald-800 flex items-center gap-1.5">
-                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />
-                              Points forts constatés :
-                            </span>
-                            <ul className="text-xs text-stone-700 space-y-1 pl-5 list-disc">
-                              {evalData.strengths.map((str, sIdx) => (
-                                <li key={sIdx}>
-                                  <MathText text={str} />
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {/* Points à améliorer */}
-                        {evalData.improvements.length > 0 && (
-                          <div className="space-y-1.5">
-                            <span className="text-[11px] uppercase tracking-wider font-bold text-amber-800 flex items-center gap-1.5">
-                              <AlertCircle className="w-3.5 h-3.5 text-amber-600" />
-                              Axes d'amélioration :
-                            </span>
-                            <ul className="text-xs text-stone-700 space-y-1 pl-5 list-disc">
-                              {evalData.improvements.map((imp, iIdx) => (
-                                <li key={iIdx}>
-                                  <MathText text={imp} />
-                                </li>
-                              ))}
-                            </ul>
-                          </div>
-                        )}
-
-                        {/* Corrigé type officiel */}
-                        {item.sampleAnswer && (
-                          <div className="pt-3 border-t border-stone-200 space-y-2">
-                            <span className="text-[11px] uppercase tracking-wider font-bold text-blue-900 flex items-center gap-1.5">
-                              <BookOpen className="w-3.5 h-3.5 text-blue-600" />
-                              Corrigé type de référence officiel :
-                            </span>
-                            <div className="text-xs sm:text-sm text-stone-900 bg-blue-50/60 p-3.5 rounded-xl border border-blue-200/70 leading-relaxed select-text">
-                              <MathText text={item.sampleAnswer} />
-                            </div>
-                          </div>
-                        )}
                       </div>
-                    )}
+
+                      {/* Lignes d'écriture en pointillés de l'étudiant */}
+                      <div className="space-y-2 pt-1 pl-2 sm:pl-4">
+                        <div className="text-xs font-semibold text-stone-500 uppercase tracking-wider flex items-center gap-1.5 pb-1">
+                          <PenLine className="w-3.5 h-3.5 text-blue-600" />
+                          <span>Votre rédaction :</span>
+                        </div>
+
+                        {lines.map((lineText, lineIdx) => {
+                          const isLastLine = lineIdx === lines.length - 1;
+
+                          return (
+                            <div key={lineIdx} className="w-full flex items-center gap-2 group">
+                              <div className="flex-1 relative flex items-center">
+                                <input
+                                  id={`input-${q.id}-${lineIdx}`}
+                                  type="text"
+                                  value={lineText}
+                                  onChange={(e) => updateLine(q.id, lineIdx, e.target.value)}
+                                  onKeyDown={(e) => handleKeyDown(e, q.id, lineIdx, lines.length)}
+                                  placeholder={
+                                    lineIdx === 0 && lineText === ''
+                                      ? 'Rédigez votre démonstration ou calcul ici...'
+                                      : ''
+                                  }
+                                  className="w-full bg-transparent border-b-2 border-dotted border-stone-300 group-hover:border-stone-400 focus:border-blue-600 focus:border-solid focus:outline-hidden py-1.5 px-1 text-stone-900 text-sm sm:text-base font-sans tracking-wide transition-colors placeholder:text-stone-400 placeholder:italic"
+                                />
+                              </div>
+
+                              {/* Petit bouton plus bleu à la fin de la dernière ligne */}
+                              {isLastLine && (
+                                <button
+                                  type="button"
+                                  onClick={() => addLine(q.id)}
+                                  className="w-6 h-6 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs cursor-pointer transition-transform ml-1"
+                                  title="Ajouter une ligne supplémentaire"
+                                  aria-label="Ajouter une ligne"
+                                >
+                                  <Plus className="w-4 h-4 stroke-[2.5]" />
+                                </button>
+                              )}
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </section>
+                  );
+                })}
+              </div>
+            </div>
+
+            {/* ================================================================= */}
+            {/* COLONNE DROITE : CORRECTION DÉTAILLÉE & 2 EXEMPLES CONCRETS       */}
+            {/* ================================================================= */}
+            {showCorrection && (
+              <div className="lg:col-span-5 space-y-6 lg:sticky lg:top-24">
+                <div className="w-full bg-slate-50/90 border border-slate-200 rounded-3xl p-5 sm:p-6 shadow-sm space-y-6">
+                  
+                  {/* En-tête de la correction */}
+                  <div className="flex items-center justify-between border-b border-slate-200 pb-3">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-emerald-600 text-white flex items-center justify-center font-bold text-xs shadow-xs">
+                        <Check className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <h3 className="text-xs sm:text-sm font-bold text-slate-900">
+                          Correction Détaillée Officielle
+                        </h3>
+                        <span className="text-[10px] text-slate-500">
+                          Résolution pas à pas & Exemples d'application
+                        </span>
+                      </div>
+                    </div>
                   </div>
-                </section>
-              );
-            })}
-          </div>
 
-          {/* Soumission globale de la feuille pour la correction */}
-          <div
-            id="exercices-bottom-submission"
-            className="mt-12 pt-8 border-t border-stone-200 flex flex-col items-center text-center space-y-3"
-          >
-            {(() => {
-              const answeredCount = questionsList.filter((q) => {
-                const qLines = answers[q.id] || [];
-                return qLines.some((l) => l.trim().length > 0);
-              }).length;
-              const isAllAnswered = answeredCount === questionsList.length && questionsList.length > 0;
+                  {/* Résolution Étape par Étape ("steps") */}
+                  <div className="space-y-2">
+                    <span className="text-xs font-extrabold text-blue-900 uppercase tracking-wider flex items-center gap-1.5">
+                      <BookOpen className="w-3.5 h-3.5 text-blue-600" />
+                      Résolution Étape par Étape :
+                    </span>
+                    <div className="p-4 rounded-2xl bg-white border border-slate-200 text-stone-900 text-xs sm:text-sm leading-relaxed select-text shadow-2xs whitespace-pre-line break-words">
+                      <MathText text={exercise.correction.steps} />
+                    </div>
+                  </div>
 
-              return (
-                <>
-                  <button
-                    id="btn-grade-all-bottom"
-                    type="button"
-                    onClick={handleGradeAll}
-                    disabled={!isAllAnswered || evaluatingId !== null}
-                    className={`inline-flex items-center justify-center gap-2.5 px-6 py-3 rounded-xl text-sm font-bold transition-all ${
-                      isAllAnswered && evaluatingId === null
-                        ? 'bg-blue-600 hover:bg-blue-700 active:scale-98 text-white cursor-pointer shadow-md'
-                        : 'bg-stone-200 text-stone-400 cursor-not-allowed shadow-none'
-                    }`}
-                  >
-                    {evaluatingId === 'all' ? (
-                      <>
-                        <div className="w-4 h-4 border-2 border-white border-t-transparent rounded-full animate-spin" />
-                        <span>Analyse et correction de la feuille en cours...</span>
-                      </>
-                    ) : (
-                      <>
-                        <Sparkles className="w-4 h-4" />
-                        <span>Soumettre la feuille pour la correction</span>
-                      </>
-                    )}
-                  </button>
-
-                  <p className="text-xs text-stone-500">
-                    {isAllAnswered ? (
-                      <span className="text-emerald-700 font-medium flex items-center justify-center gap-1.5">
-                        <CheckCircle2 className="w-3.5 h-3.5" />
-                        Toutes les questions ont été rédigées ({answeredCount}/{questionsList.length}) • Vous pouvez soumettre la feuille
+                  {/* Deux Exemples Concrets et Distincts ("examples") */}
+                  {exercise.correction.examples && exercise.correction.examples.length > 0 && (
+                    <div className="space-y-3 pt-2 border-t border-slate-200">
+                      <span className="text-xs font-extrabold text-emerald-900 uppercase tracking-wider flex items-center gap-1.5">
+                        <Sparkles className="w-3.5 h-3.5 text-emerald-600" />
+                        Deux Exemples Concrets d'Application :
                       </span>
-                    ) : (
-                      <span>
-                        (Au moins quelque chose doit être écrit pour chaque question • {answeredCount}/{questionsList.length} rédigée{answeredCount > 1 ? 's' : ''})
-                      </span>
-                    )}
-                  </p>
-                </>
-              );
-            })()}
+
+                      {exercise.correction.examples.map((ex, exIdx) => (
+                        <div
+                          key={exIdx}
+                          className={`p-4 rounded-2xl border text-xs sm:text-sm leading-relaxed select-text shadow-2xs space-y-1.5 ${
+                            exIdx === 0
+                              ? 'bg-emerald-50/80 border-emerald-200/90 text-emerald-950'
+                              : 'bg-indigo-50/80 border-indigo-200/90 text-indigo-950'
+                          }`}
+                        >
+                          <span className={`text-[11px] font-black uppercase tracking-wider flex items-center gap-1.5 ${
+                            exIdx === 0 ? 'text-emerald-800' : 'text-indigo-800'
+                          }`}>
+                            <CheckCircle2 className="w-3.5 h-3.5" />
+                            Exemple Concret {exIdx + 1} :
+                          </span>
+                          <div className="font-normal text-stone-900">
+                            <MathText text={ex} />
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Note méthodologique de fin de correction */}
+                  <div className="p-3 rounded-xl bg-amber-50/70 border border-amber-200/70 flex items-start gap-2 text-[11px] text-amber-900 leading-relaxed">
+                    <Lightbulb className="w-3.5 h-3.5 text-amber-600 shrink-0 mt-0.5" />
+                    <span>
+                      <strong>Conseil méthodologique :</strong> Comparez votre démarche étape par étape avec la résolution officielle pour vérifier la rigueur de vos calculs et de vos arguments.
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         </div>
       </div>
