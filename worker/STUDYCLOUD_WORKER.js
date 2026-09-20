@@ -2390,8 +2390,8 @@ async function getUserStorageDetails(db, userId) {
     wordsUsage: {
       name: "Mots d'étude & Génération IA",
       subtitle: "Résumés de cours, quiz interactifs, cartes mémoires et explications",
-      usedWords,
-      maxWords,
+      usedWords: wordsUsed,
+      maxWords: wordsMax,
       remainingWords: wordsRemaining,
       percentage: wordsPercentage,
       formatted: `${wordsUsed.toLocaleString('fr-FR')} / ${wordsMax.toLocaleString('fr-FR')} mots`
