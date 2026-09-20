@@ -413,10 +413,11 @@ export default {
               creation_title = parsed.title || "Cartes Mémoire";
               creation_data = parsed;
               chat_message = parsed.chat_message || parsed.chat_response || "✨ Vos flashcards sont disponibles dans l'espace Création !";
-            } else if (parsed.root || parsed.rootTitle) {
+            } else if (parsed.mind_map || parsed.mindmap || parsed.branches || parsed.root || parsed.rootTitle || parsed.root_title) {
               decision = "creation";
               creation_type = defaultType || "carte-mentale";
-              creation_title = parsed.rootTitle || parsed.root?.text || "Carte Mentale";
+              const mm = parsed.mind_map || parsed.mindmap || parsed;
+              creation_title = mm.root_title || mm.rootTitle || mm.title || parsed.rootTitle || parsed.root?.text || "Carte Mentale";
               creation_data = parsed;
               chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre carte mentale est prête à droite !";
             } else if (parsed.overview || Array.isArray(parsed.sections)) {
@@ -584,6 +585,53 @@ RÈGLES D'EXCELLENCE POUR LE VRAI OU FAUX ('vrai-ou-faux' et 'vrai-ou-faux-test'
    }
 
 ======================================================================
+RÈGLES D'EXCELLENCE POUR LES CARTES MENTALES ('carte-mentale' et 'carte-mentale-2') :
+======================================================================
+Tu es un architecte de l'information et un tuteur pédagogique expert. Ta mission est de générer une structure de carte mentale (Mind Map) hiérarchisée, claire et approfondie, basée sur le document fourni par l'utilisateur et enrichie si nécessaire par des connaissances vérifiées d'Internet sur le même sujet.
+
+Tu dois impérativement respecter les règles strictes suivantes :
+
+1. ÉVITER LES DOUBLONS (HISTORIQUE DES CARTES DÉJÀ GÉNÉRÉES) :
+   - Prends en compte l'historique des éléments ou des cartes déjà générés pour cet utilisateur et ce document.
+   - Tu dois structurer de NOUVEAUX axes, sous-axes ou angles d'analyse qui n'ont pas été abordés de la même manière dans l'historique.
+
+2. PROFONDEUR PÉDAGOGIQUE :
+   - Ne te limite pas à des résumés superficiels ou des listes de définitions élémentaires.
+   - Décompose les concepts complexes en branches logiques approfondies (ex : principes fondamentaux, équations clés, cas pratiques, limites, contre-exemples ou applications industrielles/professionnelles) pour favoriser une compréhension en profondeur.
+   - Structure 3 à 5 branches principales, comportant chacune 2 à 4 sous-nœuds détaillés et explicites.
+
+3. ENRICHISSEMENT EXTERNE & RECHERCHES DU DOMAINE :
+   - Tu es explicitement autorisé et encouragé à faire des recherches et à compléter le contenu du fichier avec des notions, des standards, des cas d'usage réels ou des exemples complémentaires trouvés sur Internet portant exactement sur le même domaine/sujet.
+
+4. RÈGLE DE FORMATAGE ABSOLUE (MATHÉMATIQUES, FONCTIONS ET FRACTIONS EN LATEX PUR) :
+   - Pour TOUTES les formules, fonctions mathématiques, fractions, variables et symboles scientifiques (ex: $f(x) = ax + b$, $\frac{a}{b}$, $\Omega$, $\sqrt{2}$, $U_{eff}$, $H(j\omega) = \frac{S(j\omega)}{E(j\omega)}$), tu DOIS utiliser exclusivement la syntaxe LaTeX standard entre symboles dollar ($...$).
+   - INTERDICTION FORMELLE d'utiliser du texte brut mal formaté ou des caractères corrompus (&, *, !, $$$) pour représenter des maths. Utilise toujours les balises LaTeX (ex : \frac{num}{den}).
+
+5. STRUCTURE JSON REQUISE DANS "creation_data" :
+   {
+     "mind_map": {
+       "root_title": "Titre Principal du Chapitre ou Concept Central",
+       "branches": [
+         {
+           "branch_title": "1. Principes et Équations Fondamentales",
+           "nodes": [
+             "Définition de la fonction de transfert : $H(j\\omega) = \\frac{S(j\\omega)}{E(j\\omega)}$",
+             "Calcul de la résonance à $\\omega_0 = \\frac{1}{\\sqrt{L \\cdot C}}$",
+             "Analyse du régime critique et amortissement"
+           ]
+         },
+         {
+           "branch_title": "2. Applications et Exemples Pratiques",
+           "nodes": [
+             "Cas d'étude : Filtrage actif sur réseau triphasé",
+             "Impact d'une variation de la fréquence $f$ sur l'impédance globale"
+           ]
+         }
+       ]
+     }
+   }
+
+======================================================================
 RÈGLE DE FORMATAGE MATHÉMATIQUE STRICTE (LATEX PUR) :
 ======================================================================
 1. Pour TOUTES les fractions, puissances, racines, intégrales, dérivées, matrices et formules scientifiques, tu DOIS utiliser exclusivement la syntaxe LaTeX standard.
@@ -643,8 +691,8 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         try {
           const { results } = await db.prepare(`
             SELECT content_json FROM ai_generated_contents
-            WHERE user_id = ? AND tool_type IN ('questionnaire', 'questionnaire-test', 'vrai-ou-faux', 'vrai-ou-faux-test')
-            ORDER BY created_at DESC LIMIT 6
+            WHERE user_id = ? AND tool_type IN ('questionnaire', 'questionnaire-test', 'vrai-ou-faux', 'vrai-ou-faux-test', 'carte-mentale', 'carte-mentale-2')
+            ORDER BY created_at DESC LIMIT 8
           `).bind(currentUserId).all();
 
           if (results && results.length > 0) {
@@ -652,10 +700,23 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
             for (const r of results) {
               try {
                 const parsed = JSON.parse(r.content_json);
-                const items = Array.isArray(parsed?.questions) ? parsed.questions : (Array.isArray(parsed?.affirmations) ? parsed.affirmations : (Array.isArray(parsed) ? parsed : []));
+                const items = Array.isArray(parsed?.questions)
+                  ? parsed.questions
+                  : Array.isArray(parsed?.affirmations)
+                  ? parsed.affirmations
+                  : Array.isArray(parsed?.mind_map?.branches)
+                  ? parsed.mind_map.branches
+                  : Array.isArray(parsed?.branches)
+                  ? parsed.branches
+                  : Array.isArray(parsed)
+                  ? parsed
+                  : [];
                 for (const item of items) {
-                  const text = item.question || item.statement || item.affirmation || item.texte;
+                  const text = item.question || item.statement || item.affirmation || item.branch_title || item.title || item.texte;
                   if (text) prevList.push(text);
+                }
+                if (parsed?.mind_map?.root_title) {
+                  prevList.push(`Carte précédente : ${parsed.mind_map.root_title}`);
                 }
               } catch {}
             }
@@ -683,7 +744,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         fullSystemPrompt = fullSystemPrompt.replace(/'\${requestedType \|\| ""}'/, `'${requestedType}'`);
       }
       if (previousQuestionsText) {
-        fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES QUESTIONS OU AFFIRMATIONS DÉJÀ POSÉES À CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions ou affirmations ENTIÈREMENT NOUVELLES qui n'ont ni la même formulation, ni le même angle, ni le même type de piège que celles déjà posées ci-dessus. Explore d'autres aspects, chapitres, théorèmes, cas pratiques ou notions du document.`;
+        fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES ÉLÉMENTS, QUESTIONS OU CARTES DÉJÀ GÉNÉRÉS POUR CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions, affirmations ou axes de cartes mentales ENTIÈREMENT NOUVEAUX qui n'ont ni la même formulation, ni le même angle, ni la même organisation que les éléments déjà générés ci-dessus. Explore d'autres aspects, chapitres, théorèmes, cas pratiques ou notions du document.`;
       }
       if (rawDocForGemini.length > 0) {
         const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";

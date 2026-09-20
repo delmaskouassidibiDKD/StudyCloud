@@ -16,6 +16,7 @@ import {
   Palette,
   Crosshair
 } from 'lucide-react';
+import { MathText } from '../MathText';
 
 export interface MindNode {
   id: string;
@@ -706,19 +707,23 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
   if (!data) return INITIAL_NODES;
   if (Array.isArray(data.nodes) && data.nodes.length > 0) return data.nodes;
 
-  let rootText = data.rootTitle || data.title || data.root?.text || data.root?.label || fallbackTitle || 'Carte Mentale';
-  let level1List: Array<{ text: string; children?: any[] }> = [];
+  const actualData = data.mind_map || data.mindmap || data.mindMap || data;
 
-  if (Array.isArray(data.root?.children)) {
-    level1List = data.root.children;
-  } else if (Array.isArray(data.branches)) {
-    level1List = data.branches;
-  } else if (Array.isArray(data.concepts)) {
-    level1List = data.concepts;
-  } else if (Array.isArray(data.themes)) {
-    level1List = data.themes;
-  } else if (Array.isArray(data)) {
-    level1List = data;
+  let rootText = actualData.root_title || actualData.rootTitle || actualData.title || actualData.root?.text || actualData.root?.label || fallbackTitle || 'Carte Mentale';
+  let level1List: Array<any> = [];
+
+  if (Array.isArray(actualData.branches)) {
+    level1List = actualData.branches;
+  } else if (Array.isArray(actualData.root?.children)) {
+    level1List = actualData.root.children;
+  } else if (Array.isArray(actualData.concepts)) {
+    level1List = actualData.concepts;
+  } else if (Array.isArray(actualData.themes)) {
+    level1List = actualData.themes;
+  } else if (Array.isArray(actualData.cards)) {
+    level1List = actualData.cards;
+  } else if (Array.isArray(actualData)) {
+    level1List = actualData;
   }
 
   if (level1List.length === 0) {
@@ -736,7 +741,7 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
     color: '#334155',
     side: 'center',
     isCentral: true,
-    width: Math.min(240, Math.max(160, rootText.length * 8))
+    width: Math.min(260, Math.max(160, rootText.length * 8))
   });
 
   const branchColors = [
@@ -768,7 +773,7 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
 
   leftBranches.forEach(({ item, origIdx }, i) => {
     const branchId = `b_l_${origIdx}`;
-    const branchText = item.text || item.title || item.label || item.name || `Branche ${origIdx + 1}`;
+    const branchText = item.branch_title || item.branchTitle || item.text || item.title || item.label || item.name || `Branche ${origIdx + 1}`;
     const branchY = leftStartY + i * leftSpacing;
     const branchColor = branchColors[origIdx % branchColors.length];
 
@@ -780,10 +785,10 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
       y: branchY,
       color: branchColor,
       side: 'left',
-      width: Math.min(220, Math.max(120, branchText.length * 8))
+      width: Math.min(240, Math.max(120, branchText.length * 8))
     });
 
-    const subList = Array.isArray(item.children) ? item.children : (Array.isArray(item.items) ? item.items : (Array.isArray(item.subconcepts) ? item.subconcepts : []));
+    const subList = Array.isArray(item.nodes) ? item.nodes : (Array.isArray(item.children) ? item.children : (Array.isArray(item.items) ? item.items : (Array.isArray(item.subconcepts) ? item.subconcepts : [])));
     if (subList.length > 0) {
       const subSpacing = 44;
       const subStartY = branchY - ((subList.length - 1) * subSpacing) / 2;
@@ -797,7 +802,7 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
           y: subStartY + sIdx * subSpacing,
           color: branchColor,
           side: 'left',
-          width: Math.min(200, Math.max(100, subText.length * 7.5))
+          width: Math.min(240, Math.max(100, subText.length * 7.5))
         });
       });
     }
@@ -810,7 +815,7 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
 
   rightBranches.forEach(({ item, origIdx }, i) => {
     const branchId = `b_r_${origIdx}`;
-    const branchText = item.text || item.title || item.label || item.name || `Branche ${origIdx + 1}`;
+    const branchText = item.branch_title || item.branchTitle || item.text || item.title || item.label || item.name || `Branche ${origIdx + 1}`;
     const branchY = rightStartY + i * rightSpacing;
     const branchColor = branchColors[origIdx % branchColors.length];
 
@@ -822,10 +827,10 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
       y: branchY,
       color: branchColor,
       side: 'right',
-      width: Math.min(220, Math.max(120, branchText.length * 8))
+      width: Math.min(240, Math.max(120, branchText.length * 8))
     });
 
-    const subList = Array.isArray(item.children) ? item.children : (Array.isArray(item.items) ? item.items : (Array.isArray(item.subconcepts) ? item.subconcepts : []));
+    const subList = Array.isArray(item.nodes) ? item.nodes : (Array.isArray(item.children) ? item.children : (Array.isArray(item.items) ? item.items : (Array.isArray(item.subconcepts) ? item.subconcepts : [])));
     if (subList.length > 0) {
       const subSpacing = 44;
       const subStartY = branchY - ((subList.length - 1) * subSpacing) / 2;
@@ -839,7 +844,7 @@ export function buildMindNodes(data: any, fallbackTitle?: string): MindNode[] {
           y: subStartY + sIdx * subSpacing,
           color: branchColor,
           side: 'right',
-          width: Math.min(200, Math.max(100, subText.length * 7.5))
+          width: Math.min(240, Math.max(100, subText.length * 7.5))
         });
       });
     }
@@ -1599,9 +1604,9 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
                     className="cursor-grab active:cursor-grabbing"
                   >
                     <rect
-                      x={-88}
+                      x={-(node.width || 176) / 2}
                       y={-35}
-                      width={176}
+                      width={node.width || 176}
                       height={70}
                       rx={16}
                       fill="#FFFFFF"
@@ -1609,20 +1614,38 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
                       strokeWidth={isSelected ? 2.5 : 1.5}
                       filter="url(#soft-card-shadow)"
                     />
-                    <text
-                      textAnchor="middle"
-                      y={-6}
-                      className="font-sans font-medium text-[16.5px] fill-slate-700 pointer-events-none tracking-tight"
-                    >
-                      Projet site web
-                    </text>
-                    <text
-                      textAnchor="middle"
-                      y={18}
-                      className="font-sans font-medium text-[16.5px] fill-slate-700 pointer-events-none tracking-tight"
-                    >
-                      sage femme
-                    </text>
+                    {(() => {
+                      const rootLines = node.text.split('\n');
+                      if (rootLines.length === 1) {
+                        return (
+                          <text
+                            textAnchor="middle"
+                            y={6}
+                            className="font-sans font-bold text-[15px] fill-slate-800 pointer-events-none tracking-tight"
+                          >
+                            {node.text}
+                          </text>
+                        );
+                      }
+                      return (
+                        <>
+                          <text
+                            textAnchor="middle"
+                            y={-6}
+                            className="font-sans font-bold text-[14px] fill-slate-800 pointer-events-none tracking-tight"
+                          >
+                            {rootLines[0]}
+                          </text>
+                          <text
+                            textAnchor="middle"
+                            y={18}
+                            className="font-sans font-bold text-[14px] fill-slate-800 pointer-events-none tracking-tight"
+                          >
+                            {rootLines.slice(1).join(' ')}
+                          </text>
+                        </>
+                      );
+                    })()}
                   </g>
                 );
               }
@@ -1676,7 +1699,23 @@ export default function CarteMentale({ data, title }: { data?: any; title?: stri
                   )}
 
                   {/* Label text */}
-                  {lines.length === 1 ? (
+                  {node.text.includes('$') || node.text.includes('\\') ? (
+                    <foreignObject
+                      x={isRightSide ? node.x + 3 : node.x - nodeWidth - 3}
+                      y={node.y - 26}
+                      width={nodeWidth + 14}
+                      height={26}
+                      className="pointer-events-none overflow-visible select-none"
+                    >
+                      <div
+                        className={`text-[12.5px] font-medium text-slate-800 truncate select-none ${
+                          isRightSide ? 'text-left' : 'text-right'
+                        }`}
+                      >
+                        <MathText text={node.text} />
+                      </div>
+                    </foreignObject>
+                  ) : lines.length === 1 ? (
                     <text
                       x={textX}
                       y={node.y - 5}

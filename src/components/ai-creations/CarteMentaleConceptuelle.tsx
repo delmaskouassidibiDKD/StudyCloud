@@ -22,6 +22,7 @@ import {
   FileImage,
   HelpCircle
 } from 'lucide-react';
+import { MathText } from '../MathText';
 
 export interface ConceptCard {
   id: string;
@@ -656,21 +657,29 @@ const PRESET_PALETTES = [
 
 function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDataset | null {
   if (!data) return null;
-  if (data.cards && Array.isArray(data.cards) && data.cards.length > 0) {
+  const actualData = data.mind_map || data.mindmap || data.mindMap || data;
+
+  if (actualData.cards && Array.isArray(actualData.cards) && actualData.cards.length > 0) {
     return {
       id: 'ai-dataset',
-      name: data.name || data.title || fallbackTitle || 'Carte Conceptuelle',
+      name: actualData.name || actualData.title || fallbackTitle || 'Carte Conceptuelle',
       badge: 'Généré par IA',
-      rootTitle: data.rootTitle || data.title || fallbackTitle || 'Carte Conceptuelle',
-      rootColor: data.rootColor || '#F59E0B',
-      cards: data.cards
+      rootTitle: actualData.root_title || actualData.rootTitle || actualData.title || fallbackTitle || 'Carte Conceptuelle',
+      rootColor: actualData.rootColor || '#F59E0B',
+      cards: actualData.cards
     };
   }
 
-  const cols = Array.isArray(data.columns) ? data.columns : (Array.isArray(data.categories) ? data.categories : (Array.isArray(data.branches) ? data.branches : []));
+  const cols = Array.isArray(actualData.branches)
+    ? actualData.branches
+    : Array.isArray(actualData.columns)
+    ? actualData.columns
+    : Array.isArray(actualData.categories)
+    ? actualData.categories
+    : [];
   if (cols.length === 0) return null;
 
-  const rootTitle = data.rootTitle || data.title || fallbackTitle || 'Carte Conceptuelle';
+  const rootTitle = actualData.root_title || actualData.rootTitle || actualData.title || fallbackTitle || 'Carte Conceptuelle';
   const palette = ['#06B6D4', '#10B981', '#EC4899', '#3B82F6', '#F59E0B', '#8B5CF6'];
   const generatedCards: ConceptCard[] = [];
   const colWidth = 280;
@@ -679,7 +688,7 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
   cols.slice(0, 6).forEach((col: any, cIdx: number) => {
     const colId = `col_${cIdx + 1}`;
     const colColor = palette[cIdx % palette.length];
-    const colTitle = col.title || col.name || col.label || `Colonne ${cIdx + 1}`;
+    const colTitle = col.branch_title || col.title || col.name || col.label || `Axe ${cIdx + 1}`;
     const xPos = startX + cIdx * colWidth;
 
     generatedCards.push({
@@ -697,26 +706,34 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
       shadowColor: colColor
     });
 
-    const items = Array.isArray(col.cards) ? col.cards : (Array.isArray(col.items) ? col.items : (Array.isArray(col.children) ? col.children : []));
+    const items = Array.isArray(col.nodes)
+      ? col.nodes
+      : Array.isArray(col.cards)
+      ? col.cards
+      : Array.isArray(col.items)
+      ? col.items
+      : Array.isArray(col.children)
+      ? col.children
+      : [];
     let curY = 320;
     items.forEach((item: any, iIdx: number) => {
       const cardTitle = typeof item === 'string' ? item : (item.title || item.pillTitle || item.pillText || item.name || `Notion ${iIdx + 1}`);
-      const cardDesc = typeof item === 'string' ? '' : (item.description || item.desc || item.body || '');
+      const cardDesc = typeof item === 'string' ? item : (item.description || item.desc || item.body || item.title || '');
       generatedCards.push({
         id: `${colId}_c_${iIdx + 1}`,
         parentId: colId,
         level: 2,
-        pillTitle: cardTitle,
+        pillTitle: typeof item === 'string' ? `Point ${iIdx + 1}` : cardTitle,
         description: cardDesc,
         x: xPos,
         y: curY,
         width: 250,
-        height: cardDesc ? 100 : 70,
-        pillWidth: Math.min(200, Math.max(100, cardTitle.length * 8)),
+        height: cardDesc ? 110 : 70,
+        pillWidth: Math.min(200, Math.max(100, (typeof item === 'string' ? `Point ${iIdx + 1}` : cardTitle).length * 8)),
         color: colColor,
         shadowColor: colColor
       });
-      curY += cardDesc ? 120 : 85;
+      curY += cardDesc ? 130 : 85;
     });
   });
 
@@ -1654,9 +1671,9 @@ export default function CarteMentaleConceptuelle({ data, title }: { data?: any; 
                     className="pointer-events-none select-none"
                   >
                     <div className="w-full h-full flex items-center justify-center text-center px-1">
-                      <p className="text-[12px] leading-relaxed text-slate-700 font-normal select-none">
-                        {card.description}
-                      </p>
+                      <div className="text-[12px] leading-relaxed text-slate-700 font-normal select-none">
+                        <MathText text={card.description} />
+                      </div>
                     </div>
                   </foreignObject>
 
