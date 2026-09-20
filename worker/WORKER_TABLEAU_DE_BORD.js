@@ -124,6 +124,48 @@ async function ensureStorageTables(db) {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+
+    // 1. Colonnes indispensables sur 'users' (garantit qu'aucun SELECT ne plantera)
+    const userAlterCols = [
+      "ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''",
+      "ALTER TABLE users ADD COLUMN level TEXT DEFAULT 'Étudiant'",
+      "ALTER TABLE users ADD COLUMN bio TEXT DEFAULT ''",
+      "ALTER TABLE users ADD COLUMN school TEXT DEFAULT ''",
+      "ALTER TABLE users ADD COLUMN filiere TEXT DEFAULT ''",
+      "ALTER TABLE users ADD COLUMN country TEXT DEFAULT 'Côte d''Ivoire'",
+      "ALTER TABLE users ADD COLUMN avatar_url TEXT DEFAULT ''",
+      "ALTER TABLE users ADD COLUMN last_active_at TEXT DEFAULT CURRENT_TIMESTAMP"
+    ];
+    for (const sql of userAlterCols) {
+      try { await db.prepare(sql).run(); } catch (e) {}
+    }
+
+    // 2. Table 'shop_profiles' pour les boutiques et services
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS shop_profiles (
+        user_id TEXT PRIMARY KEY,
+        shop_name TEXT NOT NULL,
+        shop_phone TEXT DEFAULT '',
+        shop_whatsapp TEXT DEFAULT '',
+        shop_avatar_url TEXT DEFAULT '',
+        shop_category TEXT DEFAULT 'Vente digital (PDF)',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    try { await db.prepare("ALTER TABLE shop_profiles ADD COLUMN shop_category TEXT DEFAULT 'Vente digital (PDF)'").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE shop_profiles ADD COLUMN shop_phone TEXT DEFAULT ''").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE shop_profiles ADD COLUMN shop_whatsapp TEXT DEFAULT ''").run(); } catch (e) {}
+
+    // 3. Table 'auth_sessions' pour la présence en ligne
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS auth_sessions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        token_hash TEXT,
+        expires_at TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
   } catch (e) {
     console.warn('[Storage Tables Init]', e);
   }
@@ -664,12 +706,31 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
   const shopProfile = await safeFirst(db, `SELECT * FROM shop_profiles WHERE user_id = ?`, [userId]);
   const hasShop = (shopStats.products_count > 0) || Boolean(shopProfile);
   const shopProductsCount = shopStats.products_count || 0;
-  const shopName = shopProfile?.shop_name || (hasShop ? 'Boutique active' : '');
-  const shopPhone = shopProfile?.shop_phone || '';
-  const shopWhatsapp = shopProfile?.shop_whatsapp || '';
-  const shopCategory = shopProfile?.shop_category || 'Vente digital (PDF)';
-  const shopAvatarUrl = shopProfile?.shop_avatar_url || '';
-  const shopUpdatedAt = shopProfile?.updated_at || '';
+  let shopName = shopProfile?.shop_name || '';
+  let shopPhone = shopProfile?.shop_phone || '';
+  let shopWhatsapp = shopProfile?.shop_whatsapp || '';
+  let shopCategory = shopProfile?.shop_category || '';
+  let shopAvatarUrl = shopProfile?.shop_avatar_url || '';
+  let shopUpdatedAt = shopProfile?.updated_at || '';
+
+  // Si pas de shop_profiles mais des articles en vente dans la boutique
+  if (!shopProfile && shopStats.products_count > 0) {
+    const firstProd = await safeFirst(db, `SELECT seller_name, seller_phone, seller_whatsapp, seller_avatar_url, category, updated_at FROM products WHERE seller_id = ? LIMIT 1`, [userId]);
+    if (firstProd) {
+      shopName = firstProd.seller_name || '';
+      shopPhone = firstProd.seller_phone || '';
+      shopWhatsapp = firstProd.seller_whatsapp || '';
+      shopCategory = firstProd.category || '';
+      shopAvatarUrl = firstProd.seller_avatar_url || '';
+      shopUpdatedAt = firstProd.updated_at || '';
+    }
+  }
+
+  if (hasShop) {
+    if (!shopName) shopName = 'Boutique de ' + (user.name || 'l\'étudiant');
+    if (!shopPhone) shopPhone = user.phone || '';
+    if (!shopCategory) shopCategory = 'Vente digital (PDF)';
+  }
 
   // 16. STATUT DE CONNEXION / EN LIGNE
   const activeSession = await safeFirst(db, `
@@ -701,6 +762,17 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
         const d = Math.floor(diffMinutes / 1440);
         lastSeenText = `Vu il y a ${d} j`;
       }
+    }
+  }
+
+  if (!isOnline && activeSession && activeSession.created_at) {
+    let sDate = String(activeSession.created_at).trim();
+    if (!sDate.endsWith('Z') && !sDate.includes('+')) sDate = sDate.replace(' ', 'T') + 'Z';
+    const sTime = new Date(sDate).getTime();
+    const sDiff = Math.floor((Date.now() - sTime) / 60000);
+    if (!isNaN(sDiff) && sDiff >= 0 && sDiff <= 20) {
+      isOnline = true;
+      lastSeenText = "En ligne (session active)";
     }
   }
 
@@ -1844,21 +1916,30 @@ function renderDashboardHtml(data) {
                 <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">ID: \${u.id}</span>
               </div>
               
-              <!-- Ligne 2 : Statut de connexion / En ligne -->
-              <div class="flex items-center gap-2">
+              <!-- Ligne 2 : Statut de connexion / En ligne & Bouton d'action -->
+              <div class="flex items-center gap-2.5 flex-wrap">
                 <span class="text-slate-400 font-medium">Statut :</span>
                 \${u.isOnline ? \`
-                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Connecté / En ligne (\${u.lastSeenText})
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> En ligne (\${u.lastSeenText})
                   </span>
                 \` : \`
-                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
-                    <span class="w-2 h-2 rounded-full bg-slate-500"></span> Déconnecté / Hors ligne (\${u.lastSeenText})
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
+                    <span class="w-2 h-2 rounded-full bg-slate-500"></span> Hors ligne (\${u.lastSeenText})
                   </span>
                 \`}
+                <button 
+                  onclick="toggleUserOnlineStatus('\${u.id}', \${u.isOnline})" 
+                  class="px-2.5 py-1 text-[10px] font-bold rounded-md cursor-pointer transition flex items-center gap-1 shadow-sm \${u.isOnline ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/40' : 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40'}"
+                  title="Changer manuellement le statut de présence"
+                >
+                  <span>\${u.isOnline ? '🔴' : '🟢'}</span>
+                  <span>Basculer en \${u.isOnline ? 'Hors ligne' : 'En ligne'}</span>
+                </button>
               </div>
 
               <!-- Ligne 3 : Numéro de téléphone -->
+
               <div class="flex items-center gap-2">
                 <span class="text-slate-400 font-medium">📞 Téléphone :</span>
                 <span class="text-white font-semibold font-mono">\${u.phone || 'Non renseigné'}</span>
@@ -1882,23 +1963,53 @@ function renderDashboardHtml(data) {
                 <span class="text-slate-200">\${u.school || 'Non renseigné'} \${u.filiere ? '(' + u.filiere + ')' : (u.country ? '(' + u.country + ')' : '')}</span>
               </div>
 
-              <!-- Ligne 7 : Boutique de services -->
-              <div class="flex items-center gap-2">
-                <span class="text-slate-400 font-medium">🛍️ Boutique de services :</span>
+              <!-- Ligne 7 : Boutique de services & Détails complets -->
+              <div class="space-y-2 pt-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-slate-400 font-medium">🛍️ Boutique de services :</span>
+                  \${u.hasShop ? \`
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                      <span>🏪</span> Active — \${u.shopName || 'Boutique'} (\${u.shopProductsCount} article\${u.shopProductsCount > 1 ? 's' : ''})
+                    </span>
+                  \` : \`
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
+                      <span>⚪</span> Non • Aucune boutique créée
+                    </span>
+                  \`}
+                </div>
+
                 \${u.hasShop ? \`
-                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                    <span>🏪</span> Oui • Active — \${u.shopName || 'Boutique'} (\${u.shopProductsCount} article\${u.shopProductsCount > 1 ? 's' : ''})
-                  </span>
-                \` : \`
-                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
-                    <span>⚪</span> Non • Aucune boutique créée
-                  </span>
-                \`}
+                  <!-- Carte complète détails boutique -->
+                  <div class="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
+                    <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                      <span class="text-[10px] text-amber-300/70 uppercase font-bold block mb-0.5">Nom de la boutique</span>
+                      <span class="text-white font-bold text-xs truncate block">\${u.shopName || 'Boutique active'}</span>
+                    </div>
+                    <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                      <span class="text-[10px] text-amber-300/70 uppercase font-bold block mb-0.5">📞 Téléphone Boutique</span>
+                      <span class="text-slate-200 font-mono font-semibold text-xs block">\${u.shopPhone || u.phone || 'Non renseigné'}</span>
+                    </div>
+                    <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                      <span class="text-[10px] text-amber-300/70 uppercase font-bold block mb-0.5">💬 WhatsApp Boutique</span>
+                      <span class="text-emerald-400 font-mono font-semibold text-xs block">\${u.shopWhatsapp || 'Non renseigné'}</span>
+                    </div>
+                    <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                      <span class="text-[10px] text-amber-300/70 uppercase font-bold block mb-0.5">🏷️ Catégorie</span>
+                      <span class="text-orange-300 font-medium text-xs block truncate">\${u.shopCategory || 'Vente digital (PDF)'}</span>
+                    </div>
+                    \${u.shopUpdatedAt ? \`
+                      <div class="sm:col-span-2 md:col-span-4 text-[10px] text-amber-300/80 border-t border-amber-500/20 pt-1.5 flex items-center gap-1.5 font-mono">
+                        <span>🕐 Dernière mise à jour boutique :</span> <strong>\${u.shopUpdatedAt}</strong>
+                      </div>
+                    \` : ''}
+                  </div>
+                \` : ''}
               </div>
             </div>
           </div>
 
           <!-- Encadré Quota Utilisateur (Haut Droit) -->
+
           <div class="text-right self-start bg-slate-900/90 px-3.5 py-2.5 rounded-xl border border-slate-800 shadow-md shrink-0">
             <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Stockage Consommé</span>
             <div class="text-sm font-mono font-bold text-orange-400">\${displayTotalFormatted} / \${q.totalAllowedFormatted}</div>
@@ -2138,21 +2249,30 @@ function renderDashboardHtml(data) {
                 <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">ID: \${u.id}</span>
               </div>
               
-              <!-- Ligne 2 : Statut de connexion / En ligne -->
-              <div class="flex items-center gap-2">
+              <!-- Ligne 2 : Statut de connexion / En ligne & Bouton d'action -->
+              <div class="flex items-center gap-2.5 flex-wrap">
                 <span class="text-slate-400 font-medium">Statut :</span>
                 \${u.isOnline ? \`
-                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
-                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Connecté / En ligne (\${u.lastSeenText})
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> En ligne (\${u.lastSeenText})
                   </span>
                 \` : \`
-                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
-                    <span class="w-2 h-2 rounded-full bg-slate-500"></span> Déconnecté / Hors ligne (\${u.lastSeenText})
+                  <span class="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-[11px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
+                    <span class="w-2 h-2 rounded-full bg-slate-500"></span> Hors ligne (\${u.lastSeenText})
                   </span>
                 \`}
+                <button 
+                  onclick="toggleUserOnlineStatus('\${u.id}', \${u.isOnline})" 
+                  class="px-2.5 py-1 text-[10px] font-bold rounded-md cursor-pointer transition flex items-center gap-1 shadow-sm \${u.isOnline ? 'bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/40' : 'bg-emerald-500/20 text-emerald-300 hover:bg-emerald-500/30 border border-emerald-500/40'}"
+                  title="Changer manuellement le statut de présence"
+                >
+                  <span>\${u.isOnline ? '🔴' : '🟢'}</span>
+                  <span>Basculer en \${u.isOnline ? 'Hors ligne' : 'En ligne'}</span>
+                </button>
               </div>
 
               <!-- Ligne 3 : Numéro de téléphone -->
+
               <div class="flex items-center gap-2">
                 <span class="text-slate-400 font-medium">📞 Téléphone :</span>
                 <span class="text-white font-semibold font-mono">\${u.phone || 'Non renseigné'}</span>
@@ -2176,23 +2296,53 @@ function renderDashboardHtml(data) {
                 <span class="text-slate-200">\${u.school || 'Non renseigné'} \${u.filiere ? '(' + u.filiere + ')' : (u.country ? '(' + u.country + ')' : '')}</span>
               </div>
 
-              <!-- Ligne 7 : Boutique de services -->
-              <div class="flex items-center gap-2">
-                <span class="text-slate-400 font-medium">🛍️ Boutique de services :</span>
+              <!-- Ligne 7 : Boutique de services & Détails complets -->
+              <div class="space-y-2 pt-1">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-slate-400 font-medium">🛍️ Boutique de services :</span>
+                  \${u.hasShop ? \`
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                      <span>🏪</span> Active — \${u.shopName || 'Boutique'} (\${u.shopProductsCount} article\${u.shopProductsCount > 1 ? 's' : ''})
+                    </span>
+                  \` : \`
+                    <span class="inline-flex items-center gap-1.5 px-2.5 py-0.5 rounded-md text-[11px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
+                      <span>⚪</span> Non • Aucune boutique créée
+                    </span>
+                  \`}
+                </div>
+
                 \${u.hasShop ? \`
-                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
-                    <span>🏪</span> Oui • Active — \${u.shopName || 'Boutique'} (\${u.shopProductsCount} article\${u.shopProductsCount > 1 ? 's' : ''})
-                  </span>
-                \` : \`
-                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
-                    <span>⚪</span> Non • Aucune boutique créée
-                  </span>
-                \`}
+                  <!-- Carte complète détails boutique -->
+                  <div class="bg-amber-500/5 border border-amber-500/20 rounded-xl p-3 grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-2.5 text-xs">
+                    <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                      <span class="text-[10px] text-amber-300/70 uppercase font-bold block mb-0.5">Nom de la boutique</span>
+                      <span class="text-white font-bold text-xs truncate block">\${u.shopName || 'Boutique active'}</span>
+                    </div>
+                    <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                      <span class="text-[10px] text-amber-300/70 uppercase font-bold block mb-0.5">📞 Téléphone Boutique</span>
+                      <span class="text-slate-200 font-mono font-semibold text-xs block">\${u.shopPhone || u.phone || 'Non renseigné'}</span>
+                    </div>
+                    <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                      <span class="text-[10px] text-amber-300/70 uppercase font-bold block mb-0.5">💬 WhatsApp Boutique</span>
+                      <span class="text-emerald-400 font-mono font-semibold text-xs block">\${u.shopWhatsapp || 'Non renseigné'}</span>
+                    </div>
+                    <div class="bg-slate-950/60 p-2 rounded-lg border border-slate-800/80">
+                      <span class="text-[10px] text-amber-300/70 uppercase font-bold block mb-0.5">🏷️ Catégorie</span>
+                      <span class="text-orange-300 font-medium text-xs block truncate">\${u.shopCategory || 'Vente digital (PDF)'}</span>
+                    </div>
+                    \${u.shopUpdatedAt ? \`
+                      <div class="sm:col-span-2 md:col-span-4 text-[10px] text-amber-300/80 border-t border-amber-500/20 pt-1.5 flex items-center gap-1.5 font-mono">
+                        <span>🕐 Dernière mise à jour boutique :</span> <strong>\${u.shopUpdatedAt}</strong>
+                      </div>
+                    \` : ''}
+                  </div>
+                \` : ''}
               </div>
             </div>
           </div>
 
           <!-- Encadré Quota Utilisateur (Haut Droit) -->
+
           <div class="text-right self-start bg-slate-900/90 px-3.5 py-2.5 rounded-xl border border-slate-800 shadow-md shrink-0">
             <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Stockage Consommé</span>
             <div class="text-sm font-mono font-bold text-orange-400">\${s.net ? s.net.totalFormatted : s.totalFormatted} / \${q.totalAllowedFormatted}</div>
@@ -2476,7 +2626,10 @@ function renderDashboardHtml(data) {
           }
           showToast(setOnline ? '✅ Utilisateur marqué En ligne' : '⚫ Utilisateur marqué Hors ligne');
           renderUsersLeftList(document.getElementById('users-search-left')?.value || '');
-          renderUserRightDetails(userId);
+          if (selectedUserId === userId) renderUserRightDetails(userId);
+          if (typeof selectedDemandeUserId !== 'undefined' && selectedDemandeUserId === userId) renderDemandeRightDetails(userId);
+          if (typeof renderDemandesUsersList === 'function') renderDemandesUsersList();
+          if (typeof renderSimpleMessagesUsersList === 'function') renderSimpleMessagesUsersList();
         } else {
           alert('Erreur: ' + (data.error || 'Échec'));
         }
@@ -2678,6 +2831,9 @@ export default {
           } catch(e) {}
         } else {
           await safeRun(db, `UPDATE users SET last_active_at = datetime('now', '-2 hours') WHERE id = ?`, [userId]);
+          try {
+            await safeRun(db, `DELETE FROM auth_sessions WHERE user_id = ?`, [userId]);
+          } catch(e) {}
         }
         return new Response(JSON.stringify({ success: true, userId, isOnline: setOnline, last_active_at: new Date().toISOString() }), {
           status: 200,
@@ -2697,12 +2853,16 @@ export default {
         };
       }
 
-      // Récupération de tous les utilisateurs (avec numéro de téléphone et niveau)
-      const usersQuery = await safeQuery(db, `
-        SELECT id, name, email, phone, school, filiere, country, level, bio, avatar_url, created_at, last_active_at 
+      // Récupération de tous les utilisateurs (sélection résiliente)
+      let usersQuery = await safeQuery(db, `
+        SELECT * 
         FROM users 
         ORDER BY created_at DESC
-      `, [], { results: [] });
+      `, [], null);
+
+      if (!usersQuery || !usersQuery.results) {
+        usersQuery = await safeQuery(db, `SELECT id, name, email FROM users`, [], { results: [] });
+      }
 
       const rawUsers = usersQuery && usersQuery.results ? usersQuery.results : [];
 

@@ -4509,6 +4509,25 @@ export default {
         return jsonResponse({ success: true, data: safeUser }, 200, origin);
       }
 
+      // POST ou GET /api/auth/heartbeat — Maintien de la présence en ligne en temps réel
+      if ((path === '/api/auth/heartbeat' || path === '/api/users/heartbeat') && (method === 'POST' || method === 'GET')) {
+        const authHeader = request.headers.get('Authorization') || '';
+        const token = authHeader.startsWith('Bearer ') ? authHeader.slice(7) : null;
+        if (!token) return errorResponse('Token requis', 401, origin);
+
+        const payload = await verifyJWT(token);
+        if (!payload?.userId) return errorResponse('Token invalide ou expiré', 401, origin);
+
+        await env.DB.prepare('UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?').bind(payload.userId).run();
+        try {
+          const tokenHash = await hashToken(token);
+          const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1000).toISOString();
+          await env.DB.prepare('INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)').bind(generateId(), payload.userId, tokenHash, sessionExpiresAt).run();
+        } catch (e) {}
+
+        return jsonResponse({ success: true, isOnline: true, last_active_at: new Date().toISOString() }, 200, origin);
+      }
+
       // PUT ou POST /api/auth/setup-security — Configuration obligatoire (Nom, Mot de passe, Questions de sécurité) après connexion Google
       if ((path === '/api/auth/setup-security' || path === '/api/auth/google/complete-security') && (method === 'PUT' || method === 'POST')) {
         const authHeader = request.headers.get('Authorization') || '';

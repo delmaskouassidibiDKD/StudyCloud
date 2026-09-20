@@ -234,6 +234,32 @@ export function AuthProvider({ children }: { children: React.ReactNode }) {
       });
   }, []);
 
+  // Heartbeat automatique : signale la présence en ligne auprès du serveur toutes les 45s
+  useEffect(() => {
+    if (!token) return;
+    
+    StudyCloudAPI.sendHeartbeat(token).catch(() => {});
+
+    const interval = setInterval(() => {
+      StudyCloudAPI.sendHeartbeat(token).catch(() => {});
+    }, 45000);
+
+    const onFocusOrVisible = () => {
+      if (!document.hidden) {
+        StudyCloudAPI.sendHeartbeat(token).catch(() => {});
+      }
+    };
+
+    window.addEventListener('focus', onFocusOrVisible);
+    document.addEventListener('visibilitychange', onFocusOrVisible);
+
+    return () => {
+      clearInterval(interval);
+      window.removeEventListener('focus', onFocusOrVisible);
+      document.removeEventListener('visibilitychange', onFocusOrVisible);
+    };
+  }, [token]);
+
   const loginWithToken = useCallback((newToken: string, newUser: AuthUser) => {
     localStorage.removeItem('sc_onboarding_expired_notice');
     localStorage.removeItem('sc_verification_expired_notice');

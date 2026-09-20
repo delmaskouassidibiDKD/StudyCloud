@@ -846,6 +846,10 @@ export const StudyCloudAPI = {
     return requestAuth('/api/auth/me', { method: 'GET' }, token);
   },
 
+  async sendHeartbeat(token: string) {
+    return requestAuth('/api/auth/heartbeat', { method: 'POST' }, token).catch(() => null);
+  },
+
   async completeOnboarding(token: string, data: {
     name?: string; school?: string; filiere?: string; level?: string;
     country: string; phone?: string; bio?: string; avatarUrl?: string;
