@@ -85,6 +85,73 @@ export default {
       });
     }
 
+    // Endpoint de diagnostic de connectivité IA : /api/ai/debug
+    if (request.method === "GET" && path === "/api/ai/debug") {
+      let testGeminiApiKey = env?.["StudyCloud-gemini"] ||
+        env?.["studycloud-gemini"] ||
+        env?.["STUDYCLOUD_GEMINI"] ||
+        env?.["StudyCloud_gemini"] ||
+        env?.StudyCloud_gemini ||
+        env?.GEMINI_API_KEY ||
+        env?.GOOGLE_API_KEY;
+
+      if (!testGeminiApiKey && env && typeof env === "object") {
+        for (const [k, v] of Object.entries(env)) {
+          if (typeof v === "string" && /studycloud[-_]?gemini/i.test(k) && !v.startsWith("http")) {
+            testGeminiApiKey = v.trim();
+            break;
+          }
+        }
+      }
+
+      if (typeof testGeminiApiKey === "string") {
+        testGeminiApiKey = testGeminiApiKey.trim();
+      }
+
+      let geminiStatus = "no_key";
+      let geminiResponse = null;
+
+      if (testGeminiApiKey) {
+        try {
+          const testEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${testGeminiApiKey}`;
+          const gTest = await fetch(testEndpoint, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ parts: [{ text: "Bonjour en un mot" }] }]
+            })
+          });
+          geminiStatus = `HTTP ${gTest.status}`;
+          geminiResponse = await gTest.text();
+        } catch (gErr) {
+          geminiStatus = "Exception: " + gErr.message;
+        }
+      }
+
+      let cfAiStatus = "not_bound";
+      if (ai && typeof ai.run === "function") {
+        try {
+          const cfTest = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
+            messages: [{ role: "user", content: "Bonjour en un mot" }]
+          });
+          cfAiStatus = cfTest?.response ? "OK" : "Réponse vide";
+        } catch (cfErr) {
+          cfAiStatus = "Exception: " + cfErr.message;
+        }
+      }
+
+      return new Response(JSON.stringify({
+        geminiConfigured: Boolean(testGeminiApiKey),
+        geminiKeyPrefix: testGeminiApiKey ? `${testGeminiApiKey.slice(0, 6)}...${testGeminiApiKey.slice(-4)}` : null,
+        geminiStatus,
+        geminiResponse: geminiResponse ? geminiResponse.slice(0, 500) : null,
+        cfAiStatus,
+        timestamp: new Date().toISOString()
+      }), {
+        headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+      });
+    }
+
     // Récupération de l'historique sécurisé par utilisateur
     if (request.method === "GET" && path === "/api/ai/workspace") {
       const userId = url.searchParams.get("userId");
@@ -1279,10 +1346,12 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
           parts: [{ text: userPrompt || (requestedType ? `Génère le module ${requestedType}` : "Bonjour !") }]
         });
 
+        const debugErrors = [];
         const candidateGeminiModels = [
           "gemini-2.0-flash",
           "gemini-1.5-flash",
-          "gemini-2.5-flash"
+          "gemini-1.5-pro",
+          "gemini-2.0-flash-lite"
         ];
 
         for (const mod of candidateGeminiModels) {
@@ -1313,9 +1382,17 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
                 generatedContent = candidateText;
                 usedEngine = `Google Gemini (${mod})`;
                 break;
+              } else {
+                const finishReason = gData?.candidates?.[0]?.finishReason || gData?.promptFeedback?.blockReason || "aucun texte";
+                debugErrors.push(`[Gemini ${mod}] Blocage/Finition: ${finishReason}`);
               }
+            } else {
+              const errTxt = await gResponse.text().catch(() => "");
+              debugErrors.push(`[Gemini ${mod} HTTP ${gResponse.status}] ${errTxt.slice(0, 200)}`);
+              console.warn(`[Gemini ${mod}] Status ${gResponse.status}:`, errTxt);
             }
           } catch (geminiErr) {
+            debugErrors.push(`[Gemini ${mod} Exception] ${geminiErr.message}`);
             console.warn(`[Gemini ${mod}] Exception:`, geminiErr);
           }
         }
@@ -1323,17 +1400,21 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
 
       // 2. FALLBACK VERS CLOUDFLARE WORKERS AI
       if (!generatedContent && ai && typeof ai.run === "function") {
-        const messages = [{ role: "system", content: fullSystemPrompt }];
+        const trimmedSystemPrompt = fullSystemPrompt.length > 7000
+          ? fullSystemPrompt.slice(0, 7000) + "\n\n[... Document synthétisé pour Workers AI ...]"
+          : fullSystemPrompt;
+
+        const messages = [{ role: "system", content: trimmedSystemPrompt }];
         const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
-        for (const m of incomingHist.slice(-6)) {
+        for (const m of incomingHist.slice(-4)) {
           if (m && m.role && m.content) {
             messages.push({
               role: m.role === "model" ? "assistant" : m.role,
-              content: String(m.content)
+              content: String(m.content).slice(0, 1000)
             });
           }
         }
-        const currentPrompt = userPrompt || (requestedType ? `Génère le module ${requestedType}` : "Bonjour !");
+        const currentPrompt = (userPrompt || (requestedType ? `Génère le module ${requestedType}` : "Bonjour !")).slice(0, 2000);
         if (!messages.some(m => m.role === "user" && m.content === currentPrompt)) {
           messages.push({ role: "user", content: currentPrompt });
         }
@@ -1348,22 +1429,28 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
           try {
             const aiResult = await ai.run(m, {
               messages,
-              max_tokens: 3500,
+              max_tokens: 3000,
               temperature: 0.7,
             });
             if (aiResult?.response) {
               generatedContent = aiResult.response;
               usedEngine = `Cloudflare Workers AI (${m})`;
               break;
+            } else {
+              debugErrors.push(`[Workers AI ${m}] Réponse vide`);
             }
           } catch (cfErr) {
+            debugErrors.push(`[Workers AI ${m} Exception] ${cfErr.message}`);
             console.warn(`[Workers AI ${m}] Exception:`, cfErr);
           }
         }
       }
 
       if (!generatedContent) {
-        throw new Error("Aucun modèle IA n'a pu répondre. Veuillez vérifier la variable StudyCloud-gemini dans votre Worker Cloudflare.");
+        const fullErrReport = debugErrors.length > 0
+          ? `Aucun modèle IA n'a pu répondre. [Détails: ${debugErrors.join(" | ")}]`
+          : "Aucun modèle IA n'a pu répondre. Veuillez vérifier la variable StudyCloud-gemini dans votre Worker Cloudflare.";
+        throw new Error(fullErrReport);
       }
 
       const formatted = parseAiDecision(generatedContent, requestedType);
