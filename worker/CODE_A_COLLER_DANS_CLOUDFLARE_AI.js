@@ -407,12 +407,12 @@ export default {
               creation_title = parsed.title || "Vrai ou Faux";
               creation_data = parsed;
               chat_message = parsed.chat_message || parsed.chat_response || "✨ Voici vos affirmations Vrai ou Faux prêtes à droite !";
-            } else if (Array.isArray(parsed.cards)) {
+            } else if (Array.isArray(parsed.cards) || Array.isArray(parsed.flashcards)) {
               decision = "creation";
               creation_type = defaultType || "carte-memoire";
               creation_title = parsed.title || "Cartes Mémoire";
               creation_data = parsed;
-              chat_message = parsed.chat_message || parsed.chat_response || "✨ Vos flashcards sont disponibles dans l'espace Création !";
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Vos cartes mémoire (flashcards) sont prêtes dans l'espace Création !";
             } else if (parsed.mind_map || parsed.mindmap || parsed.branches || parsed.root || parsed.rootTitle || parsed.root_title) {
               decision = "creation";
               creation_type = defaultType || "carte-mentale";
@@ -643,6 +643,49 @@ Tu dois impérativement respecter les règles strictes suivantes :
    }
 
 ======================================================================
+RÈGLES D'EXCELLENCE POUR LES CARTES MÉMOIRE / FLASHCARDS ('carte-memoire') :
+======================================================================
+Tu es un tuteur pédagogique expert et un concepteur de cartes mémoire (Flashcards) hautement efficaces. Ta mission est de générer un jeu de cartes mémoire approfondi basé sur le document fourni par l'utilisateur et enrichi, si nécessaire, par des connaissances vérifiées d'Internet sur le même sujet.
+
+Tu dois impérativement respecter les règles strictes suivantes :
+
+1. ÉVITER LES DOUBLONS (HISTORIQUE DES CARTES DÉJÀ GÉNÉRÉES) :
+   - Prends en compte l'historique des cartes mémoire déjà générées pour cet utilisateur et ce document.
+   - Tu dois créer de NOUVELLES cartes qui n'abordent pas exactement les mêmes questions, la même formulation ou les mêmes angles que celles déjà mémorisées.
+
+2. PROFONDEUR PÉDAGOGIQUE ET FORMAT "RECTO / VERSO" :
+   - Génère 6 à 10 cartes mémoire de haute valeur ajoutée.
+   - Chaque carte doit posséder une question ou un défi précis au Recto (évite la simple mémorisation superficielle, privilégie l'analyse, la compréhension de mécanismes ou la mise en situation).
+   - La réponse au Verso doit être rigoureuse, structurée et expliquer en détail le "pourquoi" théorique.
+
+3. EXEMPLES DÉTAILLÉS (OBLIGATOIRE AU VERSO) :
+   - Le verso de chaque carte doit obligatoirement inclure DEUX EXEMPLES CONCRETS ET DISTINCTS (Exemple 1 et Exemple 2) illustrant la notion pour ancrer la mémorisation à long terme.
+
+4. ENRICHISSEMENT EXTERNE & RECHERCHE INTERNET :
+   - Tu es explicitement autorisé et encouragé à faire des recherches et à compléter le contenu du fichier avec des notions, des standards, des cas d'usage réels ou des exemples complémentaires trouvés sur Internet portant exactement sur le même domaine/sujet pour approfondir et contextualiser les exemples pratiques.
+
+5. RÈGLE DE FORMATAGE ABSOLUE (MATHÉMATIQUES, FONCTIONS ET FRACTIONS EN LATEX PUR) :
+   - Pour TOUTES les formules, fonctions mathématiques, fractions, variables et symboles scientifiques (ex: $f(x) = ax + b$, $\frac{a}{b}$, $\Omega$, $\sqrt{2}$, $U_{eff}$), tu DOIS utiliser exclusivement la syntaxe LaTeX standard (entre symboles dollar $...$).
+   - INTERDICTION FORMELLE d'utiliser du texte brut mal formaté ou des caractères corrompus (&, *, !, $$$) pour représenter des maths. Utilise toujours les balises LaTeX correctes (ex: \frac{num}{den}).
+
+6. STRUCTURE JSON REQUISE DANS "creation_data" :
+   {
+     "flashcards": [
+       {
+         "id": "fc_1",
+         "front": "Comment s'exprime la fonction de transfert en régime sinusoïdal d'un filtre passe-bas du premier ordre, et quel est son module à haute fréquence ?",
+         "back": {
+           "definition": "La fonction de transfert est $H(j\\omega) = \\frac{1}{1 + j\\frac{\\omega}{\\omega_0}}$. À haute fréquence (quand $\\omega \\gg \\omega_0$), le module tend vers $0$ car le dénominateur devient très grand.",
+           "examples": [
+             "Exemple 1 : Dans un circuit RC, la fréquence de coupure est définie par $\\omega_0 = \\frac{1}{R \\cdot C}$.",
+             "Exemple 2 : Pour un signal haute fréquence parasite, le filtre l'atténue fortement en réduisant son amplitude selon la pente de $-20\\text{ dB/décade}$."
+           ]
+         }
+       }
+     ]
+   }
+
+======================================================================
 RÈGLE DE FORMATAGE MATHÉMATIQUE STRICTE (LATEX PUR) :
 ======================================================================
 1. Pour TOUTES les fractions, puissances, racines, intégrales, dérivées, matrices et formules scientifiques, tu DOIS utiliser exclusivement la syntaxe LaTeX standard.
@@ -702,7 +745,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         try {
           const { results } = await db.prepare(`
             SELECT content_json FROM ai_generated_contents
-            WHERE user_id = ? AND tool_type IN ('questionnaire', 'questionnaire-test', 'vrai-ou-faux', 'vrai-ou-faux-test', 'carte-mentale', 'carte-mentale-2')
+            WHERE user_id = ? AND tool_type IN ('questionnaire', 'questionnaire-test', 'vrai-ou-faux', 'vrai-ou-faux-test', 'carte-mentale', 'carte-mentale-2', 'carte-memoire')
             ORDER BY created_at DESC LIMIT 8
           `).bind(currentUserId).all();
 
@@ -715,6 +758,10 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
                   ? parsed.questions
                   : Array.isArray(parsed?.affirmations)
                   ? parsed.affirmations
+                  : Array.isArray(parsed?.flashcards)
+                  ? parsed.flashcards
+                  : Array.isArray(parsed?.cards)
+                  ? parsed.cards
                   : Array.isArray(parsed?.mind_map?.branches)
                   ? parsed.mind_map.branches
                   : Array.isArray(parsed?.branches)
@@ -723,11 +770,11 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
                   ? parsed
                   : [];
                 for (const item of items) {
-                  const text = item.question || item.statement || item.affirmation || item.branch_title || item.title || item.texte;
+                  const text = item.question || item.statement || item.affirmation || item.front || item.recto || item.branch_title || item.title || item.texte;
                   if (text) prevList.push(text);
                 }
                 if (parsed?.mind_map?.root_title) {
-                  prevList.push(`Carte précédente : ${parsed.mind_map.root_title}`);
+                  prevList.push(`Carte mentale précédente : ${parsed.mind_map.root_title}`);
                 }
               } catch {}
             }
@@ -755,7 +802,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         fullSystemPrompt = fullSystemPrompt.replace(/'\${requestedType \|\| ""}'/, `'${requestedType}'`);
       }
       if (previousQuestionsText) {
-        fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES ÉLÉMENTS, QUESTIONS OU CARTES DÉJÀ GÉNÉRÉS POUR CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions, affirmations ou axes de cartes mentales ENTIÈREMENT NOUVEAUX qui n'ont ni la même formulation, ni le même angle, ni la même organisation que les éléments déjà générés ci-dessus. Explore d'autres aspects, chapitres, théorèmes, cas pratiques ou notions du document.`;
+        fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES ÉLÉMENTS, QUESTIONS, CARTES MÉMOIRE OU CARTES DÉJÀ GÉNÉRÉS POUR CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions, affirmations, cartes mémoire (flashcards) ou axes de cartes mentales ENTIÈREMENT NOUVEAUX qui n'ont ni la même formulation, ni le même angle, ni la même organisation que les éléments déjà mémorisés ou générés ci-dessus. Explore d'autres aspects, chapitres, théorèmes, cas pratiques ou notions du document et enrichis avec Internet.`;
       }
       if (rawDocForGemini.length > 0) {
         const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";

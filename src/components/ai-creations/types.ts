@@ -41,6 +41,8 @@ export interface Flashcard {
   front: string;
   back: string;
   tag: string;
+  definition?: string;
+  examples?: string[];
 }
 
 export interface MindMapNode {

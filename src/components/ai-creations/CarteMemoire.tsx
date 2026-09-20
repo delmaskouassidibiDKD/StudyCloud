@@ -26,15 +26,53 @@ interface TestQuestion {
 
 function normalizeCards(input: any): Flashcard[] {
   if (!input) return [];
-  const list = Array.isArray(input) ? input : (Array.isArray(input?.cards) ? input.cards : (Array.isArray(input?.data) ? input.data : []));
-  if (!Array.isArray(list) || list.length === 0) return [];
+  const actualData = input?.flashcards || input?.cards || input?.data || input;
+  const list = Array.isArray(actualData) ? actualData : [];
+  if (list.length === 0) return [];
 
-  return list.map((c: any, i: number) => ({
-    id: c.id || `c_${i + 1}`,
-    front: c.front || c.recto || c.question || c.term || c.concept || `Notion ${i + 1}`,
-    back: c.back || c.verso || c.answer || c.definition || c.explication || '',
-    tag: c.tag || c.theme || c.category || 'Mémorisation'
-  }));
+  return list.map((c: any, i: number) => {
+    let backText = '';
+    let definition = '';
+    let examples: string[] = [];
+
+    if (typeof c.back === 'string') {
+      backText = c.back;
+      definition = c.back;
+    } else if (c.back && typeof c.back === 'object') {
+      definition = c.back.definition || c.back.answer || c.back.explication || '';
+      if (Array.isArray(c.back.examples)) {
+        examples = c.back.examples.filter((e: any) => typeof e === 'string' && e.trim().length > 0);
+      }
+      const exs = examples
+        .map((ex: string) => (ex.startsWith('•') || ex.startsWith('Exemple') ? ex : `• ${ex}`))
+        .join('\n\n');
+      backText = [definition, exs].filter(Boolean).join('\n\n');
+    } else if (typeof c.verso === 'string') {
+      backText = c.verso;
+      definition = c.verso;
+    } else if (c.verso && typeof c.verso === 'object') {
+      definition = c.verso.definition || c.verso.answer || c.verso.explication || '';
+      if (Array.isArray(c.verso.examples)) {
+        examples = c.verso.examples.filter((e: any) => typeof e === 'string' && e.trim().length > 0);
+      }
+      const exs = examples
+        .map((ex: string) => (ex.startsWith('•') || ex.startsWith('Exemple') ? ex : `• ${ex}`))
+        .join('\n\n');
+      backText = [definition, exs].filter(Boolean).join('\n\n');
+    } else {
+      backText = c.answer || c.definition || c.explication || '';
+      definition = backText;
+    }
+
+    return {
+      id: c.id || `fc_${i + 1}`,
+      front: c.front || c.recto || c.question || c.term || c.concept || `Notion ${i + 1}`,
+      back: backText,
+      tag: c.tag || c.theme || c.category || 'Mémorisation',
+      definition,
+      examples
+    };
+  });
 }
 
 export default function CarteMemoire({ data }: { data?: any }) {
@@ -123,14 +161,15 @@ export default function CarteMemoire({ data }: { data?: any }) {
     // Generate test questions from mastered cards
     const questions: TestQuestion[] = cards.map((card) => {
       // Options are the card's answer + other cards' answers as distractors
+      const cardAnswer = card.definition || card.back;
       const distractors = cards
         .filter((c) => c.id !== card.id)
-        .map((c) => c.back);
-      const shuffledOptions = [...distractors, card.back].sort(() => Math.random() - 0.5);
+        .map((c) => c.definition || c.back);
+      const shuffledOptions = [...distractors, cardAnswer].sort(() => Math.random() - 0.5);
       return {
         cardId: card.id,
         front: card.front,
-        correctAnswer: card.back,
+        correctAnswer: cardAnswer,
         options: shuffledOptions
       };
     });
@@ -407,14 +446,35 @@ export default function CarteMemoire({ data }: { data?: any }) {
             transition={{ duration: 0.45, ease: 'easeInOut' }}
             className="w-full h-auto min-h-[300px] relative rounded-2xl border border-stone-200 bg-white p-6 sm:p-8 shadow-xs flex flex-col justify-between transform-style-3d hover:shadow-md transition-shadow"
           >
-            <div className="my-auto py-6 text-center w-full">
+            <div className="my-auto py-6 w-full">
               {!isFlipped ? (
-                <div id="flashcard-front-text" className="text-xl md:text-2xl font-semibold text-stone-900 leading-relaxed break-words whitespace-normal">
+                <div id="flashcard-front-text" className="text-xl md:text-2xl font-semibold text-stone-900 text-center leading-relaxed break-words whitespace-normal">
                   <MathText text={current.front} />
                 </div>
               ) : (
-                <div id="flashcard-back-text" className="text-base md:text-lg font-normal text-stone-800 leading-relaxed break-words whitespace-normal [transform:rotateY(180deg)]">
-                  <MathText text={current.back} />
+                <div id="flashcard-back-text" className="text-base md:text-lg font-normal text-stone-800 leading-relaxed break-words [transform:rotateY(180deg)] text-left space-y-4">
+                  {current.definition && (
+                    <div className="text-stone-900 leading-relaxed font-medium">
+                      <MathText text={current.definition} />
+                    </div>
+                  )}
+                  {current.examples && current.examples.length > 0 && (
+                    <div className="space-y-2.5 pt-3 border-t border-stone-100">
+                      {current.examples.map((ex, exIdx) => (
+                        <div
+                          key={exIdx}
+                          className="p-3.5 bg-amber-50/70 border border-amber-200/80 rounded-xl text-xs sm:text-sm text-stone-800 leading-relaxed shadow-2xs"
+                        >
+                          <MathText text={ex} />
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                  {!current.definition && (!current.examples || current.examples.length === 0) && (
+                    <div className="whitespace-pre-line">
+                      <MathText text={current.back} />
+                    </div>
+                  )}
                 </div>
               )}
             </div>
