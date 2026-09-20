@@ -73,16 +73,41 @@ export const setGeminiApiKey = (key: string) => {
     localStorage.setItem('studycloud_gemini_api_key', key.trim());
   }
 };
+function cleanControlCharsInParsedObject(obj: any): any {
+  if (!obj) return obj;
+  if (typeof obj === 'string') {
+    return obj
+      .replace(/[\x0c\u000c]/g, '\\f') // Répare \x0crac -> \frac
+      .replace(/[\x08\u0008]/g, '\\b'); // Répare \x08eta -> \beta
+  }
+  if (Array.isArray(obj)) {
+    return obj.map(cleanControlCharsInParsedObject);
+  }
+  if (typeof obj === 'object') {
+    const cleaned: Record<string, any> = {};
+    for (const [k, v] of Object.entries(obj)) {
+      cleaned[k] = cleanControlCharsInParsedObject(v);
+    }
+    return cleaned;
+  }
+  return obj;
+}
 
-export function safeJsonParse(raw: any): any {
+export function safeJsonParse<T = any>(raw: string): T | null {
   if (!raw) return null;
-  if (typeof raw === 'object') return raw;
+  if (typeof raw === 'object') return cleanControlCharsInParsedObject(raw);
   if (typeof raw !== 'string') return null;
 
   const trimmed = raw.trim();
-  // 1. Essai direct
+
+  // 1. Nettoyage préventif des commandes LaTeX pour doubler les antislashs uniques (\frac -> \\frac)
+  // afin que JSON.parse n'interprète pas \f comme Form Feed (ASCII 12 \x0c) ou \b comme Backspace
+  const latexRegex = /(?<!\\)\\(frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end)\b/gi;
+  const preProcessed = trimmed.replace(latexRegex, '\\\\$1');
+
+  // Essai direct après sécurisation LaTeX
   try {
-    return JSON.parse(trimmed);
+    return cleanControlCharsInParsedObject(JSON.parse(preProcessed));
   } catch {}
 
   // 2. Nettoyage des caractères de contrôle bruts (sauts de ligne non échappés) et antislashs LaTeX
@@ -90,9 +115,9 @@ export function safeJsonParse(raw: any): any {
   let inString = false;
   let escaped = false;
 
-  for (let i = 0; i < trimmed.length; i++) {
-    const char = trimmed[i];
-    const code = trimmed.charCodeAt(i);
+  for (let i = 0; i < preProcessed.length; i++) {
+    const char = preProcessed[i];
+    const code = preProcessed.charCodeAt(i);
 
     if (char === '"' && !escaped) {
       inString = !inString;
@@ -107,8 +132,13 @@ export function safeJsonParse(raw: any): any {
       } else if (code < 32) {
         sanitized += ' ';
       } else if (char === '\\') {
-        const next = trimmed[i + 1];
-        if (next && ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'].includes(next)) {
+        const sub = preProcessed.slice(i + 1);
+        const isLatex = /^(?:frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end)\b/i.test(sub);
+        const next = preProcessed[i + 1];
+
+        if (isLatex) {
+          sanitized += '\\\\';
+        } else if (next && ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'].includes(next)) {
           sanitized += '\\';
         } else {
           sanitized += '\\\\';
@@ -131,7 +161,7 @@ export function safeJsonParse(raw: any): any {
   sanitized = sanitized.replace(/,\s*([\]}])/g, '$1');
 
   try {
-    return JSON.parse(sanitized);
+    return cleanControlCharsInParsedObject(JSON.parse(sanitized));
   } catch {}
 
   // 3. Réparation des fermetures si le JSON a été tronqué
@@ -158,7 +188,7 @@ export function safeJsonParse(raw: any): any {
   while (openBraces > 0) { repaired += '}'; openBraces--; }
 
   try {
-    return JSON.parse(repaired);
+    return cleanControlCharsInParsedObject(JSON.parse(repaired));
   } catch {
     return null;
   }

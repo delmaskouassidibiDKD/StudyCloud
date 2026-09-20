@@ -391,8 +391,13 @@ export function RightMenu({
 
   // Génère un prompt rigoureusement typé pour le module avec schéma JSON strict
   const getModuleCreationPrompt = (modId: string, modLabel: string, docName: string) => {
-    const base = `Tu es l'IA éducative d'excellence de StudyCloud (DKD Technologies). Ta mission est de concevoir un module "${modLabel}" complet, inédit, approfondi et directement basé sur le document d'étude joint "${docName}".
-RÈGLE ABSOLUE : Analyse le contenu réel du cours et génère STRICTEMENT un objet JSON valide conforme au schéma ci-dessous, sans texte avant ou après.`;
+    const base = `Tu es l'IA éducative d'excellence de StudyCloud (DKD Technologies). Ta mission est de concevoir un module "${modLabel}" complet, inédit, approfondi et directement basé sur l'INTÉGRALITÉ du document d'étude joint "${docName}".
+CONSIGNES STRICTES ET INVIOLABLES :
+1. ÉTUDE INTÉGRALE DU DOCUMENT : Parcours le document de la première à la dernière page. Ne t'arrête pas au début : puise dans tous les chapitres, sections, théorèmes, lois, calculs et schémas du fichier.
+2. SUJETS SCIENTIFIQUES & TECHNIQUES (Électronique, Physique, Mathématiques, Chimie, Informatique, etc.) : INTERDICTION FORMELLE DE RESTER PUREMENT LITTÉRAIRE ! Intègre obligatoirement des calculs réels, des formules mathématiques exactes ($...$), des grandeurs numériques concrètes (ex: $R_1 = 10\\ \\text{k}\\Omega, R_2 = 100\\ \\text{k}\\Omega, V_e = 0.5\\ \\text{V} \\implies V_s = -5\\ \\text{V}$), des fonctions et des schémas de montages (en ASCII Art soigné).
+3. CORRECTIONS DÉTAILLÉES : Chaque correction doit comporter un rappel théorique, la démonstration ou le calcul détaillé étape par étape, et obligatoirement DEUX EXEMPLES CONCRETS DISTINCTS (Exemple 1 et Exemple 2).
+4. LATEX PUR & ZÉRO CARACTÈRE BIZARRE : Entoure chaque formule de dollars ($V_s = -\\frac{R_2}{R_1} V_e$). Dans le JSON, double impérativement chaque antislash LaTeX (\\\\frac, \\\\sqrt, \\\\Omega, etc.) pour éviter toute corruption Form Feed.
+Génère STRICTEMENT un objet JSON valide conforme au schéma ci-dessous, sans texte parasite avant ou après.`;
 
     switch (modId) {
       case 'exercices-ecrits':
@@ -403,14 +408,14 @@ CONSIGNE : Conçois un exercice écrit de haut niveau avec énoncé contextualis
   "creation_title": "Exercices Écrits : ${docName}",
   "creation_data": {
     "title": "Exercice Pratique : ${docName}",
-    "context": "Énoncé et données du problème (avec formules LaTeX si applicable)...",
+    "context": "Énoncé et données du problème (avec formules LaTeX $...$ et valeurs chiffrées)...",
     "questions": [
-      "1. Première question détaillée...",
-      "2. Deuxième question d'application ou de calcul...",
+      "1. Première question détaillée avec calcul...",
+      "2. Deuxième question d'application ou de dimensionnement...",
       "3. Troisième question d'interprétation..."
     ],
     "correction": {
-      "steps": "Démonstration complète pas à pas et calculs intermédiaires...",
+      "steps": "Démonstration complète pas à pas, justifications théoriques et calculs intermédiaires...",
       "examples": [
         "Exemple 1 : Cas concret illustrant l'application de la notion",
         "Exemple 2 : Deuxième exemple pratique en situation réelle"
@@ -421,7 +426,7 @@ CONSIGNE : Conçois un exercice écrit de haut niveau avec énoncé contextualis
 
       case 'devoir-complet':
         return `${base}
-CONSIGNE : Conçois une épreuve d'examen officielle complète notée sur 20 points, avec barème détaillé et corrigé intégral.
+CONSIGNE : Conçois une épreuve d'examen officielle complète notée sur 20 points, avec barème détaillé, calculs, formules et corrigé intégral.
 {
   "creation_type": "devoir-complet",
   "creation_title": "Devoir Évaluatif d'Examen (20 pts) : ${docName}",
@@ -429,10 +434,10 @@ CONSIGNE : Conçois une épreuve d'examen officielle complète notée sur 20 poi
     "title": "Devoir d'Examen : ${docName}",
     "duree": "2h00",
     "baremeTotal": 20,
-    "instructions": "Rédigez avec soin en justifiant toutes vos réponses.",
+    "instructions": "Rédigez avec soin en justifiant toutes vos réponses et calculs.",
     "exercice1": { "titre": "Partie 1 : Contrôle des connaissances", "bareme": 5, "questions": [] },
     "exercice2": { "titre": "Partie 2 : Analyse et méthode", "bareme": 5, "questions": [] },
-    "exercice3": { "titre": "Partie 3 : Résolution de problème", "bareme": 6, "questions": [] },
+    "exercice3": { "titre": "Partie 3 : Résolution de problème et calculs", "bareme": 6, "questions": [] },
     "exercice4": { "titre": "Partie 4 : Synthèse", "bareme": 4, "questions": [] }
   }
 }`;
@@ -440,7 +445,7 @@ CONSIGNE : Conçois une épreuve d'examen officielle complète notée sur 20 poi
       case 'questionnaire':
       case 'questionnaire-test':
         return `${base}
-CONSIGNE : Conçois 5 questions à choix multiples stimulantes. Rédige 4 propositions développées par question (JAMAIS 'Option A').
+CONSIGNE : Conçois 5 questions d'évaluation stimulantes avec calculs chiffrés et formules pour les sujets scientifiques. Rédige 4 propositions développées par question (JAMAIS 'Option A').
 {
   "creation_type": "${modId}",
   "creation_title": "Questionnaire : ${docName}",
@@ -449,10 +454,10 @@ CONSIGNE : Conçois 5 questions à choix multiples stimulantes. Rédige 4 propos
     "questions": [
       {
         "id": "q_1",
-        "question": "Énoncé complet...",
-        "options": ["Proposition 1", "Proposition 2", "Proposition 3", "Proposition 4"],
+        "question": "Énoncé complet et contextualisé de la question (avec calcul et LaTeX $...$)...",
+        "options": ["Proposition 1 détaillée", "Proposition 2 détaillée", "Proposition 3 détaillée", "Proposition 4 détaillée"],
         "correctIndex": 0,
-        "explanation": "Démonstration théorique détaillée...\n\n• Exemple 1 : ...\n• Exemple 2 : ..."
+        "explanation": "Démonstration théorique et calcul pas à pas : $V_s = -\\frac{R_2}{R_1} V_e$...\n\n• Exemple 1 : ...\n• Exemple 2 : ..."
       }
     ]
   }
@@ -461,7 +466,9 @@ CONSIGNE : Conçois 5 questions à choix multiples stimulantes. Rédige 4 propos
       case 'vrai-ou-faux':
       case 'vrai-ou-faux-test':
         return `${base}
-CONSIGNE : Conçois 6 affirmations réflexes équilibrées (~50% Vrai, ~50% Faux) avec pièges intelligents et explications théoriques détaillées.
+CONSIGNE : Conçois 6 affirmations réflexes équilibrées (~50% Vrai, ~50% Faux).
+Pour les sujets scientifiques, les affirmations DOIVENT inclure des formules ($...$), des grandeurs chiffrées précises et des calculs réels (ex: calcul de gain, de tension avec $R_1, R_2$).
+Dans l'explication, démontre la réponse étape par étape avec la formule et deux exemples concrets distincts.
 {
   "creation_type": "${modId}",
   "creation_title": "Vrai ou Faux : ${docName}",
@@ -470,9 +477,9 @@ CONSIGNE : Conçois 6 affirmations réflexes équilibrées (~50% Vrai, ~50% Faux
     "affirmations": [
       {
         "id": "vf_1",
-        "statement": "Affirmation ciblée...",
-        "isTrue": true,
-        "explanation": "Justification théorique...\n\n• Exemple 1 : ...\n• Exemple 2 : ..."
+        "statement": "Affirmation scientifique ciblée avec calcul et formule en LaTeX $...$",
+        "isTrue": false,
+        "explanation": "Démonstration théorique et calcul étape par étape : $V_s = -\\frac{R_2}{R_1} V_e = ...$\n\n• Exemple 1 : ...\n• Exemple 2 : ..."
       }
     ]
   }

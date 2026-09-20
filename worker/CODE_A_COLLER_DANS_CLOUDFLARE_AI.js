@@ -464,18 +464,48 @@ export default {
       });
     }
 
+    function cleanControlCharsInParsedObject(obj) {
+      if (!obj) return obj;
+      if (typeof obj === "string") {
+        return obj
+          .replace(/[\x0c\u000c]/g, "\\f") // Répare \x0crac -> \frac
+          .replace(/[\x08\u0008]/g, "\\b"); // Répare \x08eta -> \beta
+      }
+      if (Array.isArray(obj)) {
+        return obj.map(cleanControlCharsInParsedObject);
+      }
+      if (typeof obj === "object") {
+        const cleaned = {};
+        for (const [k, v] of Object.entries(obj)) {
+          cleaned[k] = cleanControlCharsInParsedObject(v);
+        }
+        return cleaned;
+      }
+      return obj;
+    }
+
     // Parseur JSON ultra-robuste avec neutralisation des sauts de ligne bruts et des antislashs LaTeX
     function safeJsonParse(raw) {
-      if (!raw || typeof raw !== "string") return null;
-      try { return JSON.parse(raw); } catch {}
+      if (!raw) return null;
+      if (typeof raw === "object") return cleanControlCharsInParsedObject(raw);
+      if (typeof raw !== "string") return null;
+
+      const trimmed = raw.trim();
+
+      // 1. Nettoyage préventif des commandes LaTeX pour doubler les antislashs uniques (\frac -> \\frac)
+      // afin que JSON.parse n'interprète pas \f comme Form Feed (ASCII 12 \x0c) ou \b comme Backspace
+      const latexRegex = /(?<!\\)\\(frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end)\b/gi;
+      const preProcessed = trimmed.replace(latexRegex, '\\\\$1');
+
+      try { return cleanControlCharsInParsedObject(JSON.parse(preProcessed)); } catch {}
 
       let sanitized = '';
       let inString = false;
       let escaped = false;
 
-      for (let i = 0; i < raw.length; i++) {
-        const char = raw[i];
-        const code = raw.charCodeAt(i);
+      for (let i = 0; i < preProcessed.length; i++) {
+        const char = preProcessed[i];
+        const code = preProcessed.charCodeAt(i);
 
         if (char === '"' && !escaped) {
           inString = !inString;
@@ -490,8 +520,12 @@ export default {
           } else if (code < 32) {
             sanitized += ' ';
           } else if (char === '\\') {
-            const next = raw[i + 1];
-            if (next && ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'].includes(next)) {
+            const sub = preProcessed.slice(i + 1);
+            const isLatex = /^(?:frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end)\b/i.test(sub);
+            const next = preProcessed[i + 1];
+            if (isLatex) {
+              sanitized += '\\\\';
+            } else if (next && ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'].includes(next)) {
               sanitized += '\\';
             } else {
               sanitized += '\\\\';
@@ -513,7 +547,7 @@ export default {
       sanitized = sanitized.replace(/,\s*([\]}])/g, '$1');
 
       try {
-        return JSON.parse(sanitized);
+        return cleanControlCharsInParsedObject(JSON.parse(sanitized));
       } catch {}
 
       let openBraces = 0;
@@ -539,7 +573,7 @@ export default {
       while (openBraces > 0) { repaired += '}'; openBraces--; }
 
       try {
-        return JSON.parse(repaired);
+        return cleanControlCharsInParsedObject(JSON.parse(repaired));
       } catch {
         return null;
       }
@@ -776,26 +810,63 @@ RÈGLES DE DÉCISION :
    - Dans "creation_data", fournis l'objet JSON complet et rigoureusement structuré correspondant au module.
 
 ======================================================================
+LES 4 PILIERS INVIOLABLES DE STUDYCLOUD (APPLICABLES SANS EXCEPTION À TOUTES LES CRÉATIONS) :
+======================================================================
+1. NON AU PUREMENT LITTÉRAIRE : OBLIGATION DE CALCULS, FORMULES, FONCTIONS ET SCHÉMAS DÈS QUE LE SUJET EST SCIENTIFIQUE OU TECHNIQUE !
+   - Si le document ou le thème de l'étudiant relève d'une matière scientifique ou technique (électronique, électrotechnique, physique, mécanique, mathématiques, chimie, télécommunications, automatique, informatique, etc.) :
+   - INTERDICTION FORMELLE DE RESTER DANS UN DISCOURS PUREMENT LITTÉRAIRE, DESCRIPTIF OU VAGUE.
+   - Tu DOIS IMPÉRATIVEMENT intégrer :
+     * Les FORMULES MATHÉMATIQUES EXACTES (en syntaxe LaTeX propre "$ ... $").
+     * Des VALEURS NUMÉRIQUES RÉELLES ET CONCRÈTES (ex: $R_1 = 10\\ \\text{k}\\Omega$, $R_2 = 100\\ \\text{k}\\Omega$, $V_e = 0.5\\ \\text{V}$, $C = 100\\ \\text{nF}$, $f = 1\\ \\text{kHz}$).
+     * Des CALCULS EFFECTIFS : demande de calculer des grandeurs, trouver la tension de sortie $V_s$, déterminer le gain $A_v = -\\frac{R_2}{R_1}$, calculer la fréquence de coupure ou la bande passante.
+     * Des SCHÉMAS DE MONTAGES / CIRCUITS OU DIAGRAMMES EN ASCII ART SOIGNÉ : pour les circuits électroniques (montages amplificateurs, filtres, ponts de diodes) ou les diagrammes fonctionnels, inclus une représentation graphique textuelle claire pour que l'étudiant visualise les nœuds, les composants et les signaux :
+       Exemple de schéma pour un amplificateur inverseur :
+       +-----------[ R2 ]-----------+
+       |                            |
+       Ve ---[ R1 ]----+---->(-)   |
+                           |   AOP >------+--- Vs
+                    0V --->(+)
+
+2. ANALYSE EXHAUSTIVE ET COUVERTURE INTÉGRALE DE TOUT LE DOCUMENT :
+   - Tu DOIS étudier le document de cours de l'élève DE LA PREMIÈRE À LA DERNIÈRE PAGE.
+   - INTERDICTION de te limiter à l'introduction ou aux trois premières lignes du fichier.
+   - Les questions, exercices, cartes et résumés doivent balayer l'ensemble des chapitres, théorèmes, lois, schémas et exercices du polycopié.
+
+3. CORRECTIONS ULTRA-DÉTAILLÉES AVEC DEUX EXEMPLES DANS TOUTES LES CRÉATIONS SANS EXCEPTION :
+   - Dans TOUTES les créations (Questionnaires, Vrai ou Faux, Flashcards, Devoirs, Exercices Écrits, etc.), chaque correction, justification ou explication DOIT comporter :
+     a) Le rappel théorique et la formule générale applicable.
+     b) La démonstration ou le calcul détaillé étape par étape avec les valeurs numériques et l'unité.
+     c) OBLIGATOIREMENT DEUX EXEMPLES CONCRETS DISTINCTS :
+        • Exemple 1 : [Cas d'application concret, dimensionnement réel ou situation pratique en industrie/laboratoire]
+        • Exemple 2 : [Deuxième cas concret distinct, analyse d'un piège fréquent ou contre-exemple]
+     d) L'analyse des erreurs : explication précise de pourquoi les autres options sont fausses.
+
+4. ZÉRO CARACTÈRE BIZARRE ET RESPECT INVIOLABLE DU FORMAT LATEX DANS LE JSON :
+   - Chaque formule, fraction, équation ou variable scientifique ($V_s$, $V_e$, $R_1$, $R_2$, $I_c$, $\\omega$, $\\Omega$) DOIT être rigoureusement entourée de symboles dollar "$ ... $" en ligne ou "$$ ... $$" en bloc.
+   - Dans la réponse JSON, CHAQUE ANTISLASH LATEX DOIT ÊTRE DOUBLÉ (ex: "\\frac{num}{den}", "\\sqrt{x}", "\\times", "\\Omega", "\\alpha", "\\beta", "\\mu") afin qu'il ne soit JAMAIS interprété comme un caractère de contrôle JSON (\\f = Form Feed \\x0c qui produit une flèche corrompue).
+   - INTERDICTION FORMELLE d'écrire des formules tronquées ou sans antislash comme "V_s = -rac(R_2)(R_1)".
+
+======================================================================
 RÈGLES D'EXCELLENCE POUR LES QUESTIONNAIRES & TESTS ('questionnaire' et 'questionnaire-test') :
 ======================================================================
-1. PROFONDEUR PÉDAGOGIQUE (ÉTUDES DE CAS ET MISES EN SITUATION) :
+1. PROFONDEUR PÉDAGOGIQUE, CALCULS SCIENTIFIQUES ET MISES EN SITUATION :
    - Ne pose AUCUNE question de simple mémorisation brute ou de recopie de définition superficielle.
-   - Crée des questions de type "étude de cas", "résolution de problèmes", "analyse d'une situation clinique ou professionnelle" ou "mise en situation réelle" pour tester l'application des concepts en profondeur.
-   - Fournis 4 options crédibles : 1 seule bonne réponse et 3 distracteurs intelligents ciblant les confusions classiques.
+   - Si le document est scientifique, pose des questions à base d'exercices calculatoires chiffrés, d'analyse de montages ou de détermination de fonctions de transfert.
+   - Crée des questions de type "étude de cas", "résolution de problèmes", "dimensionnement de composants" avec schémas.
+   - Fournis 4 options crédibles et complètes : 1 seule bonne réponse et 3 distracteurs intelligents issus d'erreurs classiques de calcul ou de signe.
 
 2. RÈGLE STRICTE SUR LES PROPOSITIONS DE RÉPONSES (INTERDICTION DES PLACEHOLDERS 'Option A') :
    - INTERDICTION FORMELLE ET STRICTE d'écrire 'Option A', 'Option B', 'Option C', 'Option D', ou simplement les lettres 'A', 'B', 'C', 'D' dans le tableau "options".
-   - Tu DOIS IMPÉRATIVEMENT rédiger le texte complet, explicite, détaillé et argumenté de chaque proposition de réponse dans le tableau "options".
-   - L'étudiant doit lire de vraies phrases de réponses complètes pour pouvoir réfléchir et choisir.
-   - Chaque option doit être un énoncé substantiel (ex: "La puissance maximale diminue en raison des pertes Joule dans les câbles et de l'échauffement des cellules").
+   - Tu DOIS IMPÉRATIVEMENT rédiger le texte complet, explicite, détaillé et argumenté de chaque proposition de réponse dans le tableau "options" (avec les valeurs numériques et formules en LaTeX $...$).
 
-3. CORRECTIONS DÉTAILLÉES AVEC DEUX EXEMPLES CONCRETS OBLIGATOIRES :
+3. CORRECTIONS DÉTAILLÉES AVEC CALCULS ET DEUX EXEMPLES CONCRETS OBLIGATOIRES :
    - Pour chaque question, l'explication (champ "explanation") ne doit JAMAIS se limiter à donner la bonne réponse.
    - Elle doit obligatoirement :
-     a) Expliquer en détail le "pourquoi" théorique et scientifique.
-     b) Inclure DEUX EXEMPLES CONCRETS ET DISTINCTS (Exemple 1 et Exemple 2) illustrant la notion en situation réelle.
+     a) Énoncer la loi ou le théorème théorique.
+     b) Détailler le calcul pas à pas avec substitution des valeurs et unités ($V, A, \\Omega, Hz$).
+     c) Inclure DEUX EXEMPLES CONCRETS ET DISTINCTS (Exemple 1 et Exemple 2) illustrant la notion.
    - Format de "explanation" :
-     "Explication théorique détaillée du concept...\n\n• Exemple 1 : [Situation concrète 1]\n• Exemple 2 : [Situation concrète 2]"
+     "Démonstration théorique et calcul étape par étape : $V_s = -\\frac{R_2}{R_1} V_e = ...$\n\n• Exemple 1 : [Situation concrète 1]\n• Exemple 2 : [Situation concrète 2]"
 
 4. RÈGLE DE FORMATAGE ABSOLUE (MATHÉMATIQUES, FONCTIONS ET FRACTIONS EN LATEX PUR) :
    - Pour TOUTES les formules, fractions, grandeurs et équations dans les questions, options et explications, utilise la syntaxe LaTeX standard ($...$).
@@ -809,15 +880,15 @@ RÈGLES D'EXCELLENCE POUR LES QUESTIONNAIRES & TESTS ('questionnaire' et 'questi
   "questions": [
     {
       "id": "q_1",
-      "question": "Énoncé complet et contextualisé de la question ou problème pratique (avec LaTeX $\\frac{a}{b}$ si formule)...",
+      "question": "Énoncé complet et contextualisé de la question ou problème pratique (avec schéma ASCII si circuit et LaTeX $\\frac{a}{b}$)...",
       "options": [
-        "Texte complet et développé de la 1ère proposition (JAMAIS juste 'Option A')",
+        "Texte complet et développé de la 1ère proposition avec calcul et LaTeX $...$",
         "Texte complet et développé de la 2ème proposition (JAMAIS juste 'Option B')",
         "Texte complet et développé de la 3ème proposition (JAMAIS juste 'Option C')",
         "Texte complet et développé de la 4ème proposition (JAMAIS juste 'Option D')"
       ],
       "correctIndex": 0,
-      "explanation": "Démonstration théorique approfondie expliquant pourquoi la proposition est exacte...\n\n• Exemple 1 : [Cas d'application concret dans une installation réelle]\n• Exemple 2 : [Deuxième cas réel illustrant le phénomène]"
+      "explanation": "Démonstration théorique approfondie et calcul détaillé : $V_s = -\\frac{R_2}{R_1} V_e$...\n\n• Exemple 1 : [Cas d'application concret dans une installation réelle]\n• Exemple 2 : [Deuxième cas réel illustrant le phénomène]"
     }
   ]
 }
@@ -830,22 +901,23 @@ RÈGLES D'EXCELLENCE POUR LE VRAI OU FAUX ('vrai-ou-faux' et 'vrai-ou-faux-test'
    - Pour 'vrai-ou-faux-test' (Test noté avec score) : Génère 6 à 10 affirmations d'évaluation.
    - ÉQUILIBRE OBLIGATOIRE : Répartis rigoureusement les réponses vraies et fausses (~50% VRAI, ~50% FAUX). INTERDICTION FORMELLE d'avoir 100% de Vrai ou 100% de Faux.
 
-2. PROFONDEUR PÉDAGOGIQUE, ÉTUDES DE CAS ET PIÈGES INTELLIGENTS :
+2. CALCULS SCIENTIFIQUES, FORMULES, SCHÉMAS ET PIÈGES INTELLIGENTS :
    - Ne crée JAMAIS d'affirmations de simple recopie textuelle ou de définition triviale.
-   - Conçois des affirmations stimulantes portant sur :
-     * Les conditions de validité indispensables d'une règle, d'un théorème ou d'une loi scientifique (ex: "La règle s'applique toujours..." -> FAUX, seulement si certaines conditions strictes sont réunies).
-     * Les confusions d'unités, d'ordres de grandeur, ou les inversions de cause à effet.
-     * Des mises en situation concrètes ou calculs d'application directe issus du document.
-     * Les contre-exemples classiques qui mettent à l'épreuve l'esprit critique de l'élève.
+   - Si le document est scientifique ou technique (électronique, physique, mathématiques, etc.) :
+     * Les affirmations DOIVENT porter sur des grandeurs, des calculs, des formules, des valeurs chiffrées et des schémas :
+       Exemple chiffré : "Dans un amplificateur inverseur avec $R_1 = 10\\ \\text{k}\\Omega$ et $R_2 = 100\\ \\text{k}\\Omega$, pour une tension d'entrée $V_e = 0,5\\ \\text{V}$, la tension de sortie mesurée est $V_s = +5\\ \\text{V}$." -> FAUX, car $V_s = -\\frac{R_2}{R_1} V_e = -\\frac{100}{10} \\times 0,5 = -5\\ \\text{V}$.
+     * Intègre des schémas de montages (ex: comparaison montage inverseur vs non-inverseur, suiveur, sommateur, intégrateur).
+     * Interroge sur les conditions de validité indispensables d'une règle, d'un théorème ou d'une loi scientifique (ex: saturation des rails d'alimentation $\\pm V_{sat}$).
 
-3. CORRECTIONS DÉTAILLÉES AVEC DEUX EXEMPLES CONCRETS OBLIGATOIRES :
-   - Pour CHAQUE affirmation (qu'elle soit Vraie ou Fausse), la justification ne doit pas être une simple confirmation ou négation.
-   - Elle doit obligatoirement comporter :
-     a) La démonstration théorique du pourquoi l'affirmation est vraie ou fausse.
-     b) Deux exemples concrets et distincts (Exemple 1 et Exemple 2) venant ancrer la compréhension.
+3. CORRECTIONS DÉTAILLÉES AVEC DÉMONSTRATION, CALCULS ET DEUX EXEMPLES CONCRETS :
+   - Pour CHAQUE affirmation (qu'elle soit Vraie ou Fausse), la justification DOIT obligatoirement comporter :
+     a) La démonstration théorique du pourquoi l'affirmation est vraie ou fausse en citant la formule en LaTeX pur ($...$).
+     b) Le détail du calcul ou du raisonnement étape par étape avec les valeurs numériques et les unités.
+     c) DEUX EXEMPLES CONCRETS ET DISTINCTS (Exemple 1 et Exemple 2) :
+        • Exemple 1 : [Cas réel d'application ou cas d'usage pratique]
+        • Exemple 2 : [Deuxième cas concret distinct, contre-exemple ou analyse du piège à éviter]
    - Format de "explanation" :
-     "Explication théorique et démonstration du mécanisme...\n\n• Exemple 1 : [Cas concret d'application ou contre-exemple]\n• Exemple 2 : [Deuxième illustration concrète]"
-     (ou un objet { "theory": "...", "examples": ["Exemple 1 : ...", "Exemple 2 : ..."] }).
+     "Démonstration théorique et calcul : $V_s = -\\frac{R_2}{R_1} V_e = ...$\n\n• Exemple 1 : [Cas concret d'application ou contre-exemple]\n• Exemple 2 : [Deuxième illustration concrète]"
 
 4. STRUCTURE JSON REQUISE DANS "creation_data" :
    {
@@ -1217,18 +1289,15 @@ Pour que votre interface React/TypeScript puisse afficher proprement l'énoncé 
 }
 
 ======================================================================
-RÈGLE DE FORMATAGE MATHÉMATIQUE STRICTE (LATEX PUR) :
+RÈGLE DE FORMATAGE MATHÉMATIQUE STRICTE & ÉCHAPPEMENT JSON (LATEX PUR) :
 ======================================================================
-1. Pour TOUTES les fractions, puissances, racines, intégrales, dérivées, matrices et formules scientifiques, tu DOIS utiliser exclusivement la syntaxe LaTeX standard.
-2. Utilise un seul dollar ($) pour les formules en ligne, par exemple : $\frac{a}{b}$ ou $f(x) = \frac{x^2+1}{2x}$.
-3. Utilise un double dollar ($$) pour les équations importantes centrées sur une ligne seule :
-   $$
-   E = \frac{1}{2} m v^2
-   $$
-4. INTERDICTION FORMELLE d'utiliser des caractères aléatoires, des symboles corrompus (&, *, !, $$$$$) ou du texte brut mal formaté pour représenter des mathématiques. Si tu écris une fraction, utilise TOUJOURS la syntaxe \frac{numérateur}{dénominateur}.
-5. DANS LES QUESTIONS, OPTIONS ET EXPLICATIONS :
-   - Formule toujours les fractions avec $\frac{...}{...}$ afin qu'elles soient rendues avec une netteté visuelle parfaite par le moteur KaTeX de StudyCloud.
-   - N'invente aucun caractère bizarre ou balise non standard.
+1. Pour TOUTES les fractions, puissances, racines, intégrales, dérivées, matrices, variables et formules scientifiques ($V_s, V_e, R_1, R_2, I_c, \omega$), tu DOIS utiliser exclusivement la syntaxe LaTeX standard entourée de dollars :
+   - Un seul dollar ($...$) pour les expressions et variables en ligne, par exemple : $V_s = -\frac{R_2}{R_1} V_e$ ou $R_1 = 10\ \text{k}\Omega$.
+   - Un double dollar ($$...$$) pour les équations importantes centrées sur une ligne seule.
+2. DANS LA SORTIE JSON : CHAQUE ANTISLASH LATEX DOIT ÊTRE DOUBLÉ (\\\\frac, \\\\sqrt, \\\\times, \\\\Omega, \\\\alpha, \\\\beta, \\\\mu, \\\\tau) :
+   - Écris TOUJOURS "\\frac{a}{b}", "\\sqrt{x}", "\\times", "\\Omega" dans ton JSON.
+   - Si tu écris un simple "\\frac", le parseur JSON transforme "\\f" en caractère de contrôle Form Feed (ASCII 12, qui affiche une flèche corrompue) : c'est STRICTEMENT INTERDIT !
+3. INTERDICTION FORMELLE d'utiliser des caractères aléatoires, des symboles corrompus (&, *, !, $$$$$) ou du texte brut mal formaté (ex: "V_s = -rac(R_2)(R_1)") pour représenter des mathématiques. Chaque fraction s'écrit "$V_s = -\\frac{R_2}{R_1} V_e$".
 
 ======================================================================
 FORMAT STRICT DE SORTIE JSON :
@@ -1355,7 +1424,13 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
       }
       if (rawDocForGemini.length > 0) {
         const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";
-        fullSystemPrompt += `\n\n======================================================================\nDOCUMENT ATTACHÉ DE L'ÉTUDIANT ("${docTitle}") :\n${rawDocForGemini.slice(0, 80000)}\n======================================================================\nCONSIGNE CAPITALE ET INCONTOURNABLE :\nTu DOIS analyser attentivement le texte du document ci-dessus et concevoir des exercices, questions, cartes ou résumés TOTALEMENT INÉDITS et DIRECTEMENT BASÉS sur les notions, théorèmes, formules et définitions réelles de ce document.\nIL EST STRICTEMENT INTERDIT de renvoyer les exemples types du code.\nLe contenu créé doit correspondre fidèlement et exclusivement au document de l'étudiant !`;
+        fullSystemPrompt += `\n\n======================================================================\nDOCUMENT ATTACHÉ DE L'ÉTUDIANT ("${docTitle}") :\n${rawDocForGemini.slice(0, 200000)}\n======================================================================\nCONSIGNES CAPITALES ET INCONTOURNABLES :
+1. ÉTUDE INTÉGRALE DU COURS DE L'ÉLÈVE : Tu DOIS lire et explorer le document CI-DESSUS DE LA PREMIÈRE À LA DERNIÈRE PAGE. Ne te limite pas à l'introduction : puise tes questions, affirmations, cartes, résumés et exercices dans l'ensemble des chapitres, sections, théorèmes, montages et exercices du polycopié.
+2. SUJETS SCIENTIFIQUES & TECHNIQUES (Électronique, Physique, Mathématiques, Chimie, etc.) : INTERDICTION FORMELLE DE RESTER PUREMENT LITTÉRAIRE OU THÉORIQUE !
+   - Tu DOIS IMPÉRATIVEMENT inclure les vraies formules mathématiques ($...$), des applications numériques réelles (ex: calcul de tension $V_s$, calcul de résistance $R$, calcul de gain, déduction de grandeurs avec valeurs numériques), des fonctions ($H(j\\omega)$), et des schémas de montages (ASCII Art soigné).
+3. DANS TOUTES LES CORRECTIONS ET JUSTIFICATIONS : Détaille le raisonnement étape par étape avec les calculs et formules en LaTeX, et inclus SYSTÉMATIQUEMENT DEUX EXEMPLES CONCRETS D'APPLICATION.
+4. FORMATAGE LATEX & ÉCHAPPEMENT JSON : Encadre chaque formule de dollars ($...$) et double chaque antislash dans le JSON (\\\\frac, \\\\sqrt, \\\\times, \\\\Omega, \\\\alpha, etc.) pour éviter toute corruption Form Feed.
+IL EST STRICTEMENT INTERDIT de renvoyer les exemples types génériques du prompt : le contenu doit correspondre fidèlement, exclusivement et intégralement au document de l'étudiant !`;
       }
 
       let generatedContent = "";

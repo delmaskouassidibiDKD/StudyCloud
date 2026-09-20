@@ -13,13 +13,34 @@ export const MathText: React.FC<MathTextProps> = ({ text = '', className = '', i
 
     // 1. Nettoyage et assainissement des corruptions et variantes de syntaxe LaTeX
     let sanitized = text
+      // Répare les caractères de contrôle corrompus par le parsing JSON :
+      // \f (Form Feed, ASCII 12, \x0c) corrompt \frac en "\x0crac" (affiché comme une flèche noire ou symbole bizarre)
+      .replace(/[\x0c\u000c]/g, '\\f')
+      // \b (Backspace, ASCII 8, \x08) corrompt \beta en "\x08eta"
+      .replace(/[\x08\u0008]/g, '\\b')
       .replace(/&amp;/g, '&')
       .replace(/&nbsp;/g, ' ')
       .replace(/\${3,}/g, '$$') // Corrige les séries anormales de dollars ($$$$$ -> $$)
       .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$') // Standardise \[ ... \] en $$ ... $$
       .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');   // Standardise \( ... \) en $ ... $
 
-    // 2. Pattern pour extraire les blocs mathématiques $$...$$ et inline $...$
+    // 2. Encadrement automatique des équations scientifiques orphelines (non entourées de $)
+    // Capture les équations avec fractions ou signes comme : V_s = -\frac{R_2}{R_1} V_e
+    sanitized = sanitized.replace(
+      /(?<!\$)(?:[A-Za-z_0-9]+(?:_[A-Za-z0-9]+)?\s*=\s*)?[-+]?\\frac\{[^{}]+\}\{[^{}]+\}(?:\s*[A-Za-z_0-9]+(?:_[A-Za-z0-9]+)?)?(?!\$)/g,
+      (match) => `$${match.trim()}$`
+    );
+
+    // Capture les fractions isolées \frac{...}{...} non entourées de $
+    sanitized = sanitized.replace(/(?<!\$)\\frac\{[^{}]+\}\{[^{}]+\}(?!\$)/g, (match) => `$${match.trim()}$`);
+
+    // Capture les fonctions ou symboles scientifiques majeurs orphelins (ex: \sqrt{...}, \Omega, \sum, \int, \alpha, \beta, etc.)
+    sanitized = sanitized.replace(
+      /(?<!\$)\\(?:sqrt|sum|int|prod|lim|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|rho|sigma|tau|phi|omega|Delta|Omega|times|pm|approx|infty)\b[^{}\s]*(?:\{[^{}]*\})*(?!\$)/g,
+      (match) => `$${match.trim()}$`
+    );
+
+    // 3. Pattern pour extraire les blocs mathématiques $$...$$ et inline $...$
     const regex = /(\$\$[\s\S]+?\$\$|\$[^\$\n\r]+?\$)/g;
     const parts = sanitized.split(regex);
 

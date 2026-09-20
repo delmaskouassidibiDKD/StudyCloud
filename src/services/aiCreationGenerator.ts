@@ -24,7 +24,11 @@ import { safeJsonParse } from './api';
 
 function sanitizeText(str: any): string {
   if (typeof str !== 'string') return '';
-  return str.replace(/[\x00-\x1F\x7F]/g, ' ').trim();
+  return str
+    .replace(/[\x0c\u000c]/g, '\\f') // Répare \x0crac -> \frac (évite la corruption Form Feed)
+    .replace(/[\x08\u0008]/g, '\\b') // Répare \x08eta -> \beta
+    .replace(/[\x00-\x08\x0B\x0E-\x1F\x7F]/g, ' ') // Ne supprime PAS les retours à la ligne \n (0x0A)
+    .trim();
 }
 
 /**
