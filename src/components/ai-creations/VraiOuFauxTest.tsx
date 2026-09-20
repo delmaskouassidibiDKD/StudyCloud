@@ -25,11 +25,25 @@ function normalizeAffirmations(input: any): AffirmationVraiFaux[] {
     else if (typeof a.isTrue === 'string') isTrueVal = a.isTrue.toLowerCase() === 'true' || a.isTrue.toLowerCase() === 'vrai';
     else if (typeof a.reponse === 'string') isTrueVal = a.reponse.toLowerCase() === 'true' || a.reponse.toLowerCase() === 'vrai';
 
+    let explText = '';
+    if (typeof a.explanation === 'string') {
+      explText = a.explanation;
+    } else if (a.explanation && typeof a.explanation === 'object') {
+      const parts: string[] = [];
+      if (a.explanation.theory) parts.push(a.explanation.theory);
+      if (Array.isArray(a.explanation.examples) && a.explanation.examples.length > 0) {
+        parts.push(a.explanation.examples.map((ex: string, i: number) => `• ${String(ex).startsWith('Exemple') ? ex : `Exemple ${i + 1} : ${ex}`}`).join('\n'));
+      }
+      explText = parts.join('\n\n') || JSON.stringify(a.explanation);
+    } else {
+      explText = a.explication || a.justification || '';
+    }
+
     return {
       id: a.id || `vft_${idx + 1}`,
       statement: a.statement || a.affirmation || a.texte || a.question || `Affirmation n°${idx + 1}`,
       isTrue: isTrueVal,
-      explanation: a.explanation || a.explication || a.justification || ''
+      explanation: explText
     };
   });
 }

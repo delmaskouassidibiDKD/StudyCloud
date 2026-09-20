@@ -546,6 +546,44 @@ RÈGLES D'EXCELLENCE POUR LES QUESTIONNAIRES & TESTS ('questionnaire' et 'questi
    - Ne te limite pas strictement aux mots du fichier. Tu es autorisé et encouragé à croiser le contenu du document avec des standards réels, des cas d'usage vérifiés et des notions complémentaires issues du même domaine pour maximiser la valeur pédagogique.
 
 ======================================================================
+RÈGLES D'EXCELLENCE POUR LE VRAI OU FAUX ('vrai-ou-faux' et 'vrai-ou-faux-test') :
+======================================================================
+1. ÉQUILIBRE ET QUANTITÉ DES AFFIRMATIONS :
+   - Pour 'vrai-ou-faux' (Cartes réflexes d'entraînement) : Génère 4 à 6 affirmations dynamiques.
+   - Pour 'vrai-ou-faux-test' (Test noté avec score) : Génère 6 à 10 affirmations d'évaluation.
+   - ÉQUILIBRE OBLIGATOIRE : Répartis rigoureusement les réponses vraies et fausses (~50% VRAI, ~50% FAUX). INTERDICTION FORMELLE d'avoir 100% de Vrai ou 100% de Faux.
+
+2. PROFONDEUR PÉDAGOGIQUE, ÉTUDES DE CAS ET PIÈGES INTELLIGENTS :
+   - Ne crée JAMAIS d'affirmations de simple recopie textuelle ou de définition triviale.
+   - Conçois des affirmations stimulantes portant sur :
+     * Les conditions de validité indispensables d'une règle, d'un théorème ou d'une loi scientifique (ex: "La règle s'applique toujours..." -> FAUX, seulement si certaines conditions strictes sont réunies).
+     * Les confusions d'unités, d'ordres de grandeur, ou les inversions de cause à effet.
+     * Des mises en situation concrètes ou calculs d'application directe issus du document.
+     * Les contre-exemples classiques qui mettent à l'épreuve l'esprit critique de l'élève.
+
+3. CORRECTIONS DÉTAILLÉES AVEC DEUX EXEMPLES CONCRETS OBLIGATOIRES :
+   - Pour CHAQUE affirmation (qu'elle soit Vraie ou Fausse), la justification ne doit pas être une simple confirmation ou négation.
+   - Elle doit obligatoirement comporter :
+     a) La démonstration théorique du pourquoi l'affirmation est vraie ou fausse.
+     b) Deux exemples concrets et distincts (Exemple 1 et Exemple 2) venant ancrer la compréhension.
+   - Format de "explanation" :
+     "Explication théorique et démonstration du mécanisme...\n\n• Exemple 1 : [Cas concret d'application ou contre-exemple]\n• Exemple 2 : [Deuxième illustration concrète]"
+     (ou un objet { "theory": "...", "examples": ["Exemple 1 : ...", "Exemple 2 : ..."] }).
+
+4. STRUCTURE JSON REQUISE DANS "creation_data" :
+   {
+     "title": "Titre explicite du Vrai ou Faux",
+     "affirmations": [
+       {
+         "id": "vf_1",
+         "statement": "Énoncé précis de l'affirmation (avec syntaxe LaTeX $\\frac{a}{b}$ si formule présente)...",
+         "isTrue": true,
+         "explanation": "Démonstration théorique détaillée...\n\n• Exemple 1 : ...\n• Exemple 2 : ..."
+       }
+     ]
+   }
+
+======================================================================
 RÈGLE DE FORMATAGE MATHÉMATIQUE STRICTE (LATEX PUR) :
 ======================================================================
 1. Pour TOUTES les fractions, puissances, racines, intégrales, dérivées, matrices et formules scientifiques, tu DOIS utiliser exclusivement la syntaxe LaTeX standard.
@@ -599,14 +637,14 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         geminiApiKey = geminiApiKey.trim();
       }
 
-      // Extraction de l'historique des questions déjà posées pour la règle anti-doublons (D1)
+      // Extraction de l'historique des questions et affirmations déjà posées pour la règle anti-doublons (D1)
       let previousQuestionsText = "";
       if (db && currentUserId) {
         try {
           const { results } = await db.prepare(`
             SELECT content_json FROM ai_generated_contents
-            WHERE user_id = ? AND tool_type IN ('questionnaire', 'questionnaire-test')
-            ORDER BY created_at DESC LIMIT 5
+            WHERE user_id = ? AND tool_type IN ('questionnaire', 'questionnaire-test', 'vrai-ou-faux', 'vrai-ou-faux-test')
+            ORDER BY created_at DESC LIMIT 6
           `).bind(currentUserId).all();
 
           if (results && results.length > 0) {
@@ -614,18 +652,19 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
             for (const r of results) {
               try {
                 const parsed = JSON.parse(r.content_json);
-                const qs = Array.isArray(parsed?.questions) ? parsed.questions : (Array.isArray(parsed) ? parsed : []);
-                for (const q of qs) {
-                  if (q.question) prevList.push(q.question);
+                const items = Array.isArray(parsed?.questions) ? parsed.questions : (Array.isArray(parsed?.affirmations) ? parsed.affirmations : (Array.isArray(parsed) ? parsed : []));
+                for (const item of items) {
+                  const text = item.question || item.statement || item.affirmation || item.texte;
+                  if (text) prevList.push(text);
                 }
               } catch {}
             }
             if (prevList.length > 0) {
-              previousQuestionsText = prevList.slice(0, 20).map((q, idx) => `${idx + 1}. "${q}"`).join("\n");
+              previousQuestionsText = prevList.slice(0, 25).map((q, idx) => `${idx + 1}. "${q}"`).join("\n");
             }
           }
         } catch (dbQErr) {
-          console.warn("[D1 History Questions]", dbQErr);
+          console.warn("[D1 History Items]", dbQErr);
         }
       }
 
@@ -644,7 +683,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         fullSystemPrompt = fullSystemPrompt.replace(/'\${requestedType \|\| ""}'/, `'${requestedType}'`);
       }
       if (previousQuestionsText) {
-        fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES QUESTIONS DÉJÀ POSÉES À CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions ENTIÈREMENT NOUVELLES qui n'ont ni la même formulation, ni le même angle, ni le même type de piège que celles déjà posées ci-dessus. Explore d'autres aspects, chapitres, théorèmes, cas pratiques ou notions du document.`;
+        fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES QUESTIONS OU AFFIRMATIONS DÉJÀ POSÉES À CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions ou affirmations ENTIÈREMENT NOUVELLES qui n'ont ni la même formulation, ni le même angle, ni le même type de piège que celles déjà posées ci-dessus. Explore d'autres aspects, chapitres, théorèmes, cas pratiques ou notions du document.`;
       }
       if (rawDocForGemini.length > 0) {
         const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";
