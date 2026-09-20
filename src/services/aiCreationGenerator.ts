@@ -963,7 +963,7 @@ export function parseOrBuildAiCreation(
             content: {
               mainTitle,
               title: mainTitle,
-              subtitle: sanitizeText(info.subtitle || info.overview) || 'Structure visuelle et repères conceptuels',
+              subtitle: sanitizeText(info.subtitle || info.overview) || '',
               visualStyle: sanitizeText(info.visual_style || info.visualStyle || info.style),
               imagePrompt: sanitizeText(info.image_prompt || info.imagePrompt || info.prompt),
               svgDrawing: info.svg_drawing || info.svgDrawing || info.svg,

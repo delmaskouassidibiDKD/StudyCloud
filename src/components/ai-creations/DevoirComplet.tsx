@@ -835,8 +835,21 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
             </button>
           </div>
 
-          {/* Actions : Imprimer & Réinitialiser */}
+          {/* Actions : Soumettre / Imprimer / Réinitialiser */}
           <div className="flex items-center gap-2">
+            {!isSubmitted && (
+              <button
+                id="btn-toolbar-submit-exam"
+                type="button"
+                disabled={isGrading}
+                onClick={() => setShowConfirmModal(true)}
+                className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-blue-600 hover:bg-blue-500 active:scale-95 text-white text-xs font-bold transition-all shadow-xs cursor-pointer"
+                title="Déposer votre copie pour correction"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+                <span>Soumettre</span>
+              </button>
+            )}
             <button
               id="btn-print-exam"
               onClick={handlePrint}
@@ -939,48 +952,54 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
         >
           {/* ========================================================
               EN-TÊTE OFFICIEL DKD SCHOOL NUMÉRIQUE & STUDYCLOUD
+              Format compact et équilibré : les questions sont directement visibles !
               ======================================================== */}
-          <header className="border-b-2 border-stone-900 pb-5 space-y-4">
-            <div className="flex items-center justify-between gap-4">
-              <div className="text-left space-y-0.5">
-                <h2 className="font-serif font-black text-sm sm:text-base tracking-wide text-stone-900 uppercase">
-                  {examHeader.institution}
-                </h2>
-                <p className="text-[10px] sm:text-[11px] font-serif text-stone-600 tracking-wider uppercase">
-                  {examHeader.sousTitre}
-                </p>
-                <p className="text-[11px] font-serif font-bold text-stone-800">
-                  {examHeader.duree}
-                </p>
+          {currentPage === 1 ? (
+            <header className="border-b-2 border-stone-900 pb-3 space-y-2">
+              <div className="flex items-center justify-between gap-3 text-left">
+                <div className="space-y-0.5">
+                  <h2 className="font-serif font-black text-xs sm:text-sm tracking-wide text-stone-900 uppercase">
+                    {examHeader.institution}
+                  </h2>
+                  <p className="text-[10px] sm:text-[11px] font-serif text-stone-600">
+                    {examHeader.sousTitre} • {examHeader.duree}
+                  </p>
+                </div>
+
+                <div className="text-right shrink-0">
+                  <StudyCloudLogo />
+                </div>
               </div>
 
+              <div className="text-center py-0.5">
+                <div className="inline-block border border-stone-900 px-5 sm:px-8 py-1 bg-stone-50">
+                  <h1 className="text-sm sm:text-base md:text-lg font-serif font-black tracking-widest text-stone-900 uppercase break-words">
+                    {examHeader.matiere}
+                  </h1>
+                </div>
+              </div>
+
+              <div className="text-center text-[10px] sm:text-[11px] font-serif text-stone-600">
+                <span>{examHeader.calculatrice} • Barème officiel sur {examHeader.baremeTotal} points.</span>
+              </div>
+            </header>
+          ) : (
+            <header className="border-b border-stone-300 pb-2.5 flex items-center justify-between gap-3 text-left">
+              <div>
+                <span className="text-[10px] font-mono uppercase tracking-widest text-stone-500 font-bold block">
+                  DKD School Numérique • {examHeader.matiere}
+                </span>
+                <span className="text-xs font-serif font-bold text-stone-800">
+                  Fiche {currentPage} / {totalPages} • {examHeader.duree}
+                </span>
+              </div>
               <div className="text-right shrink-0">
-                <StudyCloudLogo />
+                <span className="text-xs font-serif font-bold text-stone-700 bg-stone-100 px-2.5 py-1 rounded border border-stone-200">
+                  Page {currentPage}/{totalPages}
+                </span>
               </div>
-            </div>
-
-            <div className="text-center py-1 sm:py-2">
-              <div className="inline-block border-2 border-stone-900 px-6 sm:px-10 py-2">
-                <h1 className="text-base sm:text-xl font-serif font-black tracking-widest text-stone-900 uppercase break-words">
-                  {examHeader.matiere}
-                </h1>
-              </div>
-            </div>
-
-            <div className="text-center space-y-1.5 pt-0.5">
-              <p className="text-[11px] sm:text-xs font-serif italic text-stone-700">
-                {examHeader.mention}
-              </p>
-              <p className="text-[10px] sm:text-[11px] font-serif italic text-stone-600">
-                {examHeader.calculatrice} • Barème officiel sur {examHeader.baremeTotal} points.
-              </p>
-              <div className="inline-block bg-amber-50 border border-amber-200 rounded-md px-3 py-1 mt-1 text-center">
-                <p className="text-[10px] sm:text-[11px] font-serif font-bold text-amber-900">
-                  Consigne stricte : après l'heure écoulée ({examHeader.duree}), le sujet sera pris et soumis automatiquement pour la correction.
-                </p>
-              </div>
-            </div>
-          </header>
+            </header>
+          )}
 
           {/* ========================================================
               CONTENU DE LA PARTIE ACTIVE DU DEVOIR
@@ -1150,11 +1169,11 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                                         id={`btn-add-line-${q.id}`}
                                         type="button"
                                         onClick={() => addOpenLine(q.id)}
-                                        className="w-5 h-5 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs cursor-pointer"
+                                        className="w-6 h-6 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs cursor-pointer ml-1 transition-transform"
                                         title="Ajouter une ligne supplémentaire"
                                         aria-label="Ajouter une ligne"
                                       >
-                                        <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                                        <Plus className="w-4 h-4 stroke-[2.5]" />
                                       </button>
                                     )}
                                   </div>
@@ -1243,63 +1262,86 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
       </div>
 
       {/* ========================================================
-          ZONE HORS-PAGE EN BAS DE LA DERNIÈRE PAGE
-          Bouton "Soumettre le sujet à la correction"
+          ZONE HORS-PAGE EN BAS : NAVIGATION INTER-FICHES & SOUMISSION
           ======================================================== */}
-      {currentPage === totalPages && (
-        <div
-          id="exam-bottom-actions"
-          className="max-w-3xl mx-auto px-4 sm:px-6 pt-8 flex flex-col items-center justify-center gap-3 text-center"
-        >
-          {!isSubmitted ? (
-            <>
+      <div
+        id="exam-bottom-actions"
+        className="max-w-3xl mx-auto px-4 sm:px-6 pt-6 pb-4 flex flex-col items-center justify-center gap-3 text-center"
+      >
+        {!isSubmitted ? (
+          <>
+            <div className="flex items-center justify-center gap-3 flex-wrap">
+              {currentPage > 1 && (
+                <button
+                  id="btn-bottom-prev-fiche"
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.max(1, p - 1))}
+                  className="inline-flex items-center gap-1.5 px-4 py-2.5 rounded-xl bg-stone-100 hover:bg-stone-200 text-stone-800 font-bold text-xs sm:text-sm border border-stone-300 transition-all cursor-pointer shadow-xs"
+                >
+                  <ChevronLeft className="w-4 h-4" />
+                  <span>Fiche précédente</span>
+                </button>
+              )}
+
+              {currentPage < totalPages ? (
+                <button
+                  id="btn-bottom-next-fiche"
+                  type="button"
+                  onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
+                  className="inline-flex items-center gap-1.5 px-5 py-2.5 rounded-xl bg-stone-900 hover:bg-stone-800 text-white font-bold text-xs sm:text-sm transition-all cursor-pointer shadow-md active:scale-95"
+                >
+                  <span>Passer à la Fiche {currentPage + 1}</span>
+                  <ChevronRight className="w-4 h-4" />
+                </button>
+              ) : null}
+
               <button
                 id="btn-submit-exam-paper"
                 type="button"
                 disabled={isGrading}
                 onClick={() => setShowConfirmModal(true)}
-                className="inline-flex items-center gap-2.5 px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-98 disabled:opacity-50 text-white font-bold text-sm sm:text-base shadow-lg cursor-pointer transition-all"
+                className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-98 disabled:opacity-50 text-white font-bold text-xs sm:text-sm shadow-md cursor-pointer transition-all"
               >
                 {isGrading ? (
                   <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    <span>Correction par l'IA en cours...</span>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Correction par l'IA...</span>
                   </>
                 ) : (
                   <>
-                    <Sparkles className="w-5 h-5" />
-                    <span>Soumettre le sujet à la correction</span>
+                    <Sparkles className="w-4 h-4" />
+                    <span>Soumettre le devoir à la correction</span>
                   </>
                 )}
               </button>
-
-              <span className="text-xs text-stone-500 font-sans">
-                Temps restant : <strong>{formatTime(secondsLeft)}</strong> • Vérifiez l'ensemble de vos {totalPages} parties avant de déposer.
-              </span>
-            </>
-          ) : (
-            <div className="text-center space-y-3">
-              <span className="inline-flex items-center gap-2 text-sm font-bold text-emerald-800 bg-emerald-100 px-4 py-1.5 rounded-full">
-                <Check className="w-4 h-4" />
-                Copie d'examen déposée, notée par l'IA et enregistrée avec succès.
-              </span>
-
-              {finalScore >= 16 && (
-                <div>
-                  <button
-                    id="btn-bottom-view-certificate"
-                    onClick={() => setShowCertificateModal(true)}
-                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-sm shadow-lg transition-all cursor-pointer"
-                  >
-                    <Award className="w-4 h-4" />
-                    <span>Consulter votre Certificat d'Excellence</span>
-                  </button>
-                </div>
-              )}
             </div>
-          )}
-        </div>
-      )}
+
+            <span className="text-xs text-stone-500 font-sans">
+              Temps restant : <strong>{formatTime(secondsLeft)}</strong> • Fiche {currentPage} sur {totalPages} • Vous pouvez soumettre à tout moment.
+            </span>
+          </>
+        ) : (
+          <div className="text-center space-y-3">
+            <span className="inline-flex items-center gap-2 text-sm font-bold text-emerald-800 bg-emerald-100 px-4 py-1.5 rounded-full">
+              <Check className="w-4 h-4" />
+              Copie d'examen déposée, notée par l'IA et enregistrée avec succès.
+            </span>
+
+            {finalScore >= 16 && (
+              <div>
+                <button
+                  id="btn-bottom-view-certificate"
+                  onClick={() => setShowCertificateModal(true)}
+                  className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-sm shadow-lg transition-all cursor-pointer"
+                >
+                  <Award className="w-4 h-4" />
+                  <span>Consulter votre Certificat d'Excellence</span>
+                </button>
+              </div>
+            )}
+          </div>
+        )}
+      </div>
 
       {/* ========================================================
           MODALE DE CONFIRMATION AVANT L'HEURE (Annuler / Soumettre)
@@ -1354,19 +1396,20 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
 
       {/* ========================================================
           INDICATEUR DE CHARGEMENT DE LA CORRECTION PAR L'IA
+          (Cercle qui tourne avec animation fluide)
           ======================================================== */}
       {isGrading && (
         <div className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
-          <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl border border-stone-200 animate-in fade-in zoom-in duration-150">
-            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 mx-auto flex items-center justify-center">
-              <Loader2 className="w-6 h-6 animate-spin" />
+          <div className="bg-white rounded-2xl p-6 sm:p-8 max-w-sm w-full text-center space-y-4 shadow-2xl border border-stone-200 animate-in fade-in zoom-in duration-150">
+            <div className="w-14 h-14 rounded-full bg-blue-50 text-blue-600 mx-auto flex items-center justify-center border border-blue-200">
+              <Loader2 className="w-8 h-8 animate-spin text-blue-600" />
             </div>
             <div>
-              <h3 className="text-base font-bold text-stone-900 font-serif">
+              <h3 className="text-base sm:text-lg font-bold text-stone-900 font-serif">
                 Correction par l'IA en cours...
               </h3>
-              <p className="text-xs text-stone-500 mt-1">
-                Le jury évalue vos réponses rédigées, vérifie la rigueur conceptuelle et calcule votre note sur 20 points.
+              <p className="text-xs text-stone-600 mt-1.5 leading-relaxed">
+                Le jury examine la rigueur de vos calculs, analyse vos démonstrations et calcule votre note sur 20 points.
               </p>
             </div>
           </div>

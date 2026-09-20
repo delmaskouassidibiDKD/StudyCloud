@@ -60,7 +60,7 @@ function normalizeInfographicData(data: any, defaultTitle?: string): NormalizedI
     : ((data.content && typeof data.content === 'object') ? data.content : data);
 
   const title = raw.title || raw.mainTitle || defaultTitle;
-  const subtitle = raw.subtitle || raw.description || raw.overview || raw.desc || "Structure visuelle et repères conceptuels";
+  const subtitle = raw.subtitle || raw.description || raw.overview || raw.desc || "";
 
   // Prompt visuel et style graphique
   const visualStyle = raw.visual_style || raw.visualStyle || raw.style || undefined;
@@ -329,7 +329,7 @@ export default function Infographie({ data, title }: { data?: any; title?: strin
               <div className="text-center space-y-3 border-b border-stone-200 pb-6">
                 <div className="inline-flex items-center gap-1.5 px-3.5 py-1 rounded-full bg-gradient-to-r from-orange-100 to-amber-100 text-orange-800 text-xs font-bold uppercase tracking-wider border border-orange-200/60 shadow-2xs">
                   <Sparkles className="w-3.5 h-3.5 text-orange-600" />
-                  Infographie Synthétique & Descriptive
+                  Infographie Pédagogique
                 </div>
                 <h1 className="text-2xl sm:text-3xl font-black text-stone-900 tracking-tight leading-tight">
                   <MathText text={dynamicInfo.title} />
@@ -545,7 +545,7 @@ export default function Infographie({ data, title }: { data?: any; title?: strin
 
               {/* Pied de page infographie */}
               <div className="pt-4 border-t border-stone-200 flex items-center justify-between text-xs text-stone-500 font-medium">
-                <span>StudyCloud • Synthèse Visuelle Descriptive</span>
+                <span>DKD School Numérique • StudyCloud</span>
                 <span className="font-bold text-stone-700">
                   {dynamicInfo.steps.length > 0 ? `${dynamicInfo.steps.length} Étapes Validées` : 'Généré par IA'}
                 </span>

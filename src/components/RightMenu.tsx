@@ -596,8 +596,8 @@ CONSIGNE : Structure une infographie pédagogique complète, ultra-visuelle et s
   "creation_type": "infographie",
   "creation_title": "Infographie : ${docName}",
   "creation_data": {
-    "title": "Infographie : ${docName}",
-    "subtitle": "Structure visuelle et repères conceptuels",
+    "title": "Titre synthétique du sujet",
+    "subtitle": "Repères clés et synthèse conceptuelle",
     "visual_style": "Design technique moderne, schématique et épuré",
     "image_prompt": "Infographie scientifique moderne sur ${docName} avec diagrammes et composants",
     "metrics": [
