@@ -441,15 +441,19 @@ export function parseOrBuildAiCreation(
           break;
         }
         case 'infographic': {
+          const info = (parsed.infographic && typeof parsed.infographic === 'object') ? parsed.infographic : parsed;
+          const mainTitle = sanitizeText(info.mainTitle || info.title || parsed.mainTitle || parsed.title) || `Infographie : ${safeDocName}`;
           return {
-            title: sanitizeText(parsed.mainTitle || parsed.title) || `Infographie : ${safeDocName}`,
+            title: mainTitle,
             content: {
-              mainTitle: sanitizeText(parsed.mainTitle || parsed.title) || `Infographie : ${safeDocName}`,
-              subtitle: sanitizeText(parsed.subtitle) || 'Repères visuels',
-              metrics: Array.isArray(parsed.metrics) ? parsed.metrics : [],
-              keyConcepts: Array.isArray(parsed.keyConcepts) ? parsed.keyConcepts : [],
-              highlights: Array.isArray(parsed.highlights) ? parsed.highlights : [],
-              conclusion: sanitizeText(parsed.conclusion) || '',
+              mainTitle,
+              title: mainTitle,
+              subtitle: sanitizeText(info.subtitle || info.overview || parsed.subtitle) || 'Repères visuels et étapes clés',
+              metrics: Array.isArray(info.metrics) ? info.metrics : (Array.isArray(parsed.metrics) ? parsed.metrics : []),
+              steps: Array.isArray(info.steps) ? info.steps : (Array.isArray(parsed.steps) ? parsed.steps : []),
+              keyConcepts: Array.isArray(info.keyConcepts) ? info.keyConcepts : (Array.isArray(parsed.keyConcepts) ? parsed.keyConcepts : []),
+              highlights: Array.isArray(info.highlights) ? info.highlights : (Array.isArray(parsed.highlights) ? parsed.highlights : []),
+              conclusion: sanitizeText(info.conclusion || info.key_takeaway || parsed.conclusion) || '',
             }
           };
         }

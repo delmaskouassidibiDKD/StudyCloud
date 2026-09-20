@@ -434,6 +434,13 @@ export default {
               creation_title = pdfDoc.metadata?.title || pdfDoc.title || parsed.title || "Document PDF";
               creation_data = parsed;
               chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre document PDF officiel est prêt à droite !";
+            } else if (parsed.infographic || Array.isArray(parsed.steps) || (parsed.steps && typeof parsed.steps === "object") || Array.isArray(parsed.metrics) || defaultType === "infographie" || defaultType === "infographic") {
+              decision = "creation";
+              creation_type = "infographie";
+              const info = (parsed.infographic && typeof parsed.infographic === "object") ? parsed.infographic : parsed;
+              creation_title = info.title || info.mainTitle || parsed.title || "Infographie Pédagogique";
+              creation_data = parsed;
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre infographie visuelle et descriptive est prête dans l'espace Création !";
             } else if (Array.isArray(parsed.exercises) || Array.isArray(parsed.exercices)) {
               decision = "creation";
               creation_type = defaultType || "exercices-ecrits";
@@ -629,21 +636,21 @@ Tu dois impérativement respecter les règles strictes suivantes :
 7. STRUCTURE JSON REQUISE DANS "creation_data" :
    {
      "mind_map": {
-       "root_title": "Titre Principal du Chapitre ou Concept Central",
+       "root_title": "[Titre Principal ou Thème Central du Document de l'Élève]",
        "branches": [
          {
-           "branch_title": "1. Principes et Équations Fondamentales",
+           "branch_title": "[Nom du 1er Grand Axe Fondamental]",
            "nodes": [
-             "Définition de la fonction de transfert : $H(j\\omega) = \\frac{S(j\\omega)}{E(j\\omega)}$",
-             "Calcul de la résonance à $\\omega_0 = \\frac{1}{\\sqrt{L \\cdot C}}$",
-             "Analyse du régime critique et amortissement"
+             "[Définition, concept ou équation LaTeX $\\frac{a}{b}$ issue du document]",
+             "[Deuxième notion ou mécanisme explicatif approfondi]",
+             "[Condition d'application ou remarque scientifique]"
            ]
          },
          {
-           "branch_title": "2. Applications et Exemples Pratiques",
+           "branch_title": "[Nom du 2ème Axe d'Application ou Méthodologie]",
            "nodes": [
-             "Cas d'étude : Filtrage actif sur réseau triphasé",
-             "Impact d'une variation de la fréquence $f$ sur l'impédance globale"
+             "[Cas concret ou démarche issue du cours de l'élève]",
+             "[Illustration pratique ou prolongement du concept]"
            ]
          }
        ]
@@ -681,12 +688,12 @@ Tu dois impérativement respecter les règles strictes suivantes :
      "flashcards": [
        {
          "id": "fc_1",
-         "front": "Comment s'exprime la fonction de transfert en régime sinusoïdal d'un filtre passe-bas du premier ordre, et quel est son module à haute fréquence ?",
+         "front": "[Question précise, défi réflexif ou cas d'application issu du document de l'élève]",
          "back": {
-           "definition": "La fonction de transfert est $H(j\\omega) = \\frac{1}{1 + j\\frac{\\omega}{\\omega_0}}$. À haute fréquence (quand $\\omega \\gg \\omega_0$), le module tend vers $0$ car le dénominateur devient très grand.",
+           "definition": "[Explication théorique approfondie avec formules LaTeX $\\frac{a}{b}$ si scientifique]",
            "examples": [
-             "Exemple 1 : Dans un circuit RC, la fréquence de coupure est définie par $\\omega_0 = \\frac{1}{R \\cdot C}$.",
-             "Exemple 2 : Pour un signal haute fréquence parasite, le filtre l'atténue fortement en réduisant son amplitude selon la pente de $-20\\text{ dB/décade}$."
+             "Exemple 1 : [Premier cas concret distinct illustrant la notion]",
+             "Exemple 2 : [Deuxième exemple concret distinct ancrant la compréhension]"
            ]
          }
        }
@@ -718,16 +725,16 @@ Tu dois impérativement respecter les règles strictes suivantes :
 5. STRUCTURE JSON REQUISE DANS "creation_data" :
    {
      "summary": {
-       "title": "Synthèse et Analyse du Document",
-       "overview": "Bref paragraphe d'introduction présentant les enjeux globaux du document.",
+       "title": "[Titre Structuré de la Fiche de Synthèse Adapté au Document]",
+       "overview": "[Bref paragraphe d'introduction présentant les enjeux globaux du document de l'élève]",
        "sections": [
          {
-           "section_title": "1. Principes Fondamentaux et Équations Clés",
-           "content": "Description détaillée de la section intégrant des formules : La fonction de transfert s'exprime par $H(j\\omega) = \\frac{1}{1 + j\\frac{\\omega}{\\omega_0}}$."
+           "section_title": "[1. Titre du Premier Chapitre / Fondements]",
+           "content": "[Développement approfondi de la section intégrant des explications et formules LaTeX $\\frac{a}{b}$ si applicables]"
          },
          {
-           "section_title": "2. Applications et Cas Pratiques",
-           "content": "Analyse des applications industrielles et des cas d'usage réels..."
+           "section_title": "[2. Titre du Deuxième Chapitre / Applications et Cas Pratiques]",
+           "content": "[Analyse détaillée des démarches, méthodes et illustrations réelles...]"
          }
        ]
      }
@@ -766,20 +773,94 @@ Tu dois impérativement respecter les règles strictes suivantes :
    {
      "pdf_document": {
        "metadata": {
-         "title": "Fiche de Synthèse - Étude des Systèmes Électriques",
+         "title": "[Titre Officiel du Document PDF Adapté au Fichier de l'Élève]",
          "author": "StudyCloud AI",
          "date": "2026-09-20"
        },
        "chapters": [
          {
-           "heading": "1. Analyse des Régimes Transitoires",
-           "content": "Dans cette section, nous étudions l'évolution temporelle des grandeurs électriques. La fonction de transfert globale est donnée par $H(j\\omega) = \\frac{1}{1 + j\\frac{\\omega}{\\omega_0}}$."
+           "heading": "[1. Titre du Chapitre 1]",
+           "content": "[Contenu complet, développé et rigoureux avec formules LaTeX $\\frac{a}{b}$ si matière scientifique...]"
          },
          {
-           "heading": "2. Applications et Exemples",
-           "content": "Exemple d'application pratique : Pour un circuit du premier ordre, la constante de temps vérifie $\\tau = R \\cdot C$."
+           "heading": "[2. Titre du Chapitre 2 / Applications]",
+           "content": "[Développement méthodique avec exemples concrets et explications approfondies...]"
          }
        ]
+     }
+   }
+
+======================================================================
+RÈGLES D'EXCELLENCE POUR L'INFOGRAPHIE PÉDAGOGIQUE ('infographie') :
+======================================================================
+Tu es un designer d'information pédagogique et un expert de la communication visuelle. Ta mission est de concevoir une infographie descriptive complète, attrayante et hautement structurée basée sur le document fourni par l'utilisateur et enrichie par des connaissances vérifiées du même sujet.
+
+Tu dois impérativement respecter les règles strictes suivantes :
+
+1. INFOGRAPHIE VISUELLE ET DESCRIPTIVE (PAS DE TEXTE BANAL) :
+   - L'infographie ne doit JAMAIS être un simple texte brut ou une description banale.
+   - Elle doit être une véritable architecture graphique découpée en étapes visuelles, axes de réflexion, repères chiffrés et concepts fondamentaux.
+   - Chaque bloc doit comporter un titre percutant, une description explicative riche, un badge conceptuel et une couleur harmonieuse.
+
+2. LIBERTÉ CRÉATIVE TOTALE SUR LES BRANCHES ET LE DESIGN (FORMAT NON FIGÉ) :
+   - Tu disposes d'un accès intégral à toutes les branches et d'une liberté conceptuelle totale : ton exemple et ton organisation ne sont PAS figés.
+   - Tu peux adapter librement le nombre d'étapes ou de branches (3, 4, 5, 6, 7 ou plus) selon l'ampleur et la complexité du problème ou de la matière.
+   - Tu peux organiser l'infographie selon le sujet traité : parcours chronologique par étapes, piliers conceptuels, réseau de causes à effets, ou démarche méthodique.
+
+3. ÉTIREMENT DYNAMIQUE DES ESPACES (IDÉES RICHES ET COMPLÈTES SANS CONTRAINTE) :
+   - L'interface StudyCloud s'étire et s'allonge automatiquement pour recevoir tes idées : les boîtes et conteneurs visuels ne sont pas bridés en hauteur.
+   - Tu peux développer des explications approfondies, formuler des idées longues et intégrer des formules mathématiques ou scientifiques riches sans tronquer tes phrases. L'espace d'affichage s'agrandit pour s'adapter à ton contenu.
+
+4. ÉVITER LES DOUBLONS (HISTORIQUE DES INFOGRAPHIES DÉJÀ GÉNÉRÉES) :
+   - Prends en compte l'historique des infographies et éléments déjà générés pour cet utilisateur et ce document.
+   - Propose un angle d'analyse inédit, mets en valeur d'autres données clés ou développe un autre volet du cours par rapport aux créations antérieures.
+
+5. ENRICHISSEMENT EXTERNE & RECHERCHES DU DOMAINE :
+   - Tu es explicitement autorisé et encouragé à compléter le contenu du fichier avec des notions, repères méthodologiques, standards réels ou exemples complémentaires issus d'Internet portant exactement sur le même domaine.
+   - INTERDICTION FORMELLE d'inventer des matières hors sujet ou de recopier des exemples types du code. Le contenu doit correspondre exclusivement au cours réel de l'élève.
+
+6. RÈGLE ABSOLUE POUR LES FORMULES ET SYMBOLES (LATEX PUR SANS CARACTÈRES CORROMPUS) :
+   - Pour TOUTES les formules, fractions, variables et grandeurs scientifiques (ex: $f(x) = ax + b$, $\frac{a}{b}$, $\Omega$, $\sqrt{2}$, $U_{eff}$), tu DOIS utiliser exclusivement la syntaxe LaTeX standard ($...$).
+   - INTERDICTION FORMELLE d'utiliser des caractères corrompus (&, *, !, $$$$$). Utilise toujours $\frac{num}{den}$ pour les fractions.
+
+7. STRUCTURE JSON REQUISE DANS "creation_data" :
+   {
+     "infographic": {
+       "title": "[Titre visuel et percutant de l'infographie basé sur le document de l'élève]",
+       "subtitle": "[Sous-titre explicatif synthétisant le sujet]",
+       "metrics": [
+         { "value": "[Chiffre / Grandeur / Pourcentage]", "label": "[Signification ou repère fondamental]" },
+         { "value": "[Deuxième valeur clé]", "label": "[Grandeur ou repère méthodologique]" }
+       ],
+       "steps": [
+         {
+           "number": 1,
+           "title": "[Titre de la première étape / branche]",
+           "description": "[Explication approfondie et détaillée de l'idée ou du processus, avec équations LaTeX $\\frac{a}{b}$ si scientifique]",
+           "badge": "[Mot-clé ou concept clé]",
+           "color": "#F97316"
+         },
+         {
+           "number": 2,
+           "title": "[Titre de la deuxième étape / branche]",
+           "description": "[Développement exhaustif du concept suivant adapté au problème...]",
+           "badge": "[Notion clé]",
+           "color": "#3B82F6"
+         }
+       ],
+       "highlights": [
+         {
+           "type": "tip",
+           "title": "[Conseil méthodologique ou règle d'or]",
+           "text": "[Explication du conseil tiré du document]"
+         },
+         {
+           "type": "warning",
+           "title": "[Piège fréquent ou condition de validité]",
+           "text": "[Mise en garde contre les erreurs classiques sur ce sujet]"
+         }
+       ],
+       "key_takeaway": "[Conclusion synthétique et message fort à retenir]"
      }
    }
 
@@ -843,7 +924,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         try {
           const { results } = await db.prepare(`
             SELECT content_json FROM ai_generated_contents
-            WHERE user_id = ? AND tool_type IN ('questionnaire', 'questionnaire-test', 'vrai-ou-faux', 'vrai-ou-faux-test', 'carte-mentale', 'carte-mentale-2', 'carte-memoire', 'resume', 'pdf')
+            WHERE user_id = ? AND tool_type IN ('questionnaire', 'questionnaire-test', 'vrai-ou-faux', 'vrai-ou-faux-test', 'carte-mentale', 'carte-mentale-2', 'carte-memoire', 'resume', 'pdf', 'infographie')
             ORDER BY created_at DESC LIMIT 8
           `).bind(currentUserId).all();
 
@@ -872,6 +953,10 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
                   ? parsed.mind_map.branches
                   : Array.isArray(parsed?.branches)
                   ? parsed.branches
+                  : Array.isArray(parsed?.infographic?.steps)
+                  ? parsed.infographic.steps
+                  : Array.isArray(parsed?.steps)
+                  ? parsed.steps
                   : Array.isArray(parsed)
                   ? parsed
                   : [];
@@ -887,6 +972,9 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
                 }
                 if (parsed?.mind_map?.root_title) {
                   prevList.push(`Carte mentale précédente : ${parsed.mind_map.root_title}`);
+                }
+                if (parsed?.infographic?.title || parsed?.title) {
+                  prevList.push(`Infographie précédente : ${parsed?.infographic?.title || parsed?.title}`);
                 }
               } catch {}
             }
@@ -914,7 +1002,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         fullSystemPrompt = fullSystemPrompt.replace(/'\${requestedType \|\| ""}'/, `'${requestedType}'`);
       }
       if (previousQuestionsText) {
-        fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES ÉLÉMENTS, QUESTIONS, CARTES, RÉSUMÉS OU DOCUMENTS PDF DÉJÀ GÉNÉRÉS POUR CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions, affirmations, cartes mémoire (flashcards), axes de cartes mentales, résumés ou chapitres de document PDF ENTIÈREMENT NOUVEAUX qui n'ont ni la même formulation, ni le même angle, ni la même organisation que les éléments déjà mémorisés ou générés ci-dessus. Propose des angles d'analyse inédits et explore d'autres aspects du document.`;
+        fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES ÉLÉMENTS, QUESTIONS, CARTES, RÉSUMÉS, DOCUMENTS PDF OU INFOGRAPHIES DÉJÀ GÉNÉRÉS POUR CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions, affirmations, cartes mémoire (flashcards), axes de cartes mentales, résumés, chapitres de document PDF ou infographies ENTIÈREMENT NOUVEAUX qui n'ont ni la même formulation, ni le même angle, ni la même organisation que les éléments déjà mémorisés ou générés ci-dessus. Propose des angles d'analyse inédits et explore d'autres aspects du document.`;
       }
       if (rawDocForGemini.length > 0) {
         const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";
