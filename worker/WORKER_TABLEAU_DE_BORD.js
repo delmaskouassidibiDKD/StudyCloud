@@ -665,6 +665,11 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
   const hasShop = (shopStats.products_count > 0) || Boolean(shopProfile);
   const shopProductsCount = shopStats.products_count || 0;
   const shopName = shopProfile?.shop_name || (hasShop ? 'Boutique active' : '');
+  const shopPhone = shopProfile?.shop_phone || '';
+  const shopWhatsapp = shopProfile?.shop_whatsapp || '';
+  const shopCategory = shopProfile?.shop_category || 'Vente digital (PDF)';
+  const shopAvatarUrl = shopProfile?.shop_avatar_url || '';
+  const shopUpdatedAt = shopProfile?.updated_at || '';
 
   // 16. STATUT DE CONNEXION / EN LIGNE
   const activeSession = await safeFirst(db, `
@@ -676,11 +681,15 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
   let isOnline = false;
   let lastSeenText = "Non connecté récemment";
   if (user.last_active_at) {
-    const lastActiveTime = new Date(user.last_active_at).getTime();
+    let dateStr = String(user.last_active_at).trim();
+    if (!dateStr.endsWith('Z') && !dateStr.includes('+')) {
+      dateStr = dateStr.replace(' ', 'T') + 'Z';
+    }
+    const lastActiveTime = new Date(dateStr).getTime();
     const now = Date.now();
     const diffMinutes = Math.floor((now - lastActiveTime) / 60000);
     if (!isNaN(diffMinutes) && diffMinutes >= 0) {
-      if (diffMinutes <= 15) {
+      if (diffMinutes <= 20) {
         isOnline = true;
         lastSeenText = "En ligne maintenant";
       } else if (diffMinutes < 60) {
@@ -818,7 +827,12 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
       hasActiveSession: Boolean(activeSession),
       hasShop,
       shopProductsCount,
-      shopName
+      shopName,
+      shopPhone,
+      shopWhatsapp,
+      shopCategory,
+      shopAvatarUrl,
+      shopUpdatedAt
     },
     quotaConfig: {
       welcomeR2Mb,
@@ -1132,6 +1146,33 @@ function renderDashboardHtml(data) {
         <span class="text-base">💬</span>
         <span>Messages des utilisateurs</span>
       </button>
+
+      <button 
+        onclick="switchView('signalements')" 
+        id="nav-btn-signalements"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+      >
+        <span class="text-base">🚩</span>
+        <span>Signalements & Retours</span>
+      </button>
+
+      <button 
+        onclick="switchView('abonnements')" 
+        id="nav-btn-abonnements"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+      >
+        <span class="text-base">💳</span>
+        <span>Abonnements & Forfaits</span>
+      </button>
+
+      <button 
+        onclick="switchView('statistiques')" 
+        id="nav-btn-statistiques"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+      >
+        <span class="text-base">📊</span>
+        <span>Statistiques & Métriques</span>
+      </button>
     </nav>
 
     <div class="p-3.5 border-t border-slate-800 text-[11px] text-slate-500">
@@ -1142,7 +1183,7 @@ function renderDashboardHtml(data) {
   <!-- ==================================================================== -->
   <!-- ZONE PRINCIPALE DE CONTENU SANS ESPACE VIDE ET PARFAITEMENT SCROLLABLE -->
   <!-- ==================================================================== -->
-  <main class="flex-1 w-full max-w-[1700px] mx-auto p-3 sm:p-5 flex flex-col min-h-0">
+  <main class="flex-1 w-full max-w-[1700px] mx-auto p-3 sm:p-5 flex flex-col min-h-0 overflow-hidden">
 
     <!-- ================================================================== -->
     <!-- VUE 1 : ACCUEIL / VUE D'ENSEMBLE GLOBALE (DÉFILEMENT NATUREL) -->
@@ -1282,44 +1323,6 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <div id="view-users" class="hidden w-full flex-1 flex flex-col space-y-2.5 overflow-hidden h-[calc(100vh-80px)]">
       
-      <!-- BANNIÈRE EN HAUT : STOCKAGE INITIAL À L'INSCRIPTION APPLIQUÉ À TOUS (IMAGE 2) -->
-      <div class="neo-card p-2.5 sm:p-3 bg-gradient-to-r from-slate-900 via-[#131b2e] to-slate-900 border-l-4 border-l-orange-500 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
-        <div class="flex items-center gap-2.5">
-          <span class="text-xl shrink-0">🎁</span>
-          <div>
-            <div class="text-xs font-extrabold text-white flex items-center gap-1.5 flex-wrap">
-              <span>Stockage Initial à l'Inscription :</span>
-              <span id="current-welcome-badge" class="px-2 py-0.5 rounded-md bg-orange-500/20 text-orange-400 font-mono font-black border border-orange-500/40 text-xs">
-                ${data.globalConfig?.default_welcome_total_mb ?? 30} Mo
-              </span>
-            </div>
-            <p class="text-[10px] text-slate-400 mt-0.5">Quota global attribué automatiquement. Vous pouvez le modifier ici pour l'appliquer à <strong>TOUS</strong> les utilisateurs (actuels et futurs).</p>
-          </div>
-        </div>
-
-        <div class="flex items-center gap-2 shrink-0 self-start sm:self-auto">
-          <div class="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-700">
-            <span class="text-[10px] text-slate-400 font-bold">Nouveau :</span>
-            <input 
-              type="number" 
-              id="users-welcome-input" 
-              class="w-16 bg-slate-900 text-orange-400 font-bold font-mono text-xs px-1.5 py-0.5 rounded border border-slate-600 text-center" 
-              value="${data.globalConfig?.default_welcome_total_mb ?? 30}"
-            >
-            <span class="text-[10px] text-slate-400 font-bold">Mo</span>
-          </div>
-
-          <button 
-            onclick="applyWelcomeStorageToAllUsers()" 
-            class="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-orange-600/20 active:scale-95 cursor-pointer flex items-center gap-1.5"
-            title="Met à jour la base de données et applique immédiatement ce stockage à TOUS les utilisateurs existants et futurs"
-          >
-            <span>⚡</span>
-            <span>Appliquer à tous les utilisateurs</span>
-          </button>
-        </div>
-      </div>
-
       <!-- DEUX COLONNES SCROLLABLES INDÉPENDANTES (LA PAGE EXTÉRIEURE NE BOUGE PAS) -->
       <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
         
@@ -1355,21 +1358,30 @@ function renderDashboardHtml(data) {
             <h4 class="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
               <span>🎁</span> Paramètres Globaux : Stockage de Bienvenue Automatique à l'Inscription
             </h4>
-            <p class="text-[10px] text-slate-400 mt-0.5">Quota global attribué automatiquement à tout nouvel utilisateur (partagé librement entre fichiers et base de données, sans limiteur individuel).</p>
+            <p class="text-[10px] text-slate-400 mt-0.5">Quota global attribué automatiquement à tout nouvel utilisateur (partagé librement entre fichiers et base de données, sans limiteur individuel). S'applique à tous les utilisateurs actuels et futurs.</p>
           </div>
 
-          <div class="flex items-center gap-2 flex-wrap">
+          <div class="flex items-center gap-2 flex-wrap shrink-0">
             <div class="flex items-center gap-1 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">
-              <span class="text-[10px] text-slate-400 font-bold">Quota Global Bienvenue :</span>
-              <input type="number" id="global-cfg-total" class="w-20 bg-slate-900 text-orange-400 font-bold font-mono text-xs px-2 py-0.5 rounded border border-slate-600 text-center" value="${data.globalConfig?.default_welcome_total_mb ?? ((data.globalConfig?.default_welcome_r2_mb ?? 10) + (data.globalConfig?.default_welcome_d1_mb ?? 20))}">
+              <span class="text-[10px] text-slate-400 font-bold">Nouveau quota :</span>
+              <input type="number" id="global-cfg-total" class="w-20 bg-slate-900 text-orange-400 font-bold font-mono text-xs px-2 py-0.5 rounded border border-slate-600 text-center" value="${data.globalConfig?.default_welcome_total_mb ?? ((data.globalConfig?.default_welcome_r2_mb ?? 10) + (data.globalConfig?.default_welcome_d1_mb ?? 20))}" oninput="document.getElementById('users-welcome-input').value=this.value">
+              <input type="hidden" id="users-welcome-input" value="${data.globalConfig?.default_welcome_total_mb ?? 30}">
               <span class="text-[10px] text-slate-400 font-bold">Mo</span>
             </div>
 
             <button 
               onclick="saveGlobalWelcomeConfig()" 
-              class="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-orange-600/20 active:scale-95 cursor-pointer flex items-center gap-1.5"
+              class="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-orange-600/20 active:scale-95 cursor-pointer flex items-center gap-1.5"
             >
-              <span>💾</span> Enregistrer pour tous
+              <span>💾</span> Enregistrer
+            </button>
+
+            <button 
+              onclick="applyWelcomeStorageToAllUsers()" 
+              class="px-3 py-1.5 bg-emerald-700 hover:bg-emerald-600 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-emerald-700/20 active:scale-95 cursor-pointer flex items-center gap-1.5"
+              title="Enregistre ET applique immédiatement à TOUS les utilisateurs existants et futurs"
+            >
+              <span>⚡</span> Appliquer à tous
             </button>
           </div>
         </div>
@@ -1399,19 +1411,120 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <!-- VUE 4 : MESSAGES DES UTILISATEURS (DIVISÉE EN 2) -->
     <!-- ================================================================== -->
-    <div id="view-messages" class="hidden w-full flex-1 flex flex-col space-y-3 pb-8">
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:h-[calc(100vh-130px)] min-h-[450px]">
-        <div class="lg:col-span-4 neo-card h-[380px] lg:h-full flex flex-col overflow-hidden shrink-0">
+    <div id="view-messages" class="hidden w-full flex-1 flex flex-col overflow-hidden h-[calc(100vh-80px)]">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
+        <div class="lg:col-span-4 neo-card h-[280px] lg:h-full flex flex-col overflow-hidden shrink-0">
           <div class="p-2.5 border-b border-slate-800 text-xs font-bold text-slate-400 shrink-0">
             Utilisateurs inscrits
           </div>
           <div id="messages-users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs"></div>
         </div>
 
-        <div class="lg:col-span-8 neo-card p-8 flex flex-col items-center justify-center min-h-[350px] lg:h-full text-center text-slate-500">
+        <div class="lg:col-span-8 neo-card p-8 overflow-y-auto flex flex-col items-center justify-center h-[480px] lg:h-full text-center text-slate-500">
           <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">💬</div>
           <h3 class="text-sm font-bold text-slate-300">Messagerie et Demandes de Support</h3>
           <p class="text-xs text-slate-500 mt-1 max-w-sm">Cet espace affichera en direct les retours, demandes d'aide et messages envoyés par les étudiants depuis leur application.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- VUE 5 : SIGNALEMENTS & RETOURS -->
+    <!-- ================================================================== -->
+    <div id="view-signalements" class="hidden w-full flex-1 flex flex-col overflow-hidden h-[calc(100vh-80px)]">
+      <div class="flex-1 overflow-y-auto p-4 space-y-4">
+        <div class="neo-card p-6 flex flex-col items-center justify-center text-center text-slate-500 min-h-[300px]">
+          <div class="w-20 h-20 rounded-2xl bg-red-500/10 text-4xl flex items-center justify-center mb-4">🚩</div>
+          <h3 class="text-base font-bold text-slate-200 mb-1">Signalements & Retours</h3>
+          <p class="text-xs text-slate-500 max-w-sm mt-1">Ici s'afficheront les signalements de contenu, les retours négatifs et les rapports d'abus envoyés par les étudiants. Fonctionnalité en cours de développement.</p>
+          <div class="mt-4 px-4 py-2 rounded-lg bg-red-500/10 border border-red-500/20 text-red-400 text-xs font-bold">🚧 En développement</div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="neo-card p-4 border-l-4 border-l-red-500">
+            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Total Signalements</div>
+            <div class="text-2xl font-black text-red-400">0</div>
+            <div class="text-[10px] text-slate-500 mt-1">Aucun signalement reçu</div>
+          </div>
+          <div class="neo-card p-4 border-l-4 border-l-amber-500">
+            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">En Attente</div>
+            <div class="text-2xl font-black text-amber-400">0</div>
+            <div class="text-[10px] text-slate-500 mt-1">Aucun en attente de traitement</div>
+          </div>
+          <div class="neo-card p-4 border-l-4 border-l-emerald-500">
+            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Résolus</div>
+            <div class="text-2xl font-black text-emerald-400">0</div>
+            <div class="text-[10px] text-slate-500 mt-1">Aucun résolu</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- VUE 6 : ABONNEMENTS & FORFAITS -->
+    <!-- ================================================================== -->
+    <div id="view-abonnements" class="hidden w-full flex-1 flex flex-col overflow-hidden h-[calc(100vh-80px)]">
+      <div class="flex-1 overflow-y-auto p-4 space-y-4">
+        <div class="neo-card p-6 flex flex-col items-center justify-center text-center text-slate-500 min-h-[300px]">
+          <div class="w-20 h-20 rounded-2xl bg-purple-500/10 text-4xl flex items-center justify-center mb-4">💳</div>
+          <h3 class="text-base font-bold text-slate-200 mb-1">Abonnements & Forfaits</h3>
+          <p class="text-xs text-slate-500 max-w-sm mt-1">Gérez ici les forfaits payants, les abonnements actifs et les transactions des étudiants. Fonctionnalité en cours de développement.</p>
+          <div class="mt-4 px-4 py-2 rounded-lg bg-purple-500/10 border border-purple-500/20 text-purple-400 text-xs font-bold">🚧 En développement</div>
+        </div>
+
+        <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div class="neo-card p-4 border-l-4 border-l-purple-500">
+            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Abonnés Actifs</div>
+            <div class="text-2xl font-black text-purple-400">0</div>
+            <div class="text-[10px] text-slate-500 mt-1">Aucun abonnement payant actif</div>
+          </div>
+          <div class="neo-card p-4 border-l-4 border-l-emerald-500">
+            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Revenus (Mois)</div>
+            <div class="text-2xl font-black text-emerald-400">0 FCFA</div>
+            <div class="text-[10px] text-slate-500 mt-1">Aucune transaction ce mois</div>
+          </div>
+          <div class="neo-card p-4 border-l-4 border-l-orange-500">
+            <div class="text-[10px] uppercase font-bold text-slate-400 mb-1">Utilisateurs Gratuits</div>
+            <div class="text-2xl font-black text-orange-400">${data.users.length}</div>
+            <div class="text-[10px] text-slate-500 mt-1">Sur le plan gratuit</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- VUE 7 : STATISTIQUES & MÉTRIQUES -->
+    <!-- ================================================================== -->
+    <div id="view-statistiques" class="hidden w-full flex-1 flex flex-col overflow-hidden h-[calc(100vh-80px)]">
+      <div class="flex-1 overflow-y-auto p-4 space-y-4">
+        <div class="grid grid-cols-2 sm:grid-cols-4 gap-3">
+          <div class="neo-card p-4 border-l-4 border-l-blue-500">
+            <div class="text-[10px] uppercase font-bold text-slate-400">Utilisateurs</div>
+            <div class="text-2xl font-black text-white mt-1">${data.summary.totalUsers}</div>
+            <div class="text-[10px] text-blue-400 mt-0.5">Comptes enregistrés</div>
+          </div>
+          <div class="neo-card p-4 border-l-4 border-l-orange-500">
+            <div class="text-[10px] uppercase font-bold text-slate-400">Stockage R2</div>
+            <div class="text-2xl font-black text-orange-400 mt-1">${data.summary.totalR2Formatted}</div>
+            <div class="text-[10px] text-slate-400 mt-0.5">Fichiers hébergés</div>
+          </div>
+          <div class="neo-card p-4 border-l-4 border-l-emerald-500">
+            <div class="text-[10px] uppercase font-bold text-slate-400">Stockage D1</div>
+            <div class="text-2xl font-black text-emerald-400 mt-1">${data.summary.totalD1Formatted}</div>
+            <div class="text-[10px] text-slate-400 mt-0.5">${data.summary.totalD1Rows} lignes SQL</div>
+          </div>
+          <div class="neo-card p-4 border-l-4 border-l-purple-500">
+            <div class="text-[10px] uppercase font-bold text-slate-400">Boutiques</div>
+            <div class="text-2xl font-black text-purple-400 mt-1">${data.users.filter(u => u.user.hasShop).length}</div>
+            <div class="text-[10px] text-slate-400 mt-0.5">Boutiques actives</div>
+          </div>
+        </div>
+
+        <div class="neo-card p-4 space-y-3">
+          <h3 class="text-xs font-bold text-white flex items-center gap-2"><span>📊</span> Répartition du Stockage par Utilisateur</h3>
+          <div class="divide-y divide-slate-800/60 text-xs">
+            ${data.users.slice(0, 20).map(item => '<div class="py-2 flex items-center gap-3"><div class="w-24 truncate font-bold text-white text-[11px]">' + item.user.name + '</div><div class="flex-1"><div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden"><div class="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full" style="width: ' + Math.max(1, Math.min(100, item.storage.net ? item.storage.net.usagePercentage : item.storage.usagePercentage)) + '%"></div></div></div><div class="text-[10px] font-mono text-orange-400 shrink-0 w-16 text-right">' + (item.storage.net ? item.storage.net.totalFormatted : item.storage.totalFormatted) + '</div><div class="text-[10px] text-slate-500 shrink-0 w-10 text-right">' + (item.storage.net ? item.storage.net.usagePercentage : item.storage.usagePercentage) + '%</div></div>').join('')}
+          </div>
         </div>
       </div>
     </div>
@@ -1469,26 +1582,35 @@ function renderDashboardHtml(data) {
 
     function switchView(viewName) {
       currentView = viewName;
-      ['global', 'users', 'demandes', 'messages'].forEach(v => {
+      ['global', 'users', 'demandes', 'messages', 'signalements', 'abonnements', 'statistiques'].forEach(v => {
         const el = document.getElementById('view-' + v);
         const navBtn = document.getElementById('nav-btn-' + v);
+        if (!el || !navBtn) return;
         if (v === viewName) {
           el.classList.remove('hidden');
-          navBtn.className = "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20";
+          navBtn.className = "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20 cursor-pointer";
         } else {
           el.classList.add('hidden');
-          navBtn.className = "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left";
+          navBtn.className = "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer";
         }
       });
 
       const badge = document.getElementById('current-view-badge');
-      if (viewName === 'global') badge.textContent = 'Vue Globale';
-      else if (viewName === 'users') badge.textContent = 'Tous les Utilisateurs';
-      else if (viewName === 'demandes') badge.textContent = 'Demandes de Stockage';
-      else if (viewName === 'messages') badge.textContent = 'Messages';
+      if (badge) {
+        const titles = {
+          global: 'Vue Globale',
+          users: 'Tous les Utilisateurs',
+          demandes: 'Demandes de Stockage',
+          messages: 'Messages',
+          signalements: 'Signalements & Retours',
+          abonnements: 'Abonnements & Forfaits',
+          statistiques: 'Statistiques & Métriques'
+        };
+        badge.textContent = titles[viewName] || viewName;
+      }
 
       const drawer = document.getElementById('sidebar-drawer');
-      if (drawer.classList.contains('open')) toggleSidebar();
+      if (drawer && drawer.classList.contains('open')) toggleSidebar();
 
       if (viewName === 'users') {
         renderUsersLeftList();
@@ -2331,10 +2453,36 @@ function renderDashboardHtml(data) {
               <div class="font-bold text-white text-xs truncate">\${u.name}</div>
               <div class="text-[10px] text-slate-400 truncate">📞 \${u.phone} • \${u.level}</div>
             </div>
-            <span class="text-[10px] font-mono text-slate-500">Actif</span>
+            <span class="text-[10px] font-mono \${u.isOnline ? 'text-emerald-400' : 'text-slate-500'}">\${u.isOnline ? '🟢 En ligne' : '⚫ Hors ligne'}</span>
           </div>
         \`;
       }).join('');
+    }
+
+    async function toggleUserOnlineStatus(userId, currentIsOnline) {
+      const setOnline = !currentIsOnline;
+      try {
+        const resp = await fetch('/api/users/toggle-online', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId, isOnline: setOnline })
+        });
+        const data = await resp.json();
+        if (data.success) {
+          const item = allUsers.find(x => x.user.id === userId);
+          if (item) {
+            item.user.isOnline = setOnline;
+            item.user.lastSeenText = setOnline ? 'En ligne maintenant' : 'Hors ligne (mis à jour)';
+          }
+          showToast(setOnline ? '✅ Utilisateur marqué En ligne' : '⚫ Utilisateur marqué Hors ligne');
+          renderUsersLeftList(document.getElementById('users-search-left')?.value || '');
+          renderUserRightDetails(userId);
+        } else {
+          alert('Erreur: ' + (data.error || 'Échec'));
+        }
+      } catch(e) {
+        alert('Erreur réseau lors du changement de statut');
+      }
     }
 
     // Initialisation
@@ -2508,6 +2656,30 @@ export default {
           paidTotalMb: pTotal,
           totalMb: wTotal + pTotal 
         }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/users/toggle-online
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/users/toggle-online') {
+        const body = await request.json().catch(() => ({}));
+        const userId = body.userId;
+        const setOnline = Boolean(body.isOnline);
+        if (!userId) {
+          return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
+        }
+        if (setOnline) {
+          await safeRun(db, `UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?`, [userId]);
+          try {
+            await safeRun(db, `INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, 'dashboard_admin', datetime('now', '+30 days'))`, ['sess_' + userId.slice(0, 8), userId]);
+          } catch(e) {}
+        } else {
+          await safeRun(db, `UPDATE users SET last_active_at = datetime('now', '-2 hours') WHERE id = ?`, [userId]);
+        }
+        return new Response(JSON.stringify({ success: true, userId, isOnline: setOnline, last_active_at: new Date().toISOString() }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });
