@@ -263,7 +263,7 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack }) => {
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-            {/* DÉTAIL 1 : STOCKAGE DOCUMENTS & FICHIERS (DIRECTEMENT SUR LE FOND) */}
+            {/* DÉTAIL 1 : STOCKAGE DOCUMENTS & FICHIERS (ESPACE OCCUPÉ RÉEL SANS LIMITEUR FIXE) */}
             <div className="flex flex-col justify-between py-2 px-1">
               <div>
                 <div className="flex items-start justify-between gap-2 pb-3 border-b border-stone-300/50 dark:border-slate-800">
@@ -286,27 +286,24 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack }) => {
                   </span>
                 </div>
 
-                {/* Progression et volume */}
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-baseline justify-between text-xs">
-                    <span className="font-black text-stone-900 dark:text-slate-100 text-sm">
+                {/* Espace réellement occupé (sans limiteur rigide) */}
+                <div className="mt-4 p-3.5 rounded-2xl bg-stone-100/70 dark:bg-slate-900/60 border border-stone-200/80 dark:border-slate-800/80 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-stone-500 dark:text-slate-400 block">
+                      Espace documents occupé
+                    </span>
+                    <span className="text-xl sm:text-2xl font-black text-blue-700 dark:text-blue-400 tracking-tight">
                       {filesStorage?.usedFormatted || '0 o'}
                     </span>
-                    <span className="text-stone-600 dark:text-slate-400">
-                      sur <strong className="text-stone-800 dark:text-slate-200">{filesStorage?.allowedFormatted || '10 Mo'}</strong>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="text-[10px] text-stone-500 dark:text-slate-400 block font-medium">
+                      Partage libre
                     </span>
-                  </div>
-
-                  <div className="w-full h-3 bg-stone-200/80 dark:bg-slate-900 rounded-full border border-stone-300 dark:border-slate-800 overflow-hidden p-0.5 shadow-inner">
-                    <div
-                      className="h-full rounded-full transition-all duration-500 bg-gradient-to-r from-blue-500 to-indigo-500"
-                      style={{ width: `${Math.max(filesStorage?.percentage ? 2 : 0, Math.min(100, filesStorage?.percentage ?? 0))}%` }}
-                    />
-                  </div>
-
-                  <div className="flex justify-between items-center text-[11px] text-stone-500 dark:text-slate-400">
-                    <span>Espace fichiers réservé</span>
-                    <span className="font-bold text-blue-600 dark:text-blue-400">{filesStorage?.percentage ?? 0}%</span>
+                    <span className="text-xs font-bold text-stone-700 dark:text-slate-300">
+                      Sur quota global
+                    </span>
                   </div>
                 </div>
               </div>
@@ -320,7 +317,7 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack }) => {
               </div>
             </div>
 
-            {/* DÉTAIL 2 : ESPACE DONNÉES & FICHES D'ÉTUDE (DIRECTEMENT SUR LE FOND) */}
+            {/* DÉTAIL 2 : ESPACE DONNÉES & FICHES D'ÉTUDE (ESPACE OCCUPÉ RÉEL SANS LIMITEUR FIXE) */}
             <div className="flex flex-col justify-between py-2 px-1 md:border-l md:border-stone-300/50 md:dark:border-slate-800 md:pl-6">
               <div>
                 <div className="flex items-start justify-between gap-2 pb-3 border-b border-stone-300/50 dark:border-slate-800">
@@ -343,27 +340,24 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack }) => {
                   </span>
                 </div>
 
-                {/* Progression et volume */}
-                <div className="mt-4 space-y-2">
-                  <div className="flex items-baseline justify-between text-xs">
-                    <span className="font-black text-stone-900 dark:text-slate-100 text-sm">
+                {/* Espace réellement occupé (sans limiteur rigide) */}
+                <div className="mt-4 p-3.5 rounded-2xl bg-stone-100/70 dark:bg-slate-900/60 border border-stone-200/80 dark:border-slate-800/80 flex items-center justify-between">
+                  <div>
+                    <span className="text-[10px] uppercase font-bold text-stone-500 dark:text-slate-400 block">
+                      Espace données occupé
+                    </span>
+                    <span className="text-xl sm:text-2xl font-black text-amber-600 dark:text-amber-400 tracking-tight">
                       {dataStorage?.usedFormatted || '0 o'}
                     </span>
-                    <span className="text-stone-600 dark:text-slate-400">
-                      sur <strong className="text-stone-800 dark:text-slate-200">{dataStorage?.allowedFormatted || '20 Mo'}</strong>
+                  </div>
+
+                  <div className="text-right">
+                    <span className="text-[10px] text-stone-500 dark:text-slate-400 block font-medium">
+                      Partage libre
                     </span>
-                  </div>
-
-                  <div className="w-full h-3 bg-stone-200/80 dark:bg-slate-900 rounded-full border border-stone-300 dark:border-slate-800 overflow-hidden p-0.5 shadow-inner">
-                    <div
-                      className="h-full rounded-full transition-all duration-500 bg-gradient-to-r from-amber-500 to-orange-500"
-                      style={{ width: `${Math.max(dataStorage?.percentage ? 2 : 0, Math.min(100, dataStorage?.percentage ?? 0))}%` }}
-                    />
-                  </div>
-
-                  <div className="flex justify-between items-center text-[11px] text-stone-500 dark:text-slate-400">
-                    <span>Espace fiches, notes & données textuelles</span>
-                    <span className="font-bold text-amber-600 dark:text-amber-400">{dataStorage?.percentage ?? 0}%</span>
+                    <span className="text-xs font-bold text-stone-700 dark:text-slate-300">
+                      Sur quota global
+                    </span>
                   </div>
                 </div>
               </div>

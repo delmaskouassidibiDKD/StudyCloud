@@ -2136,6 +2136,7 @@ async function ensureStorageTables(db) {
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS storage_global_config (
         id TEXT PRIMARY KEY,
+        default_welcome_total_mb REAL DEFAULT 30.0,
         default_welcome_r2_mb REAL DEFAULT 10.0,
         default_welcome_d1_mb REAL DEFAULT 20.0,
         cost_per_gb_eur REAL DEFAULT 0.015,
@@ -2144,18 +2145,23 @@ async function ensureStorageTables(db) {
       )
     `).run();
 
+    try { await db.prepare("ALTER TABLE storage_global_config ADD COLUMN default_welcome_total_mb REAL DEFAULT 30.0").run(); } catch (e) {}
+
     await db.prepare(`
-      INSERT OR IGNORE INTO storage_global_config (id, default_welcome_r2_mb, default_welcome_d1_mb, cost_per_gb_eur)
-      VALUES ('global', 10.0, 20.0, 0.015)
+      INSERT OR IGNORE INTO storage_global_config (id, default_welcome_total_mb, default_welcome_r2_mb, default_welcome_d1_mb, cost_per_gb_eur)
+      VALUES ('global', 30.0, 10.0, 20.0, 0.015)
     `).run();
 
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS user_storage_quotas (
         user_id TEXT PRIMARY KEY,
+        welcome_total_mb REAL DEFAULT 30.0,
         welcome_r2_mb REAL DEFAULT 10.0,
         welcome_d1_mb REAL DEFAULT 20.0,
+        paid_total_mb REAL DEFAULT 0.0,
         paid_r2_mb REAL DEFAULT 0.0,
         paid_d1_mb REAL DEFAULT 0.0,
+        bonus_total_mb REAL DEFAULT 0.0,
         bonus_r2_mb REAL DEFAULT 0.0,
         bonus_d1_mb REAL DEFAULT 0.0,
         plan_name TEXT DEFAULT 'gratuit',
@@ -2165,6 +2171,10 @@ async function ensureStorageTables(db) {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+
+    try { await db.prepare("ALTER TABLE user_storage_quotas ADD COLUMN welcome_total_mb REAL DEFAULT 30.0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_storage_quotas ADD COLUMN paid_total_mb REAL DEFAULT 0.0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_storage_quotas ADD COLUMN bonus_total_mb REAL DEFAULT 0.0").run(); } catch (e) {}
 
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS user_word_counts (
@@ -2211,44 +2221,36 @@ async function getUserStorageDetails(db, userId) {
     globalConfig = await db.prepare("SELECT * FROM storage_global_config WHERE id = 'global'").first();
   } catch (e) {}
 
-  const defaultWelcomeR2 = Number(globalConfig?.default_welcome_r2_mb ?? 10.0);
-  const defaultWelcomeD1 = Number(globalConfig?.default_welcome_d1_mb ?? 20.0);
+  const defaultWelcomeTotal = Number(globalConfig?.default_welcome_total_mb ?? ((globalConfig?.default_welcome_r2_mb ?? 10) + (globalConfig?.default_welcome_d1_mb ?? 20)));
 
   if (!quotaRow) {
     try {
       await db.prepare(`
-        INSERT OR IGNORE INTO user_storage_quotas (user_id, welcome_r2_mb, welcome_d1_mb, paid_r2_mb, paid_d1_mb, plan_name)
-        VALUES (?, ?, ?, 0.0, 0.0, 'gratuit')
-      `).bind(userId, defaultWelcomeR2, defaultWelcomeD1).run();
+        INSERT OR IGNORE INTO user_storage_quotas (user_id, welcome_total_mb, welcome_r2_mb, welcome_d1_mb, paid_total_mb, paid_r2_mb, paid_d1_mb, plan_name)
+        VALUES (?, ?, 10.0, 20.0, 0.0, 0.0, 0.0, 'gratuit')
+      `).bind(userId, defaultWelcomeTotal).run();
     } catch (e) {}
     quotaRow = {
-      welcome_r2_mb: defaultWelcomeR2,
-      welcome_d1_mb: defaultWelcomeD1,
+      welcome_total_mb: defaultWelcomeTotal,
+      welcome_r2_mb: 10.0,
+      welcome_d1_mb: 20.0,
+      paid_total_mb: 0.0,
       paid_r2_mb: 0.0,
       paid_d1_mb: 0.0,
+      bonus_total_mb: 0.0,
       bonus_r2_mb: 0.0,
       bonus_d1_mb: 0.0,
       plan_name: 'gratuit'
     };
   }
 
-  const welcomeR2Mb = Number(quotaRow?.welcome_r2_mb ?? defaultWelcomeR2);
-  const welcomeD1Mb = Number(quotaRow?.welcome_d1_mb ?? defaultWelcomeD1);
-  const welcomeTotalMb = parseFloat((welcomeR2Mb + welcomeD1Mb).toFixed(2));
-
-  const paidR2Mb = Number(quotaRow?.paid_r2_mb ?? 0.0);
-  const paidD1Mb = Number(quotaRow?.paid_d1_mb ?? 0.0);
-  const paidTotalMb = parseFloat((paidR2Mb + paidD1Mb).toFixed(2));
-
-  const bonusR2Mb = Number(quotaRow?.bonus_r2_mb ?? 0.0);
-  const bonusD1Mb = Number(quotaRow?.bonus_d1_mb ?? 0.0);
-  const bonusTotalMb = parseFloat((bonusR2Mb + bonusD1Mb).toFixed(2));
+  // Quotas calculés sous forme d'un réservoir unique partagé (pas de limiteur séparé R2/D1)
+  const welcomeTotalMb = parseFloat(Number(quotaRow?.welcome_total_mb ?? ((quotaRow?.welcome_r2_mb ?? 10) + (quotaRow?.welcome_d1_mb ?? 20))).toFixed(2));
+  const paidTotalMb = parseFloat(Number(quotaRow?.paid_total_mb ?? ((quotaRow?.paid_r2_mb ?? 0) + (quotaRow?.paid_d1_mb ?? 0))).toFixed(2));
+  const bonusTotalMb = parseFloat(Number(quotaRow?.bonus_total_mb ?? ((quotaRow?.bonus_r2_mb ?? 0) + (quotaRow?.bonus_d1_mb ?? 0))).toFixed(2));
 
   const totalAllowedMb = parseFloat((welcomeTotalMb + paidTotalMb + bonusTotalMb).toFixed(2));
   const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
-
-  const filesAllowedMb = parseFloat((welcomeR2Mb + paidR2Mb + bonusR2Mb).toFixed(2));
-  const dataAllowedMb = parseFloat((welcomeD1Mb + paidD1Mb + bonusD1Mb).toFixed(2));
 
   // 2. Fichiers personnels de cours et sessions
   let personalFilesBytes = 0;
@@ -2260,7 +2262,7 @@ async function getUserStorageDetails(db, userId) {
   } catch (e) {}
 
   // 3. Données & fiches (notes, matières, planning, notes d'évaluations, contenus IA)
-  // Strictement sans compter les éléments exemptés (ressources partagées publiques, messages de chat, vues, téléchargements, compteurs mots)
+  // Strictement sans compter les éléments exemptés (ressources partagées publiques, vues, téléchargements, compteurs mots)
   let notesBytes = 0, notesCount = 0;
   try {
     const nRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(content, ''))), 0) AS s FROM notes WHERE user_id = ?").bind(userId).first();
@@ -2348,22 +2350,20 @@ async function getUserStorageDetails(db, userId) {
   const dataUsedMb = parseFloat((dataUsedBytes / (1024 * 1024)).toFixed(3));
 
   const totalPercentage = totalAllowedMb > 0 ? Math.min(100, parseFloat(((totalUsedMb / totalAllowedMb) * 100).toFixed(1))) : 0;
-  const filesPercentage = filesAllowedMb > 0 ? Math.min(100, parseFloat(((filesUsedMb / filesAllowedMb) * 100).toFixed(1))) : 0;
-  const dataPercentage = dataAllowedMb > 0 ? Math.min(100, parseFloat(((dataUsedMb / dataAllowedMb) * 100).toFixed(1))) : 0;
 
   return {
     userId,
     planName: quotaRow?.plan_name || 'gratuit',
     welcomeStorage: {
       totalMb: welcomeTotalMb,
-      filesMb: welcomeR2Mb,
-      dataMb: welcomeD1Mb,
+      filesMb: Math.round(welcomeTotalMb / 3),
+      dataMb: Math.round((welcomeTotalMb * 2) / 3),
       formatted: `${welcomeTotalMb} Mo`
     },
     paidStorage: {
       totalMb: paidTotalMb,
-      filesMb: paidR2Mb,
-      dataMb: paidD1Mb,
+      filesMb: Math.round(paidTotalMb / 2),
+      dataMb: Math.round(paidTotalMb / 2),
       formatted: `${paidTotalMb} Mo`
     },
     bonusStorage: {
@@ -2383,9 +2383,9 @@ async function getUserStorageDetails(db, userId) {
       usedBytes: filesUsedBytes,
       usedMb: filesUsedMb,
       usedFormatted: formatBytes(filesUsedBytes),
-      allowedMb: filesAllowedMb,
-      allowedFormatted: filesAllowedMb >= 1024 ? `${(filesAllowedMb / 1024).toFixed(1)} Go` : `${filesAllowedMb} Mo`,
-      percentage: filesPercentage,
+      allowedMb: totalAllowedMb,
+      allowedFormatted: totalAllowedMb >= 1024 ? `${(totalAllowedMb / 1024).toFixed(1)} Go` : `${totalAllowedMb} Mo`,
+      percentage: totalPercentage,
       freeNote: "Ressources publiques de la bibliothèque offertes sans décompte"
     },
     dataStorage: {
@@ -2395,10 +2395,10 @@ async function getUserStorageDetails(db, userId) {
       usedBytes: dataUsedBytes,
       usedMb: dataUsedMb,
       usedFormatted: formatBytes(dataUsedBytes),
-      allowedMb: dataAllowedMb,
-      allowedFormatted: dataAllowedMb >= 1024 ? `${(dataAllowedMb / 1024).toFixed(1)} Go` : `${dataAllowedMb} Mo`,
-      percentage: dataPercentage,
-      freeNote: "Messages de chat, vues et téléchargements offerts et illimités"
+      allowedMb: totalAllowedMb,
+      allowedFormatted: totalAllowedMb >= 1024 ? `${(totalAllowedMb / 1024).toFixed(1)} Go` : `${totalAllowedMb} Mo`,
+      percentage: totalPercentage,
+      freeNote: "Messages IA décomptés du quota global partagé"
     },
     wordsUsage: {
       name: "Mots d'étude & Génération IA",

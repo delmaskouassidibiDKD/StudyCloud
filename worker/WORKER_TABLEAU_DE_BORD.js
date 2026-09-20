@@ -77,24 +77,30 @@ async function ensureStorageTables(db) {
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS storage_global_config (
         id TEXT PRIMARY KEY DEFAULT 'default',
+        default_welcome_total_mb REAL DEFAULT 30.0,
         default_welcome_r2_mb REAL DEFAULT 10.0,
         default_welcome_d1_mb REAL DEFAULT 20.0,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
 
+    try { await db.prepare("ALTER TABLE storage_global_config ADD COLUMN default_welcome_total_mb REAL DEFAULT 30.0").run(); } catch (e) {}
+
     await db.prepare(`
-      INSERT OR IGNORE INTO storage_global_config (id, default_welcome_r2_mb, default_welcome_d1_mb)
-      VALUES ('default', 10.0, 20.0)
+      INSERT OR IGNORE INTO storage_global_config (id, default_welcome_total_mb, default_welcome_r2_mb, default_welcome_d1_mb)
+      VALUES ('default', 30.0, 10.0, 20.0)
     `).run();
 
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS user_storage_quotas (
         user_id TEXT PRIMARY KEY,
+        welcome_total_mb REAL DEFAULT 30.0,
         welcome_r2_mb REAL DEFAULT 10.0,
         welcome_d1_mb REAL DEFAULT 20.0,
+        paid_total_mb REAL DEFAULT 0.0,
         paid_r2_mb REAL DEFAULT 0.0,
         paid_d1_mb REAL DEFAULT 0.0,
+        bonus_total_mb REAL DEFAULT 0.0,
         bonus_r2_mb REAL DEFAULT 0.0,
         bonus_d1_mb REAL DEFAULT 0.0,
         plan_name TEXT DEFAULT 'gratuit',
@@ -104,6 +110,10 @@ async function ensureStorageTables(db) {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+
+    try { await db.prepare("ALTER TABLE user_storage_quotas ADD COLUMN welcome_total_mb REAL DEFAULT 30.0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_storage_quotas ADD COLUMN paid_total_mb REAL DEFAULT 0.0").run(); } catch (e) {}
+    try { await db.prepare("ALTER TABLE user_storage_quotas ADD COLUMN bonus_total_mb REAL DEFAULT 0.0").run(); } catch (e) {}
 
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS user_word_counts (
@@ -512,17 +522,21 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
   // 1. Quota personnalisé de l'utilisateur (ou initialisation par défaut)
   let quotaRow = await safeFirst(db, `SELECT * FROM user_storage_quotas WHERE user_id = ?`, [userId]);
   if (!quotaRow) {
+    const wTotal = globalConfig.default_welcome_total_mb || ((globalConfig.default_welcome_r2_mb || 10.0) + (globalConfig.default_welcome_d1_mb || 20.0));
     const wR2 = globalConfig.default_welcome_r2_mb || 10.0;
     const wD1 = globalConfig.default_welcome_d1_mb || 20.0;
     await safeRun(db, `
-      INSERT OR IGNORE INTO user_storage_quotas (user_id, welcome_r2_mb, welcome_d1_mb, paid_r2_mb, paid_d1_mb, plan_name)
-      VALUES (?, ?, ?, 0.0, 0.0, 'gratuit')
-    `, [userId, wR2, wD1]);
+      INSERT OR IGNORE INTO user_storage_quotas (user_id, welcome_total_mb, welcome_r2_mb, welcome_d1_mb, paid_total_mb, paid_r2_mb, paid_d1_mb, plan_name)
+      VALUES (?, ?, ?, ?, 0.0, 0.0, 0.0, 'gratuit')
+    `, [userId, wTotal, wR2, wD1]);
     quotaRow = {
+      welcome_total_mb: wTotal,
       welcome_r2_mb: wR2,
       welcome_d1_mb: wD1,
+      paid_total_mb: 0.0,
       paid_r2_mb: 0.0,
       paid_d1_mb: 0.0,
+      bonus_total_mb: 0.0,
       bonus_r2_mb: 0.0,
       bonus_d1_mb: 0.0,
       plan_name: 'gratuit',
@@ -530,18 +544,17 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
     };
   }
 
+  const welcomeTotalMb = Number(quotaRow.welcome_total_mb ?? (Number(quotaRow.welcome_r2_mb || 10.0) + Number(quotaRow.welcome_d1_mb || 20.0)));
   const welcomeR2Mb = Number(quotaRow.welcome_r2_mb ?? 10.0);
   const welcomeD1Mb = Number(quotaRow.welcome_d1_mb ?? 20.0);
-  const welcomeTotalMb = welcomeR2Mb + welcomeD1Mb;
 
+  const paidTotalMb = Number(quotaRow.paid_total_mb ?? (Number(quotaRow.paid_r2_mb || 0.0) + Number(quotaRow.paid_d1_mb || 0.0)));
   const paidR2Mb = Number(quotaRow.paid_r2_mb ?? 0.0);
   const paidD1Mb = Number(quotaRow.paid_d1_mb ?? 0.0);
-  const paidTotalMb = paidR2Mb + paidD1Mb;
 
-  const bonusR2Mb = Number(quotaRow.bonus_r2_mb ?? 0.0);
-  const bonusD1Mb = Number(quotaRow.bonus_d1_mb ?? 0.0);
+  const bonusTotalMb = Number(quotaRow.bonus_total_mb ?? (Number(quotaRow.bonus_r2_mb || 0.0) + Number(quotaRow.bonus_d1_mb || 0.0)));
 
-  const totalAllowedMb = welcomeTotalMb + paidTotalMb + bonusR2Mb + bonusD1Mb;
+  const totalAllowedMb = welcomeTotalMb + paidTotalMb + bonusTotalMb;
   const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
 
   // 2. FICHIERS PERSONNELS & MATIERES (R2 via Table files)
@@ -809,7 +822,6 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
         exemptD1Rows,
         items: [
           { name: "Ressources publiques dans le menu Ressources (R2 + D1)", bytes: exemptR2Bytes + pubDocsD1Bytes, formatted: formatBytes(exemptR2Bytes + pubDocsD1Bytes), icon: "📚" },
-          { name: "Table des messages reçus & Chat d'assistance", bytes: messagesD1Bytes, formatted: formatBytes(messagesD1Bytes), icon: "💬" },
           { name: "Nombre de vues des fichiers", bytes: viewsD1Bytes, formatted: formatBytes(viewsD1Bytes), icon: "👁️" },
           { name: "Nombre de téléchargements (Fichiers & Liens partagés)", bytes: downloadsD1Bytes, formatted: formatBytes(downloadsD1Bytes), icon: "⬇️" },
           { name: "Table de stockage des nombres de mots de l'utilisateur", bytes: wordCountD1Bytes, formatted: formatBytes(wordCountD1Bytes), icon: "📝" }
@@ -1256,27 +1268,21 @@ function renderDashboardHtml(data) {
             <h4 class="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
               <span>🎁</span> Paramètres Globaux : Stockage de Bienvenue Automatique à l'Inscription
             </h4>
-            <p class="text-[11px] text-slate-400 mt-0.5">Ce qui est configuré ici est automatiquement attribué à tout nouvel utilisateur lors de son inscription.</p>
+            <p class="text-[11px] text-slate-400 mt-0.5">Quota global attribué automatiquement à tout nouvel utilisateur (partagé librement entre fichiers et base de données, sans limiteur individuel).</p>
           </div>
 
           <div class="flex items-center gap-2 flex-wrap">
             <div class="flex items-center gap-1 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">
-              <span class="text-[10px] text-slate-400 font-bold">R2 :</span>
-              <input type="number" id="global-cfg-r2" class="w-16 bg-slate-900 text-orange-400 font-bold font-mono text-xs px-1.5 py-0.5 rounded border border-slate-600 text-center" value="${data.globalConfig?.default_welcome_r2_mb ?? 10}">
-              <span class="text-[10px] text-slate-400">Mo</span>
-            </div>
-
-            <div class="flex items-center gap-1 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">
-              <span class="text-[10px] text-slate-400 font-bold">D1 :</span>
-              <input type="number" id="global-cfg-d1" class="w-16 bg-slate-900 text-emerald-400 font-bold font-mono text-xs px-1.5 py-0.5 rounded border border-slate-600 text-center" value="${data.globalConfig?.default_welcome_d1_mb ?? 20}">
-              <span class="text-[10px] text-slate-400">Mo</span>
+              <span class="text-[10px] text-slate-400 font-bold">Quota Global Bienvenue :</span>
+              <input type="number" id="global-cfg-total" class="w-20 bg-slate-900 text-orange-400 font-bold font-mono text-xs px-2 py-0.5 rounded border border-slate-600 text-center" value="${data.globalConfig?.default_welcome_total_mb ?? ((data.globalConfig?.default_welcome_r2_mb ?? 10) + (data.globalConfig?.default_welcome_d1_mb ?? 20))}">
+              <span class="text-[10px] text-slate-400 font-bold">Mo</span>
             </div>
 
             <button 
               onclick="saveGlobalWelcomeConfig()" 
-              class="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-orange-600/20 active:scale-95 cursor-pointer"
+              class="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-orange-600/20 active:scale-95 cursor-pointer flex items-center gap-1.5"
             >
-              Enregistrer pour tous
+              <span>💾</span> Enregistrer pour tous
             </button>
           </div>
         </div>
@@ -1739,35 +1745,43 @@ function renderDashboardHtml(data) {
           </div>
         </div>
 
-        <!-- 3 BARRES DE PROGRESSION PERSONNELLES POUR CET UTILISATEUR -->
-        <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800 space-y-2 text-xs">
+        <!-- BARRE DE PROGRESSION UNIQUE SUR LE QUOTA TOTAL (SANS LIMITEUR SÉPARÉ D1/R2) -->
+        <div class="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 space-y-3 text-xs">
           <div class="space-y-1">
             <div class="flex justify-between text-[11px]">
-              <span class="text-slate-300 font-semibold">\${isNet ? 'Stockage Réel Facturable (R2 + D1)' : 'Stockage Brut Total (R2 + D1)'}</span>
+              <span class="text-slate-300 font-bold">\${isNet ? 'Stockage Global Réel Utilisé (Fichiers R2 + Données D1)' : 'Stockage Brut Global (R2 + D1)'}</span>
               <span class="font-mono text-orange-400 font-bold">\${displayTotalFormatted} / \${q.totalAllowedFormatted} (\${displayUsagePercentage}%)</span>
             </div>
-            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div class="h-full bg-orange-500 rounded-full transition-all duration-300" style="width: \${Math.max(1, displayUsagePercentage)}%"></div>
+            <div class="w-full h-3 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
+              <div class="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-orange-500 rounded-full transition-all duration-500" style="width: \${Math.max(1, Math.min(100, displayUsagePercentage))}%"></div>
+            </div>
+            <div class="text-[10px] text-slate-400 flex items-center justify-between pt-0.5">
+              <span>0 Mo</span>
+              <span class="text-emerald-400 font-medium">Partage libre • R2 et D1 puisent dans le même réservoir sans plafond individuel</span>
+              <span>\${q.totalAllowedFormatted}</span>
             </div>
           </div>
 
-          <div class="space-y-1">
-            <div class="flex justify-between text-[11px]">
-              <span class="text-slate-300 font-semibold">\${isNet ? 'Stockage R2 Personnel' : 'Stockage R2 Total (avec ressources publiques)'}</span>
-              <span class="font-mono text-blue-400 font-bold">\${displayR2Formatted}</span>
+          <!-- Détails de consommation réelle par stockage (Affichage simple sans limiteur) -->
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-800/80">
+            <div class="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between">
+              <div>
+                <span class="text-[10px] text-slate-400 uppercase font-bold block">Documents & Fichiers (R2)</span>
+                <span class="font-mono font-bold text-blue-400 text-xs">\${displayR2Formatted}</span>
+              </div>
+              <span class="text-[10px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                Sur quota global
+              </span>
             </div>
-            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div class="h-full bg-blue-500 rounded-full transition-all duration-300" style="width: \${Math.max(1, Math.min(100, (displayR2Bytes / (1024 * 1024 * 1024)) * 100))}%"></div>
-            </div>
-          </div>
 
-          <div class="space-y-1">
-            <div class="flex justify-between text-[11px]">
-              <span class="text-slate-300 font-semibold">\${isNet ? 'Base D1 Personnelle' : 'Base D1 Totale (avec messages et compteurs)'}</span>
-              <span class="font-mono text-emerald-400 font-bold">\${displayD1Formatted} (\${displayD1Rows} lignes)</span>
-            </div>
-            <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div class="h-full bg-emerald-500 rounded-full transition-all duration-300" style="width: \${Math.max(1, Math.min(100, (displayD1Bytes / (50 * 1024 * 1024)) * 100))}%"></div>
+            <div class="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between">
+              <div>
+                <span class="text-[10px] text-slate-400 uppercase font-bold block">Données & Base SQLite (D1)</span>
+                <span class="font-mono font-bold text-emerald-400 text-xs">\${displayD1Formatted} (\${displayD1Rows} lignes)</span>
+              </div>
+              <span class="text-[10px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
+                Sur quota global
+              </span>
             </div>
           </div>
         </div>
@@ -1952,8 +1966,8 @@ function renderDashboardHtml(data) {
               <span class="text-xs font-mono font-bold text-blue-400">\${q.welcomeTotalMb} Mo</span>
             </div>
             <div class="text-[11px] text-slate-300 mt-2 space-y-0.5 font-mono">
-              <div>R2 : <strong class="text-blue-400">\${q.welcomeR2Mb} Mo</strong></div>
-              <div>D1 : <strong class="text-blue-400">\${q.welcomeD1Mb} Mo</strong></div>
+              <div class="text-blue-300 font-sans text-[11px]">Quota offert à l'inscription</div>
+              <div class="text-[10px] text-slate-400">Partage libre fichiers & données</div>
             </div>
           </div>
 
@@ -1963,8 +1977,8 @@ function renderDashboardHtml(data) {
               <span class="text-xs font-mono font-bold text-emerald-400">\${q.paidTotalMb} Mo</span>
             </div>
             <div class="text-[11px] text-slate-300 mt-2 space-y-0.5 font-mono">
-              <div>R2 : <strong class="text-emerald-400">\${q.paidR2Mb} Mo</strong></div>
-              <div>D1 : <strong class="text-emerald-400">\${q.paidD1Mb} Mo</strong></div>
+              <div class="text-emerald-300 font-sans text-[11px]">Stockage additionnel payé</div>
+              <div class="text-[10px] text-slate-400">Partage libre fichiers & données</div>
             </div>
           </div>
 
@@ -2009,43 +2023,33 @@ function renderDashboardHtml(data) {
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-4 text-xs">
             <!-- Modification Stockage Bienvenue -->
             <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-y-2">
-              <span class="text-blue-400 font-bold block text-xs">1. Stockage de Bienvenue (Mo) :</span>
-              
+              <span class="text-blue-400 font-bold block text-xs">1. Stockage de Bienvenue Global (Mo) :</span>
               <div class="flex items-center justify-between gap-2">
-                <label class="text-slate-400">R2 Bienvenue :</label>
-                <input type="number" id="user-edit-w-r2" class="w-24 bg-slate-900 text-white font-mono text-xs px-2 py-1 rounded border border-slate-700 text-center" value="\${q.welcomeR2Mb}">
+                <label class="text-slate-400">Quota Offert :</label>
+                <input type="number" id="user-edit-w-total" class="w-28 bg-slate-900 text-white font-mono text-xs px-2.5 py-1 rounded border border-slate-700 text-center" value="\${q.welcomeTotalMb}">
               </div>
-
-              <div class="flex items-center justify-between gap-2">
-                <label class="text-slate-400">D1 Bienvenue :</label>
-                <input type="number" id="user-edit-w-d1" class="w-24 bg-slate-900 text-white font-mono text-xs px-2 py-1 rounded border border-slate-700 text-center" value="\${q.welcomeD1Mb}">
-              </div>
+              <p class="text-[10px] text-slate-500">Partage libre entre documents (R2) et base (D1)</p>
             </div>
 
             <!-- Modification Stockage Payant -->
             <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-y-2">
               <span class="text-emerald-400 font-bold block text-xs">2. Stockage Payant Additionnel (Mo) :</span>
-              
               <div class="flex items-center justify-between gap-2">
-                <label class="text-slate-400">R2 Payant :</label>
-                <input type="number" id="user-edit-p-r2" class="w-24 bg-slate-900 text-white font-mono text-xs px-2 py-1 rounded border border-slate-700 text-center" value="\${q.paidR2Mb}">
+                <label class="text-slate-400">Quota Acheté :</label>
+                <input type="number" id="user-edit-p-total" class="w-28 bg-slate-900 text-white font-mono text-xs px-2.5 py-1 rounded border border-slate-700 text-center" value="\${q.paidTotalMb}">
               </div>
-
-              <div class="flex items-center justify-between gap-2">
-                <label class="text-slate-400">D1 Payant :</label>
-                <input type="number" id="user-edit-p-d1" class="w-24 bg-slate-900 text-white font-mono text-xs px-2 py-1 rounded border border-slate-700 text-center" value="\${q.paidD1Mb}">
-              </div>
+              <p class="text-[10px] text-slate-500">Ajouté au stockage total de l'utilisateur</p>
             </div>
           </div>
 
-          <div class="flex items-center justify-between pt-2">
+          <div class="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 pt-2">
             <div class="text-[11px] text-slate-400">
-              * La somme (Bienvenue + Payant) formera le nouveau quota total de l'utilisateur.
+              * D1 et R2 ne sont pas limités séparément : seul le <strong>total des deux</strong> est décompté du quota.
             </div>
 
             <button 
               onclick="saveUserQuota('\${u.id}')"
-              class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer"
+              class="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-bold text-xs rounded-xl shadow-lg shadow-emerald-600/30 flex items-center gap-1.5 transition-all active:scale-95 cursor-pointer shrink-0"
             >
               <span>💾</span> Enregistrer le Stockage de cet Utilisateur
             </button>
@@ -2055,10 +2059,8 @@ function renderDashboardHtml(data) {
     }
 
     async function saveUserQuota(userId) {
-      const wR2 = parseFloat(document.getElementById('user-edit-w-r2').value) || 0;
-      const wD1 = parseFloat(document.getElementById('user-edit-w-d1').value) || 0;
-      const pR2 = parseFloat(document.getElementById('user-edit-p-r2').value) || 0;
-      const pD1 = parseFloat(document.getElementById('user-edit-p-d1').value) || 0;
+      const wTotal = parseFloat(document.getElementById('user-edit-w-total').value) || 0;
+      const pTotal = parseFloat(document.getElementById('user-edit-p-total').value) || 0;
 
       try {
         const resp = await fetch('/api/storage/update-user-quota', {
@@ -2066,10 +2068,13 @@ function renderDashboardHtml(data) {
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
             userId,
-            welcomeR2Mb: wR2,
-            welcomeD1Mb: wD1,
-            paidR2Mb: pR2,
-            paidD1Mb: pD1
+            welcomeTotalMb: wTotal,
+            welcomeR2Mb: Math.round(wTotal / 3),
+            welcomeD1Mb: Math.round((wTotal * 2) / 3),
+            paidTotalMb: pTotal,
+            paidR2Mb: Math.round(pTotal / 2),
+            paidD1Mb: Math.round(pTotal / 2),
+            planName: pTotal > 0 ? 'payant' : 'gratuit'
           })
         });
 
@@ -2077,21 +2082,23 @@ function renderDashboardHtml(data) {
         if (data.success) {
           const item = allUsers.find(x => x.user.id === userId);
           if (item) {
-            item.quotaConfig.welcomeR2Mb = wR2;
-            item.quotaConfig.welcomeD1Mb = wD1;
-            item.quotaConfig.welcomeTotalMb = wR2 + wD1;
-            item.quotaConfig.paidR2Mb = pR2;
-            item.quotaConfig.paidD1Mb = pD1;
-            item.quotaConfig.paidTotalMb = pR2 + pD1;
-            const totalMb = wR2 + wD1 + pR2 + pD1;
+            item.quotaConfig.welcomeTotalMb = wTotal;
+            item.quotaConfig.welcomeR2Mb = Math.round(wTotal / 3);
+            item.quotaConfig.welcomeD1Mb = Math.round((wTotal * 2) / 3);
+            item.quotaConfig.paidTotalMb = pTotal;
+            item.quotaConfig.paidR2Mb = Math.round(pTotal / 2);
+            item.quotaConfig.paidD1Mb = Math.round(pTotal / 2);
+            const totalMb = wTotal + pTotal;
             item.quotaConfig.totalAllowedMb = totalMb;
             item.quotaConfig.totalAllowedFormatted = totalMb >= 1024 ? (totalMb / 1024).toFixed(2) + ' Go' : totalMb.toFixed(0) + ' Mo';
             item.quotaConfig.totalAllowedBytes = totalMb * 1024 * 1024;
+            item.quotaConfig.planName = pTotal > 0 ? 'payant' : 'gratuit';
             item.storage.usagePercentage = item.quotaConfig.totalAllowedBytes > 0 
               ? Math.min(100, parseFloat(((item.storage.totalBytes / item.quotaConfig.totalAllowedBytes) * 100).toFixed(2)))
               : 0;
+            if (item.storage.net) item.storage.net.usagePercentage = item.storage.usagePercentage;
           }
-          showToast("Stockage mis à jour avec succès dans D1 !");
+          showToast("Stockage mis à jour (" + (wTotal + pTotal) + " Mo total) !");
           renderDemandesUsersList();
           renderDemandeRightDetails(userId);
           if (currentView === 'users') {
@@ -2107,24 +2114,25 @@ function renderDashboardHtml(data) {
     }
 
     async function saveGlobalWelcomeConfig() {
-      const defR2 = parseFloat(document.getElementById('global-cfg-r2').value) || 10;
-      const defD1 = parseFloat(document.getElementById('global-cfg-d1').value) || 20;
+      const defTotal = parseFloat(document.getElementById('global-cfg-total').value) || 30;
 
       try {
         const resp = await fetch('/api/storage/update-global-config', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
           body: JSON.stringify({
-            defaultWelcomeR2Mb: defR2,
-            defaultWelcomeD1Mb: defD1
+            defaultWelcomeTotalMb: defTotal,
+            defaultWelcomeR2Mb: Math.round(defTotal / 3),
+            defaultWelcomeD1Mb: Math.round((defTotal * 2) / 3)
           })
         });
 
         const data = await resp.json();
         if (data.success) {
-          globalConfig.default_welcome_r2_mb = defR2;
-          globalConfig.default_welcome_d1_mb = defD1;
-          showToast("Stockage de bienvenue par défaut enregistré (" + defR2 + " Mo R2 + " + defD1 + " Mo D1) !");
+          globalConfig.default_welcome_total_mb = defTotal;
+          globalConfig.default_welcome_r2_mb = Math.round(defTotal / 3);
+          globalConfig.default_welcome_d1_mb = Math.round((defTotal * 2) / 3);
+          showToast("Stockage global de bienvenue enregistré (" + defTotal + " Mo total partagé) !");
         } else {
           alert('Erreur: ' + (data.error || 'Échec'));
         }
@@ -2198,19 +2206,21 @@ export default {
       // ----------------------------------------------------------------------
       if (request.method === 'POST' && path === '/api/storage/update-global-config') {
         const body = await request.json();
-        const defR2 = Number(body.defaultWelcomeR2Mb ?? 10.0);
-        const defD1 = Number(body.defaultWelcomeD1Mb ?? 20.0);
+        const defTotal = Number(body.defaultWelcomeTotalMb ?? 30.0);
+        const defR2 = Number(body.defaultWelcomeR2Mb ?? Math.round(defTotal / 3));
+        const defD1 = Number(body.defaultWelcomeD1Mb ?? Math.round((defTotal * 2) / 3));
 
         await safeRun(db, `
-          INSERT INTO storage_global_config (id, default_welcome_r2_mb, default_welcome_d1_mb, updated_at)
-          VALUES ('default', ?, ?, CURRENT_TIMESTAMP)
+          INSERT INTO storage_global_config (id, default_welcome_total_mb, default_welcome_r2_mb, default_welcome_d1_mb, updated_at)
+          VALUES ('default', ?, ?, ?, CURRENT_TIMESTAMP)
           ON CONFLICT(id) DO UPDATE SET
+            default_welcome_total_mb = excluded.default_welcome_total_mb,
             default_welcome_r2_mb = excluded.default_welcome_r2_mb,
             default_welcome_d1_mb = excluded.default_welcome_d1_mb,
             updated_at = CURRENT_TIMESTAMP
-        `, [defR2, defD1]);
+        `, [defTotal, defR2, defD1]);
 
-        return new Response(JSON.stringify({ success: true, defaultWelcomeR2Mb: defR2, defaultWelcomeD1Mb: defD1 }), {
+        return new Response(JSON.stringify({ success: true, defaultWelcomeTotalMb: defTotal, defaultWelcomeR2Mb: defR2, defaultWelcomeD1Mb: defD1 }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });
@@ -2226,32 +2236,34 @@ export default {
           return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
         }
 
-        const wR2 = Number(body.welcomeR2Mb ?? 10.0);
-        const wD1 = Number(body.welcomeD1Mb ?? 20.0);
-        const pR2 = Number(body.paidR2Mb ?? 0.0);
-        const pD1 = Number(body.paidD1Mb ?? 0.0);
-        const planName = body.planName || (pR2 > 0 || pD1 > 0 ? 'payant' : 'gratuit');
+        const wTotal = Number(body.welcomeTotalMb ?? ((Number(body.welcomeR2Mb || 10)) + (Number(body.welcomeD1Mb || 20))));
+        const wR2 = Number(body.welcomeR2Mb ?? Math.round(wTotal / 3));
+        const wD1 = Number(body.welcomeD1Mb ?? Math.round((wTotal * 2) / 3));
+        const pTotal = Number(body.paidTotalMb ?? ((Number(body.paidR2Mb || 0)) + (Number(body.paidD1Mb || 0))));
+        const pR2 = Number(body.paidR2Mb ?? Math.round(pTotal / 2));
+        const pD1 = Number(body.paidD1Mb ?? Math.round(pTotal / 2));
+        const planName = body.planName || (pTotal > 0 ? 'payant' : 'gratuit');
 
         await safeRun(db, `
-          INSERT INTO user_storage_quotas (user_id, welcome_r2_mb, welcome_d1_mb, paid_r2_mb, paid_d1_mb, plan_name, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          INSERT INTO user_storage_quotas (user_id, welcome_total_mb, welcome_r2_mb, welcome_d1_mb, paid_total_mb, paid_r2_mb, paid_d1_mb, plan_name, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
           ON CONFLICT(user_id) DO UPDATE SET
+            welcome_total_mb = excluded.welcome_total_mb,
             welcome_r2_mb = excluded.welcome_r2_mb,
             welcome_d1_mb = excluded.welcome_d1_mb,
+            paid_total_mb = excluded.paid_total_mb,
             paid_r2_mb = excluded.paid_r2_mb,
             paid_d1_mb = excluded.paid_d1_mb,
             plan_name = excluded.plan_name,
             updated_at = CURRENT_TIMESTAMP
-        `, [userId, wR2, wD1, pR2, pD1, planName]);
+        `, [userId, wTotal, wR2, wD1, pTotal, pR2, pD1, planName]);
 
         return new Response(JSON.stringify({ 
           success: true, 
           userId, 
-          welcomeR2Mb: wR2, 
-          welcomeD1Mb: wD1, 
-          paidR2Mb: pR2, 
-          paidD1Mb: pD1, 
-          totalMb: wR2 + wD1 + pR2 + pD1 
+          welcomeTotalMb: wTotal,
+          paidTotalMb: pTotal,
+          totalMb: wTotal + pTotal 
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
