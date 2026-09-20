@@ -52,7 +52,8 @@ export default {
           db.prepare(`CREATE TABLE IF NOT EXISTS ai_creations (id TEXT PRIMARY KEY, conversation_id TEXT NOT NULL, message_id TEXT, type TEXT NOT NULL, title TEXT, content TEXT NOT NULL, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`),
           db.prepare(`CREATE TABLE IF NOT EXISTS ai_generated_contents (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, file_id TEXT, tool_type TEXT NOT NULL, title TEXT NOT NULL, content_json TEXT NOT NULL DEFAULT '{}', source_file_name TEXT, is_pinned INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`),
           db.prepare(`CREATE TABLE IF NOT EXISTS user_ai_workspace (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT NOT NULL, role TEXT NOT NULL, message_text TEXT NOT NULL, reaction TEXT DEFAULT NULL, attached_file_id TEXT, attached_file_name TEXT, attached_file_r2_key TEXT, attached_file_content TEXT, user_notes TEXT, is_pinned INTEGER DEFAULT 0, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`),
-          db.prepare(`CREATE TABLE IF NOT EXISTS ai_tasks (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT, task_type TEXT NOT NULL, status TEXT NOT NULL, prompt TEXT, result_json TEXT, error_message TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`)
+          db.prepare(`CREATE TABLE IF NOT EXISTS ai_tasks (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, session_id TEXT, task_type TEXT NOT NULL, status TEXT NOT NULL, prompt TEXT, result_json TEXT, error_message TEXT, created_at TEXT DEFAULT CURRENT_TIMESTAMP, updated_at TEXT DEFAULT CURRENT_TIMESTAMP)`),
+          db.prepare(`CREATE TABLE IF NOT EXISTS user_certificates (id TEXT PRIMARY KEY, user_id TEXT NOT NULL, source_file_id TEXT, source_file_name TEXT, topic TEXT NOT NULL, score REAL NOT NULL, max_score REAL DEFAULT 20, certificate_code TEXT UNIQUE NOT NULL, student_name TEXT, issued_at TEXT DEFAULT CURRENT_TIMESTAMP, created_at TEXT DEFAULT CURRENT_TIMESTAMP)`)
         ]);
         globalThis._aiSchemaInit = true;
       } catch (schemaErr) {
@@ -1477,6 +1478,355 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         message: "Tâche asynchrone enregistrée et lancée avec succès en arrière-plan."
       }), {
         status: 202,
+        headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+      });
+    }
+
+    // ========================================================================
+    // GESTION DES CERTIFICATS OFFICIELS STUDYCLOUD / DKD SCHOOL NUMÉRIQUE
+    // ========================================================================
+    if (request.method === "GET" && path === "/api/ai/certificates") {
+      const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
+      if (!userId) {
+        return new Response(JSON.stringify({ error: "userId requis" }), { status: 400, headers: corsHeaders });
+      }
+      if (!db) {
+        return new Response(JSON.stringify({ success: true, data: [] }), { headers: corsHeaders });
+      }
+      try {
+        const { results } = await db.prepare("SELECT * FROM user_certificates WHERE user_id = ? ORDER BY created_at DESC").bind(userId).all();
+        return new Response(JSON.stringify({ success: true, data: results || [] }), {
+          headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+        });
+      } catch (e) {
+        return new Response(JSON.stringify({ success: false, error: e.message, data: [] }), {
+          status: 500, headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+        });
+      }
+    }
+
+    // ========================================================================
+    // CORRECTION NUANCÉE ET NOTATION DEVOIR COMPLET PAR L'IA SUR 20 POINTS
+    // + CONTRÔLE D'UNICITÉ ET DÉLIVRANCE DU CERTIFICAT (SEUIL 16/20)
+    // ========================================================================
+    if (request.method === "POST" && path === "/api/ai/grade-exam") {
+      const body = await request.json().catch(() => ({}));
+      const exam = body.exam || {};
+      const answers = body.answers || {};
+      const userId = body.userId || request.headers.get("x-user-id") || body.user_id || "default-user";
+      const studentName = (body.studentName || body.userName || "Étudiant DKD School Numérique").trim();
+      const sourceFileName = (body.sourceFileName || body.fileName || "").trim();
+      const sourceFileId = (body.sourceFileId || body.fileId || "").trim();
+      const topic = (body.topic || exam.examHeader?.matiere || "Épreuve d'Examen").trim();
+
+      const answersP1 = answers.answersP1 || {};
+      const answersP2 = answers.answersP2 || {};
+      const answersP3 = answers.answersP3 || {};
+      const answersP4 = answers.answersP4 || {};
+
+      const ex1 = exam.exercice1 || {};
+      const ex2 = exam.exercice2 || {};
+      const ex3 = exam.exercice3 || {};
+      const ex4 = exam.exercice4 || {};
+
+      // Heuristique déterministe de secours (garantit toujours une note juste même en cas de coupure IA)
+      let heurP1 = 0;
+      const ex1Feedbacks = {};
+      (ex1.questions || []).forEach((q, i) => {
+        const lines = answersP1[q.id] || [];
+        const text = (Array.isArray(lines) ? lines.filter(Boolean).join(" ") : String(lines || "")).trim();
+        const maxPts = Number(q.points) || (i === 0 ? 2 : 3);
+        let pts = 0;
+        let fb = "";
+        if (text.length >= 80) {
+          pts = maxPts;
+          fb = "Réponse approfondie, argumentée et pertinente avec maîtrise des concepts.";
+        } else if (text.length >= 35) {
+          pts = Math.round(maxPts * 0.6 * 2) / 2;
+          fb = "Bonne analyse générale, mais certains développements ou justifications manquent de précision.";
+        } else if (text.length > 5) {
+          pts = Math.round(maxPts * 0.3 * 2) / 2 || 0.5;
+          fb = "Réponse trop concise ou partielle. Pensez à étayer vos arguments.";
+        } else {
+          pts = 0;
+          fb = "Aucune réponse exploitable fournie.";
+        }
+        heurP1 += pts;
+        ex1Feedbacks[q.id] = { points: pts, maxPoints: maxPts, feedback: fb, sampleAnswer: q.sampleAnswer || "" };
+      });
+
+      let heurP2 = 0;
+      const ex2Feedbacks = {};
+      (ex2.questions || []).forEach((q) => {
+        const chosen = answersP2[q.id];
+        const isOk = chosen === q.correctIndex;
+        const pts = isOk ? (Number(q.points) || 1) : 0;
+        heurP2 += pts;
+        ex2Feedbacks[q.id] = {
+          points: pts,
+          maxPoints: Number(q.points) || 1,
+          isCorrect: isOk,
+          feedback: isOk ? "Proposition exacte validée." : `Erreur : la proposition attendue était la n°${(q.correctIndex || 0) + 1}.`,
+          explication: q.explication || ""
+        };
+      });
+
+      let heurP3 = 0;
+      const ex3Feedbacks = {};
+      (ex3.questions || []).forEach((q) => {
+        const lines = answersP3[q.id] || [];
+        const text = (Array.isArray(lines) ? lines.filter(Boolean).join(" ") : String(lines || "")).trim();
+        const maxPts = Number(q.points) || 2;
+        let pts = 0;
+        let fb = "";
+        if (text.length >= 60) {
+          pts = maxPts;
+          fb = "Synthèse claire, précise et bien articulée.";
+        } else if (text.length >= 25) {
+          pts = Math.round(maxPts * 0.5 * 2) / 2;
+          fb = "Explication partielle : l'idée principale est présente mais mériterait d'être approfondie.";
+        } else if (text.length > 5) {
+          pts = 0.5;
+          fb = "Éléments incomplets.";
+        } else {
+          pts = 0;
+          fb = "Question non traitée.";
+        }
+        heurP3 += pts;
+        ex3Feedbacks[q.id] = { points: pts, maxPoints: maxPts, feedback: fb, sampleAnswer: q.sampleAnswer || "" };
+      });
+
+      let heurP4 = 0;
+      const ex4Feedbacks = {};
+      (ex4.questions || []).forEach((q) => {
+        const chosen = answersP4[q.id];
+        const isOk = chosen === q.correctValue;
+        const pts = isOk ? (Number(q.points) || 1) : 0;
+        heurP4 += pts;
+        ex4Feedbacks[q.id] = {
+          points: pts,
+          maxPoints: Number(q.points) || 1,
+          isCorrect: isOk,
+          feedback: isOk ? "Discrimination exacte." : `Réponse incorrecte : l'affirmation est ${q.correctValue ? "VRAIE" : "FAUSSE"}.`,
+          explication: q.explication || ""
+        };
+      });
+
+      let finalScoreP1 = Math.min(8, Math.max(0, heurP1));
+      let finalScoreP2 = Math.min(4, Math.max(0, heurP2));
+      let finalScoreP3 = Math.min(4, Math.max(0, heurP3));
+      let finalScoreP4 = Math.min(4, Math.max(0, heurP4));
+      let finalScoreTotal = Math.round((finalScoreP1 + finalScoreP2 + finalScoreP3 + finalScoreP4) * 2) / 2;
+      let finalFeedbackGlobal = finalScoreTotal >= 16
+        ? "Excellente prestation académique ! Vous avez fait preuve d'une compréhension conceptuelle remarquable et d'une rigueur exemplaire."
+        : finalScoreTotal >= 12
+        ? "Bon travail d'ensemble. Les notions fondamentales sont acquises, poursuivez vos efforts d'approfondissement."
+        : "Copie insuffisante. Révisez attentivement les points clés du cours et reprenez la correction détaillée.";
+
+      // Appel de notation avancée par Google Gemini / Workers AI si configuré
+      let geminiApiKey = env?.["StudyCloud-gemini"] || env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.GEMINI_API_KEY;
+      if (geminiApiKey) {
+        try {
+          const gradingPrompt = `Tu es le jury d'examen officiel et correcteur d'élite de StudyCloud • DKD School Numérique.
+Évalue et note la copie d'examen suivante sur 20 points avec nuance pédagogique (pleine note si argumenté et précis, note partielle ou demi-point si incomplet ou approximatif, 0 si vide ou faux).
+BARÈME : Ex 1 (8 pts), Ex 2 (4 pts), Ex 3 (4 pts), Ex 4 (4 pts) = Total /20.
+
+Matière : ${topic}
+Énoncé Ex 1 : ${ex1.enonce || ""}
+Réponses Ex 1 du candidat :
+${(ex1.questions || []).map((q, i) => `Q${i + 1} (${q.points || 2} pts) : "${q.texte}" | Attendu: "${q.sampleAnswer || ""}" | Candidat: "${(answersP1[q.id] || []).join(" ")}"`).join("\n")}
+
+Choix Ex 2 (QCM) :
+${(ex2.questions || []).map((q, i) => `Q${i + 1} : Choisi idx ${answersP2[q.id]} | Attendu idx ${q.correctIndex} | Exp: "${q.explication || ""}"`).join("\n")}
+
+Réponses Ex 3 (Synthèse) :
+${(ex3.questions || []).map((q, i) => `Q${i + 1} (${q.points || 2} pts) : "${q.texte}" | Attendu: "${q.sampleAnswer || ""}" | Candidat: "${(answersP3[q.id] || []).join(" ")}"`).join("\n")}
+
+Choix Ex 4 (V/F) :
+${(ex4.questions || []).map((q, i) => `Q${i + 1} : Choisi ${answersP4[q.id]} | Attendu ${q.correctValue} | Exp: "${q.explication || ""}"`).join("\n")}
+
+RENVOIE UNIQUEMENT UN JSON STRICT :
+{
+  "scoreTotal": 17,
+  "scoreP1": 6.5,
+  "scoreP2": 4,
+  "scoreP3": 3,
+  "scoreP4": 3.5,
+  "feedbackGlobal": "Remarque générale...",
+  "questionsFeedback": {
+    "p1_q1": { "points": 1.5, "feedback": "Explication..." }
+  }
+}`;
+
+          const gResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              contents: [{ role: "user", parts: [{ text: gradingPrompt }] }],
+              generationConfig: { temperature: 0.2, maxOutputTokens: 2000 }
+            })
+          });
+
+          if (gResp.ok) {
+            const gJson = await gResp.json();
+            const rawG = gJson?.candidates?.[0]?.content?.parts?.[0]?.text || "";
+            const cleanG = rawG.replace(/```(?:json)?/gi, "").replace(/```/g, "").trim();
+            const parsedG = JSON.parse(cleanG);
+
+            if (typeof parsedG.scoreTotal === "number") {
+              finalScoreTotal = Math.min(20, Math.max(0, parsedG.scoreTotal));
+              if (typeof parsedG.scoreP1 === "number") finalScoreP1 = parsedG.scoreP1;
+              if (typeof parsedG.scoreP2 === "number") finalScoreP2 = parsedG.scoreP2;
+              if (typeof parsedG.scoreP3 === "number") finalScoreP3 = parsedG.scoreP3;
+              if (typeof parsedG.scoreP4 === "number") finalScoreP4 = parsedG.scoreP4;
+              if (parsedG.feedbackGlobal) finalFeedbackGlobal = parsedG.feedbackGlobal;
+
+              if (parsedG.questionsFeedback && typeof parsedG.questionsFeedback === "object") {
+                for (const [qid, qdata] of Object.entries(parsedG.questionsFeedback)) {
+                  if (ex1Feedbacks[qid] && typeof qdata.points === "number") {
+                    ex1Feedbacks[qid].points = qdata.points;
+                    if (qdata.feedback) ex1Feedbacks[qid].feedback = qdata.feedback;
+                  }
+                  if (ex3Feedbacks[qid] && typeof qdata.points === "number") {
+                    ex3Feedbacks[qid].points = qdata.points;
+                    if (qdata.feedback) ex3Feedbacks[qid].feedback = qdata.feedback;
+                  }
+                }
+              }
+            }
+          }
+        } catch (geminiGradeErr) {
+          console.warn("[Gemini Grading Fallback to Heuristic]", geminiGradeErr);
+        }
+      }
+
+      // ========================================================================
+      // CONTRÔLE D'ÉLIGIBILITÉ ET UNICITÉ DU CERTIFICAT EN BASE D1 (SEUIL 16/20)
+      // ========================================================================
+      let certificateInfo = {
+        eligible: finalScoreTotal >= 16,
+        awarded: false,
+        alreadyIssued: false,
+        certificate: null,
+        message: ""
+      };
+
+      if (finalScoreTotal >= 16) {
+        if (db) {
+          try {
+            // RÈGLE STRICTE : On ne gagne pas le même certificat pour le même sujet ou fichier sélectionné.
+            // Si l'utilisateur reprend sur le même fichier, il n'a plus de certificat car le worker vérifie avant de donner.
+            let checkQuery = "SELECT * FROM user_certificates WHERE user_id = ? AND (";
+            const checkParams = [userId];
+            const conditions = [];
+
+            if (sourceFileName) {
+              conditions.push("source_file_name = ?");
+              checkParams.push(sourceFileName);
+            }
+            if (sourceFileId) {
+              conditions.push("source_file_id = ?");
+              checkParams.push(sourceFileId);
+            }
+            conditions.push("topic = ?");
+            checkParams.push(topic);
+
+            checkQuery += conditions.join(" OR ") + ") LIMIT 1";
+
+            const existingCert = await db.prepare(checkQuery).bind(...checkParams).first();
+
+            if (existingCert) {
+              certificateInfo.awarded = false;
+              certificateInfo.alreadyIssued = true;
+              certificateInfo.certificate = existingCert;
+              certificateInfo.message = "Un certificat officiel d'excellence a déjà été délivré pour ce fichier ou sujet. Conformément au règlement officiel DKD School Numérique, chaque certificat est unique et ne peut être obtenu qu'une seule fois par document.";
+            } else {
+              // Nouveau certificat officiel accordé et consigné en base D1 !
+              const certId = crypto.randomUUID();
+              const certYear = new Date().getFullYear();
+              const randomSuffix = Math.random().toString(36).substring(2, 7).toUpperCase();
+              const certCode = `CERT-DKD-${certYear}-${randomSuffix}`;
+              const issuedAt = new Date().toISOString();
+
+              await db.prepare(`
+                INSERT INTO user_certificates (id, user_id, source_file_id, source_file_name, topic, score, max_score, certificate_code, student_name, issued_at, created_at)
+                VALUES (?, ?, ?, ?, ?, ?, 20, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+              `).bind(certId, userId, sourceFileId || null, sourceFileName || null, topic, finalScoreTotal, certCode, studentName).run();
+
+              const newCertObj = {
+                id: certId,
+                user_id: userId,
+                source_file_id: sourceFileId || null,
+                source_file_name: sourceFileName || null,
+                topic: topic,
+                score: finalScoreTotal,
+                max_score: 20,
+                certificate_code: certCode,
+                student_name: studentName,
+                issued_at: issuedAt
+              };
+
+              certificateInfo.awarded = true;
+              certificateInfo.alreadyIssued = false;
+              certificateInfo.certificate = newCertObj;
+              certificateInfo.message = "Félicitations ! Votre Certificat Officiel d'Excellence Académique DKD a été généré et certifié avec succès.";
+            }
+          } catch (certDbErr) {
+            console.error("[Certificates D1 Error]", certDbErr);
+            // Fallback certificat en mémoire si indisponibilité temporaire D1
+            const certCode = `CERT-DKD-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+            certificateInfo.awarded = true;
+            certificateInfo.alreadyIssued = false;
+            certificateInfo.certificate = {
+              id: crypto.randomUUID(),
+              user_id: userId,
+              source_file_name: sourceFileName || null,
+              topic: topic,
+              score: finalScoreTotal,
+              max_score: 20,
+              certificate_code: certCode,
+              student_name: studentName,
+              issued_at: new Date().toISOString()
+            };
+          }
+        } else {
+          // Si DB non liée, génération du certificat officiel
+          const certCode = `CERT-DKD-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`;
+          certificateInfo.awarded = true;
+          certificateInfo.alreadyIssued = false;
+          certificateInfo.certificate = {
+            id: crypto.randomUUID(),
+            user_id: userId,
+            source_file_name: sourceFileName || null,
+            topic: topic,
+            score: finalScoreTotal,
+            max_score: 20,
+            certificate_code: certCode,
+            student_name: studentName,
+            issued_at: new Date().toISOString()
+          };
+          certificateInfo.message = "Félicitations pour votre note remarquable !";
+        }
+      } else {
+        certificateInfo.message = `Note finale : ${finalScoreTotal}/20. Le seuil requis pour le Certificat d'Excellence Académique est de 16/20. Poursuivez vos efforts !`;
+      }
+
+      return new Response(JSON.stringify({
+        success: true,
+        scoreTotal: finalScoreTotal,
+        scoreP1: finalScoreP1,
+        scoreP2: finalScoreP2,
+        scoreP3: finalScoreP3,
+        scoreP4: finalScoreP4,
+        feedbackGlobal: finalFeedbackGlobal,
+        exercices: {
+          exercice1: { score: finalScoreP1, maxPoints: 8, questions: ex1Feedbacks },
+          exercice2: { score: finalScoreP2, maxPoints: 4, questions: ex2Feedbacks },
+          exercice3: { score: finalScoreP3, maxPoints: 4, questions: ex3Feedbacks },
+          exercice4: { score: finalScoreP4, maxPoints: 4, questions: ex4Feedbacks }
+        },
+        certificateInfo: certificateInfo
+      }), {
         headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
       });
     }

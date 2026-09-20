@@ -1276,4 +1276,93 @@ export const StudyCloudAPI = {
   },
 };
 
+/**
+ * Correction et notation officielle d'une épreuve d'examen par l'IA
+ * Transmet les réponses du candidat au Worker et évalue sur 20 points
+ * Délivre un certificat d'excellence unique si score >= 16/20
+ */
+export async function gradeExamPaper(payload: {
+  exam: any;
+  answers: any;
+  userId?: string;
+  studentName?: string;
+  sourceFileName?: string;
+  sourceFileId?: string;
+  topic?: string;
+}): Promise<{
+  success: boolean;
+  scoreTotal: number;
+  scoreP1: number;
+  scoreP2: number;
+  scoreP3: number;
+  scoreP4: number;
+  feedbackGlobal: string;
+  exercices: Record<string, any>;
+  certificateInfo: {
+    eligible: boolean;
+    awarded: boolean;
+    alreadyIssued: boolean;
+    certificate: any;
+    message: string;
+  };
+}> {
+  const currentUserId = payload.userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+  const currentUserName = payload.studentName || localStorage.getItem('unifolder_user_name') || 'Étudiant StudyCloud';
+  const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
+
+  const response = await fetch(`${dedicatedAiUrl}/api/ai/grade-exam`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      'x-user-id': currentUserId,
+    },
+    body: JSON.stringify({
+      ...payload,
+      userId: currentUserId,
+      studentName: currentUserName,
+    }),
+  });
+
+  if (!response.ok) {
+    const err = await response.json().catch(() => ({ error: response.statusText }));
+    throw new Error(err.error || `Erreur lors de la correction par l'IA (${response.status})`);
+  }
+
+  return await response.json();
+}
+
+/**
+ * Récupère les certificats officiels délivrés à l'utilisateur
+ */
+export async function getUserCertificates(userId?: string): Promise<{
+  success: boolean;
+  data: Array<{
+    id: string;
+    user_id: string;
+    source_file_id?: string;
+    source_file_name?: string;
+    topic: string;
+    score: number;
+    max_score: number;
+    certificate_code: string;
+    student_name: string;
+    issued_at: string;
+  }>;
+}> {
+  const currentUserId = userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+  const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
+
+  const response = await fetch(`${dedicatedAiUrl}/api/ai/certificates?userId=${encodeURIComponent(currentUserId)}`, {
+    headers: {
+      'x-user-id': currentUserId,
+    },
+  });
+
+  if (!response.ok) {
+    return { success: false, data: [] };
+  }
+
+  return await response.json();
+}
+
 

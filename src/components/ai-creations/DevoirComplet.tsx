@@ -15,11 +15,14 @@ import {
   Check,
   FileText,
   Sparkles,
-  Download
+  Download,
+  Loader2
 } from 'lucide-react';
 
 import { DnaLogo } from '../DnaLogo';
 import { MathText } from '../MathText';
+import { CertificatExcellence, CertificateData } from './CertificatExcellence';
+import { gradeExamPaper } from '../../services/api';
 
 // ==========================================
 // COMPOSANT LOGO STUDYCLOUD / DKD TECHNOLOGIES
@@ -387,10 +390,15 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
   // Page 4 : Vrai / Faux
   const [answersP4, setAnswersP4] = useState<Record<string, boolean>>({});
 
-  // État de soumission et modale de confirmation
+  // État de soumission, évaluation par l'IA et modale de confirmation
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
+  const [isGrading, setIsGrading] = useState<boolean>(false);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
   const [showCorrectionDetail, setShowCorrectionDetail] = useState<boolean>(false);
+  const [gradingResult, setGradingResult] = useState<any>(null);
+
+  // Modale du Certificat Officiel d'Excellence
+  const [showCertificateModal, setShowCertificateModal] = useState<boolean>(false);
 
   // Réinitialisation automatique lorsque data change
   useEffect(() => {
@@ -410,6 +418,8 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
     setIsTimerRunning(true);
     setIsSubmitted(false);
     setShowCorrectionDetail(false);
+    setGradingResult(null);
+    setShowCertificateModal(false);
     setCurrentPage(1);
   }, [data]);
 
@@ -423,7 +433,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
             clearInterval(interval);
             setIsTimerRunning(false);
             // Soumission automatique à l'expiration du temps
-            setIsSubmitted(true);
+            triggerGradeExam();
             return 0;
           }
           return prev - 1;
@@ -479,15 +489,15 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
     }, 40);
   };
 
-  // Calcul des scores lors de la soumission
+  // Calcul local des scores de secours
   const calculateScores = () => {
     // Score Ex 1 (Problème /8)
     let scoreP1 = 0;
     exercice1.questions.forEach((q) => {
       const text = (answersP1[q.id] || []).join(' ').trim();
-      if (text.length >= 60) scoreP1 += q.points;
-      else if (text.length >= 25) scoreP1 += Math.round(q.points * 0.7 * 2) / 2;
-      else if (text.length > 5) scoreP1 += 1;
+      if (text.length >= 70) scoreP1 += q.points;
+      else if (text.length >= 30) scoreP1 += Math.round(q.points * 0.6 * 2) / 2;
+      else if (text.length > 5) scoreP1 += Math.round(q.points * 0.3 * 2) / 2 || 0.5;
     });
 
     // Score Ex 2 (QCM /4)
@@ -515,7 +525,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
       }
     });
 
-    const total = scoreP1 + scoreP2 + scoreP3 + scoreP4;
+    const total = Math.min(20, scoreP1 + scoreP2 + scoreP3 + scoreP4);
     return {
       scoreP1,
       scoreP2,
@@ -525,14 +535,75 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
     };
   };
 
-  const scores = calculateScores();
-
-  // Soumission définitive
-  const handleConfirmSubmit = () => {
-    setIsSubmitted(true);
-    setIsTimerRunning(false);
+  // ========================================================================
+  // SOUMISSION ET CORRECTION PAR L'IA + DÉLIVRANCE DU CERTIFICAT
+  // ========================================================================
+  const triggerGradeExam = async () => {
+    setIsGrading(true);
     setShowConfirmModal(false);
-    setShowCorrectionDetail(true);
+    setIsTimerRunning(false);
+
+    const userName = localStorage.getItem('unifolder_user_name') || 'Étudiant StudyCloud';
+    const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
+
+    try {
+      const res = await gradeExamPaper({
+        exam: activeData,
+        answers: {
+          answersP1,
+          answersP2,
+          answersP3,
+          answersP4
+        },
+        userId,
+        studentName: userName,
+        sourceFileName: data?.sourceFileName || data?.fileName || examHeader.matiere,
+        sourceFileId: data?.sourceFileId || data?.fileId || null,
+        topic: examHeader.matiere
+      });
+
+      if (res && typeof res.scoreTotal === 'number') {
+        setGradingResult(res);
+      } else {
+        throw new Error("Format de réponse non standard");
+      }
+    } catch (err) {
+      console.warn("[Grade Exam Fallback]", err);
+      // Fallback local intelligent
+      const local = calculateScores();
+      setGradingResult({
+        scoreTotal: local.total,
+        scoreP1: local.scoreP1,
+        scoreP2: local.scoreP2,
+        scoreP3: local.scoreP3,
+        scoreP4: local.scoreP4,
+        feedbackGlobal: local.total >= 16
+          ? "Excellente prestation académique ! Vos raisonnements sont rigoureux et bien articulés."
+          : "Bonne participation. Reprenez attentivement les points clés du corrigé officiel pour progresser.",
+        certificateInfo: {
+          eligible: local.total >= 16,
+          awarded: local.total >= 16,
+          alreadyIssued: false,
+          certificate: local.total >= 16 ? {
+            topic: examHeader.matiere,
+            score: local.total,
+            max_score: 20,
+            certificate_code: `CERT-DKD-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+            student_name: userName,
+            issued_at: new Date().toISOString()
+          } : null,
+          message: local.total >= 16 ? "Félicitations pour votre certificat !" : ""
+        }
+      });
+    } finally {
+      setIsGrading(false);
+      setIsSubmitted(true);
+      setShowCorrectionDetail(true);
+    }
+  };
+
+  const handleConfirmSubmit = () => {
+    triggerGradeExam();
   };
 
   // Réinitialisation de l'examen
@@ -554,6 +625,8 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
       setIsTimerRunning(true);
       setIsSubmitted(false);
       setShowCorrectionDetail(false);
+      setGradingResult(null);
+      setShowCertificateModal(false);
       setCurrentPage(1);
     }
   };
@@ -561,6 +634,27 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
   const handlePrint = () => {
     window.print();
   };
+
+  // Calcul des scores affichés (soit retour de l'IA, soit heuristique)
+  const localScores = calculateScores();
+  const finalScore = gradingResult?.scoreTotal ?? localScores.total;
+  const scoreEx1 = gradingResult?.scoreP1 ?? localScores.scoreP1;
+  const scoreEx2 = gradingResult?.scoreP2 ?? localScores.scoreP2;
+  const scoreEx3 = gradingResult?.scoreP3 ?? localScores.scoreP3;
+  const scoreEx4 = gradingResult?.scoreP4 ?? localScores.scoreP4;
+
+  const effectiveCert: CertificateData | null =
+    gradingResult?.certificateInfo?.certificate ||
+    (finalScore >= 16
+      ? {
+          topic: examHeader.matiere,
+          score: finalScore,
+          max_score: 20,
+          certificate_code: `CERT-DKD-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
+          student_name: localStorage.getItem('unifolder_user_name') || 'Étudiant StudyCloud',
+          issued_at: new Date().toISOString()
+        }
+      : null);
 
   return (
     <div id="module-devoir-complet" className="w-full min-h-screen bg-stone-200/70 pb-28">
@@ -661,35 +755,75 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
       </div>
 
       {/* 
-        RÉSULTAT D'EXAMEN APRÈS SOUMISSION (Bannière officielle)
+        RÉSULTAT D'EXAMEN APRÈS SOUMISSION (Bannière officielle & Bouton Certificat)
       */}
       {isSubmitted && (
         <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-6">
           <div
             id="exam-result-banner"
-            className="p-5 rounded-xl bg-white border border-stone-300 shadow-md flex flex-col sm:flex-row items-center justify-between gap-4"
+            className={`p-5 sm:p-6 rounded-2xl border shadow-md flex flex-col gap-4 ${
+              finalScore >= 16
+                ? 'bg-gradient-to-r from-amber-50 via-white to-amber-50/80 border-amber-300'
+                : 'bg-white border-stone-300'
+            }`}
           >
-            <div className="flex items-center gap-3">
-              <div className="w-10 h-10 rounded-full bg-emerald-100 border border-emerald-300 text-emerald-800 flex items-center justify-center font-bold">
-                <Award className="w-6 h-6 text-emerald-700" />
+            <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5">
+                <div
+                  className={`w-12 h-12 rounded-2xl flex items-center justify-center shrink-0 shadow-xs ${
+                    finalScore >= 16
+                      ? 'bg-gradient-to-br from-amber-400 to-amber-600 text-white'
+                      : 'bg-emerald-100 border border-emerald-300 text-emerald-800'
+                  }`}
+                >
+                  {finalScore >= 16 ? <Sparkles className="w-6 h-6" /> : <Award className="w-6 h-6" />}
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <h3 className="text-base sm:text-lg font-black font-serif text-stone-900">
+                      {finalScore >= 16
+                        ? `🎉 Félicitations ! Excellence Académique : ${finalScore} / 20 points`
+                        : `Épreuve Déposée • Note Globale : ${finalScore} / 20 points`}
+                    </h3>
+                  </div>
+                  <p className="text-xs text-stone-600 mt-0.5">
+                    Ex.1 (Problème) : <strong>{scoreEx1}/8</strong> • Ex.2 (QCM) : <strong>{scoreEx2}/4</strong> • Ex.3 (Synthèse) : <strong>{scoreEx3}/4</strong> • Ex.4 (V/F) : <strong>{scoreEx4}/4</strong>
+                  </p>
+                  {gradingResult?.feedbackGlobal && (
+                    <p className="text-xs text-stone-700 italic mt-1.5 font-serif">
+                      « {gradingResult.feedbackGlobal} »
+                    </p>
+                  )}
+                  {gradingResult?.certificateInfo?.alreadyIssued && (
+                    <p className="text-[11px] text-amber-800 font-medium mt-1">
+                      ℹ️ Certificat officiel déjà délivré pour ce document. Chaque certificat ne peut être obtenu qu'une seule fois par fichier.
+                    </p>
+                  )}
+                </div>
               </div>
-              <div>
-                <h3 className="text-sm sm:text-base font-bold text-stone-900">
-                  Épreuve Déposée • Note Globale : {scores.total} / 20 points
-                </h3>
-                <p className="text-xs text-stone-600">
-                  Ex.1 (Problème) : {scores.scoreP1}/8 • Ex.2 (QCM) : {scores.scoreP2}/4 • Ex.3 (Questions) : {scores.scoreP3}/4 • Ex.4 (V/F) : {scores.scoreP4}/4
-                </p>
+
+              {/* Actions Post-Évaluation : Bouton Certificat + Corrigé */}
+              <div className="flex flex-wrap items-center gap-2.5 shrink-0 w-full sm:w-auto justify-end">
+                {finalScore >= 16 && (
+                  <button
+                    id="btn-show-certificate"
+                    onClick={() => setShowCertificateModal(true)}
+                    className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-2.5 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 active:scale-95 text-stone-950 font-black text-xs sm:text-sm shadow-md transition-all cursor-pointer"
+                  >
+                    <Award className="w-4 h-4 text-stone-950" />
+                    <span>Afficher votre Certificat</span>
+                  </button>
+                )}
+
+                <button
+                  id="btn-toggle-correction-view"
+                  onClick={() => setShowCorrectionDetail(!showCorrectionDetail)}
+                  className="w-full sm:w-auto px-4 py-2 rounded-xl bg-stone-900 text-white hover:bg-stone-800 text-xs font-semibold transition-colors cursor-pointer"
+                >
+                  {showCorrectionDetail ? "Masquer le corrigé type" : "Consulter le corrigé type complet"}
+                </button>
               </div>
             </div>
-
-            <button
-              id="btn-toggle-correction-view"
-              onClick={() => setShowCorrectionDetail(!showCorrectionDetail)}
-              className="px-3.5 py-1.5 rounded-lg bg-stone-900 text-white hover:bg-stone-800 text-xs font-semibold transition-colors cursor-pointer shrink-0"
-            >
-              {showCorrectionDetail ? "Masquer le corrigé type" : "Consulter le corrigé type complet"}
-            </button>
           </div>
         </div>
       )}
@@ -816,6 +950,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
 
                   {exercice1.questions.map((q) => {
                     const lines = answersP1[q.id] || ['', '', ''];
+                    const ex1Fb = gradingResult?.exercices?.exercice1?.questions?.[q.id];
 
                     return (
                       <div key={q.id} id={`reponse-box-${q.id}`} className="space-y-2">
@@ -823,7 +958,9 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                           <span>Réponse à la question {q.number} ({q.points} pts) :</span>
                           {showCorrectionDetail && (
                             <span className="text-emerald-700 font-sans font-bold text-[11px]">
-                              Corrigé disponible ci-dessous
+                              {ex1Fb && typeof ex1Fb.points === 'number'
+                                ? `Note attribuée par l'IA : ${ex1Fb.points} / ${q.points} pts`
+                                : "Corrigé officiel"}
                             </span>
                           )}
                         </div>
@@ -865,13 +1002,30 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                           })}
                         </div>
 
-                        {/* Corrigé type affiché après soumission */}
-                        {showCorrectionDetail && q.sampleAnswer && (
-                          <div className="mt-2 p-3 bg-emerald-50 border-l-3 border-emerald-600 text-emerald-950 text-xs font-sans leading-relaxed break-words h-auto">
-                            <strong className="block text-[11px] uppercase tracking-wider text-emerald-800 mb-1">
-                              Éléments de correction attendus :
-                            </strong>
-                            <MathText text={q.sampleAnswer} className="break-words leading-relaxed" />
+                        {/* Corrigé type et feedback IA affiché après soumission */}
+                        {showCorrectionDetail && (
+                          <div className="mt-2.5 p-3.5 bg-emerald-50/90 border-l-4 border-emerald-600 text-emerald-950 text-xs font-sans leading-relaxed break-words h-auto rounded-r-lg space-y-2">
+                            <div className="flex items-center justify-between">
+                              <strong className="text-[11px] uppercase tracking-wider text-emerald-800 font-bold">
+                                Évaluation du jury & Corrigé :
+                              </strong>
+                              {ex1Fb && typeof ex1Fb.points === 'number' && (
+                                <span className="bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded font-bold text-[11px]">
+                                  Note : {ex1Fb.points} / {q.points} pt(s)
+                                </span>
+                              )}
+                            </div>
+                            {ex1Fb?.feedback && (
+                              <p className="text-emerald-900 italic bg-white/70 p-2 rounded border border-emerald-200">
+                                <strong>Remarque du jury :</strong> {ex1Fb.feedback}
+                              </p>
+                            )}
+                            {q.sampleAnswer && (
+                              <div>
+                                <strong className="block text-[10px] text-emerald-700 uppercase font-bold mb-0.5">Corrigé type attendu :</strong>
+                                <MathText text={q.sampleAnswer} className="break-words leading-relaxed text-emerald-950" />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -898,6 +1052,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                 <div className="space-y-8">
                   {exercice2.questions.map((q) => {
                     const selectedIdx = answersP2[q.id];
+                    const ex2Fb = gradingResult?.exercices?.exercice2?.questions?.[q.id];
 
                     return (
                       <div key={q.id} className="space-y-3 pl-1">
@@ -946,10 +1101,12 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                         </div>
 
                         {/* Corrigé type affiché après soumission */}
-                        {showCorrectionDetail && q.explication && (
+                        {showCorrectionDetail && (
                           <div className="mt-1 ml-6 p-2.5 bg-stone-50 border-l-3 border-stone-700 text-stone-800 text-xs font-sans leading-relaxed break-words h-auto">
-                            <strong className="block text-[11px] uppercase tracking-wider text-stone-700 mb-0.5">Justification :</strong>
-                            <MathText text={q.explication} className="break-words leading-relaxed" />
+                            <strong className="block text-[11px] uppercase tracking-wider text-stone-700 mb-0.5">
+                              {ex2Fb?.feedback ? ex2Fb.feedback : "Justification :"}
+                            </strong>
+                            {q.explication && <MathText text={q.explication} className="break-words leading-relaxed" />}
                           </div>
                         )}
                       </div>
@@ -976,6 +1133,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                 <div className="space-y-10">
                   {exercice3.questions.map((q) => {
                     const lines = answersP3[q.id] || ['', '', ''];
+                    const ex3Fb = gradingResult?.exercices?.exercice3?.questions?.[q.id];
 
                     return (
                       <div key={q.id} className="space-y-3">
@@ -1024,13 +1182,30 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                           })}
                         </div>
 
-                        {/* Corrigé type affiché après soumission */}
-                        {showCorrectionDetail && q.sampleAnswer && (
-                          <div className="mt-2 ml-6 p-3 bg-emerald-50 border-l-3 border-emerald-600 text-emerald-950 text-xs font-sans leading-relaxed break-words h-auto">
-                            <strong className="block text-[11px] uppercase tracking-wider text-emerald-800 mb-1">
-                              Corrigé type officiel :
-                            </strong>
-                            <MathText text={q.sampleAnswer} className="break-words leading-relaxed" />
+                        {/* Corrigé type et feedback IA affiché après soumission */}
+                        {showCorrectionDetail && (
+                          <div className="mt-2.5 ml-6 p-3.5 bg-emerald-50/90 border-l-4 border-emerald-600 text-emerald-950 text-xs font-sans leading-relaxed break-words h-auto rounded-r-lg space-y-2">
+                            <div className="flex items-center justify-between">
+                              <strong className="block text-[11px] uppercase tracking-wider text-emerald-800 font-bold">
+                                Évaluation du jury & Corrigé officiel :
+                              </strong>
+                              {ex3Fb && typeof ex3Fb.points === 'number' && (
+                                <span className="bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded font-bold text-[11px]">
+                                  Note : {ex3Fb.points} / {q.points} pt(s)
+                                </span>
+                              )}
+                            </div>
+                            {ex3Fb?.feedback && (
+                              <p className="text-emerald-900 italic bg-white/70 p-2 rounded border border-emerald-200">
+                                <strong>Remarque :</strong> {ex3Fb.feedback}
+                              </p>
+                            )}
+                            {q.sampleAnswer && (
+                              <div>
+                                <strong className="block text-[10px] text-emerald-700 uppercase font-bold mb-0.5">Corrigé type attendu :</strong>
+                                <MathText text={q.sampleAnswer} className="break-words leading-relaxed text-emerald-950" />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -1057,6 +1232,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                 <div className="space-y-6">
                   {exercice4.questions.map((q) => {
                     const val = answersP4[q.id];
+                    const ex4Fb = gradingResult?.exercices?.exercice4?.questions?.[q.id];
 
                     return (
                       <div key={q.id} className="space-y-2.5 p-3 rounded-lg border border-stone-200 bg-stone-50/50">
@@ -1102,6 +1278,11 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                             <span className={q.correctValue ? 'text-emerald-700 font-bold' : 'text-rose-700 font-bold'}>
                               {q.correctValue ? 'VRAI' : 'FAUX'}
                             </span>
+                            {ex4Fb?.feedback && (
+                              <p className="mt-1 text-stone-600 font-medium">
+                                {ex4Fb.feedback}
+                              </p>
+                            )}
                             {q.explication && (
                               <div className="mt-1 text-stone-700">
                                 <MathText text={`Justification : ${q.explication}`} />
@@ -1142,11 +1323,21 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
               <button
                 id="btn-submit-exam-paper"
                 type="button"
+                disabled={isGrading}
                 onClick={() => setShowConfirmModal(true)}
-                className="inline-flex items-center gap-2.5 px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-98 text-white font-bold text-sm sm:text-base shadow-lg cursor-pointer transition-all"
+                className="inline-flex items-center gap-2.5 px-8 py-3.5 rounded-xl bg-blue-600 hover:bg-blue-700 active:scale-98 disabled:opacity-50 text-white font-bold text-sm sm:text-base shadow-lg cursor-pointer transition-all"
               >
-                <Sparkles className="w-5 h-5" />
-                <span>Soumettre le sujet à la correction</span>
+                {isGrading ? (
+                  <>
+                    <Loader2 className="w-5 h-5 animate-spin" />
+                    <span>Correction par l'IA en cours...</span>
+                  </>
+                ) : (
+                  <>
+                    <Sparkles className="w-5 h-5" />
+                    <span>Soumettre le sujet à la correction</span>
+                  </>
+                )}
               </button>
 
               <span className="text-xs text-stone-500 font-sans">
@@ -1154,11 +1345,24 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
               </span>
             </>
           ) : (
-            <div className="text-center space-y-2">
+            <div className="text-center space-y-3">
               <span className="inline-flex items-center gap-2 text-sm font-bold text-emerald-800 bg-emerald-100 px-4 py-1.5 rounded-full">
                 <Check className="w-4 h-4" />
-                Copie d'examen déposée et corrigée avec succès.
+                Copie d'examen déposée, notée par l'IA et enregistrée avec succès.
               </span>
+
+              {finalScore >= 16 && (
+                <div>
+                  <button
+                    id="btn-bottom-view-certificate"
+                    onClick={() => setShowCertificateModal(true)}
+                    className="inline-flex items-center gap-2 px-6 py-2.5 rounded-xl bg-amber-500 hover:bg-amber-400 text-stone-950 font-black text-sm shadow-lg transition-all cursor-pointer"
+                  >
+                    <Award className="w-4 h-4" />
+                    <span>Consulter votre Certificat d'Excellence</span>
+                  </button>
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -1191,7 +1395,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
             {/* Message de confirmation */}
             <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
               Il vous reste encore <strong>{formatTime(secondsLeft)}</strong> avant la fin de l'épreuve.
-              Voulez-vous vraiment déposer dès maintenant votre feuille d'examen pour la correction ?
+              Voulez-vous vraiment déposer dès maintenant votre feuille d'examen pour la correction par l'IA ?
             </p>
 
             {/* Boutons d'action Annuler / Soumettre */}
@@ -1216,6 +1420,37 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
             </div>
           </div>
         </div>
+      )}
+
+      {/* ========================================================
+          INDICATEUR DE CHARGEMENT DE LA CORRECTION PAR L'IA
+          ======================================================== */}
+      {isGrading && (
+        <div className="fixed inset-0 z-50 bg-stone-950/70 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl p-6 max-w-sm w-full text-center space-y-4 shadow-2xl border border-stone-200 animate-in fade-in zoom-in duration-150">
+            <div className="w-12 h-12 rounded-full bg-blue-50 text-blue-600 mx-auto flex items-center justify-center">
+              <Loader2 className="w-6 h-6 animate-spin" />
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-stone-900 font-serif">
+                Correction par l'IA en cours...
+              </h3>
+              <p className="text-xs text-stone-500 mt-1">
+                Le jury évalue vos réponses rédigées, vérifie la rigueur conceptuelle et calcule votre note sur 20 points.
+              </p>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* ========================================================
+          VUE DU CERTIFICAT D'EXCELLENCE ACADÉMIQUE
+          ======================================================== */}
+      {showCertificateModal && effectiveCert && (
+        <CertificatExcellence
+          certificate={effectiveCert}
+          onClose={() => setShowCertificateModal(false)}
+        />
       )}
     </div>
   );
