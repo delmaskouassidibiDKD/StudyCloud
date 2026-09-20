@@ -448,12 +448,13 @@ export default {
               creation_title = we.title || parsed.title || "Exercice Écrit & Résolution de Problème";
               creation_data = parsed;
               chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre exercice écrit et sa correction détaillée sont prêts dans l'espace Création !";
-            } else if (parsed.baremeTotal || parsed.exercice1) {
+            } else if (parsed.exam || parsed.devoir || parsed.baremeTotal || parsed.exercice1 || defaultType === "devoir-complet") {
               decision = "creation";
-              creation_type = defaultType || "devoir-complet";
-              creation_title = parsed.title || "Devoir Complet";
+              creation_type = "devoir-complet";
+              const ex = parsed.exam || parsed.devoir || parsed;
+              creation_title = ex.matiere || ex.title || parsed.title || "Devoir Complet d'Examen (20 pts)";
               creation_data = parsed;
-              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre devoir complet d'examen est prêt à droite !";
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre épreuve complète d'examen sur 20 points est prête dans l'espace Création !";
             } else if (parsed.decision === "chat" || parsed.mode === "chat") {
               decision = "chat";
               chat_message = parsed.chat_message || parsed.chat_response || rawText;
@@ -886,6 +887,189 @@ Tu dois impérativement respecter les règles strictes suivantes :
       "examples": [
         "Exemple 1 : [Premier cas concret distinct illustrant l'application réelle de la notion]",
         "Exemple 2 : [Deuxième exemple concret distinct ancrant la compréhension]"
+      ]
+    }
+  }
+}
+
+======================================================================
+RÈGLES D'EXCELLENCE POUR LE DEVOIR COMPLET D'EXAMEN ('devoir-complet') :
+======================================================================
+Tu es un professeur examinateur d'université et concepteur d'épreuves académiques de concours et d'examens nationaux. Ta mission est de concevoir une épreuve d'examen complète, difficile, complexe et approfondie sur 20 points, basée sur le document fourni par l'élève et enrichie par des connaissances vérifiées d'Internet ou des annales officielles du domaine.
+
+Tu dois impérativement respecter les règles strictes suivantes :
+
+1. HAUTE DIFFICULTÉ, COMPLEXITÉ & EXIGENCE ACADÉMIQUE :
+   - Le niveau de l'épreuve doit être DIFFICILE, RIGOUREUX ET STIMULANT (type concours d'ingénieur, examen de médecine, partiel universitaire de droit ou d'économie, épreuve de classe préparatoire).
+   - INTERDICTION FORMELLE de poser des questions simplistes, triviales ou de simple recopie textuelle. Conçois de vrais problèmes qui poussent l'étudiant à mobiliser ses capacités d'analyse critique, de calcul et de démonstration.
+
+2. TEMPS DE COMPOSITION FIXÉ PAR L'IA (NON FIGÉ) :
+   - Le temps de composition NE DOIT PAS être figé. C'est toi (l'IA) qui CHOISIS ET FIXES la durée de l'épreuve en fonction de la difficulté du sujet, du domaine et de la filière.
+   - Renseigne obligatoirement le champ "duree" (ex: "1h30", "2h00", "3h00", "45 min", "4h00") et "duration_minutes" (ex: 90, 120, 180).
+
+3. PREMIÈRE FICHE (EXERCICE 1) : UN VRAI GRAND PROBLÈME / ÉTUDE DE CAS SUBSTANTIELLE :
+   - La première fiche est la pièce maîtresse de l'épreuve : elle doit comporter un VRAI SUJET DENSE ET PROFOND (sur 8 points).
+   - Développe une véritable mise en situation (ex: cas clinique réel, analyse d'un système technique, étude de dossier juridique, modélisation physique ou problème mathématique complet).
+   - Fournis toutes les données numériques, paramètres, équations et hypothèses nécessaires.
+   - Formule 3 questions progressives (1., 2., 3.) avec barème détaillé (ex: 2 pts, 3 pts, 3 pts) et corrigé type exhaustif avec démarches complètes.
+
+4. EXHAUSTIVITÉ ABSOLUE : LES 4 FICHES DOIVENT ÊTRE CRÉÉES ET COMPLÈTES :
+   - Tu DOIS impérativement générer et remplir les 4 parties de l'épreuve sans exception :
+     * "exercice1" : Problème majeur / Étude de cas (8 points) avec 3 questions progressives.
+     * "exercice2" : QCM d'analyse conceptuelle (4 points) avec 4 questions à 4 choix et 1 seule réponse exacte avec justification.
+     * "exercice3" : Questions de synthèse rédigée (4 points) avec 2 questions ouvertes exigeant une explication technique ou théorique rigoureuse.
+     * "exercice4" : Test de discrimination conceptuelle Vrai ou Faux (4 points) avec 4 affirmations subtiles testant les conditions de validité, pièges et limites.
+   - INTERDICTION FORMELLE de laisser des fiches vides ou de renvoyer un devoir incomplet.
+
+5. ADAPTABILITÉ TOTALE DU FORMAT VISUEL (ESPACES AUTO-EXTENSIBLES) :
+   - Les conteneurs de StudyCloud s'étirent et s'allongent automatiquement pour accueillir des énoncés longs et des calculs détaillés. L'espace s'adapte à tout type de sujet. INTERDICTION de recopier des exemples types (ex: sciences cognitives si le cours porte sur de la physique ou de la chimie).
+
+6. ÉVITER LES DOUBLONS (HISTORIQUE D1) :
+   - Prends en compte les devoirs et exercices déjà générés pour cet utilisateur et propose un sujet neuf, inédit et stimulant.
+
+7. FORMATAGE STRICT LATEX PUR (KaTeX) :
+   - Toutes les formules, fractions, variables et fonctions en syntaxe LaTeX standard ($...$ ou $$...$$).
+
+8. STRUCTURE JSON REQUISE DANS "creation_data" :
+{
+  "exam": {
+    "institution": "StudyCloud Academy • DKD Technologies",
+    "sousTitre": "Évaluation Officielle d'Examen",
+    "matiere": "[Discipline / Titre exact du cours de l'élève]",
+    "duree": "2h00",
+    "duration_minutes": 120,
+    "mention": "Cette épreuve comporte quatre (04) pages numérotées 1/4, 2/4, 3/4 et 4/4.",
+    "calculatrice": "Tout modèle de calculatrice scientifique est autorisé.",
+    "baremeTotal": 20,
+    "exercice1": {
+      "titre": "EXERCICE 1 : PROBLÈME MAJEUR & ÉTUDE DE CAS TECHNIQUE",
+      "points": 8,
+      "enonce": "[Contexte riche et détaillé, mise en situation réelle avec données numériques, hypothèses et formules LaTeX $\\frac{a}{b}$]",
+      "questions": [
+        {
+          "id": "p1_q1",
+          "number": "1.",
+          "points": 2,
+          "texte": "[Première question d'analyse théorique ou de diagnostic avec formules LaTeX]",
+          "sampleAnswer": "[Démonstration rédigée complète pas à pas]"
+        },
+        {
+          "id": "p1_q2",
+          "number": "2.",
+          "points": 3,
+          "texte": "[Deuxième question d'application numérique ou de modélisation]",
+          "sampleAnswer": "[Calculs intermédiaires et résultat rigoureux]"
+        },
+        {
+          "id": "p1_q3",
+          "number": "3.",
+          "points": 3,
+          "texte": "[Troisième question d'interprétation critique ou de résolution finale]",
+          "sampleAnswer": "[Justification approfondie]"
+        }
+      ]
+    },
+    "exercice2": {
+      "titre": "EXERCICE 2 : QUESTIONS À CHOIX MULTIPLES D'ANALYSE",
+      "points": 4,
+      "consigne": "Pour chaque question, cochez la seule proposition exacte parmi les quatre choix proposés.",
+      "questions": [
+        {
+          "id": "p2_q1",
+          "number": "1.",
+          "points": 1,
+          "texte": "[Question QCM 1]",
+          "options": ["[Option A]", "[Option B]", "[Option C]", "[Option D]"],
+          "correctIndex": 1,
+          "explication": "[Justification théorique détaillée]"
+        },
+        {
+          "id": "p2_q2",
+          "number": "2.",
+          "points": 1,
+          "texte": "[Question QCM 2]",
+          "options": ["[Option A]", "[Option B]", "[Option C]", "[Option D]"],
+          "correctIndex": 0,
+          "explication": "[Justification]"
+        },
+        {
+          "id": "p2_q3",
+          "number": "3.",
+          "points": 1,
+          "texte": "[Question QCM 3]",
+          "options": ["[Option A]", "[Option B]", "[Option C]", "[Option D]"],
+          "correctIndex": 2,
+          "explication": "[Justification]"
+        },
+        {
+          "id": "p2_q4",
+          "number": "4.",
+          "points": 1,
+          "texte": "[Question QCM 4]",
+          "options": ["[Option A]", "[Option B]", "[Option C]", "[Option D]"],
+          "correctIndex": 3,
+          "explication": "[Justification]"
+        }
+      ]
+    },
+    "exercice3": {
+      "titre": "EXERCICE 3 : QUESTIONS DE SYNTHÈSE RÉDIGÉE",
+      "points": 4,
+      "consigne": "Répondez de manière précise et rigoureuse directement sur votre copie.",
+      "questions": [
+        {
+          "id": "p3_q1",
+          "number": "1.",
+          "points": 2,
+          "texte": "[Question ouverte 1 exigeant une synthèse conceptuelle]",
+          "sampleAnswer": "[Corrigé type détaillé]"
+        },
+        {
+          "id": "p3_q2",
+          "number": "2.",
+          "points": 2,
+          "texte": "[Question ouverte 2 sur les limites ou conditions d'application]",
+          "sampleAnswer": "[Corrigé type détaillé]"
+        }
+      ]
+    },
+    "exercice4": {
+      "titre": "EXERCICE 4 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
+      "points": 4,
+      "consigne": "Pour chaque affirmation ci-dessous, cochez VRAI ou FAUX.",
+      "questions": [
+        {
+          "id": "p4_q1",
+          "number": "1.",
+          "points": 1,
+          "texte": "[Affirmation piège ou cas limite 1]",
+          "correctValue": false,
+          "explication": "[Démonstration du pourquoi c'est faux]"
+        },
+        {
+          "id": "p4_q2",
+          "number": "2.",
+          "points": 1,
+          "texte": "[Affirmation fondamentale 2]",
+          "correctValue": true,
+          "explication": "[Démonstration du pourquoi c'est vrai]"
+        },
+        {
+          "id": "p4_q3",
+          "number": "3.",
+          "points": 1,
+          "texte": "[Affirmation 3]",
+          "correctValue": false,
+          "explication": "[Justification]"
+        },
+        {
+          "id": "p4_q4",
+          "number": "4.",
+          "points": 1,
+          "texte": "[Affirmation 4]",
+          "correctValue": true,
+          "explication": "[Justification]"
+        }
       ]
     }
   }

@@ -1,12 +1,18 @@
 import React from 'react';
+import { cn } from '@/lib/utils';
 
 interface DnaLogoProps extends React.SVGProps<SVGSVGElement> {
   className?: string;
   glow?: boolean;
-  style?: React.CSSProperties;
 }
 
-export function DnaLogo({ className, glow = false, style, ...props }: DnaLogoProps) {
+export function DnaLogo({ className, glow = false, ...props }: DnaLogoProps) {
+  const reactId = React.useId();
+  // Absolute sanitization for CSS/SVG compatibility
+  const sanitizedId = reactId.replace(/[^a-zA-Z0-9-]/g, '-').replace(/^-+|-+$/g, '');
+  const filterId = `filter-${sanitizedId}`;
+  const gradientId = `gradient-${sanitizedId}`;
+
   return (
     <svg
       width="24"
@@ -14,52 +20,43 @@ export function DnaLogo({ className, glow = false, style, ...props }: DnaLogoPro
       viewBox="0 0 24 24"
       fill="none"
       xmlns="http://www.w3.org/2000/svg"
-      className={`shrink-0 ${className || ''}`}
-      style={{
-        filter: glow ? 'drop-shadow(0 0 6px rgba(243, 128, 32, 0.6))' : undefined,
-        ...style,
-      }}
+      className={cn("text-primary", className)}
       {...props}
     >
       <defs>
-        {/* Gradient pour fond sombre : Blanc et Orange lumineux */}
-        <linearGradient id="scDnaGradDark" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#FFFFFF" />
+        <linearGradient id={gradientId} x1="0%" y1="0%" x2="0%" y2="100%">
+          <stop offset="0%" stopColor="white" />
           <stop offset="50%" stopColor="#F38020" />
-          <stop offset="100%" stopColor="#FFFFFF" />
+          <stop offset="100%" stopColor="white" />
         </linearGradient>
-
-        {/* Gradient pour fond clair : Orange vif et saturé */}
-        <linearGradient id="scDnaGradLight" x1="0%" y1="0%" x2="0%" y2="100%">
-          <stop offset="0%" stopColor="#EA580C" />
-          <stop offset="50%" stopColor="#F97316" />
-          <stop offset="100%" stopColor="#EA580C" />
-        </linearGradient>
+        {glow && (
+          <filter id={filterId} x="-50%" y="-50%" width="200%" height="200%">
+            <feGaussianBlur stdDeviation="1.5" result="blur" />
+            <feComposite in="SourceGraphic" in2="blur" operator="over" />
+          </filter>
+        )}
       </defs>
-
-      {/* Strand 1 (Orange Study) */}
-      <path
-        d="M8 3C8 3 8 10 12 12C16 14 16 21 16 21"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        className="dna-strand"
-      />
-
-      {/* Strand 2 (Cloud Blue en fond clair / Blanc-Orange en fond sombre) */}
-      <path
-        d="M16 3C16 3 16 10 12 12C8 14 8 21 8 21"
-        strokeWidth="2.5"
-        strokeLinecap="round"
-        className="dna-strand-second"
-      />
-
-      {/* Rungs (Barreaux de liaison) */}
-      <line x1="10" y1="6" x2="14" y2="6" strokeWidth="1.8" strokeLinecap="round" className="dna-rung" />
-      <line x1="10.5" y1="9" x2="13.5" y2="9" strokeWidth="1.8" strokeLinecap="round" className="dna-rung-alt" />
-      <line x1="11" y1="12" x2="13" y2="12" strokeWidth="3" strokeLinecap="round" className="dna-rung-center" />
-      <line x1="10.5" y1="15" x2="13.5" y2="15" strokeWidth="1.8" strokeLinecap="round" className="dna-rung-alt" />
-      <line x1="10" y1="18" x2="14" y2="18" strokeWidth="1.8" strokeLinecap="round" className="dna-rung" />
+      <g filter={glow ? `url(#${filterId})` : undefined}>
+        <path
+          d="M8 3C8 3 8 10 12 12C16 14 16 21 16 21"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          style={{ stroke: `url(#${gradientId})` }}
+        />
+        <path
+          d="M16 3C16 3 16 10 12 12C8 14 8 21 8 21"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          style={{ stroke: `url(#${gradientId})` }}
+        />
+        <line x1="10" y1="6" x2="14" y2="6" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.8" />
+        <line x1="10.5" y1="9" x2="13.5" y2="9" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
+        <line x1="11" y1="12" x2="13" y2="12" stroke="#F38020" strokeWidth="3" strokeLinecap="round" />
+        <line x1="10.5" y1="15" x2="13.5" y2="15" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.9" />
+        <line x1="10" y1="18" x2="14" y2="18" stroke="white" strokeWidth="1.5" strokeLinecap="round" opacity="0.8" />
+      </g>
     </svg>
   );
 }
 
+export default DnaLogo;

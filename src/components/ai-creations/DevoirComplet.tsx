@@ -19,18 +19,19 @@ import {
 } from 'lucide-react';
 
 import { DnaLogo } from '../DnaLogo';
+import { MathText } from '../MathText';
 
 // ==========================================
-// COMPOSANT LOGO STUDYCLOUD / DKD TECHNOLOGIES (Utilisant votre DnaLogo officiel)
+// COMPOSANT LOGO STUDYCLOUD / DKD TECHNOLOGIES
 // ==========================================
 function StudyCloudLogo() {
   return (
     <div
       id="studycloud-logo"
-      className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#0369A1] text-white shadow-xs border border-sky-800"
+      className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#0369A1] text-white shadow-xs border border-sky-800 select-none"
       title="StudyCloud - DKD TECHNOLOGIES"
     >
-      {/* Votre composant officiel DnaLogo */}
+      {/* Composant officiel DnaLogo */}
       <DnaLogo className="w-6 h-6 shrink-0" glow={true} />
 
       {/* Texte officiel StudyCloud & DKD TECHNOLOGIES */}
@@ -48,351 +49,301 @@ function StudyCloudLogo() {
 }
 
 // ==========================================
-// DONNÉES DE L'ÉPREUVE OFFICIELLE DKD
+// PARSEUR DE DURÉE D'EXAMEN FIXÉE PAR L'IA
 // ==========================================
+export function parseDurationToSeconds(dureeStr?: string | number): number {
+  if (!dureeStr) return 120 * 60; // 2h00 par défaut
+  if (typeof dureeStr === 'number') return dureeStr * 60;
+  const str = String(dureeStr).toLowerCase().trim();
 
-const EXAM_HEADER = {
-  institution: "DKD School Numérique",
-  sousTitre: "Évaluation Officielle",
-  duree: "Durée : 45 min",
-  matiere: "SCIENCES COGNITIVES & STRATÉGIES D'APPRENTISSAGE",
-  mention: "Cette épreuve comporte quatre (04) pages numérotées 1/4, 2/4, 3/4 et 4/4.",
-  calculatrice: "Tout modèle de calculatrice scientifique est autorisé.",
-  baremeTotal: 20
-};
+  let hours = 0;
+  let minutes = 0;
 
-// PAGE 1: EXERCICE 1 - Problème complet
-const EXERCICE_1_PROBLEM = {
-  titre: "EXERCICE 1 : PROBLÈME D'INGÉNIERIE COGNITIVE & ÉTUDE DE CAS",
-  points: 8,
-  enonce: `Contexte clinique et pédagogique :
-Julien, élève en classe terminale, prépare son examen sélectif dans 3 semaines. Son rythme actuel consiste à relire ses manuels de cours 6 heures par jour en surlignant abondamment les définitions et en recopiant mécaniquement des pages entières sans jamais tester sa mémoire. 
-
-Après 80 heures cumulées de révision intensive, Julien a obtenu la note de 06/20 au premier devoir blanc. Épuisé, il souffre d'un sentiment d'injustice (« pourtant j'ai passé des nuits entières sur mon cours ») et envisage de doubler son temps de relecture nocturne pour rattraper son retard.`,
-  questions: [
-    {
-      id: 'p1_q1',
-      number: '1.',
-      points: 2,
-      texte: "Diagnostiquez les deux failles méthodologiques majeures de Julien en mobilisant les concepts de « reconnaissance passive » et « d'illusion de compétence ».",
-      sampleAnswer: "Julien confond la reconnaissance passive (l'information lui semble familière car elle est sous ses yeux) avec l'assimilation réelle. Le surlignage et la relecture créent une illusion de compétence temporaire : le cerveau ne fait aucun effort d'extraction synaptique, ce qui empêche tout ancrage en mémoire à long terme."
-    },
-    {
-      id: 'p1_q2',
-      number: '2.',
-      points: 3,
-      texte: "Concevez pour Julien un calendrier stratégique de réactivation sur 21 jours fondé sur la « répétition espacée » (courbe d'Ebbinghaus). Précisez les jalons clés (J+1, J+3, J+7, J+15) et la nature de chaque séance.",
-      sampleAnswer: "Protocole recommandé sur 21 jours : J0 = Synthèse active et création de flashcards ; J+1 = Première séance de rappel actif sans notes (correction immédiate des lacunes) ; J+3 = Deuxième restitution ciblée sur les cartes difficiles ; J+7 = Mise en application sur exercices types d'examen ; J+15 = Épreuve blanche chronométrée complète pour valider l'autonomie mnésique."
-    },
-    {
-      id: 'p1_q3',
-      number: '3.',
-      points: 3,
-      texte: "Proposez un protocole d'application concrète de la méthode de vulgarisation selon Feynman afin que Julien valide sa compréhension d'un théorème complexe.",
-      sampleAnswer: "Julien doit : 1. Choisir le concept clé ; 2. L'expliquer par écrit ou à voix haute comme s'il s'adressait à un collégien de 12 ans, en proscrivant tout jargon technique ; 3. Repérer immédiatement les hésitations et blocages conceptuels ; 4. Retourner à la source pour combler précisément ces zones d'ombre avec des analogies de la vie quotidienne."
-    }
-  ]
-};
-
-// PAGE 2: EXERCICE 2 - QCM
-const EXERCICE_2_QCM = {
-  titre: "EXERCICE 2 : QUESTIONS À CHOIX MULTIPLES",
-  points: 4,
-  consigne: "Pour chaque question, cochez la seule proposition exacte parmi les quatre choix proposés.",
-  questions: [
-    {
-      id: 'p2_q1',
-      number: '1.',
-      points: 1,
-      texte: "D'après la théorie du double codage d'Allan Paivio, pourquoi l'association d'une infographie à un texte renforce-t-elle la rétention ?",
-      options: [
-        "Elle oblige l'élève à dessiner chaque jour",
-        "Elle crée deux voies d'accès indépendantes (canal verbal et canal visuel) vers le même souvenir",
-        "Elle remplace totalement le besoin de lire des explications textuelles",
-        "Elle empêche la fatigue des muscles oculaires pendant la lecture"
-      ],
-      correctIndex: 1,
-      explication: "Le cerveau traite séparément les flux verbaux et visuels ; les combiner double les chances d'extraction du souvenir."
-    },
-    {
-      id: 'p2_q2',
-      number: '2.',
-      points: 1,
-      texte: "Quelle phase physiologique du sommeil assure le transfert des données de l'hippocampe vers le néocortex ?",
-      options: [
-        "La phase d'endormissement léger",
-        "Le sommeil lent profond et le sommeil paradoxal",
-        "L'état de somnolence post-prandiale",
-        "Aucune : la consolidation s'effectue uniquement pendant l'éveil actif"
-      ],
-      correctIndex: 1,
-      explication: "Durant le sommeil profond et paradoxal, les ondes cérébrales lentes orchestrent le transfert des traces mnésiques vers le cortex."
-    },
-    {
-      id: 'p2_q3',
-      number: '3.',
-      points: 1,
-      texte: "Qu'est-ce que le principe d'entrelacement thématique (interleaving) ?",
-      options: [
-        "Travailler une seule formule mathématique pendant 8 heures d'affilée",
-        "Alterner des types de problèmes distincts au sein d'une même session pour forcer le diagnostic cognitif",
-        "Réviser deux cours différents en même temps en écoutant de la musique",
-        "Alterner 5 minutes d'étude avec 55 minutes de divertissement"
-      ],
-      correctIndex: 1,
-      explication: "L'entrelacement empêche l'application machinale d'un patron unique et développe la capacité à discriminer le bon outil."
-    },
-    {
-      id: 'p2_q4',
-      number: '4.',
-      points: 1,
-      texte: "D'après les travaux d'Hermann Ebbinghaus, à quel moment la déperdition d'information est-elle la plus critique si aucune révision n'a lieu ?",
-      options: [
-        "Après 6 mois d'inactivité",
-        "Dans les premières 24 à 48 heures suivant l'apprentissage initial",
-        "Uniquement après la fin de l'année scolaire",
-        "La mémoire ne perd aucune donnée sans lésion cérébrale"
-      ],
-      correctIndex: 1,
-      explication: "Plus de la moitié des détails appris s'effacent dès le premier jour en l'absence de réactivation active à J+1."
-    }
-  ]
-};
-
-// PAGE 3: EXERCICE 3 - Questions Rédactionnelles Ciblées
-const EXERCICE_3_QUESTIONS = {
-  titre: "EXERCICE 3 : QUESTIONS DE SYNTHÈSE RÉDIGÉE",
-  points: 4,
-  consigne: "Répondez de manière précise et concise directement sur les lignes en pointillés réservées à cet effet.",
-  questions: [
-    {
-      id: 'p3_q1',
-      number: '1.',
-      points: 2,
-      texte: "Expliquez en quoi la « méthode de la feuille blanche » (refermer son cours et restituer tout ce dont on se souvient sans aide) surpasse qualitativement le simple surlignage.",
-      sampleAnswer: "La feuille blanche exige un rappel libre absolu : le cerveau doit reconstituer l'arborescence des connaissances à partir de zéro, ce qui active la plasticité synaptique et identifie immédiatement les lacunes réelles, tandis que le surlignage n'est qu'un repérage visuel passif sans effort cognitif."
-    },
-    {
-      id: 'p3_q2',
-      number: '2.',
-      points: 2,
-      texte: "Pourquoi l'obtention d'un feedback immédiat (confrontation avec le corrigé juste après l'effort de restitution) est-elle capitale pour la consolidation neuronale ?",
-      sampleAnswer: "Le feedback immédiat prévient l'ancrage durable d'erreurs ou de raisonnements faux dans les réseaux de neurones. Il permet au cerveau de corriger instantanément la trace mnésique pendant que les connexions synaptiques liées au problème sont encore actives et malléables."
-    }
-  ]
-};
-
-// PAGE 4: EXERCICE 4 - Vrai ou Faux
-const EXERCICE_4_VF = {
-  titre: "EXERCICE 4 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
-  points: 4,
-  consigne: "Pour chaque affirmation ci-dessous, cochez VRAI ou FAUX.",
-  questions: [
-    {
-      id: 'p4_q1',
-      number: '1.',
-      points: 1,
-      texte: "Relire un cours 10 fois d'affilée en une journée garantit un ancrage mnésique supérieur à trois sessions de rappel actif de 20 minutes espacées sur une semaine.",
-      correctValue: false,
-      explication: "Faux : La répétition massive en bloc engendre une saturation rapide et s'évapore rapidement, alors que l'espacement consolide durablement."
-    },
-    {
-      id: 'p4_q2',
-      number: '2.',
-      points: 1,
-      texte: "L'effort cognitif fourni lors de l'extraction d'une information sans aide externe renforce directement la solidité des voies synaptiques.",
-      correctValue: true,
-      explication: "Vrai : C'est le principe fondamental du rappel actif (« testing effect »)."
-    },
-    {
-      id: 'p4_q3',
-      number: '3.',
-      points: 1,
-      texte: "La sensation de fluidité ressentie en relisant un cours surligné est un indicateur fiable de réussite à un examen sans notes.",
-      correctValue: false,
-      explication: "Faux : C'est le piège typique de « l'illusion de compétence » causée par la présence continue des indices sous les yeux."
-    },
-    {
-      id: 'p4_q4',
-      number: '4.',
-      points: 1,
-      texte: "Le cerveau humain est biologiquement incapable d'intégrer de nouveaux schémas conceptuels profonds sans sommeil récupérateur régulier.",
-      correctValue: true,
-      explication: "Vrai : Le sommeil lent et paradoxal est le moment indispensable de réorganisation synaptique et d'intégration corticale."
-    }
-  ]
-};
-
-function normalizeExamData(data: any, title?: string) {
-  if (!data || typeof data !== 'object') {
-    return {
-      examHeader: {
-        ...EXAM_HEADER,
-        matiere: title || EXAM_HEADER.matiere
-      },
-      exercice1: EXERCICE_1_PROBLEM,
-      exercice2: EXERCICE_2_QCM,
-      exercice3: EXERCICE_3_QUESTIONS,
-      exercice4: EXERCICE_4_VF,
-    };
+  const hMatch = str.match(/(\d+)\s*(?:h|heure)/i);
+  if (hMatch) {
+    hours = parseInt(hMatch[1], 10);
   }
 
-  // En-tête officiel
+  const mMatch = str.match(/(\d+)\s*(?:m|min|minute)/i);
+  if (mMatch) {
+    minutes = parseInt(mMatch[1], 10);
+  } else if (hMatch) {
+    const afterH = str.split(/h|heure/i)[1];
+    if (afterH) {
+      const num = parseInt(afterH.replace(/\D/g, ''), 10);
+      if (!isNaN(num)) minutes = num;
+    }
+  } else {
+    const numMatch = str.match(/^(\d+)/);
+    if (numMatch) {
+      minutes = parseInt(numMatch[1], 10);
+    }
+  }
+
+  const total = hours * 3600 + minutes * 60;
+  return total > 0 ? total : 120 * 60;
+}
+
+// ==========================================
+// NORMALISATION DYNAMIQUE DE L'ÉPREUVE
+// (Aucune donnée statique d'un domaine figé)
+// ==========================================
+export function normalizeExamData(data: any, title?: string) {
+  // Déballage direct de toutes les variantes possibles de retours IA
+  const source =
+    data?.exam ||
+    data?.devoir ||
+    data?.creation_data?.exam ||
+    data?.creation_data?.devoir ||
+    data?.creation_data ||
+    data ||
+    {};
+
+  // Titre / Matière dynamique selon la demande de l'utilisateur
+  const discipline =
+    source.matiere ||
+    source.discipline ||
+    source.subject ||
+    data?.matiere ||
+    data?.discipline ||
+    data?.subject ||
+    title ||
+    "ÉPREUVE OFFICIELLE D'EXAMEN";
+
+  // Durée dynamique fixée par l'IA (en fonction de la filière et de la complexité)
+  let rawDuree = source.duree || source.duration || data?.duree || data?.duration;
+  if (!rawDuree && (source.duration_minutes || data?.duration_minutes)) {
+    const mins = Number(source.duration_minutes || data?.duration_minutes);
+    const h = Math.floor(mins / 60);
+    const m = mins % 60;
+    rawDuree = h > 0 ? (m > 0 ? `${h}h${m.toString().padStart(2, '0')}` : `${h}h00`) : `${mins} min`;
+  }
+  const formattedDuree = rawDuree
+    ? (String(rawDuree).toLowerCase().startsWith("durée") ? String(rawDuree) : `Durée : ${rawDuree}`)
+    : "Durée : 2h00";
+
+  const durationSec = parseDurationToSeconds(rawDuree || "2h00");
+
   const examHeader = {
-    institution: data.institution || EXAM_HEADER.institution,
-    sousTitre: data.sousTitre || data.subTitle || EXAM_HEADER.sousTitre,
-    duree: data.duree || data.duration || EXAM_HEADER.duree,
-    matiere: data.matiere || data.discipline || data.subject || title || EXAM_HEADER.matiere,
-    mention: data.mention || EXAM_HEADER.mention,
-    calculatrice: data.calculatrice || EXAM_HEADER.calculatrice,
-    baremeTotal: 20
+    institution: source.institution || data?.institution || "DKD School Numérique",
+    sousTitre: source.sousTitre || source.subTitle || data?.sousTitre || "Évaluation Officielle d'Examen",
+    duree: formattedDuree,
+    durationSeconds: durationSec,
+    matiere: discipline,
+    mention: source.mention || data?.mention || "Cette épreuve comporte quatre (04) pages numérotées 1/4, 2/4, 3/4 et 4/4.",
+    calculatrice: source.calculatrice || data?.calculatrice || "Tout modèle de calculatrice scientifique est autorisé.",
+    baremeTotal: Number(source.baremeTotal || data?.baremeTotal) || 20
   };
 
-  // Exercice 1 (Problème / Étude de cas)
-  const rawEx1 = data.exercice1 || data.problem || data.partie1 || (Array.isArray(data.exercices) && data.exercices[0]);
-  let exercice1 = EXERCICE_1_PROBLEM;
-  if (rawEx1 && typeof rawEx1 === 'object') {
-    const rawQuestions = Array.isArray(rawEx1.questions) ? rawEx1.questions : [];
-    exercice1 = {
-      titre: rawEx1.titre || rawEx1.title || "EXERCICE 1 : ÉTUDE DE CAS & PROBLÈME D'ANALYSE",
-      points: Number(rawEx1.points) || 8,
-      enonce: rawEx1.enonce || rawEx1.context || rawEx1.contexte || EXERCICE_1_PROBLEM.enonce,
-      questions: rawQuestions.length > 0 ? rawQuestions.map((q: any, i: number) => ({
-        id: q.id || `p1_q${i + 1}`,
-        number: q.number || `${i + 1}.`,
-        points: Number(q.points) || (i === 0 ? 2 : 3),
-        texte: q.texte || q.question || q.text || `Question ${i + 1}`,
-        sampleAnswer: q.sampleAnswer || q.reponse || q.correction || q.answer || "Réponse détaillée attendue selon les principes vus en cours."
-      })) : EXERCICE_1_PROBLEM.questions
-    };
-  }
+  // ----------------------------------------------------
+  // PAGE 1 : EXERCICE 1 - Problème complet / Étude de cas (8 pts)
+  // ----------------------------------------------------
+  const rawEx1 = source.exercice1 || source.problem || source.partie1 || (Array.isArray(source.exercices) && source.exercices[0]);
+  const rawQ1 = Array.isArray(rawEx1?.questions) ? rawEx1.questions : [];
 
-  // Exercice 2 (QCM)
-  const rawEx2 = data.exercice2 || data.qcm || data.partie2 || (Array.isArray(data.exercices) && data.exercices[1]);
-  let exercice2 = EXERCICE_2_QCM;
-  if (rawEx2 && typeof rawEx2 === 'object') {
-    const rawQuestions = Array.isArray(rawEx2.questions) ? rawEx2.questions : [];
-    exercice2 = {
-      titre: rawEx2.titre || rawEx2.title || "EXERCICE 2 : QUESTIONS À CHOIX MULTIPLES",
-      points: Number(rawEx2.points) || 4,
-      consigne: rawEx2.consigne || "Pour chaque question, cochez la seule proposition exacte parmi les quatre choix proposés.",
-      questions: rawQuestions.length > 0 ? rawQuestions.map((q: any, i: number) => ({
-        id: q.id || `p2_q${i + 1}`,
-        number: q.number || `${i + 1}.`,
-        points: Number(q.points) || 1,
-        texte: q.texte || q.question || q.text || `Question ${i + 1}`,
-        options: Array.isArray(q.options) && q.options.length > 0 ? q.options : (Array.isArray(q.choices) ? q.choices : ["Option A", "Option B", "Option C", "Option D"]),
-        correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : (typeof q.bonne_reponse === 'number' ? q.bonne_reponse : 0),
-        explication: q.explication || q.explanation || q.justification || "Justification pédagogique selon le cours."
-      })) : EXERCICE_2_QCM.questions
-    };
-  }
+  const exercice1 = {
+    titre: rawEx1?.titre || rawEx1?.title || "EXERCICE 1 : PROBLÈME MAJEUR & ÉTUDE DE CAS TECHNIQUE",
+    points: Number(rawEx1?.points) || 8,
+    enonce: rawEx1?.enonce || rawEx1?.context || rawEx1?.contexte || "",
+    questions:
+      rawQ1.length > 0
+        ? rawQ1.map((q: any, i: number) => ({
+            id: q.id || `p1_q${i + 1}`,
+            number: q.number || `${i + 1}.`,
+            points: Number(q.points) || (i === 0 ? 2 : 3),
+            texte: q.texte || q.question || q.text || `Question ${i + 1}`,
+            sampleAnswer: q.sampleAnswer || q.reponse || q.correction || q.answer || ""
+          }))
+        : [
+            {
+              id: 'p1_q1',
+              number: '1.',
+              points: 2,
+              texte: "Analyse théorique, modélisation ou formulation des hypothèses initiales du problème.",
+              sampleAnswer: ""
+            },
+            {
+              id: 'p1_q2',
+              number: '2.',
+              points: 3,
+              texte: "Développement analytique, calculs intermédiaires et résolution rigoureuse.",
+              sampleAnswer: ""
+            },
+            {
+              id: 'p1_q3',
+              number: '3.',
+              points: 3,
+              texte: "Interprétation critique des résultats, discussion des limites et synthèse globale.",
+              sampleAnswer: ""
+            }
+          ]
+  };
 
-  // Exercice 3 (Questions rédigées)
-  const rawEx3 = data.exercice3 || data.questionsRedigees || data.synthese || data.partie3 || (Array.isArray(data.exercices) && data.exercices[2]);
-  let exercice3 = EXERCICE_3_QUESTIONS;
-  if (rawEx3 && typeof rawEx3 === 'object') {
-    const rawQuestions = Array.isArray(rawEx3.questions) ? rawEx3.questions : [];
-    exercice3 = {
-      titre: rawEx3.titre || rawEx3.title || "EXERCICE 3 : QUESTIONS DE SYNTHÈSE RÉDIGÉE",
-      points: Number(rawEx3.points) || 4,
-      consigne: rawEx3.consigne || "Répondez de manière précise et concise directement sur les lignes en pointillés réservées à cet effet.",
-      questions: rawQuestions.length > 0 ? rawQuestions.map((q: any, i: number) => ({
-        id: q.id || `p3_q${i + 1}`,
-        number: q.number || `${i + 1}.`,
-        points: Number(q.points) || 2,
-        texte: q.texte || q.question || q.text || `Question ${i + 1}`,
-        sampleAnswer: q.sampleAnswer || q.reponse || q.correction || "Explication argumentée et concrète."
-      })) : EXERCICE_3_QUESTIONS.questions
-    };
-  }
+  // ----------------------------------------------------
+  // PAGE 2 : EXERCICE 2 - QCM d'analyse conceptuelle (4 pts)
+  // ----------------------------------------------------
+  const rawEx2 = source.exercice2 || source.qcm || source.partie2 || (Array.isArray(source.exercices) && source.exercices[1]);
+  const rawQ2 = Array.isArray(rawEx2?.questions) ? rawEx2.questions : [];
 
-  // Exercice 4 (Vrai / Faux)
-  const rawEx4 = data.exercice4 || data.vraiOuFaux || data.vf || data.partie4 || (Array.isArray(data.exercices) && data.exercices[3]);
-  let exercice4 = EXERCICE_4_VF;
-  if (rawEx4 && typeof rawEx4 === 'object') {
-    const rawQuestions = Array.isArray(rawEx4.questions) ? rawEx4.questions : [];
-    exercice4 = {
-      titre: rawEx4.titre || rawEx4.title || "EXERCICE 4 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
-      points: Number(rawEx4.points) || 4,
-      consigne: rawEx4.consigne || "Pour chaque affirmation ci-dessous, cochez VRAI ou FAUX.",
-      questions: rawQuestions.length > 0 ? rawQuestions.map((q: any, i: number) => ({
-        id: q.id || `p4_q${i + 1}`,
-        number: q.number || `${i + 1}.`,
-        points: Number(q.points) || 1,
-        texte: q.texte || q.affirmation || q.question || `Affirmation ${i + 1}`,
-        correctValue: typeof q.correctValue === 'boolean' ? q.correctValue : (typeof q.isTrue === 'boolean' ? q.isTrue : (q.reponse === true || q.reponse === 'VRAI' || q.reponse === 'true')),
-        explication: q.explication || q.explanation || "Explication conceptuelle."
-      })) : EXERCICE_4_VF.questions
-    };
-  }
+  const exercice2 = {
+    titre: rawEx2?.titre || rawEx2?.title || "EXERCICE 2 : QUESTIONS À CHOIX MULTIPLES",
+    points: Number(rawEx2?.points) || 4,
+    consigne: rawEx2?.consigne || "Pour chaque question, cochez la seule proposition exacte parmi les quatre choix proposés.",
+    questions:
+      rawQ2.length > 0
+        ? rawQ2.map((q: any, i: number) => ({
+            id: q.id || `p2_q${i + 1}`,
+            number: q.number || `${i + 1}.`,
+            points: Number(q.points) || 1,
+            texte: q.texte || q.question || q.text || `Question ${i + 1}`,
+            options:
+              Array.isArray(q.options) && q.options.length > 0
+                ? q.options
+                : Array.isArray(q.choices)
+                ? q.choices
+                : ["Proposition A", "Proposition B", "Proposition C", "Proposition D"],
+            correctIndex:
+              typeof q.correctIndex === 'number'
+                ? q.correctIndex
+                : typeof q.bonne_reponse === 'number'
+                ? q.bonne_reponse
+                : 0,
+            explication: q.explication || q.explanation || q.justification || ""
+          }))
+        : [1, 2, 3, 4].map((num) => ({
+            id: `p2_q${num}`,
+            number: `${num}.`,
+            points: 1,
+            texte: `Question d'évaluation conceptuelle n°${num}`,
+            options: ["Proposition A", "Proposition B", "Proposition C", "Proposition D"],
+            correctIndex: 0,
+            explication: ""
+          }))
+  };
+
+  // ----------------------------------------------------
+  // PAGE 3 : EXERCICE 3 - Questions Rédactionnelles Ciblées (4 pts)
+  // ----------------------------------------------------
+  const rawEx3 = source.exercice3 || source.questionsRedigees || source.synthese || source.partie3 || (Array.isArray(source.exercices) && source.exercices[2]);
+  const rawQ3 = Array.isArray(rawEx3?.questions) ? rawEx3.questions : [];
+
+  const exercice3 = {
+    titre: rawEx3?.titre || rawEx3?.title || "EXERCICE 3 : QUESTIONS DE SYNTHÈSE RÉDIGÉE",
+    points: Number(rawEx3?.points) || 4,
+    consigne: rawEx3?.consigne || "Répondez de manière précise et concise directement sur les lignes en pointillés réservées à cet effet.",
+    questions:
+      rawQ3.length > 0
+        ? rawQ3.map((q: any, i: number) => ({
+            id: q.id || `p3_q${i + 1}`,
+            number: q.number || `${i + 1}.`,
+            points: Number(q.points) || 2,
+            texte: q.texte || q.question || q.text || `Question ${i + 1}`,
+            sampleAnswer: q.sampleAnswer || q.reponse || q.correction || ""
+          }))
+        : [
+            {
+              id: 'p3_q1',
+              number: '1.',
+              points: 2,
+              texte: "Synthèse conceptuelle et démonstration rédigée.",
+              sampleAnswer: ""
+            },
+            {
+              id: 'p3_q2',
+              number: '2.',
+              points: 2,
+              texte: "Analyse des conditions d'application, corollaires ou étude critique.",
+              sampleAnswer: ""
+            }
+          ]
+  };
+
+  // ----------------------------------------------------
+  // PAGE 4 : EXERCICE 4 - Vrai ou Faux (4 pts)
+  // ----------------------------------------------------
+  const rawEx4 = source.exercice4 || source.vraiOuFaux || source.vf || source.partie4 || (Array.isArray(source.exercices) && source.exercices[3]);
+  const rawQ4 = Array.isArray(rawEx4?.questions) ? rawEx4.questions : [];
+
+  const exercice4 = {
+    titre: rawEx4?.titre || rawEx4?.title || "EXERCICE 4 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
+    points: Number(rawEx4?.points) || 4,
+    consigne: rawEx4?.consigne || "Pour chaque affirmation ci-dessous, cochez VRAI ou FAUX.",
+    questions:
+      rawQ4.length > 0
+        ? rawQ4.map((q: any, i: number) => ({
+            id: q.id || `p4_q${i + 1}`,
+            number: q.number || `${i + 1}.`,
+            points: Number(q.points) || 1,
+            texte: q.texte || q.affirmation || q.question || `Affirmation ${i + 1}`,
+            correctValue:
+              typeof q.correctValue === 'boolean'
+                ? q.correctValue
+                : typeof q.isTrue === 'boolean'
+                ? q.isTrue
+                : q.reponse === true || q.reponse === 'VRAI' || q.reponse === 'true',
+            explication: q.explication || q.explanation || ""
+          }))
+        : [1, 2, 3, 4].map((num) => ({
+            id: `p4_q${num}`,
+            number: `${num}.`,
+            points: 1,
+            texte: `Affirmation conceptuelle ou cas limite n°${num}`,
+            correctValue: num % 2 === 0,
+            explication: ""
+          }))
+  };
 
   // Cas où l'IA retourne une liste plate de questions
-  if (!rawEx1 && !rawEx2 && !rawEx3 && !rawEx4 && Array.isArray(data.questions) && data.questions.length >= 4) {
-    const qList = data.questions;
+  if ((!rawEx1 || !rawEx1.questions) && Array.isArray(source.questions) && source.questions.length >= 4) {
+    const qList = source.questions;
     const qcmItems = qList.filter((q: any) => Array.isArray(q.options) && q.options.length > 0);
-    const vfItems = qList.filter((q: any) => typeof q.correctValue === 'boolean' || typeof q.isTrue === 'boolean' || (Array.isArray(q.options) && q.options.length === 2 && String(q.options[0]).toLowerCase().includes('vrai')));
+    const vfItems = qList.filter(
+      (q: any) =>
+        typeof q.correctValue === 'boolean' ||
+        typeof q.isTrue === 'boolean' ||
+        (Array.isArray(q.options) && q.options.length === 2 && String(q.options[0]).toLowerCase().includes('vrai'))
+    );
     const openItems = qList.filter((q: any) => !qcmItems.includes(q) && !vfItems.includes(q));
 
     if (qcmItems.length > 0) {
-      exercice2 = {
-        titre: "EXERCICE 2 : QUESTIONS À CHOIX MULTIPLES",
-        points: 4,
-        consigne: "Pour chaque question, cochez la seule proposition exacte parmi les choix proposés.",
-        questions: qcmItems.slice(0, 4).map((q: any, i: number) => ({
-          id: `p2_q${i + 1}`,
-          number: `${i + 1}.`,
-          points: 1,
-          texte: q.texte || q.question || `Question ${i + 1}`,
-          options: q.options,
-          correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : 0,
-          explication: q.explication || "Explication basée sur le cours."
-        }))
-      };
+      exercice2.questions = qcmItems.slice(0, 4).map((q: any, i: number) => ({
+        id: `p2_q${i + 1}`,
+        number: `${i + 1}.`,
+        points: 1,
+        texte: q.texte || q.question || `Question ${i + 1}`,
+        options: q.options,
+        correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : 0,
+        explication: q.explication || ""
+      }));
     }
 
     if (vfItems.length > 0) {
-      exercice4 = {
-        titre: "EXERCICE 4 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
-        points: 4,
-        consigne: "Pour chaque affirmation ci-dessous, cochez VRAI ou FAUX.",
-        questions: vfItems.slice(0, 4).map((q: any, i: number) => ({
-          id: `p4_q${i + 1}`,
-          number: `${i + 1}.`,
-          points: 1,
-          texte: q.texte || q.question || q.affirmation || `Affirmation ${i + 1}`,
-          correctValue: typeof q.correctValue === 'boolean' ? q.correctValue : true,
-          explication: q.explication || "Explication basée sur le cours."
-        }))
-      };
+      exercice4.questions = vfItems.slice(0, 4).map((q: any, i: number) => ({
+        id: `p4_q${i + 1}`,
+        number: `${i + 1}.`,
+        points: 1,
+        texte: q.texte || q.question || q.affirmation || `Affirmation ${i + 1}`,
+        correctValue: typeof q.correctValue === 'boolean' ? q.correctValue : true,
+        explication: q.explication || ""
+      }));
     }
 
     if (openItems.length > 0) {
-      exercice1 = {
-        titre: "EXERCICE 1 : ÉTUDE DE CAS & PROBLÈME D'APPLICATION",
-        points: 8,
-        enonce: data.enonce || data.context || "À partir des notions et théorèmes étudiés dans le cours, analysez la situation et traitez les questions suivantes :",
-        questions: openItems.slice(0, 3).map((q: any, i: number) => ({
-          id: `p1_q${i + 1}`,
-          number: `${i + 1}.`,
-          points: i === 0 ? 2 : 3,
-          texte: q.texte || q.question || `Question ${i + 1}`,
-          sampleAnswer: q.sampleAnswer || q.reponse || "Réponse attendue."
-        }))
-      };
+      exercice1.questions = openItems.slice(0, 3).map((q: any, i: number) => ({
+        id: `p1_q${i + 1}`,
+        number: `${i + 1}.`,
+        points: i === 0 ? 2 : 3,
+        texte: q.texte || q.question || `Question ${i + 1}`,
+        sampleAnswer: q.sampleAnswer || q.reponse || ""
+      }));
       if (openItems.length > 3) {
-        exercice3 = {
-          titre: "EXERCICE 3 : QUESTIONS DE SYNTHÈSE RÉDIGÉE",
-          points: 4,
-          consigne: "Répondez de manière précise et synthétique directement sur votre copie.",
-          questions: openItems.slice(3, 5).map((q: any, i: number) => ({
-            id: `p3_q${i + 1}`,
-            number: `${i + 1}.`,
-            points: 2,
-            texte: q.texte || q.question || `Question ${i + 1}`,
-            sampleAnswer: q.sampleAnswer || q.reponse || "Réponse attendue."
-          }))
-        };
+        exercice3.questions = openItems.slice(3, 5).map((q: any, i: number) => ({
+          id: `p3_q${i + 1}`,
+          number: `${i + 1}.`,
+          points: 2,
+          texte: q.texte || q.question || `Question ${i + 1}`,
+          sampleAnswer: q.sampleAnswer || q.reponse || ""
+        }));
       }
     }
   }
@@ -404,15 +355,15 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
   // Navigation entre les 4 pages
   const [currentPage, setCurrentPage] = useState<number>(1);
 
-  // Minuteur d'examen (45 minutes)
-  const [secondsLeft, setSecondsLeft] = useState<number>(45 * 60);
-  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(true);
-
   // Données actives de l'examen normalisées
   const activeData = normalizeExamData(data, title);
   const { examHeader, exercice1, exercice2, exercice3, exercice4 } = activeData;
 
-  // Initialisation dynamique des réponses
+  // Minuteur d'examen dynamique initialisé selon le temps fixé par l'IA
+  const [secondsLeft, setSecondsLeft] = useState<number>(() => examHeader.durationSeconds);
+  const [isTimerRunning, setIsTimerRunning] = useState<boolean>(true);
+
+  // Initialisation dynamique des réponses candidat (Page 1)
   const [answersP1, setAnswersP1] = useState<Record<string, string[]>>(() => {
     const init: Record<string, string[]> = {};
     exercice1.questions.forEach((q) => {
@@ -455,7 +406,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
     });
     setAnswersP3(initP3);
     setAnswersP4({});
-    setSecondsLeft(45 * 60);
+    setSecondsLeft(examHeader.durationSeconds);
     setIsTimerRunning(true);
     setIsSubmitted(false);
     setShowCorrectionDetail(false);
@@ -471,7 +422,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
           if (prev <= 1) {
             clearInterval(interval);
             setIsTimerRunning(false);
-            // Soumission automatique à la fin du temps
+            // Soumission automatique à l'expiration du temps
             setIsSubmitted(true);
             return 0;
           }
@@ -485,8 +436,12 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
   }, [isTimerRunning, secondsLeft, isSubmitted]);
 
   const formatTime = (totalSec: number) => {
-    const mins = Math.floor(totalSec / 60);
+    const hrs = Math.floor(totalSec / 3600);
+    const mins = Math.floor((totalSec % 3600) / 60);
     const secs = totalSec % 60;
+    if (hrs > 0) {
+      return `${hrs.toString().padStart(2, '0')}:${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
+    }
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
@@ -526,12 +481,12 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
 
   // Calcul des scores lors de la soumission
   const calculateScores = () => {
-    // Score Ex 1 (Problème /8) : basé sur la présence de rédaction et concepts
+    // Score Ex 1 (Problème /8)
     let scoreP1 = 0;
     exercice1.questions.forEach((q) => {
       const text = (answersP1[q.id] || []).join(' ').trim();
       if (text.length >= 60) scoreP1 += q.points;
-      else if (text.length >= 25) scoreP1 += Math.round((q.points * 0.7) * 2) / 2;
+      else if (text.length >= 25) scoreP1 += Math.round(q.points * 0.7 * 2) / 2;
       else if (text.length > 5) scoreP1 += 1;
     });
 
@@ -595,7 +550,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
       });
       setAnswersP3(initP3);
       setAnswersP4({});
-      setSecondsLeft(45 * 60);
+      setSecondsLeft(examHeader.durationSeconds);
       setIsTimerRunning(true);
       setIsSubmitted(false);
       setShowCorrectionDetail(false);
@@ -611,7 +566,6 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
     <div id="module-devoir-complet" className="w-full min-h-screen bg-stone-200/70 pb-28">
       {/* 
         BARRE D'OUTILS FIXE (STICKY) STYLE EXAMEN / PDF
-        Collée immédiatement en haut sans espace vide
       */}
       <div
         id="devoir-sticky-toolbar"
@@ -741,12 +695,13 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
       )}
 
       {/* 
-        FEUILLE D'EXAMEN OFFICIELLE STYLE BACCALAURÉAT (Directement sur le fond de page)
+        FEUILLE D'EXAMEN OFFICIELLE STYLE BACCALAURÉAT / CONCOURS
+        Espaces 100% auto-extensibles s'adaptant à toute longueur de problème
       */}
       <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-6">
         <article
           id={`exam-sheet-page-${currentPage}`}
-          className="bg-white border border-stone-300 rounded-sm shadow-md p-6 sm:p-10 md:p-12 space-y-8 min-h-[850px] flex flex-col justify-between"
+          className="bg-white border border-stone-300 rounded-sm shadow-md p-6 sm:p-10 md:p-12 space-y-8 min-h-[850px] h-auto flex flex-col justify-between overflow-visible"
         >
           {/* ========================================================
               EN-TÊTE OFFICIEL DKD SCHOOL NUMÉRIQUE & STUDYCLOUD
@@ -754,7 +709,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
           <header className="border-b-2 border-stone-900 pb-5 space-y-4">
             {/* Ligne supérieure : DKD School Numérique à gauche, Logo StudyCloud à droite */}
             <div className="flex items-center justify-between gap-4">
-              {/* Gauche : DKD School Numérique */}
+              {/* Gauche : Institution & Informations */}
               <div className="text-left space-y-0.5">
                 <h2 className="font-serif font-black text-sm sm:text-base tracking-wide text-stone-900 uppercase">
                   {examHeader.institution}
@@ -776,7 +731,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
             {/* Boîte encadrée de la discipline */}
             <div className="text-center py-1 sm:py-2">
               <div className="inline-block border-2 border-stone-900 px-6 sm:px-10 py-2">
-                <h1 className="text-base sm:text-xl font-serif font-black tracking-widest text-stone-900 uppercase">
+                <h1 className="text-base sm:text-xl font-serif font-black tracking-widest text-stone-900 uppercase break-words">
                   {examHeader.matiere}
                 </h1>
               </div>
@@ -800,27 +755,34 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
 
           {/* ========================================================
               CONTENU SPÉCIFIQUE SELON LA PAGE ACTIVE (1, 2, 3 ou 4)
+              Tous les espaces sont auto-extensibles sans troncature
               ======================================================== */}
           <div className="flex-1 space-y-8 pt-2">
             {/* ----------------------------------------------------
-                PAGE 1 : EXERCICE 1 - PROBLÈME COMPLET
+                PAGE 1 : EXERCICE 1 - PROBLÈME COMPLET (8 points)
                 ---------------------------------------------------- */}
             {currentPage === 1 && (
               <div id="exam-page-1" className="space-y-6">
                 <div className="border-b border-stone-300 pb-2">
                   <div className="inline-block border border-stone-900 px-3 py-1 text-xs sm:text-sm font-serif font-extrabold uppercase tracking-wider text-stone-900">
-                    {exercice1.titre}
+                    {exercice1.titre} ({exercice1.points} points)
                   </div>
                 </div>
 
-                {/* Énoncé du problème */}
-                <div className="bg-stone-50/80 p-4 border-l-3 border-stone-800 text-stone-800 text-xs sm:text-sm font-serif leading-relaxed space-y-2">
+                {/* Énoncé du problème (S'étire dynamiquement selon la taille du sujet) */}
+                <div className="bg-stone-50/80 p-4 sm:p-5 border-l-4 border-stone-800 text-stone-800 text-xs sm:text-sm font-serif leading-relaxed space-y-2 h-auto break-words overflow-visible">
                   <span className="font-bold uppercase tracking-wider text-xs block text-stone-900">
-                    Énoncé de la situation :
+                    Énoncé de la situation & données du problème :
                   </span>
-                  <p className="whitespace-pre-line text-stone-800">
-                    {exercice1.enonce}
-                  </p>
+                  {exercice1.enonce ? (
+                    <div className="text-stone-800 leading-relaxed break-words whitespace-pre-line">
+                      <MathText text={exercice1.enonce} />
+                    </div>
+                  ) : (
+                    <div className="py-6 border border-dashed border-stone-300 rounded-sm text-center text-stone-400 italic text-xs">
+                      Espace d'énoncé du problème : cet espace s'étire et s'adapte automatiquement à toute longueur de texte, données expérimentales, tableaux et formules LaTeX.
+                    </div>
+                  )}
                 </div>
 
                 {/* Questions du problème */}
@@ -828,13 +790,13 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                   <span className="font-serif font-bold text-xs uppercase tracking-wider text-stone-900 block">
                     Questions à traiter :
                   </span>
-                  <ol className="space-y-3 pl-2">
+                  <ol className="space-y-4 pl-1">
                     {exercice1.questions.map((q) => (
-                      <li key={q.id} className="text-xs sm:text-sm font-serif text-stone-900 flex items-start gap-2">
-                        <span className="font-bold">{q.number}</span>
-                        <div className="flex-1">
-                          <span>{q.texte}</span>
-                          <span className="text-xs font-sans text-stone-500 ml-1">({q.points} points)</span>
+                      <li key={q.id} className="text-xs sm:text-sm font-serif text-stone-900 flex items-start gap-2.5 leading-relaxed h-auto break-words">
+                        <span className="font-bold shrink-0">{q.number}</span>
+                        <div className="flex-1 min-w-0 space-y-1">
+                          <MathText text={q.texte} className="text-stone-900 break-words leading-relaxed" />
+                          <span className="text-xs font-sans text-stone-500 font-normal">({q.points} points)</span>
                         </div>
                       </li>
                     ))}
@@ -843,7 +805,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
 
                 {/* 
                   Zone réservée aux réponses écrites (FEUILLE DE COPIE)
-                  avec lignes d'écriture en pointillés et bouton bleu +
+                  avec lignes d'écriture en pointillés extensibles et bouton bleu +
                 */}
                 <div className="pt-6 border-t-2 border-dashed border-stone-300 space-y-8">
                   <div className="text-center">
@@ -866,8 +828,8 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                           )}
                         </div>
 
-                        {/* Lignes d'écriture en pointillés */}
-                        <div className="space-y-2 pl-2 sm:pl-4">
+                        {/* Lignes d'écriture en pointillés extensibles */}
+                        <div className="space-y-2.5 pl-2 sm:pl-4">
                           {lines.map((lineText, lIdx) => {
                             const isLast = lIdx === lines.length - 1;
                             return (
@@ -883,7 +845,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                                       ? 'Rédigez votre réponse argumentée ici...'
                                       : ''
                                   }
-                                  className="w-full bg-transparent border-b-2 border-dotted border-stone-400 focus:border-stone-900 focus:border-solid focus:outline-hidden py-1 text-stone-900 text-xs sm:text-sm font-serif tracking-wide disabled:text-stone-700 placeholder:text-stone-400 placeholder:italic"
+                                  className="w-full bg-transparent border-b-2 border-dotted border-stone-400 focus:border-stone-900 focus:border-solid focus:outline-hidden py-1.5 text-stone-900 text-xs sm:text-sm font-serif tracking-wide disabled:text-stone-700 placeholder:text-stone-400 placeholder:italic transition-colors"
                                 />
 
                                 {isLast && !isSubmitted && (
@@ -904,12 +866,12 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                         </div>
 
                         {/* Corrigé type affiché après soumission */}
-                        {showCorrectionDetail && (
-                          <div className="mt-2 p-3 bg-emerald-50 border-l-2 border-emerald-600 text-emerald-900 text-xs font-sans leading-relaxed">
-                            <strong className="block text-[11px] uppercase tracking-wider text-emerald-800">
+                        {showCorrectionDetail && q.sampleAnswer && (
+                          <div className="mt-2 p-3 bg-emerald-50 border-l-3 border-emerald-600 text-emerald-950 text-xs font-sans leading-relaxed break-words h-auto">
+                            <strong className="block text-[11px] uppercase tracking-wider text-emerald-800 mb-1">
                               Éléments de correction attendus :
                             </strong>
-                            {q.sampleAnswer}
+                            <MathText text={q.sampleAnswer} className="break-words leading-relaxed" />
                           </div>
                         )}
                       </div>
@@ -920,7 +882,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
             )}
 
             {/* ----------------------------------------------------
-                PAGE 2 : EXERCICE 2 - COCHER LA BONNE RÉPONSE (QCM)
+                PAGE 2 : EXERCICE 2 - COCHER LA BONNE RÉPONSE (QCM) (4 points)
                 ---------------------------------------------------- */}
             {currentPage === 2 && (
               <div id="exam-page-2" className="space-y-6">
@@ -939,10 +901,12 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
 
                     return (
                       <div key={q.id} className="space-y-3 pl-1">
-                        <div className="flex items-start gap-2 font-serif text-xs sm:text-sm text-stone-900">
-                          <span className="font-bold">{q.number}</span>
-                          <span className="font-medium">{q.texte}</span>
-                          <span className="text-xs text-stone-500 font-sans">({q.points} pt)</span>
+                        <div className="flex items-start gap-2.5 font-serif text-xs sm:text-sm text-stone-900 leading-relaxed">
+                          <span className="font-bold shrink-0">{q.number}</span>
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <MathText text={q.texte} className="font-medium break-words leading-relaxed" />
+                            <span className="text-xs text-stone-500 font-sans font-normal">({q.points} pt)</span>
+                          </div>
                         </div>
 
                         {/* Options à cocher */}
@@ -955,7 +919,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                             return (
                               <label
                                 key={optIdx}
-                                className={`flex items-start gap-3 p-2 rounded cursor-pointer transition-colors text-xs sm:text-sm font-serif ${
+                                className={`flex items-start gap-3 p-2.5 rounded cursor-pointer transition-colors text-xs sm:text-sm font-serif ${
                                   isCorrect
                                     ? 'bg-emerald-50 text-emerald-950 font-semibold'
                                     : isWrong
@@ -973,16 +937,19 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                                   onChange={() => setAnswersP2({ ...answersP2, [q.id]: optIdx })}
                                   className="mt-1 accent-stone-900 cursor-pointer"
                                 />
-                                <span>{opt}</span>
+                                <div className="flex-1 min-w-0">
+                                  <MathText text={opt} className="break-words leading-relaxed" />
+                                </div>
                               </label>
                             );
                           })}
                         </div>
 
                         {/* Corrigé type affiché après soumission */}
-                        {showCorrectionDetail && (
-                          <div className="mt-1 ml-6 p-2 bg-stone-50 border-l-2 border-stone-700 text-stone-700 text-xs font-sans">
-                            <strong>Justification :</strong> {q.explication}
+                        {showCorrectionDetail && q.explication && (
+                          <div className="mt-1 ml-6 p-2.5 bg-stone-50 border-l-3 border-stone-700 text-stone-800 text-xs font-sans leading-relaxed break-words h-auto">
+                            <strong className="block text-[11px] uppercase tracking-wider text-stone-700 mb-0.5">Justification :</strong>
+                            <MathText text={q.explication} className="break-words leading-relaxed" />
                           </div>
                         )}
                       </div>
@@ -993,7 +960,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
             )}
 
             {/* ----------------------------------------------------
-                PAGE 3 : EXERCICE 3 - QUESTIONS RÉDACTIONNELLES
+                PAGE 3 : EXERCICE 3 - QUESTIONS RÉDACTIONNELLES (4 points)
                 ---------------------------------------------------- */}
             {currentPage === 3 && (
               <div id="exam-page-3" className="space-y-6">
@@ -1012,14 +979,16 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
 
                     return (
                       <div key={q.id} className="space-y-3">
-                        <div className="flex items-start gap-2 font-serif text-xs sm:text-sm text-stone-900">
-                          <span className="font-bold">{q.number}</span>
-                          <span className="font-medium">{q.texte}</span>
-                          <span className="text-xs text-stone-500 font-sans">({q.points} points)</span>
+                        <div className="flex items-start gap-2.5 font-serif text-xs sm:text-sm text-stone-900 leading-relaxed">
+                          <span className="font-bold shrink-0">{q.number}</span>
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <MathText text={q.texte} className="font-medium break-words leading-relaxed" />
+                            <span className="text-xs text-stone-500 font-sans font-normal">({q.points} points)</span>
+                          </div>
                         </div>
 
                         {/* Lignes d'écriture en pointillés avec petit plus bleu */}
-                        <div className="space-y-2 pl-4 sm:pl-6">
+                        <div className="space-y-2.5 pl-4 sm:pl-6">
                           {lines.map((lineText, lIdx) => {
                             const isLast = lIdx === lines.length - 1;
                             return (
@@ -1035,7 +1004,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                                       ? 'Rédigez votre explication ici...'
                                       : ''
                                   }
-                                  className="w-full bg-transparent border-b-2 border-dotted border-stone-400 focus:border-stone-900 focus:border-solid focus:outline-hidden py-1 text-stone-900 text-xs sm:text-sm font-serif tracking-wide disabled:text-stone-700 placeholder:text-stone-400 placeholder:italic"
+                                  className="w-full bg-transparent border-b-2 border-dotted border-stone-400 focus:border-stone-900 focus:border-solid focus:outline-hidden py-1.5 text-stone-900 text-xs sm:text-sm font-serif tracking-wide disabled:text-stone-700 placeholder:text-stone-400 placeholder:italic transition-colors"
                                 />
 
                                 {isLast && !isSubmitted && (
@@ -1056,12 +1025,12 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                         </div>
 
                         {/* Corrigé type affiché après soumission */}
-                        {showCorrectionDetail && (
-                          <div className="mt-2 ml-6 p-3 bg-emerald-50 border-l-2 border-emerald-600 text-emerald-900 text-xs font-sans leading-relaxed">
-                            <strong className="block text-[11px] uppercase tracking-wider text-emerald-800">
+                        {showCorrectionDetail && q.sampleAnswer && (
+                          <div className="mt-2 ml-6 p-3 bg-emerald-50 border-l-3 border-emerald-600 text-emerald-950 text-xs font-sans leading-relaxed break-words h-auto">
+                            <strong className="block text-[11px] uppercase tracking-wider text-emerald-800 mb-1">
                               Corrigé type officiel :
                             </strong>
-                            {q.sampleAnswer}
+                            <MathText text={q.sampleAnswer} className="break-words leading-relaxed" />
                           </div>
                         )}
                       </div>
@@ -1072,7 +1041,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
             )}
 
             {/* ----------------------------------------------------
-                PAGE 4 : EXERCICE 4 - VRAI OU FAUX
+                PAGE 4 : EXERCICE 4 - VRAI OU FAUX (4 points)
                 ---------------------------------------------------- */}
             {currentPage === 4 && (
               <div id="exam-page-4" className="space-y-6">
@@ -1090,11 +1059,13 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                     const val = answersP4[q.id];
 
                     return (
-                      <div key={q.id} className="space-y-2 p-3 rounded-lg border border-stone-200 bg-stone-50/50">
-                        <div className="flex items-start gap-2 font-serif text-xs sm:text-sm text-stone-900">
-                          <span className="font-bold">{q.number}</span>
-                          <span className="font-medium flex-1">{q.texte}</span>
-                          <span className="text-xs text-stone-500 font-sans">({q.points} pt)</span>
+                      <div key={q.id} className="space-y-2.5 p-3 rounded-lg border border-stone-200 bg-stone-50/50">
+                        <div className="flex items-start gap-2.5 font-serif text-xs sm:text-sm text-stone-900 leading-relaxed">
+                          <span className="font-bold shrink-0">{q.number}</span>
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <MathText text={q.texte} className="font-medium break-words leading-relaxed" />
+                            <span className="text-xs text-stone-500 font-sans font-normal">({q.points} pt)</span>
+                          </div>
                         </div>
 
                         {/* Choix VRAI ou FAUX */}
@@ -1126,12 +1097,16 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
 
                         {/* Corrigé type affiché après soumission */}
                         {showCorrectionDetail && (
-                          <div className="mt-2 text-xs font-sans text-stone-700 bg-white p-2 rounded border border-stone-200">
+                          <div className="mt-2 text-xs font-sans text-stone-800 bg-white p-2.5 rounded border border-stone-200 break-words h-auto leading-relaxed">
                             <strong>Réponse attendue :</strong>{' '}
                             <span className={q.correctValue ? 'text-emerald-700 font-bold' : 'text-rose-700 font-bold'}>
                               {q.correctValue ? 'VRAI' : 'FAUX'}
-                            </span>{' '}
-                            — {q.explication}
+                            </span>
+                            {q.explication && (
+                              <div className="mt-1 text-stone-700">
+                                <MathText text={`Justification : ${q.explication}`} />
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
