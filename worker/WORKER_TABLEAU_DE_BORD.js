@@ -1231,44 +1231,84 @@ function renderDashboardHtml(data) {
     </div>
 
     <!-- ================================================================== -->
-    <!-- VUE 2 : TOUT LES UTILISATEURS (DIVISÉE EN 2, SCROLLABLE & RESPONSIVE) -->
+    <!-- VUE 2 : TOUT LES UTILISATEURS (DIVISÉE EN 2, COLONNES SCROLLABLES INDÉPENDANTES, PAGE FIXE) -->
     <!-- ================================================================== -->
-    <div id="view-users" class="hidden w-full flex-1 flex flex-col space-y-3 pb-8">
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:h-[calc(100vh-130px)] min-h-[550px]">
+    <div id="view-users" class="hidden w-full flex-1 flex flex-col space-y-2.5 overflow-hidden h-[calc(100vh-80px)]">
+      
+      <!-- BANNIÈRE EN HAUT : STOCKAGE OFFERT À L'INSCRIPTION APPLIQUÉ À TOUS (IMAGE 2) -->
+      <div class="neo-card p-2.5 sm:p-3 bg-gradient-to-r from-slate-900 via-[#131b2e] to-slate-900 border-l-4 border-l-orange-500 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
+        <div class="flex items-center gap-2.5">
+          <span class="text-xl shrink-0">🎁</span>
+          <div>
+            <div class="text-xs font-extrabold text-white flex items-center gap-1.5 flex-wrap">
+              <span>Stockage de Bienvenue Offert à l'Inscription :</span>
+              <span id="current-welcome-badge" class="px-2 py-0.5 rounded-md bg-orange-500/20 text-orange-400 font-mono font-black border border-orange-500/40 text-xs">
+                ${data.globalConfig?.default_welcome_total_mb ?? 30} Mo
+              </span>
+            </div>
+            <p class="text-[10px] text-slate-400 mt-0.5">Quota global attribué automatiquement. Vous pouvez le modifier ici pour l'appliquer à <strong>TOUS</strong> les utilisateurs (actuels et futurs).</p>
+          </div>
+        </div>
+
+        <div class="flex items-center gap-2 shrink-0 self-start sm:self-auto">
+          <div class="flex items-center gap-1 bg-slate-950 px-2 py-1 rounded-lg border border-slate-700">
+            <span class="text-[10px] text-slate-400 font-bold">Nouveau :</span>
+            <input 
+              type="number" 
+              id="users-welcome-input" 
+              class="w-16 bg-slate-900 text-orange-400 font-bold font-mono text-xs px-1.5 py-0.5 rounded border border-slate-600 text-center" 
+              value="${data.globalConfig?.default_welcome_total_mb ?? 30}"
+            >
+            <span class="text-[10px] text-slate-400 font-bold">Mo</span>
+          </div>
+
+          <button 
+            onclick="applyWelcomeStorageToAllUsers()" 
+            class="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-orange-600/20 active:scale-95 cursor-pointer flex items-center gap-1.5"
+            title="Met à jour la base de données et applique immédiatement ce stockage à TOUS les utilisateurs existants et futurs"
+          >
+            <span>⚡</span>
+            <span>Appliquer à tous les utilisateurs</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- DEUX COLONNES SCROLLABLES INDÉPENDANTES (LA PAGE EXTÉRIEURE NE BOUGE PAS) -->
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
         
-        <!-- COLONNE GAUCHE (4/12) : LISTE DES UTILISATEURS SCROLLABLE -->
-        <div class="lg:col-span-4 neo-card h-[380px] lg:h-full flex flex-col overflow-hidden shrink-0">
-          <div class="p-2.5 border-b border-slate-800 flex items-center justify-between gap-2 shrink-0">
+        <!-- COLONNE GAUCHE (4/12) : LISTE DES NOMS SCROLLABLE INDÉPENDANTE -->
+        <div class="lg:col-span-4 neo-card h-[280px] lg:h-full flex flex-col overflow-hidden shrink-0">
+          <div class="p-2 border-b border-slate-800 shrink-0">
             <input 
               type="text" 
               id="users-search-left" 
               placeholder="Filtrer nom, numéro, école..." 
               oninput="filterUsersLeft()"
-              class="w-full bg-slate-900 text-slate-200 placeholder-slate-500 text-xs rounded-lg px-3 py-2 border border-slate-700 focus:outline-none focus:border-orange-500"
+              class="w-full bg-slate-900 text-slate-200 placeholder-slate-500 text-xs rounded-lg px-3 py-1.5 border border-slate-700 focus:outline-none focus:border-orange-500"
             >
           </div>
           <div id="users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs font-medium"></div>
         </div>
 
-        <!-- COLONNE DROITE (8/12) : DÉTAILS COMPLETS DE L'UTILISATEUR SCROLLABLE -->
-        <div class="lg:col-span-8 neo-card p-4 space-y-4 overflow-y-auto min-h-[400px] lg:h-full" id="user-details-right-panel"></div>
+        <!-- COLONNE DROITE (8/12) : DÉTAILS COMPLETS ET DONNÉES SCROLLABLES INDÉPENDANTS -->
+        <div class="lg:col-span-8 neo-card p-4 space-y-4 overflow-y-auto h-[480px] lg:h-full" id="user-details-right-panel"></div>
 
       </div>
     </div>
 
     <!-- ================================================================== -->
-    <!-- VUE 3 : DEMANDE DE STOCKAGE & PARAMÈTRES GLOBAUX (SCROLLABLE & RESPONSIVE) -->
+    <!-- VUE 3 : DEMANDE DE STOCKAGE & PARAMÈTRES GLOBAUX (COLONNES SCROLLABLES INDÉPENDANTES, PAGE FIXE) -->
     <!-- ================================================================== -->
-    <div id="view-demandes" class="hidden w-full flex-1 flex flex-col space-y-3 pb-8">
+    <div id="view-demandes" class="hidden w-full flex-1 flex flex-col space-y-2.5 overflow-hidden h-[calc(100vh-80px)]">
       
       <!-- BANNIÈRE EN HAUT : PARAMÈTRES DU STOCKAGE DE BIENVENUE POUR TOUS -->
-      <div class="neo-card p-3.5 bg-gradient-to-r from-slate-900 via-[#131b2e] to-slate-900 border-l-4 border-l-orange-500 shrink-0">
+      <div class="neo-card p-2.5 sm:p-3 bg-gradient-to-r from-slate-900 via-[#131b2e] to-slate-900 border-l-4 border-l-orange-500 shrink-0">
         <div class="flex flex-col lg:flex-row lg:items-center justify-between gap-3">
           <div>
             <h4 class="text-xs sm:text-sm font-bold text-white flex items-center gap-1.5">
               <span>🎁</span> Paramètres Globaux : Stockage de Bienvenue Automatique à l'Inscription
             </h4>
-            <p class="text-[11px] text-slate-400 mt-0.5">Quota global attribué automatiquement à tout nouvel utilisateur (partagé librement entre fichiers et base de données, sans limiteur individuel).</p>
+            <p class="text-[10px] text-slate-400 mt-0.5">Quota global attribué automatiquement à tout nouvel utilisateur (partagé librement entre fichiers et base de données, sans limiteur individuel).</p>
           </div>
 
           <div class="flex items-center gap-2 flex-wrap">
@@ -1289,9 +1329,9 @@ function renderDashboardHtml(data) {
       </div>
 
       <!-- ÉCRAN DIVISÉ EN 2 POUR LA GESTION DES QUOTAS UTILISATEURS -->
-      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:h-[calc(100vh-220px)] min-h-[500px]">
-        <!-- COLONNE GAUCHE (4/12) : LISTE DES UTILISATEURS -->
-        <div class="lg:col-span-4 neo-card h-[380px] lg:h-full flex flex-col overflow-hidden shrink-0">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 flex-1 min-h-0 overflow-hidden">
+        <!-- COLONNE GAUCHE (4/12) : LISTE DES UTILISATEURS SCROLLABLE -->
+        <div class="lg:col-span-4 neo-card h-[280px] lg:h-full flex flex-col overflow-hidden shrink-0">
           <div class="p-2.5 border-b border-slate-800 flex items-center justify-between text-xs font-bold text-slate-400 shrink-0">
             <span>Utilisateurs & Quotas</span>
             <span class="text-[10px] font-mono text-orange-400">(${data.users.length})</span>
@@ -1299,8 +1339,8 @@ function renderDashboardHtml(data) {
           <div id="demandes-users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs"></div>
         </div>
 
-        <!-- COLONNE DROITE (8/12) : FORMULAIRE COMPLET D'AJUSTEMENT DU STOCKAGE -->
-        <div class="lg:col-span-8 neo-card p-4 space-y-4 overflow-y-auto min-h-[400px] lg:h-full" id="demandes-right-panel">
+        <!-- COLONNE DROITE (8/12) : FORMULAIRE COMPLET D'AJUSTEMENT DU STOCKAGE SCROLLABLE -->
+        <div class="lg:col-span-8 neo-card p-4 space-y-4 overflow-y-auto h-[480px] lg:h-full" id="demandes-right-panel">
           <div class="py-20 text-center text-slate-500 text-xs">
             Sélectionnez un utilisateur sur la gauche pour afficher et ajuster son stockage de bienvenue ou son stockage payant.
           </div>
@@ -1786,9 +1826,9 @@ function renderDashboardHtml(data) {
           </div>
         </div>
 
-        <!-- ACCORDÉONS TABLES D1 DE L'UTILISATEUR -->
+        <!-- ACCORDÉONS TABLES D1 DE L'UTILISATEUR (IMAGE 1 : TYPOGRAPHIE COMPACTE, ÉCRITURE PETITE ET SANS CHEVAUCHEMENT) -->
         <div class="space-y-1.5">
-          <h4 class="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+          <h4 class="text-[11px] font-extrabold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
             <span>🗄️</span> Tables D1 de \${u.name}
           </h4>
           <div class="bg-slate-900 rounded-xl border border-slate-800 divide-y divide-slate-800/80">
@@ -1798,33 +1838,33 @@ function renderDashboardHtml(data) {
               const accId = 'acc-user-d1-' + idx;
               return \`
                 <div>
-                  <div onclick="toggleAccordion('\${accId}')" class="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-slate-800/40 select-none text-xs">
-                    <div class="flex items-center gap-2">
-                      <span class="font-mono font-bold text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-[11px]">\${t.table}</span>
-                      <span class="text-slate-300 text-[11px] truncate max-w-[160px] sm:max-w-none">\${t.label}</span>
+                  <div onclick="toggleAccordion('\${accId}')" class="px-2.5 py-1.5 flex items-center justify-between cursor-pointer hover:bg-slate-800/40 select-none gap-2">
+                    <div class="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+                      <span class="font-mono font-bold text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-[10px] shrink-0">\${t.table}</span>
+                      <span class="text-slate-400 text-[10px] truncate max-w-[130px] sm:max-w-[200px] md:max-w-[280px]">\${t.label}</span>
                       \${isExempt ? \`
-                        <span class="hidden sm:inline-flex px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">🎁 Offert & Déduit</span>
+                        <span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">🎁 Offert</span>
                       \` : \`
-                        <span class="hidden sm:inline-flex px-1.5 py-0.5 rounded text-[9px] font-medium bg-slate-800 text-slate-400 border border-slate-700">📌 Quota Perso</span>
+                        <span class="hidden md:inline-flex px-1.5 py-0.5 rounded text-[8px] font-medium bg-slate-800 text-slate-400 border border-slate-700 shrink-0">📌 Perso</span>
                       \`}
                     </div>
-                    <div class="flex items-center gap-2.5 font-mono">
+                    <div class="flex items-center gap-1.5 font-mono text-[10px] shrink-0 whitespace-nowrap">
                       \${isExempt && isNet ? \`
-                        <span class="font-bold text-emerald-400">\${stats.formatted}</span>
-                        <span class="text-[10px] text-emerald-500 font-sans hidden sm:inline">(0 Mo décompté)</span>
+                        <span class="font-bold text-emerald-400 text-[10px]">\${stats.formatted}</span>
+                        <span class="text-[9px] text-emerald-500 font-sans hidden sm:inline">(offert)</span>
                       \` : \`
-                        <span class="font-bold \${isExempt ? 'text-orange-400' : 'text-emerald-400'}">\${stats.formatted}</span>
+                        <span class="font-bold \${isExempt ? 'text-orange-400' : 'text-emerald-400'} text-[10px]">\${stats.formatted}</span>
                       \`}
-                      <span class="text-slate-400 text-[11px]">(\${stats.count} lignes)</span>
-                      <svg id="\${accId}-icon" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                      <span class="text-slate-500 text-[9px]">(\${stats.count} lig.)</span>
+                      <svg id="\${accId}-icon" class="w-3 h-3 text-slate-400 transition-transform duration-200 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
                       </svg>
                     </div>
                   </div>
-                  <div id="\${accId}" class="accordion-content bg-[#070b14] border-t border-slate-800/60 px-3 text-[11px] text-slate-300">
-                    <div class="py-2.5 space-y-1.5">
+                  <div id="\${accId}" class="accordion-content bg-[#070b14] border-t border-slate-800/60 px-3 text-[10px] text-slate-300">
+                    <div class="py-2 space-y-1">
                       \${isExempt ? \`
-                        <div class="p-2 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[11px] font-medium flex items-center gap-2">
+                        <div class="p-1.5 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[10px] font-medium flex items-center gap-1.5">
                           <span>🎁</span> <span><strong>Règle d'exemption :</strong> \${t.exemptReason || 'Table offerte pour la communauté. Non décomptée du quota personnel.'}</span>
                         </div>
                       \` : ''}
@@ -1838,9 +1878,9 @@ function renderDashboardHtml(data) {
           </div>
         </div>
 
-        <!-- ACCORDÉONS DOSSIERS R2 DE L'UTILISATEUR -->
+        <!-- ACCORDÉONS DOSSIERS R2 DE L'UTILISATEUR (IMAGE 1 : TYPOGRAPHIE COMPACTE, ÉCRITURE PETITE ET SANS CHEVAUCHEMENT) -->
         <div class="space-y-1.5">
-          <h4 class="text-xs font-bold text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
+          <h4 class="text-[11px] font-extrabold text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
             <span>📦</span> Fichiers R2 de \${u.name}
           </h4>
           <div class="bg-slate-900 rounded-xl border border-slate-800 divide-y divide-slate-800/80">
@@ -1850,38 +1890,38 @@ function renderDashboardHtml(data) {
               const accId = 'acc-user-r2-' + idx;
               return \`
                 <div>
-                  <div onclick="toggleAccordion('\${accId}')" class="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-slate-800/40 select-none text-xs">
-                    <div class="flex items-center gap-2">
-                      <span class="font-mono font-bold text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20 text-[11px]">\${r.folder}</span>
-                      <span class="text-slate-300 text-[11px] truncate max-w-[160px] sm:max-w-none">\${r.name}</span>
+                  <div onclick="toggleAccordion('\${accId}')" class="px-2.5 py-1.5 flex items-center justify-between cursor-pointer hover:bg-slate-800/40 select-none gap-2">
+                    <div class="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
+                      <span class="font-mono font-bold text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20 text-[10px] shrink-0">\${r.folder}</span>
+                      <span class="text-slate-400 text-[10px] truncate max-w-[130px] sm:max-w-[200px] md:max-w-[280px]">\${r.name}</span>
                       \${isExempt ? \`
-                        <span class="hidden sm:inline-flex px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">🎁 Offert & Déduit</span>
+                        <span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">🎁 Offert</span>
                       \` : \`
-                        <span class="hidden sm:inline-flex px-1.5 py-0.5 rounded text-[9px] font-medium bg-slate-800 text-slate-400 border border-slate-700">📌 Quota Perso</span>
+                        <span class="hidden md:inline-flex px-1.5 py-0.5 rounded text-[8px] font-medium bg-slate-800 text-slate-400 border border-slate-700 shrink-0">📌 Perso</span>
                       \`}
                     </div>
-                    <div class="flex items-center gap-2.5 font-mono">
+                    <div class="flex items-center gap-1.5 font-mono text-[10px] shrink-0 whitespace-nowrap">
                       \${isExempt && isNet ? \`
-                        <span class="font-bold text-emerald-400">\${stats.formatted}</span>
-                        <span class="text-[10px] text-emerald-500 font-sans hidden sm:inline">(0 Mo décompté)</span>
+                        <span class="font-bold text-emerald-400 text-[10px]">\${stats.formatted}</span>
+                        <span class="text-[9px] text-emerald-500 font-sans hidden sm:inline">(offert)</span>
                       \` : \`
-                        <span class="font-bold text-orange-400">\${stats.formatted}</span>
-                      \`}
-                      <span class="text-slate-400 text-[11px]">(\${stats.count} fichier(s))</span>
-                      <svg id="\${accId}-icon" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                        <span class="font-bold text-orange-400 text-[10px]">\${stats.formatted}</span>
+                      \` }
+                      <span class="text-slate-500 text-[9px]">(\${stats.count} fich.)</span>
+                      <svg id="\${accId}-icon" class="w-3 h-3 text-slate-400 transition-transform duration-200 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
                       </svg>
                     </div>
                   </div>
-                  <div id="\${accId}" class="accordion-content bg-[#070b14] border-t border-slate-800/60 px-3 text-[11px] text-slate-300">
-                    <div class="py-2.5 space-y-1.5">
+                  <div id="\${accId}" class="accordion-content bg-[#070b14] border-t border-slate-800/60 px-3 text-[10px] text-slate-300">
+                    <div class="py-2 space-y-1">
                       \${isExempt ? \`
-                        <div class="p-2 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[11px] font-medium flex items-center gap-2">
+                        <div class="p-1.5 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[10px] font-medium flex items-center gap-1.5">
                           <span>🎁</span> <span><strong>Règle d'exemption :</strong> \${r.exemptReason || 'Fichiers publiés dans le menu Ressources offerts à toute la communauté sans pénalité de quota.'}</span>
                         </div>
                       \` : ''}
-                      <div><strong class="text-orange-400">📍 Connexion UI :</strong> \${r.uiConnection}</div>
-                      <div><strong class="text-purple-400">📝 Exemples :</strong> \${r.examples}</div>
+                      <div><strong class="text-emerald-400">📍 Connexion UI :</strong> \${r.uiConnection}</div>
+                      <div><strong class="text-blue-400">🎯 Rôle :</strong> \${r.role}</div>
                     </div>
                   </div>
                 </div>
@@ -2141,6 +2181,66 @@ function renderDashboardHtml(data) {
       }
     }
 
+    async function applyWelcomeStorageToAllUsers() {
+      const input = document.getElementById('users-welcome-input');
+      const val = parseFloat(input ? input.value : '30');
+      if (isNaN(val) || val < 0) {
+        alert("Veuillez saisir un quota valide en Mo.");
+        return;
+      }
+
+      if (!confirm("Voulez-vous vraiment définir le stockage de bienvenue à " + val + " Mo et l'appliquer IMMÉDIATEMENT à TOUS les utilisateurs existants et futurs dans la base de données ?")) {
+        return;
+      }
+
+      try {
+        const resp = await fetch('/api/storage/update-welcome-and-apply-all', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ welcomeTotalMb: val })
+        });
+
+        const data = await resp.json();
+        if (data.success) {
+          globalConfig.default_welcome_total_mb = val;
+          globalConfig.default_welcome_r2_mb = Math.round(val / 3);
+          globalConfig.default_welcome_d1_mb = Math.round((val * 2) / 3);
+
+          const badge = document.getElementById('current-welcome-badge');
+          if (badge) badge.textContent = val + ' Mo';
+
+          const cfgTotalInput = document.getElementById('global-cfg-total');
+          if (cfgTotalInput) cfgTotalInput.value = val;
+
+          // Mise à jour de tous les utilisateurs dans la mémoire
+          allUsers.forEach(item => {
+            item.quotaConfig.welcomeTotalMb = val;
+            item.quotaConfig.welcomeR2Mb = Math.round(val / 3);
+            item.quotaConfig.welcomeD1Mb = Math.round((val * 2) / 3);
+            const totalMb = val + item.quotaConfig.paidTotalMb;
+            item.quotaConfig.totalAllowedMb = totalMb;
+            item.quotaConfig.totalAllowedFormatted = totalMb >= 1024 
+              ? (totalMb / 1024).toFixed(2) + ' Go' 
+              : totalMb.toFixed(0) + ' Mo';
+            item.quotaConfig.totalAllowedBytes = totalMb * 1024 * 1024;
+            if (item.quotaConfig.totalAllowedBytes > 0) {
+              item.storage.usagePercentage = parseFloat(((item.storage.totalBytes / item.quotaConfig.totalAllowedBytes) * 100).toFixed(2));
+              if (item.storage.net) item.storage.net.usagePercentage = item.storage.usagePercentage;
+            }
+          });
+
+          showToast("🎉 Stockage de bienvenue mis à jour (" + val + " Mo) et appliqué à TOUS les utilisateurs !");
+          renderUsersLeftList(document.getElementById('users-search-left')?.value || '');
+          if (selectedUserId) renderUserRightDetails(selectedUserId);
+          if (typeof renderDemandesUsersList === 'function') renderDemandesUsersList();
+        } else {
+          alert('Erreur: ' + (data.error || 'Échec de la mise à jour'));
+        }
+      } catch (err) {
+        alert('Erreur réseau lors de la mise à jour globale');
+      }
+    }
+
     function renderSimpleMessagesUsersList() {
       const container = document.getElementById('messages-users-left-list');
       container.innerHTML = allUsers.map(item => {
@@ -2201,6 +2301,69 @@ export default {
     await ensureStorageTables(db);
 
     try {
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/storage/update-welcome-and-apply-all (IMAGE 2)
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/storage/update-welcome-and-apply-all') {
+        const body = await request.json();
+        const defTotal = Number(body.welcomeTotalMb ?? 30.0);
+        if (isNaN(defTotal) || defTotal < 0) {
+          return new Response(JSON.stringify({ success: false, error: 'Montant invalide' }), { status: 400, headers: corsHeaders(origin) });
+        }
+
+        const defR2 = Math.round(defTotal / 3);
+        const defD1 = Math.round((defTotal * 2) / 3);
+
+        // 1. Mise à jour de la configuration globale
+        await safeRun(db, `
+          INSERT INTO storage_global_config (id, default_welcome_total_mb, default_welcome_r2_mb, default_welcome_d1_mb, updated_at)
+          VALUES ('default', ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(id) DO UPDATE SET
+            default_welcome_total_mb = excluded.default_welcome_total_mb,
+            default_welcome_r2_mb = excluded.default_welcome_r2_mb,
+            default_welcome_d1_mb = excluded.default_welcome_d1_mb,
+            updated_at = CURRENT_TIMESTAMP
+        `, [defTotal, defR2, defD1]);
+
+        await safeRun(db, `
+          INSERT INTO storage_global_config (id, default_welcome_total_mb, default_welcome_r2_mb, default_welcome_d1_mb, updated_at)
+          VALUES ('global', ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(id) DO UPDATE SET
+            default_welcome_total_mb = excluded.default_welcome_total_mb,
+            default_welcome_r2_mb = excluded.default_welcome_r2_mb,
+            default_welcome_d1_mb = excluded.default_welcome_d1_mb,
+            updated_at = CURRENT_TIMESTAMP
+        `, [defTotal, defR2, defD1]);
+
+        // 2. Application immédiate à TOUS les utilisateurs existants dans la table de quotas
+        await safeRun(db, `
+          UPDATE user_storage_quotas
+          SET welcome_total_mb = ?,
+              welcome_r2_mb = ?,
+              welcome_d1_mb = ?,
+              updated_at = CURRENT_TIMESTAMP
+        `, [defTotal, defR2, defD1]);
+
+        // 3. S'assurer que tout utilisateur présent dans 'users' a une ligne
+        try {
+          await db.prepare(`
+            INSERT OR IGNORE INTO user_storage_quotas (user_id, welcome_total_mb, welcome_r2_mb, welcome_d1_mb, paid_total_mb, paid_r2_mb, paid_d1_mb, plan_name)
+            SELECT id, ?, ?, ?, 0.0, 0.0, 0.0, 'gratuit' FROM users
+          `).bind(defTotal, defR2, defD1).run();
+        } catch (e) {}
+
+        return new Response(JSON.stringify({ 
+          success: true, 
+          welcomeTotalMb: defTotal,
+          welcomeR2Mb: defR2,
+          welcomeD1Mb: defD1,
+          message: "Stockage de bienvenue appliqué à tous les utilisateurs"
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
       // ----------------------------------------------------------------------
       // ROUTE POST : /api/storage/update-global-config
       // ----------------------------------------------------------------------
