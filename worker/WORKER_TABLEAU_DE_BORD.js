@@ -1980,16 +1980,16 @@ function renderDashboardHtml(data) {
             <div>
               <div class="font-bold text-white flex items-center gap-2">
                 <span>Vrai Stockage Réel Facturé :</span>
-                <span class="text-orange-400 font-black font-mono">${s.net ? s.net.totalFormatted : s.totalFormatted}</span>
-                <span class="text-slate-400 text-[11px]">(${s.net ? s.net.usagePercentage : s.usagePercentage}% du quota)</span>
+                <span class="text-orange-400 font-black font-mono">\${s.net ? s.net.totalFormatted : s.totalFormatted}</span>
+                <span class="text-slate-400 text-[11px]">(\${s.net ? s.net.usagePercentage : s.usagePercentage}% du quota)</span>
               </div>
               <div class="text-[11px] text-emerald-400 mt-0.5">
-                🎁 <strong>${s.exempted ? s.exempted.totalFormatted : '0 Mo'}</strong> offerts à l'étudiant (ressources publiques, messages reçus, vues, téléchargements et compteurs de mots)
+                🎁 <strong>\${s.exempted ? s.exempted.totalFormatted : '0 Mo'}</strong> offerts à l'étudiant (ressources publiques, messages reçus, vues, téléchargements et compteurs de mots)
               </div>
             </div>
           </div>
           <div class="text-right shrink-0 font-mono text-[11px] bg-slate-950 px-2.5 py-1 rounded border border-slate-800 text-slate-400">
-            Total Brut Cloudflare : <strong class="text-slate-200">${s.gross ? s.gross.totalFormatted : s.totalFormatted}</strong>
+            Total Brut Cloudflare : <strong class="text-slate-200">\${s.gross ? s.gross.totalFormatted : s.totalFormatted}</strong>
           </div>
         </div>
 
