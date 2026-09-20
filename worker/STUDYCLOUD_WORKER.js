@@ -2129,6 +2129,277 @@ async function processReferralAttribution(db, referralCode, newUserId, newUserNa
   }
 }
 __name(processReferralAttribution, "processReferralAttribution");
+
+async function ensureStorageTables(db) {
+  if (!db) return;
+  try {
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS storage_global_config (
+        id TEXT PRIMARY KEY,
+        default_welcome_r2_mb REAL DEFAULT 10.0,
+        default_welcome_d1_mb REAL DEFAULT 20.0,
+        cost_per_gb_eur REAL DEFAULT 0.015,
+        notes TEXT DEFAULT '',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await db.prepare(`
+      INSERT OR IGNORE INTO storage_global_config (id, default_welcome_r2_mb, default_welcome_d1_mb, cost_per_gb_eur)
+      VALUES ('global', 10.0, 20.0, 0.015)
+    `).run();
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_storage_quotas (
+        user_id TEXT PRIMARY KEY,
+        welcome_r2_mb REAL DEFAULT 10.0,
+        welcome_d1_mb REAL DEFAULT 20.0,
+        paid_r2_mb REAL DEFAULT 0.0,
+        paid_d1_mb REAL DEFAULT 0.0,
+        bonus_r2_mb REAL DEFAULT 0.0,
+        bonus_d1_mb REAL DEFAULT 0.0,
+        plan_name TEXT DEFAULT 'gratuit',
+        is_unlimited INTEGER DEFAULT 0,
+        notes TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_word_counts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        word_count INTEGER DEFAULT 0,
+        token_count INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS storage_upgrade_requests (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        pack_id TEXT,
+        pack_name TEXT,
+        additional_mb REAL DEFAULT 0,
+        additional_words INTEGER DEFAULT 0,
+        status TEXT DEFAULT 'pending',
+        contact_phone TEXT DEFAULT '',
+        notes TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+  } catch (err) {
+    console.warn("[ensureStorageTables Warn]", err);
+  }
+}
+__name(ensureStorageTables, "ensureStorageTables");
+
+async function getUserStorageDetails(db, userId) {
+  if (!db || !userId) return null;
+  await ensureStorageTables(db);
+
+  // 1. Quota de l'utilisateur
+  let quotaRow = null;
+  try {
+    quotaRow = await db.prepare("SELECT * FROM user_storage_quotas WHERE user_id = ?").bind(userId).first();
+  } catch (e) {}
+
+  let globalConfig = null;
+  try {
+    globalConfig = await db.prepare("SELECT * FROM storage_global_config WHERE id = 'global'").first();
+  } catch (e) {}
+
+  const defaultWelcomeR2 = Number(globalConfig?.default_welcome_r2_mb ?? 10.0);
+  const defaultWelcomeD1 = Number(globalConfig?.default_welcome_d1_mb ?? 20.0);
+
+  if (!quotaRow) {
+    try {
+      await db.prepare(`
+        INSERT OR IGNORE INTO user_storage_quotas (user_id, welcome_r2_mb, welcome_d1_mb, paid_r2_mb, paid_d1_mb, plan_name)
+        VALUES (?, ?, ?, 0.0, 0.0, 'gratuit')
+      `).bind(userId, defaultWelcomeR2, defaultWelcomeD1).run();
+    } catch (e) {}
+    quotaRow = {
+      welcome_r2_mb: defaultWelcomeR2,
+      welcome_d1_mb: defaultWelcomeD1,
+      paid_r2_mb: 0.0,
+      paid_d1_mb: 0.0,
+      bonus_r2_mb: 0.0,
+      bonus_d1_mb: 0.0,
+      plan_name: 'gratuit'
+    };
+  }
+
+  const welcomeR2Mb = Number(quotaRow?.welcome_r2_mb ?? defaultWelcomeR2);
+  const welcomeD1Mb = Number(quotaRow?.welcome_d1_mb ?? defaultWelcomeD1);
+  const welcomeTotalMb = parseFloat((welcomeR2Mb + welcomeD1Mb).toFixed(2));
+
+  const paidR2Mb = Number(quotaRow?.paid_r2_mb ?? 0.0);
+  const paidD1Mb = Number(quotaRow?.paid_d1_mb ?? 0.0);
+  const paidTotalMb = parseFloat((paidR2Mb + paidD1Mb).toFixed(2));
+
+  const bonusR2Mb = Number(quotaRow?.bonus_r2_mb ?? 0.0);
+  const bonusD1Mb = Number(quotaRow?.bonus_d1_mb ?? 0.0);
+  const bonusTotalMb = parseFloat((bonusR2Mb + bonusD1Mb).toFixed(2));
+
+  const totalAllowedMb = parseFloat((welcomeTotalMb + paidTotalMb + bonusTotalMb).toFixed(2));
+  const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
+
+  const filesAllowedMb = parseFloat((welcomeR2Mb + paidR2Mb + bonusR2Mb).toFixed(2));
+  const dataAllowedMb = parseFloat((welcomeD1Mb + paidD1Mb + bonusD1Mb).toFixed(2));
+
+  // 2. Fichiers personnels de cours et sessions
+  let personalFilesBytes = 0;
+  let personalFilesCount = 0;
+  try {
+    const fRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(size), 0) AS s FROM files WHERE user_id = ?").bind(userId).first();
+    personalFilesCount = Number(fRes?.c || 0);
+    personalFilesBytes = Number(fRes?.s || 0);
+  } catch (e) {}
+
+  // 3. Données & fiches (notes, matières, planning, notes d'évaluations, contenus IA)
+  // Strictement sans compter les éléments exemptés (ressources partagées publiques, messages de chat, vues, téléchargements, compteurs mots)
+  let notesBytes = 0, notesCount = 0;
+  try {
+    const nRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(content, ''))), 0) AS s FROM notes WHERE user_id = ?").bind(userId).first();
+    notesCount = Number(nRes?.c || 0);
+    notesBytes = Number(nRes?.s || 0);
+  } catch (e) {}
+
+  let matieresBytes = 0, matieresCount = 0;
+  try {
+    const mRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(name)), 0) AS s FROM matieres WHERE user_id = ?").bind(userId).first();
+    matieresCount = Number(mRes?.c || 0);
+    matieresBytes = Number(mRes?.s || 0);
+  } catch (e) {}
+
+  let scheduleBytes = 0, scheduleCount = 0;
+  try {
+    const sRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(subject) + LENGTH(COALESCE(room, '')) + LENGTH(COALESCE(note_or_teacher, ''))), 0) AS s FROM schedule_slots WHERE user_id = ?").bind(userId).first();
+    scheduleCount = Number(sRes?.c || 0);
+    scheduleBytes = Number(sRes?.s || 0);
+  } catch (e) {}
+
+  let gradesBytes = 0, gradesCount = 0;
+  try {
+    const gRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(subject_name) + LENGTH(COALESCE(sub_grades_json, ''))), 0) AS s FROM grades WHERE user_id = ?").bind(userId).first();
+    gradesCount = Number(gRes?.c || 0);
+    gradesBytes = Number(gRes?.s || 0);
+  } catch (e) {}
+
+  let aiContentsBytes = 0, aiContentsCount = 0;
+  try {
+    const aiRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(content_json, ''))), 0) AS s FROM ai_generated_contents WHERE user_id = ?").bind(userId).first();
+    aiContentsCount = Number(aiRes?.c || 0);
+    aiContentsBytes = Number(aiRes?.s || 0);
+  } catch (e) {}
+
+  let aiWorkspaceBytes = 0, aiWorkspaceCount = 0;
+  try {
+    const wsRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(message_text) + LENGTH(COALESCE(attached_file_content, '')) + LENGTH(COALESCE(user_notes, ''))), 0) AS s FROM user_ai_workspace WHERE user_id = ?").bind(userId).first();
+    aiWorkspaceCount = Number(wsRes?.c || 0);
+    aiWorkspaceBytes = Number(wsRes?.s || 0);
+  } catch (e) {}
+
+  let calendarBytes = 0, calendarCount = 0;
+  try {
+    const calRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(title)), 0) AS s FROM calendar_events WHERE user_id = ?").bind(userId).first();
+    calendarCount = Number(calRes?.c || 0);
+    calendarBytes = Number(calRes?.s || 0);
+  } catch (e) {}
+
+  const personalDataTextBytes = notesBytes + matieresBytes + scheduleBytes + gradesBytes + aiContentsBytes + aiWorkspaceBytes + calendarBytes;
+  const personalDataRows = notesCount + matieresCount + scheduleCount + gradesCount + aiContentsCount + aiWorkspaceCount + calendarCount;
+  const personalDataBytes = personalDataTextBytes + (personalDataRows * 128);
+
+  // 4. Nombre de mots de l'utilisateur
+  let wordsUsed = 0;
+  try {
+    const wRes = await db.prepare("SELECT COALESCE(SUM(word_count), 0) AS total_words FROM user_word_counts WHERE user_id = ?").bind(userId).first();
+    wordsUsed = Number(wRes?.total_words || 0);
+  } catch (e) {}
+
+  const wordsMax = 50000 + (paidTotalMb > 0 ? Math.round(paidTotalMb * 5000) : 0);
+  const wordsRemaining = Math.max(0, wordsMax - wordsUsed);
+  const wordsPercentage = wordsMax > 0 ? Math.min(100, parseFloat(((wordsUsed / wordsMax) * 100).toFixed(1))) : 0;
+
+  // Calculs totaux
+  const filesUsedBytes = personalFilesBytes;
+  const dataUsedBytes = personalDataBytes;
+  const totalUsedBytes = filesUsedBytes + dataUsedBytes;
+
+  const totalUsedMb = parseFloat((totalUsedBytes / (1024 * 1024)).toFixed(3));
+  const filesUsedMb = parseFloat((filesUsedBytes / (1024 * 1024)).toFixed(3));
+  const dataUsedMb = parseFloat((dataUsedBytes / (1024 * 1024)).toFixed(3));
+
+  const totalPercentage = totalAllowedMb > 0 ? Math.min(100, parseFloat(((totalUsedMb / totalAllowedMb) * 100).toFixed(1))) : 0;
+  const filesPercentage = filesAllowedMb > 0 ? Math.min(100, parseFloat(((filesUsedMb / filesAllowedMb) * 100).toFixed(1))) : 0;
+  const dataPercentage = dataAllowedMb > 0 ? Math.min(100, parseFloat(((dataUsedMb / dataAllowedMb) * 100).toFixed(1))) : 0;
+
+  return {
+    userId,
+    planName: quotaRow?.plan_name || 'gratuit',
+    welcomeStorage: {
+      totalMb: welcomeTotalMb,
+      filesMb: welcomeR2Mb,
+      dataMb: welcomeD1Mb,
+      formatted: `${welcomeTotalMb} Mo`
+    },
+    paidStorage: {
+      totalMb: paidTotalMb,
+      filesMb: paidR2Mb,
+      dataMb: paidD1Mb,
+      formatted: `${paidTotalMb} Mo`
+    },
+    bonusStorage: {
+      totalMb: bonusTotalMb,
+      formatted: `${bonusTotalMb} Mo`
+    },
+    totalAllowedMb,
+    totalAllowedFormatted: totalAllowedMb >= 1024 ? `${(totalAllowedMb / 1024).toFixed(1)} Go` : `${totalAllowedMb} Mo`,
+    totalUsedBytes,
+    totalUsedMb,
+    totalUsedFormatted: formatBytes(totalUsedBytes),
+    totalPercentage,
+    filesStorage: {
+      name: "Stockage Documents & Fichiers",
+      subtitle: "Cours personnels, polycopiés, documents PDF et supports d'étude déposés",
+      count: personalFilesCount,
+      usedBytes: filesUsedBytes,
+      usedMb: filesUsedMb,
+      usedFormatted: formatBytes(filesUsedBytes),
+      allowedMb: filesAllowedMb,
+      allowedFormatted: filesAllowedMb >= 1024 ? `${(filesAllowedMb / 1024).toFixed(1)} Go` : `${filesAllowedMb} Mo`,
+      percentage: filesPercentage,
+      freeNote: "Ressources publiques de la bibliothèque offertes sans décompte"
+    },
+    dataStorage: {
+      name: "Espace Données & Fiches d'Étude",
+      subtitle: "Fiches mémoires, notes de révision, devoirs, emploi du temps et contenus d'apprentissage",
+      count: personalDataRows,
+      usedBytes: dataUsedBytes,
+      usedMb: dataUsedMb,
+      usedFormatted: formatBytes(dataUsedBytes),
+      allowedMb: dataAllowedMb,
+      allowedFormatted: dataAllowedMb >= 1024 ? `${(dataAllowedMb / 1024).toFixed(1)} Go` : `${dataAllowedMb} Mo`,
+      percentage: dataPercentage,
+      freeNote: "Messages de chat, vues et téléchargements offerts et illimités"
+    },
+    wordsUsage: {
+      name: "Mots d'étude & Génération IA",
+      subtitle: "Résumés de cours, quiz interactifs, cartes mémoires et explications",
+      usedWords,
+      maxWords,
+      remainingWords: wordsRemaining,
+      percentage: wordsPercentage,
+      formatted: `${wordsUsed.toLocaleString('fr-FR')} / ${wordsMax.toLocaleString('fr-FR')} mots`
+    }
+  };
+}
+__name(getUserStorageDetails, "getUserStorageDetails");
+
 var src_default = {
   async fetch(request, rawEnv) {
     const url = new URL(request.url);
@@ -6728,6 +6999,62 @@ Lien vers le produit : ${productShareUrl}`;
             milestones: milestones || JSON.parse(newMilestonesJson || "[]"),
             rules: rules || JSON.parse(newRulesJson || "[]")
           }
+        }, 200, origin);
+      }
+      if (path === "/api/user/storage" && method === "GET") {
+        if (!env.DB) {
+          return errorResponse("Base de donn\xE9es indisponible", 500, origin);
+        }
+        let userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
+        if (!userId) {
+          const authHeader = request.headers.get("Authorization");
+          if (authHeader && authHeader.startsWith("Bearer ")) {
+            try {
+              const token = authHeader.substring(7);
+              const payload = JSON.parse(atob(token.split(".")[1]));
+              userId = payload.sub || payload.userId || payload.id;
+            } catch (e) {}
+          }
+        }
+        if (!userId) {
+          return errorResponse("Identifiant utilisateur (userId) manquant", 400, origin);
+        }
+
+        const storageData = await getUserStorageDetails(env.DB, userId);
+        return jsonResponse({
+          success: true,
+          data: storageData
+        }, 200, origin);
+      }
+      if (path === "/api/user/storage/upgrade-request" && method === "POST") {
+        if (!env.DB) {
+          return errorResponse("Base de donn\xE9es indisponible", 500, origin);
+        }
+        let userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
+        const body = await request.json().catch(() => ({}));
+        userId = userId || body.userId;
+        if (!userId) {
+          return errorResponse("Identifiant utilisateur requis", 400, origin);
+        }
+
+        await ensureStorageTables(env.DB);
+        const requestId = generateCleanShareCode();
+        const packId = body.packId || "custom";
+        const packName = body.packName || "Pack Personnalis\xE9";
+        const additionalMb = Number(body.additionalMb || 1024);
+        const additionalWords = Number(body.additionalWords || 100000);
+        const contactPhone = body.contactPhone || "";
+        const notes = body.notes || "";
+
+        await env.DB.prepare(`
+          INSERT INTO storage_upgrade_requests (id, user_id, pack_id, pack_name, additional_mb, additional_words, contact_phone, notes, status)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+        `).bind(requestId, userId, packId, packName, additionalMb, additionalWords, contactPhone, notes).run();
+
+        return jsonResponse({
+          success: true,
+          message: "Demande d'augmentation de stockage enregistr\xE9e avec succ\xE8s",
+          requestId
         }, 200, origin);
       }
       return errorResponse(`Route non trouv\xE9e : ${method} ${path}`, 404, origin);

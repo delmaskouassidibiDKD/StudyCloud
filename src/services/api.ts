@@ -1732,4 +1732,119 @@ export async function getUserCertificates(userId?: string): Promise<{
   return await response.json();
 }
 
+export interface UserStorageQuotaDetails {
+  userId: string;
+  planName: string;
+  welcomeStorage: {
+    totalMb: number;
+    filesMb: number;
+    dataMb: number;
+    formatted: string;
+  };
+  paidStorage: {
+    totalMb: number;
+    filesMb: number;
+    dataMb: number;
+    formatted: string;
+  };
+  bonusStorage: {
+    totalMb: number;
+    formatted: string;
+  };
+  totalAllowedMb: number;
+  totalAllowedFormatted: string;
+  totalUsedBytes: number;
+  totalUsedMb: number;
+  totalUsedFormatted: string;
+  totalPercentage: number;
+  filesStorage: {
+    name: string;
+    subtitle: string;
+    count: number;
+    usedBytes: number;
+    usedMb: number;
+    usedFormatted: string;
+    allowedMb: number;
+    allowedFormatted: string;
+    percentage: number;
+    freeNote: string;
+  };
+  dataStorage: {
+    name: string;
+    subtitle: string;
+    count: number;
+    usedBytes: number;
+    usedMb: number;
+    usedFormatted: string;
+    allowedMb: number;
+    allowedFormatted: string;
+    percentage: number;
+    freeNote: string;
+  };
+  wordsUsage: {
+    name: string;
+    subtitle: string;
+    usedWords: number;
+    maxWords: number;
+    remainingWords: number;
+    percentage: number;
+    formatted: string;
+  };
+}
 
+/**
+ * Récupère le stockage réel de l'utilisateur depuis le worker principal et la base D1
+ */
+export async function getUserStorageQuota(userId?: string): Promise<{
+  success: boolean;
+  data: UserStorageQuotaDetails | null;
+  error?: string;
+}> {
+  const currentUserId = userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+  try {
+    const res = await request<{ success: boolean; data: UserStorageQuotaDetails }>(
+      `/api/user/storage?userId=${encodeURIComponent(currentUserId)}`
+    );
+    return res;
+  } catch (err: any) {
+    console.error('[API] Erreur getUserStorageQuota:', err);
+    return {
+      success: false,
+      data: null,
+      error: err?.message || 'Erreur lors de la récupération du stockage'
+    };
+  }
+}
+
+/**
+ * Soumet une demande d'augmentation de stockage
+ */
+export async function requestStorageUpgrade(params: {
+  packId: string;
+  packName: string;
+  additionalMb: number;
+  additionalWords?: number;
+  contactPhone?: string;
+  notes?: string;
+  userId?: string;
+}): Promise<{ success: boolean; message: string; requestId?: string }> {
+  const currentUserId = params.userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+  try {
+    return await request<{ success: boolean; message: string; requestId?: string }>(
+      '/api/user/storage/upgrade-request',
+      {
+        method: 'POST',
+        body: JSON.stringify({
+          ...params,
+          userId: currentUserId,
+        }),
+      }
+    );
+  } catch (err: any) {
+    console.error('[API] Erreur requestStorageUpgrade:', err);
+    return {
+      success: false,
+      message: err?.message || "Erreur lors de l'enregistrement de la demande",
+    };
+  }
+}
