@@ -412,12 +412,9 @@ export function RightMenu({
     });
     setActiveTabModule(mod.id);
 
-    // Contrôleur d'annulation avec délai de sécurité augmenté à 120 secondes (pour l'analyse de grands documents)
+    // Contrôleur d'annulation manuel (AUCUN délai/timeout automatique : l'IA dispose de tout le temps nécessaire)
     const controller = new AbortController();
     abortControllerRef.current = controller;
-    const timeoutId = setTimeout(() => {
-      controller.abort();
-    }, 120000);
 
     try {
       // 1. Extraction éventuelle du texte du document sélectionné
@@ -451,8 +448,6 @@ export function RightMenu({
         sessionId: 'creation-' + Date.now(),
         conversationId: 'creation-' + Date.now(),
       });
-
-      clearTimeout(timeoutId);
 
       const targetType = (res.creation_type as ModuleId) || mod.id;
       let effectiveContent = res.creation_data || null;
@@ -527,8 +522,7 @@ export function RightMenu({
       window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
 
     } catch (err: any) {
-      clearTimeout(timeoutId);
-      console.warn('[RightMenu] Erreur ou délai dépassé lors de la création IA:', err);
+      console.warn('[RightMenu] Erreur lors de la création IA:', err);
 
       // Si l'utilisateur a annulé manuellement
       if (err.name === 'AbortError' && !abortControllerRef.current) {
@@ -537,7 +531,6 @@ export function RightMenu({
         return;
       }
 
-      const isTimeout = err.name === 'AbortError' || err.message?.includes('aborted');
       const fallbackCreation: AiCreation = {
         id: 'ai-' + Date.now(),
         userId: localStorage.getItem('unifolder_user_id') || 'default-user',
@@ -546,9 +539,7 @@ export function RightMenu({
         title: `${mod.label} : ${docName}`,
         content: {
           error: true,
-          errorMessage: isTimeout
-            ? "Le délai de traitement a été dépassé (2 min). L'analyse du document et la conception de l'exercice ont pris plus de temps que prévu."
-            : (err.message || "Une erreur de communication est survenue avec le service d'IA."),
+          errorMessage: err.message || "Une erreur de communication est survenue avec le service d'IA.",
           canRetry: true,
           failedModId: mod.id
         },

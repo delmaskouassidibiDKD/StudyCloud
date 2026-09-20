@@ -213,7 +213,7 @@ export default function QuestionnaireTest({ data }: { data?: any }) {
             </h3>
             <p className="text-stone-500 text-sm md:text-base max-w-lg mx-auto leading-relaxed">
               {isError
-                ? (errorMsg || "Le service d'IA a mis trop de temps à répondre ou le document n'a pas pu être analysé.")
+                ? (errorMsg || "Une erreur est survenue lors de la communication avec l'assistant IA.")
                 : "Espace d'évaluation prêt. Cliquez sur le bouton ci-dessous pour lancer la conception du test noté à partir de votre cours."}
             </p>
           </div>

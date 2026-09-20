@@ -211,7 +211,7 @@ export default function Questionnaire({ data }: { data?: any }) {
             </h3>
             <p className="text-stone-500 text-sm md:text-base max-w-lg mx-auto leading-relaxed">
               {isError
-                ? (errorMsg || "Le service d'IA a mis trop de temps à répondre ou le document n'a pas pu être analysé.")
+                ? (errorMsg || "Une erreur est survenue lors de la communication avec l'assistant IA.")
                 : "Espace prêt à recevoir les questions de l'IA. Cliquez sur le bouton ci-dessous pour lancer la conception automatique du questionnaire."}
             </p>
           </div>
