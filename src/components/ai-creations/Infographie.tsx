@@ -11,7 +11,9 @@ import {
   AlertTriangle,
   Info,
   Layers,
-  ArrowDown
+  ArrowDown,
+  Palette,
+  Copy
 } from 'lucide-react';
 import { MathText } from '../MathText';
 
@@ -38,13 +40,16 @@ interface InfographicHighlight {
 interface NormalizedInfographic {
   title: string;
   subtitle: string;
+  visualStyle?: string;
+  imagePrompt?: string;
+  svgDrawing?: string;
   metrics: InfographicMetric[];
   steps: InfographicStep[];
   highlights: InfographicHighlight[];
   conclusion?: string;
 }
 
-const STEP_COLORS = ['#F97316', '#3B82F6', '#10B981', '#8B5CF6', '#EC4899', '#06B6D4', '#F59E0B', '#14B8A6'];
+const STEP_COLORS = ['#3B82F6', '#10B981', '#F97316', '#8B5CF6', '#EC4899', '#06B6D4', '#F59E0B', '#14B8A6'];
 
 function normalizeInfographicData(data: any, defaultTitle?: string): NormalizedInfographic | null {
   if (!data || typeof data !== 'object') return null;
@@ -55,7 +60,12 @@ function normalizeInfographicData(data: any, defaultTitle?: string): NormalizedI
     : ((data.content && typeof data.content === 'object') ? data.content : data);
 
   const title = raw.title || raw.mainTitle || defaultTitle;
-  const subtitle = raw.subtitle || raw.description || raw.overview || raw.desc || "Repères visuels, concepts clés et démarche d'assimilation";
+  const subtitle = raw.subtitle || raw.description || raw.overview || raw.desc || "Structure visuelle et repères conceptuels";
+
+  // Prompt visuel et style graphique
+  const visualStyle = raw.visual_style || raw.visualStyle || raw.style || undefined;
+  const imagePrompt = raw.image_prompt || raw.imagePrompt || raw.prompt || undefined;
+  const svgDrawing = raw.svg_drawing || raw.svgDrawing || raw.svg || undefined;
 
   // Extraction des métriques
   const rawMetrics = Array.isArray(raw.metrics) ? raw.metrics : (Array.isArray(data.metrics) ? data.metrics : []);
@@ -65,13 +75,13 @@ function normalizeInfographicData(data: any, defaultTitle?: string): NormalizedI
     color: m.color || STEP_COLORS[idx % STEP_COLORS.length]
   })).filter((m: InfographicMetric) => m.value || m.label);
 
-  // Extraction des étapes / branches
-  const rawSteps = raw.steps || raw.etapes || raw.branches || raw.keyConcepts || raw.points || raw.sections || raw.keyPoints;
+  // Extraction des sections / étapes / branches
+  const rawSteps = raw.sections || raw.steps || raw.etapes || raw.branches || raw.keyConcepts || raw.points || raw.keyPoints;
   const steps: InfographicStep[] = [];
 
   if (Array.isArray(rawSteps) && rawSteps.length > 0) {
     rawSteps.forEach((s: any, idx: number) => {
-      const num = idx + 1;
+      const num = s.step || s.number || s.etape || (idx + 1);
       const color = s.color || STEP_COLORS[idx % STEP_COLORS.length];
       if (typeof s === 'string') {
         steps.push({
@@ -82,8 +92,8 @@ function normalizeInfographicData(data: any, defaultTitle?: string): NormalizedI
         });
       } else if (s && typeof s === 'object') {
         steps.push({
-          number: s.number || s.step || s.etape || num,
-          title: s.title || s.heading || s.titre || s.branch_title || s.pillTitle || `Étape ${num}`,
+          number: num,
+          title: s.heading || s.title || s.titre || s.branch_title || s.pillTitle || `Étape ${num}`,
           description: s.description || s.desc || s.body || s.content || (Array.isArray(s.nodes) ? s.nodes.join('\n\n') : '') || '',
           badge: s.badge || s.tag || undefined,
           color
@@ -103,13 +113,16 @@ function normalizeInfographicData(data: any, defaultTitle?: string): NormalizedI
   const conclusion = raw.conclusion || raw.key_takeaway || raw.takeaway || raw.bilan || raw.summaryBox || undefined;
 
   // Si tout est vide, pas d'infographie affichable
-  if (!title && steps.length === 0 && metrics.length === 0) {
+  if (!title && steps.length === 0 && metrics.length === 0 && !visualStyle && !imagePrompt) {
     return null;
   }
 
   return {
     title: title || "Infographie Pédagogique",
     subtitle,
+    visualStyle,
+    imagePrompt,
+    svgDrawing,
     metrics,
     steps,
     highlights,
@@ -120,12 +133,20 @@ function normalizeInfographicData(data: any, defaultTitle?: string): NormalizedI
 export default function Infographie({ data, title }: { data?: any; title?: string }) {
   const [zoomLevel, setZoomLevel] = useState(100);
   const [downloaded, setDownloaded] = useState(false);
+  const [promptCopied, setPromptCopied] = useState(false);
 
   const dynamicInfo = normalizeInfographicData(data, title);
 
   const handleDownload = () => {
     if (dynamicInfo) {
       let text = `================================================================================\nINFOGRAPHIE : ${dynamicInfo.title.toUpperCase()}\n${dynamicInfo.subtitle}\n================================================================================\n\n`;
+
+      if (dynamicInfo.visualStyle || dynamicInfo.imagePrompt) {
+        text += `[ DIRECTION ARTISTIQUE & PROMPT VISUEL IA ]\n`;
+        if (dynamicInfo.visualStyle) text += `Style : ${dynamicInfo.visualStyle}\n`;
+        if (dynamicInfo.imagePrompt) text += `Prompt Image : ${dynamicInfo.imagePrompt}\n`;
+        text += `\n--------------------------------------------------------------------------------\n\n`;
+      }
 
       if (dynamicInfo.metrics.length > 0) {
         text += `[ CHIFFRES ET REPÈRES CLÉS ]\n`;
@@ -267,6 +288,77 @@ export default function Infographie({ data, title }: { data?: any; title?: strin
                   </p>
                 )}
               </div>
+
+              {/* Direction Artistique & Prompt Générateur d'Images IA (DALL-E, Midjourney, Workers AI) */}
+              {(dynamicInfo.visualStyle || dynamicInfo.imagePrompt) && (
+                <div className="bg-gradient-to-r from-blue-50/90 via-indigo-50/70 to-slate-50/90 border border-blue-200/80 rounded-2xl p-4 sm:p-5 shadow-2xs space-y-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-blue-600 text-white flex items-center justify-center shadow-xs">
+                        <Palette className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-blue-950 uppercase tracking-wider block">
+                          Direction Artistique & Prompt Générateur d'Image
+                        </span>
+                        <span className="text-[10px] text-blue-700/80">
+                          Optimisé pour DALL-E, Midjourney ou Cloudflare Workers AI
+                        </span>
+                      </div>
+                    </div>
+                    {dynamicInfo.imagePrompt && (
+                      <button
+                        onClick={() => {
+                          navigator.clipboard.writeText(dynamicInfo.imagePrompt || dynamicInfo.visualStyle || '');
+                          setPromptCopied(true);
+                          setTimeout(() => setPromptCopied(false), 2000);
+                        }}
+                        className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-white border border-blue-200 text-blue-800 text-xs font-semibold hover:bg-blue-50 transition-all shadow-2xs cursor-pointer active:scale-95"
+                        title="Copier le prompt pour votre générateur d'image"
+                      >
+                        {promptCopied ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-600" />
+                            <span>Prompt copié !</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span>Copier le Prompt Image</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {dynamicInfo.visualStyle && (
+                    <div className="text-xs text-blue-900 bg-white/70 p-2.5 rounded-xl border border-blue-100 font-medium">
+                      <strong className="text-blue-950 font-bold">Style visuel : </strong>
+                      {dynamicInfo.visualStyle}
+                    </div>
+                  )}
+
+                  {dynamicInfo.imagePrompt && (
+                    <div className="p-3 rounded-xl bg-white/90 border border-blue-100/90 text-xs font-mono text-stone-700 leading-relaxed break-words shadow-2xs">
+                      <span className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Prompt IA en anglais :</span>
+                      « {dynamicInfo.imagePrompt} »
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Dessin SVG vectoriel direct si présent */}
+              {dynamicInfo.svgDrawing && (
+                <div className="w-full bg-stone-50 border border-stone-200 rounded-2xl p-4 flex flex-col items-center justify-center shadow-xs overflow-hidden">
+                  <div className="text-xs font-bold text-stone-600 uppercase tracking-wider mb-2">
+                    Schéma Vectoriel Généré
+                  </div>
+                  <div
+                    className="w-full max-h-[400px] flex items-center justify-center overflow-auto"
+                    dangerouslySetInnerHTML={{ __html: dynamicInfo.svgDrawing }}
+                  />
+                </div>
+              )}
 
               {/* Barre de métriques / Repères visuels (si présents) */}
               {dynamicInfo.metrics.length > 0 && (
