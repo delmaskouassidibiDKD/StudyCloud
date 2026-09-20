@@ -189,7 +189,7 @@ const TABLES_METADATA = [
     usage: "Enregistré en temps réel à chaque échange dans le chat d'assistance.",
     example: "{ id: 'msg_10', conversation_id: 'conv_77', role: 'user', content: 'Comment calculer la fréquence de coupure ?' }",
     isExempted: true,
-    exemptReason: "Messages reçus & chat d'assistance : totalement offerts (non décomptés du quota personnel)"
+    exemptReason: "Messages reçus & chat d'assistance : table générale (non décomptée du quota personnel)"
   },
   {
     table: 'ai_creations',
@@ -275,11 +275,11 @@ const TABLES_METADATA = [
     table: 'published_documents',
     label: 'Documents publiés dans la bibliothèque (Menu Ressources)',
     uiConnection: "Bibliothèque partagée StudyCloud (Menu Ressources)",
-    role: "Gère les cours et résumés rendus publics par les étudiants pour toute la communauté. Totalement offert à l'étudiant contributeur.",
+    role: "Gère les cours et résumés rendus publics par les étudiants pour toute la communauté.",
     usage: "Alimente le moteur de recherche de la bibliothèque publique.",
     example: "{ id: 'pub_90', title: 'Fiche Synthèse AOP', file_size: 1450000, downloads_count: 142, views_count: 850 }",
     isExempted: true,
-    exemptReason: "Fichiers publiés comme ressource pour tout le monde : offerts à la communauté (non compté ni pénalisé)"
+    exemptReason: "Fichiers publiés comme ressource pour tout le monde : bibliothèque publique (non compté ni pénalisé)"
   },
   {
     table: 'user_document_interactions',
@@ -289,7 +289,7 @@ const TABLES_METADATA = [
     usage: "Écrit à chaque consultation d'un cours public.",
     example: "{ id: 'int_1', user_id: 'user_abc', document_id: 'pub_90', interaction_type: 'view' }",
     isExempted: true,
-    exemptReason: "Nombre de vues des fichiers : offert (non décompté du quota personnel)"
+    exemptReason: "Nombre de vues des fichiers : consultation publique (non décompté du quota personnel)"
   },
   {
     table: 'published_document_downloads',
@@ -299,7 +299,7 @@ const TABLES_METADATA = [
     usage: "Incrémenté à chaque téléchargement de fichier.",
     example: "{ id: 'dl_2', user_id: 'user_abc', document_id: 'pub_90' }",
     isExempted: true,
-    exemptReason: "Nombre de téléchargements (fichiers et liens) : offert (non décompté du quota personnel)"
+    exemptReason: "Nombre de téléchargements (fichiers et liens) : traçabilité (non décompté du quota personnel)"
   },
   {
     table: 'user_word_counts',
@@ -309,7 +309,7 @@ const TABLES_METADATA = [
     usage: "Mis à jour à chaque génération de synthèse ou échange IA.",
     example: "{ id: 'wc_1', user_id: 'user_abc', word_count: 12450, token_count: 15800 }",
     isExempted: true,
-    exemptReason: "Table pour stocker les nombres de mots : offerte (non décomptée du quota personnel)"
+    exemptReason: "Table pour stocker les nombres de mots : compteur technique (non décompté du quota personnel)"
   },
   {
     table: 'shared_folders',
@@ -419,7 +419,7 @@ const TABLES_METADATA = [
     table: 'referral_rewards_config',
     label: 'Barème des récompenses de parrainage',
     uiConnection: "Administration > Configuration des récompenses",
-    role: "Configure les règles de bonus par parrainage (nombre de jours offerts).",
+    role: "Configure les règles de bonus par parrainage (nombre de jours accordés).",
     usage: "Lue lors du calcul des gains de parrainage.",
     example: "{ id: 'default', days_per_referral: 5 }"
   },
@@ -660,6 +660,41 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
   const hasCustomAvatar = user.avatar_url && (user.avatar_url.includes('avatars/') || user.avatar_url.startsWith('http') || user.avatar_url.startsWith('data:image'));
   const avatarEstimatedBytes = hasCustomAvatar ? 85000 : 0;
 
+  // 15. BOUTIQUE DE SERVICES & STATUT
+  const shopProfile = await safeFirst(db, `SELECT * FROM shop_profiles WHERE user_id = ?`, [userId]);
+  const hasShop = (shopStats.products_count > 0) || Boolean(shopProfile);
+  const shopProductsCount = shopStats.products_count || 0;
+  const shopName = shopProfile?.shop_name || (hasShop ? 'Boutique active' : '');
+
+  // 16. STATUT DE CONNEXION / EN LIGNE
+  const activeSession = await safeFirst(db, `
+    SELECT * FROM auth_sessions 
+    WHERE user_id = ? AND expires_at > CURRENT_TIMESTAMP 
+    ORDER BY created_at DESC LIMIT 1
+  `, [userId]);
+
+  let isOnline = false;
+  let lastSeenText = "Non connecté récemment";
+  if (user.last_active_at) {
+    const lastActiveTime = new Date(user.last_active_at).getTime();
+    const now = Date.now();
+    const diffMinutes = Math.floor((now - lastActiveTime) / 60000);
+    if (!isNaN(diffMinutes) && diffMinutes >= 0) {
+      if (diffMinutes <= 15) {
+        isOnline = true;
+        lastSeenText = "En ligne maintenant";
+      } else if (diffMinutes < 60) {
+        lastSeenText = `Vu il y a ${diffMinutes} min`;
+      } else if (diffMinutes < 1440) {
+        const h = Math.floor(diffMinutes / 60);
+        lastSeenText = `Vu il y a ${h}h`;
+      } else {
+        const d = Math.floor(diffMinutes / 1440);
+        lastSeenText = `Vu il y a ${d} j`;
+      }
+    }
+  }
+
   // Profil
   const userProfileBytes = (user.name?.length || 0) + (user.email?.length || 0) + (user.school?.length || 0) + (user.filiere?.length || 0) + (user.phone?.length || 0) + 120;
 
@@ -731,13 +766,13 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
     calendar_events: { count: calendarStats.count, bytes: calendarStats.d1_text_bytes, formatted: formatBytes(calendarStats.d1_text_bytes), isExempted: false },
     alarms: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
     study_sessions: { count: studySessionsStats.count, bytes: studySessionsStats.count * 90, formatted: formatBytes(studySessionsStats.count * 90), isExempted: false },
-    published_documents: { count: pubStats.count, bytes: pubDocsD1Bytes, formatted: formatBytes(pubDocsD1Bytes), isExempted: true, exemptReason: "Ressource publique de la bibliothèque offerte pour tout le monde (non pénalisé)" },
-    user_document_interactions: { count: viewsInteractionsStats.count || pubStats.total_views, bytes: viewsD1Bytes, formatted: formatBytes(viewsD1Bytes), isExempted: true, exemptReason: "Nombre de vues des fichiers offert" },
-    published_document_downloads: { count: pubDownloadsStats.count || pubStats.total_downloads, bytes: downloadsD1Bytes, formatted: formatBytes(downloadsD1Bytes), isExempted: true, exemptReason: "Nombre de téléchargements (fichiers et liens) offert" },
-    user_word_counts: { count: wordCountStats.count || 1, bytes: wordCountD1Bytes, formatted: formatBytes(wordCountD1Bytes), isExempted: true, exemptReason: "Table pour stocker les nombres de mots offerte" },
+    published_documents: { count: pubStats.count, bytes: pubDocsD1Bytes, formatted: formatBytes(pubDocsD1Bytes), isExempted: true, exemptReason: "Ressource publique de la bibliothèque pour tout le monde" },
+    user_document_interactions: { count: viewsInteractionsStats.count || pubStats.total_views, bytes: viewsD1Bytes, formatted: formatBytes(viewsD1Bytes), isExempted: true, exemptReason: "Nombre de vues des fichiers" },
+    published_document_downloads: { count: pubDownloadsStats.count || pubStats.total_downloads, bytes: downloadsD1Bytes, formatted: formatBytes(downloadsD1Bytes), isExempted: true, exemptReason: "Nombre de téléchargements (fichiers et liens)" },
+    user_word_counts: { count: wordCountStats.count || 1, bytes: wordCountD1Bytes, formatted: formatBytes(wordCountD1Bytes), isExempted: true, exemptReason: "Table pour stocker les nombres de mots" },
     shared_folders: { count: shareStats.folders_count, bytes: shareStats.folders_count * 250, formatted: formatBytes(shareStats.folders_count * 250), isExempted: false },
     shared_folder_files: { count: shareStats.files_count, bytes: shareStats.total_bytes, formatted: formatBytes(shareStats.total_bytes), isExempted: false },
-    shop_profiles: { count: 1, bytes: 180, formatted: formatBytes(180), isExempted: false },
+    shop_profiles: { count: hasShop ? 1 : 0, bytes: 180, formatted: formatBytes(180), isExempted: false },
     products: { count: shopStats.products_count, bytes: shopStats.d1_text_bytes, formatted: formatBytes(shopStats.d1_text_bytes), isExempted: false },
     cart_items: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
     seller_follows: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
@@ -749,7 +784,7 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
     storage_global_config: { count: 1, bytes: 80, formatted: formatBytes(80), isExempted: false },
     referrals: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
     referral_rewards_config: { count: 1, bytes: 120, formatted: formatBytes(120), isExempted: false },
-    auth_sessions: { count: 1, bytes: 128, formatted: formatBytes(128), isExempted: false },
+    auth_sessions: { count: activeSession ? 1 : 0, bytes: 128, formatted: formatBytes(128), isExempted: false },
     email_verifications: { count: 1, bytes: 120, formatted: formatBytes(120), isExempted: false },
     password_resets: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
     app_external_links: { count: 3, bytes: 380, formatted: formatBytes(380), isExempted: false }
@@ -759,7 +794,7 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
   const userR2FoldersStats = {
     'user-files/': { count: filesStats.personal_files_count, bytes: filesStats.personal_files_bytes, formatted: formatBytes(filesStats.personal_files_bytes), isExempted: false },
     'ai-studies/': { count: filesStats.ai_files_count, bytes: filesStats.ai_files_bytes, formatted: formatBytes(filesStats.ai_files_bytes), isExempted: false },
-    'published/files/': { count: pubStats.count, bytes: pubStats.total_bytes, formatted: formatBytes(pubStats.total_bytes), isExempted: true, exemptReason: "Ressource publique du menu Ressources offerte pour toute la communauté (non décomptée)" },
+    'published/files/': { count: pubStats.count, bytes: pubStats.total_bytes, formatted: formatBytes(pubStats.total_bytes), isExempted: true, exemptReason: "Ressource publique du menu Ressources pour toute la communauté" },
     'shared-links/files/': { count: shareStats.files_count, bytes: shareStats.total_bytes, formatted: formatBytes(shareStats.total_bytes), isExempted: false },
     'products/images/': { count: shopStats.products_count, bytes: shopStats.products_count * 120000, formatted: formatBytes(shopStats.products_count * 120000), isExempted: false },
     'avatars/': { count: hasCustomAvatar ? 1 : 0, bytes: avatarEstimatedBytes, formatted: formatBytes(avatarEstimatedBytes), isExempted: false }
@@ -777,7 +812,13 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
       country: user.country || 'Côte d\'Ivoire',
       avatar_url: user.avatar_url || '',
       created_at: user.created_at || '',
-      last_active_at: user.last_active_at || ''
+      last_active_at: user.last_active_at || '',
+      isOnline,
+      lastSeenText,
+      hasActiveSession: Boolean(activeSession),
+      hasShop,
+      shopProductsCount,
+      shopName
     },
     quotaConfig: {
       welcomeR2Mb,
@@ -1241,13 +1282,13 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <div id="view-users" class="hidden w-full flex-1 flex flex-col space-y-2.5 overflow-hidden h-[calc(100vh-80px)]">
       
-      <!-- BANNIÈRE EN HAUT : STOCKAGE OFFERT À L'INSCRIPTION APPLIQUÉ À TOUS (IMAGE 2) -->
+      <!-- BANNIÈRE EN HAUT : STOCKAGE INITIAL À L'INSCRIPTION APPLIQUÉ À TOUS (IMAGE 2) -->
       <div class="neo-card p-2.5 sm:p-3 bg-gradient-to-r from-slate-900 via-[#131b2e] to-slate-900 border-l-4 border-l-orange-500 shrink-0 flex flex-col sm:flex-row sm:items-center justify-between gap-2.5">
         <div class="flex items-center gap-2.5">
           <span class="text-xl shrink-0">🎁</span>
           <div>
             <div class="text-xs font-extrabold text-white flex items-center gap-1.5 flex-wrap">
-              <span>Stockage de Bienvenue Offert à l'Inscription :</span>
+              <span>Stockage Initial à l'Inscription :</span>
               <span id="current-welcome-badge" class="px-2 py-0.5 rounded-md bg-orange-500/20 text-orange-400 font-mono font-black border border-orange-500/40 text-xs">
                 ${data.globalConfig?.default_welcome_total_mb ?? 30} Mo
               </span>
@@ -1614,18 +1655,21 @@ function renderDashboardHtml(data) {
             class="p-2.5 cursor-pointer transition-all flex items-center justify-between \${isSelected ? 'bg-orange-600/15 border-l-4 border-l-orange-500' : 'hover:bg-slate-800/40'}"
           >
             <div class="flex items-center gap-2 overflow-hidden">
-              <div class="w-8 h-8 rounded-lg bg-slate-800 text-orange-400 font-bold flex items-center justify-center text-xs shrink-0 border border-slate-700">
+              <div class="relative w-8 h-8 rounded-lg bg-slate-800 text-orange-400 font-bold flex items-center justify-center text-xs shrink-0 border border-slate-700">
                 \${u.avatar_url ? '<img src="' + u.avatar_url + '" class="w-full h-full rounded-lg object-cover" onerror="this.remove()">' : u.name.charAt(0).toUpperCase()}
+                <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 \${u.isOnline ? 'bg-emerald-500' : 'bg-slate-600'}" title="\${u.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
               </div>
               <div class="truncate">
-                <div class="font-bold text-white truncate text-xs">\${u.name}</div>
+                <div class="font-bold text-white truncate text-xs flex items-center gap-1">
+                  <span>\${u.name}</span>
+                  \${u.hasShop ? '<span class="text-[9px] px-1 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30" title="Boutique active">🏪</span>' : ''}
+                </div>
                 <div class="text-[10px] text-slate-400 truncate">📞 \${u.phone || 'Sans numéro'} • \${u.level}</div>
               </div>
             </div>
             <div class="text-right shrink-0 font-mono text-[11px]">
               <span class="font-bold text-orange-400">\${s.net ? s.net.totalFormatted : s.totalFormatted}</span>
               <div class="text-[9px] text-slate-500">Quota: \${q.totalAllowedFormatted}</div>
-              \${s.exempted && s.exempted.totalBytes > 0 ? \`<div class="text-[9px] text-emerald-400 font-bold">🎁 +\${s.exempted.totalFormatted}</div>\` : ''}
             </div>
           </div>
         \`;
@@ -1664,131 +1708,104 @@ function renderDashboardHtml(data) {
       const exempted = s.exempted || { totalFormatted: '0 Octets', totalBytes: 0, r2Formatted: '0 Octets', d1Formatted: '0 Octets', exemptD1Rows: 0 };
 
       panel.innerHTML = \`
-        <!-- En-tête profil complet avec numéro, fonction, école -->
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-          <div class="flex items-center gap-3">
-            <div class="w-11 h-11 rounded-xl bg-orange-500/20 text-orange-400 font-black flex items-center justify-center border border-orange-500/30 text-lg shrink-0">
+        <!-- En-tête profil complet listé verticalement ligne par ligne -->
+        <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-800">
+          <div class="flex items-start gap-3.5">
+            <div class="relative w-12 h-12 rounded-xl bg-orange-500/20 text-orange-400 font-black flex items-center justify-center border border-orange-500/30 text-lg shrink-0 mt-0.5">
               \${u.avatar_url ? '<img src="' + u.avatar_url + '" class="w-full h-full rounded-xl object-cover" onerror="this.remove()">' : u.name.charAt(0).toUpperCase()}
+              <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-slate-950 \${u.isOnline ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-slate-600'}" title="\${u.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
             </div>
-            <div>
-              <h3 class="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
-                \${u.name}
-                <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono font-normal">ID: \${u.id}</span>
-              </h3>
-              <p class="text-xs text-slate-300 mt-0.5">
-                📞 <strong class="text-white">\${u.phone}</strong> • 🎓 <span class="text-orange-400 font-bold">\${u.level}</span> • \${u.school || 'École non renseignée'} (\${u.filiere || u.country})
-              </p>
-              <p class="text-[11px] text-slate-400 font-mono mt-0.5">\${u.email}</p>
-            </div>
-          </div>
+            <div class="space-y-1.5 text-xs">
+              <!-- Ligne 1 : Nom et ID -->
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-base font-extrabold text-white">\${u.name}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">ID: \${u.id}</span>
+              </div>
+              
+              <!-- Ligne 2 : Statut de connexion / En ligne -->
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-medium">Statut :</span>
+                \${u.isOnline ? \`
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Connecté / En ligne (\${u.lastSeenText})
+                  </span>
+                \` : \`
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
+                    <span class="w-2 h-2 rounded-full bg-slate-500"></span> Déconnecté / Hors ligne (\${u.lastSeenText})
+                  </span>
+                \`}
+              </div>
 
-          <div class="text-right self-start sm:self-auto bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
-            <div class="text-xs font-mono font-bold text-orange-400">Total : \${s.net ? s.net.totalFormatted : s.totalFormatted} / \${q.totalAllowedFormatted}</div>
-            <div class="text-[10px] text-slate-400">Consommation : \${s.net ? s.net.usagePercentage : s.usagePercentage}%</div>
-            \${exempted.totalBytes > 0 ? \`
-              <div class="text-[9px] font-mono text-emerald-400 font-bold">🎁 +\${exempted.totalFormatted} offerts</div>
-            \` : ''}
-            \${!isNet ? \`
-              <div class="text-[9px] font-mono text-amber-400 font-bold">Audit Brut CF : \${s.gross.totalFormatted}</div>
-            \` : ''}
-          </div>
-        </div>
+              <!-- Ligne 3 : Numéro de téléphone -->
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-medium">📞 Téléphone :</span>
+                <span class="text-white font-semibold font-mono">\${u.phone || 'Non renseigné'}</span>
+              </div>
 
-        <!-- SÉLECTEUR DE STOCKAGE INTERACTIF (EN HAUT, FIXE) -->
-        <div class="p-2.5 bg-slate-900/90 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
-          <div class="flex items-center gap-1.5 p-1 bg-slate-950/90 rounded-lg border border-slate-800">
-            <button 
-              onclick="setUserStorageViewMode('net')"
-              class="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer \${isNet ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-1 ring-emerald-400' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}"
-              title="Affiche le vrai stockage personnel facturé (identique à 100% à l'application mobile)"
-            >
-              <span>⚡</span> Vrai Stockage Réel (Conforme Application)
-            </button>
-            <button 
-              onclick="setUserStorageViewMode('gross')"
-              class="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer \${!isNet ? 'bg-amber-700 text-white shadow-md shadow-amber-700/30 ring-1 ring-amber-400' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}"
-              title="Audit technique brut Cloudflare (incluant ressources communautaires gratuites et statistiques)"
-            >
-              <span>🔍</span> Audit Brut Cloudflare (Ressources Incluses)
-            </button>
-          </div>
+              <!-- Ligne 4 : E-mail -->
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-medium">✉️ E-mail :</span>
+                <span class="text-slate-200 font-mono">\${u.email || 'Non renseigné'}</span>
+              </div>
 
-          <div class="text-[11px] font-mono flex items-center gap-2 px-1">
-            \${isNet ? \`
-              <span class="inline-flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20 font-bold">
-                ✅ Stockage Réel Facturé (100% synchronisé avec l'application)
-              </span>
-            \` : \`
-              <span class="inline-flex items-center gap-1 text-amber-400 bg-amber-500/10 px-2.5 py-1 rounded-md border border-amber-500/20 font-bold">
-                ⚠️ Audit brut serveur Cloudflare (Non facturé à l'étudiant)
-              </span>
-            \`}
-          </div>
-        </div>
+              <!-- Ligne 5 : Niveau d'études -->
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-medium">🎓 Niveau :</span>
+                <span class="text-orange-400 font-bold">\${u.level || 'Non spécifié'}</span>
+              </div>
 
-        <!-- BANDEAU EXPLICATIF DYNAMIQUE -->
-        \${isNet ? \`
-          <div class="p-3 rounded-xl bg-gradient-to-r from-emerald-950/40 via-slate-900 to-emerald-950/30 border border-emerald-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs shadow-inner">
-            <div class="flex items-start gap-2.5">
-              <span class="text-xl shrink-0 mt-0.5">🎁</span>
-              <div>
-                <div class="font-bold text-white flex items-center gap-2">
-                  <span>Ressources Publiques, Messages & Compteurs Déduits :</span>
-                  <span class="text-emerald-400 font-black font-mono text-xs sm:text-sm">\${exempted.totalFormatted} offerts</span>
-                </div>
-                <p class="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
-                  Les <strong>fichiers publiés comme ressource dans le menu Ressources</strong> pour tout le monde, la <strong>table des messages reçus</strong>, le <strong>nombre de vues</strong>, le <strong>nombre de téléchargements</strong> et la <strong>table pour stocker les nombres de mots</strong> ne font pas partie de son espace personnel et ne le pénalisent pas.
-                </p>
+              <!-- Ligne 6 : École / Filière -->
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-medium">🏛️ Filière / École :</span>
+                <span class="text-slate-200">\${u.school || 'Non renseigné'} \${u.filiere ? '(' + u.filiere + ')' : (u.country ? '(' + u.country + ')' : '')}</span>
+              </div>
+
+              <!-- Ligne 7 : Boutique de services -->
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-medium">🛍️ Boutique de services :</span>
+                \${u.hasShop ? \`
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    <span>🏪</span> Oui • Active — \${u.shopName || 'Boutique'} (\${u.shopProductsCount} article\${u.shopProductsCount > 1 ? 's' : ''})
+                  </span>
+                \` : \`
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
+                    <span>⚪</span> Non • Aucune boutique créée
+                  </span>
+                \`}
               </div>
             </div>
-            <div class="flex flex-wrap gap-1.5 shrink-0 font-mono text-[10px]">
-              <span class="bg-slate-950/80 text-emerald-300 px-2 py-1 rounded border border-slate-800">📚 Ressources R2 : \${exempted.r2Formatted}</span>
-              <span class="bg-slate-950/80 text-emerald-300 px-2 py-1 rounded border border-slate-800">💬 Messages & Stats D1 : \${exempted.d1Formatted}</span>
-            </div>
           </div>
-        \` : \`
-          <div class="p-3 rounded-xl bg-amber-950/25 border border-amber-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs shadow-inner">
-            <div class="flex items-start gap-2.5">
-              <span class="text-xl shrink-0 mt-0.5">🔍</span>
-              <div>
-                <div class="font-bold text-white flex items-center gap-2">
-                  <span>Audit Technique Disque Brut Cloudflare :</span>
-                  <span class="text-amber-400 font-black font-mono text-xs sm:text-sm">\${s.gross.totalFormatted}</span>
-                </div>
-                <p class="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
-                  Affiche la totalité absolue de tous les octets physiques enregistrés pour cet utilisateur sur Cloudflare (incluant toutes ses ressources publiques, messages et statistiques). <strong>L'utilisateur n'est facturé que sur son Vrai Stockage Réel (\${s.net.totalFormatted}).</strong>
-                </p>
-              </div>
-            </div>
-            <div class="flex flex-wrap gap-1.5 shrink-0 font-mono text-[10px]">
-              <span class="bg-slate-950/80 text-amber-300 px-2 py-1 rounded border border-slate-800">R2 Brut : \${displayR2Formatted}</span>
-              <span class="bg-slate-950/80 text-amber-300 px-2 py-1 rounded border border-slate-800">D1 Brut : \${displayD1Formatted} (\${displayD1Rows} lignes)</span>
-            </div>
+
+          <!-- Encadré Quota Utilisateur (Haut Droit) -->
+          <div class="text-right self-start bg-slate-900/90 px-3.5 py-2.5 rounded-xl border border-slate-800 shadow-md shrink-0">
+            <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Stockage Consommé</span>
+            <div class="text-sm font-mono font-bold text-orange-400">\${displayTotalFormatted} / \${q.totalAllowedFormatted}</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">Consommation : <strong class="text-white">\${displayUsagePercentage}%</strong></div>
           </div>
-        \`}
+        </div>
 
         <!-- 4 CARRÉS PERSONNELS POUR CET UTILISATEUR -->
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-blue-500">
-            <span class="text-[10px] uppercase font-bold text-slate-400">\${isNet ? 'Fichiers Perso' : 'Fichiers R2 Bruts'}</span>
-            <div class="text-base font-black text-white mt-0.5">\${isNet ? ((r2.folders['user-files/']?.count || 0) + (r2.folders['ai-studies/']?.count || 0)) : ((r2.folders['user-files/']?.count || 0) + (r2.folders['ai-studies/']?.count || 0) + (r2.folders['published/files/']?.count || 0) + (r2.folders['shared-links/files/']?.count || 0))}</div>
-            <div class="text-[10px] text-blue-400 font-medium truncate">\${isNet ? ((r2.folders['user-files/']?.count || 0) + ' cours, ' + (r2.folders['ai-studies/']?.count || 0) + ' IA') : 'Tout inclus (+ ' + (r2.folders['published/files/']?.count || 0) + ' ressources)'}</div>
+            <span class="text-[10px] uppercase font-bold text-slate-400">Fichiers Personnels</span>
+            <div class="text-base font-black text-white mt-0.5">\${(r2.folders['user-files/']?.count || 0) + (r2.folders['ai-studies/']?.count || 0)}</div>
+            <div class="text-[10px] text-blue-400 font-medium truncate">\${(r2.folders['user-files/']?.count || 0)} cours, \${(r2.folders['ai-studies/']?.count || 0)} IA</div>
           </div>
 
           <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-orange-500">
-            <span class="text-[10px] uppercase font-bold text-slate-400">\${isNet ? 'Volume R2 Net' : 'Volume R2 Brut'}</span>
+            <span class="text-[10px] uppercase font-bold text-slate-400">Documents & Fichiers</span>
             <div class="text-base font-black text-orange-400 mt-0.5">\${displayR2Formatted}</div>
-            <div class="text-[10px] text-slate-400 font-medium truncate">\${isNet ? 'Exonéré : ' + exempted.r2Formatted : 'Limite : 10 Go Cloudflare'}</div>
+            <div class="text-[10px] text-slate-400 font-medium truncate">Stockage Cloudflare</div>
           </div>
 
           <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-emerald-500">
-            <span class="text-[10px] uppercase font-bold text-slate-400">\${isNet ? 'Volume D1 Net' : 'Volume D1 Brut'}</span>
+            <span class="text-[10px] uppercase font-bold text-slate-400">Données & Base</span>
             <div class="text-base font-black text-emerald-400 mt-0.5">\${displayD1Formatted}</div>
-            <div class="text-[10px] text-slate-400 font-medium truncate">\${displayD1Rows} lignes \${isNet ? '(' + exempted.exemptD1Rows + ' offertes)' : 'totales'}</div>
+            <div class="text-[10px] text-slate-400 font-medium truncate">\${displayD1Rows} lignes enregistrées</div>
           </div>
 
           <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-purple-500">
-            <span class="text-[10px] uppercase font-bold text-slate-400">\${isNet ? 'Quota Net Utilisé' : 'Quota Brut Total'}</span>
+            <span class="text-[10px] uppercase font-bold text-slate-400">Quota Utilisé</span>
             <div class="text-base font-black text-purple-400 mt-0.5">\${displayUsagePercentage}%</div>
             <div class="text-[10px] text-purple-300 font-medium truncate">Alloué : \${q.totalAllowedFormatted}</div>
           </div>
@@ -1798,7 +1815,7 @@ function renderDashboardHtml(data) {
         <div class="bg-slate-900/80 p-3.5 rounded-xl border border-slate-800 space-y-3 text-xs">
           <div class="space-y-1">
             <div class="flex justify-between text-[11px]">
-              <span class="text-slate-300 font-bold">\${isNet ? 'Stockage Global Réel Utilisé (Fichiers R2 + Données D1)' : 'Stockage Brut Global (R2 + D1)'}</span>
+              <span class="text-slate-300 font-bold">Stockage Global Utilisé (Fichiers + Données)</span>
               <span class="font-mono text-orange-400 font-bold">\${displayTotalFormatted} / \${q.totalAllowedFormatted} (\${displayUsagePercentage}%)</span>
             </div>
             <div class="w-full h-3 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
@@ -1806,16 +1823,16 @@ function renderDashboardHtml(data) {
             </div>
             <div class="text-[10px] text-slate-400 flex items-center justify-between pt-0.5">
               <span>0 Mo</span>
-              <span class="text-emerald-400 font-medium">Partage libre • R2 et D1 puisent dans le même réservoir sans plafond individuel</span>
+              <span class="text-emerald-400 font-medium">Partage libre • Documents et base puisent dans le même quota sans plafond individuel</span>
               <span>\${q.totalAllowedFormatted}</span>
             </div>
           </div>
 
-          <!-- Détails de consommation réelle par stockage (Affichage simple sans limiteur) -->
+          <!-- Détails de consommation réelle par stockage -->
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1 border-t border-slate-800/80">
             <div class="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between">
               <div>
-                <span class="text-[10px] text-slate-400 uppercase font-bold block">Documents & Fichiers (R2)</span>
+                <span class="text-[10px] text-slate-400 uppercase font-bold block">Documents & Fichiers</span>
                 <span class="font-mono font-bold text-blue-400 text-xs">\${displayR2Formatted}</span>
               </div>
               <span class="text-[10px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
@@ -1825,7 +1842,7 @@ function renderDashboardHtml(data) {
 
             <div class="bg-slate-950/70 p-2.5 rounded-lg border border-slate-800 flex items-center justify-between">
               <div>
-                <span class="text-[10px] text-slate-400 uppercase font-bold block">Données & Base SQLite (D1)</span>
+                <span class="text-[10px] text-slate-400 uppercase font-bold block">Données & Base</span>
                 <span class="font-mono font-bold text-emerald-400 text-xs">\${displayD1Formatted} (\${displayD1Rows} lignes)</span>
               </div>
               <span class="text-[10px] text-slate-400 bg-slate-900 px-2 py-0.5 rounded border border-slate-800">
@@ -1835,7 +1852,7 @@ function renderDashboardHtml(data) {
           </div>
         </div>
 
-        <!-- ACCORDÉONS TABLES D1 DE L'UTILISATEUR (IMAGE 1 : TYPOGRAPHIE COMPACTE, ÉCRITURE PETITE ET SANS CHEVAUCHEMENT) -->
+        <!-- ACCORDÉONS TABLES D1 DE L'UTILISATEUR -->
         <div class="space-y-1.5">
           <h4 class="text-[11px] font-extrabold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
             <span>🗄️</span> Tables D1 de \${u.name}
@@ -1852,18 +1869,13 @@ function renderDashboardHtml(data) {
                       <span class="font-mono font-bold text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-[10px] shrink-0">\${t.table}</span>
                       <span class="text-slate-400 text-[10px] truncate max-w-[130px] sm:max-w-[200px] md:max-w-[280px]">\${t.label}</span>
                       \${isExempt ? \`
-                        <span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">🎁 Offert</span>
+                        <span class="px-1.5 py-0.5 rounded text-[8px] font-medium bg-slate-800 text-slate-400 border border-slate-700 shrink-0">🌐 Public</span>
                       \` : \`
                         <span class="hidden md:inline-flex px-1.5 py-0.5 rounded text-[8px] font-medium bg-slate-800 text-slate-400 border border-slate-700 shrink-0">📌 Perso</span>
                       \`}
                     </div>
                     <div class="flex items-center gap-1.5 font-mono text-[10px] shrink-0 whitespace-nowrap">
-                      \${isExempt && isNet ? \`
-                        <span class="font-bold text-emerald-400 text-[10px]">\${stats.formatted}</span>
-                        <span class="text-[9px] text-emerald-500 font-sans hidden sm:inline">(offert)</span>
-                      \` : \`
-                        <span class="font-bold \${isExempt ? 'text-orange-400' : 'text-emerald-400'} text-[10px]">\${stats.formatted}</span>
-                      \`}
+                      <span class="font-bold text-emerald-400 text-[10px]">\${stats.formatted}</span>
                       <span class="text-slate-500 text-[9px]">(\${stats.count} lig.)</span>
                       <svg id="\${accId}-icon" class="w-3 h-3 text-slate-400 transition-transform duration-200 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
@@ -1873,8 +1885,8 @@ function renderDashboardHtml(data) {
                   <div id="\${accId}" class="accordion-content bg-[#070b14] border-t border-slate-800/60 px-3 text-[10px] text-slate-300">
                     <div class="py-2 space-y-1">
                       \${isExempt ? \`
-                        <div class="p-1.5 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[10px] font-medium flex items-center gap-1.5">
-                          <span>🎁</span> <span><strong>Règle d'exemption :</strong> \${t.exemptReason || 'Table offerte pour la communauté. Non décomptée du quota personnel.'}</span>
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 text-slate-400 text-[10px] font-medium flex items-center gap-1.5">
+                          <span>🌐</span> <span>Table partagée/publique. Non décomptée du quota personnel.</span>
                         </div>
                       \` : ''}
                       <div><strong class="text-emerald-400">📍 Connexion UI :</strong> \${t.uiConnection}</div>
@@ -1887,7 +1899,7 @@ function renderDashboardHtml(data) {
           </div>
         </div>
 
-        <!-- ACCORDÉONS DOSSIERS R2 DE L'UTILISATEUR (IMAGE 1 : TYPOGRAPHIE COMPACTE, ÉCRITURE PETITE ET SANS CHEVAUCHEMENT) -->
+        <!-- ACCORDÉONS DOSSIERS R2 DE L'UTILISATEUR -->
         <div class="space-y-1.5">
           <h4 class="text-[11px] font-extrabold text-orange-400 uppercase tracking-wider flex items-center gap-1.5">
             <span>📦</span> Fichiers R2 de \${u.name}
@@ -1904,18 +1916,13 @@ function renderDashboardHtml(data) {
                       <span class="font-mono font-bold text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20 text-[10px] shrink-0">\${r.folder}</span>
                       <span class="text-slate-400 text-[10px] truncate max-w-[130px] sm:max-w-[200px] md:max-w-[280px]">\${r.name}</span>
                       \${isExempt ? \`
-                        <span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30 shrink-0">🎁 Offert</span>
+                        <span class="px-1.5 py-0.5 rounded text-[8px] font-medium bg-slate-800 text-slate-400 border border-slate-700 shrink-0">🌐 Public</span>
                       \` : \`
                         <span class="hidden md:inline-flex px-1.5 py-0.5 rounded text-[8px] font-medium bg-slate-800 text-slate-400 border border-slate-700 shrink-0">📌 Perso</span>
                       \`}
                     </div>
                     <div class="flex items-center gap-1.5 font-mono text-[10px] shrink-0 whitespace-nowrap">
-                      \${isExempt && isNet ? \`
-                        <span class="font-bold text-emerald-400 text-[10px]">\${stats.formatted}</span>
-                        <span class="text-[9px] text-emerald-500 font-sans hidden sm:inline">(offert)</span>
-                      \` : \`
-                        <span class="font-bold text-orange-400 text-[10px]">\${stats.formatted}</span>
-                      \` }
+                      <span class="font-bold text-orange-400 text-[10px]">\${stats.formatted}</span>
                       <span class="text-slate-500 text-[9px]">(\${stats.count} fich.)</span>
                       <svg id="\${accId}-icon" class="w-3 h-3 text-slate-400 transition-transform duration-200 shrink-0" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
@@ -1925,8 +1932,8 @@ function renderDashboardHtml(data) {
                   <div id="\${accId}" class="accordion-content bg-[#070b14] border-t border-slate-800/60 px-3 text-[10px] text-slate-300">
                     <div class="py-2 space-y-1">
                       \${isExempt ? \`
-                        <div class="p-1.5 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[10px] font-medium flex items-center gap-1.5">
-                          <span>🎁</span> <span><strong>Règle d'exemption :</strong> \${r.exemptReason || 'Fichiers publiés dans le menu Ressources offerts à toute la communauté sans pénalité de quota.'}</span>
+                        <div class="p-1.5 rounded bg-slate-950 border border-slate-800 text-slate-400 text-[10px] font-medium flex items-center gap-1.5">
+                          <span>🌐</span> <span>Fichiers publiés dans Ressources. Non décomptés du quota personnel.</span>
                         </div>
                       \` : ''}
                       <div><strong class="text-emerald-400">📍 Connexion UI :</strong> \${r.uiConnection}</div>
@@ -1957,14 +1964,22 @@ function renderDashboardHtml(data) {
             onclick="selectDemandeUser('\${u.id}')"
             class="p-2.5 cursor-pointer transition-all flex items-center justify-between \${isSelected ? 'bg-orange-600/15 border-l-4 border-l-orange-500' : 'hover:bg-slate-800/40'}"
           >
-            <div class="truncate pr-2">
-              <div class="font-bold text-white truncate text-xs">\${u.name}</div>
-              <div class="text-[10px] text-slate-400 truncate">📞 \${u.phone} • \${u.level}</div>
+            <div class="flex items-center gap-2 overflow-hidden">
+              <div class="relative w-8 h-8 rounded-lg bg-slate-800 text-orange-400 font-bold flex items-center justify-center text-xs shrink-0 border border-slate-700">
+                \${u.avatar_url ? '<img src="' + u.avatar_url + '" class="w-full h-full rounded-lg object-cover" onerror="this.remove()">' : u.name.charAt(0).toUpperCase()}
+                <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 \${u.isOnline ? 'bg-emerald-500' : 'bg-slate-600'}" title="\${u.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
+              </div>
+              <div class="truncate">
+                <div class="font-bold text-white truncate text-xs flex items-center gap-1">
+                  <span>\${u.name}</span>
+                  \${u.hasShop ? '<span class="text-[9px] px-1 rounded bg-amber-500/20 text-amber-400 border border-amber-500/30" title="Boutique active">🏪</span>' : ''}
+                </div>
+                <div class="text-[10px] text-slate-400 truncate">📞 \${u.phone || 'Sans numéro'} • \${u.level}</div>
+              </div>
             </div>
             <div class="text-right shrink-0 font-mono text-[11px]">
               <span class="font-bold text-emerald-400">\${q.totalAllowedFormatted}</span>
               <div class="text-[9px] text-orange-400">Net : \${s.net ? s.net.totalFormatted : s.totalFormatted}</div>
-              \${s.exempted && s.exempted.totalBytes > 0 ? \`<div class="text-[9px] text-emerald-400 font-bold">🎁 +\${s.exempted.totalFormatted}</div>\` : ''}
             </div>
           </div>
         \`;
@@ -1987,23 +2002,79 @@ function renderDashboardHtml(data) {
       const s = item.storage;
 
       panel.innerHTML = \`
-        <!-- En-tête de l'utilisateur avec numéro et fonction -->
-        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
-          <div>
-            <h3 class="text-base font-extrabold text-white flex items-center gap-2">
-              \${u.name}
-              <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono font-normal">ID: \${u.id}</span>
-            </h3>
-            <p class="text-xs text-slate-300 mt-0.5">
-              📞 <strong>\${u.phone}</strong> • 🎓 <strong class="text-orange-400">\${u.level}</strong> • \${u.school || 'École non renseignée'} (\${u.filiere || u.country})
-            </p>
-            <p class="text-[11px] text-slate-400 font-mono">\${u.email}</p>
+        <!-- En-tête profil complet listé verticalement ligne par ligne -->
+        <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-800">
+          <div class="flex items-start gap-3.5">
+            <div class="relative w-12 h-12 rounded-xl bg-orange-500/20 text-orange-400 font-black flex items-center justify-center border border-orange-500/30 text-lg shrink-0 mt-0.5">
+              \${u.avatar_url ? '<img src="' + u.avatar_url + '" class="w-full h-full rounded-xl object-cover" onerror="this.remove()">' : u.name.charAt(0).toUpperCase()}
+              <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-slate-950 \${u.isOnline ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-slate-600'}" title="\${u.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
+            </div>
+            <div class="space-y-1.5 text-xs">
+              <!-- Ligne 1 : Nom et ID -->
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-base font-extrabold text-white">\${u.name}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">ID: \${u.id}</span>
+              </div>
+              
+              <!-- Ligne 2 : Statut de connexion / En ligne -->
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-medium">Statut :</span>
+                \${u.isOnline ? \`
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span> Connecté / En ligne (\${u.lastSeenText})
+                  </span>
+                \` : \`
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
+                    <span class="w-2 h-2 rounded-full bg-slate-500"></span> Déconnecté / Hors ligne (\${u.lastSeenText})
+                  </span>
+                \`}
+              </div>
+
+              <!-- Ligne 3 : Numéro de téléphone -->
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-medium">📞 Téléphone :</span>
+                <span class="text-white font-semibold font-mono">\${u.phone || 'Non renseigné'}</span>
+              </div>
+
+              <!-- Ligne 4 : E-mail -->
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-medium">✉️ E-mail :</span>
+                <span class="text-slate-200 font-mono">\${u.email || 'Non renseigné'}</span>
+              </div>
+
+              <!-- Ligne 5 : Niveau d'études -->
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-medium">🎓 Niveau :</span>
+                <span class="text-orange-400 font-bold">\${u.level || 'Non spécifié'}</span>
+              </div>
+
+              <!-- Ligne 6 : École / Filière -->
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-medium">🏛️ Filière / École :</span>
+                <span class="text-slate-200">\${u.school || 'Non renseigné'} \${u.filiere ? '(' + u.filiere + ')' : (u.country ? '(' + u.country + ')' : '')}</span>
+              </div>
+
+              <!-- Ligne 7 : Boutique de services -->
+              <div class="flex items-center gap-2">
+                <span class="text-slate-400 font-medium">🛍️ Boutique de services :</span>
+                \${u.hasShop ? \`
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-bold bg-amber-500/15 text-amber-300 border border-amber-500/30">
+                    <span>🏪</span> Oui • Active — \${u.shopName || 'Boutique'} (\${u.shopProductsCount} article\${u.shopProductsCount > 1 ? 's' : ''})
+                  </span>
+                \` : \`
+                  <span class="inline-flex items-center gap-1.5 px-2 py-0.5 rounded-md text-[11px] font-medium bg-slate-800/80 text-slate-400 border border-slate-700/60">
+                    <span>⚪</span> Non • Aucune boutique créée
+                  </span>
+                \`}
+              </div>
+            </div>
           </div>
 
-          <div class="bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 text-right self-start sm:self-auto">
-            <span class="text-[10px] text-slate-400 uppercase font-bold block">Stockage Réel Facturé</span>
-            <span class="font-mono text-xs font-bold text-orange-400">\${s.net ? s.net.totalFormatted : s.totalFormatted} / \${q.totalAllowedFormatted}</span>
-            \${s.exempted && s.exempted.totalBytes > 0 ? \`<div class="text-[10px] text-emerald-400 font-mono font-bold">🎁 +\${s.exempted.totalFormatted} offerts</div>\` : ''}
+          <!-- Encadré Quota Utilisateur (Haut Droit) -->
+          <div class="text-right self-start bg-slate-900/90 px-3.5 py-2.5 rounded-xl border border-slate-800 shadow-md shrink-0">
+            <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Stockage Consommé</span>
+            <div class="text-sm font-mono font-bold text-orange-400">\${s.net ? s.net.totalFormatted : s.totalFormatted} / \${q.totalAllowedFormatted}</div>
+            <div class="text-[11px] text-slate-400 mt-0.5">Consommation : <strong class="text-white">\${s.net ? s.net.usagePercentage : s.usagePercentage}%</strong></div>
           </div>
         </div>
 
@@ -2015,7 +2086,7 @@ function renderDashboardHtml(data) {
               <span class="text-xs font-mono font-bold text-blue-400">\${q.welcomeTotalMb} Mo</span>
             </div>
             <div class="text-[11px] text-slate-300 mt-2 space-y-0.5 font-mono">
-              <div class="text-blue-300 font-sans text-[11px]">Quota offert à l'inscription</div>
+              <div class="text-blue-300 font-sans text-[11px]">Quota gratuit à l'inscription</div>
               <div class="text-[10px] text-slate-400">Partage libre fichiers & données</div>
             </div>
           </div>
@@ -2043,23 +2114,23 @@ function renderDashboardHtml(data) {
           </div>
         </div>
 
-        <!-- DÉTAILS DU STOCKAGE ACTUEL : RÉEL NET vs EXEMPTÉ vs BRUT -->
+        <!-- DÉTAILS DU STOCKAGE ACTUEL -->
         <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
           <div class="flex items-center gap-2">
             <span class="text-base">⚡</span>
             <div>
               <div class="font-bold text-white flex items-center gap-2">
-                <span>Vrai Stockage Réel Facturé :</span>
+                <span>Stockage Réel Consommé :</span>
                 <span class="text-orange-400 font-black font-mono">\${s.net ? s.net.totalFormatted : s.totalFormatted}</span>
                 <span class="text-slate-400 text-[11px]">(\${s.net ? s.net.usagePercentage : s.usagePercentage}% du quota)</span>
               </div>
-              <div class="text-[11px] text-emerald-400 mt-0.5">
-                🎁 <strong>\${s.exempted ? s.exempted.totalFormatted : '0 Mo'}</strong> offerts à l'étudiant (ressources publiques, vues, téléchargements et compteurs de mots)
+              <div class="text-[11px] text-slate-400 mt-0.5">
+                Ressources publiques communautaires et statistiques d'accès non décomptées du quota de l'étudiant.
               </div>
             </div>
           </div>
           <div class="text-right shrink-0 font-mono text-[11px] bg-slate-950 px-2.5 py-1 rounded border border-slate-800 text-slate-400">
-            Total Brut Cloudflare : <strong class="text-slate-200">\${s.gross ? s.gross.totalFormatted : s.totalFormatted}</strong>
+            Quota total : <strong class="text-emerald-400">\${q.totalAllowedFormatted}</strong>
           </div>
         </div>
 
@@ -2074,7 +2145,7 @@ function renderDashboardHtml(data) {
             <div class="bg-slate-950/80 p-3 rounded-xl border border-slate-800 space-y-2">
               <span class="text-blue-400 font-bold block text-xs">1. Stockage de Bienvenue Global (Mo) :</span>
               <div class="flex items-center justify-between gap-2">
-                <label class="text-slate-400">Quota Offert :</label>
+                <label class="text-slate-400">Quota Bienvenue :</label>
                 <input type="number" id="user-edit-w-total" class="w-28 bg-slate-900 text-white font-mono text-xs px-2.5 py-1 rounded border border-slate-700 text-center" value="\${q.welcomeTotalMb}">
               </div>
               <p class="text-[10px] text-slate-500">Partage libre entre documents (R2) et base (D1)</p>
