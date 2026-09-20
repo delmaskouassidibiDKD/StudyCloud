@@ -552,7 +552,9 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
   const paidR2Mb = Number(quotaRow.paid_r2_mb ?? 0.0);
   const paidD1Mb = Number(quotaRow.paid_d1_mb ?? 0.0);
 
-  const bonusTotalMb = Number(quotaRow.bonus_total_mb ?? (Number(quotaRow.bonus_r2_mb || 0.0) + Number(quotaRow.bonus_d1_mb || 0.0)));
+  const bonusR2Mb = Number(quotaRow.bonus_r2_mb ?? 0.0);
+  const bonusD1Mb = Number(quotaRow.bonus_d1_mb ?? 0.0);
+  const bonusTotalMb = Number(quotaRow.bonus_total_mb ?? (bonusR2Mb + bonusD1Mb));
 
   const totalAllowedMb = welcomeTotalMb + paidTotalMb + bonusTotalMb;
   const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
