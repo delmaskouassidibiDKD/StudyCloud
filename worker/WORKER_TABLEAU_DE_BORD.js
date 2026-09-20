@@ -103,6 +103,16 @@ async function ensureStorageTables(db) {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_word_counts (
+        id TEXT PRIMARY KEY,
+        user_id TEXT,
+        word_count INTEGER DEFAULT 0,
+        token_count INTEGER DEFAULT 0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
   } catch (e) {
     console.warn('[Storage Tables Init]', e);
   }
@@ -166,7 +176,9 @@ const TABLES_METADATA = [
     uiConnection: "Bouton DELMAS IA > Fenêtre de messagerie",
     role: "Contient chaque message individuel (utilisateur ou IA) avec ses formules LaTeX et ses métadonnées.",
     usage: "Enregistré en temps réel à chaque échange dans le chat d'assistance.",
-    example: "{ id: 'msg_10', conversation_id: 'conv_77', role: 'user', content: 'Comment calculer la fréquence de coupure ?' }"
+    example: "{ id: 'msg_10', conversation_id: 'conv_77', role: 'user', content: 'Comment calculer la fréquence de coupure ?' }",
+    isExempted: true,
+    exemptReason: "Messages reçus & chat d'assistance : totalement offerts (non décomptés du quota personnel)"
   },
   {
     table: 'ai_creations',
@@ -250,27 +262,43 @@ const TABLES_METADATA = [
   },
   {
     table: 'published_documents',
-    label: 'Documents publiés dans la bibliothèque',
-    uiConnection: "Bibliothèque partagée StudyCloud (Partager / Télécharger)",
-    role: "Gère les cours et résumés rendus publics par les étudiants pour la communauté, avec compteurs de téléchargements.",
+    label: 'Documents publiés dans la bibliothèque (Menu Ressources)',
+    uiConnection: "Bibliothèque partagée StudyCloud (Menu Ressources)",
+    role: "Gère les cours et résumés rendus publics par les étudiants pour toute la communauté. Totalement offert à l'étudiant contributeur.",
     usage: "Alimente le moteur de recherche de la bibliothèque publique.",
-    example: "{ id: 'pub_90', title: 'Fiche Synthèse AOP', file_size: 1450000, downloads_count: 142, views_count: 850 }"
+    example: "{ id: 'pub_90', title: 'Fiche Synthèse AOP', file_size: 1450000, downloads_count: 142, views_count: 850 }",
+    isExempted: true,
+    exemptReason: "Fichiers publiés comme ressource pour tout le monde : offerts à la communauté (non compté ni pénalisé)"
   },
   {
     table: 'user_document_interactions',
-    label: 'Interactions sur les documents publics',
-    uiConnection: "Bibliothèque partagée > Vues et téléchargements",
-    role: "Enregistre l'historique des consultations et téléchargements de cours pour éviter les doublons de statistiques.",
-    usage: "Écrit à chaque consultation ou clic sur un document public.",
-    example: "{ id: 'int_1', user_id: 'user_abc', document_id: 'pub_90', interaction_type: 'view' }"
+    label: 'Interactions et nombre de vues des fichiers',
+    uiConnection: "Bibliothèque partagée > Vues et consultations",
+    role: "Enregistre l'historique et les compteurs de vues sur les documents.",
+    usage: "Écrit à chaque consultation d'un cours public.",
+    example: "{ id: 'int_1', user_id: 'user_abc', document_id: 'pub_90', interaction_type: 'view' }",
+    isExempted: true,
+    exemptReason: "Nombre de vues des fichiers : offert (non décompté du quota personnel)"
   },
   {
     table: 'published_document_downloads',
-    label: 'Historique des téléchargements publics',
-    uiConnection: "Bibliothèque partagée > Statistiques de diffusion",
-    role: "Traçabilité des téléchargements effectués sur les cours publiés.",
+    label: 'Nombre de téléchargements (Fichiers & Liens)',
+    uiConnection: "Bibliothèque partagée & Liens partagés > Téléchargements",
+    role: "Traçabilité des téléchargements effectués sur les cours publiés et liens de partage.",
     usage: "Incrémenté à chaque téléchargement de fichier.",
-    example: "{ id: 'dl_2', user_id: 'user_abc', document_id: 'pub_90' }"
+    example: "{ id: 'dl_2', user_id: 'user_abc', document_id: 'pub_90' }",
+    isExempted: true,
+    exemptReason: "Nombre de téléchargements (fichiers et liens) : offert (non décompté du quota personnel)"
+  },
+  {
+    table: 'user_word_counts',
+    label: "Compteurs de mots de chaque utilisateur",
+    uiConnection: "Espace d'étude IA > Suivi de consommation de mots",
+    role: "Table technique qui enregistre le nombre total de mots et de jetons rédigés ou générés par chaque utilisateur.",
+    usage: "Mis à jour à chaque génération de synthèse ou échange IA.",
+    example: "{ id: 'wc_1', user_id: 'user_abc', word_count: 12450, token_count: 15800 }",
+    isExempted: true,
+    exemptReason: "Table pour stocker les nombres de mots : offerte (non décomptée du quota personnel)"
   },
   {
     table: 'shared_folders',
@@ -440,11 +468,13 @@ const R2_FOLDERS_METADATA = [
   },
   {
     folder: 'published/files/',
-    name: 'Documents publiés dans la bibliothèque communautaire',
-    uiConnection: "Bibliothèque partagée StudyCloud > Catalogue des cours publics",
-    role: "Héberge les fichiers que les étudiants ou enseignants choisissent de partager publiquement avec toute la communauté d'étudiants de leur pays ou école.",
-    usage: "Accessible en téléchargement direct et illimité par tous les membres de StudyCloud sans frais de bande passante (0$ egress R2).",
+    name: 'Documents publiés dans la bibliothèque (Menu Ressources)',
+    uiConnection: "Bibliothèque partagée StudyCloud > Menu Ressources",
+    role: "Héberge les fichiers que les étudiants publient comme ressource dans le menu Ressources pour tout le monde. Totalement exonéré de quota.",
+    usage: "Accessible en téléchargement direct par tous les membres. Ne compte pas dans l'espace personnel de l'élève.",
     examples: "Annales_Bac_Scientifique.pdf, Resumes_Prepa_Maths.pdf",
+    isExempted: true,
+    exemptReason: "Ressource publique partagée pour tout le monde dans le menu Ressources (non comptée ni pénalisée)"
   },
   {
     folder: 'shared-links/files/',
@@ -526,11 +556,27 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
     WHERE user_id = ?
   `, [userId], { total_count: 0, total_bytes: 0, ai_files_count: 0, ai_files_bytes: 0, personal_files_count: 0, personal_files_bytes: 0 });
 
-  // 3. FICHIERS PUBLIES DANS LA BIBLIOTHEQUE PUBLIQUE
+  // 3. FICHIERS PUBLIES DANS LA BIBLIOTHEQUE PUBLIQUE (Exemptés du quota personnel)
   const pubStats = await safeFirst(db, `
     SELECT COUNT(*) AS count, COALESCE(SUM(file_size), 0) AS total_bytes, COALESCE(SUM(views_count), 0) AS total_views, COALESCE(SUM(downloads_count), 0) AS total_downloads
     FROM published_documents WHERE user_id = ?
   `, [userId], { count: 0, total_bytes: 0, total_views: 0, total_downloads: 0 });
+
+  // 3b. INTERACTIONS DE VUES SUR LES DOCUMENTS (Exemptées du quota personnel)
+  const viewsInteractionsStats = await safeFirst(db, `
+    SELECT COUNT(*) AS count FROM user_document_interactions WHERE user_id = ?
+  `, [userId], { count: 0 });
+
+  // 3c. TELECHARGEMENTS SUR LES DOCUMENTS (Exemptés du quota personnel)
+  const pubDownloadsStats = await safeFirst(db, `
+    SELECT COUNT(*) AS count FROM published_document_downloads WHERE user_id = ?
+  `, [userId], { count: 0 });
+
+  // 3d. COMPTEURS DU NOMBRE DE MOTS (Exemptés du quota personnel)
+  const wordCountStats = await safeFirst(db, `
+    SELECT COUNT(*) AS count, COALESCE(SUM(word_count), 0) AS total_words, COALESCE(SUM(token_count), 0) AS total_tokens
+    FROM user_word_counts WHERE user_id = ?
+  `, [userId], { count: 0, total_words: 0, total_tokens: 0 });
 
   // 4. FICHIERS DE LIENS DE PARTAGE
   const shareStats = await safeFirst(db, `
@@ -557,7 +603,7 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
     FROM user_ai_workspace WHERE user_id = ?
   `, [userId], { count: 0, d1_text_bytes: 0 });
 
-  // 8. DISCUSSIONS & CHAT IA
+  // 8. DISCUSSIONS & CHAT IA (Messages reçus / envoyés exemptés)
   const chatStats = await safeFirst(db, `
     SELECT COUNT(DISTINCT c.id) AS conversations_count, COUNT(m.id) AS messages_count, COALESCE(SUM(LENGTH(m.content) + LENGTH(COALESCE(m.metadata, ''))), 0) AS d1_text_bytes
     FROM conversations c LEFT JOIN messages m ON m.conversation_id = c.id
@@ -596,11 +642,15 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
   const hasCustomAvatar = user.avatar_url && (user.avatar_url.includes('avatars/') || user.avatar_url.startsWith('http') || user.avatar_url.startsWith('data:image'));
   const avatarEstimatedBytes = hasCustomAvatar ? 85000 : 0;
 
-  // Calculs R2 et D1 réels
-  const userR2Bytes = (filesStats.total_bytes || 0) + (pubStats.total_bytes || 0) + (shareStats.total_bytes || 0) + avatarEstimatedBytes;
-  
+  // Profil
   const userProfileBytes = (user.name?.length || 0) + (user.email?.length || 0) + (user.school?.length || 0) + (user.filiere?.length || 0) + (user.phone?.length || 0) + 120;
-  
+
+  // Calculs R2 Brut & Net
+  const grossR2Bytes = (filesStats.total_bytes || 0) + (pubStats.total_bytes || 0) + (shareStats.total_bytes || 0) + avatarEstimatedBytes;
+  const exemptR2Bytes = (pubStats.total_bytes || 0); // Fichiers publiés dans le menu Ressources pour tout le monde
+  const netR2Bytes = Math.max(0, grossR2Bytes - exemptR2Bytes);
+
+  // Calculs D1 Brut & Net
   const userD1TextBytes = (shopStats.d1_text_bytes || 0) + (aiContentsStats.d1_text_bytes || 0) + (aiWorkspaceStats.d1_text_bytes || 0) +
                           (chatStats.d1_text_bytes || 0) + (notesStats.d1_text_bytes || 0) + (matieresStats.d1_text_bytes || 0) + 
                           (scheduleStats.d1_text_bytes || 0) + (gradesStats.d1_text_bytes || 0) + (calendarStats.d1_text_bytes || 0) + userProfileBytes;
@@ -610,63 +660,90 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
                      (chatStats.conversations_count || 0) + (chatStats.messages_count || 0) + (notesStats.count || 0) + 
                      (matieresStats.count || 0) + (scheduleStats.slots_count || 0) + (gradesStats.count || 0) + (calendarStats.count || 0) + (studySessionsStats.count || 0) + 1;
 
-  const userD1Bytes = userD1TextBytes + (userD1Rows * 128);
-  const userTotalBytes = userR2Bytes + userD1Bytes;
+  const grossD1Bytes = userD1TextBytes + (userD1Rows * 128);
 
-  const usagePercentage = totalAllowedBytes > 0 
-    ? Math.min(100, parseFloat(((userTotalBytes / totalAllowedBytes) * 100).toFixed(2)))
+  // Éléments D1 exemptés (strictement non comptés ni pénalisés) :
+  // 1. Table des messages où il reçoit ses messages
+  const messagesD1Bytes = (chatStats.messages_count * 128) + (chatStats.d1_text_bytes || 0);
+  // 2. Fichiers publiés comme ressource dans le menu ressources
+  const pubDocsD1Bytes = (pubStats.count * 128) + (pubStats.count * 350);
+  // 3. Nombre de vues des fichiers
+  const viewsD1Bytes = ((viewsInteractionsStats.count || pubStats.total_views) * 64);
+  // 4. Nombre de téléchargements (fichiers & liens)
+  const downloadsD1Bytes = ((pubDownloadsStats.count || pubStats.total_downloads) * 64);
+  // 5. Table pour stocker les nombres de mots de chaque utilisateur
+  const wordCountD1Bytes = (wordCountStats.count * 128) + 140;
+
+  const exemptD1Bytes = messagesD1Bytes + pubDocsD1Bytes + viewsD1Bytes + downloadsD1Bytes + wordCountD1Bytes;
+  const exemptD1Rows = (chatStats.messages_count || 0) + (pubStats.count || 0) + (viewsInteractionsStats.count || 0) + (pubDownloadsStats.count || 0) + (wordCountStats.count || 0);
+
+  const netD1Bytes = Math.max(0, grossD1Bytes - exemptD1Bytes);
+  const netD1Rows = Math.max(0, userD1Rows - exemptD1Rows);
+
+  // Totaux Brut & Net
+  const grossTotalBytes = grossR2Bytes + grossD1Bytes;
+  const netTotalBytes = netR2Bytes + netD1Bytes;
+  const totalExemptBytes = exemptR2Bytes + exemptD1Bytes;
+
+  const grossUsagePercentage = totalAllowedBytes > 0 
+    ? Math.min(100, parseFloat(((grossTotalBytes / totalAllowedBytes) * 100).toFixed(2)))
+    : 0;
+
+  const netUsagePercentage = totalAllowedBytes > 0 
+    ? Math.min(100, parseFloat(((netTotalBytes / totalAllowedBytes) * 100).toFixed(2)))
     : 0;
 
   // Dictionnaire individuel table par table pour cet utilisateur
   const userTablesStats = {
-    files: { count: filesStats.total_count, bytes: filesStats.total_bytes, formatted: formatBytes(filesStats.total_bytes) },
-    notes: { count: notesStats.count, bytes: notesStats.d1_text_bytes, formatted: formatBytes(notesStats.d1_text_bytes) },
-    matieres: { count: matieresStats.count, bytes: matieresStats.d1_text_bytes, formatted: formatBytes(matieresStats.d1_text_bytes) },
-    ai_generated_contents: { count: aiContentsStats.count, bytes: aiContentsStats.d1_text_bytes, formatted: formatBytes(aiContentsStats.d1_text_bytes) },
-    user_ai_workspace: { count: aiWorkspaceStats.count, bytes: aiWorkspaceStats.d1_text_bytes, formatted: formatBytes(aiWorkspaceStats.d1_text_bytes) },
-    conversations: { count: chatStats.conversations_count, bytes: chatStats.conversations_count * 150, formatted: formatBytes(chatStats.conversations_count * 150) },
-    messages: { count: chatStats.messages_count, bytes: chatStats.d1_text_bytes, formatted: formatBytes(chatStats.d1_text_bytes) },
-    ai_creations: { count: 0, bytes: 0, formatted: '0 Octets' },
-    ai_tasks: { count: 0, bytes: 0, formatted: '0 Octets' },
-    user_certificates: { count: 0, bytes: 0, formatted: '0 Octets' },
-    schedule_slots: { count: scheduleStats.slots_count, bytes: scheduleStats.d1_text_bytes, formatted: formatBytes(scheduleStats.d1_text_bytes) },
-    schedule_config: { count: 1, bytes: 180, formatted: formatBytes(180) },
-    grades: { count: gradesStats.count, bytes: gradesStats.d1_text_bytes, formatted: formatBytes(gradesStats.d1_text_bytes) },
-    grade_settings: { count: 1, bytes: 80, formatted: formatBytes(80) },
-    calendar_events: { count: calendarStats.count, bytes: calendarStats.d1_text_bytes, formatted: formatBytes(calendarStats.d1_text_bytes) },
-    alarms: { count: 0, bytes: 0, formatted: '0 Octets' },
-    study_sessions: { count: studySessionsStats.count, bytes: studySessionsStats.count * 90, formatted: formatBytes(studySessionsStats.count * 90) },
-    published_documents: { count: pubStats.count, bytes: pubStats.total_bytes, formatted: formatBytes(pubStats.total_bytes) },
-    user_document_interactions: { count: 0, bytes: 0, formatted: '0 Octets' },
-    published_document_downloads: { count: 0, bytes: 0, formatted: '0 Octets' },
-    shared_folders: { count: shareStats.folders_count, bytes: shareStats.folders_count * 250, formatted: formatBytes(shareStats.folders_count * 250) },
-    shared_folder_files: { count: shareStats.files_count, bytes: shareStats.total_bytes, formatted: formatBytes(shareStats.total_bytes) },
-    shop_profiles: { count: 1, bytes: 180, formatted: formatBytes(180) },
-    products: { count: shopStats.products_count, bytes: shopStats.d1_text_bytes, formatted: formatBytes(shopStats.d1_text_bytes) },
-    cart_items: { count: 0, bytes: 0, formatted: '0 Octets' },
-    seller_follows: { count: 0, bytes: 0, formatted: '0 Octets' },
-    notifications: { count: 0, bytes: 0, formatted: '0 Octets' },
-    users: { count: 1, bytes: userProfileBytes, formatted: formatBytes(userProfileBytes) },
-    user_preferences: { count: 1, bytes: 90, formatted: formatBytes(90) },
-    user_subscriptions: { count: 1, bytes: 110, formatted: formatBytes(110) },
-    user_storage_quotas: { count: 1, bytes: 140, formatted: formatBytes(140) },
-    storage_global_config: { count: 1, bytes: 80, formatted: formatBytes(80) },
-    referrals: { count: 0, bytes: 0, formatted: '0 Octets' },
-    referral_rewards_config: { count: 1, bytes: 120, formatted: formatBytes(120) },
-    auth_sessions: { count: 1, bytes: 128, formatted: formatBytes(128) },
-    email_verifications: { count: 1, bytes: 120, formatted: formatBytes(120) },
-    password_resets: { count: 0, bytes: 0, formatted: '0 Octets' },
-    app_external_links: { count: 3, bytes: 380, formatted: formatBytes(380) }
+    files: { count: filesStats.total_count, bytes: filesStats.total_bytes, formatted: formatBytes(filesStats.total_bytes), isExempted: false },
+    notes: { count: notesStats.count, bytes: notesStats.d1_text_bytes, formatted: formatBytes(notesStats.d1_text_bytes), isExempted: false },
+    matieres: { count: matieresStats.count, bytes: matieresStats.d1_text_bytes, formatted: formatBytes(matieresStats.d1_text_bytes), isExempted: false },
+    ai_generated_contents: { count: aiContentsStats.count, bytes: aiContentsStats.d1_text_bytes, formatted: formatBytes(aiContentsStats.d1_text_bytes), isExempted: false },
+    user_ai_workspace: { count: aiWorkspaceStats.count, bytes: aiWorkspaceStats.d1_text_bytes, formatted: formatBytes(aiWorkspaceStats.d1_text_bytes), isExempted: false },
+    conversations: { count: chatStats.conversations_count, bytes: chatStats.conversations_count * 150, formatted: formatBytes(chatStats.conversations_count * 150), isExempted: false },
+    messages: { count: chatStats.messages_count, bytes: messagesD1Bytes, formatted: formatBytes(messagesD1Bytes), isExempted: true, exemptReason: "Messages reçus & chat d'assistance : offerts (non décomptés du quota personnel)" },
+    ai_creations: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
+    ai_tasks: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
+    user_certificates: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
+    schedule_slots: { count: scheduleStats.slots_count, bytes: scheduleStats.d1_text_bytes, formatted: formatBytes(scheduleStats.d1_text_bytes), isExempted: false },
+    schedule_config: { count: 1, bytes: 180, formatted: formatBytes(180), isExempted: false },
+    grades: { count: gradesStats.count, bytes: gradesStats.d1_text_bytes, formatted: formatBytes(gradesStats.d1_text_bytes), isExempted: false },
+    grade_settings: { count: 1, bytes: 80, formatted: formatBytes(80), isExempted: false },
+    calendar_events: { count: calendarStats.count, bytes: calendarStats.d1_text_bytes, formatted: formatBytes(calendarStats.d1_text_bytes), isExempted: false },
+    alarms: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
+    study_sessions: { count: studySessionsStats.count, bytes: studySessionsStats.count * 90, formatted: formatBytes(studySessionsStats.count * 90), isExempted: false },
+    published_documents: { count: pubStats.count, bytes: pubDocsD1Bytes, formatted: formatBytes(pubDocsD1Bytes), isExempted: true, exemptReason: "Ressource publique de la bibliothèque offerte pour tout le monde (non pénalisé)" },
+    user_document_interactions: { count: viewsInteractionsStats.count || pubStats.total_views, bytes: viewsD1Bytes, formatted: formatBytes(viewsD1Bytes), isExempted: true, exemptReason: "Nombre de vues des fichiers offert" },
+    published_document_downloads: { count: pubDownloadsStats.count || pubStats.total_downloads, bytes: downloadsD1Bytes, formatted: formatBytes(downloadsD1Bytes), isExempted: true, exemptReason: "Nombre de téléchargements (fichiers et liens) offert" },
+    user_word_counts: { count: wordCountStats.count || 1, bytes: wordCountD1Bytes, formatted: formatBytes(wordCountD1Bytes), isExempted: true, exemptReason: "Table pour stocker les nombres de mots offerte" },
+    shared_folders: { count: shareStats.folders_count, bytes: shareStats.folders_count * 250, formatted: formatBytes(shareStats.folders_count * 250), isExempted: false },
+    shared_folder_files: { count: shareStats.files_count, bytes: shareStats.total_bytes, formatted: formatBytes(shareStats.total_bytes), isExempted: false },
+    shop_profiles: { count: 1, bytes: 180, formatted: formatBytes(180), isExempted: false },
+    products: { count: shopStats.products_count, bytes: shopStats.d1_text_bytes, formatted: formatBytes(shopStats.d1_text_bytes), isExempted: false },
+    cart_items: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
+    seller_follows: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
+    notifications: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
+    users: { count: 1, bytes: userProfileBytes, formatted: formatBytes(userProfileBytes), isExempted: false },
+    user_preferences: { count: 1, bytes: 90, formatted: formatBytes(90), isExempted: false },
+    user_subscriptions: { count: 1, bytes: 110, formatted: formatBytes(110), isExempted: false },
+    user_storage_quotas: { count: 1, bytes: 140, formatted: formatBytes(140), isExempted: false },
+    storage_global_config: { count: 1, bytes: 80, formatted: formatBytes(80), isExempted: false },
+    referrals: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
+    referral_rewards_config: { count: 1, bytes: 120, formatted: formatBytes(120), isExempted: false },
+    auth_sessions: { count: 1, bytes: 128, formatted: formatBytes(128), isExempted: false },
+    email_verifications: { count: 1, bytes: 120, formatted: formatBytes(120), isExempted: false },
+    password_resets: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
+    app_external_links: { count: 3, bytes: 380, formatted: formatBytes(380), isExempted: false }
   };
 
   // Dictionnaire individuel R2 pour cet utilisateur
   const userR2FoldersStats = {
-    'user-files/': { count: filesStats.personal_files_count, bytes: filesStats.personal_files_bytes, formatted: formatBytes(filesStats.personal_files_bytes) },
-    'ai-studies/': { count: filesStats.ai_files_count, bytes: filesStats.ai_files_bytes, formatted: formatBytes(filesStats.ai_files_bytes) },
-    'published/files/': { count: pubStats.count, bytes: pubStats.total_bytes, formatted: formatBytes(pubStats.total_bytes) },
-    'shared-links/files/': { count: shareStats.files_count, bytes: shareStats.total_bytes, formatted: formatBytes(shareStats.total_bytes) },
-    'products/images/': { count: shopStats.products_count, bytes: shopStats.products_count * 120000, formatted: formatBytes(shopStats.products_count * 120000) },
-    'avatars/': { count: hasCustomAvatar ? 1 : 0, bytes: avatarEstimatedBytes, formatted: formatBytes(avatarEstimatedBytes) }
+    'user-files/': { count: filesStats.personal_files_count, bytes: filesStats.personal_files_bytes, formatted: formatBytes(filesStats.personal_files_bytes), isExempted: false },
+    'ai-studies/': { count: filesStats.ai_files_count, bytes: filesStats.ai_files_bytes, formatted: formatBytes(filesStats.ai_files_bytes), isExempted: false },
+    'published/files/': { count: pubStats.count, bytes: pubStats.total_bytes, formatted: formatBytes(pubStats.total_bytes), isExempted: true, exemptReason: "Ressource publique du menu Ressources offerte pour toute la communauté (non décomptée)" },
+    'shared-links/files/': { count: shareStats.files_count, bytes: shareStats.total_bytes, formatted: formatBytes(shareStats.total_bytes), isExempted: false },
+    'products/images/': { count: shopStats.products_count, bytes: shopStats.products_count * 120000, formatted: formatBytes(shopStats.products_count * 120000), isExempted: false },
+    'avatars/': { count: hasCustomAvatar ? 1 : 0, bytes: avatarEstimatedBytes, formatted: formatBytes(avatarEstimatedBytes), isExempted: false }
   };
 
   return {
@@ -699,18 +776,59 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
       notes: quotaRow.notes || ''
     },
     storage: {
-      totalBytes: userTotalBytes,
-      totalFormatted: formatBytes(userTotalBytes),
-      usagePercentage,
+      totalBytes: netTotalBytes,
+      totalFormatted: formatBytes(netTotalBytes),
+      usagePercentage: netUsagePercentage,
+      net: {
+        totalBytes: netTotalBytes,
+        totalFormatted: formatBytes(netTotalBytes),
+        usagePercentage: netUsagePercentage,
+        r2Bytes: netR2Bytes,
+        r2Formatted: formatBytes(netR2Bytes),
+        d1Bytes: netD1Bytes,
+        d1Formatted: formatBytes(netD1Bytes),
+        d1Rows: netD1Rows
+      },
+      gross: {
+        totalBytes: grossTotalBytes,
+        totalFormatted: formatBytes(grossTotalBytes),
+        usagePercentage: grossUsagePercentage,
+        r2Bytes: grossR2Bytes,
+        r2Formatted: formatBytes(grossR2Bytes),
+        d1Bytes: grossD1Bytes,
+        d1Formatted: formatBytes(grossD1Bytes),
+        d1Rows: userD1Rows
+      },
+      exempted: {
+        totalBytes: totalExemptBytes,
+        totalFormatted: formatBytes(totalExemptBytes),
+        r2Bytes: exemptR2Bytes,
+        r2Formatted: formatBytes(exemptR2Bytes),
+        d1Bytes: exemptD1Bytes,
+        d1Formatted: formatBytes(exemptD1Bytes),
+        exemptD1Rows,
+        items: [
+          { name: "Ressources publiques dans le menu Ressources (R2 + D1)", bytes: exemptR2Bytes + pubDocsD1Bytes, formatted: formatBytes(exemptR2Bytes + pubDocsD1Bytes), icon: "📚" },
+          { name: "Table des messages reçus & Chat d'assistance", bytes: messagesD1Bytes, formatted: formatBytes(messagesD1Bytes), icon: "💬" },
+          { name: "Nombre de vues des fichiers", bytes: viewsD1Bytes, formatted: formatBytes(viewsD1Bytes), icon: "👁️" },
+          { name: "Nombre de téléchargements (Fichiers & Liens partagés)", bytes: downloadsD1Bytes, formatted: formatBytes(downloadsD1Bytes), icon: "⬇️" },
+          { name: "Table de stockage des nombres de mots de l'utilisateur", bytes: wordCountD1Bytes, formatted: formatBytes(wordCountD1Bytes), icon: "📝" }
+        ]
+      },
       r2: {
-        totalBytes: userR2Bytes,
-        totalFormatted: formatBytes(userR2Bytes),
+        totalBytes: netR2Bytes,
+        grossBytes: grossR2Bytes,
+        netBytes: netR2Bytes,
+        totalFormatted: formatBytes(netR2Bytes),
         folders: userR2FoldersStats
       },
       d1: {
-        totalBytes: userD1Bytes,
-        totalFormatted: formatBytes(userD1Bytes),
-        totalRows: userD1Rows,
+        totalBytes: netD1Bytes,
+        grossBytes: grossD1Bytes,
+        netBytes: netD1Bytes,
+        totalFormatted: formatBytes(netD1Bytes),
+        totalRows: netD1Rows,
+        grossRows: userD1Rows,
         tables: userTablesStats
       }
     }
@@ -1217,6 +1335,17 @@ function renderDashboardHtml(data) {
     let selectedUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
     let selectedDemandeUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
     let currentView = 'global';
+    let userStorageViewMode = 'net'; // 'net' = Vrai Stockage Réel (Déduit & Non Pénalisé), 'gross' = Stockage Brut Total (Tout Inclus)
+
+    function setUserStorageViewMode(mode) {
+      userStorageViewMode = mode;
+      if (selectedUserId) {
+        renderUserRightDetails(selectedUserId);
+      }
+      if (selectedDemandeUserId) {
+        renderDemandeRightDetails(selectedDemandeUserId);
+      }
+    }
 
     function showToast(msg) {
       const t = document.getElementById('toast');
@@ -1435,8 +1564,9 @@ function renderDashboardHtml(data) {
               </div>
             </div>
             <div class="text-right shrink-0 font-mono text-[11px]">
-              <span class="font-bold text-orange-400">\${s.totalFormatted}</span>
+              <span class="font-bold text-orange-400">\${s.net ? s.net.totalFormatted : s.totalFormatted}</span>
               <div class="text-[9px] text-slate-500">Quota: \${q.totalAllowedFormatted}</div>
+              \${s.exempted && s.exempted.totalBytes > 0 ? \`<div class="text-[9px] text-emerald-400 font-bold">🎁 +\${s.exempted.totalFormatted}</div>\` : ''}
             </div>
           </div>
         \`;
@@ -1464,6 +1594,16 @@ function renderDashboardHtml(data) {
       const r2 = s.r2;
       const d1 = s.d1;
 
+      const isNet = userStorageViewMode === 'net';
+      const displayR2Formatted = isNet ? (s.net ? s.net.r2Formatted : r2.totalFormatted) : (s.gross ? s.gross.r2Formatted : r2.totalFormatted);
+      const displayR2Bytes = isNet ? (s.net ? s.net.r2Bytes : r2.totalBytes) : (s.gross ? s.gross.r2Bytes : r2.totalBytes);
+      const displayD1Formatted = isNet ? (s.net ? s.net.d1Formatted : d1.totalFormatted) : (s.gross ? s.gross.d1Formatted : d1.totalFormatted);
+      const displayD1Bytes = isNet ? (s.net ? s.net.d1Bytes : d1.totalBytes) : (s.gross ? s.gross.d1Bytes : d1.totalBytes);
+      const displayD1Rows = isNet ? (s.net ? s.net.d1Rows : d1.totalRows) : (s.gross ? s.gross.d1Rows : d1.totalRows);
+      const displayTotalFormatted = isNet ? (s.net ? s.net.totalFormatted : s.totalFormatted) : (s.gross ? s.gross.totalFormatted : s.totalFormatted);
+      const displayUsagePercentage = isNet ? (s.net ? s.net.usagePercentage : s.usagePercentage) : (s.gross ? s.gross.usagePercentage : s.usagePercentage);
+      const exempted = s.exempted || { totalFormatted: '0 Octets', totalBytes: 0, r2Formatted: '0 Octets', d1Formatted: '0 Octets', exemptD1Rows: 0 };
+
       panel.innerHTML = \`
         <!-- En-tête profil complet avec numéro, fonction, école -->
         <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-3 border-b border-slate-800">
@@ -1484,35 +1624,111 @@ function renderDashboardHtml(data) {
           </div>
 
           <div class="text-right self-start sm:self-auto bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800">
-            <div class="text-xs font-mono font-bold text-orange-400">Total : \${s.totalFormatted} / \${q.totalAllowedFormatted}</div>
-            <div class="text-[10px] text-slate-400">Consommation : \${s.usagePercentage}%</div>
+            <div class="text-xs font-mono font-bold text-orange-400">Total : \${displayTotalFormatted} / \${q.totalAllowedFormatted}</div>
+            <div class="text-[10px] text-slate-400">Consommation : \${displayUsagePercentage}%</div>
+            \${isNet && exempted.totalBytes > 0 ? \`
+              <div class="text-[9px] font-mono text-emerald-400 font-bold">🎁 +\${exempted.totalFormatted} offerts</div>
+            \` : ''}
           </div>
         </div>
+
+        <!-- SÉLECTEUR DE STOCKAGE INTERACTIF (EN HAUT, FIXE) -->
+        <div class="p-2.5 bg-slate-900/90 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2.5">
+          <div class="flex items-center gap-1.5 p-1 bg-slate-950/90 rounded-lg border border-slate-800">
+            <button 
+              onclick="setUserStorageViewMode('net')"
+              class="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer \${isNet ? 'bg-emerald-600 text-white shadow-md shadow-emerald-600/30 ring-1 ring-emerald-400' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}"
+              title="Affiche le vrai stockage personnel avec les ressources publiques, messages et statistiques déduits"
+            >
+              <span>⚡</span> Vrai Stockage Réel (Déduit & Non Pénalisé)
+            </button>
+            <button 
+              onclick="setUserStorageViewMode('gross')"
+              class="px-3 py-1.5 rounded-md text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer \${!isNet ? 'bg-orange-600 text-white shadow-md shadow-orange-600/30 ring-1 ring-orange-400' : 'text-slate-400 hover:text-white hover:bg-slate-800/60'}"
+              title="Affiche l'intégralité brute absolue de tous les octets Cloudflare"
+            >
+              <span>📦</span> Stockage Brut Total (Tout Inclus)
+            </button>
+          </div>
+
+          <div class="text-[11px] font-mono flex items-center gap-2 px-1">
+            \${isNet ? \`
+              <span class="inline-flex items-center gap-1 text-emerald-400 bg-emerald-500/10 px-2.5 py-1 rounded-md border border-emerald-500/20 font-bold">
+                🎁 \${exempted.totalFormatted} offerts non décomptés
+              </span>
+            \` : \`
+              <span class="inline-flex items-center gap-1 text-orange-400 bg-orange-500/10 px-2.5 py-1 rounded-md border border-orange-500/20 font-bold">
+                📦 Vue technique brute Cloudflare
+              </span>
+            \`}
+          </div>
+        </div>
+
+        <!-- BANDEAU EXPLICATIF DYNAMIQUE -->
+        \${isNet ? \`
+          <div class="p-3 rounded-xl bg-gradient-to-r from-emerald-950/40 via-slate-900 to-emerald-950/30 border border-emerald-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs shadow-inner">
+            <div class="flex items-start gap-2.5">
+              <span class="text-xl shrink-0 mt-0.5">🎁</span>
+              <div>
+                <div class="font-bold text-white flex items-center gap-2">
+                  <span>Ressources Publiques, Messages & Compteurs Déduits :</span>
+                  <span class="text-emerald-400 font-black font-mono text-xs sm:text-sm">\${exempted.totalFormatted} offerts</span>
+                </div>
+                <p class="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                  Les <strong>fichiers publiés comme ressource dans le menu Ressources</strong> pour tout le monde, la <strong>table des messages reçus</strong>, le <strong>nombre de vues</strong>, le <strong>nombre de téléchargements</strong> et la <strong>table pour stocker les nombres de mots</strong> ne font pas partie de son espace personnel et ne le pénalisent pas.
+                </p>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-1.5 shrink-0 font-mono text-[10px]">
+              <span class="bg-slate-950/80 text-emerald-300 px-2 py-1 rounded border border-slate-800">📚 Ressources R2 : \${exempted.r2Formatted}</span>
+              <span class="bg-slate-950/80 text-emerald-300 px-2 py-1 rounded border border-slate-800">💬 Messages & Stats D1 : \${exempted.d1Formatted}</span>
+            </div>
+          </div>
+        \` : \`
+          <div class="p-3 rounded-xl bg-orange-950/25 border border-orange-500/30 flex flex-col md:flex-row items-start md:items-center justify-between gap-3 text-xs shadow-inner">
+            <div class="flex items-start gap-2.5">
+              <span class="text-xl shrink-0 mt-0.5">📦</span>
+              <div>
+                <div class="font-bold text-white flex items-center gap-2">
+                  <span>Stockage Physique Brut Exhaustif :</span>
+                  <span class="text-orange-400 font-black font-mono text-xs sm:text-sm">\${displayTotalFormatted}</span>
+                </div>
+                <p class="text-[11px] text-slate-300 mt-0.5 leading-relaxed">
+                  Affiche la totalité absolue de tous les octets physiques enregistrés pour cet utilisateur sur Cloudflare (incluant toutes ses ressources publiques, messages et statistiques) avant déduction de l'espace communautaire.
+                </p>
+              </div>
+            </div>
+            <div class="flex flex-wrap gap-1.5 shrink-0 font-mono text-[10px]">
+              <span class="bg-slate-950/80 text-orange-300 px-2 py-1 rounded border border-slate-800">R2 Brut : \${displayR2Formatted}</span>
+              <span class="bg-slate-950/80 text-orange-300 px-2 py-1 rounded border border-slate-800">D1 Brut : \${displayD1Formatted} (\${displayD1Rows} lignes)</span>
+            </div>
+          </div>
+        \`}
 
         <!-- 4 CARRÉS PERSONNELS POUR CET UTILISATEUR -->
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
           <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-blue-500">
-            <span class="text-[10px] uppercase font-bold text-slate-400">Fichiers Perso</span>
-            <div class="text-base font-black text-white mt-0.5">\${(r2.folders['user-files/']?.count || 0) + (r2.folders['ai-studies/']?.count || 0)}</div>
-            <div class="text-[10px] text-blue-400 font-medium">\${r2.folders['user-files/']?.count || 0} cours, \${r2.folders['ai-studies/']?.count || 0} IA</div>
+            <span class="text-[10px] uppercase font-bold text-slate-400">\${isNet ? 'Fichiers Perso' : 'Fichiers R2 Bruts'}</span>
+            <div class="text-base font-black text-white mt-0.5">\${isNet ? ((r2.folders['user-files/']?.count || 0) + (r2.folders['ai-studies/']?.count || 0)) : ((r2.folders['user-files/']?.count || 0) + (r2.folders['ai-studies/']?.count || 0) + (r2.folders['published/files/']?.count || 0) + (r2.folders['shared-links/files/']?.count || 0))}</div>
+            <div class="text-[10px] text-blue-400 font-medium truncate">\${isNet ? ((r2.folders['user-files/']?.count || 0) + ' cours, ' + (r2.folders['ai-studies/']?.count || 0) + ' IA') : 'Tout inclus (+ ' + (r2.folders['published/files/']?.count || 0) + ' ressources)'}</div>
           </div>
 
           <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-orange-500">
-            <span class="text-[10px] uppercase font-bold text-slate-400">Volume R2 Perso</span>
-            <div class="text-base font-black text-orange-400 mt-0.5">\${r2.totalFormatted}</div>
-            <div class="text-[10px] text-slate-400 font-medium">Limite : 10 Go Cloudflare</div>
+            <span class="text-[10px] uppercase font-bold text-slate-400">\${isNet ? 'Volume R2 Net' : 'Volume R2 Brut'}</span>
+            <div class="text-base font-black text-orange-400 mt-0.5">\${displayR2Formatted}</div>
+            <div class="text-[10px] text-slate-400 font-medium truncate">\${isNet ? 'Exonéré : ' + exempted.r2Formatted : 'Limite : 10 Go Cloudflare'}</div>
           </div>
 
           <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-emerald-500">
-            <span class="text-[10px] uppercase font-bold text-slate-400">Volume D1 Perso</span>
-            <div class="text-base font-black text-emerald-400 mt-0.5">\${d1.totalFormatted}</div>
-            <div class="text-[10px] text-slate-400 font-medium">\${d1.totalRows} lignes SQL</div>
+            <span class="text-[10px] uppercase font-bold text-slate-400">\${isNet ? 'Volume D1 Net' : 'Volume D1 Brut'}</span>
+            <div class="text-base font-black text-emerald-400 mt-0.5">\${displayD1Formatted}</div>
+            <div class="text-[10px] text-slate-400 font-medium truncate">\${displayD1Rows} lignes \${isNet ? '(' + exempted.exemptD1Rows + ' offertes)' : 'totales'}</div>
           </div>
 
           <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-purple-500">
-            <span class="text-[10px] uppercase font-bold text-slate-400">Quota Utilisé</span>
-            <div class="text-base font-black text-purple-400 mt-0.5">\${s.usagePercentage}%</div>
-            <div class="text-[10px] text-purple-300 font-medium">Alloué : \${q.totalAllowedFormatted}</div>
+            <span class="text-[10px] uppercase font-bold text-slate-400">\${isNet ? 'Quota Net Utilisé' : 'Quota Brut Total'}</span>
+            <div class="text-base font-black text-purple-400 mt-0.5">\${displayUsagePercentage}%</div>
+            <div class="text-[10px] text-purple-300 font-medium truncate">Alloué : \${q.totalAllowedFormatted}</div>
           </div>
         </div>
 
@@ -1520,31 +1736,31 @@ function renderDashboardHtml(data) {
         <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800 space-y-2 text-xs">
           <div class="space-y-1">
             <div class="flex justify-between text-[11px]">
-              <span class="text-slate-300 font-semibold">Stockage Total Utilisateur (R2 + D1)</span>
-              <span class="font-mono text-orange-400 font-bold">\${s.totalFormatted} / \${q.totalAllowedFormatted} (\${s.usagePercentage}%)</span>
+              <span class="text-slate-300 font-semibold">\${isNet ? 'Stockage Réel Facturable (R2 + D1)' : 'Stockage Brut Total (R2 + D1)'}</span>
+              <span class="font-mono text-orange-400 font-bold">\${displayTotalFormatted} / \${q.totalAllowedFormatted} (\${displayUsagePercentage}%)</span>
             </div>
             <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div class="h-full bg-orange-500 rounded-full" style="width: \${Math.max(1, s.usagePercentage)}%"></div>
+              <div class="h-full bg-orange-500 rounded-full transition-all duration-300" style="width: \${Math.max(1, displayUsagePercentage)}%"></div>
             </div>
           </div>
 
           <div class="space-y-1">
             <div class="flex justify-between text-[11px]">
-              <span class="text-slate-300 font-semibold">Stockage R2 (Fichiers physiques personnels)</span>
-              <span class="font-mono text-blue-400 font-bold">\${r2.totalFormatted}</span>
+              <span class="text-slate-300 font-semibold">\${isNet ? 'Stockage R2 Personnel' : 'Stockage R2 Total (avec ressources publiques)'}</span>
+              <span class="font-mono text-blue-400 font-bold">\${displayR2Formatted}</span>
             </div>
             <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div class="h-full bg-blue-500 rounded-full" style="width: \${Math.max(1, Math.min(100, (r2.totalBytes / (1024 * 1024 * 1024)) * 100))}%"></div>
+              <div class="h-full bg-blue-500 rounded-full transition-all duration-300" style="width: \${Math.max(1, Math.min(100, (displayR2Bytes / (1024 * 1024 * 1024)) * 100))}%"></div>
             </div>
           </div>
 
           <div class="space-y-1">
             <div class="flex justify-between text-[11px]">
-              <span class="text-slate-300 font-semibold">Base D1 (Lignes & Données SQL de l'utilisateur)</span>
-              <span class="font-mono text-emerald-400 font-bold">\${d1.totalFormatted} (\${d1.totalRows} lignes)</span>
+              <span class="text-slate-300 font-semibold">\${isNet ? 'Base D1 Personnelle' : 'Base D1 Totale (avec messages et compteurs)'}</span>
+              <span class="font-mono text-emerald-400 font-bold">\${displayD1Formatted} (\${displayD1Rows} lignes)</span>
             </div>
             <div class="w-full h-2 bg-slate-800 rounded-full overflow-hidden">
-              <div class="h-full bg-emerald-500 rounded-full" style="width: \${Math.max(1, Math.min(100, (d1.totalBytes / (50 * 1024 * 1024)) * 100))}%"></div>
+              <div class="h-full bg-emerald-500 rounded-full transition-all duration-300" style="width: \${Math.max(1, Math.min(100, (displayD1Bytes / (50 * 1024 * 1024)) * 100))}%"></div>
             </div>
           </div>
         </div>
@@ -1556,17 +1772,28 @@ function renderDashboardHtml(data) {
           </h4>
           <div class="bg-slate-900 rounded-xl border border-slate-800 divide-y divide-slate-800/80">
             \${tablesMeta.map((t, idx) => {
-              const stats = d1.tables[t.table] || { count: 0, bytes: 0, formatted: '0 Octets' };
+              const stats = d1.tables[t.table] || { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false };
+              const isExempt = t.isExempted || stats.isExempted;
               const accId = 'acc-user-d1-' + idx;
               return \`
                 <div>
                   <div onclick="toggleAccordion('\${accId}')" class="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-slate-800/40 select-none text-xs">
                     <div class="flex items-center gap-2">
                       <span class="font-mono font-bold text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-[11px]">\${t.table}</span>
-                      <span class="text-slate-300 text-[11px] truncate max-w-[200px] sm:max-w-none">\${t.label}</span>
+                      <span class="text-slate-300 text-[11px] truncate max-w-[160px] sm:max-w-none">\${t.label}</span>
+                      \${isExempt ? \`
+                        <span class="hidden sm:inline-flex px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">🎁 Offert & Déduit</span>
+                      \` : \`
+                        <span class="hidden sm:inline-flex px-1.5 py-0.5 rounded text-[9px] font-medium bg-slate-800 text-slate-400 border border-slate-700">📌 Quota Perso</span>
+                      \`}
                     </div>
                     <div class="flex items-center gap-2.5 font-mono">
-                      <span class="font-bold text-emerald-400">\${stats.formatted}</span>
+                      \${isExempt && isNet ? \`
+                        <span class="font-bold text-emerald-400">\${stats.formatted}</span>
+                        <span class="text-[10px] text-emerald-500 font-sans hidden sm:inline">(0 Mo décompté)</span>
+                      \` : \`
+                        <span class="font-bold \${isExempt ? 'text-orange-400' : 'text-emerald-400'}">\${stats.formatted}</span>
+                      \`}
                       <span class="text-slate-400 text-[11px]">(\${stats.count} lignes)</span>
                       <svg id="\${accId}-icon" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
@@ -1575,6 +1802,11 @@ function renderDashboardHtml(data) {
                   </div>
                   <div id="\${accId}" class="accordion-content bg-[#070b14] border-t border-slate-800/60 px-3 text-[11px] text-slate-300">
                     <div class="py-2.5 space-y-1.5">
+                      \${isExempt ? \`
+                        <div class="p-2 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[11px] font-medium flex items-center gap-2">
+                          <span>🎁</span> <span><strong>Règle d'exemption :</strong> \${t.exemptReason || 'Table offerte pour la communauté. Non décomptée du quota personnel.'}</span>
+                        </div>
+                      \` : ''}
                       <div><strong class="text-emerald-400">📍 Connexion UI :</strong> \${t.uiConnection}</div>
                       <div><strong class="text-blue-400">🎯 Rôle :</strong> \${t.role}</div>
                     </div>
@@ -1592,17 +1824,28 @@ function renderDashboardHtml(data) {
           </h4>
           <div class="bg-slate-900 rounded-xl border border-slate-800 divide-y divide-slate-800/80">
             \${r2Meta.map((r, idx) => {
-              const stats = r2.folders[r.folder] || { count: 0, bytes: 0, formatted: '0 Octets' };
+              const stats = r2.folders[r.folder] || { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false };
+              const isExempt = r.isExempted || stats.isExempted;
               const accId = 'acc-user-r2-' + idx;
               return \`
                 <div>
                   <div onclick="toggleAccordion('\${accId}')" class="px-3 py-2 flex items-center justify-between cursor-pointer hover:bg-slate-800/40 select-none text-xs">
                     <div class="flex items-center gap-2">
                       <span class="font-mono font-bold text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20 text-[11px]">\${r.folder}</span>
-                      <span class="text-slate-300 text-[11px] truncate max-w-[200px] sm:max-w-none">\${r.name}</span>
+                      <span class="text-slate-300 text-[11px] truncate max-w-[160px] sm:max-w-none">\${r.name}</span>
+                      \${isExempt ? \`
+                        <span class="hidden sm:inline-flex px-1.5 py-0.5 rounded text-[9px] font-extrabold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">🎁 Offert & Déduit</span>
+                      \` : \`
+                        <span class="hidden sm:inline-flex px-1.5 py-0.5 rounded text-[9px] font-medium bg-slate-800 text-slate-400 border border-slate-700">📌 Quota Perso</span>
+                      \`}
                     </div>
                     <div class="flex items-center gap-2.5 font-mono">
-                      <span class="font-bold text-orange-400">\${stats.formatted}</span>
+                      \${isExempt && isNet ? \`
+                        <span class="font-bold text-emerald-400">\${stats.formatted}</span>
+                        <span class="text-[10px] text-emerald-500 font-sans hidden sm:inline">(0 Mo décompté)</span>
+                      \` : \`
+                        <span class="font-bold text-orange-400">\${stats.formatted}</span>
+                      \`}
                       <span class="text-slate-400 text-[11px]">(\${stats.count} fichier(s))</span>
                       <svg id="\${accId}-icon" class="w-3.5 h-3.5 text-slate-400 transition-transform duration-200" fill="none" stroke="currentColor" viewBox="0 0 24 24">
                         <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M19 9l-7 7-7-7"></path>
@@ -1611,6 +1854,11 @@ function renderDashboardHtml(data) {
                   </div>
                   <div id="\${accId}" class="accordion-content bg-[#070b14] border-t border-slate-800/60 px-3 text-[11px] text-slate-300">
                     <div class="py-2.5 space-y-1.5">
+                      \${isExempt ? \`
+                        <div class="p-2 rounded bg-emerald-950/40 border border-emerald-500/30 text-emerald-300 text-[11px] font-medium flex items-center gap-2">
+                          <span>🎁</span> <span><strong>Règle d'exemption :</strong> \${r.exemptReason || 'Fichiers publiés dans le menu Ressources offerts à toute la communauté sans pénalité de quota.'}</span>
+                        </div>
+                      \` : ''}
                       <div><strong class="text-orange-400">📍 Connexion UI :</strong> \${r.uiConnection}</div>
                       <div><strong class="text-purple-400">📝 Exemples :</strong> \${r.examples}</div>
                     </div>
@@ -1645,7 +1893,8 @@ function renderDashboardHtml(data) {
             </div>
             <div class="text-right shrink-0 font-mono text-[11px]">
               <span class="font-bold text-emerald-400">\${q.totalAllowedFormatted}</span>
-              <div class="text-[9px] text-orange-400">Occupé: \${s.totalFormatted}</div>
+              <div class="text-[9px] text-orange-400">Net : \${s.net ? s.net.totalFormatted : s.totalFormatted}</div>
+              \${s.exempted && s.exempted.totalBytes > 0 ? \`<div class="text-[9px] text-emerald-400 font-bold">🎁 +\${s.exempted.totalFormatted}</div>\` : ''}
             </div>
           </div>
         \`;
@@ -1682,8 +1931,9 @@ function renderDashboardHtml(data) {
           </div>
 
           <div class="bg-slate-900 px-3 py-1.5 rounded-xl border border-slate-800 text-right self-start sm:self-auto">
-            <span class="text-[10px] text-slate-400 uppercase font-bold block">Stockage Actuel</span>
-            <span class="font-mono text-xs font-bold text-orange-400">\${s.totalFormatted} / \${q.totalAllowedFormatted}</span>
+            <span class="text-[10px] text-slate-400 uppercase font-bold block">Stockage Réel Facturé</span>
+            <span class="font-mono text-xs font-bold text-orange-400">\${s.net ? s.net.totalFormatted : s.totalFormatted} / \${q.totalAllowedFormatted}</span>
+            \${s.exempted && s.exempted.totalBytes > 0 ? \`<div class="text-[10px] text-emerald-400 font-mono font-bold">🎁 +\${s.exempted.totalFormatted} offerts</div>\` : ''}
           </div>
         </div>
 
@@ -1720,6 +1970,26 @@ function renderDashboardHtml(data) {
               <div>Bienvenue + Payant</div>
               <div class="text-orange-300">Plan : <strong>\${q.planName.toUpperCase()}</strong></div>
             </div>
+          </div>
+        </div>
+
+        <!-- DÉTAILS DU STOCKAGE ACTUEL : RÉEL NET vs EXEMPTÉ vs BRUT -->
+        <div class="p-3 bg-slate-900/90 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs">
+          <div class="flex items-center gap-2">
+            <span class="text-base">⚡</span>
+            <div>
+              <div class="font-bold text-white flex items-center gap-2">
+                <span>Vrai Stockage Réel Facturé :</span>
+                <span class="text-orange-400 font-black font-mono">${s.net ? s.net.totalFormatted : s.totalFormatted}</span>
+                <span class="text-slate-400 text-[11px]">(${s.net ? s.net.usagePercentage : s.usagePercentage}% du quota)</span>
+              </div>
+              <div class="text-[11px] text-emerald-400 mt-0.5">
+                🎁 <strong>${s.exempted ? s.exempted.totalFormatted : '0 Mo'}</strong> offerts à l'étudiant (ressources publiques, messages reçus, vues, téléchargements et compteurs de mots)
+              </div>
+            </div>
+          </div>
+          <div class="text-right shrink-0 font-mono text-[11px] bg-slate-950 px-2.5 py-1 rounded border border-slate-800 text-slate-400">
+            Total Brut Cloudflare : <strong class="text-slate-200">${s.gross ? s.gross.totalFormatted : s.totalFormatted}</strong>
           </div>
         </div>
 
