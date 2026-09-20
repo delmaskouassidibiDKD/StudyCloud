@@ -5,7 +5,6 @@ import {
   AlertCircle,
   RotateCcw,
   Printer,
-  HelpCircle,
   Award,
   ChevronLeft,
   ChevronRight,
@@ -13,9 +12,7 @@ import {
   Play,
   Pause,
   Check,
-  FileText,
   Sparkles,
-  Download,
   Loader2
 } from 'lucide-react';
 
@@ -34,10 +31,7 @@ function StudyCloudLogo() {
       className="inline-flex items-center gap-2 px-2.5 py-1.5 rounded-lg bg-[#0369A1] text-white shadow-xs border border-sky-800 select-none"
       title="StudyCloud - DKD TECHNOLOGIES"
     >
-      {/* Composant officiel DnaLogo */}
       <DnaLogo className="w-6 h-6 shrink-0" glow={true} />
-
-      {/* Texte officiel StudyCloud & DKD TECHNOLOGIES */}
       <div className="flex flex-col text-left leading-none">
         <div className="flex items-baseline text-sm sm:text-base font-black tracking-tight font-sans">
           <span className="text-[#F38020]">Study</span>
@@ -88,12 +82,40 @@ export function parseDurationToSeconds(dureeStr?: string | number): number {
 }
 
 // ==========================================
+// TYPES DE DONNÉES NORMALISÉES
+// ==========================================
+export interface NormalizedQuestion {
+  id: string;
+  number: string;
+  type: 'open' | 'true_false' | 'multiple_choice';
+  texte: string;
+  points: number;
+  options?: string[];
+  correctIndex?: number;
+  correctValue?: boolean;
+  sampleAnswer?: string;
+  explication?: string;
+}
+
+export interface NormalizedSection {
+  id: string;
+  title: string;
+  problem_statement?: string;
+  questions: NormalizedQuestion[];
+  correction?: {
+    steps?: string;
+    examples?: string[];
+  };
+}
+
+// ==========================================
 // NORMALISATION DYNAMIQUE DE L'ÉPREUVE
-// (Aucune donnée statique d'un domaine figé)
+// Supporte complete_exam.sections ET legacy exercice1..4
 // ==========================================
 export function normalizeExamData(data: any, title?: string) {
-  // Déballage direct de toutes les variantes possibles de retours IA
   const source =
+    data?.complete_exam ||
+    data?.creation_data?.complete_exam ||
     data?.exam ||
     data?.devoir ||
     data?.creation_data?.exam ||
@@ -102,18 +124,18 @@ export function normalizeExamData(data: any, title?: string) {
     data ||
     {};
 
-  // Titre / Matière dynamique selon la demande de l'utilisateur
   const discipline =
+    source.title ||
     source.matiere ||
     source.discipline ||
     source.subject ||
+    data?.title ||
     data?.matiere ||
     data?.discipline ||
     data?.subject ||
     title ||
     "ÉPREUVE OFFICIELLE D'EXAMEN";
 
-  // Durée dynamique fixée par l'IA (en fonction de la filière et de la complexité)
   let rawDuree = source.duree || source.duration || data?.duree || data?.duration;
   if (!rawDuree && (source.duration_minutes || data?.duration_minutes)) {
     const mins = Number(source.duration_minutes || data?.duration_minutes);
@@ -127,23 +149,116 @@ export function normalizeExamData(data: any, title?: string) {
 
   const durationSec = parseDurationToSeconds(rawDuree || "2h00");
 
-  const examHeader = {
-    institution: source.institution || data?.institution || "DKD School Numérique",
-    sousTitre: source.sousTitre || source.subTitle || data?.sousTitre || "Évaluation Officielle d'Examen",
-    duree: formattedDuree,
-    durationSeconds: durationSec,
-    matiere: discipline,
-    mention: source.mention || data?.mention || "Cette épreuve comporte quatre (04) pages numérotées 1/4, 2/4, 3/4 et 4/4.",
-    calculatrice: source.calculatrice || data?.calculatrice || "Tout modèle de calculatrice scientifique est autorisé.",
-    baremeTotal: Number(source.baremeTotal || data?.baremeTotal) || 20
-  };
+  const rawSections: any[] = Array.isArray(source.sections)
+    ? source.sections
+    : (Array.isArray(data?.sections) ? data.sections : []);
 
-  // ----------------------------------------------------
-  // PAGE 1 : EXERCICE 1 - Problème complet / Étude de cas (8 pts)
-  // ----------------------------------------------------
+  let sections: NormalizedSection[] = [];
+
+  if (rawSections.length > 0) {
+    sections = rawSections.map((sec: any, sIdx: number) => {
+      const secId = sec.section_id || `sec_${sIdx + 1}`;
+      const secTitle = sec.title || `Partie ${sIdx + 1}`;
+      const problemStatement = sec.problem_statement || sec.enonce || sec.context || sec.contexte || '';
+
+      const rawQList = Array.isArray(sec.questions) ? sec.questions : [];
+      const questions: NormalizedQuestion[] = rawQList.map((q: any, qIdx: number) => {
+        const qId = (typeof q === 'object' && q.id) ? q.id : `${secId}_q${qIdx + 1}`;
+        const qNum = (typeof q === 'object' && q.number) ? q.number : `${qIdx + 1}.`;
+
+        if (typeof q === 'string') {
+          return {
+            id: qId,
+            number: qNum,
+            type: 'open',
+            texte: q,
+            points: 2,
+            sampleAnswer: ''
+          };
+        }
+
+        const isTrueFalse =
+          q.type === 'true_false' ||
+          q.type === 'vf' ||
+          typeof q.correct_answer === 'boolean' ||
+          typeof q.correctValue === 'boolean';
+
+        const isMultipleChoice =
+          q.type === 'multiple_choice' ||
+          q.type === 'qcm' ||
+          (Array.isArray(q.options) && q.options.length > 0) ||
+          (Array.isArray(q.choices) && q.choices.length > 0);
+
+        if (isTrueFalse) {
+          return {
+            id: qId,
+            number: qNum,
+            type: 'true_false',
+            texte: q.question || q.texte || `Affirmation ${qIdx + 1}`,
+            points: Number(q.points) || 1,
+            correctValue:
+              typeof q.correct_answer === 'boolean'
+                ? q.correct_answer
+                : typeof q.correctValue === 'boolean'
+                ? q.correctValue
+                : true,
+            explication: q.explication || q.explanation || ''
+          };
+        }
+
+        if (isMultipleChoice) {
+          const opts = Array.isArray(q.options) ? q.options : (Array.isArray(q.choices) ? q.choices : []);
+          return {
+            id: qId,
+            number: qNum,
+            type: 'multiple_choice',
+            texte: q.question || q.texte || `Question ${qIdx + 1}`,
+            points: Number(q.points) || 1,
+            options: opts,
+            correctIndex:
+              typeof q.correct_index === 'number'
+                ? q.correct_index
+                : typeof q.correctIndex === 'number'
+                ? q.correctIndex
+                : 0,
+            explication: q.explication || q.explanation || ''
+          };
+        }
+
+        return {
+          id: qId,
+          number: qNum,
+          type: 'open',
+          texte: q.question || q.texte || `Question ${qIdx + 1}`,
+          points: Number(q.points) || 2,
+          sampleAnswer: q.sampleAnswer || q.reponse || q.correction || ''
+        };
+      });
+
+      const secCorrection = sec.correction
+        ? {
+            steps: typeof sec.correction === 'string' ? sec.correction : (sec.correction.steps || sec.correction.explication || ''),
+            examples: Array.isArray(sec.correction.examples) ? sec.correction.examples : []
+          }
+        : undefined;
+
+      return {
+        id: secId,
+        title: secTitle,
+        problem_statement: problemStatement,
+        questions,
+        correction: secCorrection
+      };
+    });
+  }
+
+  // Si pas de sections explicites, synthétise depuis rawEx1..4
   const rawEx1 = source.exercice1 || source.problem || source.partie1 || (Array.isArray(source.exercices) && source.exercices[0]);
-  const rawQ1 = Array.isArray(rawEx1?.questions) ? rawEx1.questions : [];
+  const rawEx2 = source.exercice2 || source.qcm || source.partie2 || (Array.isArray(source.exercices) && source.exercices[1]);
+  const rawEx3 = source.exercice3 || source.questionsRedigees || source.synthese || source.partie3 || (Array.isArray(source.exercices) && source.exercices[2]);
+  const rawEx4 = source.exercice4 || source.vraiOuFaux || source.vf || source.partie4 || (Array.isArray(source.exercices) && source.exercices[3]);
 
+  const rawQ1 = Array.isArray(rawEx1?.questions) ? rawEx1.questions : [];
   const exercice1 = {
     titre: rawEx1?.titre || rawEx1?.title || "EXERCICE 1 : PROBLÈME MAJEUR & ÉTUDE DE CAS TECHNIQUE",
     points: Number(rawEx1?.points) || 8,
@@ -158,36 +273,13 @@ export function normalizeExamData(data: any, title?: string) {
             sampleAnswer: q.sampleAnswer || q.reponse || q.correction || q.answer || ""
           }))
         : [
-            {
-              id: 'p1_q1',
-              number: '1.',
-              points: 2,
-              texte: "Analyse théorique, modélisation ou formulation des hypothèses initiales du problème.",
-              sampleAnswer: ""
-            },
-            {
-              id: 'p1_q2',
-              number: '2.',
-              points: 3,
-              texte: "Développement analytique, calculs intermédiaires et résolution rigoureuse.",
-              sampleAnswer: ""
-            },
-            {
-              id: 'p1_q3',
-              number: '3.',
-              points: 3,
-              texte: "Interprétation critique des résultats, discussion des limites et synthèse globale.",
-              sampleAnswer: ""
-            }
+            { id: 'p1_q1', number: '1.', points: 2, texte: "Analyse théorique et modélisation du problème.", sampleAnswer: "" },
+            { id: 'p1_q2', number: '2.', points: 3, texte: "Développement analytique et calculs rigoureux.", sampleAnswer: "" },
+            { id: 'p1_q3', number: '3.', points: 3, texte: "Interprétation critique et synthèse globale.", sampleAnswer: "" }
           ]
   };
 
-  // ----------------------------------------------------
-  // PAGE 2 : EXERCICE 2 - QCM d'analyse conceptuelle (4 pts)
-  // ----------------------------------------------------
-  const rawEx2 = source.exercice2 || source.qcm || source.partie2 || (Array.isArray(source.exercices) && source.exercices[1]);
   const rawQ2 = Array.isArray(rawEx2?.questions) ? rawEx2.questions : [];
-
   const exercice2 = {
     titre: rawEx2?.titre || rawEx2?.title || "EXERCICE 2 : QUESTIONS À CHOIX MULTIPLES",
     points: Number(rawEx2?.points) || 4,
@@ -199,18 +291,8 @@ export function normalizeExamData(data: any, title?: string) {
             number: q.number || `${i + 1}.`,
             points: Number(q.points) || 1,
             texte: q.texte || q.question || q.text || `Question ${i + 1}`,
-            options:
-              Array.isArray(q.options) && q.options.length > 0
-                ? q.options
-                : Array.isArray(q.choices)
-                ? q.choices
-                : ["Proposition A", "Proposition B", "Proposition C", "Proposition D"],
-            correctIndex:
-              typeof q.correctIndex === 'number'
-                ? q.correctIndex
-                : typeof q.bonne_reponse === 'number'
-                ? q.bonne_reponse
-                : 0,
+            options: Array.isArray(q.options) && q.options.length > 0 ? q.options : (Array.isArray(q.choices) ? q.choices : ["Proposition A", "Proposition B", "Proposition C", "Proposition D"]),
+            correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : (typeof q.bonne_reponse === 'number' ? q.bonne_reponse : 0),
             explication: q.explication || q.explanation || q.justification || ""
           }))
         : [1, 2, 3, 4].map((num) => ({
@@ -224,16 +306,11 @@ export function normalizeExamData(data: any, title?: string) {
           }))
   };
 
-  // ----------------------------------------------------
-  // PAGE 3 : EXERCICE 3 - Questions Rédactionnelles Ciblées (4 pts)
-  // ----------------------------------------------------
-  const rawEx3 = source.exercice3 || source.questionsRedigees || source.synthese || source.partie3 || (Array.isArray(source.exercices) && source.exercices[2]);
   const rawQ3 = Array.isArray(rawEx3?.questions) ? rawEx3.questions : [];
-
   const exercice3 = {
     titre: rawEx3?.titre || rawEx3?.title || "EXERCICE 3 : QUESTIONS DE SYNTHÈSE RÉDIGÉE",
     points: Number(rawEx3?.points) || 4,
-    consigne: rawEx3?.consigne || "Répondez de manière précise et concise directement sur les lignes en pointillés réservées à cet effet.",
+    consigne: rawEx3?.consigne || "Répondez de manière précise et concise directement sur votre copie.",
     questions:
       rawQ3.length > 0
         ? rawQ3.map((q: any, i: number) => ({
@@ -244,29 +321,12 @@ export function normalizeExamData(data: any, title?: string) {
             sampleAnswer: q.sampleAnswer || q.reponse || q.correction || ""
           }))
         : [
-            {
-              id: 'p3_q1',
-              number: '1.',
-              points: 2,
-              texte: "Synthèse conceptuelle et démonstration rédigée.",
-              sampleAnswer: ""
-            },
-            {
-              id: 'p3_q2',
-              number: '2.',
-              points: 2,
-              texte: "Analyse des conditions d'application, corollaires ou étude critique.",
-              sampleAnswer: ""
-            }
+            { id: 'p3_q1', number: '1.', points: 2, texte: "Synthèse conceptuelle et démonstration rédigée.", sampleAnswer: "" },
+            { id: 'p3_q2', number: '2.', points: 2, texte: "Analyse des conditions d'application ou étude critique.", sampleAnswer: "" }
           ]
   };
 
-  // ----------------------------------------------------
-  // PAGE 4 : EXERCICE 4 - Vrai ou Faux (4 pts)
-  // ----------------------------------------------------
-  const rawEx4 = source.exercice4 || source.vraiOuFaux || source.vf || source.partie4 || (Array.isArray(source.exercices) && source.exercices[3]);
   const rawQ4 = Array.isArray(rawEx4?.questions) ? rawEx4.questions : [];
-
   const exercice4 = {
     titre: rawEx4?.titre || rawEx4?.title || "EXERCICE 4 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
     points: Number(rawEx4?.points) || 4,
@@ -278,12 +338,7 @@ export function normalizeExamData(data: any, title?: string) {
             number: q.number || `${i + 1}.`,
             points: Number(q.points) || 1,
             texte: q.texte || q.affirmation || q.question || `Affirmation ${i + 1}`,
-            correctValue:
-              typeof q.correctValue === 'boolean'
-                ? q.correctValue
-                : typeof q.isTrue === 'boolean'
-                ? q.isTrue
-                : q.reponse === true || q.reponse === 'VRAI' || q.reponse === 'true',
+            correctValue: typeof q.correctValue === 'boolean' ? q.correctValue : (typeof q.isTrue === 'boolean' ? q.isTrue : q.reponse === true || q.reponse === 'VRAI' || q.reponse === 'true'),
             explication: q.explication || q.explanation || ""
           }))
         : [1, 2, 3, 4].map((num) => ({
@@ -296,101 +351,85 @@ export function normalizeExamData(data: any, title?: string) {
           }))
   };
 
-  // Cas où l'IA retourne une liste plate de questions
-  if ((!rawEx1 || !rawEx1.questions) && Array.isArray(source.questions) && source.questions.length >= 4) {
-    const qList = source.questions;
-    const qcmItems = qList.filter((q: any) => Array.isArray(q.options) && q.options.length > 0);
-    const vfItems = qList.filter(
-      (q: any) =>
-        typeof q.correctValue === 'boolean' ||
-        typeof q.isTrue === 'boolean' ||
-        (Array.isArray(q.options) && q.options.length === 2 && String(q.options[0]).toLowerCase().includes('vrai'))
-    );
-    const openItems = qList.filter((q: any) => !qcmItems.includes(q) && !vfItems.includes(q));
-
-    if (qcmItems.length > 0) {
-      exercice2.questions = qcmItems.slice(0, 4).map((q: any, i: number) => ({
-        id: `p2_q${i + 1}`,
-        number: `${i + 1}.`,
-        points: 1,
-        texte: q.texte || q.question || `Question ${i + 1}`,
-        options: q.options,
-        correctIndex: typeof q.correctIndex === 'number' ? q.correctIndex : 0,
-        explication: q.explication || ""
-      }));
-    }
-
-    if (vfItems.length > 0) {
-      exercice4.questions = vfItems.slice(0, 4).map((q: any, i: number) => ({
-        id: `p4_q${i + 1}`,
-        number: `${i + 1}.`,
-        points: 1,
-        texte: q.texte || q.question || q.affirmation || `Affirmation ${i + 1}`,
-        correctValue: typeof q.correctValue === 'boolean' ? q.correctValue : true,
-        explication: q.explication || ""
-      }));
-    }
-
-    if (openItems.length > 0) {
-      exercice1.questions = openItems.slice(0, 3).map((q: any, i: number) => ({
-        id: `p1_q${i + 1}`,
-        number: `${i + 1}.`,
-        points: i === 0 ? 2 : 3,
-        texte: q.texte || q.question || `Question ${i + 1}`,
-        sampleAnswer: q.sampleAnswer || q.reponse || ""
-      }));
-      if (openItems.length > 3) {
-        exercice3.questions = openItems.slice(3, 5).map((q: any, i: number) => ({
-          id: `p3_q${i + 1}`,
-          number: `${i + 1}.`,
-          points: 2,
-          texte: q.texte || q.question || `Question ${i + 1}`,
-          sampleAnswer: q.sampleAnswer || q.reponse || ""
-        }));
+  if (sections.length === 0) {
+    sections = [
+      {
+        id: 'sec_1',
+        title: exercice1.titre,
+        problem_statement: exercice1.enonce,
+        questions: exercice1.questions.map((q) => ({ ...q, type: 'open' as const })),
+        correction: undefined
+      },
+      {
+        id: 'sec_2',
+        title: exercice2.titre,
+        questions: exercice2.questions.map((q) => ({ ...q, type: 'multiple_choice' as const })),
+        correction: undefined
+      },
+      {
+        id: 'sec_3',
+        title: exercice3.titre,
+        questions: exercice3.questions.map((q) => ({ ...q, type: 'open' as const })),
+        correction: undefined
+      },
+      {
+        id: 'sec_4',
+        title: exercice4.titre,
+        questions: exercice4.questions.map((q) => ({ ...q, type: 'true_false' as const })),
+        correction: undefined
       }
-    }
+    ];
   }
 
-  return { examHeader, exercice1, exercice2, exercice3, exercice4 };
+  const examHeader = {
+    institution: source.institution || data?.institution || "DKD School Numérique",
+    sousTitre: source.sousTitre || source.subTitle || data?.sousTitre || "Évaluation Officielle d'Examen",
+    duree: formattedDuree,
+    durationSeconds: durationSec,
+    matiere: discipline,
+    mention:
+      source.mention ||
+      data?.mention ||
+      source.instructions ||
+      `Cette épreuve comporte ${sections.length} partie(s) d'évaluation structurée(s).`,
+    calculatrice: source.calculatrice || data?.calculatrice || "Tout modèle de calculatrice scientifique est autorisé.",
+    baremeTotal: Number(source.baremeTotal || data?.baremeTotal) || 20
+  };
+
+  return { examHeader, sections, exercice1, exercice2, exercice3, exercice4 };
 }
 
 export default function DevoirComplet({ data, title }: { data?: any; title?: string }) {
-  // Navigation entre les 4 pages
-  const [currentPage, setCurrentPage] = useState<number>(1);
-
   // Données actives de l'examen normalisées
   const activeData = normalizeExamData(data, title);
-  const { examHeader, exercice1, exercice2, exercice3, exercice4 } = activeData;
+  const { examHeader, sections } = activeData;
+
+  const totalPages = Math.max(1, sections.length);
+
+  // Navigation entre les pages (parties)
+  const [currentPage, setCurrentPage] = useState<number>(1);
 
   // Minuteur d'examen dynamique initialisé selon le temps fixé par l'IA
   const [secondsLeft, setSecondsLeft] = useState<number>(() => examHeader.durationSeconds);
   const [isTimerRunning, setIsTimerRunning] = useState<boolean>(true);
 
-  // Initialisation dynamique des réponses candidat (Page 1)
-  const [answersP1, setAnswersP1] = useState<Record<string, string[]>>(() => {
+  // Réponses candidat
+  const [openAnswers, setOpenAnswers] = useState<Record<string, string[]>>(() => {
     const init: Record<string, string[]> = {};
-    exercice1.questions.forEach((q) => {
-      init[q.id] = ['', '', ''];
+    sections.forEach((sec) => {
+      sec.questions.forEach((q) => {
+        if (q.type === 'open') {
+          init[q.id] = ['', '', ''];
+        }
+      });
     });
     return init;
   });
 
-  // Page 2 : QCM (index de l'option choisie)
-  const [answersP2, setAnswersP2] = useState<Record<string, number>>({});
+  const [choiceAnswers, setChoiceAnswers] = useState<Record<string, number>>({});
+  const [booleanAnswers, setBooleanAnswers] = useState<Record<string, boolean>>({});
 
-  // Page 3 : questions rédigées courtes
-  const [answersP3, setAnswersP3] = useState<Record<string, string[]>>(() => {
-    const init: Record<string, string[]> = {};
-    exercice3.questions.forEach((q) => {
-      init[q.id] = ['', '', ''];
-    });
-    return init;
-  });
-
-  // Page 4 : Vrai / Faux
-  const [answersP4, setAnswersP4] = useState<Record<string, boolean>>({});
-
-  // État de soumission, évaluation par l'IA et modale de confirmation
+  // État de soumission et correction
   const [showConfirmModal, setShowConfirmModal] = useState<boolean>(false);
   const [isGrading, setIsGrading] = useState<boolean>(false);
   const [isSubmitted, setIsSubmitted] = useState<boolean>(false);
@@ -402,18 +441,17 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
 
   // Réinitialisation automatique lorsque data change
   useEffect(() => {
-    const initP1: Record<string, string[]> = {};
-    exercice1.questions.forEach((q) => {
-      initP1[q.id] = ['', '', ''];
+    const initOpen: Record<string, string[]> = {};
+    sections.forEach((sec) => {
+      sec.questions.forEach((q) => {
+        if (q.type === 'open') {
+          initOpen[q.id] = ['', '', ''];
+        }
+      });
     });
-    setAnswersP1(initP1);
-    setAnswersP2({});
-    const initP3: Record<string, string[]> = {};
-    exercice3.questions.forEach((q) => {
-      initP3[q.id] = ['', '', ''];
-    });
-    setAnswersP3(initP3);
-    setAnswersP4({});
+    setOpenAnswers(initOpen);
+    setChoiceAnswers({});
+    setBooleanAnswers({});
     setSecondsLeft(examHeader.durationSeconds);
     setIsTimerRunning(true);
     setIsSubmitted(false);
@@ -432,7 +470,6 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
           if (prev <= 1) {
             clearInterval(interval);
             setIsTimerRunning(false);
-            // Soumission automatique à l'expiration du temps
             triggerGradeExam();
             return 0;
           }
@@ -455,83 +492,59 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
     return `${mins.toString().padStart(2, '0')}:${secs.toString().padStart(2, '0')}`;
   };
 
-  // Gestion des lignes pour les questions écrites (Page 1)
-  const updateLineP1 = (qId: string, index: number, val: string) => {
-    const current = [...(answersP1[qId] || ['', '', ''])];
+  // Gestion des lignes pour les questions ouvertes
+  const updateOpenLine = (qId: string, index: number, val: string) => {
+    const current = [...(openAnswers[qId] || ['', '', ''])];
     current[index] = val;
-    setAnswersP1({ ...answersP1, [qId]: current });
+    setOpenAnswers({ ...openAnswers, [qId]: current });
   };
 
-  const addLineP1 = (qId: string) => {
-    const current = [...(answersP1[qId] || ['', '', ''])];
+  const addOpenLine = (qId: string) => {
+    const current = [...(openAnswers[qId] || ['', '', ''])];
     current.push('');
-    setAnswersP1({ ...answersP1, [qId]: current });
+    setOpenAnswers({ ...openAnswers, [qId]: current });
     setTimeout(() => {
       const idx = current.length - 1;
-      document.getElementById(`input-p1-${qId}-${idx}`)?.focus();
-    }, 40);
-  };
-
-  // Gestion des lignes pour les questions écrites (Page 3)
-  const updateLineP3 = (qId: string, index: number, val: string) => {
-    const current = [...(answersP3[qId] || ['', '', ''])];
-    current[index] = val;
-    setAnswersP3({ ...answersP3, [qId]: current });
-  };
-
-  const addLineP3 = (qId: string) => {
-    const current = [...(answersP3[qId] || ['', '', ''])];
-    current.push('');
-    setAnswersP3({ ...answersP3, [qId]: current });
-    setTimeout(() => {
-      const idx = current.length - 1;
-      document.getElementById(`input-p3-${qId}-${idx}`)?.focus();
+      document.getElementById(`input-open-${qId}-${idx}`)?.focus();
     }, 40);
   };
 
   // Calcul local des scores de secours
   const calculateScores = () => {
-    // Score Ex 1 (Problème /8)
-    let scoreP1 = 0;
-    exercice1.questions.forEach((q) => {
-      const text = (answersP1[q.id] || []).join(' ').trim();
-      if (text.length >= 70) scoreP1 += q.points;
-      else if (text.length >= 30) scoreP1 += Math.round(q.points * 0.6 * 2) / 2;
-      else if (text.length > 5) scoreP1 += Math.round(q.points * 0.3 * 2) / 2 || 0.5;
+    let totalPointsEarned = 0;
+    let totalPossible = 0;
+
+    sections.forEach((sec) => {
+      sec.questions.forEach((q) => {
+        const maxPts = q.points || 1;
+        totalPossible += maxPts;
+
+        if (q.type === 'open') {
+          const text = (openAnswers[q.id] || []).join(' ').trim();
+          if (text.length >= 60) totalPointsEarned += maxPts;
+          else if (text.length >= 25) totalPointsEarned += Math.round(maxPts * 0.6 * 2) / 2;
+          else if (text.length > 5) totalPointsEarned += Math.round(maxPts * 0.3 * 2) / 2 || 0.5;
+        } else if (q.type === 'multiple_choice') {
+          if (choiceAnswers[q.id] === q.correctIndex) {
+            totalPointsEarned += maxPts;
+          }
+        } else if (q.type === 'true_false') {
+          if (booleanAnswers[q.id] === q.correctValue) {
+            totalPointsEarned += maxPts;
+          }
+        }
+      });
     });
 
-    // Score Ex 2 (QCM /4)
-    let scoreP2 = 0;
-    exercice2.questions.forEach((q) => {
-      if (answersP2[q.id] === q.correctIndex) {
-        scoreP2 += q.points;
-      }
-    });
+    const scaled = totalPossible > 0
+      ? Math.round((totalPointsEarned / totalPossible) * 20 * 2) / 2
+      : 15;
+    const finalScore = Math.min(20, Math.max(0, scaled));
 
-    // Score Ex 3 (Questions écrites /4)
-    let scoreP3 = 0;
-    exercice3.questions.forEach((q) => {
-      const text = (answersP3[q.id] || []).join(' ').trim();
-      if (text.length >= 50) scoreP3 += q.points;
-      else if (text.length >= 20) scoreP3 += 1.5;
-      else if (text.length > 5) scoreP3 += 0.5;
-    });
-
-    // Score Ex 4 (Vrai/Faux /4)
-    let scoreP4 = 0;
-    exercice4.questions.forEach((q) => {
-      if (answersP4[q.id] === q.correctValue) {
-        scoreP4 += q.points;
-      }
-    });
-
-    const total = Math.min(20, scoreP1 + scoreP2 + scoreP3 + scoreP4);
     return {
-      scoreP1,
-      scoreP2,
-      scoreP3,
-      scoreP4,
-      total
+      total: finalScore,
+      earned: totalPointsEarned,
+      possible: totalPossible
     };
   };
 
@@ -543,17 +556,22 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
     setShowConfirmModal(false);
     setIsTimerRunning(false);
 
-    const userName = localStorage.getItem('unifolder_user_name') || 'Étudiant StudyCloud';
+    const userName = localStorage.getItem('unifolder_user_name') || 'Étudiant DKD School Numérique';
     const userId = localStorage.getItem('unifolder_user_id') || 'default-user';
 
     try {
       const res = await gradeExamPaper({
         exam: activeData,
         answers: {
-          answersP1,
-          answersP2,
-          answersP3,
-          answersP4
+          openAnswers,
+          choiceAnswers,
+          booleanAnswers,
+          answersP1: openAnswers,
+          answersP2: choiceAnswers,
+          answersP3: openAnswers,
+          answersP4: booleanAnswers,
+          ...choiceAnswers,
+          ...booleanAnswers
         },
         userId,
         studentName: userName,
@@ -569,14 +587,9 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
       }
     } catch (err) {
       console.warn("[Grade Exam Fallback]", err);
-      // Fallback local intelligent
       const local = calculateScores();
       setGradingResult({
         scoreTotal: local.total,
-        scoreP1: local.scoreP1,
-        scoreP2: local.scoreP2,
-        scoreP3: local.scoreP3,
-        scoreP4: local.scoreP4,
         feedbackGlobal: local.total >= 16
           ? "Excellente prestation académique ! Vos raisonnements sont rigoureux et bien articulés."
           : "Bonne participation. Reprenez attentivement les points clés du corrigé officiel pour progresser.",
@@ -606,21 +619,19 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
     triggerGradeExam();
   };
 
-  // Réinitialisation de l'examen
   const handleResetExam = () => {
     if (window.confirm("Voulez-vous recommencer l'épreuve à zéro ? Vos réponses seront effacées.")) {
-      const initP1: Record<string, string[]> = {};
-      exercice1.questions.forEach((q) => {
-        initP1[q.id] = ['', '', ''];
+      const initOpen: Record<string, string[]> = {};
+      sections.forEach((sec) => {
+        sec.questions.forEach((q) => {
+          if (q.type === 'open') {
+            initOpen[q.id] = ['', '', ''];
+          }
+        });
       });
-      setAnswersP1(initP1);
-      setAnswersP2({});
-      const initP3: Record<string, string[]> = {};
-      exercice3.questions.forEach((q) => {
-        initP3[q.id] = ['', '', ''];
-      });
-      setAnswersP3(initP3);
-      setAnswersP4({});
+      setOpenAnswers(initOpen);
+      setChoiceAnswers({});
+      setBooleanAnswers({});
       setSecondsLeft(examHeader.durationSeconds);
       setIsTimerRunning(true);
       setIsSubmitted(false);
@@ -635,13 +646,8 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
     window.print();
   };
 
-  // Calcul des scores affichés (soit retour de l'IA, soit heuristique)
   const localScores = calculateScores();
   const finalScore = gradingResult?.scoreTotal ?? localScores.total;
-  const scoreEx1 = gradingResult?.scoreP1 ?? localScores.scoreP1;
-  const scoreEx2 = gradingResult?.scoreP2 ?? localScores.scoreP2;
-  const scoreEx3 = gradingResult?.scoreP3 ?? localScores.scoreP3;
-  const scoreEx4 = gradingResult?.scoreP4 ?? localScores.scoreP4;
 
   const effectiveCert: CertificateData | null =
     gradingResult?.certificateInfo?.certificate ||
@@ -651,10 +657,12 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
           score: finalScore,
           max_score: 20,
           certificate_code: `CERT-DKD-${new Date().getFullYear()}-${Math.random().toString(36).substring(2, 7).toUpperCase()}`,
-          student_name: localStorage.getItem('unifolder_user_name') || 'Étudiant StudyCloud',
+          student_name: localStorage.getItem('unifolder_user_name') || 'Étudiant DKD School Numérique',
           issued_at: new Date().toISOString()
         }
       : null);
+
+  const activeSection = sections[Math.min(currentPage - 1, sections.length - 1)] || sections[0];
 
   return (
     <div id="module-devoir-complet" className="w-full min-h-screen bg-stone-200/70 pb-28">
@@ -691,7 +699,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
             )}
           </div>
 
-          {/* Navigation des pages (Page 1 à 4) */}
+          {/* Navigation des pages (Parties du devoir) */}
           <div className="flex items-center gap-1 sm:gap-2">
             <button
               id="btn-prev-page"
@@ -703,9 +711,9 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
               <ChevronLeft className="w-4 h-4" />
             </button>
 
-            {/* Onglets pages */}
+            {/* Onglets pages dynamiques */}
             <div className="flex items-center gap-1 bg-stone-800 p-1 rounded-lg border border-stone-700">
-              {[1, 2, 3, 4].map((pNum) => (
+              {Array.from({ length: totalPages }, (_, i) => i + 1).map((pNum) => (
                 <button
                   key={pNum}
                   id={`btn-page-tab-${pNum}`}
@@ -723,8 +731,8 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
 
             <button
               id="btn-next-page"
-              disabled={currentPage === 4}
-              onClick={() => setCurrentPage((p) => Math.min(4, p + 1))}
+              disabled={currentPage === totalPages}
+              onClick={() => setCurrentPage((p) => Math.min(totalPages, p + 1))}
               className="p-1.5 rounded-lg bg-stone-800 hover:bg-stone-700 disabled:opacity-40 disabled:hover:bg-stone-800 text-stone-200 transition-colors cursor-pointer"
               title="Page suivante"
             >
@@ -782,13 +790,10 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                   <div className="flex items-center gap-2">
                     <h3 className="text-base sm:text-lg font-black font-serif text-stone-900">
                       {finalScore >= 16
-                        ? `🎉 Félicitations ! Excellence Académique : ${finalScore} / 20 points`
+                        ? `🎉 Félicitations ! Note d'Excellence : ${finalScore} / 20 points`
                         : `Épreuve Déposée • Note Globale : ${finalScore} / 20 points`}
                     </h3>
                   </div>
-                  <p className="text-xs text-stone-600 mt-0.5">
-                    Ex.1 (Problème) : <strong>{scoreEx1}/8</strong> • Ex.2 (QCM) : <strong>{scoreEx2}/4</strong> • Ex.3 (Synthèse) : <strong>{scoreEx3}/4</strong> • Ex.4 (V/F) : <strong>{scoreEx4}/4</strong>
-                  </p>
                   {gradingResult?.feedbackGlobal && (
                     <p className="text-xs text-stone-700 italic mt-1.5 font-serif">
                       « {gradingResult.feedbackGlobal} »
@@ -841,9 +846,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
               EN-TÊTE OFFICIEL DKD SCHOOL NUMÉRIQUE & STUDYCLOUD
               ======================================================== */}
           <header className="border-b-2 border-stone-900 pb-5 space-y-4">
-            {/* Ligne supérieure : DKD School Numérique à gauche, Logo StudyCloud à droite */}
             <div className="flex items-center justify-between gap-4">
-              {/* Gauche : Institution & Informations */}
               <div className="text-left space-y-0.5">
                 <h2 className="font-serif font-black text-sm sm:text-base tracking-wide text-stone-900 uppercase">
                   {examHeader.institution}
@@ -856,13 +859,11 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
                 </p>
               </div>
 
-              {/* Droite : Logo officiel StudyCloud / DKD TECHNOLOGIES */}
               <div className="text-right shrink-0">
                 <StudyCloudLogo />
               </div>
             </div>
 
-            {/* Boîte encadrée de la discipline */}
             <div className="text-center py-1 sm:py-2">
               <div className="inline-block border-2 border-stone-900 px-6 sm:px-10 py-2">
                 <h1 className="text-base sm:text-xl font-serif font-black tracking-widest text-stone-900 uppercase break-words">
@@ -871,7 +872,6 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
               </div>
             </div>
 
-            {/* Consignes officielles et règle d'évaluation */}
             <div className="text-center space-y-1.5 pt-0.5">
               <p className="text-[11px] sm:text-xs font-serif italic text-stone-700">
                 {examHeader.mention}
@@ -888,432 +888,270 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
           </header>
 
           {/* ========================================================
-              CONTENU SPÉCIFIQUE SELON LA PAGE ACTIVE (1, 2, 3 ou 4)
-              Tous les espaces sont auto-extensibles sans troncature
+              CONTENU DE LA PARTIE ACTIVE DU DEVOIR
               ======================================================== */}
           <div className="flex-1 space-y-8 pt-2">
-            {/* ----------------------------------------------------
-                PAGE 1 : EXERCICE 1 - PROBLÈME COMPLET (8 points)
-                ---------------------------------------------------- */}
-            {currentPage === 1 && (
-              <div id="exam-page-1" className="space-y-6">
-                <div className="border-b border-stone-300 pb-2">
-                  <div className="inline-block border border-stone-900 px-3 py-1 text-xs sm:text-sm font-serif font-extrabold uppercase tracking-wider text-stone-900">
-                    {exercice1.titre} ({exercice1.points} points)
-                  </div>
+            <div id={`section-container-${activeSection.id}`} className="space-y-6">
+              {/* Titre de la partie */}
+              <div className="border-b border-stone-300 pb-2">
+                <div className="inline-block border border-stone-900 px-3 py-1 text-xs sm:text-sm font-serif font-extrabold uppercase tracking-wider text-stone-900">
+                  {activeSection.title}
                 </div>
+              </div>
 
-                {/* Énoncé du problème (S'étire dynamiquement selon la taille du sujet) */}
+              {/* Énoncé / Problème pratique si présent (s'étire dynamiquement) */}
+              {activeSection.problem_statement && (
                 <div className="bg-stone-50/80 p-4 sm:p-5 border-l-4 border-stone-800 text-stone-800 text-xs sm:text-sm font-serif leading-relaxed space-y-2 h-auto break-words overflow-visible">
                   <span className="font-bold uppercase tracking-wider text-xs block text-stone-900">
                     Énoncé de la situation & données du problème :
                   </span>
-                  {exercice1.enonce ? (
-                    <div className="text-stone-800 leading-relaxed break-words whitespace-pre-line">
-                      <MathText text={exercice1.enonce} />
+                  <div className="text-stone-800 leading-relaxed break-words whitespace-pre-line">
+                    <MathText text={activeSection.problem_statement} />
+                  </div>
+                </div>
+              )}
+
+              {/* Questions de la partie */}
+              <div className="space-y-6">
+                <span className="font-serif font-bold text-xs uppercase tracking-wider text-stone-900 block">
+                  Questions à traiter :
+                </span>
+
+                <div className="space-y-6 pl-1">
+                  {activeSection.questions.map((q) => {
+                    return (
+                      <div key={q.id} id={`question-block-${q.id}`} className="space-y-3">
+                        {/* Énoncé de la question */}
+                        <div className="flex items-start gap-2.5 font-serif text-xs sm:text-sm text-stone-900 leading-relaxed">
+                          <span className="font-bold shrink-0">{q.number}</span>
+                          <div className="flex-1 min-w-0 space-y-1">
+                            <MathText text={q.texte} className="font-medium break-words leading-relaxed text-stone-900" />
+                            <span className="text-xs text-stone-500 font-sans font-normal">
+                              ({q.points} {q.points > 1 ? 'points' : 'point'})
+                            </span>
+                          </div>
+                        </div>
+
+                        {/* Rendu spécifique selon le type de question */}
+                        {q.type === 'true_false' && (
+                          <div className="pl-5 pt-1 space-y-2">
+                            <div className="flex items-center gap-6">
+                              <label className="inline-flex items-center gap-2 text-xs sm:text-sm font-serif font-bold text-stone-800 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`vf-${q.id}`}
+                                  disabled={isSubmitted}
+                                  checked={booleanAnswers[q.id] === true}
+                                  onChange={() => setBooleanAnswers({ ...booleanAnswers, [q.id]: true })}
+                                  className="accent-stone-900 cursor-pointer"
+                                />
+                                <span>VRAI</span>
+                              </label>
+
+                              <label className="inline-flex items-center gap-2 text-xs sm:text-sm font-serif font-bold text-stone-800 cursor-pointer">
+                                <input
+                                  type="radio"
+                                  name={`vf-${q.id}`}
+                                  disabled={isSubmitted}
+                                  checked={booleanAnswers[q.id] === false}
+                                  onChange={() => setBooleanAnswers({ ...booleanAnswers, [q.id]: false })}
+                                  className="accent-stone-900 cursor-pointer"
+                                />
+                                <span>FAUX</span>
+                              </label>
+                            </div>
+
+                            {/* Correction type pour Vrai/Faux */}
+                            {showCorrectionDetail && (
+                              <div className="mt-2 text-xs font-sans text-stone-800 bg-emerald-50/70 p-3 rounded-lg border border-emerald-300 break-words h-auto leading-relaxed">
+                                <strong className="text-emerald-900 uppercase text-[11px] block mb-1">
+                                  Réponse attendue :{' '}
+                                  <span className={q.correctValue ? 'text-emerald-700 font-bold' : 'text-rose-700 font-bold'}>
+                                    {q.correctValue ? 'VRAI' : 'FAUX'}
+                                  </span>
+                                </strong>
+                                {q.explication && (
+                                  <div className="text-stone-800 mt-1">
+                                    <MathText text={`Justification : ${q.explication}`} />
+                                  </div>
+                                )}
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {q.type === 'multiple_choice' && (
+                          <div className="space-y-2 pl-5 sm:pl-6">
+                            {(q.options || []).map((opt, optIdx) => {
+                              const isChecked = choiceAnswers[q.id] === optIdx;
+                              const isCorrect = showCorrectionDetail && optIdx === q.correctIndex;
+                              const isWrong = showCorrectionDetail && isChecked && optIdx !== q.correctIndex;
+
+                              return (
+                                <label
+                                  key={optIdx}
+                                  className={`flex items-start gap-3 p-2.5 rounded cursor-pointer transition-colors text-xs sm:text-sm font-serif ${
+                                    isCorrect
+                                      ? 'bg-emerald-50 text-emerald-950 font-semibold'
+                                      : isWrong
+                                      ? 'bg-rose-50 text-rose-900'
+                                      : isChecked
+                                      ? 'bg-stone-100 text-stone-900 font-medium'
+                                      : 'hover:bg-stone-50 text-stone-800'
+                                  }`}
+                                >
+                                  <input
+                                    type="radio"
+                                    name={`mc-${q.id}`}
+                                    disabled={isSubmitted}
+                                    checked={isChecked}
+                                    onChange={() => setChoiceAnswers({ ...choiceAnswers, [q.id]: optIdx })}
+                                    className="mt-1 accent-stone-900 cursor-pointer"
+                                  />
+                                  <div className="flex-1 min-w-0">
+                                    <MathText text={opt} className="break-words leading-relaxed" />
+                                  </div>
+                                </label>
+                              );
+                            })}
+
+                            {showCorrectionDetail && q.explication && (
+                              <div className="mt-1 p-2.5 bg-stone-50 border-l-3 border-stone-700 text-stone-800 text-xs font-sans leading-relaxed break-words h-auto">
+                                <strong className="block text-[11px] uppercase tracking-wider text-stone-700 mb-0.5">
+                                  Justification officielle :
+                                </strong>
+                                <MathText text={q.explication} className="break-words leading-relaxed" />
+                              </div>
+                            )}
+                          </div>
+                        )}
+
+                        {q.type === 'open' && (
+                          <div className="space-y-2.5 pl-2 sm:pl-4">
+                            {/* Lignes d'écriture en pointillés extensibles */}
+                            <div className="space-y-2 pl-2">
+                              {(openAnswers[q.id] || ['', '', '']).map((lineText, lIdx) => {
+                                const lines = openAnswers[q.id] || ['', '', ''];
+                                const isLast = lIdx === lines.length - 1;
+
+                                return (
+                                  <div key={lIdx} className="w-full flex items-center gap-2">
+                                    <input
+                                      id={`input-open-${q.id}-${lIdx}`}
+                                      type="text"
+                                      value={lineText}
+                                      disabled={isSubmitted}
+                                      onChange={(e) => updateOpenLine(q.id, lIdx, (e.target as HTMLInputElement).value)}
+                                      placeholder={
+                                        lIdx === 0 && lineText === ''
+                                          ? 'Rédigez votre réponse ou calcul détaillé ici...'
+                                          : ''
+                                      }
+                                      className="w-full bg-transparent border-b-2 border-dotted border-stone-400 focus:border-stone-900 focus:border-solid focus:outline-hidden py-1.5 text-stone-900 text-xs sm:text-sm font-serif tracking-wide disabled:text-stone-700 placeholder:text-stone-400 placeholder:italic transition-colors"
+                                    />
+
+                                    {isLast && !isSubmitted && (
+                                      <button
+                                        id={`btn-add-line-${q.id}`}
+                                        type="button"
+                                        onClick={() => addOpenLine(q.id)}
+                                        className="w-5 h-5 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs cursor-pointer"
+                                        title="Ajouter une ligne supplémentaire"
+                                        aria-label="Ajouter une ligne"
+                                      >
+                                        <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                                      </button>
+                                    )}
+                                  </div>
+                                );
+                              })}
+                            </div>
+
+                            {/* Corrigé type de la question */}
+                            {showCorrectionDetail && q.sampleAnswer && (
+                              <div className="mt-2.5 p-3.5 bg-emerald-50/90 border-l-4 border-emerald-600 text-emerald-950 text-xs font-sans leading-relaxed break-words h-auto rounded-r-lg space-y-1">
+                                <strong className="block text-[11px] uppercase tracking-wider text-emerald-800 font-bold">
+                                  Corrigé type de la question :
+                                </strong>
+                                <MathText text={q.sampleAnswer} className="break-words leading-relaxed text-emerald-950" />
+                              </div>
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* 
+                CORRECTION COMPLÈTE DE LA SECTION (AVEC LES 2 EXEMPLES CONCRETS OBLIGATOIRES)
+              */}
+              {showCorrectionDetail && activeSection.correction && (
+                <div className="mt-8 p-5 sm:p-6 bg-gradient-to-br from-emerald-50 via-teal-50/60 to-emerald-50/40 border-2 border-emerald-500/80 rounded-xl space-y-4 text-emerald-950">
+                  <div className="flex items-center gap-2 border-b border-emerald-300 pb-2.5">
+                    <Sparkles className="w-5 h-5 text-emerald-700 shrink-0" />
+                    <h4 className="font-serif font-black text-xs sm:text-sm uppercase tracking-wide text-emerald-900">
+                      Corrigé Type Officiel & Exemples Concrets — {activeSection.title}
+                    </h4>
+                  </div>
+
+                  {activeSection.correction.steps && (
+                    <div className="space-y-1.5">
+                      <strong className="block text-xs uppercase tracking-wider text-emerald-800 font-bold">
+                        Démonstration & Étapes de Résolution :
+                      </strong>
+                      <div className="text-xs sm:text-sm font-sans leading-relaxed text-emerald-950 bg-white/80 p-3.5 rounded-lg border border-emerald-200 break-words">
+                        <MathText text={activeSection.correction.steps} />
+                      </div>
                     </div>
-                  ) : (
-                    <div className="py-6 border border-dashed border-stone-300 rounded-sm text-center text-stone-400 italic text-xs">
-                      Espace d'énoncé du problème : cet espace s'étire et s'adapte automatiquement à toute longueur de texte, données expérimentales, tableaux et formules LaTeX.
+                  )}
+
+                  {Array.isArray(activeSection.correction.examples) && activeSection.correction.examples.length > 0 && (
+                    <div className="space-y-2 pt-1">
+                      <strong className="block text-xs uppercase tracking-wider text-emerald-800 font-bold">
+                        Cas d'Usage Réels & Applications Pratiques (2 Exemples Concrets) :
+                      </strong>
+                      <div className="grid grid-cols-1 gap-2.5">
+                        {activeSection.correction.examples.map((exText: string, exIdx: number) => (
+                          <div
+                            key={exIdx}
+                            className="p-3.5 bg-white/90 border border-emerald-300/80 rounded-lg shadow-2xs text-xs sm:text-sm text-emerald-950 leading-relaxed font-sans"
+                          >
+                            <div className="flex items-start gap-2.5">
+                              <span className="inline-flex items-center justify-center w-5 h-5 rounded-full bg-emerald-600 text-white text-[10px] font-bold shrink-0 mt-0.5">
+                                {exIdx + 1}
+                              </span>
+                              <div className="flex-1 min-w-0">
+                                <MathText text={exText} />
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
                     </div>
                   )}
                 </div>
-
-                {/* Questions du problème */}
-                <div className="space-y-4">
-                  <span className="font-serif font-bold text-xs uppercase tracking-wider text-stone-900 block">
-                    Questions à traiter :
-                  </span>
-                  <ol className="space-y-4 pl-1">
-                    {exercice1.questions.map((q) => (
-                      <li key={q.id} className="text-xs sm:text-sm font-serif text-stone-900 flex items-start gap-2.5 leading-relaxed h-auto break-words">
-                        <span className="font-bold shrink-0">{q.number}</span>
-                        <div className="flex-1 min-w-0 space-y-1">
-                          <MathText text={q.texte} className="text-stone-900 break-words leading-relaxed" />
-                          <span className="text-xs font-sans text-stone-500 font-normal">({q.points} points)</span>
-                        </div>
-                      </li>
-                    ))}
-                  </ol>
-                </div>
-
-                {/* 
-                  Zone réservée aux réponses écrites (FEUILLE DE COPIE)
-                  avec lignes d'écriture en pointillés extensibles et bouton bleu +
-                */}
-                <div className="pt-6 border-t-2 border-dashed border-stone-300 space-y-8">
-                  <div className="text-center">
-                    <span className="inline-block bg-stone-900 text-white font-serif font-bold text-xs uppercase tracking-widest px-4 py-1">
-                      RÉPONSES ÉCRITES DU CANDIDAT — EXERCICE 1
-                    </span>
-                  </div>
-
-                  {exercice1.questions.map((q) => {
-                    const lines = answersP1[q.id] || ['', '', ''];
-                    const ex1Fb = gradingResult?.exercices?.exercice1?.questions?.[q.id];
-
-                    return (
-                      <div key={q.id} id={`reponse-box-${q.id}`} className="space-y-2">
-                        <div className="flex items-center justify-between text-xs font-serif font-bold text-stone-900">
-                          <span>Réponse à la question {q.number} ({q.points} pts) :</span>
-                          {showCorrectionDetail && (
-                            <span className="text-emerald-700 font-sans font-bold text-[11px]">
-                              {ex1Fb && typeof ex1Fb.points === 'number'
-                                ? `Note attribuée par l'IA : ${ex1Fb.points} / ${q.points} pts`
-                                : "Corrigé officiel"}
-                            </span>
-                          )}
-                        </div>
-
-                        {/* Lignes d'écriture en pointillés extensibles */}
-                        <div className="space-y-2.5 pl-2 sm:pl-4">
-                          {lines.map((lineText, lIdx) => {
-                            const isLast = lIdx === lines.length - 1;
-                            return (
-                              <div key={lIdx} className="w-full flex items-center gap-2">
-                                <input
-                                  id={`input-p1-${q.id}-${lIdx}`}
-                                  type="text"
-                                  value={lineText}
-                                  disabled={isSubmitted}
-                                  onChange={(e) => updateLineP1(q.id, lIdx, (e.target as HTMLInputElement).value)}
-                                  placeholder={
-                                    lIdx === 0 && lineText === ''
-                                      ? 'Rédigez votre réponse argumentée ici...'
-                                      : ''
-                                  }
-                                  className="w-full bg-transparent border-b-2 border-dotted border-stone-400 focus:border-stone-900 focus:border-solid focus:outline-hidden py-1.5 text-stone-900 text-xs sm:text-sm font-serif tracking-wide disabled:text-stone-700 placeholder:text-stone-400 placeholder:italic transition-colors"
-                                />
-
-                                {isLast && !isSubmitted && (
-                                  <button
-                                    id={`btn-add-line-p1-${q.id}`}
-                                    type="button"
-                                    onClick={() => addLineP1(q.id)}
-                                    className="w-5 h-5 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs cursor-pointer"
-                                    title="Ajouter une ligne supplémentaire"
-                                    aria-label="Ajouter une ligne"
-                                  >
-                                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Corrigé type et feedback IA affiché après soumission */}
-                        {showCorrectionDetail && (
-                          <div className="mt-2.5 p-3.5 bg-emerald-50/90 border-l-4 border-emerald-600 text-emerald-950 text-xs font-sans leading-relaxed break-words h-auto rounded-r-lg space-y-2">
-                            <div className="flex items-center justify-between">
-                              <strong className="text-[11px] uppercase tracking-wider text-emerald-800 font-bold">
-                                Évaluation du jury & Corrigé :
-                              </strong>
-                              {ex1Fb && typeof ex1Fb.points === 'number' && (
-                                <span className="bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded font-bold text-[11px]">
-                                  Note : {ex1Fb.points} / {q.points} pt(s)
-                                </span>
-                              )}
-                            </div>
-                            {ex1Fb?.feedback && (
-                              <p className="text-emerald-900 italic bg-white/70 p-2 rounded border border-emerald-200">
-                                <strong>Remarque du jury :</strong> {ex1Fb.feedback}
-                              </p>
-                            )}
-                            {q.sampleAnswer && (
-                              <div>
-                                <strong className="block text-[10px] text-emerald-700 uppercase font-bold mb-0.5">Corrigé type attendu :</strong>
-                                <MathText text={q.sampleAnswer} className="break-words leading-relaxed text-emerald-950" />
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* ----------------------------------------------------
-                PAGE 2 : EXERCICE 2 - COCHER LA BONNE RÉPONSE (QCM) (4 points)
-                ---------------------------------------------------- */}
-            {currentPage === 2 && (
-              <div id="exam-page-2" className="space-y-6">
-                <div className="border-b border-stone-300 pb-2">
-                  <div className="inline-block border border-stone-900 px-3 py-1 text-xs sm:text-sm font-serif font-extrabold uppercase tracking-wider text-stone-900">
-                    {exercice2.titre} ({exercice2.points} points)
-                  </div>
-                  <p className="text-xs font-serif italic text-stone-600 mt-2">
-                    {exercice2.consigne}
-                  </p>
-                </div>
-
-                <div className="space-y-8">
-                  {exercice2.questions.map((q) => {
-                    const selectedIdx = answersP2[q.id];
-                    const ex2Fb = gradingResult?.exercices?.exercice2?.questions?.[q.id];
-
-                    return (
-                      <div key={q.id} className="space-y-3 pl-1">
-                        <div className="flex items-start gap-2.5 font-serif text-xs sm:text-sm text-stone-900 leading-relaxed">
-                          <span className="font-bold shrink-0">{q.number}</span>
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <MathText text={q.texte} className="font-medium break-words leading-relaxed" />
-                            <span className="text-xs text-stone-500 font-sans font-normal">({q.points} pt)</span>
-                          </div>
-                        </div>
-
-                        {/* Options à cocher */}
-                        <div className="space-y-2 pl-5 sm:pl-6">
-                          {q.options.map((opt, optIdx) => {
-                            const isChecked = selectedIdx === optIdx;
-                            const isCorrect = showCorrectionDetail && optIdx === q.correctIndex;
-                            const isWrong = showCorrectionDetail && isChecked && optIdx !== q.correctIndex;
-
-                            return (
-                              <label
-                                key={optIdx}
-                                className={`flex items-start gap-3 p-2.5 rounded cursor-pointer transition-colors text-xs sm:text-sm font-serif ${
-                                  isCorrect
-                                    ? 'bg-emerald-50 text-emerald-950 font-semibold'
-                                    : isWrong
-                                    ? 'bg-rose-50 text-rose-900'
-                                    : isChecked
-                                    ? 'bg-stone-100 text-stone-900 font-medium'
-                                    : 'hover:bg-stone-50 text-stone-800'
-                                }`}
-                              >
-                                <input
-                                  type="radio"
-                                  name={`qcm-${q.id}`}
-                                  disabled={isSubmitted}
-                                  checked={isChecked}
-                                  onChange={() => setAnswersP2({ ...answersP2, [q.id]: optIdx })}
-                                  className="mt-1 accent-stone-900 cursor-pointer"
-                                />
-                                <div className="flex-1 min-w-0">
-                                  <MathText text={opt} className="break-words leading-relaxed" />
-                                </div>
-                              </label>
-                            );
-                          })}
-                        </div>
-
-                        {/* Corrigé type affiché après soumission */}
-                        {showCorrectionDetail && (
-                          <div className="mt-1 ml-6 p-2.5 bg-stone-50 border-l-3 border-stone-700 text-stone-800 text-xs font-sans leading-relaxed break-words h-auto">
-                            <strong className="block text-[11px] uppercase tracking-wider text-stone-700 mb-0.5">
-                              {ex2Fb?.feedback ? ex2Fb.feedback : "Justification :"}
-                            </strong>
-                            {q.explication && <MathText text={q.explication} className="break-words leading-relaxed" />}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* ----------------------------------------------------
-                PAGE 3 : EXERCICE 3 - QUESTIONS RÉDACTIONNELLES (4 points)
-                ---------------------------------------------------- */}
-            {currentPage === 3 && (
-              <div id="exam-page-3" className="space-y-6">
-                <div className="border-b border-stone-300 pb-2">
-                  <div className="inline-block border border-stone-900 px-3 py-1 text-xs sm:text-sm font-serif font-extrabold uppercase tracking-wider text-stone-900">
-                    {exercice3.titre} ({exercice3.points} points)
-                  </div>
-                  <p className="text-xs font-serif italic text-stone-600 mt-2">
-                    {exercice3.consigne}
-                  </p>
-                </div>
-
-                <div className="space-y-10">
-                  {exercice3.questions.map((q) => {
-                    const lines = answersP3[q.id] || ['', '', ''];
-                    const ex3Fb = gradingResult?.exercices?.exercice3?.questions?.[q.id];
-
-                    return (
-                      <div key={q.id} className="space-y-3">
-                        <div className="flex items-start gap-2.5 font-serif text-xs sm:text-sm text-stone-900 leading-relaxed">
-                          <span className="font-bold shrink-0">{q.number}</span>
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <MathText text={q.texte} className="font-medium break-words leading-relaxed" />
-                            <span className="text-xs text-stone-500 font-sans font-normal">({q.points} points)</span>
-                          </div>
-                        </div>
-
-                        {/* Lignes d'écriture en pointillés avec petit plus bleu */}
-                        <div className="space-y-2.5 pl-4 sm:pl-6">
-                          {lines.map((lineText, lIdx) => {
-                            const isLast = lIdx === lines.length - 1;
-                            return (
-                              <div key={lIdx} className="w-full flex items-center gap-2">
-                                <input
-                                  id={`input-p3-${q.id}-${lIdx}`}
-                                  type="text"
-                                  value={lineText}
-                                  disabled={isSubmitted}
-                                  onChange={(e) => updateLineP3(q.id, lIdx, (e.target as HTMLInputElement).value)}
-                                  placeholder={
-                                    lIdx === 0 && lineText === ''
-                                      ? 'Rédigez votre explication ici...'
-                                      : ''
-                                  }
-                                  className="w-full bg-transparent border-b-2 border-dotted border-stone-400 focus:border-stone-900 focus:border-solid focus:outline-hidden py-1.5 text-stone-900 text-xs sm:text-sm font-serif tracking-wide disabled:text-stone-700 placeholder:text-stone-400 placeholder:italic transition-colors"
-                                />
-
-                                {isLast && !isSubmitted && (
-                                  <button
-                                    id={`btn-add-line-p3-${q.id}`}
-                                    type="button"
-                                    onClick={() => addLineP3(q.id)}
-                                    className="w-5 h-5 rounded-full bg-blue-600 hover:bg-blue-700 active:scale-95 text-white flex items-center justify-center text-xs font-bold shrink-0 shadow-xs cursor-pointer"
-                                    title="Ajouter une ligne supplémentaire"
-                                    aria-label="Ajouter une ligne"
-                                  >
-                                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                                  </button>
-                                )}
-                              </div>
-                            );
-                          })}
-                        </div>
-
-                        {/* Corrigé type et feedback IA affiché après soumission */}
-                        {showCorrectionDetail && (
-                          <div className="mt-2.5 ml-6 p-3.5 bg-emerald-50/90 border-l-4 border-emerald-600 text-emerald-950 text-xs font-sans leading-relaxed break-words h-auto rounded-r-lg space-y-2">
-                            <div className="flex items-center justify-between">
-                              <strong className="block text-[11px] uppercase tracking-wider text-emerald-800 font-bold">
-                                Évaluation du jury & Corrigé officiel :
-                              </strong>
-                              {ex3Fb && typeof ex3Fb.points === 'number' && (
-                                <span className="bg-emerald-200 text-emerald-900 px-2 py-0.5 rounded font-bold text-[11px]">
-                                  Note : {ex3Fb.points} / {q.points} pt(s)
-                                </span>
-                              )}
-                            </div>
-                            {ex3Fb?.feedback && (
-                              <p className="text-emerald-900 italic bg-white/70 p-2 rounded border border-emerald-200">
-                                <strong>Remarque :</strong> {ex3Fb.feedback}
-                              </p>
-                            )}
-                            {q.sampleAnswer && (
-                              <div>
-                                <strong className="block text-[10px] text-emerald-700 uppercase font-bold mb-0.5">Corrigé type attendu :</strong>
-                                <MathText text={q.sampleAnswer} className="break-words leading-relaxed text-emerald-950" />
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
-
-            {/* ----------------------------------------------------
-                PAGE 4 : EXERCICE 4 - VRAI OU FAUX (4 points)
-                ---------------------------------------------------- */}
-            {currentPage === 4 && (
-              <div id="exam-page-4" className="space-y-6">
-                <div className="border-b border-stone-300 pb-2">
-                  <div className="inline-block border border-stone-900 px-3 py-1 text-xs sm:text-sm font-serif font-extrabold uppercase tracking-wider text-stone-900">
-                    {exercice4.titre} ({exercice4.points} points)
-                  </div>
-                  <p className="text-xs font-serif italic text-stone-600 mt-2">
-                    {exercice4.consigne}
-                  </p>
-                </div>
-
-                <div className="space-y-6">
-                  {exercice4.questions.map((q) => {
-                    const val = answersP4[q.id];
-                    const ex4Fb = gradingResult?.exercices?.exercice4?.questions?.[q.id];
-
-                    return (
-                      <div key={q.id} className="space-y-2.5 p-3 rounded-lg border border-stone-200 bg-stone-50/50">
-                        <div className="flex items-start gap-2.5 font-serif text-xs sm:text-sm text-stone-900 leading-relaxed">
-                          <span className="font-bold shrink-0">{q.number}</span>
-                          <div className="flex-1 min-w-0 space-y-1">
-                            <MathText text={q.texte} className="font-medium break-words leading-relaxed" />
-                            <span className="text-xs text-stone-500 font-sans font-normal">({q.points} pt)</span>
-                          </div>
-                        </div>
-
-                        {/* Choix VRAI ou FAUX */}
-                        <div className="flex items-center gap-4 pl-5 pt-1">
-                          <label className="inline-flex items-center gap-2 text-xs sm:text-sm font-serif font-bold text-stone-800 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={`vf-${q.id}`}
-                              disabled={isSubmitted}
-                              checked={val === true}
-                              onChange={() => setAnswersP4({ ...answersP4, [q.id]: true })}
-                              className="accent-stone-900 cursor-pointer"
-                            />
-                            <span>VRAI</span>
-                          </label>
-
-                          <label className="inline-flex items-center gap-2 text-xs sm:text-sm font-serif font-bold text-stone-800 cursor-pointer">
-                            <input
-                              type="radio"
-                              name={`vf-${q.id}`}
-                              disabled={isSubmitted}
-                              checked={val === false}
-                              onChange={() => setAnswersP4({ ...answersP4, [q.id]: false })}
-                              className="accent-stone-900 cursor-pointer"
-                            />
-                            <span>FAUX</span>
-                          </label>
-                        </div>
-
-                        {/* Corrigé type affiché après soumission */}
-                        {showCorrectionDetail && (
-                          <div className="mt-2 text-xs font-sans text-stone-800 bg-white p-2.5 rounded border border-stone-200 break-words h-auto leading-relaxed">
-                            <strong>Réponse attendue :</strong>{' '}
-                            <span className={q.correctValue ? 'text-emerald-700 font-bold' : 'text-rose-700 font-bold'}>
-                              {q.correctValue ? 'VRAI' : 'FAUX'}
-                            </span>
-                            {ex4Fb?.feedback && (
-                              <p className="mt-1 text-stone-600 font-medium">
-                                {ex4Fb.feedback}
-                              </p>
-                            )}
-                            {q.explication && (
-                              <div className="mt-1 text-stone-700">
-                                <MathText text={`Justification : ${q.explication}`} />
-                              </div>
-                            )}
-                          </div>
-                        )}
-                      </div>
-                    );
-                  })}
-                </div>
-              </div>
-            )}
+              )}
+            </div>
           </div>
 
           {/* ========================================================
-              PIED DE PAGE OFFICIEL STYLE BACCALAURÉAT (1/4, 2/4, etc.)
+              PIED DE PAGE OFFICIEL STYLE BACCALAURÉAT (1/N, 2/N, etc.)
               ======================================================== */}
           <footer className="border-t border-stone-300 pt-4 text-center">
             <span className="text-xs sm:text-sm font-serif font-bold text-stone-800 tracking-widest">
-              {currentPage} / 4
+              {currentPage} / {totalPages}
             </span>
           </footer>
         </article>
       </div>
 
       {/* ========================================================
-          ZONE HORS-PAGE EN BAS DE LA DERNIÈRE PAGE (Page 4)
+          ZONE HORS-PAGE EN BAS DE LA DERNIÈRE PAGE
           Bouton "Soumettre le sujet à la correction"
           ======================================================== */}
-      {currentPage === 4 && (
+      {currentPage === totalPages && (
         <div
           id="exam-bottom-actions"
           className="max-w-3xl mx-auto px-4 sm:px-6 pt-8 flex flex-col items-center justify-center gap-3 text-center"
@@ -1341,7 +1179,7 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
               </button>
 
               <span className="text-xs text-stone-500 font-sans">
-                Temps restant : <strong>{formatTime(secondsLeft)}</strong> • Vérifiez l'ensemble de vos 4 pages avant de déposer.
+                Temps restant : <strong>{formatTime(secondsLeft)}</strong> • Vérifiez l'ensemble de vos {totalPages} parties avant de déposer.
               </span>
             </>
           ) : (
@@ -1377,7 +1215,6 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
           className="fixed inset-0 z-50 bg-stone-900/60 backdrop-blur-xs flex items-center justify-center p-4"
         >
           <div className="bg-white rounded-2xl max-w-md w-full p-6 shadow-2xl border border-stone-200 space-y-5 animate-in fade-in zoom-in duration-150">
-            {/* Icône et titre */}
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-full bg-amber-100 text-amber-800 flex items-center justify-center shrink-0">
                 <AlertCircle className="w-6 h-6 text-amber-600" />
@@ -1392,13 +1229,11 @@ export default function DevoirComplet({ data, title }: { data?: any; title?: str
               </div>
             </div>
 
-            {/* Message de confirmation */}
             <p className="text-xs sm:text-sm text-stone-600 leading-relaxed">
               Il vous reste encore <strong>{formatTime(secondsLeft)}</strong> avant la fin de l'épreuve.
               Voulez-vous vraiment déposer dès maintenant votre feuille d'examen pour la correction par l'IA ?
             </p>
 
-            {/* Boutons d'action Annuler / Soumettre */}
             <div className="flex items-center justify-end gap-3 pt-2">
               <button
                 id="btn-cancel-modal"

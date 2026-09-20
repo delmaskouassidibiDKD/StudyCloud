@@ -449,13 +449,13 @@ export default {
               creation_title = we.title || parsed.title || "Exercice Écrit & Résolution de Problème";
               creation_data = parsed;
               chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre exercice écrit et sa correction détaillée sont prêts dans l'espace Création !";
-            } else if (parsed.exam || parsed.devoir || parsed.baremeTotal || parsed.exercice1 || defaultType === "devoir-complet") {
+            } else if (parsed.complete_exam || parsed.exam || parsed.devoir || parsed.baremeTotal || parsed.exercice1 || defaultType === "devoir-complet") {
               decision = "creation";
               creation_type = "devoir-complet";
-              const ex = parsed.exam || parsed.devoir || parsed;
-              creation_title = ex.matiere || ex.title || parsed.title || "Devoir Complet d'Examen (20 pts)";
+              const ex = parsed.complete_exam || parsed.exam || parsed.devoir || parsed;
+              creation_title = ex.title || ex.matiere || parsed.title || "Devoir Évaluatif d'Examen (20 pts)";
               creation_data = parsed;
-              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre épreuve complète d'examen sur 20 points est prête dans l'espace Création !";
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre devoir complet d'évaluation sur 20 points est prêt dans l'espace Création !";
             } else if (parsed.decision === "chat" || parsed.mode === "chat") {
               decision = "chat";
               chat_message = parsed.chat_message || parsed.chat_response || rawText;
@@ -894,185 +894,76 @@ Tu dois impérativement respecter les règles strictes suivantes :
 }
 
 ======================================================================
-RÈGLES D'EXCELLENCE POUR LE DEVOIR COMPLET D'EXAMEN ('devoir-complet') :
+RÈGLES D'EXCELLENCE POUR LE DEVOIR COMPLET ('devoir-complet') :
 ======================================================================
-Tu es un professeur examinateur d'université et concepteur d'épreuves académiques de concours et d'examens nationaux. Ta mission est de concevoir une épreuve d'examen complète, difficile, complexe et approfondie sur 20 points, basée sur le document fourni par l'élève et enrichie par des connaissances vérifiées d'Internet ou des annales officielles du domaine.
+Tu es un professeur expert, un concepteur d'examens et un tuteur pédagogique de haut niveau. Ta mission est de concevoir un devoir complet et structuré (composé de plusieurs parties ou exercices progressifs) basé sur le document fourni par l'utilisateur et enrichi, si nécessaire, par des connaissances vérifiées d'Internet sur le même sujet.
 
 Tu dois impérativement respecter les règles strictes suivantes :
 
-1. HAUTE DIFFICULTÉ, COMPLEXITÉ & EXIGENCE ACADÉMIQUE :
-   - Le niveau de l'épreuve doit être DIFFICILE, RIGOUREUX ET STIMULANT (type concours d'ingénieur, examen de médecine, partiel universitaire de droit ou d'économie, épreuve de classe préparatoire).
-   - INTERDICTION FORMELLE de poser des questions simplistes, triviales ou de simple recopie textuelle. Conçois de vrais problèmes qui poussent l'étudiant à mobiliser ses capacités d'analyse critique, de calcul et de démonstration.
+1. ÉVITER LES DOUBLONS (HISTORIQUE) :
+- Voici l'historique des devoirs ou des examens déjà générés pour cet utilisateur et ce fichier : [INSERER_HISTORIQUE_DEVOIRS_ICI].
+- Crée un sujet d'examen inédit qui explore d'autres chapitres, de nouveaux types de problèmes ou des angles d'évaluation différents par rapport à l'historique.
 
-2. TEMPS DE COMPOSITION FIXÉ PAR L'IA (NON FIGÉ) :
-   - Le temps de composition NE DOIT PAS être figé. C'est toi (l'IA) qui CHOISIS ET FIXES la durée de l'épreuve en fonction de la difficulté du sujet, du domaine et de la filière.
-   - Renseigne obligatoirement le champ "duree" (ex: "1h30", "2h00", "3h00", "45 min", "4h00") et "duration_minutes" (ex: 90, 120, 180).
+2. PROFONDEUR PÉDAGOGIQUE ET STRUCTURE DU DEVOIR :
+- Le devoir doit être rigoureux et progressif. Divise-le en plusieurs grandes parties (ex: Partie 1 : Restitution des connaissances et questions à choix multiples / Vrai-Faux, Partie 2 : Étude de cas / Résolution de problème, Partie 3 : Application pratique ou calculs approfondis).
+- Évite les questions superficielles. Pousse l'étudiant à analyser, justifier et appliquer les concepts en profondeur.
+- TEMPS DE COMPOSITION FIXÉ PAR L'IA (NON FIGÉ) : Fixe la durée d'épreuve adaptée à la difficulté et au domaine de composition (ex: "duree": "1h30", "2h00", "3h00", "duration_minutes": 120).
+- ADAPTABILITÉ TOTALE DU FORMAT VISUEL (ESPACES AUTO-EXTENSIBLES) : Les conteneurs de StudyCloud s'étirent et s'allongent automatiquement pour accueillir des énoncés longs, des questions riches et des calculs scientifiques. L'espace s'adapte à tout type de sujet. INTERDICTION FORMELLE de recopier des exemples types.
 
-3. PREMIÈRE FICHE (EXERCICE 1) : UN VRAI GRAND PROBLÈME / ÉTUDE DE CAS SUBSTANTIELLE :
-   - La première fiche est la pièce maîtresse de l'épreuve : elle doit comporter un VRAI SUJET DENSE ET PROFOND (sur 8 points).
-   - Développe une véritable mise en situation (ex: cas clinique réel, analyse d'un système technique, étude de dossier juridique, modélisation physique ou problème mathématique complet).
-   - Fournis toutes les données numériques, paramètres, équations et hypothèses nécessaires.
-   - Formule 3 questions progressives (1., 2., 3.) avec barème détaillé (ex: 2 pts, 3 pts, 3 pts) et corrigé type exhaustif avec démarches complètes.
+3. CORRECTIONS DÉTAILLÉES AVEC EXEMPLES :
+- Fournis un corrigé type complet pour chaque partie du devoir, expliquant le "pourquoi" théorique et le détail des étapes de calcul.
+- Chaque correction de partie ou d'exercice doit obligatoirement inclure **deux exemples concrets et distincts** de cas d'usage réels pour ancrer la compréhension de l'étudiant.
 
-4. EXHAUSTIVITÉ ABSOLUE : LES 4 FICHES DOIVENT ÊTRE CRÉÉES ET COMPLÈTES :
-   - Tu DOIS impérativement générer et remplir les 4 parties de l'épreuve sans exception :
-     * "exercice1" : Problème majeur / Étude de cas (8 points) avec 3 questions progressives.
-     * "exercice2" : QCM d'analyse conceptuelle (4 points) avec 4 questions à 4 choix et 1 seule réponse exacte avec justification.
-     * "exercice3" : Questions de synthèse rédigée (4 points) avec 2 questions ouvertes exigeant une explication technique ou théorique rigoureuse.
-     * "exercice4" : Test de discrimination conceptuelle Vrai ou Faux (4 points) avec 4 affirmations subtiles testant les conditions de validité, pièges et limites.
-   - INTERDICTION FORMELLE de laisser des fiches vides ou de renvoyer un devoir incomplet.
+4. RÈGLE DE FORMATAGE ABSOLUE (MATHÉMATIQUES, FONCTIONS ET FRACTIONS) :
+- Pour TOUTES les formules, fonctions mathématiques, fractions, variables et symboles scientifiques (ex: $f(x) = ax + b$, $\frac{a}{b}$, $\Omega$, $\sqrt{2}$, $U_{eff}$), tu DOIS utiliser exclusivement la syntaxe LaTeX standard (entre symboles dollar $...$ ou blocs $$...$$).
+- INTERDICTION FORMELLE d'utiliser du texte brut mal formaté ou des caractères corrompus (&, *, !, $$$) pour représenter des maths. Utilise toujours les balises LaTeX correctes (ex: \frac{num}{den}).
 
-5. ADAPTABILITÉ TOTALE DU FORMAT VISUEL (ESPACES AUTO-EXTENSIBLES) :
-   - Les conteneurs de StudyCloud s'étirent et s'allongent automatiquement pour accueillir des énoncés longs et des calculs détaillés. L'espace s'adapte à tout type de sujet. INTERDICTION de recopier des exemples types (ex: sciences cognitives si le cours porte sur de la physique ou de la chimie).
+5. LANGUE :
+- Rédige TOUJOURS en FRANÇAIS par défaut.
 
-6. ÉVITER LES DOUBLONS (HISTORIQUE D1) :
-   - Prends en compte les devoirs et exercices déjà générés pour cet utilisateur et propose un sujet neuf, inédit et stimulant.
-
-7. FORMATAGE STRICT LATEX PUR (KaTeX) :
-   - Toutes les formules, fractions, variables et fonctions en syntaxe LaTeX standard ($...$ ou $$...$$).
-
-8. STRUCTURE JSON REQUISE DANS "creation_data" :
+6. STRUCTURE JSON ATTENDUE POUR LE DEVOIR COMPLET DANS "creation_data" :
 {
-  "exam": {
-    "institution": "StudyCloud Academy • DKD Technologies",
-    "sousTitre": "Évaluation Officielle d'Examen",
-    "matiere": "[Discipline / Titre exact du cours de l'élève]",
+  "complete_exam": {
+    "title": "Devoir Évaluatif : [Titre du devoir adapté au document de l'élève]",
+    "instructions": "Traitez l'ensemble des exercices en détaillant chaque étape de raisonnement et de calcul.",
     "duree": "2h00",
     "duration_minutes": 120,
-    "mention": "Cette épreuve comporte quatre (04) pages numérotées 1/4, 2/4, 3/4 et 4/4.",
-    "calculatrice": "Tout modèle de calculatrice scientifique est autorisé.",
-    "baremeTotal": 20,
-    "exercice1": {
-      "titre": "EXERCICE 1 : PROBLÈME MAJEUR & ÉTUDE DE CAS TECHNIQUE",
-      "points": 8,
-      "enonce": "[Contexte riche et détaillé, mise en situation réelle avec données numériques, hypothèses et formules LaTeX $\\frac{a}{b}$]",
-      "questions": [
-        {
-          "id": "p1_q1",
-          "number": "1.",
-          "points": 2,
-          "texte": "[Première question d'analyse théorique ou de diagnostic avec formules LaTeX]",
-          "sampleAnswer": "[Démonstration rédigée complète pas à pas]"
-        },
-        {
-          "id": "p1_q2",
-          "number": "2.",
-          "points": 3,
-          "texte": "[Deuxième question d'application numérique ou de modélisation]",
-          "sampleAnswer": "[Calculs intermédiaires et résultat rigoureux]"
-        },
-        {
-          "id": "p1_q3",
-          "number": "3.",
-          "points": 3,
-          "texte": "[Troisième question d'interprétation critique ou de résolution finale]",
-          "sampleAnswer": "[Justification approfondie]"
+    "sections": [
+      {
+        "section_id": "sec_1",
+        "title": "Partie 1 : Questions Théoriques et Vrai/Faux",
+        "questions": [
+          {
+            "id": "q_1",
+            "type": "true_false",
+            "question": "En régime sinusoïdal, l'impédance complexe d'un condensateur est donnée par $Z_C = \\frac{1}{j\\omega C}$.",
+            "correct_answer": true
+          }
+        ],
+        "correction": {
+          "steps": "Le condensateur s'oppose aux variations de tension : en régime harmonique, l'impédance complexe est $Z_C = \\frac{1}{j\\omega C}$.",
+          "examples": [
+            "Exemple 1 : Dans un filtre passe-bas RC, l'impédance capacitive décroît avec la fréquence pour dériver les harmoniques parasites vers la masse.",
+            "Exemple 2 : Sur un réseau industriel de distribution électrique, des batteries de condensateurs compensent l'énergie réactive inductive des moteurs."
+          ]
         }
-      ]
-    },
-    "exercice2": {
-      "titre": "EXERCICE 2 : QUESTIONS À CHOIX MULTIPLES D'ANALYSE",
-      "points": 4,
-      "consigne": "Pour chaque question, cochez la seule proposition exacte parmi les quatre choix proposés.",
-      "questions": [
-        {
-          "id": "p2_q1",
-          "number": "1.",
-          "points": 1,
-          "texte": "[Question QCM 1]",
-          "options": ["[Option A]", "[Option B]", "[Option C]", "[Option D]"],
-          "correctIndex": 1,
-          "explication": "[Justification théorique détaillée]"
-        },
-        {
-          "id": "p2_q2",
-          "number": "2.",
-          "points": 1,
-          "texte": "[Question QCM 2]",
-          "options": ["[Option A]", "[Option B]", "[Option C]", "[Option D]"],
-          "correctIndex": 0,
-          "explication": "[Justification]"
-        },
-        {
-          "id": "p2_q3",
-          "number": "3.",
-          "points": 1,
-          "texte": "[Question QCM 3]",
-          "options": ["[Option A]", "[Option B]", "[Option C]", "[Option D]"],
-          "correctIndex": 2,
-          "explication": "[Justification]"
-        },
-        {
-          "id": "p2_q4",
-          "number": "4.",
-          "points": 1,
-          "texte": "[Question QCM 4]",
-          "options": ["[Option A]", "[Option B]", "[Option C]", "[Option D]"],
-          "correctIndex": 3,
-          "explication": "[Justification]"
+      },
+      {
+        "section_id": "sec_2",
+        "title": "Partie 2 : Problème Pratique",
+        "problem_statement": "On considère un circuit RLC série soumis à une tension sinusoïdale. La pulsation propre est $\\omega_0 = \\frac{1}{\\sqrt{L \\cdot C}}.$",
+        "questions": [
+          "1. Établir l'expression littérale du facteur de qualité $Q$ du circuit."
+        ],
+        "correction": {
+          "steps": "Le facteur de qualité se calcule par le rapport de la réactance sur la résistance : $Q = \\frac{L\\omega_0}{R} = \\frac{1}{R}\\sqrt{\\frac{L}{C}}$.",
+          "examples": [
+            "Exemple 1 : Dans un récepteur radio à modulation d'amplitude, un fort facteur de qualité permet d'obtenir une sélectivité accrue autour de la fréquence de résonance.",
+            "Exemple 2 : Sur un réseau industriel, un circuit accordé avec un $Q$ élevé limite la propagation des harmoniques parasites."
+          ]
         }
-      ]
-    },
-    "exercice3": {
-      "titre": "EXERCICE 3 : QUESTIONS DE SYNTHÈSE RÉDIGÉE",
-      "points": 4,
-      "consigne": "Répondez de manière précise et rigoureuse directement sur votre copie.",
-      "questions": [
-        {
-          "id": "p3_q1",
-          "number": "1.",
-          "points": 2,
-          "texte": "[Question ouverte 1 exigeant une synthèse conceptuelle]",
-          "sampleAnswer": "[Corrigé type détaillé]"
-        },
-        {
-          "id": "p3_q2",
-          "number": "2.",
-          "points": 2,
-          "texte": "[Question ouverte 2 sur les limites ou conditions d'application]",
-          "sampleAnswer": "[Corrigé type détaillé]"
-        }
-      ]
-    },
-    "exercice4": {
-      "titre": "EXERCICE 4 : TEST DE DISCRIMINATION CONCEPTUELLE — VRAI OU FAUX",
-      "points": 4,
-      "consigne": "Pour chaque affirmation ci-dessous, cochez VRAI ou FAUX.",
-      "questions": [
-        {
-          "id": "p4_q1",
-          "number": "1.",
-          "points": 1,
-          "texte": "[Affirmation piège ou cas limite 1]",
-          "correctValue": false,
-          "explication": "[Démonstration du pourquoi c'est faux]"
-        },
-        {
-          "id": "p4_q2",
-          "number": "2.",
-          "points": 1,
-          "texte": "[Affirmation fondamentale 2]",
-          "correctValue": true,
-          "explication": "[Démonstration du pourquoi c'est vrai]"
-        },
-        {
-          "id": "p4_q3",
-          "number": "3.",
-          "points": 1,
-          "texte": "[Affirmation 3]",
-          "correctValue": false,
-          "explication": "[Justification]"
-        },
-        {
-          "id": "p4_q4",
-          "number": "4.",
-          "points": 1,
-          "texte": "[Affirmation 4]",
-          "correctValue": true,
-          "explication": "[Justification]"
-        }
-      ]
-    }
+      }
+    ]
   }
 }
 
@@ -1226,6 +1117,9 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
       if (requestedType) {
         fullSystemPrompt = fullSystemPrompt.replace(/'\${requestedType \|\| ""}'/, `'${requestedType}'`);
       }
+      const historyNoticeDevoir = previousQuestionsText || "Aucun devoir ou examen précédent enregistré pour cet utilisateur sur ce document.";
+      fullSystemPrompt = fullSystemPrompt.replace(/\[INSERER_HISTORIQUE_DEVOIRS_ICI\]/g, historyNoticeDevoir);
+      fullSystemPrompt = fullSystemPrompt.replace(/\[INSERER_HISTORIQUE_EXERCICES_ICI\]/g, historyNoticeDevoir);
       if (previousQuestionsText) {
         fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES ÉLÉMENTS, QUESTIONS, EXERCICES, CARTES, RÉSUMÉS, DOCUMENTS PDF OU INFOGRAPHIES DÉJÀ GÉNÉRÉS POUR CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions, exercices rédigés, affirmations, cartes mémoire (flashcards), axes de cartes mentales, résumés, chapitres de document PDF ou infographies ENTIÈREMENT NOUVEAUX qui n'ont ni la même formulation, ni le même angle, ni la même organisation que les éléments déjà mémorisés ou générés ci-dessus. Propose des angles d'analyse inédits et explore d'autres aspects du document.`;
       }
@@ -1627,12 +1521,31 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
       let geminiApiKey = env?.["StudyCloud-gemini"] || env?.["studycloud-gemini"] || env?.STUDYCLOUD_GEMINI || env?.GEMINI_API_KEY;
       if (geminiApiKey) {
         try {
-          const gradingPrompt = `Tu es le jury d'examen officiel et correcteur d'élite de StudyCloud • DKD School Numérique.
-Évalue et note la copie d'examen suivante sur 20 points avec nuance pédagogique (pleine note si argumenté et précis, note partielle ou demi-point si incomplet ou approximatif, 0 si vide ou faux).
-BARÈME : Ex 1 (8 pts), Ex 2 (4 pts), Ex 3 (4 pts), Ex 4 (4 pts) = Total /20.
+          const rawSections = Array.isArray(exam.sections)
+            ? exam.sections
+            : (Array.isArray(exam.complete_exam?.sections) ? exam.complete_exam.sections : []);
 
-Matière : ${topic}
-Énoncé Ex 1 : ${ex1.enonce || ""}
+          let examDetailsText = "";
+          if (rawSections.length > 0) {
+            rawSections.forEach((sec, sIdx) => {
+              examDetailsText += `\n--- PARTIE / SECTION ${sIdx + 1} : ${sec.title || "Section"} ---\n`;
+              if (sec.problem_statement) {
+                examDetailsText += `Contexte / Énoncé : ${sec.problem_statement}\n`;
+              }
+              (sec.questions || []).forEach((q, qIdx) => {
+                const qText = typeof q === "string" ? q : (q.texte || q.question || `Question ${qIdx + 1}`);
+                const qId = q.id || `sec_${sIdx + 1}_q${qIdx + 1}`;
+                const ans = answers[qId] ?? answersP1[qId] ?? answersP2[qId] ?? answersP3[qId] ?? answersP4[qId] ?? (answers.openAnswers && answers.openAnswers[qId]) ?? (answers.choiceAnswers && answers.choiceAnswers[qId]) ?? (answers.booleanAnswers && answers.booleanAnswers[qId]) ?? "";
+                const ansStr = Array.isArray(ans) ? ans.filter(Boolean).join(" ") : String(ans ?? "");
+                const exp = q.sampleAnswer || q.reponse || (typeof q.correct_answer === "boolean" ? (q.correct_answer ? "VRAI" : "FAUX") : (q.correctIndex !== undefined ? `Option ${q.correctIndex}` : ""));
+                examDetailsText += `Q${qIdx + 1}: "${qText}" | Candidat: "${ansStr}" | Attendu: "${exp}"\n`;
+              });
+              if (sec.correction?.steps) {
+                examDetailsText += `Corrigé de référence : ${sec.correction.steps}\n`;
+              }
+            });
+          } else {
+            examDetailsText = `Énoncé Ex 1 : ${ex1.enonce || ""}
 Réponses Ex 1 du candidat :
 ${(ex1.questions || []).map((q, i) => `Q${i + 1} (${q.points || 2} pts) : "${q.texte}" | Attendu: "${q.sampleAnswer || ""}" | Candidat: "${(answersP1[q.id] || []).join(" ")}"`).join("\n")}
 
@@ -1643,7 +1556,15 @@ Réponses Ex 3 (Synthèse) :
 ${(ex3.questions || []).map((q, i) => `Q${i + 1} (${q.points || 2} pts) : "${q.texte}" | Attendu: "${q.sampleAnswer || ""}" | Candidat: "${(answersP3[q.id] || []).join(" ")}"`).join("\n")}
 
 Choix Ex 4 (V/F) :
-${(ex4.questions || []).map((q, i) => `Q${i + 1} : Choisi ${answersP4[q.id]} | Attendu ${q.correctValue} | Exp: "${q.explication || ""}"`).join("\n")}
+${(ex4.questions || []).map((q, i) => `Q${i + 1} : Choisi ${answersP4[q.id]} | Attendu ${q.correctValue} | Exp: "${q.explication || ""}"`).join("\n")}`;
+          }
+
+          const gradingPrompt = `Tu es le jury d'examen officiel et correcteur d'élite de StudyCloud • DKD School Numérique.
+Évalue et note la copie d'examen suivante sur 20 points avec nuance pédagogique (pleine note si argumenté et précis, note partielle ou demi-point si incomplet ou approximatif, 0 si vide ou faux).
+BARÈME TOTAL : 20 points.
+
+Matière / Épreuve : ${topic}
+${examDetailsText}
 
 RENVOIE UNIQUEMENT UN JSON STRICT :
 {
@@ -1652,11 +1573,11 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
   "scoreP2": 4,
   "scoreP3": 3,
   "scoreP4": 3.5,
-  "feedbackGlobal": "Remarque générale...",
+  "feedbackGlobal": "Remarque générale sur la prestation académique...",
   "questionsFeedback": {
-    "p1_q1": { "points": 1.5, "feedback": "Explication..." }
+    "q1": { "points": 1.5, "feedback": "Explication..." }
   }
-}`;
+};`;
 
           const gResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${geminiApiKey}`, {
             method: "POST",
