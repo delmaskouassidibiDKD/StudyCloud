@@ -1,17 +1,35 @@
 import { useState } from 'react';
 import { Printer, Download, ZoomIn, ZoomOut, RotateCcw, Check } from 'lucide-react';
+import { MathText } from '../MathText';
 
 function normalizePdfPages(data: any, title?: string) {
   if (!data || typeof data !== 'object') return null;
 
-  const docTitle = data.title || title || "DOCUMENT OFFICIEL D'ÉTUDE";
-  const docSubtitle = data.subtitle || data.subject || "Support de cours et synthèse officielle";
-  const objective = data.objective || data.overview || data.description || "Comprendre, synthétiser et maîtriser l'ensemble des concepts abordés.";
+  const pdfDoc = (data.pdf_document && typeof data.pdf_document === 'object') ? data.pdf_document : data;
+  const metadata = pdfDoc.metadata || {};
+
+  const docTitle = metadata.title || pdfDoc.title || data.title || title || "DOCUMENT OFFICIEL D'ÉTUDE";
+  const docSubtitle = metadata.author
+    ? `Auteur : ${metadata.author}${metadata.date ? ` • Date : ${metadata.date}` : ''}`
+    : (pdfDoc.subtitle || pdfDoc.subject || "Support de cours et synthèse officielle");
+  const objective = pdfDoc.objective || pdfDoc.overview || pdfDoc.description || metadata.description || "Comprendre, synthétiser et maîtriser l'ensemble des concepts abordés.";
 
   const pages: Array<{ pageNumber: number; title: string; sections: Array<{ heading: string; body: string; points?: string[] }> }> = [];
 
-  if (Array.isArray(data.pages) && data.pages.length > 0) {
-    data.pages.forEach((p: any, idx: number) => {
+  // Cas 1 : Structure par chapitres ("chapters") - format standardisé PDF
+  if (Array.isArray(pdfDoc.chapters) && pdfDoc.chapters.length > 0) {
+    pdfDoc.chapters.forEach((ch: any, idx: number) => {
+      pages.push({
+        pageNumber: idx + 2,
+        title: ch.heading || `Chapitre ${idx + 1}`,
+        sections: [{
+          heading: ch.heading || `Section ${idx + 1}`,
+          body: ch.content || ch.body || ''
+        }]
+      });
+    });
+  } else if (Array.isArray(pdfDoc.pages) && pdfDoc.pages.length > 0) {
+    pdfDoc.pages.forEach((p: any, idx: number) => {
       pages.push({
         pageNumber: idx + 2,
         title: p.title || p.heading || `Partie ${idx + 1}`,
@@ -20,15 +38,15 @@ function normalizePdfPages(data: any, title?: string) {
           : [{ heading: p.heading || p.title || `Chapitre ${idx + 1}`, body: p.body || p.content || (Array.isArray(p.content) ? p.content.join('\n\n') : '') }]
       });
     });
-  } else if (Array.isArray(data.sections) && data.sections.length > 0) {
+  } else if (Array.isArray(pdfDoc.sections) && pdfDoc.sections.length > 0) {
     const chunkSize = 2;
-    for (let i = 0; i < data.sections.length; i += chunkSize) {
-      const chunk = data.sections.slice(i, i + chunkSize);
+    for (let i = 0; i < pdfDoc.sections.length; i += chunkSize) {
+      const chunk = pdfDoc.sections.slice(i, i + chunkSize);
       pages.push({
         pageNumber: pages.length + 2,
-        title: chunk.map((c: any) => c.heading || c.title).filter(Boolean).join(' • ') || `Partie ${pages.length + 1}`,
+        title: chunk.map((c: any) => c.heading || c.title || c.section_title).filter(Boolean).join(' • ') || `Partie ${pages.length + 1}`,
         sections: chunk.map((c: any) => ({
-          heading: c.heading || c.title || 'Section',
+          heading: c.heading || c.title || c.section_title || 'Section',
           body: c.body || c.content || '',
           points: Array.isArray(c.points) ? c.points : (Array.isArray(c.bulletPoints) ? c.bulletPoints : undefined)
         }))
@@ -304,20 +322,20 @@ PROCÉDURE CHRONOLOGIQUE DE MISE EN SERVICE (6 ÉTAPES) :
                     DOCUMENT D'ÉTUDE OFFICIEL
                   </span>
                   <h1 className="text-2xl sm:text-3xl md:text-4xl font-black text-stone-900 tracking-tight uppercase font-serif">
-                    {dynamicDoc.docTitle}
+                    <MathText text={dynamicDoc.docTitle} />
                   </h1>
-                  <p className="text-base sm:text-lg font-bold text-sky-800">
-                    {dynamicDoc.docSubtitle}
-                  </p>
+                  <div className="text-base sm:text-lg font-bold text-sky-800">
+                    <MathText text={dynamicDoc.docSubtitle} />
+                  </div>
                 </div>
 
                 <div className="w-full text-left bg-sky-50/90 border border-sky-200 rounded-xl p-5 space-y-2 max-w-lg mx-auto shadow-xs">
                   <span className="text-xs font-black text-sky-950 uppercase tracking-wider block">
                     OBJECTIF PÉDAGOGIQUE DU DOCUMENT :
                   </span>
-                  <p className="text-xs sm:text-sm text-stone-800 leading-relaxed font-medium">
-                    {dynamicDoc.objective}
-                  </p>
+                  <div className="text-xs sm:text-sm text-stone-800 leading-relaxed font-medium">
+                    <MathText text={dynamicDoc.objective} />
+                  </div>
                 </div>
 
                 <div className="w-full max-w-sm mx-auto space-y-2 text-left text-xs sm:text-sm text-stone-700 pt-4">
@@ -363,7 +381,7 @@ PROCÉDURE CHRONOLOGIQUE DE MISE EN SERVICE (6 ÉTAPES) :
                 <div className="my-auto py-6 space-y-6">
                   <div className="border-b-2 border-stone-900 pb-2">
                     <h2 className="text-xl sm:text-2xl font-black text-stone-950 uppercase tracking-tight font-serif">
-                      {p.title}
+                      <MathText text={p.title} />
                     </h2>
                   </div>
 
@@ -372,16 +390,16 @@ PROCÉDURE CHRONOLOGIQUE DE MISE EN SERVICE (6 ÉTAPES) :
                       <div key={sIdx} className="p-4 bg-stone-50 border border-stone-200 rounded-lg space-y-2">
                         <h3 className="font-bold text-stone-900 text-sm flex items-center gap-2">
                           <span className="w-2 h-2 rounded-full bg-orange-500 shrink-0" />
-                          {sec.heading}
+                          <MathText text={sec.heading} />
                         </h3>
-                        <p className="text-stone-700 leading-relaxed whitespace-pre-line">
-                          {sec.body}
-                        </p>
+                        <div className="text-stone-700 leading-relaxed whitespace-pre-line">
+                          <MathText text={sec.body} />
+                        </div>
                         {sec.points && sec.points.length > 0 && (
                           <ul className="space-y-1.5 pl-4 pt-1">
                             {sec.points.map((pt, ptIdx) => (
                               <li key={ptIdx} className="text-stone-700 list-disc">
-                                {pt}
+                                <MathText text={pt} />
                               </li>
                             ))}
                           </ul>

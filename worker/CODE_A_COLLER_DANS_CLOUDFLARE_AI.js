@@ -427,6 +427,13 @@ export default {
               creation_title = sum.title || parsed.title || "Fiche de Synthèse";
               creation_data = parsed;
               chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre fiche de synthèse est prête à droite !";
+            } else if (parsed.pdf_document || Array.isArray(parsed.chapters) || (defaultType === "pdf" && (parsed.pages || parsed.sections))) {
+              decision = "creation";
+              creation_type = defaultType || "pdf";
+              const pdfDoc = (parsed.pdf_document && typeof parsed.pdf_document === "object") ? parsed.pdf_document : parsed;
+              creation_title = pdfDoc.metadata?.title || pdfDoc.title || parsed.title || "Document PDF";
+              creation_data = parsed;
+              chat_message = parsed.chat_message || parsed.chat_response || "✨ Votre document PDF officiel est prêt à droite !";
             } else if (Array.isArray(parsed.exercises) || Array.isArray(parsed.exercices)) {
               decision = "creation";
               creation_type = defaultType || "exercices-ecrits";
@@ -727,6 +734,56 @@ Tu dois impérativement respecter les règles strictes suivantes :
    }
 
 ======================================================================
+RÈGLES D'EXCELLENCE POUR L'EXPORT PDF ('pdf') :
+======================================================================
+Tu es un ingénieur pédagogique et un rédacteur technique spécialisé dans la mise en page de documents académiques et professionnels (PDF). Ta mission est de structurer un contenu complet et rigoureux basé sur le document fourni par l'utilisateur, enrichi si nécessaire par des connaissances vérifiées d'Internet sur le même sujet.
+
+Tu dois impérativement respecter les règles strictes suivantes :
+
+1. ÉVITER LES DOUBLONS (HISTORIQUE DES EXPORTS PDF DÉJÀ GÉNÉRÉS) :
+   - Prends en compte l'historique des exports PDF ou des contenus déjà générés pour cet utilisateur et ce document.
+   - Assure-toi que la structure et les angles abordés offrent une synthèse fraîche et renouvelée par rapport aux exports précédents.
+
+2. PROFONDEUR PÉDAGOGIQUE ET MISE EN PAGE STRUCTURÉE :
+   - Le contenu doit être divisé en sections et chapitres clairs, prêts à être convertis en pages PDF professionnelles (Titre, Introduction, Développement avec sous-titres, Exemples pratiques, Conclusion / Synthèse).
+   - Explique les concepts en profondeur, sans raccourcis superficiels.
+
+3. EXEMPLES ET CAS PRATIQUES :
+   - Intègre des exemples concrets et détaillés pour illustrer les notions complexes abordées dans le document.
+
+4. ENRICHISSEMENT EXTERNE (INTERNET) :
+   - Tu es explicitement autorisé et encouragé à compléter le contenu du fichier avec des normes scientifiques, des cas d'usage réels et des compléments vérifiés trouvés sur Internet pour rendre le document exhaustif et professionnel.
+
+5. RÈGLE DES DEUX CAS DE FIGURE (CRUCIAL) :
+   - Cas 1 (Le texte existe déjà / Demande stricte de conversion, ex: "mets ce texte en PDF", conversion d'un texte brut ou cours existant) : Respecter le contenu à la lettre, le structurer proprement (titres, paragraphes, LaTeX pour les maths), mais SANS inventer de nouveaux paragraphes ou rajouter du contenu non désiré.
+   - Cas 2 (Demande de création de contenu / Devoir / Cours, ex: "fais-moi un cours ou un rapport sur tel sujet et mets-le en PDF") : Développer le sujet en profondeur, ajouter des exemples concrets, structurer les chapitres et intégrer les formules mathématiques en LaTeX comme un ingénieur pédagogique et tuteur expert.
+
+6. RÈGLE DE FORMATAGE ABSOLUE (MATHÉMATIQUES, FONCTIONS ET FRACTIONS EN LATEX PUR) :
+   - Pour TOUTES les formules, fonctions mathématiques, fractions, variables et symboles scientifiques (ex: $f(x) = ax + b$, $\frac{a}{b}$, $\Omega$, $\sqrt{2}$, $U_{eff}$), tu DOIS utiliser exclusivement la syntaxe LaTeX standard (entre symboles dollar $...$ ou blocs $$...$$).
+   - INTERDICTION FORMELLE d'utiliser du texte brut mal formaté ou des caractères corrompus (&, *, !, $$$) pour représenter des maths. Utilise toujours les balises LaTeX (ex: \frac{num}{den}).
+
+7. STRUCTURE JSON REQUISE DANS "creation_data" :
+   {
+     "pdf_document": {
+       "metadata": {
+         "title": "Fiche de Synthèse - Étude des Systèmes Électriques",
+         "author": "StudyCloud AI",
+         "date": "2026-09-20"
+       },
+       "chapters": [
+         {
+           "heading": "1. Analyse des Régimes Transitoires",
+           "content": "Dans cette section, nous étudions l'évolution temporelle des grandeurs électriques. La fonction de transfert globale est donnée par $H(j\\omega) = \\frac{1}{1 + j\\frac{\\omega}{\\omega_0}}$."
+         },
+         {
+           "heading": "2. Applications et Exemples",
+           "content": "Exemple d'application pratique : Pour un circuit du premier ordre, la constante de temps vérifie $\\tau = R \\cdot C$."
+         }
+       ]
+     }
+   }
+
+======================================================================
 RÈGLE DE FORMATAGE MATHÉMATIQUE STRICTE (LATEX PUR) :
 ======================================================================
 1. Pour TOUTES les fractions, puissances, racines, intégrales, dérivées, matrices et formules scientifiques, tu DOIS utiliser exclusivement la syntaxe LaTeX standard.
@@ -786,7 +843,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         try {
           const { results } = await db.prepare(`
             SELECT content_json FROM ai_generated_contents
-            WHERE user_id = ? AND tool_type IN ('questionnaire', 'questionnaire-test', 'vrai-ou-faux', 'vrai-ou-faux-test', 'carte-mentale', 'carte-mentale-2', 'carte-memoire', 'resume')
+            WHERE user_id = ? AND tool_type IN ('questionnaire', 'questionnaire-test', 'vrai-ou-faux', 'vrai-ou-faux-test', 'carte-mentale', 'carte-mentale-2', 'carte-memoire', 'resume', 'pdf')
             ORDER BY created_at DESC LIMIT 8
           `).bind(currentUserId).all();
 
@@ -805,6 +862,10 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
                   ? parsed.cards
                   : Array.isArray(parsed?.summary?.sections)
                   ? parsed.summary.sections
+                  : Array.isArray(parsed?.pdf_document?.chapters)
+                  ? parsed.pdf_document.chapters
+                  : Array.isArray(parsed?.chapters)
+                  ? parsed.chapters
                   : Array.isArray(parsed?.sections)
                   ? parsed.sections
                   : Array.isArray(parsed?.mind_map?.branches)
@@ -815,8 +876,11 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
                   ? parsed
                   : [];
                 for (const item of items) {
-                  const text = item.question || item.statement || item.affirmation || item.front || item.recto || item.section_title || item.sectionTitle || item.branch_title || item.title || item.texte;
+                  const text = item.question || item.statement || item.affirmation || item.front || item.recto || item.heading || item.section_title || item.sectionTitle || item.branch_title || item.title || item.texte;
                   if (text) prevList.push(text);
+                }
+                if (parsed?.pdf_document?.metadata?.title) {
+                  prevList.push(`Document PDF précédent : ${parsed.pdf_document.metadata.title}`);
                 }
                 if (parsed?.summary?.title || (parsed?.overview && typeof parsed?.overview === 'string')) {
                   prevList.push(`Résumé précédent : ${parsed?.summary?.title || parsed?.title || parsed?.overview?.slice(0, 80)}`);
@@ -850,7 +914,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
         fullSystemPrompt = fullSystemPrompt.replace(/'\${requestedType \|\| ""}'/, `'${requestedType}'`);
       }
       if (previousQuestionsText) {
-        fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES ÉLÉMENTS, QUESTIONS, CARTES OU RÉSUMÉS DÉJÀ GÉNÉRÉS POUR CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions, affirmations, cartes mémoire (flashcards), axes de cartes mentales ou sections de résumés ENTIÈREMENT NOUVEAUX qui n'ont ni la même formulation, ni le même angle, ni la même organisation que les éléments déjà mémorisés ou générés ci-dessus. Si l'utilisateur demande un nouveau résumé, propose un angle d'analyse inédit, insiste sur d'autres chapitres ou adopte une structure différente par rapport à l'historique.`;
+        fullSystemPrompt += `\n\n======================================================================\nHISTORIQUE DES ÉLÉMENTS, QUESTIONS, CARTES, RÉSUMÉS OU DOCUMENTS PDF DÉJÀ GÉNÉRÉS POUR CET ÉLÈVE SUR CE COURS (RÈGLE STRICTE ANTI-DOUBLONS) :\n${previousQuestionsText}\n======================================================================\nCONSIGNE ABSOLUE :\nTu DOIS générer des questions, affirmations, cartes mémoire (flashcards), axes de cartes mentales, résumés ou chapitres de document PDF ENTIÈREMENT NOUVEAUX qui n'ont ni la même formulation, ni le même angle, ni la même organisation que les éléments déjà mémorisés ou générés ci-dessus. Propose des angles d'analyse inédits et explore d'autres aspects du document.`;
       }
       if (rawDocForGemini.length > 0) {
         const docTitle = body.attachedFileName || body.file_name || body.fileName || "Document de cours";
