@@ -810,8 +810,9 @@ Tu dois impérativement respecter les règles strictes suivantes :
    - Si l'infographie intègre des formules, des fonctions ou des variables (ex: $H(j\omega)$, $\frac{a}{b}$), utilise la syntaxe LaTeX standard propre entre dollars ($...$) pour qu'elles soient parfaitement lisibles et rendues par KaTeX.
    - INTERDICTION des caractères corrompus (&, *, !, $$$$$).
 
-4. GÉNÉRATION DU PROMPT VISUEL (POUR DALL-E, MIDJOURNEY OU WORKERS AI) :
-   - Fournis également un "prompt textuel de génération d'image" optimisé en anglais (champ "visual_style" et "image_prompt") décrivant une infographie épurée, style design moderne, fond propre, sans texte illisible ni charabia, adapté pour illustrer le sujet.
+4. GÉNÉRATION DU PROMPT VISUEL DANS LA LANGUE DE L'UTILISATEUR (PAR DÉFAUT EN FRANÇAIS - PAS D'ANGLAIS) :
+   - INTERDICTION D'ÉCRIRE EN ANGLAIS PAR DÉFAUT : Rédige TOUJOURS le prompt textuel de génération d'image (champs "visual_style" et "image_prompt") dans la langue de l'utilisateur, c'est-à-dire EN FRANÇAIS par défaut.
+   - Décris précisément en français une infographie épurée, un style de design moderne, un arrière-plan propre, des couleurs contrastées, sans texte illisible ni charabia, parfaitement adaptée pour illustrer le sujet du cours.
 
 5. DESSIN ET SCHÉMA VECTORIEL (SI DEMANDÉ PAR L'UTILISATEUR) :
    - Si l'utilisateur demande explicitement de dessiner ou de tracer un schéma ("dessine", "fais un dessin", "trace un schéma"), génère directement un code SVG vectoriel propre et fluide dans le champ "svg_drawing" (ex: '<svg viewBox="0 0 500 300" xmlns="http://www.w3.org/2000/svg">...</svg>') sans gêner la génération du prompt image ni la structure textuelle.
@@ -820,8 +821,8 @@ Tu dois impérativement respecter les règles strictes suivantes :
    {
      "infographic": {
        "title": "[Titre explicite de l'infographie adapté au cours de l'élève]",
-       "visual_style": "Modern minimalist educational diagram, clean vectors, high contrast, professional color theme",
-       "image_prompt": "Clean minimalist educational infographic vector diagram about [topic], professional color palette, clear conceptual flow, high contrast, flat 2D design, 8k, no unreadable text",
+       "visual_style": "Schéma pédagogique minimaliste et moderne, vecteurs nets et épurés, fort contraste, palette professionnelle",
+       "image_prompt": "Infographie pédagogique vectorielle épurée sur le thème de [sujet], palette de couleurs professionnelle, mise en page conceptuelle claire, style moderne à plat 2D, haute netteté, aucun texte illisible",
        "svg_drawing": null,
        "sections": [
          {

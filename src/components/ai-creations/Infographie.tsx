@@ -340,7 +340,7 @@ export default function Infographie({ data, title }: { data?: any; title?: strin
 
                   {dynamicInfo.imagePrompt && (
                     <div className="p-3 rounded-xl bg-white/90 border border-blue-100/90 text-xs font-mono text-stone-700 leading-relaxed break-words shadow-2xs">
-                      <span className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Prompt IA en anglais :</span>
+                      <span className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Prompt de génération d'image :</span>
                       « {dynamicInfo.imagePrompt} »
                     </div>
                   )}
