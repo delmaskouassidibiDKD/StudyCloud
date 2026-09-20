@@ -1,4 +1,5 @@
 import { AiCreationType, SummaryContent, QuizContent, MindMapContent, InfographicContent, DocumentContent, MindMapNode } from '../components/ai-creations/types';
+import { safeJsonParse } from './api';
 
 /**
  * ============================================================================
@@ -382,52 +383,83 @@ export function parseOrBuildAiCreation(
   }
 
   if (rawJsonCandidate) {
-    let parsed: any = null;
-    try {
-      parsed = JSON.parse(rawJsonCandidate);
-    } catch {
-      try {
-        // Correction des virgules traînantes fréquentes chez les LLMs
-        const sanitized = rawJsonCandidate.replace(/,\s*([\]}])/g, '$1');
-        parsed = JSON.parse(sanitized);
-      } catch {
-        parsed = null;
-      }
-    }
+    const parsed = safeJsonParse(rawJsonCandidate);
 
     if (parsed && typeof parsed === 'object') {
-      // Détection automatique du type si la structure le prouve formellement
-      let effectiveType = toolType;
-      if (Array.isArray(parsed.questions)) effectiveType = 'quiz';
-      else if (parsed.root && (parsed.root.label || parsed.root.children)) effectiveType = 'mindmap';
-      else if (Array.isArray(parsed.metrics) || Array.isArray(parsed.keyConcepts)) effectiveType = 'infographic';
-      else if (parsed.overview || Array.isArray(parsed.keyPoints)) effectiveType = 'summary';
+      const dataObj = parsed.creation_data || parsed;
+      const normType = String(toolType || '').toLowerCase();
+      let effectiveType = normType;
+
+      if (['questionnaire', 'questionnaire-test', 'qcm', 'quiz'].includes(normType) || Array.isArray(dataObj.questions) || Array.isArray(parsed.questions)) {
+        effectiveType = 'quiz';
+      } else if (['carte-mentale', 'carte-mentale-2', 'mindmap'].includes(normType) || (dataObj.root && (dataObj.root.label || dataObj.root.children))) {
+        effectiveType = 'mindmap';
+      } else if (['infographie', 'infographic'].includes(normType) || Array.isArray(dataObj.metrics) || Array.isArray(dataObj.keyConcepts)) {
+        effectiveType = 'infographic';
+      } else if (['resume', 'summary'].includes(normType) || dataObj.overview || Array.isArray(dataObj.keyPoints)) {
+        effectiveType = 'summary';
+      } else if (['vrai-ou-faux', 'vrai-ou-faux-test'].includes(normType) || Array.isArray(dataObj.affirmations)) {
+        effectiveType = 'vrai-ou-faux';
+      } else if (['carte-memoire', 'flashcards'].includes(normType) || Array.isArray(dataObj.cards) || Array.isArray(dataObj.flashcards)) {
+        effectiveType = 'carte-memoire';
+      } else if (['exercices-ecrits'].includes(normType) || dataObj.written_exercise || Array.isArray(dataObj.exercises) || Array.isArray(dataObj.exercices)) {
+        effectiveType = 'exercices-ecrits';
+      } else if (['devoir-complet'].includes(normType) || dataObj.complete_exam || dataObj.devoir || dataObj.baremeTotal) {
+        effectiveType = 'devoir-complet';
+      }
 
       switch (effectiveType) {
         case 'quiz': {
-          const corrected = autoCorrectQuiz(parsed, safeDocName);
+          const corrected = autoCorrectQuiz(dataObj, safeDocName);
           if (corrected.questions && corrected.questions.length > 0) {
-            return { title: corrected.title, content: corrected };
+            return {
+              title: sanitizeText(parsed.creation_title || dataObj.title) || corrected.title,
+              content: corrected
+            };
           }
           break;
         }
+        case 'vrai-ou-faux': {
+          return {
+            title: sanitizeText(parsed.creation_title || dataObj.title) || `Vrai ou Faux : ${safeDocName}`,
+            content: dataObj
+          };
+        }
+        case 'carte-memoire': {
+          return {
+            title: sanitizeText(parsed.creation_title || dataObj.title) || `Cartes Mémoire : ${safeDocName}`,
+            content: dataObj
+          };
+        }
+        case 'exercices-ecrits': {
+          return {
+            title: sanitizeText(parsed.creation_title || dataObj.title) || `Exercices Écrits : ${safeDocName}`,
+            content: dataObj
+          };
+        }
+        case 'devoir-complet': {
+          return {
+            title: sanitizeText(parsed.creation_title || dataObj.title) || `Devoir Complet : ${safeDocName}`,
+            content: dataObj
+          };
+        }
         case 'summary': {
           return {
-            title: sanitizeText(parsed.title) || `Fiche de Résumé : ${safeDocName}`,
+            title: sanitizeText(parsed.creation_title || dataObj.title) || `Fiche de Résumé : ${safeDocName}`,
             content: {
-              overview: sanitizeText(parsed.overview || parsed.summary || cleanText.slice(0, 300)),
-              keyPoints: Array.isArray(parsed.keyPoints) ? parsed.keyPoints.map(sanitizeText) : [],
-              definitions: Array.isArray(parsed.definitions) ? parsed.definitions : [],
-              rules: Array.isArray(parsed.rules) ? parsed.rules.map(sanitizeText) : [],
-              tags: Array.isArray(parsed.tags) ? parsed.tags.map(sanitizeText) : ['Révision', safeDocName],
+              overview: sanitizeText(dataObj.overview || dataObj.summary || cleanText.slice(0, 300)),
+              keyPoints: Array.isArray(dataObj.keyPoints) ? dataObj.keyPoints.map(sanitizeText) : [],
+              definitions: Array.isArray(dataObj.definitions) ? dataObj.definitions : [],
+              rules: Array.isArray(dataObj.rules) ? dataObj.rules.map(sanitizeText) : [],
+              tags: Array.isArray(dataObj.tags) ? dataObj.tags.map(sanitizeText) : ['Révision', safeDocName],
             }
           };
         }
         case 'mindmap': {
-          const root = parsed.root || parsed;
+          const root = dataObj.root || dataObj;
           if (root && (root.label || root.children)) {
             return {
-              title: `Carte Mentale : ${safeDocName}`,
+              title: sanitizeText(parsed.creation_title || dataObj.title) || `Carte Mentale : ${safeDocName}`,
               content: {
                 root: {
                   id: sanitizeText(root.id) || 'root-node',
@@ -441,58 +473,58 @@ export function parseOrBuildAiCreation(
           break;
         }
         case 'infographic': {
-          const info = (parsed.infographic && typeof parsed.infographic === 'object') ? parsed.infographic : parsed;
-          const mainTitle = sanitizeText(info.mainTitle || info.title || parsed.mainTitle || parsed.title) || `Infographie : ${safeDocName}`;
+          const info = (dataObj.infographic && typeof dataObj.infographic === 'object') ? dataObj.infographic : dataObj;
+          const mainTitle = sanitizeText(parsed.creation_title || info.mainTitle || info.title) || `Infographie : ${safeDocName}`;
           return {
             title: mainTitle,
             content: {
               mainTitle,
               title: mainTitle,
-              subtitle: sanitizeText(info.subtitle || info.overview || parsed.subtitle) || 'Repères visuels et étapes clés',
-              metrics: Array.isArray(info.metrics) ? info.metrics : (Array.isArray(parsed.metrics) ? parsed.metrics : []),
-              steps: Array.isArray(info.steps) ? info.steps : (Array.isArray(parsed.steps) ? parsed.steps : []),
-              keyConcepts: Array.isArray(info.keyConcepts) ? info.keyConcepts : (Array.isArray(parsed.keyConcepts) ? parsed.keyConcepts : []),
-              highlights: Array.isArray(info.highlights) ? info.highlights : (Array.isArray(parsed.highlights) ? parsed.highlights : []),
-              conclusion: sanitizeText(info.conclusion || info.key_takeaway || parsed.conclusion) || '',
+              subtitle: sanitizeText(info.subtitle || info.overview) || 'Repères visuels et étapes clés',
+              metrics: Array.isArray(info.metrics) ? info.metrics : [],
+              steps: Array.isArray(info.steps) ? info.steps : [],
+              keyConcepts: Array.isArray(info.keyConcepts) ? info.keyConcepts : [],
+              highlights: Array.isArray(info.highlights) ? info.highlights : [],
+              conclusion: sanitizeText(info.conclusion || info.key_takeaway) || '',
             }
           };
         }
-        case 'document': {
+        case 'document':
+        case 'pdf': {
           return {
-            title: sanitizeText(parsed.title) || `Fiche d'Étude : ${safeDocName}`,
-            content: parsed
+            title: sanitizeText(parsed.creation_title || dataObj.title) || `Fiche d'Étude : ${safeDocName}`,
+            content: dataObj
           };
         }
       }
     }
   }
 
-  // 2. Extracteurs textuels créatifs et dynamiques (sans canevas fixe ni répétition)
-  switch (toolType) {
-    case 'quiz': {
-      const parsedQuiz = parseQuizFromText(cleanText, safeDocName);
+  // 2. Extracteurs textuels de secours selon le type de module demandé
+  const normType = String(toolType || '').toLowerCase();
+
+  if (['questionnaire', 'questionnaire-test', 'qcm', 'quiz'].includes(normType)) {
+    const parsedQuiz = parseQuizFromText(cleanText, safeDocName);
+    return { title: parsedQuiz.title, content: parsedQuiz };
+  } else if (['resume', 'summary'].includes(normType)) {
+    const parsedSummary = parseSummaryFromText(cleanText, safeDocName);
+    return { title: `Fiche de Résumé : ${safeDocName}`, content: parsedSummary };
+  } else if (['carte-mentale', 'carte-mentale-2', 'mindmap'].includes(normType)) {
+    const parsedMindMap = parseMindMapFromText(cleanText, safeDocName);
+    return { title: `Carte Mentale : ${safeDocName}`, content: parsedMindMap };
+  } else if (['infographie', 'infographic'].includes(normType)) {
+    const parsedInfographic = parseInfographicFromText(cleanText, safeDocName);
+    return { title: parsedInfographic.mainTitle, content: parsedInfographic };
+  } else if (['document', 'pdf'].includes(normType)) {
+    const parsedDoc = parseDocumentFromText(cleanText, safeDocName);
+    return { title: parsedDoc.title, content: parsedDoc };
+  } else {
+    // Par défaut, si le texte ressemble à un questionnaire
+    const parsedQuiz = parseQuizFromText(cleanText, safeDocName);
+    if (parsedQuiz.questions && parsedQuiz.questions.length >= 2) {
       return { title: parsedQuiz.title, content: parsedQuiz };
     }
-
-    case 'summary': {
-      const parsedSummary = parseSummaryFromText(cleanText, safeDocName);
-      return { title: `Fiche de Résumé : ${safeDocName}`, content: parsedSummary };
-    }
-
-    case 'mindmap': {
-      const parsedMindMap = parseMindMapFromText(cleanText, safeDocName);
-      return { title: `Carte Mentale : ${safeDocName}`, content: parsedMindMap };
-    }
-
-    case 'infographic': {
-      const parsedInfographic = parseInfographicFromText(cleanText, safeDocName);
-      return { title: parsedInfographic.mainTitle, content: parsedInfographic };
-    }
-
-    case 'document':
-    default: {
-      const parsedDoc = parseDocumentFromText(cleanText, safeDocName);
-      return { title: parsedDoc.title, content: parsedDoc };
-    }
+    const parsedDoc = parseDocumentFromText(cleanText, safeDocName);
+    return { title: parsedDoc.title, content: parsedDoc };
   }
 }

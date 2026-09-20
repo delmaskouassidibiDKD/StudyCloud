@@ -71,10 +71,98 @@ export const setGeminiApiKey = (key: string) => {
     localStorage.removeItem('gemini_api_key');
   } else {
     localStorage.setItem('studycloud_gemini_api_key', key.trim());
-    localStorage.setItem('gemini_api_key', key.trim());
   }
 };
 
+export function safeJsonParse(raw: any): any {
+  if (!raw) return null;
+  if (typeof raw === 'object') return raw;
+  if (typeof raw !== 'string') return null;
+
+  const trimmed = raw.trim();
+  // 1. Essai direct
+  try {
+    return JSON.parse(trimmed);
+  } catch {}
+
+  // 2. Nettoyage des caractères de contrôle bruts (sauts de ligne non échappés) et antislashs LaTeX
+  let sanitized = '';
+  let inString = false;
+  let escaped = false;
+
+  for (let i = 0; i < trimmed.length; i++) {
+    const char = trimmed[i];
+    const code = trimmed.charCodeAt(i);
+
+    if (char === '"' && !escaped) {
+      inString = !inString;
+      sanitized += char;
+    } else if (inString) {
+      if (char === '\n') {
+        sanitized += '\\n';
+      } else if (char === '\r') {
+        sanitized += '\\r';
+      } else if (char === '\t') {
+        sanitized += '\\t';
+      } else if (code < 32) {
+        sanitized += ' ';
+      } else if (char === '\\') {
+        const next = trimmed[i + 1];
+        if (next && ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'].includes(next)) {
+          sanitized += '\\';
+        } else {
+          sanitized += '\\\\';
+        }
+      } else {
+        sanitized += char;
+      }
+    } else {
+      sanitized += char;
+    }
+
+    if (char === '\\' && !escaped) {
+      escaped = true;
+    } else {
+      escaped = false;
+    }
+  }
+
+  // Suppression des virgules traînantes avant } ou ]
+  sanitized = sanitized.replace(/,\s*([\]}])/g, '$1');
+
+  try {
+    return JSON.parse(sanitized);
+  } catch {}
+
+  // 3. Réparation des fermetures si le JSON a été tronqué
+  let openBraces = 0;
+  let openBrackets = 0;
+  let inStr = false;
+  let esc = false;
+
+  for (let i = 0; i < sanitized.length; i++) {
+    const c = sanitized[i];
+    if (c === '"' && !esc) inStr = !inStr;
+    if (!inStr) {
+      if (c === '{') openBraces++;
+      else if (c === '}') openBraces = Math.max(0, openBraces - 1);
+      else if (c === '[') openBrackets++;
+      else if (c === ']') openBrackets = Math.max(0, openBrackets - 1);
+    }
+    esc = (c === '\\' && !esc);
+  }
+
+  let repaired = sanitized;
+  if (inStr) repaired += '"';
+  while (openBrackets > 0) { repaired += ']'; openBrackets--; }
+  while (openBraces > 0) { repaired += '}'; openBraces--; }
+
+  try {
+    return JSON.parse(repaired);
+  } catch {
+    return null;
+  }
+}
 
 export async function sendChatMessageToAi(params: {
   messages: Array<{ role: string; content: string }>;
@@ -178,81 +266,101 @@ export async function sendChatMessageToAi(params: {
     text = JSON.stringify(data);
   }
 
-  // Extraction robuste pour éviter tout affichage de JSON brut dans le chat
-  let extractedChatResponse = data.chat_response;
-  let extractedMode = data.mode;
+  // Extraction et protection absolue pour éviter tout affichage de JSON brut dans le chat
+  let extractedChatResponse = typeof data.chat_response === 'string' ? data.chat_response : (typeof data.chat_message === 'string' ? data.chat_message : '');
+  let extractedMode = data.mode || (data.decision === 'creation' ? 'creation' : undefined);
   let extractedCreationType = data.creation_type;
   let extractedCreationTitle = data.creation_title;
   let extractedCreationData = data.creation_data;
 
-  // Si creation_data est une chaîne JSON, on la désérialise
+  // Si creation_data est une chaîne JSON, on la désérialise proprement
   if (typeof extractedCreationData === 'string') {
-    try {
-      extractedCreationData = JSON.parse(extractedCreationData);
-    } catch {}
+    extractedCreationData = safeJsonParse(extractedCreationData);
   }
 
-  if (typeof text === 'string') {
-    // 1. Détection regex de chat_response avec protection des formules LaTeX
-    if (!extractedChatResponse) {
-      const inlineMatch = text.match(/"chat_response"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
-      if (inlineMatch) {
-        const candidate = inlineMatch[1].replace(/(\$\$?)([\s\S]*?)(\$\$?)/g, (_m, op, ma, cl) => op + ma.replace(/\\/g, '\\\\') + cl);
+  // Inspection complète de tous les champs de texte
+  const textCandidates = [
+    text,
+    typeof data.response === 'string' ? data.response : '',
+    typeof data.chat_message === 'string' ? data.chat_message : '',
+    typeof data.chat_response === 'string' ? data.chat_response : '',
+  ].filter(Boolean);
+
+  const fullTextToInspect = textCandidates.join('\n');
+
+  // Détection si c'est un bloc de création autonome
+  const hasCreationClues =
+    data.decision === 'creation' ||
+    data.mode === 'creation' ||
+    Boolean(extractedCreationData) ||
+    Boolean(extractedCreationType) ||
+    /"decision"\s*:\s*"creation"/i.test(fullTextToInspect) ||
+    /"mode"\s*:\s*"creation"/i.test(fullTextToInspect) ||
+    /"creation_data"/i.test(fullTextToInspect) ||
+    /<creation/i.test(fullTextToInspect);
+
+  if (hasCreationClues) {
+    extractedMode = 'creation';
+  }
+
+  // Extraction du bloc JSON structuré
+  try {
+    const jsonMatch = fullTextToInspect.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || fullTextToInspect.match(/(\{[\s\S]*\})/);
+    if (jsonMatch) {
+      const candidate = jsonMatch[1] || jsonMatch[0];
+      const parsed = safeJsonParse(candidate);
+      if (parsed && typeof parsed === 'object') {
+        if (parsed.decision === 'creation' || parsed.mode === 'creation' || parsed.creation_data || parsed.creation_type) {
+          extractedMode = 'creation';
+        }
+        if (parsed.creation_data) {
+          extractedCreationData = typeof parsed.creation_data === 'string' ? safeJsonParse(parsed.creation_data) : parsed.creation_data;
+        } else if (Array.isArray(parsed.questions) || Array.isArray(parsed.affirmations) || Array.isArray(parsed.cards) || parsed.root || parsed.overview || parsed.sections || parsed.exercises || parsed.exercices || parsed.written_exercise || parsed.complete_exam) {
+          extractedCreationData = parsed;
+          extractedMode = 'creation';
+        }
+
+        if (parsed.creation_type) extractedCreationType = parsed.creation_type;
+        if (parsed.creation_title || parsed.title) extractedCreationTitle = parsed.creation_title || parsed.title;
+
+        const candidateMsg = parsed.chat_message || parsed.chat_response;
+        if (typeof candidateMsg === 'string' && !candidateMsg.trim().startsWith('{') && !candidateMsg.trim().startsWith('```') && !candidateMsg.includes('"creation_data"')) {
+          extractedChatResponse = candidateMsg.trim();
+        }
+      }
+    }
+  } catch {}
+
+  // Si c'est une création, vérification que extractedChatResponse ne soit JAMAIS du JSON brut
+  if (extractedMode === 'creation' || extractedCreationData) {
+    extractedMode = 'creation';
+    const isRawJson = !extractedChatResponse || extractedChatResponse.trim().startsWith('{') || extractedChatResponse.trim().startsWith('```') || extractedChatResponse.includes('"creation_data"') || extractedChatResponse.includes('"decision"');
+    if (isRawJson) {
+      const msgMatch = fullTextToInspect.match(/"(?:chat_message|chat_response)"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+      if (msgMatch) {
         try {
-          extractedChatResponse = JSON.parse(`"${candidate}"`);
+          extractedChatResponse = JSON.parse(`"${msgMatch[1]}"`);
         } catch {
-          extractedChatResponse = inlineMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
+          extractedChatResponse = msgMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"');
         }
+      } else {
+        extractedChatResponse = `✨ J'ai généré votre création directement dans l'espace Création à droite !`;
       }
-    }
-
-    if (!extractedMode) {
-      const modeMatch = text.match(/"mode"\s*:\s*"(chat|creation)"/i);
-      if (modeMatch) {
-        extractedMode = modeMatch[1].toLowerCase() as any;
-      }
-    }
-    if (!extractedCreationType) {
-      const typeMatch = text.match(/"creation_type"\s*:\s*"([a-zA-Z0-9_-]+)"/i);
-      if (typeMatch) {
-        extractedCreationType = typeMatch[1];
-      }
-    }
-    if (!extractedCreationTitle) {
-      const titleMatch = text.match(/"creation_title"\s*:\s*"([^"]+)"/i);
-      if (titleMatch) {
-        extractedCreationTitle = titleMatch[1];
-      }
-    }
-
-    // 2. Extraction du bloc creation_data s'il n'est pas déjà un objet structuré
-    if (!extractedCreationData || (typeof extractedCreationData === 'object' && Object.keys(extractedCreationData).length === 0)) {
-      try {
-        const jsonMatch = text.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || text.match(/(\{[\s\S]*\})/);
-        if (jsonMatch) {
-          const parsed = JSON.parse(jsonMatch[1].replace(/,\s*([\]}])/g, '$1'));
-          if (parsed && typeof parsed === 'object') {
-            if (parsed.creation_data) {
-              extractedCreationData = typeof parsed.creation_data === 'string' ? JSON.parse(parsed.creation_data) : parsed.creation_data;
-            } else if (Array.isArray(parsed.questions) || Array.isArray(parsed.affirmations) || Array.isArray(parsed.cards) || parsed.root || parsed.overview || parsed.sections) {
-              extractedCreationData = parsed;
-            }
-            if (parsed.creation_type) extractedCreationType = parsed.creation_type;
-            if (parsed.creation_title) extractedCreationTitle = parsed.creation_title;
-            if (parsed.chat_message || parsed.chat_response) extractedChatResponse = parsed.chat_message || parsed.chat_response;
-          }
-        }
-      } catch {}
     }
   }
+
+  // Garantie que response ne renvoie JAMAIS de JSON brut si mode === 'creation'
+  const finalResponse = (extractedMode === 'creation')
+    ? (extractedChatResponse || `✨ J'ai généré votre création directement dans l'espace Création à droite !`)
+    : (extractedChatResponse || data.chat_response || text);
 
   return {
-    response: extractedChatResponse || data.chat_response || text,
+    response: finalResponse,
     success: data.success !== false,
     model: data.model,
     type: data.type || extractedCreationType,
     mode: extractedMode || data.mode,
-    chat_response: extractedChatResponse || data.chat_response,
+    chat_response: finalResponse,
     creation_type: extractedCreationType || data.creation_type,
     creation_title: extractedCreationTitle || data.creation_title,
     creation_data: extractedCreationData || data.creation_data,

@@ -346,6 +346,87 @@ export default {
       });
     }
 
+    // Parseur JSON ultra-robuste avec neutralisation des sauts de ligne bruts et des antislashs LaTeX
+    function safeJsonParse(raw) {
+      if (!raw || typeof raw !== "string") return null;
+      try { return JSON.parse(raw); } catch {}
+
+      let sanitized = '';
+      let inString = false;
+      let escaped = false;
+
+      for (let i = 0; i < raw.length; i++) {
+        const char = raw[i];
+        const code = raw.charCodeAt(i);
+
+        if (char === '"' && !escaped) {
+          inString = !inString;
+          sanitized += char;
+        } else if (inString) {
+          if (char === '\n') {
+            sanitized += '\\n';
+          } else if (char === '\r') {
+            sanitized += '\\r';
+          } else if (char === '\t') {
+            sanitized += '\\t';
+          } else if (code < 32) {
+            sanitized += ' ';
+          } else if (char === '\\') {
+            const next = raw[i + 1];
+            if (next && ['"', '\\', '/', 'b', 'f', 'n', 'r', 't', 'u'].includes(next)) {
+              sanitized += '\\';
+            } else {
+              sanitized += '\\\\';
+            }
+          } else {
+            sanitized += char;
+          }
+        } else {
+          sanitized += char;
+        }
+
+        if (char === '\\' && !escaped) {
+          escaped = true;
+        } else {
+          escaped = false;
+        }
+      }
+
+      sanitized = sanitized.replace(/,\s*([\]}])/g, '$1');
+
+      try {
+        return JSON.parse(sanitized);
+      } catch {}
+
+      let openBraces = 0;
+      let openBrackets = 0;
+      let inStr = false;
+      let esc = false;
+
+      for (let i = 0; i < sanitized.length; i++) {
+        const c = sanitized[i];
+        if (c === '"' && !esc) inStr = !inStr;
+        if (!inStr) {
+          if (c === '{') openBraces++;
+          else if (c === '}') openBraces = Math.max(0, openBraces - 1);
+          else if (c === '[') openBrackets++;
+          else if (c === ']') openBrackets = Math.max(0, openBrackets - 1);
+        }
+        esc = (c === '\\' && !esc);
+      }
+
+      let repaired = sanitized;
+      if (inStr) repaired += '"';
+      while (openBrackets > 0) { repaired += ']'; openBrackets--; }
+      while (openBraces > 0) { repaired += '}'; openBraces--; }
+
+      try {
+        return JSON.parse(repaired);
+      } catch {
+        return null;
+      }
+    }
+
     // Helper : formate et parse la décision et les données de création
     function parseAiDecision(rawText, defaultType) {
       let decision = "chat";
@@ -364,30 +445,7 @@ export default {
 
       if (jsonRawCandidate) {
         try {
-          let sanitized = jsonRawCandidate.replace(/,\s*([\]}])/g, '$1');
-
-          // Protection des antislashs LaTeX non échappés pour éviter les crashs de JSON.parse
-          sanitized = sanitized.replace(/\\f(?=rac\b)/g, '\\\\f');
-          sanitized = sanitized.replace(/\\t(?=imes\b)/g, '\\\\t');
-          sanitized = sanitized.replace(/\\b(?=egin\b|inom\b)/g, '\\\\b');
-          sanitized = sanitized.replace(/\\([a-zA-Z]+)/g, (match, cmd) => {
-            if (['n', 'r', 't', 'b', 'f'].includes(cmd)) return match;
-            return '\\\\' + cmd;
-          });
-
-          let parsed = null;
-          try {
-            parsed = JSON.parse(sanitized);
-          } catch {
-            // Deuxième passe de secours en doublant les antislashs restants
-            const fallbackEscaped = jsonRawCandidate
-              .replace(/\\/g, '\\\\')
-              .replace(/\\\\"/g, '\\"')
-              .replace(/\\\\n/g, '\\n')
-              .replace(/\\\\r/g, '\\r')
-              .replace(/\\\\t/g, '\\t');
-            parsed = JSON.parse(fallbackEscaped);
-          }
+          const parsed = safeJsonParse(jsonRawCandidate);
 
           if (parsed && typeof parsed === "object") {
             if (parsed.decision === "creation" || parsed.mode === "creation" || parsed.creation_type || parsed.creation_data) {

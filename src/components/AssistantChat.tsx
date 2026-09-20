@@ -4,10 +4,10 @@ import { DnaLogo } from './DnaLogo';
 import { DelmasRobot } from './DelmasRobot';
 import { FileIconBadge } from './FileIconBadge';
 import { MathText } from './MathText';
-import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey } from '../services/api';
+import { sendChatMessageToAi, saveAiReaction, removeAiAttachment, StudyCloudAPI, getGeminiApiKey, safeJsonParse } from '../services/api';
 import { extractDocumentText } from '../services/documentTextExtractor';
 import { parseOrBuildAiCreation } from '../services/aiCreationGenerator';
-import { AiCreation, AiCreationType } from './ai-creations/types';
+import { AiCreation, AiCreationType, ModuleId } from './ai-creations/types';
 
 interface Message {
   id: string;
@@ -28,43 +28,62 @@ interface ConversationItem {
   updated_at?: string;
 }
 
+export function normalizeCreationType(type: string | undefined): ModuleId {
+  if (!type) return 'questionnaire';
+  const t = type.toLowerCase().trim();
+  if (t === 'quiz' || t === 'qcm' || t === 'questionnaire') return 'questionnaire';
+  if (t === 'test' || t === 'questionnaire-test') return 'questionnaire-test';
+  if (t === 'vrai-ou-faux' || t === 'vrai-faux' || t === 'vf') return 'vrai-ou-faux';
+  if (t === 'vrai-ou-faux-test' || t === 'vf-test') return 'vrai-ou-faux-test';
+  if (t === 'mindmap' || t === 'carte-mentale' || t === 'mind-map') return 'carte-mentale';
+  if (t === 'carte-mentale-2' || t === 'mindmap2') return 'carte-mentale-2';
+  if (t === 'carte-memoire' || t === 'flashcard' || t === 'flashcards' || t === 'cartes-memoire') return 'carte-memoire';
+  if (t === 'summary' || t === 'resume' || t === 'fiche') return 'resume';
+  if (t === 'document' || t === 'pdf') return 'pdf';
+  if (t === 'infographic' || t === 'infographie') return 'infographie';
+  if (t === 'exercices-ecrits' || t === 'exercices' || t === 'written-exercise') return 'exercices-ecrits';
+  if (t === 'devoir-complet' || t === 'devoir' || t === 'exam') return 'devoir-complet';
+  return (t as ModuleId) || 'questionnaire';
+}
+
 // Helper robuste pour nettoyer tout résidu JSON du chat et garantir un texte pur avec LaTeX intact
 function cleanChatText(text: string): string {
   if (!text) return '';
   let clean = text.trim();
 
-  // Protège les commandes LaTeX dans $...$ ou $$...$$ avant parsing pour éviter que \notin devienne un saut de ligne
-  const protectLatex = (str: string) => {
-    return str.replace(/(\$\$?)([\s\S]*?)(\$\$?)/g, (_match, open, math, close) => {
-      return open + math.replace(/\\/g, '\\\\') + close;
-    });
-  };
+  // Si le texte est ou contient un payload JSON de création
+  if (clean.includes('"decision"') || clean.includes('"creation_data"') || clean.includes('"creation_type"') || clean.startsWith('{') || clean.startsWith('```json')) {
+    const jsonMatch = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || clean.match(/(\{[\s\S]*\})/);
+    if (jsonMatch) {
+      const parsed = safeJsonParse(jsonMatch[1] || jsonMatch[0]);
+      if (parsed && typeof parsed === 'object') {
+        const msg = parsed.chat_message || parsed.chat_response;
+        if (typeof msg === 'string' && !msg.trim().startsWith('{') && !msg.trim().startsWith('```') && !msg.includes('"creation_data"')) {
+          return msg.trim();
+        }
+      }
+    }
 
-  // 1. Détection chat_response par regex résistant aux échappements LaTeX
-  const inlineMatch = clean.match(/"chat_response"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
-  if (inlineMatch) {
-    const candidate = inlineMatch[1];
-    try {
-      return JSON.parse(`"${protectLatex(candidate)}"`);
-    } catch {
-      return candidate.replace(/\\n/g, '\n').replace(/\\"/g, '"');
+    // Regex d'extraction du message conversationnel
+    const msgMatch = clean.match(/"(?:chat_message|chat_response)"\s*:\s*"((?:[^"\\]|\\.)*)"/s);
+    if (msgMatch) {
+      try {
+        return JSON.parse(`"${msgMatch[1]}"`).trim();
+      } catch {
+        return msgMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim();
+      }
     }
   }
 
-  // 2. Si un bloc ```json ... ``` ou ``` ... ``` existe sans être une création
-  const jsonBlock = clean.match(/```(?:json)?\s*([\s\S]*?)\s*```/i);
-  if (jsonBlock) {
-    try {
-      const fixed = protectLatex(jsonBlock[1])
-        .replace(/\\(?!["\\/bfnrt]|u[0-9a-fA-F]{4})/g, '\\\\')
-        .replace(/,\s*([\]}])/g, '$1');
-      const obj = JSON.parse(fixed);
-      if (obj.chat_response) return obj.chat_response;
-      if (obj.response) return obj.response;
-    } catch {}
-  }
+  // Nettoyage radical de tout résidu de balises JSON, tags et blocs d'accolades résiduels
+  clean = clean
+    .replace(/```(?:json)?[\s\S]*?```/gi, '')
+    .replace(/```[\s\S]*?```/gi, '')
+    .replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '')
+    .replace(/\{[\s\S]*"(?:decision|creation_data|creation_type|questions|affirmations)"[\s\S]*\}/gi, '')
+    .trim();
 
-  return clean.replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '').trim();
+  return clean;
 }
 
 const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: boolean; isStreaming?: boolean }) => {
@@ -96,7 +115,14 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
   // Normalisation préalable pour éviter de découper les formules LaTeX $$...$$ multi-lignes
   const normalizedDisplayText = useMemo(() => {
     if (!displayText) return '';
-    let cleaned = displayText
+    let cleaned = displayText;
+    if (!isUser && (cleaned.includes('"decision"') || cleaned.includes('"creation_data"'))) {
+      cleaned = cleanChatText(cleaned);
+      if (!cleaned) {
+        cleaned = "✨ Votre création a été générée avec succès dans le volet Création à droite.";
+      }
+    }
+    cleaned = cleaned
       .replace(/\${3,}/g, '$$')
       .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
       .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
@@ -104,7 +130,7 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
       return '$$' + eq.replace(/\r?\n/g, ' ') + '$$';
     });
     return cleaned;
-  }, [displayText]);
+  }, [displayText, isUser]);
 
   const lines = normalizedDisplayText.split('\n');
 
@@ -681,33 +707,60 @@ TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
       let fullResponseText = rawResponseText;
 
       // 6. L'IA CHEF D'ORCHESTRE AUTONOME : DÉTECTION DU MODE CRÉATION OU MODE CHAT
-      const isAiAutonomousCreation = Boolean(
+      const hasCreationClues = Boolean(
         aiResult.mode === 'creation' ||
         (aiResult.creation_type && aiResult.creation_data) ||
-        isCreation
+        isCreation ||
+        /"decision"\s*:\s*"creation"/i.test(rawResponseText) ||
+        /"creation_data"/i.test(rawResponseText) ||
+        /<creation/i.test(rawResponseText)
       );
 
       let creationParsed: any = null;
-      if (aiResult.creation_data && aiResult.creation_type) {
+      let companionChatMessage = '';
+
+      if (aiResult.creation_data) {
+        const normType = normalizeCreationType(aiResult.creation_type || targetToolType);
         creationParsed = {
-          title: aiResult.creation_title || `${aiResult.creation_type.toUpperCase()} : ${mainDocName}`,
+          title: aiResult.creation_title || `${normType.toUpperCase()} : ${mainDocName}`,
           content: aiResult.creation_data,
-          toolType: (aiResult.creation_type === 'qcm' ? 'quiz' : aiResult.creation_type) as AiCreationType,
+          toolType: normType,
         };
-      } else if (isAiAutonomousCreation) {
-        const p = parseOrBuildAiCreation(targetToolType, rawResponseText, mainDocName, userText);
-        if (p.content && (p.content.questions?.length > 0 || p.content.overview || p.content.root || p.content.metrics || p.content.sections || p.content.affirmations || p.content.cards || p.content.exercises || p.content.exercices)) {
-          creationParsed = {
-            title: p.title,
-            content: p.content,
-            toolType: targetToolType,
-          };
-        } else if (isCreation) {
-          creationParsed = {
-            title: p.title || `${targetToolType} : ${mainDocName}`,
-            content: p.content || null,
-            toolType: targetToolType,
-          };
+        companionChatMessage = aiResult.chat_response || '';
+      } else if (hasCreationClues) {
+        const jsonMatch = rawResponseText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || rawResponseText.match(/(\{[\s\S]*\})/);
+        const candidate = jsonMatch ? (jsonMatch[1] || jsonMatch[0]) : rawResponseText;
+        const parsed = safeJsonParse(candidate);
+
+        if (parsed && typeof parsed === 'object') {
+          const parsedData = parsed.creation_data || (parsed.questions || parsed.affirmations || parsed.cards || parsed.root || parsed.overview || parsed.sections || parsed.exercises || parsed.exercices || parsed.written_exercise || parsed.complete_exam ? parsed : null);
+          if (parsedData) {
+            const detectedType = parsed.creation_type || (parsed.questions ? 'questionnaire' : parsed.affirmations ? 'vrai-ou-faux' : parsed.cards ? 'carte-memoire' : parsed.root ? 'carte-mentale' : parsed.overview ? 'resume' : targetToolType);
+            const normType = normalizeCreationType(detectedType);
+            creationParsed = {
+              title: parsed.creation_title || parsed.title || `${normType.toUpperCase()} : ${mainDocName}`,
+              content: parsedData,
+              toolType: normType,
+            };
+            companionChatMessage = parsed.chat_message || parsed.chat_response || '';
+          }
+        }
+
+        if (!creationParsed) {
+          const p = parseOrBuildAiCreation(targetToolType, rawResponseText, mainDocName, userText);
+          if (p.content && (p.content.questions?.length > 0 || p.content.overview || p.content.root || p.content.metrics || p.content.sections || p.content.affirmations || p.content.cards || p.content.exercises || p.content.exercices)) {
+            creationParsed = {
+              title: p.title,
+              content: p.content,
+              toolType: targetToolType,
+            };
+          } else if (isCreation) {
+            creationParsed = {
+              title: p.title || `${targetToolType} : ${mainDocName}`,
+              content: p.content || null,
+              toolType: targetToolType,
+            };
+          }
         }
       }
 
@@ -737,16 +790,12 @@ TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
         window.dispatchEvent(new CustomEvent('ai-creation-ready', { detail: { creation: newCreation } }));
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
 
-        // Nettoyage du bloc JSON du chat pour un affichage textuel impeccable
-        const introText = cleanChatText(aiResult.chat_response || rawResponseText)
-          .replace(/```json[\s\S]*?```/gi, '')
-          .replace(/```[\s\S]*?```/gi, '')
-          .replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '')
-          .trim();
+        // Nettoyage radical du texte pour la discussion : JAMAIS de JSON brut !
+        const cleanIntro = cleanChatText(companionChatMessage || aiResult.chat_response || rawResponseText);
 
-        fullResponseText = `${introText ? introText + '\n\n' : ''}✨ J'ai généré votre **${newCreation.title}** directement dans votre espace **Création** !
+        fullResponseText = `${cleanIntro ? cleanIntro + '\n\n' : ''}✨ J'ai généré votre **${newCreation.title}** directement dans votre espace **Création** !
 
-${effectiveToolType === 'quiz' && newCreation.content?.questions?.length ? `📝 **${newCreation.content.questions.length} questions interactives** ont été préparées avec succès.\n` : ''}👉 *Retrouvez et testez votre création dans le volet de droite (ou l'onglet Création sur mobile).*`;
+👉 *Retrouvez et testez votre création dans le volet de droite (ou l'onglet Création sur mobile).*`;
       } else if (isIteration && activeCreation) {
         const parsed = parseOrBuildAiCreation(activeCreation.toolType, rawResponseText, mainDocName, userText);
         const updatedCreation: AiCreation = {
@@ -763,15 +812,11 @@ ${effectiveToolType === 'quiz' && newCreation.content?.questions?.length ? `📝
         }));
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
 
-        const introText = cleanChatText(aiResult.chat_response || rawResponseText)
-          .replace(/```json[\s\S]*?```/gi, '')
-          .replace(/```[\s\S]*?```/gi, '')
-          .replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '')
-          .trim();
-
-        fullResponseText = `${introText ? introText + '\n\n' : ''}✅ Votre création a été mise à jour dans votre espace **Création** !`;
+        const cleanIntro = cleanChatText(aiResult.chat_response || rawResponseText);
+        fullResponseText = `${cleanIntro ? cleanIntro + '\n\n' : ''}✅ Votre création a été mise à jour dans votre espace **Création** !`;
       } else {
-        fullResponseText = cleanChatText(aiResult.chat_response || rawResponseText);
+        const cleaned = cleanChatText(aiResult.chat_response || rawResponseText);
+        fullResponseText = cleaned || "✨ Votre demande a été traitée avec succès.";
       }
 
       // 7. Initialisation du message IA avec écriture fluide
