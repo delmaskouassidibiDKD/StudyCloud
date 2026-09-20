@@ -50,7 +50,8 @@ async function safeFirst(db, sql, params = [], defaultValue = null) {
   try {
     const stmt = db.prepare(sql);
     const bound = params.length > 0 ? stmt.bind(...params) : stmt;
-    return await bound.first();
+    const res = await bound.first();
+    return (res !== null && res !== undefined) ? res : defaultValue;
   } catch (err) {
     return defaultValue;
   }
@@ -969,14 +970,21 @@ function renderDashboardHtml(data) {
     .sidebar-drawer.open {
       transform: translateX(0);
     }
+    /* Scrollbars confortables et visibles */
+    ::-webkit-scrollbar { width: 8px; height: 8px; }
+    ::-webkit-scrollbar-track { background: #070b14; }
+    ::-webkit-scrollbar-thumb { background: #374151; border-radius: 4px; }
+    ::-webkit-scrollbar-thumb:hover { background: #f97316; }
+    * { scrollbar-width: thin; scrollbar-color: #374151 #070b14; }
+    html { scroll-behavior: smooth; }
   </style>
 </head>
-<body class="bg-[#070b14] text-slate-100 min-h-screen antialiased flex flex-col selection:bg-orange-500 selection:text-white overflow-hidden">
+<body class="bg-[#070b14] text-slate-100 min-h-screen antialiased flex flex-col selection:bg-orange-500 selection:text-white">
 
   <!-- ==================================================================== -->
-  <!-- BARRE SUPÉRIEURE DE NAVIGATION (FIXE ET COMPACTE) -->
+  <!-- BARRE SUPÉRIEURE DE NAVIGATION (STICKY ET TOUJOURS ACCESSIBLE) -->
   <!-- ==================================================================== -->
-  <header class="h-[60px] bg-[#0c1220]/95 backdrop-blur-md border-b border-slate-800 px-4 sm:px-6 flex items-center justify-between shrink-0 z-30">
+  <header class="sticky top-0 h-[60px] bg-[#0c1220]/95 backdrop-blur-md border-b border-slate-800 px-4 sm:px-6 flex items-center justify-between shrink-0 z-30">
     <div class="flex items-center gap-3">
       <!-- Bouton 3 traits (Menu Hamburger) -->
       <button 
@@ -1003,7 +1011,7 @@ function renderDashboardHtml(data) {
     </div>
 
     <div class="flex items-center gap-2">
-      <button onclick="window.location.reload()" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-all flex items-center gap-1.5">
+      <button onclick="window.location.reload()" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer">
         <span>🔄</span> <span class="hidden sm:inline">Actualiser</span>
       </button>
       <a href="/api/overview" target="_blank" class="px-2.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-xs font-bold text-white transition-all shadow-md shadow-orange-600/30 flex items-center gap-1.5">
@@ -1025,7 +1033,7 @@ function renderDashboardHtml(data) {
         </div>
         <span class="font-extrabold text-white text-sm">Menu d'Administration</span>
       </div>
-      <button onclick="toggleSidebar()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center">
+      <button onclick="toggleSidebar()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center cursor-pointer">
         ✕
       </button>
     </div>
@@ -1034,7 +1042,7 @@ function renderDashboardHtml(data) {
       <button 
         onclick="switchView('global')" 
         id="nav-btn-global"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20 cursor-pointer"
       >
         <span class="text-base">📊</span>
         <span>Vue d'ensemble Globale</span>
@@ -1043,7 +1051,7 @@ function renderDashboardHtml(data) {
       <button 
         onclick="switchView('users')" 
         id="nav-btn-users"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
       >
         <span class="text-base">👥</span>
         <span>Tout les Utilisateurs</span>
@@ -1052,7 +1060,7 @@ function renderDashboardHtml(data) {
       <button 
         onclick="switchView('demandes')" 
         id="nav-btn-demandes"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
       >
         <span class="text-base">💾</span>
         <span>Demande de stockage</span>
@@ -1061,7 +1069,7 @@ function renderDashboardHtml(data) {
       <button 
         onclick="switchView('messages')" 
         id="nav-btn-messages"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
       >
         <span class="text-base">💬</span>
         <span>Messages des utilisateurs</span>
@@ -1074,14 +1082,14 @@ function renderDashboardHtml(data) {
   </aside>
 
   <!-- ==================================================================== -->
-  <!-- ZONE PRINCIPALE DE CONTENU SANS ESPACE VIDE INUTILE -->
+  <!-- ZONE PRINCIPALE DE CONTENU SANS ESPACE VIDE ET PARFAITEMENT SCROLLABLE -->
   <!-- ==================================================================== -->
-  <main class="flex-1 h-[calc(100vh-60px)] w-full max-w-[1700px] mx-auto p-3 sm:p-4 overflow-hidden flex flex-col">
+  <main class="flex-1 w-full max-w-[1700px] mx-auto p-3 sm:p-5 flex flex-col min-h-0">
 
     <!-- ================================================================== -->
-    <!-- VUE 1 : ACCUEIL / VUE D'ENSEMBLE GLOBALE (SCROLLABLE ENTIÈREMENT) -->
+    <!-- VUE 1 : ACCUEIL / VUE D'ENSEMBLE GLOBALE (DÉFILEMENT NATUREL) -->
     <!-- ================================================================== -->
-    <div id="view-global" class="h-full overflow-y-auto space-y-4 pr-1">
+    <div id="view-global" class="w-full space-y-5 pb-12">
 
       <!-- 4 CARRÉS EN HAUT : STATISTIQUES GLOBALES -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
@@ -1212,13 +1220,13 @@ function renderDashboardHtml(data) {
     </div>
 
     <!-- ================================================================== -->
-    <!-- VUE 2 : TOUT LES UTILISATEURS (DIVISÉE EN 2, FIXE ET COMPACTE) -->
+    <!-- VUE 2 : TOUT LES UTILISATEURS (DIVISÉE EN 2, SCROLLABLE & RESPONSIVE) -->
     <!-- ================================================================== -->
-    <div id="view-users" class="hidden h-full flex flex-col overflow-hidden">
-      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 h-full">
+    <div id="view-users" class="hidden w-full flex-1 flex flex-col space-y-3 pb-8">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:h-[calc(100vh-130px)] min-h-[550px]">
         
-        <!-- COLONNE GAUCHE (4/12) : LISTE DES UTILISATEURS FIXE -->
-        <div class="lg:col-span-4 neo-card h-full flex flex-col overflow-hidden">
+        <!-- COLONNE GAUCHE (4/12) : LISTE DES UTILISATEURS SCROLLABLE -->
+        <div class="lg:col-span-4 neo-card h-[380px] lg:h-full flex flex-col overflow-hidden shrink-0">
           <div class="p-2.5 border-b border-slate-800 flex items-center justify-between gap-2 shrink-0">
             <input 
               type="text" 
@@ -1231,16 +1239,16 @@ function renderDashboardHtml(data) {
           <div id="users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs font-medium"></div>
         </div>
 
-        <!-- COLONNE DROITE (8/12) : DÉTAILS COMPLETS DE L'UTILISATEUR FIXE -->
-        <div class="lg:col-span-8 neo-card p-4 space-y-4 overflow-y-auto h-full" id="user-details-right-panel"></div>
+        <!-- COLONNE DROITE (8/12) : DÉTAILS COMPLETS DE L'UTILISATEUR SCROLLABLE -->
+        <div class="lg:col-span-8 neo-card p-4 space-y-4 overflow-y-auto min-h-[400px] lg:h-full" id="user-details-right-panel"></div>
 
       </div>
     </div>
 
     <!-- ================================================================== -->
-    <!-- VUE 3 : DEMANDE DE STOCKAGE & PARAMÈTRES GLOBAUX (DIVISÉE EN 2) -->
+    <!-- VUE 3 : DEMANDE DE STOCKAGE & PARAMÈTRES GLOBAUX (SCROLLABLE & RESPONSIVE) -->
     <!-- ================================================================== -->
-    <div id="view-demandes" class="hidden h-full flex flex-col overflow-hidden space-y-3">
+    <div id="view-demandes" class="hidden w-full flex-1 flex flex-col space-y-3 pb-8">
       
       <!-- BANNIÈRE EN HAUT : PARAMÈTRES DU STOCKAGE DE BIENVENUE POUR TOUS -->
       <div class="neo-card p-3.5 bg-gradient-to-r from-slate-900 via-[#131b2e] to-slate-900 border-l-4 border-l-orange-500 shrink-0">
@@ -1255,19 +1263,19 @@ function renderDashboardHtml(data) {
           <div class="flex items-center gap-2 flex-wrap">
             <div class="flex items-center gap-1 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">
               <span class="text-[10px] text-slate-400 font-bold">R2 :</span>
-              <input type="number" id="global-cfg-r2" class="w-16 bg-slate-900 text-orange-400 font-bold font-mono text-xs px-1.5 py-0.5 rounded border border-slate-600 text-center" value="${data.globalConfig.default_welcome_r2_mb}">
+              <input type="number" id="global-cfg-r2" class="w-16 bg-slate-900 text-orange-400 font-bold font-mono text-xs px-1.5 py-0.5 rounded border border-slate-600 text-center" value="${data.globalConfig?.default_welcome_r2_mb ?? 10}">
               <span class="text-[10px] text-slate-400">Mo</span>
             </div>
 
             <div class="flex items-center gap-1 bg-slate-800 px-2.5 py-1 rounded-lg border border-slate-700">
               <span class="text-[10px] text-slate-400 font-bold">D1 :</span>
-              <input type="number" id="global-cfg-d1" class="w-16 bg-slate-900 text-emerald-400 font-bold font-mono text-xs px-1.5 py-0.5 rounded border border-slate-600 text-center" value="${data.globalConfig.default_welcome_d1_mb}">
+              <input type="number" id="global-cfg-d1" class="w-16 bg-slate-900 text-emerald-400 font-bold font-mono text-xs px-1.5 py-0.5 rounded border border-slate-600 text-center" value="${data.globalConfig?.default_welcome_d1_mb ?? 20}">
               <span class="text-[10px] text-slate-400">Mo</span>
             </div>
 
             <button 
               onclick="saveGlobalWelcomeConfig()" 
-              class="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-orange-600/20 active:scale-95"
+              class="px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg transition-all shadow-md shadow-orange-600/20 active:scale-95 cursor-pointer"
             >
               Enregistrer pour tous
             </button>
@@ -1276,9 +1284,9 @@ function renderDashboardHtml(data) {
       </div>
 
       <!-- ÉCRAN DIVISÉ EN 2 POUR LA GESTION DES QUOTAS UTILISATEURS -->
-      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 h-full">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:h-[calc(100vh-220px)] min-h-[500px]">
         <!-- COLONNE GAUCHE (4/12) : LISTE DES UTILISATEURS -->
-        <div class="lg:col-span-4 neo-card h-full flex flex-col overflow-hidden">
+        <div class="lg:col-span-4 neo-card h-[380px] lg:h-full flex flex-col overflow-hidden shrink-0">
           <div class="p-2.5 border-b border-slate-800 flex items-center justify-between text-xs font-bold text-slate-400 shrink-0">
             <span>Utilisateurs & Quotas</span>
             <span class="text-[10px] font-mono text-orange-400">(${data.users.length})</span>
@@ -1287,7 +1295,7 @@ function renderDashboardHtml(data) {
         </div>
 
         <!-- COLONNE DROITE (8/12) : FORMULAIRE COMPLET D'AJUSTEMENT DU STOCKAGE -->
-        <div class="lg:col-span-8 neo-card p-4 space-y-4 overflow-y-auto h-full" id="demandes-right-panel">
+        <div class="lg:col-span-8 neo-card p-4 space-y-4 overflow-y-auto min-h-[400px] lg:h-full" id="demandes-right-panel">
           <div class="py-20 text-center text-slate-500 text-xs">
             Sélectionnez un utilisateur sur la gauche pour afficher et ajuster son stockage de bienvenue ou son stockage payant.
           </div>
@@ -1299,16 +1307,16 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <!-- VUE 4 : MESSAGES DES UTILISATEURS (DIVISÉE EN 2) -->
     <!-- ================================================================== -->
-    <div id="view-messages" class="hidden h-full flex flex-col overflow-hidden space-y-3">
-      <div class="flex-1 min-h-0 grid grid-cols-1 lg:grid-cols-12 gap-3 h-full">
-        <div class="lg:col-span-4 neo-card h-full flex flex-col overflow-hidden">
+    <div id="view-messages" class="hidden w-full flex-1 flex flex-col space-y-3 pb-8">
+      <div class="grid grid-cols-1 lg:grid-cols-12 gap-3 lg:h-[calc(100vh-130px)] min-h-[450px]">
+        <div class="lg:col-span-4 neo-card h-[380px] lg:h-full flex flex-col overflow-hidden shrink-0">
           <div class="p-2.5 border-b border-slate-800 text-xs font-bold text-slate-400 shrink-0">
             Utilisateurs inscrits
           </div>
           <div id="messages-users-left-list" class="flex-1 overflow-y-auto divide-y divide-slate-800/60 text-xs"></div>
         </div>
 
-        <div class="lg:col-span-8 neo-card p-8 flex flex-col items-center justify-center h-full text-center text-slate-500">
+        <div class="lg:col-span-8 neo-card p-8 flex flex-col items-center justify-center min-h-[350px] lg:h-full text-center text-slate-500">
           <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">💬</div>
           <h3 class="text-sm font-bold text-slate-300">Messagerie et Demandes de Support</h3>
           <p class="text-xs text-slate-500 mt-1 max-w-sm">Cet espace affichera en direct les retours, demandes d'aide et messages envoyés par les étudiants depuis leur application.</p>
@@ -2251,11 +2259,17 @@ export default {
         });
       }
 
-      // Configuration globale
-      const globalConfigRow = await safeFirst(db, `SELECT * FROM storage_global_config WHERE id = 'default'`, [], {
-        default_welcome_r2_mb: 10.0,
-        default_welcome_d1_mb: 20.0
-      });
+      // Configuration globale (compatible avec 'default' et 'global')
+      let globalConfigRow = await safeFirst(db, `SELECT * FROM storage_global_config WHERE id = 'default' OR id = 'global' LIMIT 1`, [], null);
+      if (!globalConfigRow) {
+        globalConfigRow = {
+          id: 'default',
+          default_welcome_r2_mb: 10.0,
+          default_welcome_d1_mb: 20.0,
+          cost_per_gb_eur: 0.015,
+          notes: ''
+        };
+      }
 
       // Récupération de tous les utilisateurs (avec numéro de téléphone et niveau)
       const usersQuery = await safeQuery(db, `
