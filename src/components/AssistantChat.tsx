@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect } from 'react';
+import React, { useState, useRef, useEffect, useMemo } from 'react';
 import { Send, ThumbsUp, ThumbsDown, Copy, Check, X, FileText, Sparkles, Loader2, Clock, Plus, Trash2, Search, MessageSquare, ChevronRight, Brain, Presentation, ChevronDown, ChevronUp, Layers, Zap } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { DelmasRobot } from './DelmasRobot';
@@ -93,7 +93,20 @@ const ChatMessageText = ({ text, isUser, isStreaming }: { text: string; isUser: 
     );
   }
 
-  const lines = displayText.split('\n');
+  // Normalisation préalable pour éviter de découper les formules LaTeX $$...$$ multi-lignes
+  const normalizedDisplayText = useMemo(() => {
+    if (!displayText) return '';
+    let cleaned = displayText
+      .replace(/\${3,}/g, '$$')
+      .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
+      .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+    cleaned = cleaned.replace(/\$\$([\s\S]*?)\$\$/g, (_match, eq) => {
+      return '$$' + eq.replace(/\r?\n/g, ' ') + '$$';
+    });
+    return cleaned;
+  }, [displayText]);
+
+  const lines = normalizedDisplayText.split('\n');
 
   return (
     <div className="flex flex-col w-full items-start">

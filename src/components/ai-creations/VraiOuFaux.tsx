@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { Check, X, RotateCcw, HelpCircle, CheckCircle2, AlertCircle } from 'lucide-react';
 import { AffirmationVraiFaux } from './types';
+import { MathText } from '../MathText';
 
 const INITIAL_AFFIRMATIONS: AffirmationVraiFaux[] = [
   {
@@ -137,7 +138,7 @@ export default function VraiOuFaux({ data }: { data?: any }) {
           <div className="bg-white border border-stone-200 rounded-xl p-6 md:p-8 space-y-8 shadow-xs">
             <div id="affirmation-container" className="min-h-[100px] flex items-center justify-center text-center">
               <blockquote id="affirmation-text" className="text-lg md:text-xl font-medium text-stone-900 max-w-2xl leading-relaxed">
-                « {current.statement} »
+                « <MathText text={current.statement} inline={true} /> »
               </blockquote>
             </div>
 
@@ -200,7 +201,9 @@ export default function VraiOuFaux({ data }: { data?: any }) {
                     <p className="font-semibold">
                       {userChoice === current.isTrue ? 'Exact ! Bien vu.' : 'Erreur.'}
                     </p>
-                    <p>{current.explanation}</p>
+                    <div className="text-stone-800 leading-relaxed">
+                      <MathText text={current.explanation} />
+                    </div>
                   </div>
                 </motion.div>
               )}

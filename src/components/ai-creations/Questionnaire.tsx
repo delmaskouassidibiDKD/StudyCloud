@@ -2,6 +2,7 @@ import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'motion/react';
 import { CheckCircle2, XCircle, RotateCcw, Award, ChevronRight, HelpCircle } from 'lucide-react';
 import { QuestionQCM } from './types';
+import { MathText } from '../MathText';
 
 const INITIAL_QUESTIONS: QuestionQCM[] = [
   {
@@ -185,9 +186,9 @@ export default function Questionnaire({ data }: { data?: any }) {
       ) : (
         <div id="questionnaire-body" className="space-y-6">
           <div id="question-card" className="bg-white border border-stone-200 rounded-xl p-6 md:p-8 space-y-6 shadow-xs">
-            <h3 id="question-text" className="text-lg md:text-xl font-semibold text-stone-900 leading-snug">
-              {currentQ.question}
-            </h3>
+            <div id="question-text" className="text-lg md:text-xl font-semibold text-stone-900 leading-snug">
+              <MathText text={currentQ.question} />
+            </div>
 
             <div id="question-options-list" className="space-y-3">
               {currentQ.options.map((option, idx) => {
@@ -213,7 +214,7 @@ export default function Questionnaire({ data }: { data?: any }) {
                     disabled={selectedOption !== null}
                     className={`w-full text-left p-4 rounded-lg border text-sm md:text-base font-medium flex items-center justify-between transition-all cursor-pointer ${optionStyle}`}
                   >
-                    <span>{option}</span>
+                    <span className="flex-1 mr-2"><MathText text={option} inline={true} /></span>
                     {showResult && isCorrect && <CheckCircle2 className="w-5 h-5 text-emerald-600 shrink-0 ml-2" />}
                     {showResult && isSelected && !isCorrect && <XCircle className="w-5 h-5 text-rose-600 shrink-0 ml-2" />}
                   </button>
@@ -231,7 +232,9 @@ export default function Questionnaire({ data }: { data?: any }) {
                   className="p-4 rounded-lg bg-stone-100 border border-stone-200 text-sm text-stone-800 space-y-1"
                 >
                   <p className="font-semibold text-stone-900">Explication didactique :</p>
-                  <p>{currentQ.explanation}</p>
+                  <div className="text-stone-800 text-sm leading-relaxed">
+                    <MathText text={currentQ.explanation} />
+                  </div>
                 </motion.div>
               )}
             </AnimatePresence>

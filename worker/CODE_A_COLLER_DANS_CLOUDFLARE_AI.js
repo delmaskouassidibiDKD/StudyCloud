@@ -364,7 +364,29 @@ export default {
       if (jsonRawCandidate) {
         try {
           let sanitized = jsonRawCandidate.replace(/,\s*([\]}])/g, '$1');
-          let parsed = JSON.parse(sanitized);
+
+          // Protection des antislashs LaTeX non échappés pour éviter les crashs de JSON.parse
+          sanitized = sanitized.replace(/\\f(?=rac\b)/g, '\\\\f');
+          sanitized = sanitized.replace(/\\t(?=imes\b)/g, '\\\\t');
+          sanitized = sanitized.replace(/\\b(?=egin\b|inom\b)/g, '\\\\b');
+          sanitized = sanitized.replace(/\\([a-zA-Z]+)/g, (match, cmd) => {
+            if (['n', 'r', 't', 'b', 'f'].includes(cmd)) return match;
+            return '\\\\' + cmd;
+          });
+
+          let parsed = null;
+          try {
+            parsed = JSON.parse(sanitized);
+          } catch {
+            // Deuxième passe de secours en doublant les antislashs restants
+            const fallbackEscaped = jsonRawCandidate
+              .replace(/\\/g, '\\\\')
+              .replace(/\\\\"/g, '\\"')
+              .replace(/\\\\n/g, '\\n')
+              .replace(/\\\\r/g, '\\r')
+              .replace(/\\\\t/g, '\\t');
+            parsed = JSON.parse(fallbackEscaped);
+          }
 
           if (parsed && typeof parsed === "object") {
             if (parsed.decision === "creation" || parsed.mode === "creation" || parsed.creation_type || parsed.creation_data) {
@@ -522,6 +544,20 @@ RÈGLES D'EXCELLENCE POUR LES QUESTIONNAIRES & TESTS ('questionnaire' et 'questi
 
 3. ENRICHISSEMENT EXTERNE & CROISEMENT DE SAVOIRS :
    - Ne te limite pas strictement aux mots du fichier. Tu es autorisé et encouragé à croiser le contenu du document avec des standards réels, des cas d'usage vérifiés et des notions complémentaires issues du même domaine pour maximiser la valeur pédagogique.
+
+======================================================================
+RÈGLE DE FORMATAGE MATHÉMATIQUE STRICTE (LATEX PUR) :
+======================================================================
+1. Pour TOUTES les fractions, puissances, racines, intégrales, dérivées, matrices et formules scientifiques, tu DOIS utiliser exclusivement la syntaxe LaTeX standard.
+2. Utilise un seul dollar ($) pour les formules en ligne, par exemple : $\frac{a}{b}$ ou $f(x) = \frac{x^2+1}{2x}$.
+3. Utilise un double dollar ($$) pour les équations importantes centrées sur une ligne seule :
+   $$
+   E = \frac{1}{2} m v^2
+   $$
+4. INTERDICTION FORMELLE d'utiliser des caractères aléatoires, des symboles corrompus (&, *, !, $$$$$) ou du texte brut mal formaté pour représenter des mathématiques. Si tu écris une fraction, utilise TOUJOURS la syntaxe \frac{numérateur}{dénominateur}.
+5. DANS LES QUESTIONS, OPTIONS ET EXPLICATIONS :
+   - Formule toujours les fractions avec $\frac{...}{...}$ afin qu'elles soient rendues avec une netteté visuelle parfaite par le moteur KaTeX de StudyCloud.
+   - N'invente aucun caractère bizarre ou balise non standard.
 
 ======================================================================
 FORMAT STRICT DE SORTIE JSON :
