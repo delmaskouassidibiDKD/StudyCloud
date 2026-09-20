@@ -15,6 +15,7 @@ import { ClockMenuView } from './ClockMenuView';
 import { LevelMenuView } from './LevelMenuView';
 import { CalculatorMenuView } from './CalculatorMenuView';
 import { MatiereMenuView } from './MatiereMenuView';
+import { StorageMenuView } from './StorageMenuView';
 import { NavigationTab } from '../types';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
@@ -121,7 +122,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     window.location.reload();
   };
   const [activeNotification, setActiveNotification] = useState<string | null>(null);
-  const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | string>(() => {
+  const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'storage-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | string>(() => {
     const saved = localStorage.getItem('unifolder_view_mode');
     return saved || 'home';
   });
@@ -452,6 +453,49 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               <text x="56.75" y="88" fill="#FFFFFF" fontSize="4.5" fontWeight="bold" textAnchor="middle">+/-</text>
               <rect x="65.5" y="71.5" width="11.5" height="19" rx="2.5" fill="#F97316" />
               <text x="71.25" y="83" fill="#FFFFFF" fontSize="7" fontWeight="bold" textAnchor="middle">=</text>
+            </svg>
+          </div>
+        );
+        break;
+
+      case 'storage':
+        label = 'Mon stockage';
+        defaultAction = () => setViewMode('storage-menu');
+        iconContent = (
+          <div className="w-full h-full p-2 flex items-center justify-center">
+            <svg className="w-full h-full drop-shadow-md" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              {/* Nuage supérieur moderne avec dégradé cyan / bleu */}
+              <path
+                d="M 32 48 C 23 48 16 41 16 33 C 16 25 22 18 30 17 C 34 9 46 7 55 13 C 61 9 70 11 74 17 C 82 18 88 25 88 33 C 88 41 81 48 72 48 Z"
+                fill="url(#storageCloudGrad)"
+              />
+              {/* Disque serveur 1 */}
+              <ellipse cx="50" cy="54" rx="27" ry="7.5" fill="#1E293B" />
+              <ellipse cx="50" cy="53" rx="27" ry="7.5" fill="#38BDF8" />
+              <ellipse cx="50" cy="52" rx="26" ry="6.5" fill="#F1F5F9" />
+              <path d="M 24 52 v 9 c 0 4.2 11.6 7.5 26 7.5 s 26 -3.3 26 -7.5 v -9" fill="#0284C7" />
+              <ellipse cx="50" cy="61" rx="26" ry="7" fill="#38BDF8" />
+              <circle cx="34" cy="61" r="2" fill="#22C55E" />
+              <circle cx="41" cy="61" r="2" fill="#F8FAFC" />
+
+              {/* Disque serveur 2 */}
+              <path d="M 24 63 v 9 c 0 4.2 11.6 7.5 26 7.5 s 26 -3.3 26 -7.5 v -9" fill="#0369A1" />
+              <ellipse cx="50" cy="72" rx="26" ry="7" fill="#0284C7" />
+              <circle cx="34" cy="72" r="2" fill="#22C55E" />
+              <circle cx="41" cy="72" r="2" fill="#F8FAFC" />
+
+              {/* Disque serveur 3 */}
+              <path d="M 24 74 v 9 c 0 4.2 11.6 7.5 26 7.5 s 26 -3.3 26 -7.5 v -9" fill="#0F172A" />
+              <ellipse cx="50" cy="83" rx="26" ry="7" fill="#0369A1" />
+              <circle cx="34" cy="83" r="2" fill="#22C55E" />
+              <circle cx="41" cy="83" r="2" fill="#FACC15" />
+
+              <defs>
+                <linearGradient id="storageCloudGrad" x1="16" y1="7" x2="88" y2="48" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#38BDF8" />
+                  <stop offset="1" stopColor="#0284C7" />
+                </linearGradient>
+              </defs>
             </svg>
           </div>
         );
@@ -1214,15 +1258,16 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'clock-menu' && <ClockMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'level-menu' && <LevelMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'calculator-menu' && <CalculatorMenuView onBack={() => setViewMode('home')} />}
+      {viewMode === 'storage-menu' && <StorageMenuView onBack={() => setViewMode('home')} />}
 
       {viewMode === 'home' && (
         <div className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-2">
           <div className="flex items-center justify-between mb-3 px-2">
             <span className="text-xs font-bold text-stone-500 dark:text-stone-400">Écran d'accueil</span>
           </div>
-          {/* Sur mobile : 3 blocs par ligne disposés verticalement sans coupure | Sur desktop : ligne horizontale fluide */}
-          <div className="grid grid-cols-3 gap-y-6 gap-x-2 sm:gap-x-4 justify-items-center w-full md:flex md:flex-row md:items-start md:justify-center md:gap-4 lg:gap-6 md:overflow-x-auto md:pb-4 md:pt-1 md:no-scrollbar">
-            {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator'].map((id, index) => renderBlock(id, index))}
+          {/* Sur mobile : 3 blocs par ligne | Sur desktop : 9 colonnes centrées avec la 2ème ligne commençant sous "Mes fichiers" */}
+          <div className="grid grid-cols-3 md:grid-cols-9 gap-y-6 gap-x-2 sm:gap-x-4 md:gap-4 lg:gap-6 justify-items-center w-fit max-w-full mx-auto md:overflow-x-auto md:pb-4 md:pt-1 md:no-scrollbar">
+            {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage'].map((id, index) => renderBlock(id, index))}
           </div>
         </div>
       )}

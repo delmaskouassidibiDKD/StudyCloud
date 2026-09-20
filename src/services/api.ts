@@ -78,7 +78,15 @@ function cleanControlCharsInParsedObject(obj: any): any {
   if (typeof obj === 'string') {
     return obj
       .replace(/[\x0c\u000c]/g, '\\f') // Répare \x0crac -> \frac
-      .replace(/[\x08\u0008]/g, '\\b'); // Répare \x08eta -> \beta
+      .replace(/[\x08\u0008]/g, '\\b') // Répare \x08eta -> \beta
+      // Répare les mélanges de dollars et de symboles LaTeX générés par l'IA (ex: \text{k}\$\Omega$)
+      .replace(/\\text\{([^{}]*)\}\s*\\?\$+(\\?Omega|\bOmega\b)/gi, '\\text{$1 }\\Omega')
+      .replace(/\\text\{([^{}]*)\\?\$+(\\?Omega|\bOmega\b)\}/gi, '\\text{$1 }\\Omega')
+      .replace(/\\text\{([^{}]*)\\?\$+([^{}]*)\}/gi, '\\text{$1$2}')
+      .replace(/([0-9]+)\s*k\s*\\?\$+(\\?Omega|\bOmega\b)/gi, '$1 \\text{ k}\\Omega')
+      .replace(/([a-zA-Z0-9])\s*\\?\$+(\\?Omega|\bOmega\b)/gi, '$1 \\Omega')
+      .replace(/\\\$+(\\?Omega|\bOmega\b)/gi, '\\Omega')
+      .replace(/\bk\s*\\?\$+(\\?Omega)\$?/gi, '\\text{k }\\Omega');
   }
   if (Array.isArray(obj)) {
     return obj.map(cleanControlCharsInParsedObject);
@@ -492,9 +500,16 @@ export async function generateDirectAiCreation(params: {
 RÈGLE ABSOLUE : Réponds UNIQUEMENT avec un objet JSON valide (sans bloc de code markdown). Le JSON doit contenir "creation_type", "creation_title", et "creation_data".
 Pour "devoir-complet", "creation_data" doit avoir une clé "complete_exam" avec exactement 3 "sections" : Exercice 1 (open), Exercice 2 (multiple_choice), Exercice 3 (true_false).
 INTERDIT : "Proposition A", "Option A", "Affirmation conceptuelle". Tout doit être du vrai contenu technique.
+
+RÈGLE ABSOLUE DE SYNTAXE LATEX :
+- Ne mets JAMAIS de symboles $ isolés à l'intérieur d'une expression LaTeX (interdit absolu d'écrire \\text{k}\\$\\Omega$ ou \\$\\Omega$).
+- Pour l'ohm, écris toujours \\Omega (ex: $10\\text{ k}\\Omega$ ou $R_2 = 120\\text{ k}\\Omega$).
+- Encadre TOUJOURS une formule mathématique par un unique symbole dollar de chaque côté pour du texte en ligne (ex: $R_{in} = R_1$) et par de doubles dollars pour les équations centrées ($$V_s = -\\frac{R_2}{R_1} V_e$$).
+- Dans le JSON, double impérativement chaque antislash LaTeX (\\\\frac, \\\\sqrt, \\\\Omega, \\\\alpha, \\\\beta, \\\\times) afin qu'il ne soit jamais interprété comme un caractère de contrôle JSON (ex: \\f = Form Feed).
+- Vérifie scrupuleusement que chaque balise ou délimiteur ouvert ({}, $ ou $$) est correctement fermé pour éviter l'affichage de code brut.
 ${docSection}`;
 
-    const candidateModels = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro'];
+    const candidateModels = ['gemini-3.8-flash', 'gemini-2.5-pro'];
 
     for (const apiKey of knownKeys) {
       for (const model of candidateModels) {
@@ -539,8 +554,11 @@ ${docSection}`;
             // Modèle non disponible, essayer le suivant
             continue;
           } else if (geminiResp.status === 429) {
-            // Quota dépassé sur cette clé, essayer la suivante clé
-            break;
+            // Si quota dépassé sur ce modèle, essayer le modèle suivant, sinon passer à la clé suivante
+            if (model === 'gemini-2.5-pro') {
+              break;
+            }
+            continue;
           }
         } catch (e) {
           console.warn(`[StudyCloud AI Fallback] Erreur Gemini direct (${model}):`, e);

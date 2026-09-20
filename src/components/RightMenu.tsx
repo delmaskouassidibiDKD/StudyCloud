@@ -399,7 +399,12 @@ CONSIGNES STRICTES ET INVIOLABLES :
 1. ÉTUDE INTÉGRALE DU DOCUMENT : Parcours le document de la première à la dernière page. Ne t'arrête pas au début : puise dans tous les chapitres, sections, théorèmes, lois, calculs et schémas du fichier.
 2. SUJETS SCIENTIFIQUES & TECHNIQUES (Électronique, Physique, Mathématiques, Chimie, Informatique, etc.) : INTERDICTION FORMELLE DE RESTER PUREMENT LITTÉRAIRE ! Intègre obligatoirement des calculs réels, des formules mathématiques exactes ($...$), des grandeurs numériques concrètes (ex: $R_1 = 10\\ \\text{k}\\Omega, R_2 = 100\\ \\text{k}\\Omega, V_e = 0.5\\ \\text{V} \\implies V_s = -5\\ \\text{V}$), des fonctions et des schémas de montages (en ASCII Art soigné).
 3. CORRECTIONS DÉTAILLÉES : Chaque correction doit comporter un rappel théorique, la démonstration ou le calcul détaillé étape par étape, et obligatoirement DEUX EXEMPLES CONCRETS DISTINCTS (Exemple 1 et Exemple 2).
-4. LATEX PUR & ZÉRO CARACTÈRE BIZARRE : Entoure chaque formule de dollars ($V_s = -\\frac{R_2}{R_1} V_e$). Dans le JSON, double impérativement chaque antislash LaTeX (\\\\frac, \\\\sqrt, \\\\Omega, etc.) pour éviter toute corruption Form Feed.
+4. LATEX PUR & RÈGLE ABSOLUE DE SYNTAXE (ZÉRO CARACTÈRE BIZARRE) :
+   - Entoure chaque formule de dollars ($V_s = -\\frac{R_2}{R_1} V_e$ en ligne, $$...$$ en bloc).
+   - Ne mets JAMAIS de symboles $ isolés à l'intérieur d'une expression LaTeX (interdit d'écrire \\text{k}\\$\\Omega$ ou \\$\\Omega$).
+   - Pour l'ohm, écris toujours \\Omega (ex: $10\\text{ k}\\Omega$ ou $R_2 = 120\\text{ k}\\Omega$).
+   - Dans le JSON, double impérativement chaque antislash LaTeX (\\\\frac, \\\\sqrt, \\\\Omega, \\\\alpha, \\\\beta, etc.) pour éviter toute corruption Form Feed.
+   - Ferme scrupuleusement chaque balise ou délimiteur ({}, $ ou $$) ouvert.
 Génère STRICTEMENT un objet JSON valide conforme au schéma ci-dessous, sans texte parasite avant ou après.`;
 
     switch (modId) {
