@@ -138,6 +138,7 @@ export interface InfographicContent {
   metrics: InfographicMetric[];
   keyConcepts: InfographicConcept[];
   highlights: InfographicHighlight[];
+  steps?: any[];
   conclusion?: string;
 }
 
@@ -170,4 +171,5 @@ export interface AiCreation {
   createdAt?: string;
   updatedAt?: string;
   version?: number;
+  htmlPreview?: string;
 }

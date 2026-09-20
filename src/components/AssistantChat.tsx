@@ -86,7 +86,7 @@ function cleanChatText(text: string): string {
   return clean;
 }
 
-function ChatRecommendationCard({ recoType }: { recoType: string }) {
+function ChatRecommendationCard({ recoType }: { recoType: string; key?: any }) {
   const norm = recoType.trim().toLowerCase();
   let cardTitle = 'Fiches & exercices de révision';
   let cardDesc = 'Un ensemble interactif optimisé pour mémoriser rapidement les concepts clés de ce chapitre.';

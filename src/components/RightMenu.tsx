@@ -17,7 +17,10 @@ import {
   BarChart2,
   PenTool,
   ClipboardCheck,
-  Sparkles
+  Sparkles,
+  AlertCircle,
+  RotateCcw,
+  ExternalLink
 } from 'lucide-react';
 import { StudyCloudAPI, generateDirectAiCreation } from '../services/api';
 import { extractDocumentText } from '../services/documentTextExtractor';
@@ -652,6 +655,7 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
     })();
 
     const docName = previewItem?.name || previewItem?.title || previewItem?.fileName || 'Document sélectionné';
+    setActiveCreation(null); // ← CRITICAL : effacer l'ancienne fiche pour éviter l'affichage en boucle
     setIsGenerating(true);
     setGeneratingInfo({
       type: mod.id,
@@ -685,27 +689,58 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
         userId: localStorage.getItem('unifolder_user_id') || 'default-user',
       });
 
+      if (!res || !res.success) {
+        throw new Error(res?.rawText || "L'assistante StudyCloud n'est pas disponible pour le moment.");
+      }
+
       const targetType = (res.creation_type as ModuleId) || mod.id;
       let effectiveContent = res.creation_data || null;
       let effectiveTitle = res.creation_title || `${mod.label} : ${docName}`;
 
-      // Si creation_data est vide ou incomplet, parsing et normalisation intelligents
+      // Si creation_data est vide, tenter le parsing SEULEMENT si rawText est un vrai contenu (non une erreur)
       const isCreationDataEmpty = !effectiveContent || (typeof effectiveContent === 'object' && Object.keys(effectiveContent).length === 0);
-      if (isCreationDataEmpty || res.rawText) {
-        try {
-          const parsedCreation = parseOrBuildAiCreation(
-            targetType as any,
-            res.rawText || JSON.stringify(effectiveContent || {}),
-            docName,
-            promptText
-          );
-          if (parsedCreation && parsedCreation.content) {
-            effectiveContent = parsedCreation.content;
-            if (parsedCreation.title) effectiveTitle = parsedCreation.title;
+      if (isCreationDataEmpty && res.rawText && res.rawText.length > 50) {
+        const isErrorMsg = res.rawText.toLowerCase().includes("n'est pas disponible") || res.rawText.toLowerCase().includes("erreur");
+        if (!isErrorMsg) {
+          try {
+            const parsedCreation = parseOrBuildAiCreation(
+              targetType as any,
+              res.rawText,
+              docName,
+              promptText
+            );
+            if (parsedCreation && parsedCreation.content) {
+              effectiveContent = parsedCreation.content;
+              if (parsedCreation.title) effectiveTitle = parsedCreation.title;
+            }
+          } catch (parseErr) {
+            console.warn('[RightMenu] Erreur parsing secours creation:', parseErr);
           }
-        } catch (parseErr) {
-          console.warn('[RightMenu] Erreur parsing secours creation:', parseErr);
         }
+      }
+
+      // Vérifier rigoureusement que le contenu provient bien de l'IA et n'est pas vide
+      const hasRealAiContent = Boolean(
+        effectiveContent &&
+        typeof effectiveContent === 'object' &&
+        !effectiveContent.error &&
+        (
+          (effectiveContent.complete_exam && Array.isArray(effectiveContent.complete_exam.sections) && effectiveContent.complete_exam.sections.length > 0) ||
+          (Array.isArray(effectiveContent.sections) && effectiveContent.sections.length > 0) ||
+          (Array.isArray(effectiveContent.questions) && effectiveContent.questions.length > 0) ||
+          (Array.isArray(effectiveContent.affirmations) && effectiveContent.affirmations.length > 0) ||
+          (Array.isArray(effectiveContent.cards) && effectiveContent.cards.length > 0) ||
+          (Array.isArray(effectiveContent.flashcards) && effectiveContent.flashcards.length > 0) ||
+          (effectiveContent.summary && (effectiveContent.summary.content || effectiveContent.summary.sections)) ||
+          (effectiveContent.mind_map || effectiveContent.branches) ||
+          (effectiveContent.infographic || effectiveContent.steps) ||
+          (effectiveContent.written_exercise || effectiveContent.exercises)
+        )
+      );
+
+      // Si l'IA n'a pas pu générer de vrai contenu, ne JAMAIS afficher de faux exercices en mémoire :
+      if (!hasRealAiContent) {
+        throw new Error("L'assistante StudyCloud n'est pas disponible pour le moment.");
       }
 
       // Normalisation défensive immédiate pour devoir-complet pour garantir les 3 fiches peuplées
@@ -728,6 +763,7 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
         sourceFileName: docName,
         createdAt: new Date().toISOString(),
         version: 1,
+        htmlPreview: res.html_preview,
       };
 
       setActiveCreation(newCreation);
@@ -788,7 +824,7 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
         title: `${mod.label} : ${docName}`,
         content: {
           error: true,
-          errorMessage: err.message || "Une erreur de communication est survenue avec le service d'IA.",
+          errorMessage: err.message || "L'assistante StudyCloud n'est pas disponible pour le moment.",
           canRetry: true,
           failedModId: mod.id
         },
@@ -810,6 +846,43 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
     const currentType = activeCreation?.toolType || activeTabModule;
     const currentData = activeCreation?.content;
     const currentTitle = activeCreation?.title;
+
+    // Si la génération a échoué, afficher un écran d'erreur clair avec bouton Réessayer
+    if (currentData?.error) {
+      const failedMod = MODULES.find(m => m.id === (currentData.failedModId || currentType));
+      return (
+        <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center animate-fadeIn max-w-md mx-auto my-auto">
+          <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 mb-4 shadow-lg shadow-red-500/5">
+            <AlertCircle className="w-8 h-8" />
+          </div>
+          <h3 className="text-base sm:text-lg font-bold text-zinc-100 mb-2">
+            L'assistante StudyCloud n'est pas disponible pour le moment
+          </h3>
+          <p className="text-xs sm:text-sm text-zinc-400 mb-5 leading-relaxed bg-zinc-900/60 p-3 rounded-xl border border-zinc-800 text-center">
+            ⚠️ {currentData.errorMessage || "L'assistante StudyCloud n'est pas disponible pour le moment."}
+          </p>
+          <div className="flex items-center gap-3">
+            {failedMod && (
+              <button
+                type="button"
+                onClick={() => handleProposalClick(failedMod)}
+                className="px-4 py-2 rounded-xl text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white flex items-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer"
+              >
+                <RotateCcw className="w-3.5 h-3.5" />
+                Réessayer
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => setActiveCreation(null)}
+              className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-all active:scale-95 cursor-pointer border border-zinc-700"
+            >
+              Retour aux modules
+            </button>
+          </div>
+        </div>
+      );
+    }
 
     switch (currentType) {
       case 'questionnaire':
@@ -885,6 +958,26 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
             {activeCreation ? activeCreation.title : 'Espace Création IA (12 Modules)'}
           </span>
         </div>
+
+        {/* Bouton Aperçu Web Worker si disponible */}
+        {activeCreation?.htmlPreview && (
+          <button
+            type="button"
+            onClick={() => {
+              const win = window.open();
+              if (win) {
+                win.document.open();
+                win.document.write(activeCreation.htmlPreview!);
+                win.document.close();
+              }
+            }}
+            className="p-1.5 bg-cyan-950/60 hover:bg-cyan-900/80 text-cyan-300 rounded-lg border-2 border-cyan-800/60 shadow-[2px_2px_0px_0px_#0e7490] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center gap-1.5 text-[11px] font-bold shrink-0"
+            title="Ouvrir l'aperçu HTML standalone généré par le Worker"
+          >
+            <ExternalLink className="w-3.5 h-3.5 text-cyan-400" />
+            <span className="hidden sm:inline">Aperçu Web</span>
+          </button>
+        )}
 
         {/* Bouton Horloge (Historique des créations) */}
         <button

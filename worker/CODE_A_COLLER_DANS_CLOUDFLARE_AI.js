@@ -2,7 +2,7 @@
 // STUDYCLOUD - CLOUDFLARE WORKERS AI (ASSISTANTE IA OFFICIELLE DKD)
 // ============================================================================
 // Domaine de déploiement : https://studycloud-ai.delmaskouassidibi.workers.dev
-// Modèle IA principal : Google Gemini 2.0 Flash (avec fallback Cloudflare Llama 3.1)
+// Modèle IA principal : Google Gemini 3.8 Flash (avec basculement automatique multi-clés 1 à 4)
 // Variable secrète requise dans Cloudflare : StudyCloud-gemini (Clé API Google Gemini)
 //
 // POUR METTRE À JOUR DANS CLOUDFLARE :
@@ -131,7 +131,7 @@ export default {
       return new Response(JSON.stringify({
         service: "StudyCloud IA Assistant & Creation Engine (DKD Technologies)",
         status: "ready",
-        brain: "Google Gemini 2.0 Flash (Multi-Clés avec Basculement Automatique)",
+        brain: "Google Gemini 3.8 Flash (Multi-Clés avec Basculement Automatique)",
         gemini_keys_count: geminiKeys.length,
         gemini_configured: geminiKeys.length > 0,
         cf_ai_fallback: hasAi,
@@ -154,20 +154,30 @@ export default {
         let status = "inconnu";
         let detail = null;
         try {
-          const testEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key=${k}`;
-          const gTest = await fetch(testEndpoint, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              contents: [{ parts: [{ text: "ping" }] }]
-            })
-          });
-          status = `HTTP ${gTest.status}`;
-          if (gTest.ok) {
-            const data = await gTest.json();
-            detail = data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "OK";
-          } else {
-            detail = (await gTest.text()).slice(0, 200);
+          const testModels = ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"];
+          let workingModel = null;
+          let lastErr = "";
+          for (const tm of testModels) {
+            const testEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${tm}:generateContent?key=${k}`;
+            const gTest = await fetch(testEndpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({ contents: [{ parts: [{ text: "ping" }] }] })
+            });
+            if (gTest.ok) {
+              const data = await gTest.json();
+              workingModel = `${tm} (OK: ${data?.candidates?.[0]?.content?.parts?.[0]?.text?.trim() || "OK"})`;
+              status = `HTTP 200 via ${tm}`;
+              detail = workingModel;
+              break;
+            } else {
+              const txt = await gTest.text();
+              lastErr = `HTTP ${gTest.status} sur ${tm}: ${txt.slice(0, 140)}`;
+            }
+          }
+          if (!workingModel) {
+            status = "Échec tous modèles";
+            detail = lastErr;
           }
         } catch (e) {
           status = "Exception";
@@ -184,7 +194,7 @@ export default {
       let cfAiStatus = "not_bound";
       if (ai && typeof ai.run === "function") {
         try {
-          const cfTest = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
+          const cfTest = await ai.run("@cf/meta/llama-3.3-70b-instruct-fp8-fast", {
             messages: [{ role: "user", content: "Bonjour en un mot" }]
           });
           cfAiStatus = cfTest?.response ? "OK" : "Réponse vide";
@@ -201,6 +211,53 @@ export default {
       }), {
         headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
       });
+    }
+
+    // ========================================================================
+    // ENDPOINT UNIVERSEL D'APERÇU HTML AUTONOME : /api/ai/preview (GET & POST)
+    // ========================================================================
+    if (path === "/api/ai/preview") {
+      if (request.method === "OPTIONS") {
+        return new Response(null, { headers: corsHeaders });
+      }
+
+      if (request.method === "GET") {
+        const creationId = url.searchParams.get("id");
+        let htmlToServe = null;
+        if (creationId && db) {
+          try {
+            const row = await db.prepare("SELECT content_json, tool_type, title, source_file_name FROM ai_generated_contents WHERE id = ?").bind(creationId).first();
+            if (row) {
+              const parsed = safeJsonParse(row.content_json);
+              htmlToServe = generateCreationHtmlPreview(row.tool_type, row.title, parsed, row.source_file_name);
+            }
+          } catch (e) {}
+        }
+        if (!htmlToServe) {
+          const type = url.searchParams.get("type") || "devoir-complet";
+          const title = url.searchParams.get("title") || "Aperçu de Création StudyCloud";
+          const docName = url.searchParams.get("doc") || "Document d'étude";
+          htmlToServe = generateCreationHtmlPreview(type, title, {}, docName);
+        }
+        return new Response(htmlToServe, {
+          headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders }
+        });
+      }
+
+      if (request.method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const { toolType, title, data, docName } = body;
+        const html = generateCreationHtmlPreview(toolType || "devoir-complet", title || "Aperçu StudyCloud", data || {}, docName || "Document d'étude");
+        const accept = request.headers.get("accept") || "";
+        if (accept.includes("text/html")) {
+          return new Response(html, {
+            headers: { "Content-Type": "text/html; charset=utf-8", ...corsHeaders }
+          });
+        }
+        return new Response(JSON.stringify({ success: true, html, preview_url: `/api/ai/preview?type=${encodeURIComponent(toolType || 'devoir-complet')}&title=${encodeURIComponent(title || 'Aperçu')}` }), {
+          headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+        });
+      }
     }
 
     // Récupération de l'historique sécurisé par utilisateur
@@ -755,6 +812,731 @@ export default {
         creation_title,
         creation_data
       };
+    }
+
+    // ========================================================================
+    // MOTEUR UNIVERSEL D'APERÇU HTML & CSS POUR LES 12 TYPES DE CRÉATION STUDYCLOUD
+    // Génère une page HTML autonome, responsive, moderne et compatible KaTeX LaTeX
+    // ========================================================================
+    function escapeHtml(str) {
+      if (!str) return "";
+      return String(str)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+
+    function generateCreationHtmlPreview(toolType, title, data, docName) {
+      const normType = String(toolType || "devoir-complet").toLowerCase().trim();
+      const safeTitle = escapeHtml(title || "Création StudyCloud");
+      const safeDoc = escapeHtml(docName || "Document d'étude");
+      const payload = (data && typeof data === "object") ? data : {};
+
+      const moduleMeta = {
+        "questionnaire": { label: "Questionnaire Interactif", badge: "QCM Interactif", color: "#10b981", bg: "#064e3b" },
+        "questionnaire-test": { label: "Questionnaire Test Noté", badge: "Test Noté /20", color: "#14b8a6", bg: "#134e4a" },
+        "vrai-ou-faux": { label: "Vrai ou Faux", badge: "Cartes Réflexes", color: "#22c55e", bg: "#14532d" },
+        "vrai-ou-faux-test": { label: "Vrai ou Faux Test", badge: "Évaluation V/F /20", color: "#84cc16", bg: "#365314" },
+        "carte-mentale": { label: "Carte Mentale", badge: "Arborescence Visuelle", color: "#8b5cf6", bg: "#4c1d95" },
+        "carte-mentale-2": { label: "Carte Mentale Conceptuelle", badge: "Blocs Hiérarchiques", color: "#6366f1", bg: "#312e81" },
+        "carte-memoire": { label: "Cartes Mémoire", badge: "Flashcards 3D", color: "#f43f5e", bg: "#881337" },
+        "resume": { label: "Fiche de Synthèse", badge: "Résumé Didactique", color: "#3b82f6", bg: "#1e3a8a" },
+        "pdf": { label: "Document PDF Officiel", badge: "Polycopié Académique", color: "#ef4444", bg: "#7f1d1d" },
+        "infographie": { label: "Infographie Pédagogique", badge: "Repères & Métriques", color: "#06b6d4", bg: "#164e63" },
+        "exercices-ecrits": { label: "Exercices Écrits", badge: "Résolution de Problème", color: "#f59e0b", bg: "#78350f" },
+        "devoir-complet": { label: "Devoir Complet", badge: "Épreuve Officielle /20", color: "#a855f7", bg: "#581c87" }
+      };
+
+      const meta = moduleMeta[normType] || moduleMeta["devoir-complet"];
+      let bodyHtml = "";
+
+      // 1 & 2 : QUESTIONNAIRE & QUESTIONNAIRE-TEST
+      if (normType === "questionnaire" || normType === "questionnaire-test") {
+        const isTest = normType === "questionnaire-test";
+        const questions = Array.isArray(payload.questions) ? payload.questions : [];
+        if (questions.length === 0) {
+          bodyHtml += `<div class="card empty-card"><p>Ce questionnaire a été généré pour le document <strong>${safeDoc}</strong>.</p></div>`;
+        } else {
+          bodyHtml += `<div class="intro-bar"><span class="badge" style="background:${meta.bg};color:${meta.color}">${meta.badge}</span> <span>${questions.length} questions élaborées • ${isTest ? "Mode Évaluation notée" : "Mode Entraînement avec feedback"}</span></div>`;
+          bodyHtml += `<form id="quiz-form" onsubmit="return false;">`;
+          questions.forEach((q, idx) => {
+            const qId = q.id || `q_${idx + 1}`;
+            const qText = escapeHtml(q.question || q.texte || `Question ${idx + 1}`);
+            const options = Array.isArray(q.options) ? q.options : [];
+            const correctIdx = typeof q.correctIndex === "number" ? q.correctIndex : 0;
+            const expl = escapeHtml(q.explanation || q.explication || "Démonstration théorique et justification complète.");
+            bodyHtml += `
+              <div class="card question-card" id="card_${qId}" data-correct="${correctIdx}">
+                <div class="q-header">
+                  <span class="q-number">Question ${idx + 1}</span>
+                  <span class="q-points">${isTest ? (20 / questions.length).toFixed(1) + " pts" : ""}</span>
+                </div>
+                <div class="q-text">${qText}</div>
+                <div class="options-list">
+                  ${options.map((opt, optIdx) => {
+                    const letters = ["A", "B", "C", "D", "E"];
+                    const letter = letters[optIdx] || `${optIdx + 1}`;
+                    return `
+                      <label class="option-label" id="opt_${qId}_${optIdx}" onclick="handleOptionSelect('${qId}', ${optIdx}, ${correctIdx}, ${isTest})">
+                        <input type="radio" name="ans_${qId}" value="${optIdx}">
+                        <span class="opt-letter">${letter}</span>
+                        <span class="opt-text">${escapeHtml(opt)}</span>
+                      </label>
+                    `;
+                  }).join("")}
+                </div>
+                <div class="feedback-box ${isTest ? 'hidden' : ''}" id="fb_${qId}">
+                  <div class="fb-title">💡 Explication & Corrigé :</div>
+                  <div class="fb-content">${expl}</div>
+                </div>
+              </div>
+            `;
+          });
+          if (isTest) {
+            bodyHtml += `
+              <div class="action-bar-center">
+                <button type="button" class="btn btn-primary" onclick="submitTest(${questions.length})">
+                  ✓ Valider mon Test & Calculer ma Note sur 20
+                </button>
+              </div>
+              <div id="test-result-banner" class="test-result-banner hidden"></div>
+            `;
+          }
+          bodyHtml += `</form>`;
+        }
+      }
+      // 3 & 4 : VRAI OU FAUX & VRAI OU FAUX TEST
+      else if (normType === "vrai-ou-faux" || normType === "vrai-ou-faux-test") {
+        const isTest = normType === "vrai-ou-faux-test";
+        const affirmations = Array.isArray(payload.affirmations) ? payload.affirmations : [];
+        bodyHtml += `<div class="intro-bar"><span class="badge" style="background:${meta.bg};color:${meta.color}">${meta.badge}</span> <span>${affirmations.length} affirmations réflexes • Évaluez chaque proposition</span></div>`;
+        bodyHtml += `<form id="vf-form" onsubmit="return false;">`;
+        affirmations.forEach((item, idx) => {
+          const vfId = item.id || `vf_${idx + 1}`;
+          const stmt = escapeHtml(item.statement || item.texte || `Affirmation ${idx + 1}`);
+          const isTrue = item.isTrue === true || item.correctValue === true || item.valeur === true;
+          const expl = escapeHtml(item.explanation || item.explication || "Démonstration théorique et justification de la valeur de vérité.");
+          bodyHtml += `
+            <div class="card vf-card" id="vf_card_${vfId}" data-istrue="${isTrue ? '1' : '0'}">
+              <div class="vf-header">
+                <span class="q-number">Affirmation ${idx + 1}</span>
+                <span class="q-points">${isTest ? (20 / (affirmations.length || 1)).toFixed(1) + " pts" : ""}</span>
+              </div>
+              <div class="vf-statement">"${stmt}"</div>
+              <div class="vf-buttons">
+                <button type="button" class="vf-btn btn-vrai" id="btn_v_${vfId}" onclick="handleVfChoice('${vfId}', true, ${isTrue}, ${isTest})">
+                  ✓ VRAI
+                </button>
+                <button type="button" class="vf-btn btn-faux" id="btn_f_${vfId}" onclick="handleVfChoice('${vfId}', false, ${isTrue}, ${isTest})">
+                  ✕ FAUX
+                </button>
+              </div>
+              <div class="feedback-box ${isTest ? 'hidden' : ''}" id="fb_vf_${vfId}">
+                <div class="fb-title">${isTrue ? '✅ Réponse attendue : VRAI' : '❌ Réponse attendue : FAUX'}</div>
+                <div class="fb-content">${expl}</div>
+              </div>
+            </div>
+          `;
+        });
+        if (isTest) {
+          bodyHtml += `
+            <div class="action-bar-center">
+              <button type="button" class="btn btn-primary" onclick="submitVfTest(${affirmations.length})">
+                ✓ Valider le Test Vrai / Faux & Noter sur 20
+              </button>
+            </div>
+            <div id="vf-result-banner" class="test-result-banner hidden"></div>
+          `;
+        }
+        bodyHtml += `</form>`;
+      }
+      // 5 & 6 : CARTE MENTALE & CARTE MENTALE 2 (CONCEPTUELLE)
+      else if (normType === "carte-mentale" || normType === "carte-mentale-2") {
+        const mm = payload.mind_map || payload.mindmap || payload;
+        const rootTitle = escapeHtml(mm.root_title || mm.rootTitle || mm.title || safeTitle);
+        const branches = Array.isArray(mm.branches) ? mm.branches : [];
+        bodyHtml += `
+          <div class="mindmap-container">
+            <div class="mindmap-root">
+              <div class="root-badge">Thème Central</div>
+              <div class="root-title">${rootTitle}</div>
+            </div>
+            <div class="mindmap-branches">
+              ${branches.map((b, bIdx) => {
+                const bTitle = escapeHtml(b.branch_title || b.title || `Axe ${bIdx + 1}`);
+                const nodes = Array.isArray(b.nodes) ? b.nodes : [];
+                return `
+                  <div class="branch-card">
+                    <div class="branch-header">
+                      <span class="branch-dot" style="background:${meta.color}"></span>
+                      <span class="branch-title">${bTitle}</span>
+                    </div>
+                    <ul class="branch-nodes">
+                      ${nodes.map(n => `<li><span class="node-bullet">▸</span> <span class="node-text">${escapeHtml(typeof n === 'string' ? n : (n.text || n.title || JSON.stringify(n)))}</span></li>`).join("")}
+                    </ul>
+                  </div>
+                `;
+              }).join("")}
+            </div>
+          </div>
+        `;
+      }
+      // 7 : CARTE MÉMOIRE / FLASHCARDS
+      else if (normType === "carte-memoire") {
+        const cards = Array.isArray(payload.flashcards) ? payload.flashcards : (Array.isArray(payload.cards) ? payload.cards : []);
+        bodyHtml += `<div class="intro-bar"><span class="badge" style="background:${meta.bg};color:${meta.color}">${meta.badge}</span> <span>${cards.length} cartes de mémorisation • Cliquez sur une carte pour la retourner</span></div>`;
+        bodyHtml += `<div class="flashcards-grid">`;
+        cards.forEach((c, idx) => {
+          const front = escapeHtml(c.front || c.recto || c.question || `Notion ${idx + 1}`);
+          let backHtml = "";
+          if (c.back && typeof c.back === "object") {
+            const def = escapeHtml(c.back.definition || c.back.reponse || "");
+            const examples = Array.isArray(c.back.examples) ? c.back.examples : [];
+            backHtml = `<div class="fc-def">${def}</div>`;
+            if (examples.length > 0) {
+              backHtml += `<div class="fc-examples">${examples.map(ex => `<div class="fc-example">• ${escapeHtml(ex)}</div>`).join("")}</div>`;
+            }
+          } else {
+            backHtml = `<div class="fc-def">${escapeHtml(String(c.back || c.verso || ""))}</div>`;
+          }
+          bodyHtml += `
+            <div class="flashcard" onclick="this.classList.toggle('flipped')">
+              <div class="flashcard-inner">
+                <div class="flashcard-front">
+                  <div class="fc-tag">Carte ${idx + 1} / ${cards.length} • RECTO</div>
+                  <div class="fc-front-text">${front}</div>
+                  <div class="fc-hint">↻ Cliquez pour retourner</div>
+                </div>
+                <div class="flashcard-back">
+                  <div class="fc-tag">VERSO • CORRIGÉ</div>
+                  <div class="fc-back-body">${backHtml}</div>
+                  <div class="fc-hint">↻ Cliquez pour revenir</div>
+                </div>
+              </div>
+            </div>
+          `;
+        });
+        bodyHtml += `</div>`;
+      }
+      // 8 : RÉSUMÉ / FICHE DE SYNTHÈSE
+      else if (normType === "resume") {
+        const sum = payload.summary || payload;
+        const overview = escapeHtml(sum.overview || sum.introduction || "");
+        const sections = Array.isArray(sum.sections) ? sum.sections : [];
+        if (overview) {
+          bodyHtml += `
+            <div class="card overview-card">
+              <div class="card-title">📖 Enjeux et Vue d'Ensemble</div>
+              <div class="overview-text">${overview}</div>
+            </div>
+          `;
+        }
+        sections.forEach((sec, idx) => {
+          const sTitle = escapeHtml(sec.section_title || sec.title || `Chapitre ${idx + 1}`);
+          const sContent = escapeHtml(sec.content || sec.texte || "");
+          bodyHtml += `
+            <div class="card section-card">
+              <div class="section-badge">Chapitre ${idx + 1}</div>
+              <div class="section-title">${sTitle}</div>
+              <div class="section-content">${sContent}</div>
+            </div>
+          `;
+        });
+      }
+      // 9 : EXPORT PDF / POLYCOPIÉ ACADÉMIQUE
+      else if (normType === "pdf") {
+        const pdfDoc = payload.pdf_document || payload;
+        const chapters = Array.isArray(pdfDoc.chapters) ? pdfDoc.chapters : (Array.isArray(pdfDoc.sections) ? pdfDoc.sections : []);
+        const metaDoc = pdfDoc.metadata || {};
+        bodyHtml += `
+          <div class="pdf-cover card">
+            <div class="pdf-institution">STUDYCLOUD • DKD TECHNOLOGIES</div>
+            <h1 class="pdf-main-title">${escapeHtml(metaDoc.title || safeTitle)}</h1>
+            <div class="pdf-meta-row">
+              <span>Auteur : ${escapeHtml(metaDoc.author || "StudyCloud AI")}</span>
+              <span>•</span>
+              <span>Date : ${escapeHtml(metaDoc.date || new Date().toLocaleDateString("fr-FR"))}</span>
+              <span>•</span>
+              <span>Fichier source : ${safeDoc}</span>
+            </div>
+          </div>
+          <div class="pdf-chapters">
+            ${chapters.map((ch, idx) => `
+              <div class="card chapter-card">
+                <div class="chapter-number">CHAPITRE ${idx + 1}</div>
+                <h2 class="chapter-heading">${escapeHtml(ch.heading || ch.title || `Partie ${idx + 1}`)}</h2>
+                <div class="chapter-body">${escapeHtml(ch.content || ch.texte || "")}</div>
+              </div>
+            `).join("")}
+          </div>
+        `;
+      }
+      // 10 : INFOGRAPHIE PÉDAGOGIQUE
+      else if (normType === "infographie") {
+        const info = payload.infographic || payload;
+        const metrics = Array.isArray(info.metrics) ? info.metrics : [];
+        const steps = Array.isArray(info.steps) ? info.steps : [];
+        const highlights = Array.isArray(info.highlights) ? info.highlights : [];
+        const conclusion = escapeHtml(info.conclusion || "");
+        if (metrics.length > 0) {
+          bodyHtml += `
+            <div class="metrics-grid">
+              ${metrics.map(m => `
+                <div class="metric-card">
+                  <div class="metric-val" style="color:${m.color || '#38bdf8'}">${escapeHtml(m.value || '')}</div>
+                  <div class="metric-lbl">${escapeHtml(m.label || '')}</div>
+                </div>
+              `).join("")}
+            </div>
+          `;
+        }
+        if (steps.length > 0) {
+          bodyHtml += `<div class="infographic-steps">`;
+          steps.forEach(st => {
+            const stepNum = st.step || 1;
+            const h = escapeHtml(st.heading || `Étape ${stepNum}`);
+            const d = escapeHtml(st.description || "");
+            const badge = escapeHtml(st.badge || `Étape ${stepNum}`);
+            const col = st.color || meta.color;
+            bodyHtml += `
+              <div class="step-card" style="border-left: 4px solid ${col}">
+                <div class="step-top">
+                  <span class="step-badge" style="background:${col}22;color:${col}">${badge}</span>
+                  <span class="step-num">#${stepNum}</span>
+                </div>
+                <div class="step-heading">${h}</div>
+                <div class="step-desc">${d}</div>
+              </div>
+            `;
+          });
+          bodyHtml += `</div>`;
+        }
+        if (highlights.length > 0) {
+          bodyHtml += `
+            <div class="highlights-grid">
+              ${highlights.map(h => `
+                <div class="highlight-card ${h.type || 'tip'}">
+                  <div class="hl-title">📌 ${escapeHtml(h.title || 'Point clé')}</div>
+                  <div class="hl-text">${escapeHtml(h.text || '')}</div>
+                </div>
+              `).join("")}
+            </div>
+          `;
+        }
+        if (conclusion) {
+          bodyHtml += `<div class="card conclusion-card"><strong>Bilan Didactique :</strong> ${conclusion}</div>`;
+        }
+      }
+      // 11 : EXERCICES ÉCRITS
+      else if (normType === "exercices-ecrits") {
+        const we = payload.written_exercise || payload;
+        const context = escapeHtml(we.context || we.enonce || "");
+        const questions = Array.isArray(we.questions) ? we.questions : [];
+        const correction = we.correction || {};
+        const steps = escapeHtml(correction.steps || "");
+        const examples = Array.isArray(correction.examples) ? correction.examples : [];
+        if (context) {
+          bodyHtml += `
+            <div class="card context-card">
+              <div class="card-title">📋 Contexte et Énoncé du Problème</div>
+              <div class="context-body">${context}</div>
+            </div>
+          `;
+        }
+        if (questions.length > 0) {
+          bodyHtml += `
+            <div class="card questions-container">
+              <div class="card-title">📝 Questions à Résoudre</div>
+              <div class="questions-flow">
+                ${questions.map((q, idx) => `
+                  <div class="written-question-item">
+                    <span class="wq-num">${idx + 1}.</span>
+                    <span class="wq-text">${escapeHtml(typeof q === 'string' ? q : (q.texte || q.question || ''))}</span>
+                  </div>
+                `).join("")}
+              </div>
+            </div>
+          `;
+        }
+        bodyHtml += `
+          <div class="card correction-card">
+            <div class="corr-header" onclick="document.getElementById('written-corr-body').classList.toggle('hidden')">
+              <span>🔍 Corrigé officiel et Démonstrations (Cliquez pour dérouler)</span>
+              <span class="corr-toggle">Afficher / Masquer</span>
+            </div>
+            <div id="written-corr-body" class="corr-body">
+              ${steps ? `<div class="corr-steps"><strong>Résolution pas à pas :</strong><br>${steps}</div>` : ''}
+              ${examples.length > 0 ? `
+                <div class="corr-examples">
+                  <strong>Cas concrets & Illustrations :</strong>
+                  ${examples.map(ex => `<div class="ex-item">• ${escapeHtml(ex)}</div>`).join("")}
+                </div>
+              ` : ''}
+            </div>
+          </div>
+        `;
+      }
+      // 12 : DEVOIR COMPLET (ÉPREUVE OFFICIELLE SUR 20 POINTS)
+      else {
+        const exam = payload.complete_exam || payload.exam || payload.devoir || payload;
+        const instructions = escapeHtml(exam.instructions || "Traitez l'ensemble des exercices avec rigueur et précision. Justifiez chaque calcul.");
+        const duree = escapeHtml(exam.duree || "2h00");
+        const bareme = exam.baremeTotal || 20;
+        const sections = Array.isArray(exam.sections) ? exam.sections : [];
+        bodyHtml += `
+          <div class="exam-header card">
+            <div class="exam-gov">RÉPUBLIQUE D'ÉTUDE STUDYCLOUD • DKD TECHNOLOGIES</div>
+            <h1 class="exam-title">${safeTitle}</h1>
+            <div class="exam-badges">
+              <span class="badge" style="background:#581c87;color:#c084fc">Épreuve Officielle d'Examen</span>
+              <span class="badge" style="background:#1e293b;color:#94a3b8">Durée : ${duree}</span>
+              <span class="badge" style="background:#064e3b;color:#34d399">Barème : /${bareme} points</span>
+            </div>
+            <div class="exam-instructions">${instructions}</div>
+          </div>
+        `;
+        sections.forEach((sec, sIdx) => {
+          const sTitle = escapeHtml(sec.title || `EXERCICE ${sIdx + 1}`);
+          const pStatement = escapeHtml(sec.problem_statement || "");
+          const questions = Array.isArray(sec.questions) ? sec.questions : [];
+          const corr = sec.correction || {};
+          bodyHtml += `
+            <div class="card exam-section-card">
+              <div class="sec-header">
+                <span class="sec-number">Fiche ${sIdx + 1}</span>
+                <h2 class="sec-title">${sTitle}</h2>
+              </div>
+              ${pStatement ? `<div class="sec-statement">${pStatement}</div>` : ''}
+              <div class="sec-questions">
+                ${questions.map((q, qIdx) => {
+                  const qNum = escapeHtml(q.number || `${qIdx + 1}.`);
+                  const qPts = q.points ? `${q.points} pt${q.points > 1 ? 's' : ''}` : '';
+                  const qTxt = escapeHtml(q.texte || q.question || "");
+                  const qType = q.type || 'open';
+                  const opts = Array.isArray(q.options) ? q.options : [];
+                  let subHtml = "";
+                  if (qType === 'multiple_choice' && opts.length > 0) {
+                    subHtml = `
+                      <div class="exam-qcm-options">
+                        ${opts.map((opt, oIdx) => `
+                          <div class="exam-opt-item">
+                            <span class="opt-badge">${["A","B","C","D"][oIdx] || oIdx+1}</span>
+                            <span>${escapeHtml(opt)}</span>
+                          </div>
+                        `).join("")}
+                      </div>
+                    `;
+                  } else if (qType === 'true_false') {
+                    subHtml = `
+                      <div class="exam-tf-row">
+                        <span class="tf-choice-box">[ &nbsp; ] VRAI</span>
+                        <span class="tf-choice-box">[ &nbsp; ] FAUX</span>
+                      </div>
+                    `;
+                  } else {
+                    subHtml = `<div class="exam-answer-lines"><div class="line"></div><div class="line"></div></div>`;
+                  }
+                  return `
+                    <div class="exam-q-box">
+                      <div class="eq-top">
+                        <span class="eq-num">${qNum}</span>
+                        <span class="eq-txt">${qTxt}</span>
+                        ${qPts ? `<span class="eq-pts">(${qPts})</span>` : ''}
+                      </div>
+                      ${subHtml}
+                    </div>
+                  `;
+                }).join("")}
+              </div>
+              ${(corr.steps || (Array.isArray(corr.examples) && corr.examples.length > 0)) ? `
+                <div class="exam-sec-corr" onclick="this.querySelector('.corr-content').classList.toggle('hidden')">
+                  <div class="corr-badge-btn">🔍 Corrigé de référence de la Fiche ${sIdx + 1} (Cliquez pour afficher)</div>
+                  <div class="corr-content hidden">
+                    ${corr.steps ? `<div class="c-step">${escapeHtml(corr.steps)}</div>` : ''}
+                    ${Array.isArray(corr.examples) ? corr.examples.map(ex => `<div class="c-ex">• ${escapeHtml(ex)}</div>`).join("") : ''}
+                  </div>
+                </div>
+              ` : ''}
+            </div>
+          `;
+        });
+      }
+
+      return `<!DOCTYPE html>
+<html lang="fr">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>${safeTitle} • StudyCloud</title>
+  <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css">
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
+  <style>
+    :root {
+      --bg: #090d16;
+      --card-bg: rgba(17, 24, 39, 0.85);
+      --border: rgba(255, 255, 255, 0.09);
+      --text: #f8fafc;
+      --text-muted: #94a3b8;
+      --accent: ${meta.color};
+      --accent-bg: ${meta.bg};
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body {
+      background-color: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+      line-height: 1.6;
+      padding: 24px 16px;
+      min-height: 100vh;
+    }
+    .container { max-width: 920px; margin: 0 auto; }
+    .top-nav {
+      display: flex; justify-content: space-between; align-items: center;
+      margin-bottom: 24px; padding-bottom: 16px; border-bottom: 1px solid var(--border);
+    }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 800; font-size: 1.1rem; }
+    .brand-study { color: #f97316; }
+    .brand-cloud { color: #38bdf8; }
+    .actions-bar { display: flex; gap: 10px; }
+    .btn {
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 8px 14px; border-radius: 8px; font-size: 0.85rem; font-weight: 600;
+      cursor: pointer; border: 1px solid var(--border); background: #1e293b; color: #f8fafc;
+      transition: all 0.2s;
+    }
+    .btn:hover { background: #334155; transform: translateY(-1px); }
+    .btn-primary { background: var(--accent); color: #fff; border: none; }
+    .btn-primary:hover { opacity: 0.9; }
+    .badge {
+      display: inline-block; padding: 4px 10px; border-radius: 9999px;
+      font-size: 0.75rem; font-weight: 700; text-transform: uppercase; letter-spacing: 0.05em;
+    }
+    .card {
+      background: var(--card-bg); border: 1px solid var(--border);
+      border-radius: 14px; padding: 22px; margin-bottom: 20px;
+      backdrop-filter: blur(10px); box-shadow: 0 4px 20px rgba(0,0,0,0.25);
+    }
+    .intro-bar {
+      display: flex; align-items: center; gap: 12px; margin-bottom: 20px;
+      font-size: 0.9rem; color: var(--text-muted);
+    }
+    .q-header { display: flex; justify-content: space-between; margin-bottom: 10px; }
+    .q-number { font-weight: 700; color: var(--accent); font-size: 0.85rem; text-transform: uppercase; }
+    .q-points { font-size: 0.85rem; color: #a855f7; font-weight: 600; }
+    .q-text { font-size: 1.05rem; font-weight: 600; margin-bottom: 16px; line-height: 1.5; }
+    .options-list { display: flex; flex-direction: column; gap: 10px; margin-bottom: 16px; }
+    .option-label {
+      display: flex; align-items: center; gap: 12px; padding: 12px 16px;
+      border-radius: 10px; border: 1px solid var(--border); background: rgba(30, 41, 59, 0.5);
+      cursor: pointer; transition: all 0.2s;
+    }
+    .option-label:hover { border-color: var(--accent); background: rgba(30, 41, 59, 0.9); }
+    .option-label input { display: none; }
+    .opt-letter {
+      width: 28px; height: 28px; border-radius: 6px; display: flex; align-items: center; justify-content: center;
+      background: #334155; font-weight: 700; font-size: 0.8rem; shrink-0;
+    }
+    .opt-text { flex: 1; font-size: 0.95rem; }
+    .option-label.selected { border-color: #38bdf8; background: rgba(14, 165, 233, 0.15); }
+    .option-label.correct { border-color: #10b981 !important; background: rgba(16, 185, 129, 0.2) !important; }
+    .option-label.incorrect { border-color: #f43f5e !important; background: rgba(244, 63, 94, 0.2) !important; }
+    .feedback-box {
+      margin-top: 14px; padding: 14px 16px; border-radius: 10px;
+      background: rgba(15, 23, 42, 0.8); border-left: 4px solid var(--accent);
+    }
+    .fb-title { font-weight: 700; color: #38bdf8; margin-bottom: 6px; font-size: 0.9rem; }
+    .fb-content { font-size: 0.9rem; color: #cbd5e1; white-space: pre-wrap; line-height: 1.5; }
+    .vf-statement { font-size: 1.15rem; font-style: italic; margin-bottom: 18px; line-height: 1.5; }
+    .vf-buttons { display: flex; gap: 12px; margin-bottom: 16px; }
+    .vf-btn {
+      flex: 1; padding: 12px; border-radius: 10px; border: 1px solid var(--border);
+      font-weight: 700; font-size: 0.95rem; cursor: pointer; transition: all 0.2s;
+    }
+    .btn-vrai { background: rgba(16, 185, 129, 0.1); color: #34d399; }
+    .btn-vrai:hover, .btn-vrai.selected { background: #10b981; color: #fff; }
+    .btn-faux { background: rgba(244, 63, 94, 0.1); color: #fb7185; }
+    .btn-faux:hover, .btn-faux.selected { background: #f43f5e; color: #fff; }
+    .action-bar-center { text-align: center; margin: 30px 0; }
+    .test-result-banner {
+      padding: 18px; border-radius: 12px; font-weight: 800; font-size: 1.2rem;
+      text-align: center; margin-top: 20px; background: #1e1b4b; border: 2px solid #6366f1;
+    }
+    .hidden { display: none !important; }
+    .mindmap-root { text-align: center; margin-bottom: 30px; }
+    .root-badge { font-size: 0.75rem; text-transform: uppercase; color: var(--accent); font-weight: 700; margin-bottom: 6px; }
+    .root-title { font-size: 1.6rem; font-weight: 800; color: #fff; }
+    .mindmap-branches { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 18px; }
+    .branch-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 18px; }
+    .branch-header { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 1.1rem; margin-bottom: 12px; }
+    .branch-dot { width: 10px; height: 10px; border-radius: 50%; }
+    .branch-nodes { list-style: none; display: flex; flex-direction: column; gap: 8px; }
+    .node-bullet { color: var(--accent); font-weight: 800; }
+    .flashcards-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 20px; }
+    .flashcard { perspective: 1000px; height: 260px; cursor: pointer; }
+    .flashcard-inner {
+      position: relative; width: 100%; height: 100%; text-align: center;
+      transition: transform 0.6s; transform-style: preserve-3d;
+    }
+    .flashcard.flipped .flashcard-inner { transform: rotateY(180deg); }
+    .flashcard-front, .flashcard-back {
+      position: absolute; width: 100%; height: 100%; -webkit-backface-visibility: hidden; backface-visibility: hidden;
+      border-radius: 14px; border: 1px solid var(--border); padding: 20px;
+      display: flex; flex-direction: column; justify-content: space-between; text-align: left;
+    }
+    .flashcard-front { background: #1e1b4b; border-color: #6366f1; }
+    .flashcard-back { background: #064e3b; border-color: #10b981; transform: rotateY(180deg); overflow-y: auto; }
+    .fc-tag { font-size: 0.75rem; font-weight: 700; opacity: 0.7; }
+    .fc-front-text { font-size: 1.1rem; font-weight: 600; margin: auto 0; }
+    .fc-hint { font-size: 0.75rem; opacity: 0.6; text-align: right; }
+    .fc-def { font-size: 0.95rem; margin-bottom: 8px; }
+    .fc-examples { font-size: 0.85rem; opacity: 0.9; }
+    .metrics-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 14px; margin-bottom: 24px; }
+    .metric-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 12px; padding: 18px; text-align: center; }
+    .metric-val { font-size: 1.8rem; font-weight: 900; }
+    .metric-lbl { font-size: 0.8rem; color: var(--text-muted); font-weight: 600; margin-top: 4px; }
+    .infographic-steps { display: flex; flex-direction: column; gap: 14px; margin-bottom: 24px; }
+    .step-card { background: var(--card-bg); border: 1px solid var(--border); border-radius: 10px; padding: 16px 20px; }
+    .step-top { display: flex; justify-content: space-between; margin-bottom: 6px; }
+    .step-heading { font-weight: 700; font-size: 1.05rem; margin-bottom: 6px; }
+    .step-desc { font-size: 0.95rem; color: #cbd5e1; }
+    .exam-header { text-align: center; border-top: 4px solid var(--accent); }
+    .exam-gov { font-size: 0.8rem; font-weight: 800; letter-spacing: 0.15em; color: var(--text-muted); margin-bottom: 8px; }
+    .exam-title { font-size: 1.6rem; font-weight: 900; margin-bottom: 12px; }
+    .exam-badges { display: flex; justify-content: center; gap: 10px; margin-bottom: 16px; flex-wrap: wrap; }
+    .exam-instructions { font-size: 0.9rem; font-style: italic; color: #cbd5e1; }
+    .sec-header { display: flex; align-items: baseline; gap: 10px; margin-bottom: 14px; border-bottom: 1px solid var(--border); padding-bottom: 10px; }
+    .sec-number { font-size: 0.85rem; font-weight: 800; color: var(--accent); text-transform: uppercase; }
+    .sec-title { font-size: 1.2rem; font-weight: 800; }
+    .sec-statement { background: rgba(15, 23, 42, 0.6); padding: 14px; border-radius: 10px; margin-bottom: 16px; font-size: 0.95rem; line-height: 1.5; }
+    .exam-q-box { margin-bottom: 16px; padding-bottom: 14px; border-bottom: 1px dashed var(--border); }
+    .eq-top { display: flex; gap: 8px; align-items: baseline; margin-bottom: 8px; font-weight: 600; }
+    .eq-num { color: var(--accent); }
+    .eq-pts { color: #a855f7; font-size: 0.85rem; }
+    .exam-answer-lines .line { height: 1px; background: rgba(255, 255, 255, 0.1); margin: 18px 0; }
+    .exam-sec-corr { margin-top: 14px; cursor: pointer; }
+    .corr-badge-btn { padding: 10px 14px; background: #1e1b4b; color: #a5b4fc; border-radius: 8px; font-weight: 700; font-size: 0.85rem; text-align: center; }
+    .corr-content { padding: 14px; background: rgba(15, 23, 42, 0.8); border-radius: 8px; margin-top: 8px; font-size: 0.9rem; }
+    @media print {
+      body { background: #fff !important; color: #000 !important; padding: 0 !important; }
+      .no-print, .top-nav, .actions-bar, .corr-badge-btn { display: none !important; }
+      .card { background: #fff !important; color: #000 !important; border: 1px solid #ddd !important; box-shadow: none !important; }
+      .exam-header { border-top: 3px solid #000 !important; }
+    }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="top-nav no-print">
+      <div class="brand">
+        <span class="brand-study">Study</span><span class="brand-cloud">Cloud</span>
+        <span style="font-size: 0.75rem; font-weight: 500; color: var(--text-muted)">• ${meta.label}</span>
+      </div>
+      <div class="actions-bar">
+        <button class="btn" onclick="window.print()">🖨 Imprimer / PDF</button>
+      </div>
+    </div>
+    ${bodyHtml}
+  </div>
+
+  <script>
+    document.addEventListener("DOMContentLoaded", function() {
+      if (window.renderMathInElement) {
+        renderMathInElement(document.body, {
+          delimiters: [
+            { left: "$$", right: "$$", display: true },
+            { left: "$", right: "$", display: false }
+          ],
+          throwOnError: false
+        });
+      }
+    });
+
+    function handleOptionSelect(qId, selectedIdx, correctIdx, isTest) {
+      const card = document.getElementById('card_' + qId);
+      if (!card) return;
+      card.querySelectorAll('.option-label').forEach((lbl, idx) => {
+        lbl.classList.remove('selected');
+        if (idx === selectedIdx) lbl.classList.add('selected');
+        if (!isTest) {
+          if (idx === correctIdx) lbl.classList.add('correct');
+          else if (idx === selectedIdx) lbl.classList.add('incorrect');
+        }
+      });
+      if (!isTest) {
+        const fb = document.getElementById('fb_' + qId);
+        if (fb) fb.classList.remove('hidden');
+      }
+    }
+
+    function submitTest(totalQuestions) {
+      let score = 0;
+      document.querySelectorAll('.question-card').forEach(card => {
+        const correct = parseInt(card.getAttribute('data-correct') || '0', 10);
+        const selected = card.querySelector('input[type="radio"]:checked');
+        const qId = card.id.replace('card_', '');
+        const fb = document.getElementById('fb_' + qId);
+        if (fb) fb.classList.remove('hidden');
+        card.querySelectorAll('.option-label').forEach((lbl, idx) => {
+          if (idx === correct) lbl.classList.add('correct');
+          else if (selected && parseInt(selected.value, 10) === idx) lbl.classList.add('incorrect');
+        });
+        if (selected && parseInt(selected.value, 10) === correct) score++;
+      });
+      const noteOn20 = ((score / (totalQuestions || 1)) * 20).toFixed(1);
+      const banner = document.getElementById('test-result-banner');
+      if (banner) {
+        banner.classList.remove('hidden');
+        banner.innerHTML = '📊 Votre Note : ' + noteOn20 + ' / 20 (' + score + ' sur ' + totalQuestions + ' réponses exactes)';
+      }
+    }
+
+    function handleVfChoice(vfId, userChoice, isTrue, isTest) {
+      const card = document.getElementById('vf_card_' + vfId);
+      if (!card) return;
+      const btnV = document.getElementById('btn_v_' + vfId);
+      const btnF = document.getElementById('btn_f_' + vfId);
+      if (userChoice) {
+        btnV.classList.add('selected');
+        btnF.classList.remove('selected');
+      } else {
+        btnF.classList.add('selected');
+        btnV.classList.remove('selected');
+      }
+      card.setAttribute('data-userchoice', userChoice ? '1' : '0');
+      if (!isTest) {
+        const fb = document.getElementById('fb_vf_' + vfId);
+        if (fb) fb.classList.remove('hidden');
+      }
+    }
+
+    function submitVfTest(totalCount) {
+      let score = 0;
+      document.querySelectorAll('.vf-card').forEach(card => {
+        const isTrue = card.getAttribute('data-istrue') === '1';
+        const userChoice = card.getAttribute('data-userchoice');
+        const vfId = card.id.replace('vf_card_', '');
+        const fb = document.getElementById('fb_vf_' + vfId);
+        if (fb) fb.classList.remove('hidden');
+        if (userChoice !== null && ((userChoice === '1') === isTrue)) {
+          score++;
+          card.style.borderColor = '#10b981';
+        } else {
+          card.style.borderColor = '#f43f5e';
+        }
+      });
+      const noteOn20 = ((score / (totalCount || 1)) * 20).toFixed(1);
+      const banner = document.getElementById('vf-result-banner');
+      if (banner) {
+        banner.classList.remove('hidden');
+        banner.innerHTML = '🎯 Score Vrai/Faux : ' + noteOn20 + ' / 20 (' + score + ' sur ' + totalCount + ' exactes)';
+      }
+    }
+  </script>
+</body>
+</html>`;
     }
 
     // Le Prompt Système Maître officiel StudyCloud
@@ -1619,10 +2401,12 @@ IL EST STRICTEMENT INTERDIT de renvoyer les exemples types génériques du promp
         });
 
         const candidateGeminiModels = [
-          "gemini-2.0-flash",
+          "gemini-3.8-flash",
+          "gemini-3.6-flash",
+          "gemini-2.5-flash",
           "gemini-1.5-flash",
-          "gemini-1.5-pro",
-          "gemini-2.0-flash-lite"
+          "gemini-2.5-pro",
+          "gemini-1.5-pro"
         ];
 
         const generationConfig = {
@@ -1670,10 +2454,12 @@ IL EST STRICTEMENT INTERDIT de renvoyer les exemples types génériques du promp
                 debugErrors.push(`[Clé #${kIdx + 1} • ${mod} HTTP ${gResponse.status}] ${errTxt.slice(0, 160)}`);
                 console.warn(`[Gemini Clé #${kIdx + 1} • ${mod}] Status ${gResponse.status}:`, errTxt);
 
-                // Si quota/surcharge (429) ou problème de clé (400, 403), basculer immédiatement sur la clé Gemini suivante
-                if (gResponse.status === 429 || gResponse.status === 400 || gResponse.status === 403) {
+                // Si quota/surcharge (429) ou clé révoquée/interdite (403), basculer immédiatement sur la clé Gemini suivante
+                if (gResponse.status === 429 || gResponse.status === 403) {
+                  console.warn(`[Gemini Clé #${kIdx + 1}] Statut HTTP ${gResponse.status}, basculement immédiat vers la clé suivante...`);
                   break;
                 }
+                // Pour 404 (modèle non dispo) ou 400 ou 5xx : continuer avec le modèle suivant pour cette même clé
               }
             } catch (geminiErr) {
               debugErrors.push(`[Clé #${kIdx + 1} • ${mod} Exception] ${geminiErr.message}`);
@@ -1710,9 +2496,12 @@ IL EST STRICTEMENT INTERDIT de renvoyer les exemples types génériques du promp
         }
 
         const candidateModels = [
-          "@cf/meta/llama-3.1-8b-instruct",
           "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-          "@cf/mistral/mistral-7b-instruct-v0.2"
+          "@cf/meta/llama-3.2-3b-instruct",
+          "@cf/meta/llama-3.1-70b-instruct",
+          "@cf/qwen/qwen2.5-72b-instruct",
+          "@cf/google/gemma-3-12b-it",
+          "@hf/mistral/mistral-7b-instruct-v0.3"
         ];
 
         for (const m of candidateModels) {
@@ -1739,7 +2528,8 @@ IL EST STRICTEMENT INTERDIT de renvoyer les exemples types génériques du promp
       // 3. SI RIEN N'A PU FONCTIONNER : Message utilisateur clair et bienveillant
       if (!generatedContent) {
         console.error("[StudyCloud AI Échec Global]", debugErrors.join(" | "));
-        throw new Error("L'assistante StudyCloud n'est pas disponible pour le moment.");
+        const errDetails = debugErrors.length > 0 ? ` (${debugErrors.slice(0, 4).join(' | ')})` : '';
+        throw new Error(`L'assistante StudyCloud n'est pas disponible pour le moment.${errDetails}`);
       }
 
       const formatted = parseAiDecision(generatedContent, requestedType);
@@ -2095,7 +2885,7 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
           let gradingSuccess = false;
           for (let kIdx = 0; kIdx < geminiKeysForGrading.length; kIdx++) {
             const activeGradingKey = geminiKeysForGrading[kIdx];
-            for (const mod of ["gemini-2.0-flash", "gemini-1.5-flash", "gemini-2.5-flash"]) {
+            for (const mod of ["gemini-3.8-flash", "gemini-3.6-flash", "gemini-2.5-flash", "gemini-1.5-flash"]) {
               try {
                 const gResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${activeGradingKey}`, {
                   method: "POST",
@@ -2393,10 +3183,26 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
         }
       }
 
-      // Retour structuré au client StudyCloud
+      // Retour structuré au client StudyCloud avec aperçu HTML riche
+      let htmlPreview = null;
+      if (formatted.decision === "creation" && formatted.creation_data) {
+        try {
+          htmlPreview = generateCreationHtmlPreview(
+            formatted.creation_type || requestedType || "creation",
+            formatted.creation_title || "Création StudyCloud",
+            formatted.creation_data,
+            body.attachedFileName || "Document d'étude"
+          );
+        } catch (e) {
+          console.warn("[HtmlPreview Error]:", e);
+        }
+      }
+
       return new Response(JSON.stringify({
         success: true,
         ...formatted,
+        html_preview: htmlPreview,
+        preview_url: `/api/ai/preview?type=${encodeURIComponent(formatted.creation_type || requestedType || 'creation')}&title=${encodeURIComponent(formatted.creation_title || 'Création')}`,
         model: usedEngine,
         timestamp: new Date().toISOString()
       }), {

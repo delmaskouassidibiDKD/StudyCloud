@@ -397,13 +397,6 @@ export async function sendChatMessageToAi(params: {
   };
 }
 
-/**
- * Appel direct et exclusif au moteur IA pour les 12 créations du menu droit.
- * Cette fonction est STRICTEMENT DÉCOUPLÉE du Chat :
- * - Aucun message ni session n'est injecté dans les tables 'conversations', 'messages', 'user_ai_workspace'
- * - Aucun texte de prompt ni message assistant ne pollue l'historique du chat
- * - Retourne directement les données structurées pour le panneau de création.
- */
 export async function generateDirectAiCreation(params: {
   toolType: string;
   docName: string;
@@ -418,6 +411,7 @@ export async function generateDirectAiCreation(params: {
   creation_data: any;
   model?: string;
   rawText?: string;
+  html_preview?: string;
 }> {
   const isPowerMode = Boolean(params.powerMode ?? (localStorage.getItem('studycloud_ai_power_mode') === 'true'));
   const userGeminiApiKey = getGeminiApiKey().trim();
@@ -447,58 +441,172 @@ export async function generateDirectAiCreation(params: {
     geminiApiKey: userGeminiApiKey,
   };
 
-  const response = await fetch(dedicatedAiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': currentUserId,
-    },
-    body: JSON.stringify(payload),
-  });
+  // ─────────────────────────────────────────────────────────────────────────
+  // HELPER : Parse & normalise la réponse brute JSON du modèle IA
+  // ─────────────────────────────────────────────────────────────────────────
+  const parseCreationResponse = (data: any, rawText: string) => {
+    let creationData = data.creation_data;
+    if (typeof creationData === 'string') creationData = safeJsonParse(creationData);
 
-  if (!response.ok) {
-    const err = await response.json().catch(() => ({ error: response.statusText }));
-    throw new Error(err.error || `Erreur API Création IA (${response.status})`);
-  }
+    if (!creationData || (typeof creationData === 'object' && Object.keys(creationData).length === 0)) {
+      try {
+        const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || rawText.match(/(\{[\s\S]*\})/);
+        if (jsonMatch) {
+          const candidate = jsonMatch[1] || jsonMatch[0];
+          const parsed = safeJsonParse(candidate);
+          if (parsed && typeof parsed === 'object') {
+            creationData = parsed.creation_data || (
+              parsed.questions || parsed.affirmations || parsed.cards || parsed.root ||
+              parsed.overview || parsed.sections || parsed.exercises || parsed.exercices ||
+              parsed.written_exercise || parsed.complete_exam ? parsed : null
+            );
+          }
+        }
+      } catch {}
+    }
 
-  const data = await response.json();
-  let rawText = '';
-  if (typeof data.response === 'string') rawText = data.response;
-  else if (typeof data.chat_message === 'string') rawText = data.chat_message;
-  else if (typeof data.text === 'string') rawText = data.text;
-  else rawText = JSON.stringify(data);
+    const creationType = data.creation_type || params.toolType;
+    const creationTitle = data.creation_title || data.title || `${params.toolType.toUpperCase()} : ${params.docName}`;
+    return { creationData, creationType, creationTitle };
+  };
 
-  let creationData = data.creation_data;
-  if (typeof creationData === 'string') {
-    creationData = safeJsonParse(creationData);
-  }
+  // ─────────────────────────────────────────────────────────────────────────
+  // HELPER : Appel direct Gemini depuis le navigateur (fallback sans worker)
+  // ─────────────────────────────────────────────────────────────────────────
+  const callGeminiDirect = async (): Promise<{ success: boolean; creation_type: string; creation_title: string; creation_data: any; model?: string; rawText?: string }> => {
+    // Clés Gemini connues (hardcodées en dernier recours) + clé utilisateur
+    const knownKeys = [
+      userGeminiApiKey,
+      // Les clés seront tentées dans l'ordre, les vides ignorées
+    ].filter(k => k && k.length > 10);
 
-  // Si pas encore d'objet creation_data, tenter d'extraire le JSON du texte
-  if (!creationData || (typeof creationData === 'object' && Object.keys(creationData).length === 0)) {
-    try {
-      const jsonMatch = rawText.match(/```(?:json)?\s*([\s\S]*?)\s*```/i) || rawText.match(/(\{[\s\S]*\})/);
-      if (jsonMatch) {
-        const candidate = jsonMatch[1] || jsonMatch[0];
-        const parsed = safeJsonParse(candidate);
-        if (parsed && typeof parsed === 'object') {
-          creationData = parsed.creation_data || (parsed.questions || parsed.affirmations || parsed.cards || parsed.root || parsed.overview || parsed.sections || parsed.exercises || parsed.exercices || parsed.written_exercise || parsed.complete_exam ? parsed : null);
+    if (knownKeys.length === 0) {
+      throw new Error("Aucune clé API Gemini disponible pour le mode fallback. Veuillez configurer une clé dans les paramètres.");
+    }
+
+    const docSection = params.docContent && params.docContent.length > 20
+      ? `\n\nDOCUMENT DE L'ÉTUDIANT ("${params.docName}") :\n${params.docContent.slice(0, 180000)}`
+      : `\n\nDocument : "${params.docName}" (contenu non disponible, génère basé sur tes connaissances).`;
+
+    const systemPrompt = `Tu es un expert pédagogique StudyCloud. Génère une création de type "${params.toolType}" basée sur le document ci-dessous.
+RÈGLE ABSOLUE : Réponds UNIQUEMENT avec un objet JSON valide (sans bloc de code markdown). Le JSON doit contenir "creation_type", "creation_title", et "creation_data".
+Pour "devoir-complet", "creation_data" doit avoir une clé "complete_exam" avec exactement 3 "sections" : Exercice 1 (open), Exercice 2 (multiple_choice), Exercice 3 (true_false).
+INTERDIT : "Proposition A", "Option A", "Affirmation conceptuelle". Tout doit être du vrai contenu technique.
+${docSection}`;
+
+    const candidateModels = ['gemini-3.8-flash', 'gemini-3.6-flash', 'gemini-2.5-flash', 'gemini-1.5-flash', 'gemini-2.5-pro', 'gemini-1.5-pro'];
+
+    for (const apiKey of knownKeys) {
+      for (const model of candidateModels) {
+        try {
+          const geminiResp = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/${model}:generateContent?key=${apiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                system_instruction: { parts: [{ text: systemPrompt }] },
+                contents: [{ role: 'user', parts: [{ text: params.prompt || `Génère un(e) ${params.toolType} complet(e).` }] }],
+                generationConfig: {
+                  temperature: 0.3,
+                  maxOutputTokens: 8192,
+                  responseMimeType: 'application/json',
+                },
+              }),
+            }
+          );
+
+          if (geminiResp.ok) {
+            const geminiData = await geminiResp.json();
+            const rawText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (rawText && rawText.length > 50) {
+              const parsed = safeJsonParse(rawText) || {};
+              const { creationData, creationType, creationTitle } = parseCreationResponse(
+                { creation_type: parsed.creation_type || params.toolType, creation_title: parsed.creation_title, creation_data: parsed.creation_data || parsed },
+                rawText
+              );
+              console.info(`[StudyCloud AI Fallback] Succès via Gemini direct : ${model}`);
+              return {
+                success: true,
+                creation_type: creationType,
+                creation_title: creationTitle,
+                creation_data: creationData,
+                model: `Gemini Direct (${model})`,
+                rawText,
+              };
+            }
+          } else if (geminiResp.status === 404) {
+            // Modèle non disponible, essayer le suivant
+            continue;
+          } else if (geminiResp.status === 429) {
+            // Quota dépassé sur cette clé, essayer la suivante clé
+            break;
+          }
+        } catch (e) {
+          console.warn(`[StudyCloud AI Fallback] Erreur Gemini direct (${model}):`, e);
         }
       }
-    } catch {}
-  }
-
-  const creationType = data.creation_type || params.toolType;
-  const creationTitle = data.creation_title || data.title || `${params.toolType.toUpperCase()} : ${params.docName}`;
-
-  return {
-    success: data.success !== false,
-    creation_type: creationType,
-    creation_title: creationTitle,
-    creation_data: creationData,
-    model: data.model,
-    rawText,
+    }
+    throw new Error("Le service IA est temporairement surchargé. Veuillez réessayer dans quelques instants.");
   };
+
+  // ─────────────────────────────────────────────────────────────────────────
+  // ÉTAPE 1 : Essayer le worker Cloudflare
+  // ─────────────────────────────────────────────────────────────────────────
+  try {
+    const response = await fetch(dedicatedAiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': currentUserId,
+      },
+      body: JSON.stringify(payload),
+      signal: AbortSignal.timeout(55000), // 55s timeout
+    });
+
+    if (response.ok) {
+      const data = await response.json();
+
+      // Si le worker renvoie success:false (modèles dépréciés, surchargés), basculer sur fallback
+      if (data.success === false) {
+        console.warn('[StudyCloud AI] Worker a retourné success:false, tentative fallback Gemini direct...', data.error);
+        return await callGeminiDirect();
+      }
+
+      let rawText = '';
+      if (typeof data.response === 'string') rawText = data.response;
+      else if (typeof data.chat_message === 'string') rawText = data.chat_message;
+      else if (typeof data.text === 'string') rawText = data.text;
+      else rawText = JSON.stringify(data);
+
+      const { creationData, creationType, creationTitle } = parseCreationResponse(data, rawText);
+
+      return {
+        success: true,
+        creation_type: creationType,
+        creation_title: creationTitle,
+        creation_data: creationData,
+        model: data.model,
+        rawText,
+        html_preview: data.html_preview,
+      };
+    } else {
+      // Erreur HTTP du worker → fallback
+      console.warn(`[StudyCloud AI] Worker HTTP ${response.status}, tentative fallback Gemini direct...`);
+      return await callGeminiDirect();
+    }
+  } catch (workerErr: any) {
+    // Timeout ou réseau → fallback
+    if (workerErr?.name === 'AbortError' || workerErr?.name === 'TimeoutError') {
+      console.warn('[StudyCloud AI] Worker timeout, tentative fallback Gemini direct...');
+      return await callGeminiDirect();
+    }
+    // Autre erreur → fallback
+    console.warn('[StudyCloud AI] Worker error:', workerErr?.message, '→ fallback Gemini direct...');
+    return await callGeminiDirect();
+  }
 }
+
 
 /**
  * Enregistre la réaction (pouce levé ou pouce baissé) de l'élève pour le modèle IA
