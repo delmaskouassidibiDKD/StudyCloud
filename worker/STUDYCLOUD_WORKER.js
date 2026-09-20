@@ -2310,8 +2310,21 @@ async function getUserStorageDetails(db, userId) {
     calendarBytes = Number(calRes?.s || 0);
   } catch (e) {}
 
-  const personalDataTextBytes = notesBytes + matieresBytes + scheduleBytes + gradesBytes + aiContentsBytes + aiWorkspaceBytes + calendarBytes;
-  const personalDataRows = notesCount + matieresCount + scheduleCount + gradesCount + aiContentsCount + aiWorkspaceCount + calendarCount;
+  // Discussions & messages IA (inclus dans le stockage payant de données de l'utilisateur)
+  let chatBytes = 0, chatMessagesCount = 0;
+  try {
+    const chatRes = await db.prepare(`
+      SELECT COUNT(m.id) AS mc, COALESCE(SUM(LENGTH(m.content) + LENGTH(COALESCE(m.metadata, ''))), 0) AS mb
+      FROM conversations c
+      LEFT JOIN messages m ON m.conversation_id = c.id
+      WHERE c.user_id = ?
+    `).bind(userId).first();
+    chatMessagesCount = Number(chatRes?.mc || 0);
+    chatBytes = Number(chatRes?.mb || 0);
+  } catch (e) {}
+
+  const personalDataTextBytes = notesBytes + matieresBytes + scheduleBytes + gradesBytes + aiContentsBytes + aiWorkspaceBytes + calendarBytes + chatBytes;
+  const personalDataRows = notesCount + matieresCount + scheduleCount + gradesCount + aiContentsCount + aiWorkspaceCount + calendarCount + chatMessagesCount;
   const personalDataBytes = personalDataTextBytes + (personalDataRows * 128);
 
   // 4. Nombre de mots de l'utilisateur

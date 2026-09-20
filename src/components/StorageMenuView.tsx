@@ -113,11 +113,6 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack }) => {
   const totalUsedMb = storageData?.totalUsedMb ?? 0;
   const totalPercentage = storageData?.totalPercentage ?? 0;
 
-  const wordsUsed = storageData?.wordsUsage.usedWords ?? 0;
-  const wordsMax = storageData?.wordsUsage.maxWords ?? 50000;
-  const wordsPercentage = storageData?.wordsUsage.percentage ?? 0;
-  const wordsRemaining = storageData?.wordsUsage.remainingWords ?? Math.max(0, wordsMax - wordsUsed);
-
   const filesStorage = storageData?.filesStorage;
   const dataStorage = storageData?.dataStorage;
 
@@ -256,79 +251,22 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack }) => {
         </div>
 
         {/* ----------------------------------------------------------------------- */}
-        {/* CARTE 2 : LE NOMBRE DE MOTS QU'IL A ET SUR COMBIEN (CRÉDITS IA)         */}
+        {/* SECTION DÉTAILLÉE : DIRECTEMENT SUR LE FOND DE LA PAGE (SANS BLOC FERMÉ) */}
+        {/* Noms professionnels sans mentionner D1 ni R2                           */}
         {/* ----------------------------------------------------------------------- */}
-        <div className="bg-white dark:bg-[#131b2e] rounded-3xl p-5 sm:p-6 border-2 border-stone-800 dark:border-slate-800 shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all">
-          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 pb-4 border-b border-stone-200 dark:border-slate-800">
-            <div className="flex items-center gap-2.5">
-              <span className="p-2 rounded-xl bg-purple-100 dark:bg-purple-950/60 text-purple-700 dark:text-purple-400 border border-purple-300 dark:border-purple-800">
-                <Sparkles className="w-5 h-5" />
-              </span>
-              <div>
-                <h3 className="text-base sm:text-lg font-extrabold text-stone-900 dark:text-white">
-                  Mots d'étude & Génération IA
-                </h3>
-                <p className="text-xs text-stone-500 dark:text-slate-400">
-                  Génération de fiches, cartes mémoires, résumés et quiz par l'assistante intelligente
-                </p>
-              </div>
-            </div>
-
-            <div className="px-3 py-1 bg-purple-50 dark:bg-purple-950/40 border border-purple-300 dark:border-purple-800/80 rounded-xl text-purple-800 dark:text-purple-300 font-extrabold text-xs self-start sm:self-auto">
-              {wordsRemaining.toLocaleString('fr-FR')} mots restants
-            </div>
-          </div>
-
-          <div className="mt-4 space-y-2">
-            <div className="flex items-baseline justify-between">
-              <div className="flex items-baseline gap-2">
-                <span className="text-2xl sm:text-3xl font-black text-stone-900 dark:text-white tracking-tight">
-                  {wordsUsed.toLocaleString('fr-FR')}
-                </span>
-                <span className="text-xs sm:text-sm font-semibold text-stone-500 dark:text-slate-400">
-                  mots générés sur <strong className="text-stone-800 dark:text-slate-200">{wordsMax.toLocaleString('fr-FR')} mots alloués</strong>
-                </span>
-              </div>
-              <span className="text-sm sm:text-base font-black text-purple-600 dark:text-purple-400">
-                {wordsPercentage}%
-              </span>
-            </div>
-
-            {/* Jauge des mots */}
-            <div className="w-full h-3.5 bg-stone-100 dark:bg-slate-900 rounded-full border border-stone-300 dark:border-slate-800 overflow-hidden p-0.5 relative shadow-inner">
-              <div
-                className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-indigo-500 via-purple-500 to-pink-500"
-                style={{ width: `${Math.max(wordsPercentage > 0 ? 2 : 0, Math.min(100, wordsPercentage))}%` }}
-              />
-            </div>
-
-            <div className="flex items-center justify-between text-[11px] text-stone-500 dark:text-slate-400 pt-0.5">
-              <span>0 mot</span>
-              <span className="text-stone-400 dark:text-slate-500 italic">
-                Inclus d'office avec votre compte gratuit
-              </span>
-              <span>{wordsMax.toLocaleString('fr-FR')} mots</span>
-            </div>
-          </div>
-        </div>
-
-        {/* ----------------------------------------------------------------------- */}
-        {/* SECTION INFÉRIEURE : DÉTAILS DES DEUX STOCKAGES AVEC NOMS PROFESSIONNELS */}
-        {/* SANS UTILISER LES TERMES D1 NI R2 !                                     */}
-        {/* ----------------------------------------------------------------------- */}
-        <div>
-          <div className="flex items-center gap-2 mb-3">
+        <div className="pt-2">
+          <div className="flex items-center gap-2 mb-4 pb-2 border-b border-stone-300/70 dark:border-slate-800">
             <Layers className="w-4 h-4 text-stone-700 dark:text-slate-300" />
-            <h3 className="text-sm font-black uppercase tracking-wider text-stone-800 dark:text-slate-200">
+            <h3 className="text-xs sm:text-sm font-black uppercase tracking-wider text-stone-800 dark:text-slate-200">
               Répartition détaillée de vos stockages
             </h3>
           </div>
 
-          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-            {/* CARTE DÉTAIL 1 : STOCKAGE DOCUMENTS & FICHIERS (EX-R2 SANS NOMMER R2) */}
-            <div className="bg-white dark:bg-[#131b2e] rounded-3xl p-5 border-2 border-stone-800 dark:border-slate-800 shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none flex flex-col justify-between">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* DÉTAIL 1 : STOCKAGE DOCUMENTS & FICHIERS (DIRECTEMENT SUR LE FOND) */}
+            <div className="flex flex-col justify-between py-2 px-1">
               <div>
-                <div className="flex items-start justify-between gap-2 pb-3 border-b border-stone-100 dark:border-slate-800/80">
+                <div className="flex items-start justify-between gap-2 pb-3 border-b border-stone-300/50 dark:border-slate-800">
                   <div className="flex items-center gap-2.5">
                     <span className="p-2 rounded-xl bg-blue-100 dark:bg-blue-950/60 text-blue-700 dark:text-blue-400 border border-blue-300 dark:border-blue-800">
                       <FileText className="w-5 h-5" />
@@ -337,55 +275,55 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack }) => {
                       <h4 className="text-sm sm:text-base font-extrabold text-stone-900 dark:text-white">
                         {filesStorage?.name || "Stockage Documents & Fichiers"}
                       </h4>
-                      <p className="text-[11px] text-stone-500 dark:text-slate-400 leading-tight mt-0.5">
+                      <p className="text-[11px] text-stone-600 dark:text-slate-400 leading-tight mt-0.5">
                         {filesStorage?.subtitle || "Vos cours personnels, devoirs, polycopiés et documents PDF téléversés"}
                       </p>
                     </div>
                   </div>
 
-                  <span className="px-2 py-0.5 bg-blue-50 dark:bg-blue-950/40 text-blue-800 dark:text-blue-300 font-bold text-[10px] rounded-lg border border-blue-200 dark:border-blue-800 shrink-0">
+                  <span className="px-2 py-0.5 bg-blue-100/80 dark:bg-blue-950/60 text-blue-900 dark:text-blue-300 font-bold text-[10px] rounded-lg border border-blue-300/80 dark:border-blue-800 shrink-0">
                     {filesStorage?.count ?? 0} fichier(s)
                   </span>
                 </div>
 
                 {/* Progression et volume */}
-                <div className="mt-4 space-y-1.5">
+                <div className="mt-4 space-y-2">
                   <div className="flex items-baseline justify-between text-xs">
-                    <span className="font-extrabold text-stone-800 dark:text-slate-200 text-sm">
+                    <span className="font-black text-stone-900 dark:text-slate-100 text-sm">
                       {filesStorage?.usedFormatted || '0 o'}
                     </span>
-                    <span className="text-stone-500 dark:text-slate-400">
-                      sur <strong className="text-stone-700 dark:text-slate-300">{filesStorage?.allowedFormatted || '10 Mo'}</strong>
+                    <span className="text-stone-600 dark:text-slate-400">
+                      sur <strong className="text-stone-800 dark:text-slate-200">{filesStorage?.allowedFormatted || '10 Mo'}</strong>
                     </span>
                   </div>
 
-                  <div className="w-full h-3 bg-stone-100 dark:bg-slate-900 rounded-full border border-stone-200 dark:border-slate-800 overflow-hidden p-0.5">
+                  <div className="w-full h-3 bg-stone-200/80 dark:bg-slate-900 rounded-full border border-stone-300 dark:border-slate-800 overflow-hidden p-0.5 shadow-inner">
                     <div
                       className="h-full rounded-full transition-all duration-500 bg-gradient-to-r from-blue-500 to-indigo-500"
                       style={{ width: `${Math.max(filesStorage?.percentage ? 2 : 0, Math.min(100, filesStorage?.percentage ?? 0))}%` }}
                     />
                   </div>
 
-                  <div className="flex justify-between items-center text-[10px] text-stone-400 dark:text-slate-500">
+                  <div className="flex justify-between items-center text-[11px] text-stone-500 dark:text-slate-400">
                     <span>Espace fichiers réservé</span>
                     <span className="font-bold text-blue-600 dark:text-blue-400">{filesStorage?.percentage ?? 0}%</span>
                   </div>
                 </div>
               </div>
 
-              {/* Note d'exemption professionnelle */}
-              <div className="mt-4 pt-3 border-t border-stone-100 dark:border-slate-800/80 flex items-start gap-1.5 text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/20 p-2.5 rounded-xl border border-emerald-200/60 dark:border-emerald-900/40">
+              {/* Note d'avantage ressource publique */}
+              <div className="mt-4 pt-2.5 border-t border-stone-300/40 dark:border-slate-800 flex items-start gap-1.5 text-[11px] text-stone-600 dark:text-slate-400">
                 <ShieldCheck className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
                 <span>
-                  <strong>Avantage StudyCloud :</strong> Les ressources que vous publiez dans la bibliothèque partagée sont offertes pour tout le monde et ne sont <strong>pas décomptées</strong> de votre espace personnel.
+                  Les ressources partagées dans la bibliothèque publique ne sont pas décomptées de votre espace personnel.
                 </span>
               </div>
             </div>
 
-            {/* CARTE DÉTAIL 2 : ESPACE DONNÉES & FICHES D'ÉTUDE (EX-D1 SANS NOMMER D1) */}
-            <div className="bg-white dark:bg-[#131b2e] rounded-3xl p-5 border-2 border-stone-800 dark:border-slate-800 shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none flex flex-col justify-between">
+            {/* DÉTAIL 2 : ESPACE DONNÉES & FICHES D'ÉTUDE (DIRECTEMENT SUR LE FOND) */}
+            <div className="flex flex-col justify-between py-2 px-1 md:border-l md:border-stone-300/50 md:dark:border-slate-800 md:pl-6">
               <div>
-                <div className="flex items-start justify-between gap-2 pb-3 border-b border-stone-100 dark:border-slate-800/80">
+                <div className="flex items-start justify-between gap-2 pb-3 border-b border-stone-300/50 dark:border-slate-800">
                   <div className="flex items-center gap-2.5">
                     <span className="p-2 rounded-xl bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 border border-amber-300 dark:border-amber-800">
                       <Layers className="w-5 h-5" />
@@ -394,48 +332,40 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack }) => {
                       <h4 className="text-sm sm:text-base font-extrabold text-stone-900 dark:text-white">
                         {dataStorage?.name || "Espace Données & Fiches d'Étude"}
                       </h4>
-                      <p className="text-[11px] text-stone-500 dark:text-slate-400 leading-tight mt-0.5">
+                      <p className="text-[11px] text-stone-600 dark:text-slate-400 leading-tight mt-0.5">
                         {dataStorage?.subtitle || "Vos fiches mémoires, notes de cours, emploi du temps, relevés et contenus"}
                       </p>
                     </div>
                   </div>
 
-                  <span className="px-2 py-0.5 bg-amber-50 dark:bg-amber-950/40 text-amber-800 dark:text-amber-300 font-bold text-[10px] rounded-lg border border-amber-200 dark:border-amber-800 shrink-0">
+                  <span className="px-2 py-0.5 bg-amber-100/80 dark:bg-amber-950/60 text-amber-900 dark:text-amber-300 font-bold text-[10px] rounded-lg border border-amber-300/80 dark:border-amber-800 shrink-0">
                     {dataStorage?.count ?? 0} élément(s)
                   </span>
                 </div>
 
                 {/* Progression et volume */}
-                <div className="mt-4 space-y-1.5">
+                <div className="mt-4 space-y-2">
                   <div className="flex items-baseline justify-between text-xs">
-                    <span className="font-extrabold text-stone-800 dark:text-slate-200 text-sm">
+                    <span className="font-black text-stone-900 dark:text-slate-100 text-sm">
                       {dataStorage?.usedFormatted || '0 o'}
                     </span>
-                    <span className="text-stone-500 dark:text-slate-400">
-                      sur <strong className="text-stone-700 dark:text-slate-300">{dataStorage?.allowedFormatted || '20 Mo'}</strong>
+                    <span className="text-stone-600 dark:text-slate-400">
+                      sur <strong className="text-stone-800 dark:text-slate-200">{dataStorage?.allowedFormatted || '20 Mo'}</strong>
                     </span>
                   </div>
 
-                  <div className="w-full h-3 bg-stone-100 dark:bg-slate-900 rounded-full border border-stone-200 dark:border-slate-800 overflow-hidden p-0.5">
+                  <div className="w-full h-3 bg-stone-200/80 dark:bg-slate-900 rounded-full border border-stone-300 dark:border-slate-800 overflow-hidden p-0.5 shadow-inner">
                     <div
                       className="h-full rounded-full transition-all duration-500 bg-gradient-to-r from-amber-500 to-orange-500"
                       style={{ width: `${Math.max(dataStorage?.percentage ? 2 : 0, Math.min(100, dataStorage?.percentage ?? 0))}%` }}
                     />
                   </div>
 
-                  <div className="flex justify-between items-center text-[10px] text-stone-400 dark:text-slate-500">
-                    <span>Espace fiches & cours textuels</span>
+                  <div className="flex justify-between items-center text-[11px] text-stone-500 dark:text-slate-400">
+                    <span>Espace fiches, notes & données textuelles</span>
                     <span className="font-bold text-amber-600 dark:text-amber-400">{dataStorage?.percentage ?? 0}%</span>
                   </div>
                 </div>
-              </div>
-
-              {/* Note d'exemption professionnelle */}
-              <div className="mt-4 pt-3 border-t border-stone-100 dark:border-slate-800/80 flex items-start gap-1.5 text-[11px] text-emerald-700 dark:text-emerald-400 bg-emerald-50/60 dark:bg-emerald-950/20 p-2.5 rounded-xl border border-emerald-200/60 dark:border-emerald-900/40">
-                <ShieldCheck className="w-3.5 h-3.5 shrink-0 mt-0.5 text-emerald-600 dark:text-emerald-400" />
-                <span>
-                  <strong>Avantage StudyCloud :</strong> Les messages reçus de l'assistance, les compteurs de téléchargements et les vues sont <strong>100% offerts</strong> et sans limite.
-                </span>
               </div>
             </div>
           </div>

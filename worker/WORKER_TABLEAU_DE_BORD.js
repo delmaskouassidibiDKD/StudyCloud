@@ -664,19 +664,18 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
   const grossD1Bytes = userD1TextBytes + (userD1Rows * 128);
 
   // Éléments D1 exemptés (strictement non comptés ni pénalisés) :
-  // 1. Table des messages où il reçoit ses messages
-  const messagesD1Bytes = (chatStats.messages_count * 128) + (chatStats.d1_text_bytes || 0);
-  // 2. Fichiers publiés comme ressource dans le menu ressources
+  // (Les messages et interactions IA font partie intégrante du stockage payé par l'utilisateur)
+  // 1. Fichiers publiés comme ressource dans le menu ressources
   const pubDocsD1Bytes = (pubStats.count * 128) + (pubStats.count * 350);
-  // 3. Nombre de vues des fichiers
+  // 2. Nombre de vues des fichiers
   const viewsD1Bytes = ((viewsInteractionsStats.count || pubStats.total_views) * 64);
-  // 4. Nombre de téléchargements (fichiers & liens)
+  // 3. Nombre de téléchargements (fichiers & liens)
   const downloadsD1Bytes = ((pubDownloadsStats.count || pubStats.total_downloads) * 64);
-  // 5. Table pour stocker les nombres de mots de chaque utilisateur
+  // 4. Table pour stocker les nombres de mots de chaque utilisateur
   const wordCountD1Bytes = (wordCountStats.count * 128) + 140;
 
-  const exemptD1Bytes = messagesD1Bytes + pubDocsD1Bytes + viewsD1Bytes + downloadsD1Bytes + wordCountD1Bytes;
-  const exemptD1Rows = (chatStats.messages_count || 0) + (pubStats.count || 0) + (viewsInteractionsStats.count || 0) + (pubDownloadsStats.count || 0) + (wordCountStats.count || 0);
+  const exemptD1Bytes = pubDocsD1Bytes + viewsD1Bytes + downloadsD1Bytes + wordCountD1Bytes;
+  const exemptD1Rows = (pubStats.count || 0) + (viewsInteractionsStats.count || 0) + (pubDownloadsStats.count || 0) + (wordCountStats.count || 0);
 
   const netD1Bytes = Math.max(0, grossD1Bytes - exemptD1Bytes);
   const netD1Rows = Math.max(0, userD1Rows - exemptD1Rows);
@@ -702,7 +701,7 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
     ai_generated_contents: { count: aiContentsStats.count, bytes: aiContentsStats.d1_text_bytes, formatted: formatBytes(aiContentsStats.d1_text_bytes), isExempted: false },
     user_ai_workspace: { count: aiWorkspaceStats.count, bytes: aiWorkspaceStats.d1_text_bytes, formatted: formatBytes(aiWorkspaceStats.d1_text_bytes), isExempted: false },
     conversations: { count: chatStats.conversations_count, bytes: chatStats.conversations_count * 150, formatted: formatBytes(chatStats.conversations_count * 150), isExempted: false },
-    messages: { count: chatStats.messages_count, bytes: messagesD1Bytes, formatted: formatBytes(messagesD1Bytes), isExempted: true, exemptReason: "Messages reçus & chat d'assistance : offerts (non décomptés du quota personnel)" },
+    messages: { count: chatStats.messages_count, bytes: (chatStats.messages_count * 128) + (chatStats.d1_text_bytes || 0), formatted: formatBytes((chatStats.messages_count * 128) + (chatStats.d1_text_bytes || 0)), isExempted: false },
     ai_creations: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
     ai_tasks: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
     user_certificates: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
@@ -1992,7 +1991,7 @@ function renderDashboardHtml(data) {
                 <span class="text-slate-400 text-[11px]">(\${s.net ? s.net.usagePercentage : s.usagePercentage}% du quota)</span>
               </div>
               <div class="text-[11px] text-emerald-400 mt-0.5">
-                🎁 <strong>\${s.exempted ? s.exempted.totalFormatted : '0 Mo'}</strong> offerts à l'étudiant (ressources publiques, messages reçus, vues, téléchargements et compteurs de mots)
+                🎁 <strong>\${s.exempted ? s.exempted.totalFormatted : '0 Mo'}</strong> offerts à l'étudiant (ressources publiques, vues, téléchargements et compteurs de mots)
               </div>
             </div>
           </div>
