@@ -138,12 +138,12 @@ export const PwaInstallPrompt: React.FC = () => {
         ) : (
           /* Bannière standard d'installation PWA */
           <div className="flex items-start gap-3.5">
-            {/* Logo officiel de l'application */}
-            <div className="relative shrink-0 w-13 h-13 rounded-xl overflow-hidden bg-white/10 p-1 border border-white/20 shadow-md">
+            {/* Logo officiel de l'application (Badge 3D StudyCloud) */}
+            <div className="relative shrink-0 w-14 h-14 rounded-2xl overflow-hidden shadow-xl border border-white/15 bg-zinc-900">
               <img
                 src="/icons/icon-192x192.png"
                 alt="Logo StudyCloud"
-                className="w-full h-full object-contain rounded-lg"
+                className="w-full h-full object-cover"
               />
             </div>
 
