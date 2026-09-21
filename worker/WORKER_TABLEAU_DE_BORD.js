@@ -2572,6 +2572,8 @@ function renderDashboardHtml(data) {
         renderDistributionRightDetails(selectedDistributionUserId || (allUsers[0] ? allUsers[0].user.id : null));
       } else if (viewName === 'messages') {
         renderSimpleMessagesUsersList();
+      } else if (viewName === 'profil-pro') {
+        loadCompanyProfileClient();
       }
     }
 
@@ -5044,6 +5046,43 @@ function renderDashboardHtml(data) {
       }
     }
 
+    async function loadCompanyProfileClient() {
+      try {
+        const resp = await fetch('/api/company-profile');
+        if (!resp.ok) return;
+        const res = await resp.json();
+        if (res && res.profile) {
+          const p = res.profile;
+          const setField = (id, val, fallback) => {
+            const el = document.getElementById(id);
+            if (el) {
+              const v = (val !== null && val !== undefined && String(val).trim() !== '') ? val : (fallback || '');
+              el.value = v;
+            }
+          };
+          setField('pro-company-name', p.company_name, 'DKD Technologies');
+          setField('pro-location', p.location, 'Abidjan, Côte d\'Ivoire');
+          setField('pro-activity', p.activity, 'Technologies & Éducation Numérique');
+          setField('pro-address', p.address, 'Abidjan, Côte d\'Ivoire');
+          setField('pro-website', p.website, 'https://studycloud.dkd-technologies.com');
+          setField('pro-email', p.email, 'contact@dkd-technologies.com');
+          setField('pro-phone-contact', p.phone_contact, '+225 0101007978');
+          setField('pro-phone-whatsapp', p.phone_whatsapp, '+225 0101007978');
+          setField('pro-phone-secondary', p.phone_contact_secondary, '');
+          setField('pro-about-text', p.about_text, 'Plateforme d\'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.');
+          setField('pro-wave-number', p.wave_number, '+225 07 00 00 00 00');
+          setField('pro-wave-name', p.wave_name, 'StudyCloud CI');
+          setField('pro-orange-number', p.orange_number, '+225 07 00 00 00 00');
+          setField('pro-orange-name', p.orange_name, 'Orange Money Côte d\'Ivoire');
+          setField('pro-mtn-number', p.mtn_number, '+225 05 00 00 00 00');
+          setField('pro-mtn-name', p.mtn_name, 'Paiement Mobile National');
+          setField('pro-payment-instructions', p.payment_instructions, 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.');
+        }
+      } catch (err) {
+        console.warn('Erreur chargement profil pro client:', err);
+      }
+    }
+
     async function pollLiveStorageStats(isManual = false) {
       const spinner = document.getElementById('refresh-spinner');
       if (spinner) spinner.classList.add('animate-spin');
@@ -5127,6 +5166,7 @@ function renderDashboardHtml(data) {
     // Initialisation
     renderGlobalD1Tables();
     renderGlobalR2Folders();
+    loadCompanyProfileClient();
 
     // AUCUNE boucle infinie ni polling continu en arrière-plan :
     // L'écoute est 100% intelligente et événementielle (très économique pour vos quotas Cloudflare) :
