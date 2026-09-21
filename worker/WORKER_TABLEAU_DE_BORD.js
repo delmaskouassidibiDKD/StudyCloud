@@ -5128,10 +5128,29 @@ function renderDashboardHtml(data) {
     renderGlobalD1Tables();
     renderGlobalR2Folders();
 
-    // Actualisation périodique automatique en direct toutes les 30 secondes
-    setInterval(() => {
-      pollLiveStorageStats(false);
-    }, 30000);
+    // AUCUNE boucle infinie ni polling continu en arrière-plan :
+    // L'écoute est 100% intelligente et événementielle (très économique pour vos quotas Cloudflare) :
+    // 1. Quand vous cliquez sur "Actualiser"
+    // 2. Quand vous revenez sur l'onglet du tableau de bord (focus / visibilité)
+    // 3. Après chaque action d'administration (approbation de demande, modification de quota, etc.)
+    let lastRefreshTime = Date.now();
+    function smartAutoRefresh() {
+      // Anti-rafale : au maximum une actualisation toutes les 10 secondes lors du retour sur l'onglet
+      if (Date.now() - lastRefreshTime > 10000) {
+        lastRefreshTime = Date.now();
+        pollLiveStorageStats(false);
+      }
+    }
+
+    document.addEventListener('visibilitychange', () => {
+      if (document.visibilityState === 'visible') {
+        smartAutoRefresh();
+      }
+    });
+
+    window.addEventListener('focus', () => {
+      smartAutoRefresh();
+    });
   </script>
 </body>
 </html>`;
