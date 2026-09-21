@@ -29,6 +29,7 @@ import { useAuth } from './context/AuthContext';
 import { AuthPage } from './components/auth/AuthPage';
 import { OnboardingPage } from './components/auth/OnboardingPage';
 import { GoogleSecuritySetupPage } from './components/auth/GoogleSecuritySetupPage';
+import { PwaInstallPrompt } from './components/PwaInstallPrompt';
 
 // Utilitaire de sécurisation du stockage local pour éviter l'erreur "QuotaExceededError" (5MB max)
 export const sanitizeFoldersForStorage = (foldersList: SharedFolder[]): SharedFolder[] => {
@@ -1820,6 +1821,9 @@ export default function App() {
           onStartBackgroundCreation={handleStartBackgroundCreation}
         />
       )}
+
+      {/* Bannière et bouton d'installation PWA sur l'écran d'accueil */}
+      <PwaInstallPrompt />
     </div>
   );
 }

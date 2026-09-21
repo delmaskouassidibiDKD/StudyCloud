@@ -4,6 +4,22 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover, interactive-widget=resizes-content" />
     <title>StudyCloud - Stockage & Partage Sécurisé</title>
+    
+    <!-- PWA Web App Manifest & Balises Mobiles -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1e40af" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="StudyCloud" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="StudyCloud" />
+    <link rel="apple-touch-icon" href="/icons/icon-180x180.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180x180.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-72x72.png" />
+
     <meta name="description" content="StudyCloud : Plateforme cloud de stockage sécurisé de données importantes, cours et documents professionnels pour les élèves, les étudiants, les entreprises et les professionnels. Conçu par DKD Technologies." />
     <meta name="google" content="notranslate" />
     <meta name="googlebot" content="notranslate" />
@@ -48,6 +64,20 @@
     <div id="google_translate_element" style="display:none;"></div>
     <div id="root"></div>
     <script type="module" src="/src/main.tsx"></script>
+    <script>
+      // Enregistrement automatique et prioritaire du Service Worker PWA
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .then(function(reg) {
+              console.log('[StudyCloud PWA] Service Worker actif et prêt pour le hors-ligne.');
+            })
+            .catch(function(err) {
+              console.warn('[StudyCloud PWA] Erreur enregistrement Service Worker:', err);
+            });
+        });
+      }
+    </script>
     <script>
       // 1. Force block text selection and copying everywhere except inputs
       ['selectstart', 'copy', 'contextmenu'].forEach(eventType => {
