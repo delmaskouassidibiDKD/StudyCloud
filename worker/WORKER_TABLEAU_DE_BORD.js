@@ -28,9 +28,10 @@ function corsHeaders(origin = '*') {
   };
 }
 
-function getStorageBindings(env) {
-  const db = env.MON_D1_STUDYCLOUD || env['MON_D1-STUDYCLOUD'] || env.DB || env.d1;
-  const bucket = env.MON_R2_STUDYCLOUD || env['MON_R2-STUDYCLOUD'] || env.BUCKET || env.r2;
+function getStorageBindings(env = {}) {
+  if (!env) return { db: null, bucket: null };
+  const db = env.MON_D1_STUDYCLOUD || env['MON_D1-STUDYCLOUD'] || env.DB || env.d1 || env.DATABASE || env.DATABASE_D1 || null;
+  const bucket = env.MON_R2_STUDYCLOUD || env['MON_R2-STUDYCLOUD'] || env.BUCKET || env.r2 || env.STORAGE || env.STORAGE_R2 || null;
   return { db, bucket };
 }
 
@@ -1503,7 +1504,7 @@ function renderDashboardHtml(data) {
       transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
     }
     .sidebar-drawer.open {
-      transform: translateX(0);
+      transform: translateX(0) !important;
     }
     /* Scrollbars confortables et visibles */
     ::-webkit-scrollbar { width: 8px; height: 8px; }
@@ -1529,11 +1530,13 @@ function renderDashboardHtml(data) {
     <div class="flex items-center gap-3">
       <!-- Bouton 3 traits (Menu Hamburger) -->
       <button 
-        onclick="toggleSidebar()"
-        class="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95"
+        type="button"
+        id="btn-hamburger"
+        onclick="toggleSidebar(true)"
+        class="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95 z-30"
         title="Ouvrir le menu latéral"
       >
-        <svg class="w-5 h-5" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+        <svg class="w-5 h-5 pointer-events-none" fill="none" stroke="currentColor" viewBox="0 0 24 24">
           <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2.5" d="M4 6h16M4 12h16M4 18h16"></path>
         </svg>
       </button>
@@ -1564,7 +1567,7 @@ function renderDashboardHtml(data) {
   <!-- ==================================================================== -->
   <!-- MENU LATÉRAL GAUCHE FLUIDE (DRAWER) -->
   <!-- ==================================================================== -->
-  <div id="sidebar-backdrop" onclick="toggleSidebar()" class="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm hidden transition-opacity"></div>
+  <div id="sidebar-backdrop" onclick="toggleSidebar(false)" class="fixed inset-0 z-40 bg-black/70 backdrop-blur-sm hidden transition-opacity"></div>
   
   <aside id="sidebar-drawer" class="sidebar-drawer fixed top-0 left-0 bottom-0 z-50 w-72 sm:w-80 bg-[#0f172a] border-r border-slate-800 flex flex-col shadow-2xl">
     <div class="p-4 border-b border-slate-800 flex items-center justify-between">
@@ -1574,7 +1577,7 @@ function renderDashboardHtml(data) {
         </div>
         <span class="font-extrabold text-white text-sm">Menu d'Administration</span>
       </div>
-      <button onclick="toggleSidebar()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center cursor-pointer">
+      <button type="button" onclick="toggleSidebar(false)" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center cursor-pointer">
         ✕
       </button>
     </div>
@@ -2509,18 +2512,26 @@ function renderDashboardHtml(data) {
       setTimeout(() => t.classList.add('hidden'), 3500);
     }
 
-    function toggleSidebar() {
+    function toggleSidebar(forceState) {
       const drawer = document.getElementById('sidebar-drawer');
       const backdrop = document.getElementById('sidebar-backdrop');
+      if (!drawer || !backdrop) return;
       const isOpen = drawer.classList.contains('open');
-      if (isOpen) {
-        drawer.classList.remove('open');
-        backdrop.classList.add('hidden');
-      } else {
+      const willOpen = (typeof forceState === 'boolean') ? forceState : !isOpen;
+
+      if (willOpen) {
         drawer.classList.add('open');
+        drawer.style.setProperty('transform', 'translateX(0)', 'important');
         backdrop.classList.remove('hidden');
+        backdrop.style.display = 'block';
+      } else {
+        drawer.classList.remove('open');
+        drawer.style.setProperty('transform', 'translateX(-100%)', 'important');
+        backdrop.classList.add('hidden');
+        backdrop.style.display = 'none';
       }
     }
+    window.toggleSidebar = toggleSidebar;
 
     function switchView(viewName) {
       currentView = viewName;
@@ -5168,6 +5179,15 @@ function renderDashboardHtml(data) {
     renderGlobalR2Folders();
     loadCompanyProfileClient();
 
+    const burgerBtn = document.getElementById('btn-hamburger');
+    if (burgerBtn) {
+      burgerBtn.addEventListener('click', (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        toggleSidebar(true);
+      });
+    }
+
     // AUCUNE boucle infinie ni polling continu en arrière-plan :
     // L'écoute est 100% intelligente et événementielle (très économique pour vos quotas Cloudflare) :
     // 1. Quand vous cliquez sur "Actualiser"
@@ -5215,21 +5235,24 @@ export default {
 
     const { db, bucket } = getStorageBindings(env);
 
-    if (!db) {
+    // Si c'est un appel API et que D1 n'est pas lié, renvoyer une réponse explicite
+    if (!db && path.startsWith('/api/')) {
       return new Response(
         JSON.stringify({
           success: false,
-          error: "Liaison D1 introuvable. Assurez-vous d'avoir lié MON_D1_STUDYCLOUD ou DB dans vos paramètres Cloudflare."
+          error: "Liaison D1 introuvable. Assurez-vous d'avoir lié MON_D1_STUDYCLOUD ou DB dans les paramètres Cloudflare."
         }, null, 2),
         {
-          status: 500,
+          status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         }
       );
     }
 
-    // Initialisation automatique des tables de quotas si absentes
-    await ensureStorageTables(db);
+    // Initialisation automatique des tables de quotas si absentes et DB connectée
+    if (db) {
+      await ensureStorageTables(db);
+    }
 
     try {
       // ----------------------------------------------------------------------
