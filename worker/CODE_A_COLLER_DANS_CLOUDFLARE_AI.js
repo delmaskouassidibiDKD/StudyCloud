@@ -3655,7 +3655,11 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
     // ========================================================================
     // CAUSERIE DIRECTE DELMAS IA : (SANS CRÉATION DE MODULES NI ÉCRITURE D1)
     // ========================================================================
-    async function executeDelmasDirectChat(body, env, ai) {
+    async function executeDelmasDirectChat(body, env, ai, signal) {
+      if (signal?.aborted) {
+        throw new Error("Génération interrompue par l'utilisateur.");
+      }
+
       const userPrompt = (body.message || body.prompt || body.text || "").trim();
       const geminiKeys = getAvailableGeminiKeys(env, body.geminiApiKey);
 
@@ -3673,7 +3677,7 @@ RÈGLES CAPITALES :
       let usedEngine = "";
       const debugErrors = [];
 
-      // 1. APPEL À GOOGLE GEMINI (AVEC ROTATION MULTI-CLÉS)
+      // 1. APPEL À GOOGLE GEMINI (AVEC ROTATION MULTI-CLÉS ET SIGNAL D'ARRÊT)
       if (geminiKeys.length > 0) {
         const geminiContents = [];
         const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
@@ -3696,10 +3700,12 @@ RÈGLES CAPITALES :
         ];
 
         for (let kIdx = 0; kIdx < geminiKeys.length; kIdx++) {
+          if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
           const activeKey = geminiKeys[kIdx];
           let keySucceeded = false;
 
           for (const mod of candidateGeminiModels) {
+            if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
             try {
               const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${activeKey}`;
               const gResponse = await fetch(geminiApiEndpoint, {
@@ -3712,7 +3718,8 @@ RÈGLES CAPITALES :
                     temperature: 0.7,
                     maxOutputTokens: 3500,
                   }
-                })
+                }),
+                signal: signal
               });
 
               if (gResponse.ok) {
@@ -3732,6 +3739,9 @@ RÈGLES CAPITALES :
                 }
               }
             } catch (err) {
+              if (signal?.aborted || err.name === "AbortError") {
+                throw new Error("Génération interrompue par l'utilisateur.");
+              }
               debugErrors.push(`[Delmas Clé #${kIdx + 1} • ${mod}] ${err.message}`);
             }
           }
@@ -3743,7 +3753,7 @@ RÈGLES CAPITALES :
       }
 
       // 2. FALLBACK VERS CLOUDFLARE WORKERS AI
-      if (!generatedContent && ai && typeof ai.run === "function") {
+      if (!generatedContent && !signal?.aborted && ai && typeof ai.run === "function") {
         const messages = [{ role: "system", content: delmasSystemPrompt }];
         const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
         for (const m of incomingHist.slice(-6)) {
@@ -3763,6 +3773,7 @@ RÈGLES CAPITALES :
         ];
 
         for (const m of candidateModels) {
+          if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
           try {
             const aiResult = await ai.run(m, {
               messages,
@@ -3778,6 +3789,10 @@ RÈGLES CAPITALES :
             debugErrors.push(`[Delmas Workers AI ${m}] ${cfErr.message}`);
           }
         }
+      }
+
+      if (signal?.aborted) {
+        throw new Error("Génération interrompue par l'utilisateur.");
       }
 
       if (!generatedContent) {
@@ -3803,7 +3818,7 @@ RÈGLES CAPITALES :
     if (request.method === "POST" && (path === "/api/ai/delmas-chat" || path === "/api/delmas-chat")) {
       try {
         const body = await request.json().catch(() => ({}));
-        const result = await executeDelmasDirectChat(body, env, ai);
+        const result = await executeDelmasDirectChat(body, env, ai, request.signal);
         return new Response(JSON.stringify({
           success: true,
           response: result.response,
@@ -3814,11 +3829,13 @@ RÈGLES CAPITALES :
           headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
         });
       } catch (delmasErr) {
+        const isAbort = request.signal?.aborted || delmasErr.message?.includes("interrompue");
         return new Response(JSON.stringify({
           success: false,
-          error: delmasErr.message || "Erreur interne de Delmas IA."
+          error: delmasErr.message || "Erreur interne de Delmas IA.",
+          aborted: isAbort
         }), {
-          status: 500,
+          status: isAbort ? 499 : 500,
           headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
         });
       }
@@ -3839,7 +3856,7 @@ RÈGLES CAPITALES :
 
       // Si la requête provient de Delmas IA (causerie directe sans création ni persistance D1)
       if (body.delmasChat || body.mode === "delmas") {
-        const result = await executeDelmasDirectChat(body, env, ai);
+        const result = await executeDelmasDirectChat(body, env, ai, request.signal);
         return new Response(JSON.stringify({
           success: true,
           response: result.response,

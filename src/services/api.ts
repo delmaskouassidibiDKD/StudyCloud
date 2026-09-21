@@ -634,6 +634,7 @@ export async function sendDelmasChatMessage(params: {
   message: string;
   history?: Array<{ role: string; content: string }>;
   geminiApiKey?: string;
+  signal?: AbortSignal;
 }): Promise<{
   response: string;
   success: boolean;
@@ -661,6 +662,7 @@ export async function sendDelmasChatMessage(params: {
         'Content-Type': 'application/json',
       },
       body: JSON.stringify(payload),
+      signal: params.signal,
     });
 
     if (res.ok) {
@@ -674,8 +676,18 @@ export async function sendDelmasChatMessage(params: {
         model: data.model || 'Delmas Direct AI',
       };
     }
-  } catch (routeErr) {
+  } catch (routeErr: any) {
+    if (params.signal?.aborted || routeErr?.name === 'AbortError') {
+      throw routeErr;
+    }
     console.warn('[Delmas Direct Chat] Échec route /api/ai/delmas-chat, tentative fallback sur racine...', routeErr);
+  }
+
+  // Si déjà annulé, ne pas tenter de fallback
+  if (params.signal?.aborted) {
+    const abortErr = new Error('Génération arrêtée par l\'utilisateur');
+    abortErr.name = 'AbortError';
+    throw abortErr;
   }
 
   // 2. Fallback direct sur la racine du Worker IA avec delmasChat: true
@@ -685,6 +697,7 @@ export async function sendDelmasChatMessage(params: {
       'Content-Type': 'application/json',
     },
     body: JSON.stringify(payload),
+    signal: params.signal,
   });
 
   if (!fallbackRes.ok) {

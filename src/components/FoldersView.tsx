@@ -710,14 +710,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             >
               <div className={`relative p-0.5 rounded-full transition-all duration-200 ${
                 isAssistantOpen 
-                  ? 'ring-2 ring-orange-500 shadow-[0_0_14px_rgba(249,115,22,0.85)] scale-105' 
-                  : 'hover:scale-105 shadow-[0_2px_10px_rgba(249,115,22,0.4)]'
+                  ? 'ring-2 ring-blue-500 shadow-[0_0_12px_rgba(37,99,235,0.7)] scale-105' 
+                  : 'hover:scale-105 shadow-[0_2px_8px_rgba(37,99,235,0.3)]'
               }`}>
-                <DelmasRobot size={38} variant="orange-blue" />
+                <DelmasRobot size={38} variant="blue" />
               </div>
             </button>
             <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap transition-colors ${
-              isAssistantOpen ? 'text-orange-500' : 'text-orange-500 dark:text-orange-400 group-hover:text-blue-500'
+              isAssistantOpen ? 'text-blue-500' : 'text-blue-600 dark:text-blue-400 group-hover:text-blue-700'
             }`}>
               delmas IA
             </span>

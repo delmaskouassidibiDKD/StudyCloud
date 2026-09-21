@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, Copy, Check, X, ThumbsUp, ThumbsDown, Loader2, Trash2, ArrowRight } from 'lucide-react';
+import { Send, Copy, Check, X, ThumbsUp, ThumbsDown, Trash2, ArrowRight, Square } from 'lucide-react';
 import { DelmasRobot } from './DelmasRobot';
 import { MathText } from './MathText';
 import { sendDelmasChatMessage } from '../services/api';
@@ -49,6 +49,7 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
 
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const abortControllerRef = useRef<AbortController | null>(null);
 
   // Auto-scroll vers le bas dès qu'un message arrive
   useEffect(() => {
@@ -73,6 +74,15 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [onClose]);
 
+  // Arrêter immédiatement la génération en cours
+  const handleStopGeneration = () => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+      abortControllerRef.current = null;
+    }
+    setIsLoading(false);
+  };
+
   // Envoi d'un message
   const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputValue).trim();
@@ -95,6 +105,10 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
       textareaRef.current.style.height = 'auto';
     }
 
+    // Créer un nouveau contrôleur d'abandon pour ce message
+    const controller = new AbortController();
+    abortControllerRef.current = controller;
+
     try {
       // Construction de l'historique court en mémoire vive uniquement
       const historyPayload = newMessages.slice(-8).map((m) => ({
@@ -105,6 +119,7 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
       const res = await sendDelmasChatMessage({
         message: text,
         history: historyPayload,
+        signal: controller.signal,
       });
 
       const delmasMessage: Message = {
@@ -117,14 +132,25 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
 
       setMessages((prev) => [...prev, delmasMessage]);
     } catch (err: any) {
-      const errorMessage: Message = {
-        id: `err-${Date.now()}`,
-        sender: 'delmas',
-        text: `Désolé, une erreur temporaire est survenue : ${err?.message || 'Connexion impossible'}. Veuillez réessayer.`,
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
-      setMessages((prev) => [...prev, errorMessage]);
+      if (err?.name === 'AbortError' || err?.message?.includes('interrompue') || controller.signal.aborted) {
+        const stoppedMessage: Message = {
+          id: `stopped-${Date.now()}`,
+          sender: 'delmas',
+          text: "⏹️ *Réponse arrêtée par l'utilisateur.*",
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, stoppedMessage]);
+      } else {
+        const errorMessage: Message = {
+          id: `err-${Date.now()}`,
+          sender: 'delmas',
+          text: `Désolé, une erreur temporaire est survenue : ${err?.message || 'Connexion impossible'}. Veuillez réessayer.`,
+          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        };
+        setMessages((prev) => [...prev, errorMessage]);
+      }
     } finally {
+      abortControllerRef.current = null;
       setIsLoading(false);
       setTimeout(() => textareaRef.current?.focus(), 50);
     }
@@ -150,30 +176,28 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
   };
 
   const handleClearChat = () => {
+    handleStopGeneration();
     setMessages([]);
     setInputValue('');
   };
 
   return (
     <div className="flex flex-col h-full w-full bg-[#16181d] text-zinc-100 select-text overflow-hidden relative font-sans">
-      {/* Halo d'ambiance Orange et Bleu en arrière-plan */}
-      <div className="absolute top-0 left-1/4 w-96 h-48 bg-orange-500/10 rounded-full blur-3xl pointer-events-none" />
-      <div className="absolute top-0 right-1/4 w-96 h-48 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+      {/* Halo d'ambiance Bleu en arrière-plan */}
+      <div className="absolute top-0 left-1/4 w-96 h-48 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
+      <div className="absolute top-0 right-1/4 w-96 h-48 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* EN-TÊTE : Robot Orange-Bleu, Titre, Statut Éphémère, Bouton Fermer */}
+      {/* EN-TÊTE : Robot Bleu, Titre, Bouton Fermer (badge Direct & Éphémère retiré) */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-zinc-800/80 bg-[#1a1d24]/90 backdrop-blur-md shrink-0 z-20">
         <div className="flex items-center gap-3">
           <div className="relative">
-            <div className="absolute -inset-1 rounded-full bg-gradient-to-r from-orange-500 to-blue-600 opacity-60 blur-xs" />
-            <DelmasRobot size={36} variant="orange-blue" className="relative" />
+            <div className="absolute -inset-1 rounded-full bg-blue-500/30 opacity-60 blur-xs" />
+            <DelmasRobot size={36} variant="blue" className="relative" />
           </div>
           <div className="flex flex-col">
             <div className="flex items-center gap-2">
-              <span className="font-black text-sm sm:text-base tracking-wide bg-gradient-to-r from-orange-400 via-amber-300 to-blue-400 bg-clip-text text-transparent">
+              <span className="font-black text-sm sm:text-base tracking-wide bg-gradient-to-r from-blue-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent">
                 DELMAS IA
-              </span>
-              <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-orange-500/15 text-orange-300 border border-orange-500/30">
-                Direct & Éphémère
               </span>
             </div>
             <span className="text-[11px] text-zinc-400 font-medium">
@@ -205,31 +229,31 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
         </div>
       </div>
 
-      {/* ZONE CENTRALE : Messages ou Écran d'Accueil Orange & Bleu */}
+      {/* ZONE CENTRALE : Messages ou Écran d'Accueil Bleu */}
       <div
         ref={scrollContainerRef}
         className="flex-1 overflow-y-auto px-4 sm:px-6 py-5 space-y-5 flex flex-col relative z-10"
       >
         {messages.length === 0 ? (
-          /* ÉCRAN DE BIENVENUE ORANGE & BLEU DEMANDÉ PAR L'UTILISATEUR */
+          /* ÉCRAN DE BIENVENUE AVEC ROBOT BLEU */
           <div className="flex-1 flex flex-col items-center justify-center text-center my-auto py-6 sm:py-10 max-w-2xl mx-auto w-full animate-fadeIn">
-            {/* Robot Delmas Orange-Bleu imposant avec double halo */}
+            {/* Robot Delmas Bleu imposant avec halo lumineux */}
             <div className="relative mb-5 flex items-center justify-center">
               <div 
                 className="absolute w-28 h-28 rounded-full pointer-events-none transition-all duration-700"
                 style={{
-                  background: 'radial-gradient(circle, rgba(249,115,22,0.45) 0%, rgba(37,99,235,0.3) 50%, transparent 75%)',
+                  background: 'radial-gradient(circle, rgba(37,99,235,0.35) 0%, rgba(59,130,246,0.18) 50%, transparent 75%)',
                   filter: 'blur(16px)',
                 }}
               />
-              <div className="p-1.5 rounded-full ring-2 ring-orange-500/50 shadow-[0_0_25px_rgba(249,115,22,0.45)]">
-                <DelmasRobot size={68} variant="orange-blue" />
+              <div className="p-1.5 rounded-full ring-2 ring-blue-500/40 shadow-[0_0_25px_rgba(37,99,235,0.4)]">
+                <DelmasRobot size={68} variant="blue" />
               </div>
             </div>
 
-            {/* Titre Orange & Bleu vibrant */}
+            {/* Titre vibrant */}
             <h1 className="text-xl sm:text-2xl md:text-3xl font-black mb-2.5 tracking-tight">
-              <span className="bg-gradient-to-r from-orange-400 via-amber-300 to-blue-400 bg-clip-text text-transparent">
+              <span className="bg-gradient-to-r from-blue-400 via-sky-300 to-indigo-300 bg-clip-text text-transparent">
                 Bonjour ! Je suis Delmas,
               </span>
               <br />
@@ -244,24 +268,24 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
             </p>
 
             <p className="text-xs text-zinc-400 max-w-md leading-relaxed mb-6">
-              Posez toutes vos questions sur vos cours, devoirs et méthodologies. Vos échanges sont directs et disparaissent intégralement dès que vous fermez ce menu.
+              Posez toutes vos questions sur vos cours, devoirs et méthodologies. Vos échanges sont directs et disparaissent dès que vous fermez ce menu.
             </p>
 
-            {/* Suggestions rapides en 1 tap (Questions de causerie / révision) */}
+            {/* Suggestions rapides en 1 tap */}
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left">
               {STARTER_PROMPTS.map((item, idx) => (
                 <button
                   key={idx}
                   onClick={() => handleSendMessage(item.prompt)}
-                  className="group p-3 rounded-2xl bg-[#1f222a]/80 hover:bg-[#252934] border border-zinc-800 hover:border-orange-500/40 transition-all duration-200 text-left cursor-pointer flex items-start gap-3 active:scale-98"
+                  className="group p-3 rounded-2xl bg-[#1f222a]/80 hover:bg-[#252934] border border-zinc-800 hover:border-blue-500/40 transition-all duration-200 text-left cursor-pointer flex items-start gap-3 active:scale-98"
                 >
                   <span className="text-xl shrink-0 p-1.5 rounded-xl bg-zinc-800/80 group-hover:scale-110 transition-transform">
                     {item.icon}
                   </span>
                   <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-zinc-200 group-hover:text-orange-300 transition-colors flex items-center justify-between">
+                    <div className="text-xs font-bold text-zinc-200 group-hover:text-blue-300 transition-colors flex items-center justify-between">
                       <span>{item.title}</span>
-                      <ArrowRight className="w-3 h-3 text-zinc-500 group-hover:text-orange-400 transition-colors opacity-0 group-hover:opacity-100" />
+                      <ArrowRight className="w-3 h-3 text-zinc-500 group-hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100" />
                     </div>
                     <p className="text-[11px] text-zinc-400 line-clamp-2 mt-0.5 leading-snug">
                       {item.prompt}
@@ -286,12 +310,12 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
                   </div>
                 </div>
               ) : (
-                /* Réponse de Delmas IA (alignée à gauche avec robot orange-bleu) */
+                /* Réponse de Delmas IA (alignée à gauche avec robot bleu) */
                 <div className="flex flex-col w-full max-w-full">
                   {/* Entête du message de Delmas */}
                   <div className="flex items-center gap-2 mb-1.5 pl-1">
-                    <DelmasRobot size={22} variant="orange-blue" />
-                    <span className="text-xs font-bold bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent">
+                    <DelmasRobot size={22} variant="blue" />
+                    <span className="text-xs font-bold bg-gradient-to-r from-blue-400 to-sky-300 bg-clip-text text-transparent">
                       Delmas IA
                     </span>
                     {msg.model && (
@@ -365,11 +389,14 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
         {isLoading && (
           <div className="flex flex-col w-full animate-pulse pl-1">
             <div className="flex items-center gap-2 mb-1.5">
-              <DelmasRobot size={22} variant="orange-blue" />
-              <span className="text-xs font-bold text-orange-400">Delmas réfléchit...</span>
+              <DelmasRobot size={22} variant="blue" />
+              <span className="text-xs font-bold text-blue-400">Delmas réfléchit...</span>
             </div>
-            <div className="rounded-2xl rounded-tl-xs bg-[#1a1c22] border border-orange-500/30 px-4 py-3 text-zinc-300 max-w-sm flex items-center gap-3">
-              <Loader2 className="w-4 h-4 text-orange-400 animate-spin" />
+            <div className="rounded-2xl rounded-tl-xs bg-[#1a1c22] border border-blue-500/30 px-4 py-3 text-zinc-300 max-w-sm flex items-center gap-3">
+              <span className="flex h-2.5 w-2.5 relative">
+                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" />
+              </span>
               <span className="text-xs font-medium text-zinc-400">
                 Génération de la réponse en cours...
               </span>
@@ -378,9 +405,9 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
         )}
       </div>
 
-      {/* ZONE DE SAISIE EN BAS */}
+      {/* ZONE DE SAISIE EN BAS AVEC BOUTON D'ENVOI / ARRÊT INTÉGRÉ */}
       <div className="p-3 sm:p-4 border-t border-zinc-800/80 bg-[#181a20]/95 backdrop-blur-md shrink-0 relative z-20">
-        <div className="relative flex items-end gap-2 bg-[#20232c] border border-zinc-700/70 focus-within:border-orange-500/80 rounded-2xl p-2 sm:p-2.5 transition-all shadow-inner">
+        <div className="relative flex items-end gap-2 bg-[#20232c] border border-zinc-700/70 focus-within:border-blue-500/80 rounded-2xl p-2 sm:p-2.5 transition-all shadow-inner">
           <textarea
             ref={textareaRef}
             rows={1}
@@ -396,27 +423,36 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
             className="flex-1 bg-transparent resize-none text-[13px] sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none max-h-36 py-1 px-2 leading-relaxed"
           />
 
-          <button
-            onClick={() => handleSendMessage()}
-            disabled={!inputValue.trim() || isLoading}
-            className={`p-2.5 rounded-xl transition-all flex items-center justify-center shrink-0 cursor-pointer ${
-              inputValue.trim() && !isLoading
-                ? 'bg-gradient-to-r from-orange-500 via-amber-500 to-blue-600 hover:from-orange-600 hover:to-blue-700 text-white shadow-[0_2px_12px_rgba(249,115,22,0.4)] active:scale-95'
-                : 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50'
-            }`}
-            title="Envoyer le message (Entrée)"
-          >
-            {isLoading ? (
-              <Loader2 className="w-4 h-4 animate-spin text-orange-300" />
-            ) : (
+          {/* Bouton unique : Envoi quand inactif, Arrêt immédiat (Stop) quand en train de générer */}
+          {isLoading ? (
+            <button
+              type="button"
+              onClick={handleStopGeneration}
+              className="p-2.5 rounded-xl bg-zinc-800 hover:bg-red-500/20 text-red-400 hover:text-red-300 border border-red-500/40 transition-all flex items-center justify-center shrink-0 cursor-pointer shadow-sm active:scale-95 group animate-pulse"
+              title="Arrêter la réponse"
+            >
+              <Square className="w-3.5 h-3.5 fill-current" />
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleSendMessage()}
+              disabled={!inputValue.trim()}
+              className={`p-2.5 rounded-xl transition-all flex items-center justify-center shrink-0 cursor-pointer ${
+                inputValue.trim()
+                  ? 'bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white shadow-[0_2px_12px_rgba(37,99,235,0.4)] active:scale-95'
+                  : 'bg-zinc-800 text-zinc-500 cursor-not-allowed opacity-50'
+              }`}
+              title="Envoyer le message (Entrée)"
+            >
               <Send className="w-4 h-4" />
-            )}
-          </button>
+            </button>
+          )}
         </div>
 
-        {/* Note de réassurance éphémère */}
-        <div className="flex items-center justify-center gap-1.5 mt-2 text-[10px] text-zinc-500 font-medium">
-          <span>🔒 Causerie instantanée • Tout s'efface automatiquement dès que vous quittez.</span>
+        {/* Note de précaution sous le champ (sans cadenas) */}
+        <div className="flex items-center justify-center gap-1.5 mt-2 text-[11px] text-zinc-400 font-medium text-center">
+          <span>L'assistant Delmas peut faire des erreurs. Pensez à vérifier les informations importantes.</span>
         </div>
       </div>
     </div>
@@ -438,7 +474,7 @@ const DelmasMessageRenderer: React.FC<{ text: string }> = ({ text }) => {
         // Titres H3
         if (trimmed.startsWith('### ')) {
           return (
-            <h3 key={idx} className="text-sm font-bold text-orange-300 pt-2 pb-0.5 border-b border-zinc-800/80">
+            <h3 key={idx} className="text-sm font-bold text-blue-300 pt-2 pb-0.5 border-b border-zinc-800/80">
               <MathText text={trimmed.slice(4)} inline={true} />
             </h3>
           );
@@ -454,7 +490,7 @@ const DelmasMessageRenderer: React.FC<{ text: string }> = ({ text }) => {
         // Titres H1
         if (trimmed.startsWith('# ')) {
           return (
-            <h1 key={idx} className="text-lg font-black bg-gradient-to-r from-orange-400 to-amber-300 bg-clip-text text-transparent pt-3 pb-1">
+            <h1 key={idx} className="text-lg font-black bg-gradient-to-r from-blue-400 to-sky-300 bg-clip-text text-transparent pt-3 pb-1">
               <MathText text={trimmed.slice(2)} inline={true} />
             </h1>
           );
@@ -463,7 +499,7 @@ const DelmasMessageRenderer: React.FC<{ text: string }> = ({ text }) => {
         if (trimmed.startsWith('- ') || trimmed.startsWith('* ')) {
           return (
             <div key={idx} className="flex items-start gap-2 pl-2">
-              <span className="text-orange-400 mt-1.5 text-xs">•</span>
+              <span className="text-blue-400 mt-1.5 text-xs">•</span>
               <div className="flex-1 break-words">
                 <MathText text={trimmed.slice(2)} inline={true} />
               </div>
@@ -473,7 +509,7 @@ const DelmasMessageRenderer: React.FC<{ text: string }> = ({ text }) => {
 
         // Bloc de code simple
         if (trimmed.startsWith('```')) {
-          return null; // Déjà géré ou délimiteur
+          return null;
         }
 
         // Ligne normale avec rendu KaTeX
