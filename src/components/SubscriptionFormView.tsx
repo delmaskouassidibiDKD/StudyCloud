@@ -1,4 +1,4 @@
-import React, { useState, useRef } from 'react';
+import React, { useState, useRef, useEffect } from 'react';
 import { 
   ArrowLeft, 
   UploadCloud, 
@@ -17,7 +17,7 @@ import {
   HelpCircle, 
   ShieldCheck
 } from 'lucide-react';
-import { requestStorageUpgrade } from '../services/api';
+import { requestStorageUpgrade, getCompanyProfile, CompanyProfile } from '../services/api';
 
 export interface SelectedPlan {
   name: string;
@@ -50,6 +50,19 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
   const [fullName, setFullName] = useState(initialName);
   const [contactPhone, setContactPhone] = useState(initialPhone);
   const [whatsappNumber, setWhatsappNumber] = useState('');
+  
+  // Profil entreprise & comptes marchands chargés dynamiquement
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
+
+  useEffect(() => {
+    let isMounted = true;
+    getCompanyProfile().then((prof) => {
+      if (isMounted && prof) {
+        setCompanyProfile(prof);
+      }
+    }).catch(() => {});
+    return () => { isMounted = false; };
+  }, []);
   
   // Reçu de paiement (Fichier Image en Base64)
   const [receiptImage, setReceiptImage] = useState<string | null>(null);
@@ -130,6 +143,9 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
         userName: fullName.trim(),
         contactPhone: contactPhone.trim(),
         whatsappNumber: whatsappNumber.trim(),
+        storageDisplay: plan.storageDisplay,
+        priceDisplay: plan.priceDisplay,
+        billingCycle: plan.billingCycle,
         pricePaid: plan.priceFcfa || plan.price,
         currency: 'FCFA',
         paymentMethod: 'Mobile Money (Wave / Orange / MTN / Moov)',
@@ -542,15 +558,15 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
                         Wave
                       </span>
                       <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
-                        +225 07 00 00 00 00
+                        {companyProfile?.wave_number || '+225 07 00 00 00 00'}
                       </span>
                       <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
-                        Titulaire : StudyCloud CI
+                        Titulaire : {companyProfile?.wave_name || 'StudyCloud CI'}
                       </span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleCopyNumber('+2250700000000', 'wave')}
+                      onClick={() => handleCopyNumber(companyProfile?.wave_number || '+2250700000000', 'wave')}
                       className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
                     >
                       {copiedKey === 'wave' ? (
@@ -574,15 +590,15 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
                         Orange
                       </span>
                       <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
-                        +225 07 00 00 00 00
+                        {companyProfile?.orange_number || '+225 07 00 00 00 00'}
                       </span>
                       <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
-                        Orange Money Côte d'Ivoire
+                        {companyProfile?.orange_name || "Orange Money Côte d'Ivoire"}
                       </span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleCopyNumber('+2250700000000', 'orange')}
+                      onClick={() => handleCopyNumber(companyProfile?.orange_number || '+2250700000000', 'orange')}
                       className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
                     >
                       {copiedKey === 'orange' ? (
@@ -606,15 +622,15 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
                         MTN / Moov
                       </span>
                       <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
-                        +225 05 00 00 00 00
+                        {companyProfile?.mtn_number || '+225 05 00 00 00 00'}
                       </span>
                       <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
-                        Paiement Mobile National
+                        {companyProfile?.mtn_name || 'Paiement Mobile National'}
                       </span>
                     </div>
                     <button
                       type="button"
-                      onClick={() => handleCopyNumber('+2250500000000', 'mtn')}
+                      onClick={() => handleCopyNumber(companyProfile?.mtn_number || '+2250500000000', 'mtn')}
                       className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
                     >
                       {copiedKey === 'mtn' ? (
@@ -630,6 +646,47 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
                       )}
                     </button>
                   </div>
+
+                  {/* MOOV DÉDIÉ (SI CONFIGURÉ) */}
+                  {companyProfile?.moov_number && (
+                    <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
+                      <div>
+                        <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-700 dark:text-purple-400 mr-2">
+                          Moov
+                        </span>
+                        <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
+                          {companyProfile.moov_number}
+                        </span>
+                        <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
+                          {companyProfile.moov_name || 'Moov Money'}
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleCopyNumber(companyProfile.moov_number!, 'moov')}
+                        className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
+                      >
+                        {copiedKey === 'moov' ? (
+                          <>
+                            <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            <span className="text-[11px] text-emerald-600">Copié</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span className="text-[11px]">Copier</span>
+                          </>
+                        )}
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Consigne / Instructions de paiement personnalisées */}
+                  {companyProfile?.payment_instructions && (
+                    <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-800 dark:text-emerald-300">
+                      💡 <strong>Consigne :</strong> {companyProfile.payment_instructions}
+                    </div>
+                  )}
                 </div>
               </div>
 

@@ -2227,9 +2227,72 @@ async function ensureStorageTables(db) {
       "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_start_date TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_end_date TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN grace_period_days INTEGER DEFAULT 5",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_whatsapp TEXT DEFAULT ''"
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN contact_phone TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_whatsapp TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN storage_display TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN price_display TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN billing_cycle TEXT DEFAULT 'annual'"
     ];
     for (const sql of upgradeCols) {
+      try { await db.prepare(sql).run(); } catch (e) {}
+    }
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS company_profile (
+        id TEXT PRIMARY KEY DEFAULT 'main',
+        company_name TEXT DEFAULT 'DKD Technologies',
+        activity TEXT DEFAULT 'Technologies & Éducation Numérique',
+        location TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
+        address TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
+        phone_contact TEXT DEFAULT '+225 0101007978',
+        phone_contact_secondary TEXT DEFAULT '',
+        phone_whatsapp TEXT DEFAULT '+225 0101007978',
+        email TEXT DEFAULT 'contact@dkd-technologies.com',
+        website TEXT DEFAULT 'https://studycloud.dkd-technologies.com',
+        wave_number TEXT DEFAULT '+225 07 00 00 00 00',
+        wave_name TEXT DEFAULT 'StudyCloud CI',
+        orange_number TEXT DEFAULT '+225 07 00 00 00 00',
+        orange_name TEXT DEFAULT 'Orange Money Côte d''Ivoire',
+        mtn_number TEXT DEFAULT '+225 05 00 00 00 00',
+        mtn_name TEXT DEFAULT 'Paiement Mobile National',
+        moov_number TEXT DEFAULT '',
+        moov_name TEXT DEFAULT '',
+        payment_instructions TEXT DEFAULT 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.',
+        about_text TEXT DEFAULT 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
+        notes TEXT DEFAULT '',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await db.prepare(`
+      INSERT OR IGNORE INTO company_profile (id, company_name, activity, location, address, phone_contact, phone_whatsapp, email, website, wave_number, wave_name, orange_number, orange_name, mtn_number, mtn_name, moov_number, moov_name, payment_instructions, about_text)
+      VALUES ('main', 'DKD Technologies', 'Technologies & Éducation Numérique', 'Abidjan, Côte d''Ivoire', 'Abidjan, Côte d''Ivoire', '+225 0101007978', '+225 0101007978', 'contact@dkd-technologies.com', 'https://studycloud.dkd-technologies.com', '+225 07 00 00 00 00', 'StudyCloud CI', '+225 07 00 00 00 00', 'Orange Money Côte d''Ivoire', '+225 05 00 00 00 00', 'Paiement Mobile National', '', '', 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.', 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.')
+    `).run();
+
+    const companyCols = [
+      "ALTER TABLE company_profile ADD COLUMN company_name TEXT DEFAULT 'DKD Technologies'",
+      "ALTER TABLE company_profile ADD COLUMN activity TEXT DEFAULT 'Technologies & Éducation Numérique'",
+      "ALTER TABLE company_profile ADD COLUMN location TEXT DEFAULT 'Abidjan, Côte d''Ivoire'",
+      "ALTER TABLE company_profile ADD COLUMN address TEXT DEFAULT 'Abidjan, Côte d''Ivoire'",
+      "ALTER TABLE company_profile ADD COLUMN phone_contact TEXT DEFAULT '+225 0101007978'",
+      "ALTER TABLE company_profile ADD COLUMN phone_contact_secondary TEXT DEFAULT ''",
+      "ALTER TABLE company_profile ADD COLUMN phone_whatsapp TEXT DEFAULT '+225 0101007978'",
+      "ALTER TABLE company_profile ADD COLUMN email TEXT DEFAULT 'contact@dkd-technologies.com'",
+      "ALTER TABLE company_profile ADD COLUMN website TEXT DEFAULT 'https://studycloud.dkd-technologies.com'",
+      "ALTER TABLE company_profile ADD COLUMN wave_number TEXT DEFAULT '+225 07 00 00 00 00'",
+      "ALTER TABLE company_profile ADD COLUMN wave_name TEXT DEFAULT 'StudyCloud CI'",
+      "ALTER TABLE company_profile ADD COLUMN orange_number TEXT DEFAULT '+225 07 00 00 00 00'",
+      "ALTER TABLE company_profile ADD COLUMN orange_name TEXT DEFAULT 'Orange Money Côte d''Ivoire'",
+      "ALTER TABLE company_profile ADD COLUMN mtn_number TEXT DEFAULT '+225 05 00 00 00 00'",
+      "ALTER TABLE company_profile ADD COLUMN mtn_name TEXT DEFAULT 'Paiement Mobile National'",
+      "ALTER TABLE company_profile ADD COLUMN moov_number TEXT DEFAULT ''",
+      "ALTER TABLE company_profile ADD COLUMN moov_name TEXT DEFAULT ''",
+      "ALTER TABLE company_profile ADD COLUMN payment_instructions TEXT DEFAULT ''",
+      "ALTER TABLE company_profile ADD COLUMN about_text TEXT DEFAULT ''",
+      "ALTER TABLE company_profile ADD COLUMN notes TEXT DEFAULT ''",
+      "ALTER TABLE company_profile ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+    ];
+    for (const sql of companyCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
     }
 
@@ -7206,16 +7269,71 @@ Lien vers le produit : ${productShareUrl}`;
         const receiptImageUrl = body.receiptImageUrl || body.receiptUrl || "";
         const receiptR2Key = body.receiptR2Key || (receiptImageUrl ? `storage-receipts/${userId}/recu_${requestId}.jpg` : "");
 
+        const storageDisplay = body.storageDisplay || (additionalMb >= 1024 ? `${(additionalMb / 1024).toFixed(additionalMb % 1024 === 0 ? 0 : 1)} Go (${additionalMb} Mo)` : `${additionalMb} Mo`);
+        const priceDisplay = body.priceDisplay || `${pricePaid} ${currency}`;
+        const billingCycle = body.billingCycle || "annual";
+
         await env.DB.prepare(`
-          INSERT INTO storage_upgrade_requests (id, user_id, user_name, user_phone, user_email, pack_id, pack_name, additional_mb, additional_words, price_paid, currency, payment_method, payment_reference, receipt_image_url, receipt_r2_key, contact_phone, notes, status, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        `).bind(requestId, userId, userName, contactPhone, userEmail, packId, packName, additionalMb, additionalWords, pricePaid, currency, paymentMethod, paymentReference, receiptImageUrl, receiptR2Key, contactPhone, notes).run();
+          INSERT INTO storage_upgrade_requests (
+            id, user_id, user_name, user_phone, user_email, pack_id, pack_name,
+            additional_mb, additional_words, price_paid, currency, payment_method, payment_reference,
+            receipt_image_url, receipt_r2_key, contact_phone, user_whatsapp,
+            storage_display, price_display, billing_cycle,
+            notes, status, created_at, updated_at
+          )
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `).bind(
+          requestId, userId, userName, contactPhone, userEmail, packId, packName,
+          additionalMb, additionalWords, pricePaid, currency, paymentMethod, paymentReference,
+          receiptImageUrl, receiptR2Key, contactPhone, userWhatsapp,
+          storageDisplay, priceDisplay, billingCycle,
+          notes
+        ).run();
 
         return jsonResponse({
           success: true,
           message: "Demande d'augmentation de stockage enregistrée avec succès",
           requestId
         }, 200, origin);
+      }
+
+      // Route publique : Informations professionnelles de l'entreprise et comptes marchands
+      if (path === "/api/company-profile" && method === "GET") {
+        const defaultProfile = {
+          id: 'main',
+          company_name: 'DKD Technologies',
+          activity: 'Technologies & Éducation Numérique',
+          location: 'Abidjan, Côte d\'Ivoire',
+          address: 'Abidjan, Côte d\'Ivoire',
+          phone_contact: '+225 0101007978',
+          phone_contact_secondary: '',
+          phone_whatsapp: '+225 0101007978',
+          email: 'contact@dkd-technologies.com',
+          website: 'https://studycloud.dkd-technologies.com',
+          wave_number: '+225 07 00 00 00 00',
+          wave_name: 'StudyCloud CI',
+          orange_number: '+225 07 00 00 00 00',
+          orange_name: 'Orange Money Côte d\'Ivoire',
+          mtn_number: '+225 05 00 00 00 00',
+          mtn_name: 'Paiement Mobile National',
+          moov_number: '',
+          moov_name: '',
+          payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.',
+          about_text: 'Plateforme d\'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
+          notes: ''
+        };
+
+        if (!env.DB) {
+          return jsonResponse({ success: true, profile: defaultProfile }, 200, origin);
+        }
+
+        try {
+          await ensureStorageTables(env.DB);
+          const row = await env.DB.prepare(`SELECT * FROM company_profile WHERE id = 'main'`).first();
+          return jsonResponse({ success: true, profile: row || defaultProfile }, 200, origin);
+        } catch (e) {
+          return jsonResponse({ success: true, profile: defaultProfile }, 200, origin);
+        }
       }
       return errorResponse(`Route non trouv\xE9e : ${method} ${path}`, 404, origin);
     } catch (err) {

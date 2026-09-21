@@ -1940,6 +1940,9 @@ export async function requestStorageUpgrade(params: {
   whatsappNumber?: string;
   userEmail?: string;
   pricePaid?: number;
+  priceDisplay?: string;
+  storageDisplay?: string;
+  billingCycle?: 'annual' | 'monthly';
   currency?: string;
   paymentMethod?: string;
   paymentReference?: string;
@@ -1968,3 +1971,63 @@ export async function requestStorageUpgrade(params: {
     };
   }
 }
+
+export interface CompanyProfile {
+  company_name: string;
+  activity: string;
+  location: string;
+  address?: string;
+  website?: string;
+  email?: string;
+  phone_contact: string;
+  phone_whatsapp: string;
+  phone_contact_secondary?: string;
+  about_text?: string;
+  wave_number: string;
+  wave_name: string;
+  orange_number: string;
+  orange_name: string;
+  mtn_number: string;
+  mtn_name: string;
+  moov_number?: string;
+  moov_name?: string;
+  payment_instructions?: string;
+}
+
+const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
+  company_name: 'DKD Technologies',
+  activity: 'Technologies & Éducation Numérique',
+  location: 'Abidjan, Côte d\'Ivoire',
+  address: 'Abidjan, Côte d\'Ivoire',
+  phone_contact: '+225 0101007978',
+  phone_whatsapp: '+225 0101007978',
+  email: 'contact@dkd-technologies.com',
+  website: 'https://studycloud.dkd-technologies.com',
+  wave_number: '+225 07 00 00 00 00',
+  wave_name: 'StudyCloud CI',
+  orange_number: '+225 07 00 00 00 00',
+  orange_name: 'Orange Money Côte d\'Ivoire',
+  mtn_number: '+225 05 00 00 00 00',
+  mtn_name: 'Paiement Mobile National',
+  payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.'
+};
+
+/**
+ * Récupère les informations professionnelles et coordonnées marchandes de l'entreprise
+ */
+export async function getCompanyProfile(): Promise<CompanyProfile> {
+  try {
+    const res = await request<{ success: boolean; profile?: CompanyProfile }>(
+      '/api/company-profile',
+      { method: 'GET' }
+    );
+    if (res && res.profile && res.profile.company_name) {
+      return { ...DEFAULT_COMPANY_PROFILE, ...res.profile };
+    }
+    return DEFAULT_COMPANY_PROFILE;
+  } catch (err) {
+    console.warn('[API] Utilisation du profil entreprise par défaut:', err);
+    return DEFAULT_COMPANY_PROFILE;
+  }
+}
+

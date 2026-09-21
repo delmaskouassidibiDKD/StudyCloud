@@ -208,9 +208,73 @@ async function ensureStorageTables(db) {
       "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_start_date TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_end_date TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN grace_period_days INTEGER DEFAULT 5",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_whatsapp TEXT DEFAULT ''"
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN contact_phone TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_whatsapp TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN storage_display TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN price_display TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN billing_cycle TEXT DEFAULT 'annual'"
     ];
     for (const sql of upgradeReqCols) {
+      try { await db.prepare(sql).run(); } catch (e) {}
+    }
+
+    // 4 bis. Table 'company_profile' pour les informations professionnelles & comptes marchands
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS company_profile (
+        id TEXT PRIMARY KEY DEFAULT 'main',
+        company_name TEXT DEFAULT 'DKD Technologies',
+        activity TEXT DEFAULT 'Technologies & Éducation Numérique',
+        location TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
+        address TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
+        phone_contact TEXT DEFAULT '+225 0101007978',
+        phone_contact_secondary TEXT DEFAULT '',
+        phone_whatsapp TEXT DEFAULT '+225 0101007978',
+        email TEXT DEFAULT 'contact@dkd-technologies.com',
+        website TEXT DEFAULT 'https://studycloud.dkd-technologies.com',
+        wave_number TEXT DEFAULT '+225 07 00 00 00 00',
+        wave_name TEXT DEFAULT 'StudyCloud CI',
+        orange_number TEXT DEFAULT '+225 07 00 00 00 00',
+        orange_name TEXT DEFAULT 'Orange Money Côte d''Ivoire',
+        mtn_number TEXT DEFAULT '+225 05 00 00 00 00',
+        mtn_name TEXT DEFAULT 'Paiement Mobile National',
+        moov_number TEXT DEFAULT '',
+        moov_name TEXT DEFAULT '',
+        payment_instructions TEXT DEFAULT 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.',
+        about_text TEXT DEFAULT 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
+        notes TEXT DEFAULT '',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await db.prepare(`
+      INSERT OR IGNORE INTO company_profile (id, company_name, activity, location, address, phone_contact, phone_whatsapp, email, website, wave_number, wave_name, orange_number, orange_name, mtn_number, mtn_name, moov_number, moov_name, payment_instructions, about_text)
+      VALUES ('main', 'DKD Technologies', 'Technologies & Éducation Numérique', 'Abidjan, Côte d''Ivoire', 'Abidjan, Côte d''Ivoire', '+225 0101007978', '+225 0101007978', 'contact@dkd-technologies.com', 'https://studycloud.dkd-technologies.com', '+225 07 00 00 00 00', 'StudyCloud CI', '+225 07 00 00 00 00', 'Orange Money Côte d''Ivoire', '+225 05 00 00 00 00', 'Paiement Mobile National', '', '', 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.', 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.')
+    `).run();
+
+    const companyProfileCols = [
+      "ALTER TABLE company_profile ADD COLUMN company_name TEXT DEFAULT 'DKD Technologies'",
+      "ALTER TABLE company_profile ADD COLUMN activity TEXT DEFAULT 'Technologies & Éducation Numérique'",
+      "ALTER TABLE company_profile ADD COLUMN location TEXT DEFAULT 'Abidjan, Côte d''Ivoire'",
+      "ALTER TABLE company_profile ADD COLUMN address TEXT DEFAULT 'Abidjan, Côte d''Ivoire'",
+      "ALTER TABLE company_profile ADD COLUMN phone_contact TEXT DEFAULT '+225 0101007978'",
+      "ALTER TABLE company_profile ADD COLUMN phone_contact_secondary TEXT DEFAULT ''",
+      "ALTER TABLE company_profile ADD COLUMN phone_whatsapp TEXT DEFAULT '+225 0101007978'",
+      "ALTER TABLE company_profile ADD COLUMN email TEXT DEFAULT 'contact@dkd-technologies.com'",
+      "ALTER TABLE company_profile ADD COLUMN website TEXT DEFAULT 'https://studycloud.dkd-technologies.com'",
+      "ALTER TABLE company_profile ADD COLUMN wave_number TEXT DEFAULT '+225 07 00 00 00 00'",
+      "ALTER TABLE company_profile ADD COLUMN wave_name TEXT DEFAULT 'StudyCloud CI'",
+      "ALTER TABLE company_profile ADD COLUMN orange_number TEXT DEFAULT '+225 07 00 00 00 00'",
+      "ALTER TABLE company_profile ADD COLUMN orange_name TEXT DEFAULT 'Orange Money Côte d''Ivoire'",
+      "ALTER TABLE company_profile ADD COLUMN mtn_number TEXT DEFAULT '+225 05 00 00 00 00'",
+      "ALTER TABLE company_profile ADD COLUMN mtn_name TEXT DEFAULT 'Paiement Mobile National'",
+      "ALTER TABLE company_profile ADD COLUMN moov_number TEXT DEFAULT ''",
+      "ALTER TABLE company_profile ADD COLUMN moov_name TEXT DEFAULT ''",
+      "ALTER TABLE company_profile ADD COLUMN payment_instructions TEXT DEFAULT ''",
+      "ALTER TABLE company_profile ADD COLUMN about_text TEXT DEFAULT ''",
+      "ALTER TABLE company_profile ADD COLUMN notes TEXT DEFAULT ''",
+      "ALTER TABLE company_profile ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+    ];
+    for (const sql of companyProfileCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
     }
 
@@ -1383,6 +1447,15 @@ function renderDashboardHtml(data) {
         <span class="text-base">📊</span>
         <span>Statistiques & Métriques</span>
       </button>
+
+      <button 
+        onclick="switchView('profil-pro')" 
+        id="nav-btn-profil-pro"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+      >
+        <span class="text-base">💼</span>
+        <span>Informations professionnelles</span>
+      </button>
     </nav>
 
     <div class="p-3.5 border-t border-slate-800 text-[11px] text-slate-500">
@@ -1823,6 +1896,320 @@ function renderDashboardHtml(data) {
           </div>
         </div>
       </div>
+    <!-- ================================================================== -->
+    <!-- VUE 8 : INFORMATIONS PROFESSIONNELLES (GESTION PRO, CONTACTS & COMPTES MARCHANDS) -->
+    <!-- ================================================================== -->
+    <div id="view-profil-pro" class="hidden w-full h-full flex flex-col min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-5 space-y-5">
+      
+      <!-- En-tête / Bannière Informations Professionnelles -->
+      <div class="neo-card p-4 bg-gradient-to-r from-slate-900 via-[#131b2e] to-slate-900 border-l-4 border-l-orange-500 shrink-0">
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div>
+            <h3 class="text-sm sm:text-base font-extrabold text-white flex items-center gap-2">
+              <span>💼</span>
+              <span>Informations Professionnelles & Comptes de Réception</span>
+            </h3>
+            <p class="text-xs text-slate-400 mt-0.5">
+              Ces coordonnées sont stockées dans Cloudflare D1. Les numéros Wave, Orange Money et MTN/Moov configurés ici s'affichent automatiquement aux utilisateurs lors du paiement de leur abonnement.
+            </p>
+          </div>
+          <button 
+            type="button" 
+            onclick="saveCompanyProfile()" 
+            id="save-company-btn-top"
+            class="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs shadow-lg shadow-orange-600/30 flex items-center gap-2 transition cursor-pointer self-start sm:self-auto shrink-0 active:scale-95"
+          >
+            <span>💾</span>
+            <span>Enregistrer les modifications</span>
+          </button>
+        </div>
+      </div>
+
+      <!-- Formulaire structuré en 3 blocs principaux -->
+      <form id="company-profile-form" onsubmit="event.preventDefault(); saveCompanyProfile();" class="space-y-5">
+        
+        <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
+          
+          <!-- BLOC 1 : IDENTITÉ DE L'ENTREPRISE & LOCALISATION -->
+          <div class="neo-card p-4 sm:p-5 space-y-4">
+            <div class="border-b border-slate-800 pb-3 flex items-center gap-2 text-white font-bold text-xs sm:text-sm">
+              <span class="text-base">🏢</span>
+              <span>Identité de l'Entreprise & Localisation</span>
+            </div>
+
+            <!-- Nom de la société -->
+            <div class="space-y-1">
+              <label class="text-[11px] font-bold text-slate-300 block">Nom de la société / Entreprise *</label>
+              <input 
+                type="text" 
+                id="pro-company-name" 
+                value="${(data.companyProfile && data.companyProfile.company_name) || "DKD Technologies"}"
+                placeholder="Ex: DKD Technologies" 
+                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
+              >
+            </div>
+
+            <!-- Où on est situé (Localisation) -->
+            <div class="space-y-1">
+              <label class="text-[11px] font-bold text-slate-300 block">Où on est situé (Ville / Pays) *</label>
+              <input 
+                type="text" 
+                id="pro-location" 
+                value="${(data.companyProfile && data.companyProfile.location) || "Abidjan, Côte d'Ivoire"}"
+                placeholder="Ex: Abidjan, Côte d'Ivoire" 
+                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
+              >
+            </div>
+
+            <!-- Notre activité -->
+            <div class="space-y-1">
+              <label class="text-[11px] font-bold text-slate-300 block">Notre activité / Domaine d'expertise *</label>
+              <input 
+                type="text" 
+                id="pro-activity" 
+                value="${(data.companyProfile && data.companyProfile.activity) || "Technologies & Éducation Numérique"}"
+                placeholder="Ex: Technologies, Logiciels & Éducation Numérique" 
+                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
+              >
+            </div>
+
+            <!-- Adresse physique / Siège -->
+            <div class="space-y-1">
+              <label class="text-[11px] font-bold text-slate-300 block">Adresse physique / Quartier / Siège</label>
+              <input 
+                type="text" 
+                id="pro-address" 
+                value="${(data.companyProfile && data.companyProfile.address) || "Abidjan, Côte d'Ivoire"}"
+                placeholder="Ex: Cocody Angré, Abidjan" 
+                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
+              >
+            </div>
+
+            <!-- Site web & Email officiel -->
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              <div class="space-y-1">
+                <label class="text-[11px] font-bold text-slate-300 block">Site web officiel</label>
+                <input 
+                  type="text" 
+                  id="pro-website" 
+                  value="${(data.companyProfile && data.companyProfile.website) || "https://studycloud.dkd-technologies.com"}"
+                  placeholder="https://..." 
+                  class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
+                >
+              </div>
+              <div class="space-y-1">
+                <label class="text-[11px] font-bold text-slate-300 block">Email professionnel</label>
+                <input 
+                  type="email" 
+                  id="pro-email" 
+                  value="${(data.companyProfile && data.companyProfile.email) || "contact@dkd-technologies.com"}"
+                  placeholder="contact@..." 
+                  class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
+                >
+              </div>
+            </div>
+
+          </div>
+
+          <!-- BLOC 2 : VOS DIFFÉRENTS NUMÉROS DE CONTACT DIRECT -->
+          <div class="neo-card p-4 sm:p-5 space-y-4">
+            <div class="border-b border-slate-800 pb-3 flex items-center gap-2 text-white font-bold text-xs sm:text-sm">
+              <span class="text-base">📞</span>
+              <span>Vos Différents Numéros de Contact Direct</span>
+            </div>
+
+            <!-- Numéro d'appel / SMS principal -->
+            <div class="space-y-1">
+              <label class="text-[11px] font-bold text-slate-300 block">Numéro d'appel officiel (Appels / SMS) *</label>
+              <input 
+                type="text" 
+                id="pro-phone-contact" 
+                value="${(data.companyProfile && data.companyProfile.phone_contact) || "+225 0101007978"}"
+                placeholder="Ex: +225 0101007978" 
+                class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
+              >
+              <span class="text-[10px] text-slate-500">Numéro principal de service client.</span>
+            </div>
+
+            <!-- Numéro WhatsApp professionnel -->
+            <div class="space-y-1">
+              <label class="text-[11px] font-bold text-emerald-400 block flex items-center gap-1">
+                <span>💬</span> <span>Numéro WhatsApp officiel *</span>
+              </label>
+              <input 
+                type="text" 
+                id="pro-phone-whatsapp" 
+                value="${(data.companyProfile && data.companyProfile.phone_whatsapp) || "+225 0101007978"}"
+                placeholder="Ex: +225 0101007978" 
+                class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-emerald-500"
+              >
+              <span class="text-[10px] text-slate-500">Permet aux étudiants de vous contacter directement sur WhatsApp.</span>
+            </div>
+
+            <!-- Numéro secondaire optionnel -->
+            <div class="space-y-1">
+              <label class="text-[11px] font-bold text-slate-300 block">Numéro de secours / Ligne secondaire (Facultatif)</label>
+              <input 
+                type="text" 
+                id="pro-phone-secondary" 
+                value="${(data.companyProfile && data.companyProfile.phone_contact_secondary) || ""}"
+                placeholder="Ex: +225 0500000000 (optionnel)" 
+                class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
+              >
+            </div>
+
+            <!-- Description / À propos de l'entreprise -->
+            <div class="space-y-1">
+              <label class="text-[11px] font-bold text-slate-300 block">Présentation courte / Informations écrites</label>
+              <textarea 
+                id="pro-about-text" 
+                rows="3"
+                placeholder="Décrivez votre service, mission ou entreprise..." 
+                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
+              >${(data.companyProfile && data.companyProfile.about_text) || "Plateforme d'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels."}</textarea>
+            </div>
+
+          </div>
+        </div>
+
+        <!-- BLOC 3 : COMPTES ET NUMÉROS DE PAIEMENT MOBILE (WAVE, ORANGE, MTN, MOOV) -->
+        <div class="neo-card p-4 sm:p-5 space-y-4">
+          <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+            <div class="flex items-center gap-2 text-white font-bold text-xs sm:text-sm">
+              <span class="text-base">💳</span>
+              <span>Numéros Officiels pour Recevoir les Paiements Mobiles</span>
+            </div>
+            <span class="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full font-bold">
+              Affichés aux étudiants dans le formulaire
+            </span>
+          </div>
+
+          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+            
+            <!-- WAVE -->
+            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-blue-500">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-black uppercase text-blue-400 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-blue-500"></span> Wave
+                </span>
+                <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono">Mobile Money</span>
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] text-slate-400 block font-bold">Numéro Wave de réception :</label>
+                <input 
+                  type="text" 
+                  id="pro-wave-number" 
+                  value="${(data.companyProfile && data.companyProfile.wave_number) || "+225 07 00 00 00 00"}"
+                  placeholder="+225 07 00 00 00 00" 
+                  class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-blue-500 font-bold"
+                >
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] text-slate-400 block font-bold">Nom du Titulaire affiché :</label>
+                <input 
+                  type="text" 
+                  id="pro-wave-name" 
+                  value="${(data.companyProfile && data.companyProfile.wave_name) || "StudyCloud CI"}"
+                  placeholder="Ex: StudyCloud CI" 
+                  class="w-full bg-slate-900 text-slate-300 text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-blue-500"
+                >
+              </div>
+            </div>
+
+            <!-- ORANGE MONEY -->
+            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-orange-500">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-black uppercase text-orange-400 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-orange-500"></span> Orange Money
+                </span>
+                <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-mono">Mobile Money</span>
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] text-slate-400 block font-bold">Numéro Orange de réception :</label>
+                <input 
+                  type="text" 
+                  id="pro-orange-number" 
+                  value="${(data.companyProfile && data.companyProfile.orange_number) || "+225 07 00 00 00 00"}"
+                  placeholder="+225 07 00 00 00 00" 
+                  class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-orange-500 font-bold"
+                >
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] text-slate-400 block font-bold">Nom du Titulaire affiché :</label>
+                <input 
+                  type="text" 
+                  id="pro-orange-name" 
+                  value="${(data.companyProfile && data.companyProfile.orange_name) || "Orange Money Côte d'Ivoire"}"
+                  placeholder="Ex: Orange Money CI" 
+                  class="w-full bg-slate-900 text-slate-300 text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-orange-500"
+                >
+              </div>
+            </div>
+
+            <!-- MTN / MOOV -->
+            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-yellow-500">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-black uppercase text-yellow-400 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-yellow-500"></span> MTN / Moov
+                </span>
+                <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300 font-mono">Mobile Money</span>
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] text-slate-400 block font-bold">Numéro MTN / Moov de réception :</label>
+                <input 
+                  type="text" 
+                  id="pro-mtn-number" 
+                  value="${(data.companyProfile && data.companyProfile.mtn_number) || "+225 05 00 00 00 00"}"
+                  placeholder="+225 05 00 00 00 00" 
+                  class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-yellow-500 font-bold"
+                >
+              </div>
+              <div class="space-y-1">
+                <label class="text-[10px] text-slate-400 block font-bold">Nom du Titulaire affiché :</label>
+                <input 
+                  type="text" 
+                  id="pro-mtn-name" 
+                  value="${(data.companyProfile && data.companyProfile.mtn_name) || "Paiement Mobile National"}"
+                  placeholder="Ex: Paiement Mobile National" 
+                  class="w-full bg-slate-900 text-slate-300 text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-yellow-500"
+                >
+              </div>
+            </div>
+
+          </div>
+
+          <!-- Instructions de paiement affichées aux étudiants -->
+          <div class="space-y-1 pt-2">
+            <label class="text-[11px] font-bold text-slate-300 block flex items-center gap-1">
+              <span>📝</span>
+              <span>Consignes et Instructions de Paiement (affichées aux utilisateurs à l'Étape 1)</span>
+            </label>
+            <textarea 
+              id="pro-payment-instructions" 
+              rows="2"
+              placeholder="Ex: Transférez le montant exact sur l'un de nos numéros ci-dessous, puis prenez une capture..." 
+              class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
+            >${(data.companyProfile && data.companyProfile.payment_instructions) || "Transférez le montant exact sur l'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction."}</textarea>
+          </div>
+
+        </div>
+
+        <!-- BARRE D'ENREGISTREMENT EN BAS -->
+        <div class="neo-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950">
+          <div class="flex items-center gap-2">
+            <span id="save-company-status" class="text-xs font-bold text-slate-400">Toutes les modifications sont synchronisées avec Cloudflare D1.</span>
+          </div>
+          <button 
+            type="submit" 
+            id="save-company-btn"
+            class="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs sm:text-sm shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-2 transition cursor-pointer active:scale-95"
+          >
+            <span>💾</span>
+            <span>Enregistrer toutes les informations professionnelles</span>
+          </button>
+        </div>
+
+      </form>
     </div>
 
   </main>
@@ -1928,7 +2315,7 @@ function renderDashboardHtml(data) {
 
     function switchView(viewName) {
       currentView = viewName;
-      ['global', 'users', 'demandes', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques'].forEach(v => {
+      ['global', 'users', 'demandes', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro'].forEach(v => {
         const el = document.getElementById('view-' + v);
         const navBtn = document.getElementById('nav-btn-' + v);
         if (!el || !navBtn) return;
@@ -1951,7 +2338,8 @@ function renderDashboardHtml(data) {
           messages: 'Messages',
           signalements: 'Signalements & Retours',
           abonnements: 'Abonnements & Forfaits',
-          statistiques: 'Statistiques & Métriques'
+          statistiques: 'Statistiques & Métriques',
+          'profil-pro': 'Informations professionnelles'
         };
         badge.textContent = titles[viewName] || viewName;
       }
@@ -2863,7 +3251,13 @@ function renderDashboardHtml(data) {
             raw: req,
             userId: req.user_id,
             userName: req.user_name || (user ? user.user.name : 'Utilisateur'),
-            userPhone: req.user_phone || (user ? user.user.phone : ''),
+            userPhone: req.contact_phone || req.user_phone || (user ? user.user.phone : ''),
+            contactPhone: req.contact_phone || req.user_phone || (user ? user.user.phone : ''),
+            userWhatsapp: req.user_whatsapp || '',
+            storageDisplay: req.storage_display || '',
+            priceDisplay: req.price_display || '',
+            billingCycle: req.billing_cycle || 'annual',
+            notes: req.notes || '',
             userAvatar: user ? user.user.avatar_url : '',
             isOnline: user ? user.user.isOnline : false,
             packName: req.pack_name || 'Pack Stockage',
@@ -3423,7 +3817,13 @@ function renderDashboardHtml(data) {
                   \`}
                 </div>
                 <div class="flex items-center gap-3 text-slate-300 flex-wrap">
-                  <span class="font-mono">📞 <strong>\${u.phone || 'Non renseigné'}</strong></span>
+                  <span class="font-mono">📞 Appel/SMS : <strong>\${item.contactPhone || req.contact_phone || u.phone || 'Non renseigné'}</strong></span>
+                  \${(item.userWhatsapp || req.user_whatsapp) ? \`
+                    <span>•</span>
+                    <a href="https://wa.me/\${(item.userWhatsapp || req.user_whatsapp).replace(/[^0-9]/g, '')}" target="_blank" class="inline-flex items-center gap-1 font-mono text-emerald-400 hover:text-emerald-300 underline font-bold bg-emerald-950/40 px-2 py-0.5 rounded-lg border border-emerald-500/30">
+                      <span>💬 WhatsApp : \${item.userWhatsapp || req.user_whatsapp}</span>
+                    </a>
+                  \` : ''}
                   <span>•</span>
                   <span class="font-mono text-slate-400">✉️ \${u.email || 'Non renseigné'}</span>
                 </div>
@@ -3460,35 +3860,68 @@ function renderDashboardHtml(data) {
 
           <!-- DÉTAILS DE LA DEMANDE SOUMISE -->
           <div class="bg-gradient-to-br from-slate-900 via-[#11192e] to-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
-            <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
+            <div class="flex items-center justify-between border-b border-slate-800/80 pb-3 flex-wrap gap-2">
               <h4 class="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
                 <span>📦</span>
-                <span>Offre Demandée : <span class="text-orange-400">\${item.packName}</span></span>
+                <span>Formule Sélectionnée : <span class="text-orange-400">\${item.packName}</span></span>
               </h4>
-              <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5">
-                <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> En attente de validation
-              </span>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  \${(req.billing_cycle === 'monthly' ? 'Facturation mensuelle' : 'Facturation annuelle (-10%)')}
+                </span>
+                <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> En attente de validation
+                </span>
+              </div>
             </div>
 
-            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-3">
+              <!-- Carte 1 : Espace / Capacité choisie -->
               <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 border-l-4 border-l-blue-500">
-                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Stockage Demandé</span>
-                <div class="text-lg font-black text-blue-400 font-mono">+\${formattedAmount}</div>
-                <div class="text-[10px] text-slate-400 mt-1">À ajouter au quota de l'élève</div>
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Capacité / Stockage</span>
+                <div class="text-sm sm:text-base font-black text-blue-400 font-mono">
+                  \${item.storageDisplay || req.storage_display || ('+' + formattedAmount)}
+                </div>
+                <div class="text-[10px] text-slate-400 mt-1">+\${item.amountMb} Mo à allouer</div>
               </div>
 
+              <!-- Carte 2 : Somme à payer selon la formule -->
               <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 border-l-4 border-l-emerald-500">
-                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Prix Payé Transmis</span>
-                <div class="text-lg font-black text-emerald-400 font-mono">\${Number(item.pricePaid).toLocaleString('fr-FR')} \${item.currency}</div>
-                <div class="text-[10px] text-slate-400 mt-1">Tarif pour la période</div>
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Somme à payer (Transmise)</span>
+                <div class="text-sm sm:text-base font-black text-emerald-400 font-mono">
+                  \${item.priceDisplay || req.price_display || (Number(item.pricePaid).toLocaleString('fr-FR') + ' ' + item.currency)}
+                </div>
+                <div class="text-[10px] text-slate-400 mt-1">Montant forfaitaire</div>
               </div>
 
+              <!-- Carte 3 : Moyen de transfert & Référence -->
               <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 border-l-4 border-l-purple-500">
-                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Moyen & Réf. Virement</span>
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Moyen & Référence</span>
                 <div class="text-xs font-bold text-purple-300 truncate mt-0.5">\${paymentMethod}</div>
                 <div class="text-[10px] font-mono text-slate-400 mt-1 truncate">Réf: \${paymentRef}</div>
               </div>
+
+              <!-- Carte 4 : Contact Appel & WhatsApp -->
+              <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 border-l-4 border-l-orange-500">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Numéro Client Confirmé</span>
+                <div class="text-xs font-bold font-mono text-white truncate mt-0.5">
+                  📞 \${item.contactPhone || req.contact_phone || u.phone || 'Non renseigné'}
+                </div>
+                <div class="text-[10px] font-mono text-emerald-400 mt-1 truncate">
+                  💬 WA: \${item.userWhatsapp || req.user_whatsapp || 'Non renseigné'}
+                </div>
+              </div>
             </div>
+
+            \${(req.notes || item.notes) ? \`
+              <div class="bg-slate-950/60 p-2.5 rounded-xl border border-slate-800/80 text-xs text-slate-300 flex items-start gap-2">
+                <span class="text-sm">📝</span>
+                <div>
+                  <span class="text-[10px] font-bold text-slate-400 uppercase block">Précisions du formulaire client :</span>
+                  <span>\${req.notes || item.notes}</span>
+                </div>
+              </div>
+            \` : ''}
 
             <!-- ESPACE REÇU DE PAIEMENT -->
             <div class="bg-slate-950/90 rounded-2xl border-2 border-slate-800 p-4 space-y-3">
@@ -4324,6 +4757,80 @@ function renderDashboardHtml(data) {
       } catch(e) {
         alert('Erreur réseau lors du changement de statut');
       }
+    async function saveCompanyProfile() {
+      const btn = document.getElementById('save-company-btn');
+      const btnTop = document.getElementById('save-company-btn-top');
+      const statusEl = document.getElementById('save-company-status');
+
+      const payload = {
+        company_name: document.getElementById('pro-company-name')?.value || '',
+        location: document.getElementById('pro-location')?.value || '',
+        activity: document.getElementById('pro-activity')?.value || '',
+        address: document.getElementById('pro-address')?.value || '',
+        website: document.getElementById('pro-website')?.value || '',
+        email: document.getElementById('pro-email')?.value || '',
+        phone_contact: document.getElementById('pro-phone-contact')?.value || '',
+        phone_whatsapp: document.getElementById('pro-phone-whatsapp')?.value || '',
+        phone_contact_secondary: document.getElementById('pro-phone-secondary')?.value || '',
+        about_text: document.getElementById('pro-about-text')?.value || '',
+        wave_number: document.getElementById('pro-wave-number')?.value || '',
+        wave_name: document.getElementById('pro-wave-name')?.value || '',
+        orange_number: document.getElementById('pro-orange-number')?.value || '',
+        orange_name: document.getElementById('pro-orange-name')?.value || '',
+        mtn_number: document.getElementById('pro-mtn-number')?.value || '',
+        mtn_name: document.getElementById('pro-mtn-name')?.value || '',
+        payment_instructions: document.getElementById('pro-payment-instructions')?.value || ''
+      };
+
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span>⏳</span> Enregistrement dans D1 en cours...';
+      }
+      if (btnTop) {
+        btnTop.disabled = true;
+        btnTop.innerHTML = '<span>⏳</span> Sauvegarde...';
+      }
+      if (statusEl) {
+        statusEl.className = "text-xs font-bold text-amber-400";
+        statusEl.textContent = "Synchronisation avec la base de données...";
+      }
+
+      try {
+        const resp = await fetch('/api/company-profile/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(payload)
+        });
+        const res = await resp.json();
+        if (res.success) {
+          showToast("✓ Informations professionnelles enregistrées avec succès !");
+          if (statusEl) {
+            statusEl.className = "text-xs font-bold text-emerald-400";
+            statusEl.textContent = "✓ Enregistré dans Cloudflare D1 à " + new Date().toLocaleTimeString('fr-FR');
+          }
+        } else {
+          alert("Erreur: " + (res.error || "Impossible d'enregistrer"));
+          if (statusEl) {
+            statusEl.className = "text-xs font-bold text-red-400";
+            statusEl.textContent = "Erreur lors de l'enregistrement";
+          }
+        }
+      } catch (err) {
+        alert("Erreur réseau: " + err.message);
+        if (statusEl) {
+          statusEl.className = "text-xs font-bold text-red-400";
+          statusEl.textContent = "Erreur réseau";
+        }
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>💾</span> <span>Enregistrer toutes les informations professionnelles</span>';
+        }
+        if (btnTop) {
+          btnTop.disabled = false;
+          btnTop.innerHTML = '<span>💾</span> <span>Enregistrer les modifications</span>';
+        }
+      }
     }
 
     // Initialisation
@@ -4800,6 +5307,102 @@ export default {
       }
 
       // ----------------------------------------------------------------------
+      // ROUTE POST : /api/company-profile/update
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/company-profile/update') {
+        const body = await request.json().catch(() => ({}));
+        
+        await safeRun(db, `
+          INSERT INTO company_profile (
+            id, company_name, activity, location, address, website, email,
+            phone_contact, phone_whatsapp, phone_contact_secondary, about_text,
+            wave_number, wave_name, orange_number, orange_name, mtn_number, mtn_name,
+            payment_instructions, updated_at
+          )
+          VALUES ('main', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+          ON CONFLICT(id) DO UPDATE SET
+            company_name = excluded.company_name,
+            activity = excluded.activity,
+            location = excluded.location,
+            address = excluded.address,
+            website = excluded.website,
+            email = excluded.email,
+            phone_contact = excluded.phone_contact,
+            phone_whatsapp = excluded.phone_whatsapp,
+            phone_contact_secondary = excluded.phone_contact_secondary,
+            about_text = excluded.about_text,
+            wave_number = excluded.wave_number,
+            wave_name = excluded.wave_name,
+            orange_number = excluded.orange_number,
+            orange_name = excluded.orange_name,
+            mtn_number = excluded.mtn_number,
+            mtn_name = excluded.mtn_name,
+            payment_instructions = excluded.payment_instructions,
+            updated_at = CURRENT_TIMESTAMP
+        `, [
+          body.company_name || 'DKD Technologies',
+          body.activity || 'Technologies & Éducation Numérique',
+          body.location || 'Abidjan, Côte d\'Ivoire',
+          body.address || 'Abidjan, Côte d\'Ivoire',
+          body.website || 'https://studycloud.dkd-technologies.com',
+          body.email || 'contact@dkd-technologies.com',
+          body.phone_contact || '+225 0101007978',
+          body.phone_whatsapp || '+225 0101007978',
+          body.phone_contact_secondary || '',
+          body.about_text || '',
+          body.wave_number || '+225 07 00 00 00 00',
+          body.wave_name || 'StudyCloud CI',
+          body.orange_number || '+225 07 00 00 00 00',
+          body.orange_name || 'Orange Money Côte d\'Ivoire',
+          body.mtn_number || '+225 05 00 00 00 00',
+          body.mtn_name || 'Paiement Mobile National',
+          body.payment_instructions || ''
+        ]);
+
+        const updatedProfile = await safeFirst(db, `SELECT * FROM company_profile WHERE id = 'main'`);
+
+        return new Response(JSON.stringify({
+          success: true,
+          message: 'Informations professionnelles mises à jour avec succès',
+          profile: updatedProfile
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE GET : /api/company-profile
+      // ----------------------------------------------------------------------
+      if (path === '/api/company-profile') {
+        let profile = await safeFirst(db, `SELECT * FROM company_profile WHERE id = 'main'`);
+        if (!profile) {
+          profile = {
+            id: 'main',
+            company_name: 'DKD Technologies',
+            activity: 'Technologies & Éducation Numérique',
+            location: 'Abidjan, Côte d\'Ivoire',
+            address: 'Abidjan, Côte d\'Ivoire',
+            phone_contact: '+225 0101007978',
+            phone_whatsapp: '+225 0101007978',
+            email: 'contact@dkd-technologies.com',
+            website: 'https://studycloud.dkd-technologies.com',
+            wave_number: '+225 07 00 00 00 00',
+            wave_name: 'StudyCloud CI',
+            orange_number: '+225 07 00 00 00 00',
+            orange_name: 'Orange Money Côte d\'Ivoire',
+            mtn_number: '+225 05 00 00 00 00',
+            mtn_name: 'Paiement Mobile National',
+            payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.'
+          };
+        }
+        return new Response(JSON.stringify({ success: true, profile }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
       // REQUÊTES D1 : DEMANDES DE STOCKAGE & ABONNEMENTS
       // ----------------------------------------------------------------------
       // Nettoyage automatique des fausses données de test antérieures
@@ -4818,6 +5421,27 @@ export default {
 
       let upgradeRequestsRes = await safeQuery(db, `SELECT * FROM storage_upgrade_requests ORDER BY created_at DESC`, [], { results: [] });
       let userSubsRes = await safeQuery(db, `SELECT * FROM user_subscriptions ORDER BY created_at DESC`, [], { results: [] });
+      let companyProfileRow = await safeFirst(db, `SELECT * FROM company_profile WHERE id = 'main'`);
+      if (!companyProfileRow) {
+        companyProfileRow = {
+          id: 'main',
+          company_name: 'DKD Technologies',
+          activity: 'Technologies & Éducation Numérique',
+          location: 'Abidjan, Côte d\'Ivoire',
+          address: 'Abidjan, Côte d\'Ivoire',
+          phone_contact: '+225 0101007978',
+          phone_whatsapp: '+225 0101007978',
+          email: 'contact@dkd-technologies.com',
+          website: 'https://studycloud.dkd-technologies.com',
+          wave_number: '+225 07 00 00 00 00',
+          wave_name: 'StudyCloud CI',
+          orange_number: '+225 07 00 00 00 00',
+          orange_name: 'Orange Money Côte d\'Ivoire',
+          mtn_number: '+225 05 00 00 00 00',
+          mtn_name: 'Paiement Mobile National',
+          payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.'
+        };
+      }
 
       const rawUpgradeRequests = (upgradeRequestsRes && upgradeRequestsRes.results) ? upgradeRequestsRes.results : [];
       const rawUserSubs = (userSubsRes && userSubsRes.results) ? userSubsRes.results : [];
@@ -4832,7 +5456,8 @@ export default {
         d1TablesGlobal,
         r2FoldersGlobal,
         upgradeRequests: rawUpgradeRequests,
-        userSubscriptions: rawUserSubs
+        userSubscriptions: rawUserSubs,
+        companyProfile: companyProfileRow
       });
 
       return new Response(htmlContent, {
