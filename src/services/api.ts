@@ -1828,7 +1828,16 @@ export async function requestStorageUpgrade(params: {
   packName: string;
   additionalMb: number;
   additionalWords?: number;
+  userName?: string;
   contactPhone?: string;
+  whatsappNumber?: string;
+  userEmail?: string;
+  pricePaid?: number;
+  currency?: string;
+  paymentMethod?: string;
+  paymentReference?: string;
+  receiptImageUrl?: string;
+  receiptR2Key?: string;
   notes?: string;
   userId?: string;
 }): Promise<{ success: boolean; message: string; requestId?: string }> {

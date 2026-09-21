@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
-import { ArrowLeft, Check, HardDrive, Bot, RotateCw, Zap, X, CheckCircle2, Phone, Sparkles } from 'lucide-react';
-import { requestStorageUpgrade } from '../services/api';
+import { ArrowLeft, Check, HardDrive, Bot, RotateCw, Sparkles } from 'lucide-react';
+import { SubscriptionFormView, SelectedPlan } from './SubscriptionFormView';
 
 interface SettingsPricingViewProps {
   onBack: () => void;
@@ -12,52 +12,22 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
   const [activeTab, setActiveTab] = useState<'storage' | 'ai' | 'renewal'>(initialTab);
   const [billingCycle, setBillingCycle] = useState<'annual' | 'monthly'>('annual');
 
-  // État de souscription / confirmation pour l'étudiant
-  const [selectedPlanForModal, setSelectedPlanForModal] = useState<{
-    name: string;
-    type: 'storage' | 'ai';
-    price: number;
-    currency: string;
-    mb?: number;
-    words?: number;
-  } | null>(null);
-  const [contactPhone, setContactPhone] = useState('');
-  const [upgradeNotes, setUpgradeNotes] = useState('');
-  const [submitting, setSubmitting] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
+  // État du plan sélectionné pour afficher le nouveau menu de souscription
+  const [selectedPlanForSubscription, setSelectedPlanForSubscription] = useState<SelectedPlan | null>(null);
 
-  // Soumission de la demande vers Cloudflare D1 via l'API
-  const handleConfirmSubscription = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedPlanForModal) return;
-    setSubmitting(true);
-
-    try {
-      const res = await requestStorageUpgrade({
-        packId: selectedPlanForModal.name.toLowerCase().replace(/\s+/g, '_'),
-        packName: selectedPlanForModal.name,
-        additionalMb: selectedPlanForModal.mb || (selectedPlanForModal.type === 'storage' ? 51200 : 1024),
-        additionalWords: selectedPlanForModal.words || (selectedPlanForModal.type === 'ai' ? 500000 : 100000),
-        contactPhone: contactPhone.trim(),
-        notes: upgradeNotes.trim()
-      });
-
-      if (res.success) {
-        setSubmitSuccess(true);
-        onSelectPlan(selectedPlanForModal.name);
-        setTimeout(() => {
-          setSelectedPlanForModal(null);
-          setSubmitSuccess(false);
-        }, 2500);
-      } else {
-        alert(res.message || "Erreur lors de l'envoi de la demande.");
-      }
-    } catch (err: any) {
-      alert(err?.message || "Erreur réseau lors de la validation.");
-    } finally {
-      setSubmitting(false);
-    }
-  };
+  // Si l'utilisateur clique sur "Commencer" ou choisit un plan, on affiche le NOUVEAU MENU
+  // (Pas une popup/modal, mais une vue complète divisée en deux avec formulaire et explications)
+  if (selectedPlanForSubscription) {
+    return (
+      <div className="absolute inset-x-0 bottom-0 top-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-white overflow-y-auto animate-fadeIn pb-24">
+        <SubscriptionFormView
+          plan={selectedPlanForSubscription}
+          onBack={() => setSelectedPlanForSubscription(null)}
+          onSuccess={() => onSelectPlan(selectedPlanForSubscription.name)}
+        />
+      </div>
+    );
+  }
 
   return (
     <div className="absolute inset-x-0 bottom-0 top-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-white overflow-y-auto animate-fadeIn pb-24">
@@ -202,11 +172,15 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
                 </ul>
               </div>
               <button
-                onClick={() => setSelectedPlanForModal({
+                onClick={() => setSelectedPlanForSubscription({
                   name: 'Basique Stockage',
                   type: 'storage',
+                  storageDisplay: '10 Go supplémentaires (+ 10 240 Mo)',
+                  priceDisplay: billingCycle === 'annual' ? '9 $ / an (≈ 5 500 FCFA)' : '10 $ / mois (≈ 6 500 FCFA)',
                   price: billingCycle === 'annual' ? 9 : 10,
+                  priceFcfa: billingCycle === 'annual' ? 5500 : 6500,
                   currency: '$',
+                  billingCycle,
                   mb: 10240
                 })}
                 className="w-full py-3 bg-[#C9B896] dark:bg-[#1e293b] hover:bg-[#B8A785] dark:hover:bg-[#283852] text-[#2D4A3E] dark:text-white border dark:border-[#334155] font-medium text-sm rounded-lg transition-all cursor-pointer shadow-sm text-center"
@@ -253,11 +227,15 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
                 </ul>
               </div>
               <button
-                onClick={() => setSelectedPlanForModal({
+                onClick={() => setSelectedPlanForSubscription({
                   name: 'Pro Stockage',
                   type: 'storage',
+                  storageDisplay: '50 Go supplémentaires (+ 51 200 Mo)',
+                  priceDisplay: billingCycle === 'annual' ? '29 $ / an (≈ 18 000 FCFA)' : '32 $ / mois (≈ 20 000 FCFA)',
                   price: billingCycle === 'annual' ? 29 : 32,
+                  priceFcfa: billingCycle === 'annual' ? 18000 : 20000,
                   currency: '$',
+                  billingCycle,
                   mb: 51200
                 })}
                 className="w-full py-3 bg-[#C9B896] hover:bg-[#B8A785] text-[#2D4A3E] font-medium text-sm rounded-lg transition-all cursor-pointer shadow-sm text-center"
@@ -299,16 +277,20 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
                 </ul>
               </div>
               <button
-                onClick={() => setSelectedPlanForModal({
+                onClick={() => setSelectedPlanForSubscription({
                   name: 'Entreprise Stockage',
                   type: 'storage',
+                  storageDisplay: '200 Go supplémentaires (+ 204 800 Mo)',
+                  priceDisplay: billingCycle === 'annual' ? '79 $ / an (≈ 49 000 FCFA)' : '89 $ / mois (≈ 55 000 FCFA)',
                   price: billingCycle === 'annual' ? 79 : 89,
+                  priceFcfa: billingCycle === 'annual' ? 49000 : 55000,
                   currency: '$',
+                  billingCycle,
                   mb: 204800
                 })}
                 className="w-full py-3 bg-[#C9B896] dark:bg-[#1e293b] hover:bg-[#B8A785] dark:hover:bg-[#283852] text-[#2D4A3E] dark:text-white border dark:border-[#334155] font-medium text-sm rounded-lg transition-all cursor-pointer shadow-sm text-center"
               >
-                Contactez-nous
+                Commencer
               </button>
             </div>
           </div>
@@ -352,11 +334,15 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
                 </ul>
               </div>
               <button
-                onClick={() => setSelectedPlanForModal({
+                onClick={() => setSelectedPlanForSubscription({
                   name: 'IA Basique Étudiant',
                   type: 'ai',
+                  storageDisplay: '100 000 mots IA générés / mois',
+                  priceDisplay: billingCycle === 'annual' ? '9 $ / an (≈ 5 500 FCFA)' : '10 $ / mois (≈ 6 500 FCFA)',
                   price: billingCycle === 'annual' ? 9 : 10,
+                  priceFcfa: billingCycle === 'annual' ? 5500 : 6500,
                   currency: '$',
+                  billingCycle,
                   words: 100000
                 })}
                 className="w-full py-3 bg-[#C9B896] dark:bg-[#1e293b] hover:bg-[#B8A785] dark:hover:bg-[#283852] text-[#2D4A3E] dark:text-white border dark:border-[#334155] font-medium text-sm rounded-lg transition-all cursor-pointer shadow-sm text-center"
@@ -403,11 +389,15 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
                 </ul>
               </div>
               <button
-                onClick={() => setSelectedPlanForModal({
+                onClick={() => setSelectedPlanForSubscription({
                   name: 'IA Pro Étudiant',
                   type: 'ai',
+                  storageDisplay: '1 000 000 mots IA illimités / mois',
+                  priceDisplay: billingCycle === 'annual' ? '29 $ / an (≈ 18 000 FCFA)' : '32 $ / mois (≈ 20 000 FCFA)',
                   price: billingCycle === 'annual' ? 29 : 32,
+                  priceFcfa: billingCycle === 'annual' ? 18000 : 20000,
                   currency: '$',
+                  billingCycle,
                   words: 1000000
                 })}
                 className="w-full py-3 bg-[#C9B896] hover:bg-[#B8A785] text-[#2D4A3E] font-medium text-sm rounded-lg transition-all cursor-pointer shadow-sm text-center"
@@ -449,16 +439,20 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
                 </ul>
               </div>
               <button
-                onClick={() => setSelectedPlanForModal({
+                onClick={() => setSelectedPlanForSubscription({
                   name: 'IA Recherche & Master',
                   type: 'ai',
+                  storageDisplay: '5 000 000 mots IA Recherche / mois',
+                  priceDisplay: billingCycle === 'annual' ? '79 $ / an (≈ 49 000 FCFA)' : '89 $ / mois (≈ 55 000 FCFA)',
                   price: billingCycle === 'annual' ? 79 : 89,
+                  priceFcfa: billingCycle === 'annual' ? 49000 : 55000,
                   currency: '$',
+                  billingCycle,
                   words: 5000000
                 })}
                 className="w-full py-3 bg-[#C9B896] dark:bg-[#1e293b] hover:bg-[#B8A785] dark:hover:bg-[#283852] text-[#2D4A3E] dark:text-white border dark:border-[#334155] font-medium text-sm rounded-lg transition-all cursor-pointer shadow-sm text-center"
               >
-                Contactez-nous
+                Commencer
               </button>
             </div>
           </div>
@@ -529,99 +523,6 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
           </div>
         )}
       </div>
-
-      {/* ========================================================================= */}
-      {/* MODALE DE SOUSCRIPTION / ENREGISTREMENT DE DEMANDE                        */}
-      {/* ========================================================================= */}
-      {selectedPlanForModal && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm animate-fadeIn">
-          <div className="bg-[#F5F0E8] dark:bg-[#131b2e] rounded-3xl border-2 border-[#2D4A3E] dark:border-slate-800 shadow-2xl max-w-md w-full p-6 relative overflow-hidden">
-            <button
-              onClick={() => setSelectedPlanForModal(null)}
-              className="absolute top-4 right-4 p-2 text-[#5C6B5A] hover:text-[#2D4A3E] dark:hover:text-white rounded-xl transition cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-
-            <div className="flex items-center gap-3 mb-4">
-              <span className="p-2.5 rounded-2xl bg-[#2D4A3E] text-white dark:bg-emerald-600">
-                <Zap className="w-6 h-6 fill-current" />
-              </span>
-              <div>
-                <h3 className="text-lg font-black text-[#2D4A3E] dark:text-white">
-                  Souscrire à {selectedPlanForModal.name}
-                </h3>
-                <p className="text-xs text-[#5C6B5A] dark:text-slate-400">
-                  Tarif : {selectedPlanForModal.price} {selectedPlanForModal.currency} {billingCycle === 'annual' ? '/an' : '/mois'}
-                </p>
-              </div>
-            </div>
-
-            {submitSuccess ? (
-              <div className="py-8 text-center space-y-3">
-                <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-950 text-emerald-600 dark:text-emerald-400 rounded-full flex items-center justify-center mx-auto">
-                  <CheckCircle2 className="w-10 h-10" />
-                </div>
-                <h4 className="text-base font-extrabold text-[#2D4A3E] dark:text-white">
-                  Demande transmise avec succès !
-                </h4>
-                <p className="text-xs text-[#5C6B5A] dark:text-slate-400 max-w-xs mx-auto">
-                  Votre demande est désormais en attente de confirmation dans le tableau de bord d'administration.
-                </p>
-              </div>
-            ) : (
-              <form onSubmit={handleConfirmSubscription} className="space-y-4">
-                <div>
-                  <label className="text-xs font-bold text-[#2D4A3E] dark:text-slate-300 block mb-1">
-                    Votre numéro de téléphone (Wave / Orange / MTN) :
-                  </label>
-                  <div className="relative">
-                    <input
-                      type="tel"
-                      required
-                      value={contactPhone}
-                      onChange={(e) => setContactPhone(e.target.value)}
-                      placeholder="Ex: +225 07 00 00 00 00"
-                      className="w-full bg-[#E8DFD0] dark:bg-slate-900 text-[#2D4A3E] dark:text-white font-mono text-xs rounded-xl px-3 py-2.5 pl-9 border border-[#D4C9B5] dark:border-slate-700 focus:outline-none focus:border-[#2D4A3E]"
-                    />
-                    <Phone className="w-4 h-4 text-[#5C6B5A] dark:text-slate-500 absolute left-3 top-3" />
-                  </div>
-                </div>
-
-                <div>
-                  <label className="text-xs font-bold text-[#2D4A3E] dark:text-slate-300 block mb-1">
-                    Note ou référence de paiement (facultatif) :
-                  </label>
-                  <textarea
-                    rows={2}
-                    value={upgradeNotes}
-                    onChange={(e) => setUpgradeNotes(e.target.value)}
-                    placeholder="Ex: Virement Wave effectué ce matin..."
-                    className="w-full bg-[#E8DFD0] dark:bg-slate-900 text-[#2D4A3E] dark:text-white text-xs rounded-xl p-3 border border-[#D4C9B5] dark:border-slate-700 focus:outline-none focus:border-[#2D4A3E]"
-                  />
-                </div>
-
-                <div className="pt-2 flex items-center justify-end gap-2">
-                  <button
-                    type="button"
-                    onClick={() => setSelectedPlanForModal(null)}
-                    className="px-4 py-2 bg-transparent hover:bg-[#E8DFD0] text-[#5C6B5A] font-bold text-xs rounded-xl transition cursor-pointer"
-                  >
-                    Annuler
-                  </button>
-                  <button
-                    type="submit"
-                    disabled={submitting}
-                    className="px-5 py-2.5 bg-[#2D4A3E] dark:bg-emerald-600 hover:bg-[#233b31] text-white font-extrabold text-xs rounded-xl shadow-md transition cursor-pointer flex items-center gap-1.5 active:scale-95 disabled:opacity-50"
-                  >
-                    {submitting ? 'Transmission...' : 'Confirmer la demande'}
-                  </button>
-                </div>
-              </form>
-            )}
-          </div>
-        </div>
-      )}
     </div>
   );
 };

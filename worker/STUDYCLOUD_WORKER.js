@@ -2226,7 +2226,8 @@ async function ensureStorageTables(db) {
       "ALTER TABLE storage_upgrade_requests ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_start_date TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_end_date TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN grace_period_days INTEGER DEFAULT 5"
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN grace_period_days INTEGER DEFAULT 5",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_whatsapp TEXT DEFAULT ''"
     ];
     for (const sql of upgradeCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
@@ -7193,7 +7194,9 @@ Lien vers le produit : ${productShareUrl}`;
         const additionalMb = Number(body.additionalMb || 1024);
         const additionalWords = Number(body.additionalWords || 100000);
         const contactPhone = body.contactPhone || body.userPhone || "";
-        const notes = body.notes || "";
+        const userWhatsapp = body.whatsappNumber || body.userWhatsapp || "";
+        const rawNotes = body.notes || "";
+        const notes = [rawNotes, userWhatsapp ? `WhatsApp: ${userWhatsapp}` : ""].filter(Boolean).join(" | ");
         const userName = body.userName || "";
         const userEmail = body.userEmail || "";
         const pricePaid = Number(body.pricePaid || body.price || 0);

@@ -207,7 +207,8 @@ async function ensureStorageTables(db) {
       "ALTER TABLE storage_upgrade_requests ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_start_date TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_end_date TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN grace_period_days INTEGER DEFAULT 5"
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN grace_period_days INTEGER DEFAULT 5",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_whatsapp TEXT DEFAULT ''"
     ];
     for (const sql of upgradeReqCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
