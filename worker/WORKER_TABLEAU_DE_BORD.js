@@ -1617,9 +1617,6 @@ function renderDashboardHtml(data) {
 
             <div class="flex items-center justify-between text-[10px] text-slate-400">
               <span id="demandes-filter-label" class="font-medium text-amber-400">Demandes en attente de validation</span>
-              <button onclick="createDemoStorageRequest()" class="text-orange-400 hover:text-orange-300 font-bold underline cursor-pointer" title="Créer une fausse demande pour tester le tableau de bord">
-                + Demande test
-              </button>
             </div>
           </div>
 
@@ -2846,11 +2843,6 @@ function renderDashboardHtml(data) {
               <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">📥</div>
               <h3 class="text-sm font-bold text-slate-300">Aucun élément dans cette section</h3>
               <p class="text-xs text-slate-500 mt-1 max-w-sm">Aucune demande ou utilisateur ne correspond au filtre sélectionné.</p>
-              \${currentDemandeTab === 'pending' ? \`
-                <button onclick="createDemoStorageRequest()" class="mt-4 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl shadow cursor-pointer">
-                  + Simuler une demande test Wave
-                </button>
-              \` : ''}
             </div>
           \`;
         }
@@ -3005,13 +2997,6 @@ function renderDashboardHtml(data) {
         container.innerHTML = \`
           <div class="p-6 text-center text-slate-500 text-xs">
             \${emptyMsg}
-            \${currentDemandeTab === 'pending' ? \`
-              <div class="mt-2">
-                <button onclick="createDemoStorageRequest()" class="text-orange-400 font-bold hover:underline cursor-pointer">
-                  + Ajouter une demande de test
-                </button>
-              </div>
-            \` : ''}
           </div>
         \`;
         return;
@@ -3642,12 +3627,21 @@ function renderDashboardHtml(data) {
 
               <!-- BOUTONS DE VALIDATION FINALE -->
               <div class="pt-3 border-t border-slate-800 flex items-center justify-between flex-wrap gap-3">
-                <button 
-                  onclick="rejectStorageRequest('\${item.id}')" 
-                  class="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95"
-                >
-                  <span>❌</span> Rejeter la demande
-                </button>
+                <div class="flex items-center gap-2">
+                  <button 
+                    onclick="rejectStorageRequest('\${item.id}')" 
+                    class="px-3.5 py-2 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+                  >
+                    <span>❌</span> Rejeter
+                  </button>
+                  <button 
+                    onclick="deleteStorageRequest('\${item.id}')" 
+                    class="px-3 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+                    title="Supprimer définitivement cette demande de la base de données"
+                  >
+                    <span>🗑️</span> Supprimer
+                  </button>
+                </div>
 
                 <button 
                   onclick="confirmAndApproveStorageRequest('\${item.id}')" 
@@ -4119,38 +4113,26 @@ function renderDashboardHtml(data) {
       }
     }
 
-    async function createDemoStorageRequest() {
-      if (allUsers.length === 0) {
-        alert("Aucun utilisateur dans la base de données pour simuler une demande.");
-        return;
-      }
-      const u = allUsers[0].user;
+    async function deleteStorageRequest(requestId) {
+      if (!confirm("Voulez-vous supprimer définitivement cette demande de la base de données ?")) return;
       try {
-        const resp = await fetch('/api/storage-requests/create-test', {
+        const resp = await fetch('/api/storage-requests/delete', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({
-            userId: u.id,
-            userName: u.name,
-            userPhone: u.phone || '+225 07 89 45 12 00',
-            packName: 'Pack Pro 50 Go',
-            additionalMb: 51200,
-            pricePaid: 2500,
-            paymentMethod: 'Wave CI (+225 07...)',
-            receiptImageUrl: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=800&auto=format&fit=crop&q=80'
-          })
+          body: JSON.stringify({ requestId })
         });
         const res = await resp.json();
-        if (res.success && res.request) {
-          allRequests.unshift(res.request);
-          showToast("Demande test créée avec succès !");
-          setDemandesTab('pending');
-          selectDemandeItem(res.request.id, 'request');
+        if (res.success) {
+          allRequests = allRequests.filter(r => r.id !== requestId);
+          showToast("Demande supprimée définitivement.");
+          updateDemandesTabCounts();
+          renderDemandesLeftList();
+          autoSelectFirstDemande();
         } else {
-          alert("Erreur lors de la création du test: " + (res.error || 'Erreur'));
+          alert("Erreur: " + (res.error || "Impossible de supprimer la demande"));
         }
       } catch (err) {
-        alert("Erreur réseau");
+        alert("Erreur réseau lors de la suppression");
       }
     }
 
@@ -4683,50 +4665,17 @@ export default {
       }
 
       // ----------------------------------------------------------------------
-      // ROUTE POST : /api/storage-requests/create-test
+      // ROUTE POST : /api/storage-requests/delete (SUPPRESSION DÉFINITIVE D'UNE DEMANDE)
       // ----------------------------------------------------------------------
-      if (request.method === 'POST' && path === '/api/storage-requests/create-test') {
+      if (request.method === 'POST' && path === '/api/storage-requests/delete') {
         const body = await request.json().catch(() => ({}));
-        const userId = body.userId;
-        if (!userId) {
-          return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
+        const requestId = body.requestId;
+        if (!requestId) {
+          return new Response(JSON.stringify({ success: false, error: 'requestId requis' }), { status: 400, headers: corsHeaders(origin) });
         }
 
-        const reqId = 'req_' + Math.random().toString(36).substring(2, 10);
-        const reqItem = {
-          id: reqId,
-          user_id: userId,
-          user_name: body.userName || 'Étudiant Test',
-          user_phone: body.userPhone || '+225 07 00 00 00 00',
-          user_email: body.userEmail || 'etudiant@studycloud.ci',
-          pack_id: 'pro_50gb',
-          pack_name: body.packName || 'Pack Pro 50 Go',
-          additional_mb: Number(body.additionalMb || 51200),
-          additional_words: 100000,
-          price_paid: Number(body.pricePaid || 2500),
-          currency: 'FCFA',
-          payment_method: body.paymentMethod || 'Wave CI',
-          payment_reference: 'WV_' + Math.random().toString(36).substring(2, 8).toUpperCase(),
-          receipt_image_url: body.receiptImageUrl || 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=800&auto=format&fit=crop&q=80',
-          receipt_r2_key: `storage-receipts/${userId}/recu_${reqId}.jpg`,
-          status: 'pending',
-          admin_notes: '',
-          created_at: new Date().toISOString(),
-          updated_at: new Date().toISOString()
-        };
-
-        await safeRun(db, `
-          INSERT INTO storage_upgrade_requests (id, user_id, user_name, user_phone, user_email, pack_id, pack_name, additional_mb, additional_words, price_paid, currency, payment_method, payment_reference, receipt_image_url, receipt_r2_key, status, admin_notes, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-        `, [
-          reqItem.id, reqItem.user_id, reqItem.user_name, reqItem.user_phone, reqItem.user_email,
-          reqItem.pack_id, reqItem.pack_name, reqItem.additional_mb, reqItem.additional_words,
-          reqItem.price_paid, reqItem.currency, reqItem.payment_method, reqItem.payment_reference,
-          reqItem.receipt_image_url, reqItem.receipt_r2_key, reqItem.status, reqItem.admin_notes,
-          reqItem.created_at, reqItem.updated_at
-        ]);
-
-        return new Response(JSON.stringify({ success: true, request: reqItem }), {
+        await safeRun(db, `DELETE FROM storage_upgrade_requests WHERE id = ?`, [requestId]);
+        return new Response(JSON.stringify({ success: true, message: 'Demande supprimée définitivement' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });
@@ -4852,6 +4801,20 @@ export default {
       // ----------------------------------------------------------------------
       // REQUÊTES D1 : DEMANDES DE STOCKAGE & ABONNEMENTS
       // ----------------------------------------------------------------------
+      // Nettoyage automatique des fausses données de test antérieures
+      await safeRun(db, `
+        DELETE FROM storage_upgrade_requests 
+        WHERE pack_id = 'pro_50gb' 
+           OR receipt_image_url LIKE '%unsplash.com%' 
+           OR user_name = 'Étudiant Test' 
+           OR payment_reference LIKE 'WV_%'
+      `);
+      await safeRun(db, `
+        DELETE FROM user_subscriptions 
+        WHERE (plan_name = 'Pack Pro 50 Go' AND monthly_price = 2500) 
+           OR user_name = 'Étudiant Test'
+      `);
+
       let upgradeRequestsRes = await safeQuery(db, `SELECT * FROM storage_upgrade_requests ORDER BY created_at DESC`, [], { results: [] });
       let userSubsRes = await safeQuery(db, `SELECT * FROM user_subscriptions ORDER BY created_at DESC`, [], { results: [] });
 
