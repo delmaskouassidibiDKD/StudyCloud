@@ -2,7 +2,7 @@ import React, { useState, useEffect } from 'react';
 import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, X, Search, Globe, Sun, Moon, BookOpen } from 'lucide-react';
 import { MenuDrawer } from './MenuDrawer';
 import { DelmasRobot } from './DelmasRobot';
-import { AssistantChat } from './AssistantChat';
+import { DelmasChat } from './DelmasChat';
 import { DnaLogo } from './DnaLogo';
 import { PricingView } from './PricingView';
 import { FilesMenuView } from './FilesMenuView';
@@ -584,19 +584,18 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             onUpdateMatiereColor={handleUpdateMatiereColor}
             onSelectMatiere={(name) => setViewMode(`matiere-${name}`)}
           />
-          {/* Delmas IA Overlay Modal - Remplace le menu Gemini par l'Assistant Delmas IA */}
+          {/* Delmas IA Overlay Modal - Chat direct et éphémère (sans base de données) */}
           {isAssistantOpen && (
             <div 
-              className="fixed inset-0 z-[200000] flex items-center justify-center bg-black/70 backdrop-blur-sm p-0 sm:p-4 md:p-6 animate-fadeIn"
+              className="fixed inset-0 z-[200000] flex items-center justify-center bg-black/75 backdrop-blur-md p-0 sm:p-4 md:p-6 animate-fadeIn"
               onClick={() => setIsAssistantOpen(false)}
             >
               <div 
-                className="w-full h-full sm:max-w-3xl sm:h-[90vh] sm:max-h-[850px] bg-[#1e2024] sm:rounded-3xl sm:border sm:border-zinc-700/60 shadow-2xl flex flex-col overflow-hidden relative text-left"
+                className="w-full h-full sm:max-w-3xl sm:h-[88vh] sm:max-h-[820px] bg-[#16181d] sm:rounded-3xl sm:border sm:border-zinc-700/70 shadow-2xl flex flex-col overflow-hidden relative text-left"
                 onClick={(e) => e.stopPropagation()}
               >
-                <AssistantChat 
+                <DelmasChat 
                   onClose={() => setIsAssistantOpen(false)} 
-                  activePreviewItem={activePreviewItem}
                 />
               </div>
             </div>
@@ -702,7 +701,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             )}
           </div>
 
-          {/* Delmas IA Button - Robot bleu animé identique au menu d'étude */}
+          {/* Delmas IA Button - Robot orange-bleu distinct du robot d'étude */}
           <div className="flex flex-col items-center">
             <button
               onClick={() => setIsAssistantOpen(!isAssistantOpen)}
@@ -711,14 +710,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             >
               <div className={`relative p-0.5 rounded-full transition-all duration-200 ${
                 isAssistantOpen 
-                  ? 'ring-2 ring-blue-500 shadow-[0_0_12px_rgba(37,99,235,0.7)] scale-105' 
-                  : 'hover:scale-105 shadow-[0_2px_8px_rgba(37,99,235,0.3)]'
+                  ? 'ring-2 ring-orange-500 shadow-[0_0_14px_rgba(249,115,22,0.85)] scale-105' 
+                  : 'hover:scale-105 shadow-[0_2px_10px_rgba(249,115,22,0.4)]'
               }`}>
-                <DelmasRobot size={38} />
+                <DelmasRobot size={38} variant="orange-blue" />
               </div>
             </button>
             <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap transition-colors ${
-              isAssistantOpen ? 'text-orange-500' : 'text-blue-600 dark:text-blue-400 group-hover:text-blue-700'
+              isAssistantOpen ? 'text-orange-500' : 'text-orange-500 dark:text-orange-400 group-hover:text-blue-500'
             }`}>
               delmas IA
             </span>

@@ -24,9 +24,10 @@ function randomBetween(min: number, max: number) {
 interface DelmasRobotProps {
   className?: string;
   size?: number;
+  variant?: 'blue' | 'orange-blue';
 }
 
-export const DelmasRobot: React.FC<DelmasRobotProps> = ({ className = '', size = 42 }) => {
+export const DelmasRobot: React.FC<DelmasRobotProps> = ({ className = '', size = 42, variant = 'blue' }) => {
   const [gaze, setGaze] = useState<Gaze>({ x: 0, y: 0 });
   const [blinking, setBlinking] = useState(false);
   const timers = useRef<ReturnType<typeof setTimeout>[]>([]);
@@ -94,17 +95,23 @@ export const DelmasRobot: React.FC<DelmasRobotProps> = ({ className = '', size =
       style={{ width: size, height: size }}
     >
       <div className="relative w-full h-full rounded-full flex items-center justify-center">
-        {/* Sphère avec dégradé bleu franc, net et vibrant */}
+        {/* Sphère avec dégradé selon la variante (Bleu franc ou Orange-Bleu Delmas) */}
         <div
           className="relative w-full h-full rounded-full flex items-center justify-center overflow-hidden"
           style={{
-            border: `${borderWidth}px solid rgba(147, 197, 253, 0.85)`,
-            background:
-              'radial-gradient(circle at 35% 26%, #93c5fd 0%, #3b82f6 30%, #1d4ed8 66%, #1e3a8a 92%, #0f172a 100%)',
-            boxShadow:
-              size <= 26
-                ? '0 1px 4px rgba(29, 78, 216, 0.4), inset 0 -1.5px 3px rgba(15, 23, 42, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.5)'
-                : '0 3px 10px rgba(29, 78, 216, 0.4), inset 0 -3px 6px rgba(15, 23, 42, 0.65), inset 0 2px 4px rgba(255, 255, 255, 0.55)',
+            border: variant === 'orange-blue' 
+              ? `${borderWidth}px solid rgba(251, 146, 60, 0.85)` 
+              : `${borderWidth}px solid rgba(147, 197, 253, 0.85)`,
+            background: variant === 'orange-blue'
+              ? 'radial-gradient(circle at 35% 26%, #fed7aa 0%, #f97316 28%, #ea580c 48%, #2563eb 76%, #1e3a8a 94%, #0f172a 100%)'
+              : 'radial-gradient(circle at 35% 26%, #93c5fd 0%, #3b82f6 30%, #1d4ed8 66%, #1e3a8a 92%, #0f172a 100%)',
+            boxShadow: variant === 'orange-blue'
+              ? (size <= 26
+                  ? '0 1px 4px rgba(249, 115, 22, 0.5), inset 0 -1.5px 3px rgba(15, 23, 42, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.5)'
+                  : '0 3px 12px rgba(249, 115, 22, 0.5), inset 0 -3px 6px rgba(15, 23, 42, 0.65), inset 0 2px 4px rgba(255, 255, 255, 0.55)')
+              : (size <= 26
+                  ? '0 1px 4px rgba(29, 78, 216, 0.4), inset 0 -1.5px 3px rgba(15, 23, 42, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.5)'
+                  : '0 3px 10px rgba(29, 78, 216, 0.4), inset 0 -3px 6px rgba(15, 23, 42, 0.65), inset 0 2px 4px rgba(255, 255, 255, 0.55)'),
           }}
         >
           {/* Reflet lumineux net sans flou */}

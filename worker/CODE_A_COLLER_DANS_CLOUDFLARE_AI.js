@@ -3653,7 +3653,179 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
     }
 
     // ========================================================================
-    // POINT D'ENTRÉE DU CHAT IA : /api/ai/chat (SYNCHRONE)
+    // CAUSERIE DIRECTE DELMAS IA : (SANS CRÉATION DE MODULES NI ÉCRITURE D1)
+    // ========================================================================
+    async function executeDelmasDirectChat(body, env, ai) {
+      const userPrompt = (body.message || body.prompt || body.text || "").trim();
+      const geminiKeys = getAvailableGeminiKeys(env, body.geminiApiKey);
+
+      const delmasSystemPrompt = `Tu es Delmas, l'assistant d'apprentissage personnel et intelligent de StudyCloud.
+Tu accompagnes l'étudiant dans ses études par une conversation directe, chaleureuse, pédagogique et stimulante, exactement comme ChatGPT ou Google Gemini.
+
+RÈGLES CAPITALES :
+1. CONVERSATION DIRECTE : Réponds toujours de manière claire, structurée et bienveillante directement dans le chat.
+2. AUCUNE CRÉATION DE MODULE NI DE CODE JSON : Ne renvoie JAMAIS de code JSON, pas de structure {"decision": "creation"...}, pas de balises spéciales, pas de commande de création de modules. Tu réponds UNIQUEMENT en texte Markdown fluide et soigné. Tout se passe sous forme d'échanges dans ce chat.
+3. PÉDAGOGIE ACTIVE : Explique les notions pas à pas, donne des exemples concrets, utilise des analogies si besoin, et guide l'élève avec méthode.
+4. FORMULES SCIENTIFIQUES & MATHÉMATIQUES : Formate toujours les équations et formules en LaTeX standard entourées de dollars simples ($...$) pour le texte en ligne ou de doubles dollars ($$...$$) pour les formules centrées (ex: $E = mc^2$, $V_s = -\\frac{R_2}{R_1} V_e$, etc.).
+5. AUCUN ESPACE LATÉRAL : Ne fais aucune référence à un panneau ou volet à droite. Tu es un tuteur conversationnel autonome.`;
+
+      let generatedContent = "";
+      let usedEngine = "";
+      const debugErrors = [];
+
+      // 1. APPEL À GOOGLE GEMINI (AVEC ROTATION MULTI-CLÉS)
+      if (geminiKeys.length > 0) {
+        const geminiContents = [];
+        const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+        for (const m of incomingHist.slice(-8)) {
+          if (m && m.role && m.content && m.role !== "system") {
+            geminiContents.push({
+              role: m.role === "assistant" || m.role === "model" ? "model" : "user",
+              parts: [{ text: String(m.content) }]
+            });
+          }
+        }
+        geminiContents.push({
+          role: "user",
+          parts: [{ text: userPrompt || "Bonjour Delmas !" }]
+        });
+
+        const candidateGeminiModels = [
+          "gemini-3.8-flash",
+          "gemini-2.5-pro"
+        ];
+
+        for (let kIdx = 0; kIdx < geminiKeys.length; kIdx++) {
+          const activeKey = geminiKeys[kIdx];
+          let keySucceeded = false;
+
+          for (const mod of candidateGeminiModels) {
+            try {
+              const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${activeKey}`;
+              const gResponse = await fetch(geminiApiEndpoint, {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  system_instruction: { parts: [{ text: delmasSystemPrompt }] },
+                  contents: geminiContents,
+                  generationConfig: {
+                    temperature: 0.7,
+                    maxOutputTokens: 3500,
+                  }
+                })
+              });
+
+              if (gResponse.ok) {
+                const gData = await gResponse.json();
+                const candidateText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+                if (candidateText && candidateText.trim().length > 0) {
+                  generatedContent = candidateText.trim();
+                  usedEngine = `Google Gemini (${mod} • Clé #${kIdx + 1})`;
+                  keySucceeded = true;
+                  break;
+                }
+              } else {
+                const errTxt = await gResponse.text().catch(() => "");
+                debugErrors.push(`[Delmas Clé #${kIdx + 1} • ${mod} HTTP ${gResponse.status}] ${errTxt.slice(0, 100)}`);
+                if (gResponse.status === 403 || (gResponse.status === 400 && errTxt.includes("API_KEY_INVALID"))) {
+                  break;
+                }
+              }
+            } catch (err) {
+              debugErrors.push(`[Delmas Clé #${kIdx + 1} • ${mod}] ${err.message}`);
+            }
+          }
+
+          if (keySucceeded && generatedContent) {
+            break;
+          }
+        }
+      }
+
+      // 2. FALLBACK VERS CLOUDFLARE WORKERS AI
+      if (!generatedContent && ai && typeof ai.run === "function") {
+        const messages = [{ role: "system", content: delmasSystemPrompt }];
+        const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+        for (const m of incomingHist.slice(-6)) {
+          if (m && m.role && m.content) {
+            messages.push({
+              role: m.role === "assistant" || m.role === "model" ? "assistant" : "user",
+              content: String(m.content).slice(0, 1500)
+            });
+          }
+        }
+        messages.push({ role: "user", content: (userPrompt || "Bonjour Delmas !").slice(0, 2000) });
+
+        const candidateModels = [
+          "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
+          "@cf/meta/llama-3.1-8b-instruct",
+          "@cf/meta/llama-3-8b-instruct"
+        ];
+
+        for (const m of candidateModels) {
+          try {
+            const aiResult = await ai.run(m, {
+              messages,
+              max_tokens: 2500,
+              temperature: 0.7,
+            });
+            if (aiResult?.response) {
+              generatedContent = aiResult.response.trim();
+              usedEngine = `Cloudflare Workers AI (${m})`;
+              break;
+            }
+          } catch (cfErr) {
+            debugErrors.push(`[Delmas Workers AI ${m}] ${cfErr.message}`);
+          }
+        }
+      }
+
+      if (!generatedContent) {
+        throw new Error("L'assistant Delmas n'a pas pu répondre : " + (debugErrors.slice(0, 2).join(" | ") || "Veuillez réessayer."));
+      }
+
+      // Nettoyage de sécurité : si jamais un bloc json de création apparaissait malgré tout, on extrait le message textuel
+      if (generatedContent.includes('"creation_data"') || generatedContent.includes('"decision"')) {
+        try {
+          const parsed = JSON.parse(generatedContent.replace(/```json|```/gi, "").trim());
+          if (parsed && (parsed.chat_message || parsed.chat_response)) {
+            generatedContent = parsed.chat_message || parsed.chat_response;
+          }
+        } catch {}
+      }
+
+      return { response: generatedContent, usedEngine };
+    }
+
+    // ========================================================================
+    // POINT D'ENTRÉE DU CHAT DIRECT DELMAS : /api/ai/delmas-chat
+    // ========================================================================
+    if (request.method === "POST" && (path === "/api/ai/delmas-chat" || path === "/api/delmas-chat")) {
+      try {
+        const body = await request.json().catch(() => ({}));
+        const result = await executeDelmasDirectChat(body, env, ai);
+        return new Response(JSON.stringify({
+          success: true,
+          response: result.response,
+          model: result.usedEngine,
+          timestamp: new Date().toISOString()
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+        });
+      } catch (delmasErr) {
+        return new Response(JSON.stringify({
+          success: false,
+          error: delmasErr.message || "Erreur interne de Delmas IA."
+        }), {
+          status: 500,
+          headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+        });
+      }
+    }
+
+    // ========================================================================
+    // POINT D'ENTRÉE DU CHAT IA GÉNÉRAL : /api/ai/chat (SYNCHRONE)
     // ========================================================================
     if (request.method !== "POST") {
       return new Response(JSON.stringify({ error: "Méthode non autorisée." }), {
@@ -3664,6 +3836,21 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
 
     try {
       const body = await request.json().catch(() => ({}));
+
+      // Si la requête provient de Delmas IA (causerie directe sans création ni persistance D1)
+      if (body.delmasChat || body.mode === "delmas") {
+        const result = await executeDelmasDirectChat(body, env, ai);
+        return new Response(JSON.stringify({
+          success: true,
+          response: result.response,
+          model: result.usedEngine,
+          timestamp: new Date().toISOString()
+        }), {
+          status: 200,
+          headers: { "Content-Type": "application/json; charset=utf-8", ...corsHeaders }
+        });
+      }
+
       const userPrompt = body.message || body.prompt || body.text || "";
       const conversationId = body.conversation_id || body.conversationId || body.sessionId || "default-session";
       const requestedType = (body.requested_type || body.toolType || body.type || "").toLowerCase().trim();

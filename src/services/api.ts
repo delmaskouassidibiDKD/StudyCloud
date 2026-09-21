@@ -627,6 +627,85 @@ ${docSection}`;
 
 
 /**
+ * Causerie directe et éphémère avec Delmas IA (Accueil)
+ * Ne crée aucun module, ne persiste RIEN en base de données D1 (pas de conversations ni messages enregistrés).
+ */
+export async function sendDelmasChatMessage(params: {
+  message: string;
+  history?: Array<{ role: string; content: string }>;
+  geminiApiKey?: string;
+}): Promise<{
+  response: string;
+  success: boolean;
+  model?: string;
+}> {
+  const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
+  const userGeminiApiKey = (params.geminiApiKey || getGeminiApiKey()).trim();
+
+  const payload = {
+    message: params.message,
+    prompt: params.message,
+    history: params.history || [],
+    delmasChat: true,
+    mode: 'delmas',
+    skipChatHistory: true, // Empêche explicitement tout enregistrement D1
+    isDirectCreation: false,
+    geminiApiKey: userGeminiApiKey,
+  };
+
+  // 1. Tente en priorité la route dédiée /api/ai/delmas-chat
+  try {
+    const res = await fetch(`${dedicatedAiUrl}/api/ai/delmas-chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify(payload),
+    });
+
+    if (res.ok) {
+      const data = await res.json();
+      const text = typeof data.response === 'string'
+        ? data.response
+        : (typeof data.text === 'string' ? data.text : (typeof data.chat_message === 'string' ? data.chat_message : ''));
+      return {
+        success: true,
+        response: text || "Je suis à votre écoute ! Comment puis-je vous aider ?",
+        model: data.model || 'Delmas Direct AI',
+      };
+    }
+  } catch (routeErr) {
+    console.warn('[Delmas Direct Chat] Échec route /api/ai/delmas-chat, tentative fallback sur racine...', routeErr);
+  }
+
+  // 2. Fallback direct sur la racine du Worker IA avec delmasChat: true
+  const fallbackRes = await fetch(dedicatedAiUrl, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+    },
+    body: JSON.stringify(payload),
+  });
+
+  if (!fallbackRes.ok) {
+    const errData = await fallbackRes.json().catch(() => ({ error: fallbackRes.statusText }));
+    throw new Error(errData.error || `Erreur assistant Delmas (${fallbackRes.status})`);
+  }
+
+  const data = await fallbackRes.json();
+  const text = typeof data.response === 'string'
+    ? data.response
+    : (typeof data.chat_message === 'string' ? data.chat_message : (typeof data.text === 'string' ? data.text : ''));
+
+  return {
+    success: true,
+    response: text || "Je suis à votre écoute ! Comment puis-je vous aider ?",
+    model: data.model || 'Delmas Direct AI',
+  };
+}
+
+
+/**
  * Enregistre la réaction (pouce levé ou pouce baissé) de l'élève pour le modèle IA
  */
 export async function saveAiReaction(params: {
