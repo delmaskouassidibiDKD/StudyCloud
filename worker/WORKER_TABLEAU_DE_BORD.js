@@ -204,7 +204,10 @@ async function ensureStorageTables(db) {
       "ALTER TABLE storage_upgrade_requests ADD COLUMN receipt_r2_key TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN status TEXT DEFAULT 'pending'",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN admin_notes TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_start_date TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_end_date TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN grace_period_days INTEGER DEFAULT 5"
     ];
     for (const sql of upgradeReqCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
@@ -249,7 +252,10 @@ async function ensureStorageTables(db) {
       "ALTER TABLE user_subscriptions ADD COLUMN previous_storage_mb REAL DEFAULT 0",
       "ALTER TABLE user_subscriptions ADD COLUMN cancel_reason TEXT DEFAULT ''",
       "ALTER TABLE user_subscriptions ADD COLUMN request_id TEXT DEFAULT ''",
-      "ALTER TABLE user_subscriptions ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+      "ALTER TABLE user_subscriptions ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP",
+      "ALTER TABLE user_subscriptions ADD COLUMN grace_period_days INTEGER DEFAULT 5",
+      "ALTER TABLE user_subscriptions ADD COLUMN payment_due_date TEXT DEFAULT ''",
+      "ALTER TABLE user_subscriptions ADD COLUMN is_blocked INTEGER DEFAULT 0"
     ];
     for (const sql of subCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
@@ -2771,7 +2777,7 @@ function renderDashboardHtml(data) {
     }
 
     // ========================================================================
-    // NOUVELLE VUE : GESTION DES DEMANDES DE STOCKAGE & ABONNEMENTS
+    // NOUVELLE VUE : GESTION DES DEMANDES DE STOCKAGE & ABONNEMENTS (V2)
     // ========================================================================
     function setDemandesTab(tab) {
       currentDemandeTab = tab;
@@ -2791,7 +2797,7 @@ function renderDashboardHtml(data) {
           pending: "Demandes d'augmentation en attente de validation",
           active: "Abonnements de stockage en cours",
           cancelled: "Abonnements résiliés / annulés",
-          all: "Toutes les demandes et abonnements"
+          all: "Tous les utilisateurs inscrits & Bilans abonnements"
         };
         label.textContent = labels[tab] || '';
       }
@@ -2805,7 +2811,7 @@ function renderDashboardHtml(data) {
       const pendingCount = allRequests.filter(r => r.status === 'pending').length;
       const activeCount = allSubscriptions.filter(s => s.status === 'active').length;
       const cancelledCount = allSubscriptions.filter(s => s.status === 'cancelled').length;
-      const totalCount = allRequests.length + allSubscriptions.length;
+      const allUsersCount = allUsers.length;
 
       const pEl = document.getElementById('tab-count-pending');
       const aEl = document.getElementById('tab-count-active');
@@ -2815,7 +2821,7 @@ function renderDashboardHtml(data) {
       if (pEl) pEl.textContent = pendingCount;
       if (aEl) aEl.textContent = activeCount;
       if (cEl) cEl.textContent = cancelledCount;
-      if (allEl) allEl.textContent = totalCount;
+      if (allEl) allEl.textContent = allUsersCount;
     }
 
     function filterDemandesLeft() {
@@ -2839,10 +2845,12 @@ function renderDashboardHtml(data) {
             <div class="h-full flex flex-col items-center justify-center text-center text-slate-500 py-20">
               <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">📥</div>
               <h3 class="text-sm font-bold text-slate-300">Aucun élément dans cette section</h3>
-              <p class="text-xs text-slate-500 mt-1 max-w-sm">Aucune demande ou abonnement ne correspond aux filtres actuels. Cliquez sur "+ Demande test" pour simuler une demande.</p>
-              <button onclick="createDemoStorageRequest()" class="mt-4 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl shadow cursor-pointer">
-                + Simuler une demande de test
-              </button>
+              <p class="text-xs text-slate-500 mt-1 max-w-sm">Aucune demande ou utilisateur ne correspond au filtre sélectionné.</p>
+              \${currentDemandeTab === 'pending' ? \`
+                <button onclick="createDemoStorageRequest()" class="mt-4 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl shadow cursor-pointer">
+                  + Simuler une demande test Wave
+                </button>
+              \` : ''}
             </div>
           \`;
         }
@@ -2852,66 +2860,76 @@ function renderDashboardHtml(data) {
     function getFilteredDemandesList(q = '') {
       let combined = [];
 
-      // 1. Demandes d'augmentation
-      allRequests.forEach(req => {
-        const user = allUsers.find(u => u.user.id === req.user_id);
-        const name = req.user_name || (user ? user.user.name : 'Utilisateur');
-        const phone = req.user_phone || (user ? user.user.phone : '');
-        const pack = req.pack_name || 'Pack Stockage';
-
-        let matchesTab = false;
-        if (currentDemandeTab === 'pending' && req.status === 'pending') matchesTab = true;
-        if (currentDemandeTab === 'all') matchesTab = true;
-
-        if (matchesTab) {
+      // 1. ONGLET 'pending' : UNIQUEMENT les demandes d'augmentation en attente réelles
+      if (currentDemandeTab === 'pending') {
+        allRequests.filter(r => r.status === 'pending').forEach(req => {
+          const user = allUsers.find(u => u.user.id === req.user_id);
           combined.push({
             id: req.id,
             itemType: 'request',
             raw: req,
             userId: req.user_id,
-            userName: name,
-            userPhone: phone,
+            userName: req.user_name || (user ? user.user.name : 'Utilisateur'),
+            userPhone: req.user_phone || (user ? user.user.phone : ''),
             userAvatar: user ? user.user.avatar_url : '',
             isOnline: user ? user.user.isOnline : false,
-            packName: pack,
+            packName: req.pack_name || 'Pack Stockage',
             amountMb: req.additional_mb || 0,
             pricePaid: req.price_paid || 0,
             currency: req.currency || 'FCFA',
-            status: req.status || 'pending',
+            status: 'pending',
             date: req.created_at,
             receiptUrl: req.receipt_image_url || '',
             receiptR2Key: req.receipt_r2_key || ''
           });
-        }
-      });
+        });
+      }
 
-      // 2. Abonnements
-      allSubscriptions.forEach(sub => {
-        const user = allUsers.find(u => u.user.id === sub.user_id);
-        const name = sub.user_name || (user ? user.user.name : 'Abonné');
-        const phone = sub.user_phone || (user ? user.user.phone : '');
-        const pack = sub.plan_name || 'Abonnement Stockage';
-
-        let matchesTab = false;
-        if (currentDemandeTab === 'active' && sub.status === 'active') matchesTab = true;
-        if (currentDemandeTab === 'cancelled' && sub.status === 'cancelled') matchesTab = true;
-        if (currentDemandeTab === 'all') matchesTab = true;
-
-        if (matchesTab) {
+      // 2. ONGLET 'active' : Abonnements actifs
+      else if (currentDemandeTab === 'active') {
+        allSubscriptions.filter(s => s.status === 'active').forEach(sub => {
+          const user = allUsers.find(u => u.user.id === sub.user_id);
           combined.push({
             id: sub.id,
             itemType: 'subscription',
             raw: sub,
             userId: sub.user_id,
-            userName: name,
-            userPhone: phone,
+            userName: sub.user_name || (user ? user.user.name : 'Abonné'),
+            userPhone: sub.user_phone || (user ? user.user.phone : ''),
             userAvatar: user ? user.user.avatar_url : '',
             isOnline: user ? user.user.isOnline : false,
-            packName: pack,
+            packName: sub.plan_name || 'Abonnement Stockage',
             amountMb: sub.total_storage_mb || 0,
             pricePaid: sub.monthly_price || 0,
             currency: sub.currency || 'FCFA',
-            status: sub.status || 'active',
+            status: 'active',
+            date: sub.start_date || sub.created_at,
+            endDate: sub.end_date || '',
+            gracePeriodDays: sub.grace_period_days || 5,
+            receiptUrl: '',
+            receiptR2Key: ''
+          });
+        });
+      }
+
+      // 3. ONGLET 'cancelled' : Abonnements annulés / résiliés
+      else if (currentDemandeTab === 'cancelled') {
+        allSubscriptions.filter(s => s.status === 'cancelled').forEach(sub => {
+          const user = allUsers.find(u => u.user.id === sub.user_id);
+          combined.push({
+            id: sub.id,
+            itemType: 'subscription',
+            raw: sub,
+            userId: sub.user_id,
+            userName: sub.user_name || (user ? user.user.name : 'Abonné'),
+            userPhone: sub.user_phone || (user ? user.user.phone : ''),
+            userAvatar: user ? user.user.avatar_url : '',
+            isOnline: user ? user.user.isOnline : false,
+            packName: sub.plan_name || 'Abonnement Stockage',
+            amountMb: sub.total_storage_mb || 0,
+            pricePaid: sub.monthly_price || 0,
+            currency: sub.currency || 'FCFA',
+            status: 'cancelled',
             date: sub.created_at || sub.start_date,
             cancelledAt: sub.cancelled_at || '',
             previousStorageMb: sub.previous_storage_mb || 0,
@@ -2919,12 +2937,22 @@ function renderDashboardHtml(data) {
             receiptUrl: '',
             receiptR2Key: ''
           });
-        }
-      });
+        });
+      }
 
-      // 3. Si onglet 'all' et peu d'éléments, intégrer les utilisateurs ayant du stockage
-      if (currentDemandeTab === 'all' && combined.length === 0) {
+      // 4. ONGLET 'all' : TOUS LES UTILISATEURS INSCRITS (DONNÉES RÉELLES DE LA BASE)
+      else if (currentDemandeTab === 'all') {
         allUsers.forEach(u => {
+          const activeSub = allSubscriptions.find(s => s.user_id === u.user.id && s.status === 'active');
+          const cancelledSubs = allSubscriptions.filter(s => s.user_id === u.user.id && s.status === 'cancelled');
+          const totalSubsCount = allSubscriptions.filter(s => s.user_id === u.user.id).length;
+          const pendingReqsCount = allRequests.filter(r => r.user_id === u.user.id && r.status === 'pending').length;
+
+          const totalAllowedBytes = u.quotaConfig.totalAllowedBytes || (30 * 1024 * 1024);
+          const usedBytes = u.storage.net ? (u.storage.net.totalBytes || 0) : (u.storage.totalBytes || 0);
+          const remainingBytes = Math.max(0, totalAllowedBytes - usedBytes);
+          const remainingFormatted = formatBytes(remainingBytes);
+
           combined.push({
             id: 'user_' + u.user.id,
             itemType: 'user',
@@ -2934,14 +2962,17 @@ function renderDashboardHtml(data) {
             userPhone: u.user.phone,
             userAvatar: u.user.avatar_url,
             isOnline: u.user.isOnline,
-            packName: u.quotaConfig.paidTotalMb > 0 ? 'Compte Payant' : 'Compte Gratuit',
-            amountMb: u.quotaConfig.totalAllowedMb,
-            pricePaid: 0,
-            currency: 'FCFA',
-            status: u.quotaConfig.paidTotalMb > 0 ? 'active' : 'gratuit',
-            date: u.user.created_at,
-            receiptUrl: '',
-            receiptR2Key: ''
+            registeredAt: u.user.created_at,
+            activeSub: activeSub || null,
+            cancelledSubsCount: cancelledSubs.length,
+            cancelledSubs: cancelledSubs,
+            totalSubsCount: totalSubsCount,
+            pendingReqsCount: pendingReqsCount,
+            remainingFormatted: remainingFormatted,
+            remainingBytes: remainingBytes,
+            totalAllowedFormatted: u.quotaConfig.totalAllowedFormatted,
+            isPaid: Boolean(activeSub || (u.quotaConfig.paidTotalMb > 0)),
+            date: u.user.created_at
           });
         });
       }
@@ -2952,7 +2983,7 @@ function renderDashboardHtml(data) {
       if (!q) return combined;
 
       return combined.filter(item => {
-        const text = (item.userName + ' ' + item.userPhone + ' ' + item.packName + ' ' + item.status + ' ' + item.userId).toLowerCase();
+        const text = (item.userName + ' ' + (item.userPhone || '') + ' ' + (item.packName || '') + ' ' + (item.status || '') + ' ' + item.userId).toLowerCase();
         return text.includes(q);
       });
     }
@@ -2965,14 +2996,22 @@ function renderDashboardHtml(data) {
       const list = getFilteredDemandesList(q);
 
       if (list.length === 0) {
+        let emptyMsg = "Aucun élément trouvé.";
+        if (currentDemandeTab === 'pending') emptyMsg = "Aucune demande d'augmentation en attente.";
+        else if (currentDemandeTab === 'active') emptyMsg = "Aucun abonnement en cours.";
+        else if (currentDemandeTab === 'cancelled') emptyMsg = "Aucun abonnement annulé.";
+        else if (currentDemandeTab === 'all') emptyMsg = "Aucun utilisateur trouvé.";
+
         container.innerHTML = \`
           <div class="p-6 text-center text-slate-500 text-xs">
-            Aucun élément trouvé.
-            <div class="mt-2">
-              <button onclick="createDemoStorageRequest()" class="text-orange-400 font-bold hover:underline cursor-pointer">
-                + Ajouter une demande de test
-              </button>
-            </div>
+            \${emptyMsg}
+            \${currentDemandeTab === 'pending' ? \`
+              <div class="mt-2">
+                <button onclick="createDemoStorageRequest()" class="text-orange-400 font-bold hover:underline cursor-pointer">
+                  + Ajouter une demande de test
+                </button>
+              </div>
+            \` : ''}
           </div>
         \`;
         return;
@@ -2980,11 +3019,55 @@ function renderDashboardHtml(data) {
 
       container.innerHTML = list.map(item => {
         const isSelected = item.id === selectedDemandeId;
+
+        // CAS A : ÉLÉMENT UTILISATEUR (ONGLET TOUS)
+        if (item.itemType === 'user') {
+          let userBadge = '';
+          if (item.activeSub) {
+            userBadge = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">🟢 Abonné</span>';
+          } else if (item.cancelledSubsCount > 0) {
+            userBadge = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">🔴 Ex-abonné</span>';
+          } else {
+            userBadge = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700">Mode Gratuit</span>';
+          }
+
+          return \`
+            <div 
+              onclick="selectDemandeItem('\${item.id}', 'user')"
+              class="p-2.5 cursor-pointer transition-all flex items-center justify-between \${isSelected ? 'bg-orange-600/15 border-l-4 border-l-orange-500' : 'hover:bg-slate-800/40'}"
+            >
+              <div class="flex items-center gap-2.5 overflow-hidden">
+                <div class="relative w-9 h-9 rounded-xl bg-slate-800 text-orange-400 font-bold flex items-center justify-center text-xs shrink-0 border border-slate-700">
+                  \${item.userAvatar ? '<img src="' + item.userAvatar + '" class="w-full h-full rounded-xl object-cover" onerror="this.remove()">' : item.userName.charAt(0).toUpperCase()}
+                  <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 \${item.isOnline ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-slate-600'}" title="\${item.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
+                </div>
+                <div class="truncate">
+                  <div class="font-bold text-white truncate text-xs flex items-center gap-1.5">
+                    <span class="truncate">\${item.userName}</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400 truncate">
+                    📞 \${item.userPhone || 'Sans numéro'}
+                  </div>
+                  <div class="text-[9px] text-slate-500 font-mono mt-0.5">
+                    Inscrit le \${formatShortDateFrench(item.registeredAt)}
+                  </div>
+                </div>
+              </div>
+
+              <div class="text-right shrink-0 space-y-1">
+                \${userBadge}
+                <div class="text-[11px] font-mono font-bold text-emerald-400">Reste : \${item.remainingFormatted}</div>
+                <div class="text-[9px] text-slate-500 font-mono">Quota : \${item.totalAllowedFormatted}</div>
+              </div>
+            </div>
+          \`;
+        }
+
+        // CAS B : DEMANDE OU ABONNEMENT (ONGLETS EN ATTENTE, ABONNÉS, ANNULÉS)
         const formattedAmount = item.amountMb >= 1024 
           ? (item.amountMb / 1024).toFixed(item.amountMb % 1024 === 0 ? 0 : 1) + ' Go' 
           : item.amountMb + ' Mo';
 
-        // Badge de statut
         let badgeHtml = '';
         if (item.status === 'pending') {
           badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">🟡 En attente</span>';
@@ -2992,10 +3075,8 @@ function renderDashboardHtml(data) {
           badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">🟢 Abonné</span>';
         } else if (item.status === 'cancelled') {
           badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">🔴 Annulé</span>';
-        } else if (item.status === 'rejected') {
-          badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700">⚪ Rejeté</span>';
         } else {
-          badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">Gratuit</span>';
+          badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700">⚪ Rejeté</span>';
         }
 
         return \`
@@ -3041,7 +3122,7 @@ function renderDashboardHtml(data) {
     }
 
     // ========================================================================
-    // PANNEAU DROIT DÉTAILS DEMANDE & ABONNEMENT
+    // PANNEAU DROIT : DÉTAILS DEMANDE, BILAN UTILISATEUR OU ABONNEMENT
     // ========================================================================
     function renderDemandeDetail(id, itemType) {
       const panel = document.getElementById('demandes-right-detail-panel');
@@ -3056,6 +3137,7 @@ function renderDashboardHtml(data) {
         return;
       }
 
+      // Récupérer l'utilisateur correspondant dans allUsers
       const userDetail = allUsers.find(u => u.user.id === item.userId);
       const u = userDetail ? userDetail.user : {
         id: item.userId,
@@ -3065,26 +3147,530 @@ function renderDashboardHtml(data) {
         level: 'Étudiant',
         school: 'Non renseignée',
         filiere: '',
-        isOnline: item.isOnline
+        isOnline: item.isOnline,
+        created_at: item.date
       };
       const quota = userDetail ? userDetail.quotaConfig : {
         totalAllowedFormatted: '30 Mo',
+        totalAllowedBytes: 30 * 1024 * 1024,
         welcomeTotalMb: 30,
         paidTotalMb: 0
       };
       const storage = userDetail ? userDetail.storage : {
         totalFormatted: '0 Octets',
+        totalBytes: 0,
         usagePercentage: 0
       };
 
-      const formattedAmount = item.amountMb >= 1024 
-        ? (item.amountMb / 1024).toFixed(item.amountMb % 1024 === 0 ? 0 : 1) + ' Go (' + item.amountMb + ' Mo)'
-        : item.amountMb + ' Mo';
+      const usedBytes = storage.net ? (storage.net.totalBytes || 0) : (storage.totalBytes || 0);
+      const totalBytes = quota.totalAllowedBytes || (30 * 1024 * 1024);
+      const remainingBytes = Math.max(0, totalBytes - usedBytes);
+      const remainingFormatted = formatBytes(remainingBytes);
 
-      const receiptUrl = item.receiptUrl || (item.raw && item.raw.receipt_image_url) || '';
-      const receiptR2Key = item.receiptR2Key || (item.raw && item.raw.receipt_r2_key) || ('storage-receipts/' + u.id + '/recu_demande_' + item.id + '.jpg');
-      const paymentMethod = (item.raw && item.raw.payment_method) || 'Wave / Mobile Money';
-      const paymentRef = (item.raw && item.raw.payment_reference) || ('TXN_' + item.id.slice(0, 8).toUpperCase());
+      // Statistiques pour cet utilisateur
+      const userActiveSub = allSubscriptions.find(s => s.user_id === u.id && s.status === 'active');
+      const userCancelledSubs = allSubscriptions.filter(s => s.user_id === u.id && s.status === 'cancelled');
+      const userTotalSubsCount = allSubscriptions.filter(s => s.user_id === u.id).length;
+      const userPendingReqs = allRequests.filter(r => r.user_id === u.id && r.status === 'pending');
+
+      // ----------------------------------------------------------------------
+      // CAS 1 : CONSULTATION D'UN UTILISATEUR DEPUIS L'ONGLET 'TOUS'
+      // ----------------------------------------------------------------------
+      if (item.itemType === 'user') {
+        panel.innerHTML = \`
+          <!-- EN-TÊTE PROFIL ÉTUDIANT & BOUTON 3 TRAITS OPTIONS -->
+          <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-800">
+            <div class="flex items-start gap-3.5">
+              <div class="relative w-12 h-12 rounded-2xl bg-orange-500/20 text-orange-400 font-black flex items-center justify-center border border-orange-500/30 text-lg shrink-0 mt-0.5">
+                \${u.avatar_url ? '<img src="' + u.avatar_url + '" class="w-full h-full rounded-2xl object-cover" onerror="this.remove()">' : u.name.charAt(0).toUpperCase()}
+                <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-slate-950 \${u.isOnline ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-slate-600'}" title="\${u.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
+              </div>
+              <div class="space-y-1 text-xs">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-base font-extrabold text-white">\${u.name}</span>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">ID: \${u.id}</span>
+                  \${u.isOnline ? \`
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> En ligne
+                    </span>
+                  \` : \`
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700/60">
+                      <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> Hors ligne
+                    </span>
+                  \`}
+                </div>
+                <div class="flex items-center gap-3 text-slate-300 flex-wrap">
+                  <span class="font-mono">📞 <strong>\${u.phone || 'Non renseigné'}</strong></span>
+                  <span>•</span>
+                  <span class="font-mono text-slate-400">✉️ \${u.email || 'Non renseigné'}</span>
+                </div>
+                <div class="text-slate-400">
+                  🏛️ <strong>\${u.school || 'École non renseignée'}</strong> \${u.filiere ? '(' + u.filiere + ')' : ''} • 🎓 \${u.level || 'Étudiant'}
+                </div>
+              </div>
+            </div>
+
+            <!-- BOUTON 3 TRAITS OPTIONS -->
+            <div class="relative inline-block text-left shrink-0">
+              <button 
+                onclick="toggleDemandeOptionsMenu()" 
+                id="demande-options-btn"
+                class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-2 text-xs font-bold transition-all cursor-pointer shadow-md"
+              >
+                <span>☰</span>
+                <span>Options du compte</span>
+              </button>
+
+              <div id="demande-options-dropdown" class="hidden absolute right-0 mt-2 w-64 rounded-2xl bg-[#0f172a] border border-slate-700 shadow-2xl z-50 p-2 space-y-1 backdrop-blur-xl">
+                <div class="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                  Dossier de \${u.name.split(' ')[0]}
+                </div>
+                <button onclick="openUserHistoryModal('\${u.id}', 'requests')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2.5 transition font-medium cursor-pointer">
+                  <span>📜</span>
+                  <div>
+                    <div class="font-bold">Historique de ses demandes (\${userPendingReqs.length + allRequests.filter(r => r.user_id === u.id && r.status !== 'pending').length})</div>
+                    <div class="text-[10px] text-slate-400">Voir toutes les demandes passées</div>
+                  </div>
+                </button>
+                <button onclick="openUserHistoryModal('\${u.id}', 'active')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-emerald-300 flex items-center gap-2.5 transition font-medium cursor-pointer">
+                  <span>💳</span>
+                  <div>
+                    <div class="font-bold">Abonnements en cours (\${userActiveSub ? '1' : '0'})</div>
+                    <div class="text-[10px] text-slate-400">Souscription actuelle</div>
+                  </div>
+                </button>
+                <button onclick="openUserHistoryModal('\${u.id}', 'cancelled')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-red-300 flex items-center gap-2.5 transition font-medium cursor-pointer">
+                  <span>🚫</span>
+                  <div>
+                    <div class="font-bold">Abonnements annulés (\${userCancelledSubs.length})</div>
+                    <div class="text-[10px] text-slate-400">Motifs et historique de résiliation</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- DATE D'INSCRIPTION COMPLÈTE EN FRANÇAIS -->
+          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 flex items-center justify-between text-xs">
+            <div class="flex items-center gap-2 text-slate-300">
+              <span class="text-base">📅</span>
+              <div>
+                <span class="text-[10px] text-slate-400 uppercase font-bold block">Date et Heure d'Inscription au service :</span>
+                <strong class="text-white font-mono text-xs">\${formatFullDateFrench(u.created_at)}</strong>
+              </div>
+            </div>
+            <div class="text-right font-mono text-[11px] text-orange-400">
+              Statut : <strong class="text-white">\${userActiveSub ? '🟢 Abonné Payant' : '⚪ Mode Gratuit'}</strong>
+            </div>
+          </div>
+
+          <!-- BILAN STOCKAGE : TOTAL ALLOUÉ, CONSOMMÉ ET STOCKAGE RESTANT BIEN MIS EN VALEUR -->
+          <div class="space-y-2">
+            <h4 class="text-xs font-extrabold text-white flex items-center gap-2">
+              <span>⚡</span> État du Stockage & Espace Restant Disponible
+            </h4>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <!-- 1. Stockage total alloué -->
+              <div class="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 border-l-4 border-l-blue-500">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Stockage Total Alloué</span>
+                <div class="text-lg font-black text-blue-400 font-mono">\${quota.totalAllowedFormatted}</div>
+                <div class="text-[10px] text-slate-500 mt-1">Bienvenue (\${quota.welcomeTotalMb} Mo) + Payant (\${quota.paidTotalMb} Mo)</div>
+              </div>
+
+              <!-- 2. Stockage consommé -->
+              <div class="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 border-l-4 border-l-orange-500">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Stockage Consommé</span>
+                <div class="text-lg font-black text-orange-400 font-mono">\${storage.net ? storage.net.totalFormatted : storage.totalFormatted}</div>
+                <div class="text-[10px] text-slate-500 mt-1">\${storage.net ? storage.net.usagePercentage : storage.usagePercentage}% du quota utilisé</div>
+              </div>
+
+              <!-- 3. Stockage restant (bien visible) -->
+              <div class="bg-slate-950/80 p-3.5 rounded-xl border border-slate-800 border-l-4 border-l-emerald-500 bg-gradient-to-br from-emerald-950/20 to-slate-950">
+                <span class="text-[10px] uppercase font-bold text-emerald-400 block mb-0.5">Stockage Restant</span>
+                <div class="text-lg font-black text-emerald-400 font-mono">\${remainingFormatted}</div>
+                <div class="text-[10px] text-emerald-300/80 mt-1">Espace libre disponible pour nouveaux fichiers</div>
+              </div>
+            </div>
+
+            <!-- Barre de progression -->
+            <div class="bg-slate-900/80 p-3 rounded-xl border border-slate-800 space-y-1.5">
+              <div class="flex justify-between text-[11px] font-mono">
+                <span class="text-slate-300">Utilisation de son espace</span>
+                <span class="text-orange-400 font-bold">\${storage.net ? storage.net.totalFormatted : storage.totalFormatted} / \${quota.totalAllowedFormatted} (\${storage.net ? storage.net.usagePercentage : storage.usagePercentage}%)</span>
+              </div>
+              <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden border border-slate-700">
+                <div class="h-full bg-gradient-to-r from-emerald-500 via-amber-500 to-orange-500 rounded-full transition-all duration-500" style="width: \${Math.max(1, Math.min(100, storage.net ? storage.net.usagePercentage : storage.usagePercentage))}%;"></div>
+              </div>
+            </div>
+          </div>
+
+          <!-- BILAN DES ABONNEMENTS DE CET UTILISATEUR -->
+          <div class="bg-gradient-to-br from-slate-900 via-[#11192e] to-slate-900 border border-slate-800 rounded-2xl p-4 space-y-3">
+            <h4 class="text-xs font-extrabold text-white flex items-center gap-2 border-b border-slate-800 pb-2">
+              <span>💳</span> Synthèse des Abonnements & Historique de cet Étudiant
+            </h4>
+
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+              <!-- 1. Combien de fois s'est-il abonné en tout ? -->
+              <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                <span class="text-[10px] text-slate-400 uppercase font-bold block mb-1">Nombre total de souscriptions :</span>
+                <div class="text-base font-extrabold text-white font-mono">
+                  \${userTotalSubsCount > 0 ? userTotalSubsCount + ' fois abonné en tout' : '0 fois (Jamais souscrit d\\'abonnement)'}
+                </div>
+                <p class="text-[10px] text-slate-500 mt-1">Comptabilise tous les forfaits actifs, expirés et passés.</p>
+              </div>
+
+              <!-- 2. Abonnement en cours -->
+              <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 \${userActiveSub ? 'border-emerald-500/40 bg-emerald-950/10' : ''}">
+                <span class="text-[10px] text-slate-400 uppercase font-bold block mb-1">Abonnement en cours :</span>
+                \${userActiveSub ? \`
+                  <div class="text-xs font-bold text-emerald-300">
+                    🟢 \${userActiveSub.plan_name} (\${Number(userActiveSub.monthly_price || 0).toLocaleString('fr-FR')} \${userActiveSub.currency || 'FCFA'}/mois)
+                  </div>
+                  <div class="text-[10px] text-slate-400 font-mono mt-1">
+                    Expire le : <strong>\${userActiveSub.end_date ? formatShortDateFrench(userActiveSub.end_date) : 'Non défini'}</strong> • Tolérance avant blocage : <strong>\${userActiveSub.grace_period_days || 5} jours</strong>
+                  </div>
+                \` : \`
+                  <div class="text-xs font-bold text-slate-400">
+                    ⚪ Aucun abonnement actif en cours
+                  </div>
+                  <div class="text-[10px] text-slate-500 mt-1">L'utilisateur utilise actuellement le stockage de bienvenue gratuit.</div>
+                \`}
+              </div>
+
+              <!-- 3. A-t-il déjà annulé un abonnement ? -->
+              <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 \${userCancelledSubs.length > 0 ? 'border-red-500/40 bg-red-950/10' : ''}">
+                <span class="text-[10px] text-slate-400 uppercase font-bold block mb-1">A-t-il déjà annulé un abonnement ? :</span>
+                \${userCancelledSubs.length > 0 ? \`
+                  <div class="text-xs font-bold text-red-300">
+                    🔴 Oui • \${userCancelledSubs.length} abonnement(s) annulé(s)
+                  </div>
+                  <div class="text-[10px] text-slate-300 mt-1">
+                    Dernière annulation le : \${formatShortDateFrench(userCancelledSubs[0].cancelled_at)} (Était à \${userCancelledSubs[0].previous_storage_mb || 0} Mo)
+                  </div>
+                  <div class="text-[9px] text-slate-500 italic mt-0.5">
+                    Motif : "\${userCancelledSubs[0].cancel_reason || 'Non précisé'}"
+                  </div>
+                \` : \`
+                  <div class="text-xs font-bold text-emerald-400">
+                    ✓ Non • Jamais d'annulation enregistrée
+                  </div>
+                  <div class="text-[10px] text-slate-500 mt-1">Aucune interruption ou résiliation d'abonnement au dossier.</div>
+                \`}
+              </div>
+
+              <!-- 4. Demandes en attente -->
+              <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                <span class="text-[10px] text-slate-400 uppercase font-bold block mb-1">Demandes d'augmentation de stockage :</span>
+                \${userPendingReqs.length > 0 ? \`
+                  <div class="text-xs font-bold text-amber-300">
+                    🟡 \${userPendingReqs.length} demande(s) en attente de validation
+                  </div>
+                  <button onclick="setDemandesTab('pending'); selectDemandeItem('\${userPendingReqs[0].id}', 'request')" class="mt-1 text-[10px] text-orange-400 underline font-bold cursor-pointer">
+                    Voir la demande en attente →
+                  </button>
+                \` : \`
+                  <div class="text-xs font-bold text-slate-400">
+                    Aucune demande en attente
+                  </div>
+                  <div class="text-[10px] text-slate-500 mt-1">Toutes les demandes ont été traitées.</div>
+                \`}
+              </div>
+            </div>
+
+            <!-- BOUTON D'ACCÈS RAPIDE VERS DISTRIBUTION DE STOCKAGE -->
+            <div class="pt-2 border-t border-slate-800 flex items-center justify-between flex-wrap gap-2 text-xs">
+              <span class="text-slate-400 text-[11px]">Besoin de modifier manuellement son stockage de bienvenue ou son quota payant ?</span>
+              <button 
+                onclick="switchView('distribution'); selectDistributionUser('\${u.id}');" 
+                class="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl shadow transition cursor-pointer flex items-center gap-1.5"
+              >
+                <span>🎁</span> Ouvrir dans Distribution de stockage
+              </button>
+            </div>
+          </div>
+        \`;
+        return;
+      }
+
+      // ----------------------------------------------------------------------
+      // CAS 2 : DEMANDE D'AUGMENTATION EN ATTENTE (AVEC FORMULAIRE ADMIN DATE & BLOCAGE)
+      // ----------------------------------------------------------------------
+      if (item.itemType === 'request') {
+        const req = item.raw;
+        const formattedAmount = item.amountMb >= 1024 
+          ? (item.amountMb / 1024).toFixed(item.amountMb % 1024 === 0 ? 0 : 1) + ' Go (' + item.amountMb + ' Mo)'
+          : item.amountMb + ' Mo';
+
+        const receiptUrl = item.receiptUrl || req.receipt_image_url || '';
+        const receiptR2Key = item.receiptR2Key || req.receipt_r2_key || ('storage-receipts/' + u.id + '/recu_demande_' + item.id + '.jpg');
+        const paymentMethod = req.payment_method || 'Wave / Mobile Money';
+        const paymentRef = req.payment_reference || ('TXN_' + item.id.slice(0, 8).toUpperCase());
+
+        // Calcul dates par défaut pour les champs éditables
+        const now = new Date();
+        const defaultStartISO = now.toISOString().slice(0, 16);
+        const defaultEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const defaultEndISO = defaultEnd.toISOString().slice(0, 16);
+
+        panel.innerHTML = \`
+          <!-- EN-TÊTE PROFIL ÉTUDIANT & BOUTON 3 TRAITS OPTIONS -->
+          <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-800">
+            <div class="flex items-start gap-3.5">
+              <div class="relative w-12 h-12 rounded-2xl bg-orange-500/20 text-orange-400 font-black flex items-center justify-center border border-orange-500/30 text-lg shrink-0 mt-0.5">
+                \${u.avatar_url ? '<img src="' + u.avatar_url + '" class="w-full h-full rounded-2xl object-cover" onerror="this.remove()">' : u.name.charAt(0).toUpperCase()}
+                <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-slate-950 \${u.isOnline ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-slate-600'}" title="\${u.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
+              </div>
+              <div class="space-y-1 text-xs">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-base font-extrabold text-white">\${u.name}</span>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">ID: \${u.id}</span>
+                  \${u.isOnline ? \`
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> En ligne
+                    </span>
+                  \` : \`
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700/60">
+                      <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> Hors ligne
+                    </span>
+                  \`}
+                </div>
+                <div class="flex items-center gap-3 text-slate-300 flex-wrap">
+                  <span class="font-mono">📞 <strong>\${u.phone || 'Non renseigné'}</strong></span>
+                  <span>•</span>
+                  <span class="font-mono text-slate-400">✉️ \${u.email || 'Non renseigné'}</span>
+                </div>
+                <div class="text-slate-400">
+                  🏛️ <strong>\${u.school || 'École non renseignée'}</strong> \${u.filiere ? '(' + u.filiere + ')' : ''}
+                </div>
+              </div>
+            </div>
+
+            <!-- BOUTON 3 TRAITS OPTIONS -->
+            <div class="relative inline-block text-left shrink-0">
+              <button 
+                onclick="toggleDemandeOptionsMenu()" 
+                id="demande-options-btn"
+                class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-2 text-xs font-bold transition-all cursor-pointer shadow-md"
+              >
+                <span>☰</span>
+                <span>Historique</span>
+              </button>
+
+              <div id="demande-options-dropdown" class="hidden absolute right-0 mt-2 w-64 rounded-2xl bg-[#0f172a] border border-slate-700 shadow-2xl z-50 p-2 space-y-1 backdrop-blur-xl">
+                <button onclick="openUserHistoryModal('\${u.id}', 'requests')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2.5 transition font-medium cursor-pointer">
+                  <span>📜</span> Historique de ses demandes
+                </button>
+                <button onclick="openUserHistoryModal('\${u.id}', 'active')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-emerald-300 flex items-center gap-2.5 transition font-medium cursor-pointer">
+                  <span>💳</span> Abonnements en cours
+                </button>
+                <button onclick="openUserHistoryModal('\${u.id}', 'cancelled')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-red-300 flex items-center gap-2.5 transition font-medium cursor-pointer">
+                  <span>🚫</span> Abonnements annulés
+                </button>
+              </div>
+            </div>
+          </div>
+
+          <!-- DÉTAILS DE LA DEMANDE SOUMISE -->
+          <div class="bg-gradient-to-br from-slate-900 via-[#11192e] to-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
+              <h4 class="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
+                <span>📦</span>
+                <span>Offre Demandée : <span class="text-orange-400">\${item.packName}</span></span>
+              </h4>
+              <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5">
+                <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> En attente de validation
+              </span>
+            </div>
+
+            <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+              <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 border-l-4 border-l-blue-500">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Stockage Demandé</span>
+                <div class="text-lg font-black text-blue-400 font-mono">+\${formattedAmount}</div>
+                <div class="text-[10px] text-slate-400 mt-1">À ajouter au quota de l'élève</div>
+              </div>
+
+              <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 border-l-4 border-l-emerald-500">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Prix Payé Transmis</span>
+                <div class="text-lg font-black text-emerald-400 font-mono">\${Number(item.pricePaid).toLocaleString('fr-FR')} \${item.currency}</div>
+                <div class="text-[10px] text-slate-400 mt-1">Tarif pour la période</div>
+              </div>
+
+              <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 border-l-4 border-l-purple-500">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Moyen & Réf. Virement</span>
+                <div class="text-xs font-bold text-purple-300 truncate mt-0.5">\${paymentMethod}</div>
+                <div class="text-[10px] font-mono text-slate-400 mt-1 truncate">Réf: \${paymentRef}</div>
+              </div>
+            </div>
+
+            <!-- ESPACE REÇU DE PAIEMENT -->
+            <div class="bg-slate-950/90 rounded-2xl border-2 border-slate-800 p-4 space-y-3">
+              <div class="flex items-center justify-between">
+                <div class="flex items-center gap-2">
+                  <span class="text-base">🧾</span>
+                  <span class="text-xs font-extrabold text-white">Espace Preuve de Paiement • Capture d'Écran ou Reçu</span>
+                </div>
+                \${receiptUrl ? \`
+                  <button 
+                    onclick="openReceiptZoomModal('\${receiptUrl}', 'Reçu de paiement - \${u.name}')" 
+                    class="px-3 py-1.5 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 border border-orange-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+                  >
+                    <span>🔍</span> Agrandir le reçu
+                  </button>
+                \` : ''}
+              </div>
+
+              \${receiptUrl ? \`
+                <div 
+                  onclick="openReceiptZoomModal('\${receiptUrl}', 'Reçu de paiement - \${u.name}')"
+                  class="relative group rounded-xl overflow-hidden border border-slate-800 bg-slate-900/80 p-2 cursor-pointer flex items-center justify-center max-h-[280px]"
+                >
+                  <img src="\${receiptUrl}" class="max-h-[260px] w-auto max-w-full rounded-lg object-contain transition duration-300 group-hover:scale-[1.02] shadow-xl" alt="Reçu de paiement" />
+                  <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl backdrop-blur-xs">
+                    <div class="px-3 py-2 rounded-xl bg-orange-600 text-white font-bold text-xs flex items-center gap-2 shadow-xl">
+                      <span>🔍</span> Cliquez pour agrandir le reçu
+                    </div>
+                  </div>
+                </div>
+                <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-1">
+                  <span class="truncate">📁 Dossier Cloudflare R2 : <strong class="text-slate-300">\${receiptR2Key}</strong></span>
+                  <span class="text-emerald-400 shrink-0 font-sans">✓ Preuve liée à l'ID \${u.id}</span>
+                </div>
+              \` : \`
+                <div class="p-6 text-center rounded-xl border-2 border-dashed border-slate-800 bg-slate-900/40 text-slate-500 text-xs">
+                  Aucun fichier reçu joint. Le dossier R2 reste configuré sous <code>storage-receipts/\${u.id}/</code>.
+                </div>
+              \`}
+            </div>
+
+            <!-- DATE ET HEURE DE LA DEMANDE -->
+            <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800 flex items-center gap-2 text-xs">
+              <span class="text-base">🕒</span>
+              <div>
+                <span class="text-slate-400 block text-[10px] uppercase font-bold">Date & Heure de Soumission de la Demande :</span>
+                <strong class="text-white font-mono text-xs">\${formatFullDateFrench(item.date)}</strong>
+              </div>
+            </div>
+
+            <!-- ========================================================== -->
+            <!-- FORMULAIRE ADMINISTRATEUR DE CONFIRMATION ET PLANIFICATION -->
+            <!-- ========================================================== -->
+            <div class="bg-slate-950 p-4 rounded-2xl border-2 border-emerald-500/40 space-y-4">
+              <div class="flex items-center justify-between border-b border-slate-800 pb-2.5">
+                <h4 class="text-xs sm:text-sm font-extrabold text-emerald-400 flex items-center gap-2">
+                  <span>⚙️</span> Paramétrage et Confirmation de l'Abonnement
+                </h4>
+                <span class="text-[10px] text-slate-400">Remplissez ces paramètres avant de valider</span>
+              </div>
+
+              <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3 text-xs">
+                <!-- 1. Heure, jour, mois, année de début -->
+                <div class="space-y-1">
+                  <label class="text-slate-300 font-bold block text-[11px]">1. Date & Heure de début :</label>
+                  <input 
+                    type="datetime-local" 
+                    id="admin-confirm-start-date" 
+                    value="\${defaultStartISO}"
+                    class="w-full bg-slate-900 text-white font-mono text-xs px-3 py-2 rounded-xl border border-slate-700 focus:border-emerald-500 focus:outline-none"
+                  >
+                  <span class="text-[10px] text-slate-500 block">Heure, jour, mois, année d'activation</span>
+                </div>
+
+                <!-- 2. Date de fin d'abonnement -->
+                <div class="space-y-1">
+                  <label class="text-slate-300 font-bold block text-[11px]">2. Date de fin d'abonnement :</label>
+                  <input 
+                    type="datetime-local" 
+                    id="admin-confirm-end-date" 
+                    value="\${defaultEndISO}"
+                    class="w-full bg-slate-900 text-white font-mono text-xs px-3 py-2 rounded-xl border border-slate-700 focus:border-emerald-500 focus:outline-none"
+                  >
+                  <div class="flex items-center gap-1.5 pt-0.5">
+                    <button type="button" onclick="setAdminEndDateDays(30)" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono">+1 Mois</button>
+                    <button type="button" onclick="setAdminEndDateDays(90)" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono">+3 Mois</button>
+                    <button type="button" onclick="setAdminEndDateDays(365)" class="text-[10px] px-2 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono">+1 An</button>
+                  </div>
+                </div>
+
+                <!-- 3. Délai de paiement avant d'être bloqué -->
+                <div class="space-y-1">
+                  <label class="text-slate-300 font-bold block text-[11px]">3. Délai de grâce avant blocage :</label>
+                  <div class="flex items-center gap-2">
+                    <input 
+                      type="number" 
+                      id="admin-confirm-grace-days" 
+                      value="5" 
+                      min="0" 
+                      max="60"
+                      class="w-24 bg-slate-900 text-emerald-400 font-bold font-mono text-xs px-3 py-2 rounded-xl border border-slate-700 text-center focus:border-emerald-500 focus:outline-none"
+                    >
+                    <span class="text-slate-400 font-bold text-xs">Jours</span>
+                  </div>
+                  <span class="text-[10px] text-slate-500 block">Tolérance de paiement après échéance avant suspension</span>
+                </div>
+              </div>
+
+              <!-- 4. Stockage et prix confirmés -->
+              <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 border-t border-slate-800/80 text-xs">
+                <div class="flex items-center justify-between bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                  <span class="text-slate-400">Stockage à allouer :</span>
+                  <div class="flex items-center gap-1.5">
+                    <input 
+                      type="number" 
+                      id="admin-confirm-allocated-mb" 
+                      value="\${item.amountMb}" 
+                      class="w-24 bg-slate-950 text-blue-400 font-bold font-mono text-xs px-2 py-1 rounded border border-slate-700 text-center"
+                    >
+                    <span class="font-bold text-blue-400">Mo</span>
+                  </div>
+                </div>
+
+                <div class="flex items-center justify-between bg-slate-900/60 p-2.5 rounded-xl border border-slate-800">
+                  <span class="text-slate-400">Prix mensuel confirmé :</span>
+                  <div class="flex items-center gap-1.5">
+                    <input 
+                      type="number" 
+                      id="admin-confirm-price" 
+                      value="\${item.pricePaid}" 
+                      class="w-24 bg-slate-950 text-emerald-400 font-bold font-mono text-xs px-2 py-1 rounded border border-slate-700 text-center"
+                    >
+                    <span class="font-bold text-emerald-400">\${item.currency}</span>
+                  </div>
+                </div>
+              </div>
+
+              <!-- BOUTONS DE VALIDATION FINALE -->
+              <div class="pt-3 border-t border-slate-800 flex items-center justify-between flex-wrap gap-3">
+                <button 
+                  onclick="rejectStorageRequest('\${item.id}')" 
+                  class="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+                >
+                  <span>❌</span> Rejeter la demande
+                </button>
+
+                <button 
+                  onclick="confirmAndApproveStorageRequest('\${item.id}')" 
+                  class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-xl shadow-emerald-600/30 transition cursor-pointer flex items-center gap-2 active:scale-95"
+                >
+                  <span>✅</span> Confirmer & Valider comme Abonné (+ \${formattedAmount})
+                </button>
+              </div>
+
+            </div>
+
+          </div>
+        \`;
+        return;
+      }
+
+      // ----------------------------------------------------------------------
+      // CAS 3 : SOUSCRIPTION OU ABONNEMENT EN COURS OU ANNULÉ
+      // ----------------------------------------------------------------------
+      const sub = item.raw;
+      const formattedAmount = item.amountMb >= 1024 
+        ? (item.amountMb / 1024).toFixed(item.amountMb % 1024 === 0 ? 0 : 1) + ' Go' 
+        : item.amountMb + ' Mo';
 
       panel.innerHTML = \`
         <!-- EN-TÊTE PROFIL ÉTUDIANT & BOUTON 3 TRAITS OPTIONS -->
@@ -3094,8 +3680,7 @@ function renderDashboardHtml(data) {
               \${u.avatar_url ? '<img src="' + u.avatar_url + '" class="w-full h-full rounded-2xl object-cover" onerror="this.remove()">' : u.name.charAt(0).toUpperCase()}
               <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-slate-950 \${u.isOnline ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-slate-600'}" title="\${u.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
             </div>
-            <div class="space-y-1.5 text-xs">
-              <!-- Ligne 1 : Nom, ID et Badge En ligne -->
+            <div class="space-y-1 text-xs">
               <div class="flex items-center gap-2 flex-wrap">
                 <span class="text-base font-extrabold text-white">\${u.name}</span>
                 <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">ID: \${u.id}</span>
@@ -3109,243 +3694,118 @@ function renderDashboardHtml(data) {
                   </span>
                 \`}
               </div>
-
-              <!-- Ligne 2 : Téléphone & E-mail -->
               <div class="flex items-center gap-3 text-slate-300 flex-wrap">
                 <span class="font-mono">📞 <strong>\${u.phone || 'Non renseigné'}</strong></span>
                 <span>•</span>
                 <span class="font-mono text-slate-400">✉️ \${u.email || 'Non renseigné'}</span>
               </div>
-
-              <!-- Ligne 3 : Filière & École -->
               <div class="text-slate-400">
-                🏛️ <strong>\${u.school || 'École non renseignée'}</strong> \${u.filiere ? '(' + u.filiere + ')' : ''} • 🎓 \${u.level || 'Étudiant'}
+                🏛️ <strong>\${u.school || 'École non renseignée'}</strong> \${u.filiere ? '(' + u.filiere + ')' : ''}
               </div>
             </div>
           </div>
 
-          <!-- ENCADRÉ DROIT : STOCKAGE ACTUEL ET BOUTON 3 TRAITS OPTIONS -->
-          <div class="flex items-start gap-2 self-start sm:self-auto shrink-0">
-            <!-- Quota actuel -->
-            <div class="bg-slate-900/90 px-3.5 py-2 rounded-xl border border-slate-800 text-right">
-              <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Stockage Actuel</span>
-              <div class="text-sm font-mono font-bold text-orange-400">\${storage.net ? storage.net.totalFormatted : storage.totalFormatted} / \${quota.totalAllowedFormatted}</div>
-              <div class="text-[10px] text-slate-400 mt-0.5">Consommé : <strong class="text-white">\${storage.net ? storage.net.usagePercentage : storage.usagePercentage}%</strong></div>
-            </div>
-
-            <!-- BOUTON 3 TRAITS ☰ (MENU HAMBURGER OPTIONS) -->
-            <div class="relative inline-block text-left">
-              <button 
-                onclick="toggleDemandeOptionsMenu()" 
-                id="demande-options-btn"
-                class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center transition-all cursor-pointer shadow-md active:scale-95"
-                title="Options et Historique de l'utilisateur"
-              >
-                <span class="text-lg">☰</span>
+          <div class="relative inline-block text-left shrink-0">
+            <button 
+              onclick="toggleDemandeOptionsMenu()" 
+              id="demande-options-btn"
+              class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-2 text-xs font-bold transition-all cursor-pointer shadow-md"
+            >
+              <span>☰</span>
+              <span>Historique</span>
+            </button>
+            <div id="demande-options-dropdown" class="hidden absolute right-0 mt-2 w-64 rounded-2xl bg-[#0f172a] border border-slate-700 shadow-2xl z-50 p-2 space-y-1 backdrop-blur-xl">
+              <button onclick="openUserHistoryModal('\${u.id}', 'requests')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2.5 transition font-medium cursor-pointer">
+                <span>📜</span> Historique de ses demandes
               </button>
-
-              <!-- DROPDOWN DU BOUTON 3 TRAITS -->
-              <div id="demande-options-dropdown" class="hidden absolute right-0 mt-2 w-64 rounded-2xl bg-[#0f172a] border border-slate-700 shadow-2xl z-50 p-2 space-y-1 backdrop-blur-xl">
-                <div class="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
-                  Dossier de \${u.name.split(' ')[0]}
-                </div>
-                <button onclick="openUserHistoryModal('\${u.id}', 'requests')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2.5 transition font-medium cursor-pointer">
-                  <span>📜</span>
-                  <div>
-                    <div class="font-bold">Historique de ses demandes</div>
-                    <div class="text-[10px] text-slate-400">Toutes les demandes passées</div>
-                  </div>
-                </button>
-                <button onclick="openUserHistoryModal('\${u.id}', 'active')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-emerald-300 flex items-center gap-2.5 transition font-medium cursor-pointer">
-                  <span>💳</span>
-                  <div>
-                    <div class="font-bold">Abonnements en cours</div>
-                    <div class="text-[10px] text-slate-400">Souscriptions actives</div>
-                  </div>
-                </button>
-                <button onclick="openUserHistoryModal('\${u.id}', 'cancelled')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-red-300 flex items-center gap-2.5 transition font-medium cursor-pointer">
-                  <span>🚫</span>
-                  <div>
-                    <div class="font-bold">Abonnements annulés</div>
-                    <div class="text-[10px] text-slate-400">Ex-quotas et motifs de résiliation</div>
-                  </div>
-                </button>
-              </div>
+              <button onclick="openUserHistoryModal('\${u.id}', 'active')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-emerald-300 flex items-center gap-2.5 transition font-medium cursor-pointer">
+                <span>💳</span> Abonnements en cours
+              </button>
+              <button onclick="openUserHistoryModal('\${u.id}', 'cancelled')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-red-300 flex items-center gap-2.5 transition font-medium cursor-pointer">
+                <span>🚫</span> Abonnements annulés
+              </button>
             </div>
           </div>
         </div>
 
-        <!-- DÉTAILS DE L'OFFRE / FORMULE DEMANDÉE -->
-        <div class="bg-gradient-to-br from-slate-900 via-[#11192e] to-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
+        <!-- CARTE DÉTAIL ABONNEMENT -->
+        <div class="bg-slate-900/90 border border-slate-800 rounded-2xl p-4 space-y-4">
           <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
             <h4 class="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
-              <span>📦</span>
-              <span>Offre Sélectionnée : <span class="text-orange-400">\${item.packName}</span></span>
+              <span>💳</span>
+              <span>Formule : <span class="text-orange-400">\${sub.plan_name || 'Standard'}</span></span>
             </h4>
-            
-            <!-- Statut Badge -->
-            <div>
-              \${item.status === 'pending' ? \`
-                <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5">
-                  <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> En attente de validation
-                </span>
-              \` : (item.status === 'active' || item.status === 'approved') ? \`
-                <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5">
-                  <span>🟢</span> Abonnement Actif
-                </span>
-              \` : item.status === 'cancelled' ? \`
-                <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-red-500/20 text-red-300 border border-red-500/40 flex items-center gap-1.5">
-                  <span>🔴</span> Abonnement Annulé
-                </span>
-              \` : \`
-                <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700">
-                  ⚪ Demande Rejetée
-                </span>
-              \`}
-            </div>
+            \${sub.status === 'active' ? \`
+              <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40">
+                🟢 Abonnement Actif
+              </span>
+            \` : \`
+              <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-red-500/20 text-red-300 border border-red-500/40">
+                🔴 Abonnement Annulé
+              </span>
+            \`}
           </div>
 
-          <!-- 3 Cartes : Stockage à ajouter, Prix payé, Méthode -->
           <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
-            <!-- 1. Nombre de stockage qu'il veut ajouter -->
-            <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 border-l-4 border-l-blue-500">
-              <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Stockage Demandé</span>
-              <div class="text-lg font-black text-blue-400 font-mono">+\${formattedAmount}</div>
-              <div class="text-[10px] text-slate-400 mt-1">S'ajoute au quota personnel de l'élève</div>
+            <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+              <span class="text-[10px] text-slate-400 uppercase font-bold block mb-0.5">Stockage Confié</span>
+              <div class="text-lg font-black text-blue-400 font-mono">\${formattedAmount}</div>
             </div>
 
-            <!-- 2. Prix payé -->
-            <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 border-l-4 border-l-emerald-500">
-              <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Prix Payé / Mensuel</span>
-              <div class="text-lg font-black text-emerald-400 font-mono">\${Number(item.pricePaid).toLocaleString('fr-FR')} \${item.currency}</div>
-              <div class="text-[10px] text-slate-400 mt-1">Paiement unique ou renouvellement</div>
+            <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+              <span class="text-[10px] text-slate-400 uppercase font-bold block mb-0.5">Prix Payé / Mensuel</span>
+              <div class="text-lg font-black text-emerald-400 font-mono">\${Number(sub.monthly_price || 0).toLocaleString('fr-FR')} \${sub.currency || 'FCFA'}</div>
             </div>
 
-            <!-- 3. Méthode & Référence -->
-            <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 border-l-4 border-l-purple-500">
-              <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Moyen & Réf. Virement</span>
-              <div class="text-xs font-bold text-purple-300 truncate mt-0.5">\${paymentMethod}</div>
-              <div class="text-[10px] font-mono text-slate-400 mt-1 truncate">Réf: \${paymentRef}</div>
+            <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+              <span class="text-[10px] text-slate-400 uppercase font-bold block mb-0.5">Délai avant blocage</span>
+              <div class="text-lg font-black text-purple-400 font-mono">\${sub.grace_period_days || 5} jours</div>
             </div>
           </div>
 
-          <!-- ESPACE DÉDIÉ : IMAGE / REÇU DE PAIEMENT -->
-          <div class="bg-slate-950/90 rounded-2xl border-2 border-slate-800 p-4 space-y-3">
-            <div class="flex items-center justify-between">
-              <div class="flex items-center gap-2">
-                <span class="text-base">🧾</span>
-                <span class="text-xs font-extrabold text-white">Espace Preuve de Paiement • Capture d'Écran ou Reçu</span>
-              </div>
-              \${receiptUrl ? \`
-                <button 
-                  onclick="openReceiptZoomModal('\${receiptUrl}', 'Reçu de paiement - \${u.name} - \${item.packName}')" 
-                  class="px-3 py-1.5 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 border border-orange-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
-                >
-                  <span>🔍</span>
-                  <span>Agrandir le reçu</span>
-                </button>
-              \` : ''}
+          <!-- DATES DÉBUT ET FIN -->
+          <div class="bg-slate-950/70 p-3.5 rounded-xl border border-slate-800 space-y-1 text-xs">
+            <div class="flex items-center justify-between text-slate-300">
+              <span>Date d'activation :</span>
+              <strong class="font-mono text-white">\${formatFullDateFrench(sub.start_date || sub.created_at)}</strong>
             </div>
-
-            <!-- Zone d'affichage image -->
-            \${receiptUrl ? \`
-              <div 
-                onclick="openReceiptZoomModal('\${receiptUrl}', 'Reçu de paiement - \${u.name} - \${item.packName}')"
-                class="relative group rounded-xl overflow-hidden border border-slate-800 bg-slate-900/80 p-2 cursor-pointer flex items-center justify-center max-h-[300px]"
-              >
-                <img 
-                  src="\${receiptUrl}" 
-                  class="max-h-[280px] w-auto max-w-full rounded-lg object-contain transition duration-300 group-hover:scale-[1.02] shadow-xl" 
-                  alt="Reçu de paiement"
-                  onerror="this.onerror=null; this.src='https://placehold.co/600x400/0f172a/f97316?text=Image+Recu+R2'; this.classList.add('border','border-orange-500/40');"
-                />
-                <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl backdrop-blur-xs">
-                  <div class="px-3 py-2 rounded-xl bg-orange-600 text-white font-bold text-xs flex items-center gap-2 shadow-xl">
-                    <span>🔍</span> Cliquez pour afficher en plein écran
-                  </div>
-                </div>
-              </div>
-              <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-1">
-                <span class="truncate">📁 Dossier Cloudflare R2 : <strong class="text-slate-300">\${receiptR2Key}</strong></span>
-                <span class="text-emerald-400 shrink-0 font-sans">✓ Preuve enregistrée</span>
-              </div>
-            \` : \`
-              <div class="p-8 text-center rounded-xl border-2 border-dashed border-slate-800 bg-slate-900/40 space-y-2">
-                <div class="w-12 h-12 rounded-xl bg-slate-800 text-2xl flex items-center justify-center mx-auto text-slate-400">📄</div>
-                <div class="text-xs font-bold text-slate-300">Aucun fichier image de reçu joint</div>
-                <p class="text-[11px] text-slate-500 max-w-md mx-auto">Cette demande a été enregistrée sans capture d'écran (ex: confirmation par téléphone ou paiement direct). Le dossier de stockage R2 de l'étudiant reste configuré sous <code>storage-receipts/\${u.id}/</code>.</p>
-              </div>
-            \`}
+            <div class="flex items-center justify-between text-slate-300">
+              <span>Date de fin d'abonnement :</span>
+              <strong class="font-mono text-emerald-400">\${sub.end_date ? formatFullDateFrench(sub.end_date) : 'Non définie (30 jours)'}</strong>
+            </div>
           </div>
 
-          <!-- DATE ET HEURE COMPLÈTES (HEURE, JOUR, MOIS, ANNÉE) -->
-          <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
-            <div class="flex items-center gap-2 text-slate-300">
-              <span class="text-base">🕒</span>
-              <div>
-                <span class="text-slate-400 block text-[10px] uppercase font-bold">Date & Heure de la Demande :</span>
-                <strong class="text-white font-mono text-xs">\${formatFullDateFrench(item.date)}</strong>
+          \${sub.status === 'cancelled' ? \`
+            <div class="p-3 bg-red-500/10 border border-red-500/30 rounded-xl space-y-1 text-xs text-red-300">
+              <div class="font-bold flex items-center gap-1.5">
+                <span>🚫</span> Informations d'annulation
               </div>
+              <div>Stockage dont il disposait avant annulation : <strong>\${sub.previous_storage_mb || 0} Mo</strong></div>
+              <div>Date d'annulation : <strong>\${formatFullDateFrench(sub.cancelled_at)}</strong></div>
+              <div>Motif renseigné : "<em>\${sub.cancel_reason || 'Résiliation'}</em>"</div>
             </div>
-
-            \${item.cancelledAt ? \`
-              <div class="text-right text-[11px] text-red-400 font-mono">
-                <span>Annulé le : </span> <strong>\${formatFullDateFrench(item.cancelledAt)}</strong>
-              </div>
-            \` : ''}
-          </div>
-
-          <!-- BOUTONS D'ACTION ADMINISTRATEUR -->
-          <div class="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
-            \${item.status === 'pending' ? \`
-              <div class="text-[11px] text-slate-400">
-                Action administrative : Validez pour ajouter immédiatement le quota à cet élève ou rejetez si le paiement n'est pas reçu.
-              </div>
-              <div class="flex items-center gap-2 flex-wrap">
-                <button 
-                  onclick="rejectStorageRequest('\${item.id}')" 
-                  class="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95"
-                >
-                  <span>❌</span> Rejeter la demande
-                </button>
-                <button 
-                  onclick="approveStorageRequest('\${item.id}')" 
-                  class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-600/30 transition cursor-pointer flex items-center gap-2 active:scale-95"
-                >
-                  <span>✅</span> Valider & Allouer le stockage (+ \${formattedAmount})
-                </button>
-              </div>
-            \` : item.status === 'active' ? \`
-              <div class="text-[11px] text-slate-400">
-                Abonnement actuellement actif. Quota total attribué : <strong class="text-emerald-400 font-mono">\${formattedAmount}</strong>
-              </div>
+          \` : \`
+            <div class="pt-2 border-t border-slate-800 flex items-center justify-between">
+              <span class="text-slate-400 text-xs">Résiliation manuelle :</span>
               <button 
-                onclick="cancelSubscription('\${item.id}', '\${u.id}')" 
-                class="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-600/50 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+                onclick="cancelSubscription('\${sub.id}', '\${u.id}')" 
+                class="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 rounded-xl font-bold text-xs transition cursor-pointer"
               >
-                <span>🚫</span> Annuler l'abonnement
+                🚫 Annuler l'abonnement
               </button>
-            \` : item.status === 'cancelled' ? \`
-              <div class="text-xs text-red-400 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 w-full space-y-1">
-                <div class="font-bold flex items-center gap-1.5">
-                  <span>🚫</span> Abonnement résilié / annulé
-                </div>
-                <div class="text-[11px] text-slate-300">
-                  Stockage avant annulation : <strong>\${item.previousStorageMb || 0} Mo</strong> • Motif : \${item.cancelReason || 'Non spécifié'}
-                </div>
-                <div class="text-[10px] text-slate-400 font-mono">
-                  Date d'annulation : \${formatFullDateFrench(item.cancelledAt)}
-                </div>
-              </div>
-            \` : \`
-              <div class="text-xs text-slate-400 p-2.5 rounded-xl bg-slate-900 border border-slate-800 w-full">
-                Demande rejetée • Aucun stockage additionnel n'a été alloué à l'utilisateur.
-              </div>
-            \`}
-          </div>
-
+            </div>
+          \`}
         </div>
       \`;
+    }
+
+    function setAdminEndDateDays(days) {
+      const startInput = document.getElementById('admin-confirm-start-date');
+      const endInput = document.getElementById('admin-confirm-end-date');
+      if (!endInput) return;
+      const start = startInput && startInput.value ? new Date(startInput.value) : new Date();
+      const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
+      endInput.value = end.toISOString().slice(0, 16);
     }
 
     function toggleDemandeOptionsMenu() {
@@ -3354,7 +3814,6 @@ function renderDashboardHtml(data) {
       drop.classList.toggle('hidden');
     }
 
-    // Fermer le dropdown au clic externe
     document.addEventListener('click', (e) => {
       const drop = document.getElementById('demande-options-dropdown');
       const btn = document.getElementById('demande-options-btn');
@@ -3366,7 +3825,7 @@ function renderDashboardHtml(data) {
     });
 
     // ========================================================================
-    // MODALE HISTORIQUE UTILISATEUR (DEMANDES, ABONNEMENTS EN COURS, ANNULÉS)
+    // MODALE HISTORIQUE UTILISATEUR
     // ========================================================================
     function openUserHistoryModal(userId, tab = 'requests') {
       activeHistoryUserId = userId;
@@ -3514,29 +3973,54 @@ function renderDashboardHtml(data) {
     }
 
     // ========================================================================
-    // ACTIONS ADMIN : APPROBATION, REJET ET RÉSILIATION D'ABONNEMENT
+    // ACTIONS ADMIN : CONFIRMATION COMPLÈTE, REJET ET ANNULATION D'ABONNEMENT
     // ========================================================================
-    async function approveStorageRequest(requestId) {
-      if (!confirm("Voulez-vous valider cette demande et allouer immédiatement le stockage à cet utilisateur ?")) return;
+    async function confirmAndApproveStorageRequest(requestId) {
+      const startDateInput = document.getElementById('admin-confirm-start-date');
+      const endDateInput = document.getElementById('admin-confirm-end-date');
+      const graceDaysInput = document.getElementById('admin-confirm-grace-days');
+      const allocatedMbInput = document.getElementById('admin-confirm-allocated-mb');
+      const priceInput = document.getElementById('admin-confirm-price');
+
+      const startDate = startDateInput ? startDateInput.value : new Date().toISOString();
+      const endDate = endDateInput ? endDateInput.value : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const gracePeriodDays = graceDaysInput ? parseInt(graceDaysInput.value) || 5 : 5;
+      const allocatedMb = allocatedMbInput ? parseFloat(allocatedMbInput.value) || 1024 : 1024;
+      const pricePaid = priceInput ? parseFloat(priceInput.value) || 0 : 0;
+
+      if (!confirm("Voulez-vous valider cet abonnement et allouer immédiatement " + allocatedMb + " Mo à cet utilisateur ?")) return;
 
       try {
         const resp = await fetch('/api/storage-requests/approve', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ requestId })
+          body: JSON.stringify({
+            requestId,
+            startDate,
+            endDate,
+            gracePeriodDays,
+            allocatedMb,
+            pricePaid
+          })
         });
+
         const res = await resp.json();
         if (res.success) {
-          // Mettre à jour l'état local
+          // Mettre à jour la demande locale
           const req = allRequests.find(r => r.id === requestId);
-          if (req) req.status = 'approved';
+          if (req) {
+            req.status = 'approved';
+            req.confirmed_start_date = startDate;
+            req.confirmed_end_date = endDate;
+            req.grace_period_days = gracePeriodDays;
+          }
 
-          // Ajouter aux abonnements
+          // Ajouter ou activer la souscription locale
           if (res.subscription) {
             allSubscriptions.unshift(res.subscription);
           }
 
-          // Mettre à jour quota utilisateur local
+          // Mettre à jour le quota de l'utilisateur dans allUsers
           const userItem = allUsers.find(u => u.user.id === res.userId);
           if (userItem) {
             userItem.quotaConfig.paidTotalMb = res.newPaidTotalMb;
@@ -3547,20 +4031,27 @@ function renderDashboardHtml(data) {
             userItem.quotaConfig.planName = 'payant';
           }
 
-          showToast("Demande validée ! Stockage alloué avec succès.");
+          showToast("Abonnement confirmé avec succès ! +" + allocatedMb + " Mo alloués.");
           updateDemandesTabCounts();
           renderDemandesLeftList();
-          renderDemandeDetail(requestId, 'request');
+          
+          // Basculer sur l'onglet 'active' ou réafficher l'élément
+          if (res.subscription) {
+            setDemandesTab('active');
+            selectDemandeItem(res.subscription.id, 'subscription');
+          } else {
+            renderDemandeDetail(requestId, 'request');
+          }
         } else {
-          alert("Erreur: " + (res.error || "Impossible d'approuver"));
+          alert("Erreur: " + (res.error || "Impossible de confirmer l'abonnement"));
         }
       } catch (err) {
-        alert("Erreur réseau lors de l'approbation");
+        alert("Erreur réseau lors de la confirmation");
       }
     }
 
     async function rejectStorageRequest(requestId) {
-      const reason = prompt("Motif du rejet (ex: Reçu de paiement illisible ou montant incorrect) :", "Paiement non confirmé");
+      const reason = prompt("Motif du rejet (ex: Reçu illisible, montant erroné ou virement non reçu) :", "Paiement non confirmé");
       if (reason === null) return;
 
       try {
@@ -3579,7 +4070,7 @@ function renderDashboardHtml(data) {
           showToast("Demande rejetée.");
           updateDemandesTabCounts();
           renderDemandesLeftList();
-          renderDemandeDetail(requestId, 'request');
+          autoSelectFirstDemande();
         } else {
           alert("Erreur: " + (res.error || "Échec"));
         }
@@ -3664,7 +4155,7 @@ function renderDashboardHtml(data) {
     }
 
 
-    async function saveUserQuota(userId) {
+        async function saveUserQuota(userId) {
       const wTotal = parseFloat(document.getElementById('user-edit-w-total').value) || 0;
       const pTotal = parseFloat(document.getElementById('user-edit-p-total').value) || 0;
 
@@ -4029,7 +4520,7 @@ export default {
       }
 
       // ----------------------------------------------------------------------
-      // ROUTE POST : /api/storage-requests/approve
+      // ROUTE POST : /api/storage-requests/approve (CONFIRMATION AVEC DATES ET DÉLAI DE BLOCAGE)
       // ----------------------------------------------------------------------
       if (request.method === 'POST' && path === '/api/storage-requests/approve') {
         const body = await request.json().catch(() => ({}));
@@ -4044,13 +4535,24 @@ export default {
         }
 
         const userId = reqRow.user_id;
-        const addMb = Number(reqRow.additional_mb || 1024);
-        const pricePaid = Number(reqRow.price_paid || 0);
+        const addMb = Number(body.allocatedMb !== undefined ? body.allocatedMb : (reqRow.additional_mb || 1024));
+        const pricePaid = Number(body.pricePaid !== undefined ? body.pricePaid : (reqRow.price_paid || 0));
+        const startDate = body.startDate || new Date().toISOString();
+        const endDate = body.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        const gracePeriodDays = Number(body.gracePeriodDays || 5);
 
-        // 1. Marquer la demande approuvée
-        await safeRun(db, `UPDATE storage_upgrade_requests SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [requestId]);
+        // 1. Marquer la demande approuvée avec dates et délai configurés
+        await safeRun(db, `
+          UPDATE storage_upgrade_requests 
+          SET status = 'approved', 
+              confirmed_start_date = ?, 
+              confirmed_end_date = ?, 
+              grace_period_days = ?, 
+              updated_at = CURRENT_TIMESTAMP 
+          WHERE id = ?
+        `, [startDate, endDate, gracePeriodDays, requestId]);
 
-        // 2. Allouer le stockage à l'utilisateur
+        // 2. Allouer le stockage à l'utilisateur dans user_storage_quotas
         const currentQuota = await safeFirst(db, `SELECT * FROM user_storage_quotas WHERE user_id = ?`, [userId]);
         const currentPaid = currentQuota ? Number(currentQuota.paid_total_mb || 0) : 0;
         const newPaid = currentPaid + addMb;
@@ -4067,7 +4569,7 @@ export default {
             updated_at = CURRENT_TIMESTAMP
         `, [userId, wTotal, Math.round(wTotal/3), Math.round(wTotal*2/3), newPaid, Math.round(newPaid/2), Math.round(newPaid/2)]);
 
-        // 3. Créer ou activer une souscription dans user_subscriptions
+        // 3. Créer ou activer la souscription dans user_subscriptions
         const subId = 'sub_' + Math.random().toString(36).substring(2, 10);
         const subData = {
           id: subId,
@@ -4080,20 +4582,22 @@ export default {
           monthly_price: pricePaid,
           currency: reqRow.currency || 'FCFA',
           status: 'active',
-          start_date: new Date().toISOString(),
-          end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          start_date: startDate,
+          end_date: endDate,
+          grace_period_days: gracePeriodDays,
           request_id: requestId,
           created_at: new Date().toISOString(),
           updated_at: new Date().toISOString()
         };
 
         await safeRun(db, `
-          INSERT INTO user_subscriptions (id, user_id, user_name, user_phone, user_email, plan_name, total_storage_mb, monthly_price, currency, status, start_date, end_date, request_id, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+          INSERT INTO user_subscriptions (id, user_id, user_name, user_phone, user_email, plan_name, total_storage_mb, monthly_price, currency, status, start_date, end_date, grace_period_days, request_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
         `, [
           subData.id, subData.user_id, subData.user_name, subData.user_phone, subData.user_email,
           subData.plan_name, subData.total_storage_mb, subData.monthly_price, subData.currency,
-          subData.status, subData.start_date, subData.end_date, subData.request_id, subData.created_at, subData.updated_at
+          subData.status, subData.start_date, subData.end_date, subData.grace_period_days,
+          subData.request_id, subData.created_at, subData.updated_at
         ]);
 
         return new Response(JSON.stringify({
@@ -4102,7 +4606,7 @@ export default {
           userId,
           newPaidTotalMb: newPaid,
           subscription: subData,
-          message: 'Demande validée et stockage alloué avec succès'
+          message: 'Abonnement confirmé et stockage alloué avec succès'
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }

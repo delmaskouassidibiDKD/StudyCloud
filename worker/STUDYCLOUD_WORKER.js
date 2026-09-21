@@ -2223,7 +2223,10 @@ async function ensureStorageTables(db) {
       "ALTER TABLE storage_upgrade_requests ADD COLUMN receipt_image_url TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN receipt_r2_key TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN admin_notes TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_start_date TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_end_date TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN grace_period_days INTEGER DEFAULT 5"
     ];
     for (const sql of upgradeCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
@@ -2243,6 +2246,9 @@ async function ensureStorageTables(db) {
         status TEXT DEFAULT 'active',
         start_date TEXT DEFAULT CURRENT_TIMESTAMP,
         end_date TEXT DEFAULT '',
+        grace_period_days INTEGER DEFAULT 5,
+        payment_due_date TEXT DEFAULT '',
+        is_blocked INTEGER DEFAULT 0,
         cancelled_at TEXT DEFAULT '',
         previous_storage_mb REAL DEFAULT 0,
         cancel_reason TEXT DEFAULT '',
@@ -2251,6 +2257,16 @@ async function ensureStorageTables(db) {
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+
+    const subCols = [
+      "ALTER TABLE user_subscriptions ADD COLUMN grace_period_days INTEGER DEFAULT 5",
+      "ALTER TABLE user_subscriptions ADD COLUMN payment_due_date TEXT DEFAULT ''",
+      "ALTER TABLE user_subscriptions ADD COLUMN is_blocked INTEGER DEFAULT 0",
+      "ALTER TABLE user_subscriptions ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+    ];
+    for (const sql of subCols) {
+      try { await db.prepare(sql).run(); } catch (e) {}
+    }
   } catch (err) {
     console.warn("[ensureStorageTables Warn]", err);
   }
