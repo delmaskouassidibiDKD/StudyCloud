@@ -4757,6 +4757,8 @@ function renderDashboardHtml(data) {
       } catch(e) {
         alert('Erreur réseau lors du changement de statut');
       }
+    }
+
     async function saveCompanyProfile() {
       const btn = document.getElementById('save-company-btn');
       const btnTop = document.getElementById('save-company-btn-top');
