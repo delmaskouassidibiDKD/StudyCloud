@@ -259,7 +259,7 @@ export default {
               const parsed = safeJsonParse(row.content_json);
               htmlToServe = generateCreationHtmlPreview(row.tool_type, row.title, parsed, row.source_file_name);
             }
-          } catch (e) {}
+          } catch (e) { }
         }
         if (!htmlToServe) {
           const type = url.searchParams.get("type") || "devoir-complet";
@@ -590,7 +590,7 @@ export default {
       const latexRegex = /(?<!\\)\\(frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end)\b/gi;
       const preProcessed = trimmed.replace(latexRegex, '\\\\$1');
 
-      try { return cleanControlCharsInParsedObject(JSON.parse(preProcessed)); } catch {}
+      try { return cleanControlCharsInParsedObject(JSON.parse(preProcessed)); } catch { }
 
       let sanitized = '';
       let inString = false;
@@ -641,7 +641,7 @@ export default {
 
       try {
         return cleanControlCharsInParsedObject(JSON.parse(sanitized));
-      } catch {}
+      } catch { }
 
       let openBraces = 0;
       let openBrackets = 0;
@@ -1362,16 +1362,16 @@ export default {
               <div class="q-text">${qText}</div>
               <div class="options-list">
                 ${options.map((opt, optIdx) => {
-                  const letters = ["A", "B", "C", "D", "E"];
-                  const letter = letters[optIdx] || `${optIdx + 1}`;
-                  return `
+            const letters = ["A", "B", "C", "D", "E"];
+            const letter = letters[optIdx] || `${optIdx + 1}`;
+            return `
                     <label class="option-label" id="opt_${qId}_${optIdx}" onclick="handleOptionSelect('${qId}', ${optIdx}, ${correctIdx}, ${isTest})">
                       <input type="radio" name="ans_${qId}" value="${optIdx}">
                       <span class="opt-letter">${letter}</span>
                       <span class="opt-text">${escapeHtml(opt)}</span>
                     </label>
                   `;
-                }).join("")}
+          }).join("")}
               </div>
               <div class="feedback-box ${isTest ? 'hidden' : ''}" id="fb_${qId}">
                 <div class="fb-title">💡 Explication & Corrigé :</div>
@@ -1450,9 +1450,9 @@ export default {
             </div>
             <div class="mindmap-branches">
               ${branches.map((b, bIdx) => {
-                const bTitle = escapeHtml(b.branch_title || b.title || `Axe ${bIdx + 1}`);
-                const nodes = Array.isArray(b.nodes) ? b.nodes : [];
-                return `
+          const bTitle = escapeHtml(b.branch_title || b.title || `Axe ${bIdx + 1}`);
+          const nodes = Array.isArray(b.nodes) ? b.nodes : [];
+          return `
                   <div class="branch-card">
                     <div class="branch-header">
                       <span class="branch-dot" style="background:${meta.color}"></span>
@@ -1463,7 +1463,7 @@ export default {
                     </ul>
                   </div>
                 `;
-              }).join("")}
+        }).join("")}
             </div>
           </div>
         `;
@@ -1482,11 +1482,11 @@ export default {
             </div>
             <div class="concept-pillars-grid">
               ${pillars.map((pil, pIdx) => {
-                const pName = escapeHtml(pil.name || pil.title || `Pilier ${pIdx + 1}`);
-                const pBadge = escapeHtml(pil.badge || `Module ${pIdx + 1}`);
-                const pCol = pil.color || meta.color;
-                const items = Array.isArray(pil.items) ? pil.items : (Array.isArray(pil.nodes) ? pil.nodes : []);
-                return `
+          const pName = escapeHtml(pil.name || pil.title || `Pilier ${pIdx + 1}`);
+          const pBadge = escapeHtml(pil.badge || `Module ${pIdx + 1}`);
+          const pCol = pil.color || meta.color;
+          const items = Array.isArray(pil.items) ? pil.items : (Array.isArray(pil.nodes) ? pil.nodes : []);
+          return `
                   <div class="concept-pillar-card" style="border-top: 4px solid ${pCol}">
                     <div class="pil-top">
                       <span class="pil-badge" style="background:${pCol}22;color:${pCol}">${pBadge}</span>
@@ -1502,7 +1502,7 @@ export default {
                     </div>
                   </div>
                 `;
-              }).join("")}
+        }).join("")}
             </div>
           </div>
         `;
@@ -1740,34 +1740,34 @@ export default {
               ${pStatement ? `<div class="sec-statement">${pStatement}</div>` : ''}
               <div class="sec-questions">
                 ${questions.map((q, qIdx) => {
-                  const qNum = escapeHtml(q.number || `${qIdx + 1}.`);
-                  const qPts = q.points ? `${q.points} pt${q.points > 1 ? 's' : ''}` : '';
-                  const qTxt = escapeHtml(q.texte || q.question || "");
-                  const qType = q.type || 'open';
-                  const opts = Array.isArray(q.options) ? q.options : [];
-                  let subHtml = "";
-                  if (qType === 'multiple_choice' && opts.length > 0) {
-                    subHtml = `
+            const qNum = escapeHtml(q.number || `${qIdx + 1}.`);
+            const qPts = q.points ? `${q.points} pt${q.points > 1 ? 's' : ''}` : '';
+            const qTxt = escapeHtml(q.texte || q.question || "");
+            const qType = q.type || 'open';
+            const opts = Array.isArray(q.options) ? q.options : [];
+            let subHtml = "";
+            if (qType === 'multiple_choice' && opts.length > 0) {
+              subHtml = `
                       <div class="exam-qcm-options">
                         ${opts.map((opt, oIdx) => `
                           <div class="exam-opt-item">
-                            <span class="opt-badge">${["A","B","C","D"][oIdx] || oIdx+1}</span>
+                            <span class="opt-badge">${["A", "B", "C", "D"][oIdx] || oIdx + 1}</span>
                             <span>${escapeHtml(opt)}</span>
                           </div>
                         `).join("")}
                       </div>
                     `;
-                  } else if (qType === 'true_false') {
-                    subHtml = `
+            } else if (qType === 'true_false') {
+              subHtml = `
                       <div class="exam-tf-row">
                         <span class="tf-choice-box">[ &nbsp; ] VRAI</span>
                         <span class="tf-choice-box">[ &nbsp; ] FAUX</span>
                       </div>
                     `;
-                  } else {
-                    subHtml = `<div class="exam-answer-lines"><div class="line"></div><div class="line"></div></div>`;
-                  }
-                  return `
+            } else {
+              subHtml = `<div class="exam-answer-lines"><div class="line"></div><div class="line"></div></div>`;
+            }
+            return `
                     <div class="exam-q-box">
                       <div class="eq-top">
                         <span class="eq-num">${qNum}</span>
@@ -1777,7 +1777,7 @@ export default {
                       ${subHtml}
                     </div>
                   `;
-                }).join("")}
+          }).join("")}
               </div>
               ${(corr.steps || (Array.isArray(corr.examples) && corr.examples.length > 0)) ? `
                 <div class="exam-sec-corr" onclick="this.querySelector('.corr-content').classList.toggle('hidden')">
@@ -2886,34 +2886,34 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
                 const items = Array.isArray(parsed?.questions)
                   ? parsed.questions
                   : Array.isArray(parsed?.exercises)
-                  ? parsed.exercises
-                  : Array.isArray(parsed?.exercices)
-                  ? parsed.exercices
-                  : Array.isArray(parsed?.affirmations)
-                  ? parsed.affirmations
-                  : Array.isArray(parsed?.flashcards)
-                  ? parsed.flashcards
-                  : Array.isArray(parsed?.cards)
-                  ? parsed.cards
-                  : Array.isArray(parsed?.summary?.sections)
-                  ? parsed.summary.sections
-                  : Array.isArray(parsed?.pdf_document?.chapters)
-                  ? parsed.pdf_document.chapters
-                  : Array.isArray(parsed?.chapters)
-                  ? parsed.chapters
-                  : Array.isArray(parsed?.sections)
-                  ? parsed.sections
-                  : Array.isArray(parsed?.mind_map?.branches)
-                  ? parsed.mind_map.branches
-                  : Array.isArray(parsed?.branches)
-                  ? parsed.branches
-                  : Array.isArray(parsed?.infographic?.steps)
-                  ? parsed.infographic.steps
-                  : Array.isArray(parsed?.steps)
-                  ? parsed.steps
-                  : Array.isArray(parsed)
-                  ? parsed
-                  : [];
+                    ? parsed.exercises
+                    : Array.isArray(parsed?.exercices)
+                      ? parsed.exercices
+                      : Array.isArray(parsed?.affirmations)
+                        ? parsed.affirmations
+                        : Array.isArray(parsed?.flashcards)
+                          ? parsed.flashcards
+                          : Array.isArray(parsed?.cards)
+                            ? parsed.cards
+                            : Array.isArray(parsed?.summary?.sections)
+                              ? parsed.summary.sections
+                              : Array.isArray(parsed?.pdf_document?.chapters)
+                                ? parsed.pdf_document.chapters
+                                : Array.isArray(parsed?.chapters)
+                                  ? parsed.chapters
+                                  : Array.isArray(parsed?.sections)
+                                    ? parsed.sections
+                                    : Array.isArray(parsed?.mind_map?.branches)
+                                      ? parsed.mind_map.branches
+                                      : Array.isArray(parsed?.branches)
+                                        ? parsed.branches
+                                        : Array.isArray(parsed?.infographic?.steps)
+                                          ? parsed.infographic.steps
+                                          : Array.isArray(parsed?.steps)
+                                            ? parsed.steps
+                                            : Array.isArray(parsed)
+                                              ? parsed
+                                              : [];
                 for (const item of items) {
                   const text = item.question || item.enonce || item.statement || item.affirmation || item.front || item.recto || item.heading || item.section_title || item.sectionTitle || item.branch_title || item.title || item.texte;
                   if (text) prevList.push(text);
@@ -2939,7 +2939,7 @@ Tu dois TOUJOURS répondre sous la forme d'un objet JSON (dans un bloc \`\`\`jso
                 if (parsed?.exercises && parsed?.title) {
                   prevList.push(`Exercices précédents : ${parsed.title}`);
                 }
-              } catch {}
+              } catch { }
             }
             if (prevList.length > 0) {
               previousQuestionsText = prevList.slice(0, 25).map((q, idx) => `${idx + 1}. "${q}"`).join("\n");
@@ -3258,7 +3258,7 @@ IL EST STRICTEMENT INTERDIT de renvoyer les exemples types génériques du promp
                 SET status = 'failed', error_message = ?, updated_at = CURRENT_TIMESTAMP
                 WHERE id = ?
               `).bind(taskErr.message || String(taskErr), taskId).run();
-            } catch (e) {}
+            } catch (e) { }
           }
         }
       };
@@ -3418,8 +3418,8 @@ IL EST STRICTEMENT INTERDIT de renvoyer les exemples types génériques du promp
       let finalFeedbackGlobal = finalScoreTotal >= 16
         ? "Excellente prestation académique ! Vous avez fait preuve d'une compréhension conceptuelle remarquable et d'une rigueur exemplaire."
         : finalScoreTotal >= 12
-        ? "Bon travail d'ensemble. Les notions fondamentales sont acquises, poursuivez vos efforts d'approfondissement."
-        : "Copie insuffisante. Révisez attentivement les points clés du cours et reprenez la correction détaillée.";
+          ? "Bon travail d'ensemble. Les notions fondamentales sont acquises, poursuivez vos efforts d'approfondissement."
+          : "Copie insuffisante. Révisez attentivement les points clés du cours et reprenez la correction détaillée.";
 
       // Appel de notation avancée par Google Gemini avec basculement automatique multi-clés (1 à 4)
       const geminiKeysForGrading = getAvailableGeminiKeys(env);
@@ -3753,7 +3753,7 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
           if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
           try {
             const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${activeKey}`;
-            
+
             const timeoutCtrl = new AbortController();
             const timeoutId = setTimeout(() => timeoutCtrl.abort(), 3500);
             const combinedSignal = signal ? AbortSignal.any([signal, timeoutCtrl.signal]) : timeoutCtrl.signal;
