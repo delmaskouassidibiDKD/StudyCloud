@@ -3700,64 +3700,11 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
         parts: [{ text: userPrompt || "Bonjour Delmas !" }]
       });
 
-      // 1. APPEL DIRECT ET ULTRA-RAPIDE : GOOGLE GEMINI 2.0 FLASH
-      const geminiModels = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-latest", "gemini-1.5-flash"];
-      for (let kIdx = 0; kIdx < geminiKeys.length; kIdx++) {
-        if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
-        const activeKey = geminiKeys[kIdx];
-
-        for (const mod of geminiModels) {
-          if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
-          try {
-            const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${activeKey}`;
-            
-            // Timeout court pour ne jamais bloquer l'interface
-            const timeoutCtrl = new AbortController();
-            const timeoutId = setTimeout(() => timeoutCtrl.abort(), 4000);
-            const combinedSignal = signal ? AbortSignal.any([signal, timeoutCtrl.signal]) : timeoutCtrl.signal;
-
-            const gResponse = await fetch(geminiApiEndpoint, {
-              method: "POST",
-              headers: { "Content-Type": "application/json" },
-              body: JSON.stringify({
-                system_instruction: { parts: [{ text: delmasSystemPrompt }] },
-                contents: geminiContents,
-                generationConfig: {
-                  temperature: 0.7,
-                  maxOutputTokens: 2048,
-                }
-              }),
-              signal: combinedSignal
-            });
-            clearTimeout(timeoutId);
-
-            if (gResponse.ok) {
-              const gData = await gResponse.json();
-              const candidateText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-              if (candidateText && candidateText.trim().length > 0) {
-                return {
-                  response: candidateText.trim(),
-                  usedEngine: "Delmas IA"
-                };
-              }
-            } else {
-              const errTxt = await gResponse.text().catch(() => "");
-              if (gResponse.status === 403 || (gResponse.status === 400 && errTxt.includes("API_KEY_INVALID"))) {
-                break; // Passer à la clé suivante
-              }
-            }
-          } catch (err) {
-            if (signal?.aborted) {
-              throw new Error("Génération interrompue par l'utilisateur.");
-            }
-          }
-        }
-      }
-
-      // 2. FALLBACK ULTRA-RAPIDE VERS CLOUDFLARE WORKERS AI (Modèles officiels 2026)
+      // 1. PRIORITÉ ABSOLUE ET EXCLUSIVE POUR DELMAS IA : CLOUDFLARE WORKERS AI (Llama 3.3 70B Fast)
+      // Réponse directe, sans délai, sans clé externe, directement sur les serveurs Edge Cloudflare
       if (!signal?.aborted && ai && typeof ai.run === "function") {
         const messages = [{ role: "system", content: delmasSystemPrompt }];
-        for (const m of incomingHist.slice(-4)) {
+        for (const m of incomingHist.slice(-5)) {
           if (m && m.role && m.content) {
             messages.push({
               role: m.role === "assistant" || m.role === "model" ? "assistant" : "user",
@@ -3792,6 +3739,59 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
           } catch (cfErr) {
             if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
             console.warn(`[Delmas CF AI Error on ${cfModel}]:`, cfErr?.message);
+          }
+        }
+      }
+
+      // 2. SECOURS SI CLOUDFLARE WORKERS AI INDISPONIBLE : GOOGLE GEMINI 2.0 FLASH
+      const geminiModels = ["gemini-2.0-flash", "gemini-2.0-flash-lite", "gemini-1.5-flash-latest"];
+      for (let kIdx = 0; kIdx < geminiKeys.length; kIdx++) {
+        if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
+        const activeKey = geminiKeys[kIdx];
+
+        for (const mod of geminiModels) {
+          if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
+          try {
+            const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${activeKey}`;
+            
+            const timeoutCtrl = new AbortController();
+            const timeoutId = setTimeout(() => timeoutCtrl.abort(), 3500);
+            const combinedSignal = signal ? AbortSignal.any([signal, timeoutCtrl.signal]) : timeoutCtrl.signal;
+
+            const gResponse = await fetch(geminiApiEndpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                system_instruction: { parts: [{ text: delmasSystemPrompt }] },
+                contents: geminiContents,
+                generationConfig: {
+                  temperature: 0.7,
+                  maxOutputTokens: 2048,
+                }
+              }),
+              signal: combinedSignal
+            });
+            clearTimeout(timeoutId);
+
+            if (gResponse.ok) {
+              const gData = await gResponse.json();
+              const candidateText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (candidateText && candidateText.trim().length > 0) {
+                return {
+                  response: candidateText.trim(),
+                  usedEngine: "Delmas IA"
+                };
+              }
+            } else {
+              const errTxt = await gResponse.text().catch(() => "");
+              if (gResponse.status === 403 || (gResponse.status === 400 && errTxt.includes("API_KEY_INVALID"))) {
+                break;
+              }
+            }
+          } catch (err) {
+            if (signal?.aborted) {
+              throw new Error("Génération interrompue par l'utilisateur.");
+            }
           }
         }
       }
