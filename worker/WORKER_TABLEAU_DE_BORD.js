@@ -1678,7 +1678,7 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <!-- VUE 1 : ACCUEIL / VUE D'ENSEMBLE GLOBALE (DÉFILEMENT NATUREL) -->
     <!-- ================================================================== -->
-    <div id="view-global" class="w-full h-full overflow-y-auto space-y-5 pb-12 pr-1 overscroll-contain">
+    <div id="view-global" class="w-full h-full overflow-y-auto space-y-5 pb-12 pr-1 overscroll-contain" style="display: block;">
 
       <!-- 4 CARRÉS EN HAUT : STATISTIQUES GLOBALES -->
       <div class="grid grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3.5">
@@ -2111,7 +2111,7 @@ function renderDashboardHtml(data) {
     <!-- ================================================================== -->
     <!-- VUE 8 : INFORMATIONS PROFESSIONNELLES (GESTION PRO, CONTACTS & COMPTES MARCHANDS) -->
     <!-- ================================================================== -->
-    <div id="view-profil-pro" class="hidden w-full h-full flex flex-col min-h-0 overflow-y-auto overscroll-contain p-3 sm:p-5 space-y-5">
+    <div id="view-profil-pro" class="hidden w-full h-full overflow-y-auto space-y-5 pb-24 pr-1 overscroll-contain" style="display: none;">
       
       <!-- En-tête / Bannière Informations Professionnelles -->
       <div class="neo-card p-4 bg-gradient-to-r from-slate-900 via-[#131b2e] to-slate-900 border-l-4 border-l-orange-500 shrink-0">
@@ -2535,16 +2535,23 @@ function renderDashboardHtml(data) {
 
     function switchView(viewName) {
       currentView = viewName;
+      const flexViews = ['users', 'demandes', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques'];
       ['global', 'users', 'demandes', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro'].forEach(v => {
         const el = document.getElementById('view-' + v);
         const navBtn = document.getElementById('nav-btn-' + v);
-        if (!el || !navBtn) return;
+        if (!el) return;
         if (v === viewName) {
           el.classList.remove('hidden');
-          navBtn.className = "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20 cursor-pointer";
+          el.style.display = flexViews.includes(v) ? 'flex' : 'block';
+          if (navBtn) {
+            navBtn.className = "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl bg-orange-600 text-white font-bold transition-all text-left shadow-md shadow-orange-600/20 cursor-pointer";
+          }
         } else {
           el.classList.add('hidden');
-          navBtn.className = "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer";
+          el.style.display = 'none';
+          if (navBtn) {
+            navBtn.className = "w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer";
+          }
         }
       });
 
@@ -2565,7 +2572,7 @@ function renderDashboardHtml(data) {
       }
 
       const drawer = document.getElementById('sidebar-drawer');
-      if (drawer && drawer.classList.contains('open')) toggleSidebar();
+      if (drawer && drawer.classList.contains('open')) toggleSidebar(false);
 
       if (viewName === 'users') {
         renderUsersLeftList();
@@ -2584,7 +2591,11 @@ function renderDashboardHtml(data) {
       } else if (viewName === 'messages') {
         renderSimpleMessagesUsersList();
       } else if (viewName === 'profil-pro') {
-        loadCompanyProfileClient();
+        try {
+          loadCompanyProfileClient();
+        } catch(e) {
+          console.warn('Erreur chargement profil pro:', e);
+        }
       }
     }
 
