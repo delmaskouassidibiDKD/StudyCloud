@@ -122,6 +122,8 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     window.location.reload();
   };
   const [activeNotification, setActiveNotification] = useState<string | null>(null);
+  const [pricingInitialTab, setPricingInitialTab] = useState<'storage' | 'ai' | 'renewal'>('storage');
+  const [previousViewMode, setPreviousViewMode] = useState<string>('home');
   const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'storage-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | string>(() => {
     const saved = localStorage.getItem('unifolder_view_mode');
     return saved || 'home';
@@ -725,13 +727,17 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           {/* Abondamment button - Solid filled #1e293b, no transparency */}
           <div className="flex flex-col items-center">
             <button
-              onClick={() => setViewMode('abondamment')}
+              onClick={() => {
+                setPricingInitialTab('storage');
+                setPreviousViewMode(viewMode === 'abondamment' ? 'home' : viewMode);
+                setViewMode('abondamment');
+              }}
               className={`p-1.5 sm:p-2 rounded-xl border-2 transition-all cursor-pointer active:scale-95 flex items-center justify-center ${
                 isDarkMode
                   ? 'bg-[#1e293b] hover:bg-[#283852] text-amber-400 border-[#334155] shadow-sm'
                   : 'bg-[#F5F1E9] hover:bg-stone-200 text-stone-800 border-stone-800 shadow-[1.5px_1.5px_0px_0px_#1c1917]'
               }`}
-              title="Abondamment"
+              title="Abonnement"
             >
               <Sparkles className="w-4 h-4 text-amber-400" />
             </button>
@@ -1218,7 +1224,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       )}
 
       {viewMode === 'abondamment' && (
-        <PricingView onBack={() => setViewMode('home')} onSelectPlan={(plan) => notify(`Plan ${plan} sélectionné`)} />
+        <PricingView 
+          initialTab={pricingInitialTab}
+          onBack={() => setViewMode(previousViewMode || 'home')} 
+          onSelectPlan={(plan) => notify(`Plan ${plan} sélectionné`)} 
+        />
       )}
 
       {viewMode === 'files-menu' && <FilesMenuView
@@ -1258,7 +1268,16 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {viewMode === 'clock-menu' && <ClockMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'level-menu' && <LevelMenuView onBack={() => setViewMode('home')} />}
       {viewMode === 'calculator-menu' && <CalculatorMenuView onBack={() => setViewMode('home')} />}
-      {viewMode === 'storage-menu' && <StorageMenuView onBack={() => setViewMode('home')} />}
+      {viewMode === 'storage-menu' && (
+        <StorageMenuView 
+          onBack={() => setViewMode('home')} 
+          onOpenPricing={(tab = 'storage') => {
+            setPricingInitialTab(tab);
+            setPreviousViewMode('storage-menu');
+            setViewMode('abondamment');
+          }}
+        />
+      )}
 
       {viewMode === 'home' && (
         <div className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-2">

@@ -25,9 +25,10 @@ import {
 
 interface StorageMenuViewProps {
   onBack: () => void;
+  onOpenPricing?: (tab?: 'storage' | 'ai' | 'renewal') => void;
 }
 
-export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack }) => {
+export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpenPricing }) => {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [storageData, setStorageData] = useState<UserStorageQuotaDetails | null>(null);
@@ -151,7 +152,13 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack }) => {
         {/* Bouton "Augmenter mon stockage" dans l'angle supérieur droit */}
         <div className="pointer-events-auto shrink-0">
           <button
-            onClick={() => setIsUpgradeModalOpen(true)}
+            onClick={() => {
+              if (onOpenPricing) {
+                onOpenPricing('storage');
+              } else {
+                setIsUpgradeModalOpen(true);
+              }
+            }}
             className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-extrabold text-xs sm:text-sm rounded-xl border-2 border-stone-900 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer animate-pulse hover:animate-none"
             title="Augmenter mon stockage"
           >
