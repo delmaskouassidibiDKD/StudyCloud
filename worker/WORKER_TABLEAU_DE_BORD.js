@@ -1166,67 +1166,271 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
 }
 
 async function inspectAllD1TablesGlobal(db) {
-  const results = {};
-  for (const item of TABLES_METADATA) {
-    const tableName = item.table;
+  let dbTables = [];
+  try {
+    const res = await safeQuery(db, `
+      SELECT name 
+      FROM sqlite_schema 
+      WHERE type = 'table' 
+        AND name NOT LIKE 'sqlite_%' 
+        AND name NOT LIKE '_cf_%'
+        AND name NOT LIKE 'd1_%'
+      ORDER BY name ASC
+    `, [], null);
+    if (res && res.results && res.results.length > 0) {
+      dbTables = res.results.map(r => r.name);
+    }
+  } catch (e) {
     try {
-      const row = await safeFirst(db, `SELECT COUNT(*) as count FROM ${tableName}`, [], { count: 0 });
-      const count = row ? (row.count || 0) : 0;
-      
-      let avgBytesPerRow = 150;
-      if (tableName === 'ai_generated_contents' || tableName === 'user_ai_workspace') avgBytesPerRow = 2800;
-      else if (tableName === 'published_documents' || tableName === 'files') avgBytesPerRow = 350;
-      else if (tableName === 'notes') avgBytesPerRow = 600;
+      const res = await safeQuery(db, `
+        SELECT name 
+        FROM sqlite_master 
+        WHERE type = 'table' 
+          AND name NOT LIKE 'sqlite_%' 
+          AND name NOT LIKE '_cf_%'
+          AND name NOT LIKE 'd1_%'
+        ORDER BY name ASC
+      `, [], null);
+      if (res && res.results && res.results.length > 0) {
+        dbTables = res.results.map(r => r.name);
+      }
+    } catch (e2) {}
+  }
 
-      const totalBytes = count * avgBytesPerRow;
+  // Fusionner avec la liste des tables connues pour s'assurer d'un inventaire complet
+  const knownTableNames = TABLES_METADATA.map(t => t.table);
+  const allTableNamesSet = new Set([...dbTables, ...knownTableNames]);
+  const allTableNames = Array.from(allTableNamesSet).sort();
+
+  const metadataMap = new Map();
+  for (const item of TABLES_METADATA) {
+    metadataMap.set(item.table, item);
+  }
+
+  const dynamicTablesMeta = [];
+  const results = {};
+  let totalD1Bytes = 0;
+  let totalD1Rows = 0;
+
+  for (const tableName of allTableNames) {
+    let meta = metadataMap.get(tableName);
+    if (!meta) {
+      const cleanLabel = tableName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+      meta = {
+        table: tableName,
+        label: cleanLabel,
+        uiConnection: "Base de données Cloudflare D1 (Table applicative)",
+        role: "Table de stockage de données dynamiques pour StudyCloud",
+        usage: "Lecture/Écriture en temps réel selon les fonctionnalités actives",
+        example: `{ table: "${tableName}", status: "active" }`
+      };
+    }
+    dynamicTablesMeta.push(meta);
+
+    let count = 0;
+    let tableBytes = 0;
+    try {
+      const row = await safeFirst(db, `SELECT COUNT(*) as count FROM "${tableName}"`, [], { count: 0 });
+      count = row ? (row.count || 0) : 0;
+
+      if (count > 0) {
+        let computed = false;
+        try {
+          const colInfo = await safeQuery(db, `PRAGMA table_info("${tableName}")`, [], null);
+          if (colInfo && colInfo.results && colInfo.results.length > 0) {
+            const sumCols = colInfo.results.map(c => `COALESCE(LENGTH("${c.name}"), 0)`).join(' + ');
+            const bRow = await safeFirst(db, `SELECT SUM(${sumCols}) as total_data_bytes FROM "${tableName}"`, [], null);
+            if (bRow && bRow.total_data_bytes !== null && !isNaN(bRow.total_data_bytes)) {
+              tableBytes = Math.max(0, Number(bRow.total_data_bytes) + (count * 32));
+              computed = true;
+            }
+          }
+        } catch (ePragma) {}
+
+        if (!computed) {
+          let avgBytesPerRow = 200;
+          if (tableName.includes('ai') || tableName.includes('workspace') || tableName.includes('contents')) avgBytesPerRow = 3200;
+          else if (tableName.includes('files') || tableName.includes('documents')) avgBytesPerRow = 500;
+          else if (tableName.includes('notes')) avgBytesPerRow = 800;
+          else if (tableName.includes('sessions') || tableName.includes('profile')) avgBytesPerRow = 400;
+          tableBytes = count * avgBytesPerRow;
+        }
+      }
+
+      totalD1Bytes += tableBytes;
+      totalD1Rows += count;
+
       results[tableName] = {
         count,
-        bytes: totalBytes,
-        formatted: formatBytes(totalBytes)
+        bytes: tableBytes,
+        formatted: formatBytes(tableBytes)
       };
     } catch (e) {
       results[tableName] = { count: 0, bytes: 0, formatted: '0 Octets' };
     }
   }
-  return results;
+
+  // Vérification de la taille physique globale du fichier SQLite D1
+  try {
+    const pCountRow = await safeFirst(db, `PRAGMA page_count`, [], null);
+    const pSizeRow = await safeFirst(db, `PRAGMA page_size`, [], null);
+    const pCount = pCountRow ? Number(pCountRow.page_count || Object.values(pCountRow)[0] || 0) : 0;
+    const pSize = pSizeRow ? Number(pSizeRow.page_size || Object.values(pSizeRow)[0] || 0) : 0;
+    if (pCount > 0 && pSize > 0) {
+      const physicalFileBytes = pCount * pSize;
+      if (physicalFileBytes > totalD1Bytes) {
+        totalD1Bytes = physicalFileBytes;
+      }
+    }
+  } catch (eDbStat) {}
+
+  return {
+    tablesMeta: dynamicTablesMeta,
+    d1TablesGlobal: results,
+    totalD1Bytes,
+    totalD1Rows
+  };
 }
 
-async function inspectAllR2FoldersGlobal(db, detailedUsers) {
-  let userFilesBytes = 0; let userFilesCount = 0;
-  let aiStudiesBytes = 0; let aiStudiesCount = 0;
-  let pubFilesBytes = 0; let pubFilesCount = 0;
-  let shareFilesBytes = 0; let shareFilesCount = 0;
-  let avatarsBytes = 0; let avatarsCount = 0;
-  let productImagesBytes = 0; let productImagesCount = 0;
+async function inspectRealR2Global(bucket, db, detailedUsers) {
+  let totalR2Bytes = 0;
+  let totalR2Files = 0;
+  const folders = {
+    'user-files/': { count: 0, bytes: 0, formatted: '0 Octets' },
+    'ai-studies/': { count: 0, bytes: 0, formatted: '0 Octets' },
+    'published/files/': { count: 0, bytes: 0, formatted: '0 Octets' },
+    'shared-links/files/': { count: 0, bytes: 0, formatted: '0 Octets' },
+    'products/images/': { count: 0, bytes: 0, formatted: '0 Octets' },
+    'avatars/': { count: 0, bytes: 0, formatted: '0 Octets' },
+    'storage-receipts/': { count: 0, bytes: 0, formatted: '0 Octets' }
+  };
 
-  for (const u of detailedUsers) {
-    const r2f = u.storage.r2.folders;
-    userFilesBytes += r2f['user-files/'].bytes || 0;
-    userFilesCount += r2f['user-files/'].count || 0;
+  let bucketScanned = false;
 
-    aiStudiesBytes += r2f['ai-studies/'].bytes || 0;
-    aiStudiesCount += r2f['ai-studies/'].count || 0;
+  // 1. Scan réel direct du Bucket Cloudflare R2
+  if (bucket && typeof bucket.list === 'function') {
+    try {
+      let truncated = true;
+      let cursor = undefined;
+      let iterations = 0;
 
-    pubFilesBytes += r2f['published/files/'].bytes || 0;
-    pubFilesCount += r2f['published/files/'].count || 0;
+      while (truncated && iterations < 30) {
+        iterations++;
+        const listResult = await bucket.list({ cursor, limit: 1000 });
+        if (listResult && listResult.objects) {
+          bucketScanned = true;
+          for (const obj of listResult.objects) {
+            const sz = Number(obj.size || 0);
+            totalR2Bytes += sz;
+            totalR2Files++;
 
-    shareFilesBytes += r2f['shared-links/files/'].bytes || 0;
-    shareFilesCount += r2f['shared-links/files/'].count || 0;
+            const key = obj.key || '';
+            let matchedFolder = false;
+            for (const fPrefix of Object.keys(folders)) {
+              if (key.startsWith(fPrefix)) {
+                folders[fPrefix].count++;
+                folders[fPrefix].bytes += sz;
+                matchedFolder = true;
+                break;
+              }
+            }
+            if (!matchedFolder) {
+              const slashIdx = key.indexOf('/');
+              const rootFolder = slashIdx !== -1 ? key.substring(0, slashIdx + 1) : 'racine/';
+              if (!folders[rootFolder]) {
+                folders[rootFolder] = { count: 0, bytes: 0, formatted: '0 Octets' };
+              }
+              folders[rootFolder].count++;
+              folders[rootFolder].bytes += sz;
+            }
+          }
+        }
+        truncated = Boolean(listResult && listResult.truncated);
+        cursor = listResult ? listResult.cursor : undefined;
+      }
+    } catch (errBucket) {
+      console.error('Inspection R2 bucket.list:', errBucket);
+    }
+  }
 
-    avatarsBytes += r2f['avatars/'].bytes || 0;
-    avatarsCount += r2f['avatars/'].count || 0;
+  // 2. Vérification croisée avec les tables D1 (files, published_documents, storage_upgrade_requests)
+  let dbFilesBytes = 0;
+  let dbFilesCount = 0;
+  try {
+    const filesDb = await safeFirst(db, `
+      SELECT 
+        COUNT(*) AS total_count,
+        COALESCE(SUM(size), 0) AS total_bytes,
+        COALESCE(SUM(CASE WHEN is_study_session = 1 THEN size ELSE 0 END), 0) AS ai_bytes,
+        COALESCE(SUM(CASE WHEN is_study_session = 1 THEN 1 ELSE 0 END), 0) AS ai_count,
+        COALESCE(SUM(CASE WHEN is_study_session = 0 THEN size ELSE 0 END), 0) AS personal_bytes,
+        COALESCE(SUM(CASE WHEN is_study_session = 0 THEN 1 ELSE 0 END), 0) AS personal_count
+      FROM files
+    `, [], null);
 
-    productImagesBytes += r2f['products/images/'].bytes || 0;
-    productImagesCount += r2f['products/images/'].count || 0;
+    const pubDb = await safeFirst(db, `
+      SELECT COUNT(*) AS total_count, COALESCE(SUM(file_size), 0) AS total_bytes 
+      FROM published_documents
+    `, [], null);
+
+    if (filesDb) {
+      dbFilesBytes += Number(filesDb.total_bytes || 0);
+      dbFilesCount += Number(filesDb.total_count || 0);
+
+      if (!bucketScanned) {
+        folders['user-files/'].bytes = Number(filesDb.personal_bytes || 0);
+        folders['user-files/'].count = Number(filesDb.personal_count || 0);
+        folders['ai-studies/'].bytes = Number(filesDb.ai_bytes || 0);
+        folders['ai-studies/'].count = Number(filesDb.ai_count || 0);
+      }
+    }
+
+    if (pubDb) {
+      dbFilesBytes += Number(pubDb.total_bytes || 0);
+      dbFilesCount += Number(pubDb.total_count || 0);
+
+      if (!bucketScanned) {
+        folders['published/files/'].bytes = Number(pubDb.total_bytes || 0);
+        folders['published/files/'].count = Number(pubDb.total_count || 0);
+      }
+    }
+  } catch (eDbFiles) {}
+
+  // 3. Intégration des fichiers détectés dans les profils utilisateurs
+  if (Array.isArray(detailedUsers)) {
+    let usersR2Bytes = 0;
+    let usersR2Count = 0;
+    for (const u of detailedUsers) {
+      const r2f = u?.storage?.r2?.folders;
+      if (r2f) {
+        for (const [k, v] of Object.entries(r2f)) {
+          usersR2Bytes += Number(v?.bytes || 0);
+          usersR2Count += Number(v?.count || 0);
+          if (!bucketScanned && folders[k]) {
+            folders[k].bytes = Math.max(folders[k].bytes, Number(v?.bytes || 0));
+            folders[k].count = Math.max(folders[k].count, Number(v?.count || 0));
+          }
+        }
+      }
+    }
+    dbFilesBytes = Math.max(dbFilesBytes, usersR2Bytes);
+    dbFilesCount = Math.max(dbFilesCount, usersR2Count);
+  }
+
+  if (dbFilesBytes > totalR2Bytes) {
+    totalR2Bytes = dbFilesBytes;
+    totalR2Files = Math.max(totalR2Files, dbFilesCount);
+  }
+
+  for (const f of Object.keys(folders)) {
+    folders[f].formatted = formatBytes(folders[f].bytes);
   }
 
   return {
-    'user-files/': { count: userFilesCount, bytes: userFilesBytes, formatted: formatBytes(userFilesBytes) },
-    'ai-studies/': { count: aiStudiesCount, bytes: aiStudiesBytes, formatted: formatBytes(aiStudiesBytes) },
-    'published/files/': { count: pubFilesCount, bytes: pubFilesBytes, formatted: formatBytes(pubFilesBytes) },
-    'shared-links/files/': { count: shareFilesCount, bytes: shareFilesBytes, formatted: formatBytes(shareFilesBytes) },
-    'products/images/': { count: productImagesCount, bytes: productImagesBytes, formatted: formatBytes(productImagesBytes) },
-    'avatars/': { count: avatarsCount, bytes: avatarsBytes, formatted: formatBytes(avatarsBytes) }
+    totalR2Bytes,
+    totalR2Files,
+    r2FoldersGlobal: folders,
+    r2Meta: R2_FOLDERS_METADATA
   };
 }
 
@@ -1239,8 +1443,8 @@ function renderDashboardHtml(data) {
   const globalConfigJson = JSON.stringify(data.globalConfig).replace(/</g, '\\u003c');
   const d1TablesGlobalJson = JSON.stringify(data.d1TablesGlobal).replace(/</g, '\\u003c');
   const r2FoldersGlobalJson = JSON.stringify(data.r2FoldersGlobal).replace(/</g, '\\u003c');
-  const tablesMetaJson = JSON.stringify(TABLES_METADATA).replace(/</g, '\\u003c');
-  const r2MetaJson = JSON.stringify(R2_FOLDERS_METADATA).replace(/</g, '\\u003c');
+  const tablesMetaJson = JSON.stringify(data.tablesMeta || TABLES_METADATA).replace(/</g, '\\u003c');
+  const r2MetaJson = JSON.stringify(data.r2Meta || R2_FOLDERS_METADATA).replace(/</g, '\\u003c');
   const upgradeRequestsJson = JSON.stringify(data.upgradeRequests || []).replace(/</g, '\\u003c');
   const userSubscriptionsJson = JSON.stringify(data.userSubscriptions || []).replace(/</g, '\\u003c');
 
@@ -1348,8 +1552,8 @@ function renderDashboardHtml(data) {
     </div>
 
     <div class="flex items-center gap-2">
-      <button onclick="window.location.reload()" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer">
-        <span>🔄</span> <span class="hidden sm:inline">Actualiser</span>
+      <button onclick="manualRefreshLiveStats()" id="btn-manual-refresh" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer">
+        <span id="refresh-spinner">🔄</span> <span class="hidden sm:inline">Actualiser</span>
       </button>
       <a href="/api/overview" target="_blank" class="px-2.5 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-xs font-bold text-white transition-all shadow-md shadow-orange-600/30 flex items-center gap-1.5">
         <span>📡</span> <span class="hidden sm:inline">API JSON</span>
@@ -1482,7 +1686,7 @@ function renderDashboardHtml(data) {
             <span class="text-sm">👥</span>
           </div>
           <div>
-            <div class="text-xl sm:text-2xl font-black text-white">${data.summary.totalUsers}</div>
+            <div id="stat-total-users" class="text-xl sm:text-2xl font-black text-white">${data.summary.totalUsers}</div>
             <div class="text-[10px] text-blue-400 mt-0.5 font-medium">Comptes enregistrés dans D1</div>
           </div>
         </div>
@@ -1493,7 +1697,7 @@ function renderDashboardHtml(data) {
             <span class="text-sm">📦</span>
           </div>
           <div>
-            <div class="text-xl sm:text-2xl font-black text-orange-400">${data.summary.totalR2Formatted}</div>
+            <div id="stat-volume-r2" class="text-xl sm:text-2xl font-black text-orange-400">${data.summary.totalR2Formatted}</div>
             <div class="text-[10px] text-slate-400 mt-0.5 font-medium">
               Limite Cloudflare : <span class="text-white font-bold">10 Go gratuits</span>
             </div>
@@ -1506,7 +1710,7 @@ function renderDashboardHtml(data) {
             <span class="text-sm">🗄️</span>
           </div>
           <div>
-            <div class="text-xl sm:text-2xl font-black text-emerald-400">${data.summary.totalD1Formatted}</div>
+            <div id="stat-volume-d1" class="text-xl sm:text-2xl font-black text-emerald-400">${data.summary.totalD1Formatted}</div>
             <div class="text-[10px] text-slate-400 mt-0.5 font-medium">
               Limite Cloudflare : <span class="text-white font-bold">5 Go gratuits</span>
             </div>
@@ -1528,37 +1732,42 @@ function renderDashboardHtml(data) {
 
       <!-- TROIS LIGNES DE PROGRESSION DE LA CONSOMMATION GLOBALE -->
       <div class="neo-card p-4 space-y-3">
-        <h3 class="text-xs font-bold text-white flex items-center gap-1.5">
-          <span>📈</span> Progression de la Consommation Réelle de l'Application
-        </h3>
+        <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-1.5 pb-1 border-b border-slate-800/60">
+          <h3 class="text-xs font-bold text-white flex items-center gap-1.5">
+            <span>📈</span> Progression de la Consommation Réelle de l'Application
+          </h3>
+          <span id="live-indicator-badge" class="text-[10px] font-bold text-emerald-400 flex items-center gap-1.5 bg-emerald-500/10 border border-emerald-500/20 px-2.5 py-0.5 rounded-full shrink-0">
+            <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Écoute en direct Cloudflare D1 & R2
+          </span>
+        </div>
 
         <div class="space-y-1">
           <div class="flex items-center justify-between text-xs">
             <span class="font-bold text-slate-200">1. Consommation Globale (R2 + D1 combiné)</span>
-            <span class="font-mono text-orange-400 font-bold">${data.summary.totalStorageFormatted} / 15 Go (${((data.summary.totalStorageBytes / (15 * 1024 * 1024 * 1024)) * 100).toFixed(3)}%)</span>
+            <span id="bar-global-label" class="font-mono text-orange-400 font-bold">${data.summary.totalStorageFormatted} / 15 Go (${((data.summary.totalStorageBytes / (15 * 1024 * 1024 * 1024)) * 100).toFixed(3)}%)</span>
           </div>
           <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
-            <div class="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full transition-all duration-500" style="width: ${Math.max(1, Math.min(100, (data.summary.totalStorageBytes / (15 * 1024 * 1024 * 1024)) * 100))}%;"></div>
+            <div id="bar-global-fill" class="h-full bg-gradient-to-r from-orange-500 to-amber-400 rounded-full transition-all duration-500" style="width: ${Math.max(1, Math.min(100, (data.summary.totalStorageBytes / (15 * 1024 * 1024 * 1024)) * 100))}%;"></div>
           </div>
         </div>
 
         <div class="space-y-1">
           <div class="flex items-center justify-between text-xs">
             <span class="font-bold text-slate-200">2. Consommation Cloudflare R2 (Fichiers & Documents)</span>
-            <span class="font-mono text-blue-400 font-bold">${data.summary.totalR2Formatted} / 10 Go gratuits (${((data.summary.totalR2Bytes / (10 * 1024 * 1024 * 1024)) * 100).toFixed(3)}%)</span>
+            <span id="bar-r2-label" class="font-mono text-blue-400 font-bold">${data.summary.totalR2Formatted} / 10 Go gratuits (${((data.summary.totalR2Bytes / (10 * 1024 * 1024 * 1024)) * 100).toFixed(3)}%)</span>
           </div>
           <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
-            <div class="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-500" style="width: ${Math.max(1, Math.min(100, (data.summary.totalR2Bytes / (10 * 1024 * 1024 * 1024)) * 100))}%;"></div>
+            <div id="bar-r2-fill" class="h-full bg-gradient-to-r from-blue-500 to-cyan-400 rounded-full transition-all duration-500" style="width: ${Math.max(1, Math.min(100, (data.summary.totalR2Bytes / (10 * 1024 * 1024 * 1024)) * 100))}%;"></div>
           </div>
         </div>
 
         <div class="space-y-1">
           <div class="flex items-center justify-between text-xs">
             <span class="font-bold text-slate-200">3. Consommation Cloudflare D1 (Base SQLite & Données Texte)</span>
-            <span class="font-mono text-emerald-400 font-bold">${data.summary.totalD1Formatted} / 5 Go gratuits (${((data.summary.totalD1Bytes / (5 * 1024 * 1024 * 1024)) * 100).toFixed(3)}%)</span>
+            <span id="bar-d1-label" class="font-mono text-emerald-400 font-bold">${data.summary.totalD1Formatted} / 5 Go gratuits (${((data.summary.totalD1Bytes / (5 * 1024 * 1024 * 1024)) * 100).toFixed(3)}%)</span>
           </div>
           <div class="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden p-0.5 border border-slate-700">
-            <div class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500" style="width: ${Math.max(1, Math.min(100, (data.summary.totalD1Bytes / (5 * 1024 * 1024 * 1024)) * 100))}%;"></div>
+            <div id="bar-d1-fill" class="h-full bg-gradient-to-r from-emerald-500 to-teal-400 rounded-full transition-all duration-500" style="width: ${Math.max(1, Math.min(100, (data.summary.totalD1Bytes / (5 * 1024 * 1024 * 1024)) * 100))}%;"></div>
           </div>
         </div>
       </div>
@@ -1580,7 +1789,7 @@ function renderDashboardHtml(data) {
         <div class="px-4 py-3 bg-[#0d1424] border-b border-slate-800 flex items-center justify-between">
           <h3 class="text-xs sm:text-sm font-bold text-emerald-400 flex items-center gap-2">
             <span>🗄️</span> Tables Base de Données Cloudflare D1
-            <span class="text-xs font-normal text-slate-400">(${TABLES_METADATA.length} tables répertoriées)</span>
+            <span id="d1-tables-count-badge" class="text-xs font-normal text-slate-400">(${(data.tablesMeta || TABLES_METADATA).length} tables répertoriées)</span>
           </h3>
           <span class="text-[11px] text-slate-400 hidden sm:inline">Cliquez sur une table pour dérouler ses détails</span>
         </div>
@@ -1592,7 +1801,7 @@ function renderDashboardHtml(data) {
         <div class="px-4 py-3 bg-[#0d1424] border-b border-slate-800 flex items-center justify-between">
           <h3 class="text-xs sm:text-sm font-bold text-orange-400 flex items-center gap-2">
             <span>📦</span> Dossiers Stockage Objets Cloudflare R2
-            <span class="text-xs font-normal text-slate-400">(${R2_FOLDERS_METADATA.length} dossiers structurés)</span>
+            <span id="r2-folders-count-badge" class="text-xs font-normal text-slate-400">(${(data.r2Meta || R2_FOLDERS_METADATA).length} dossiers structurés)</span>
           </h3>
           <span class="text-[11px] text-slate-400 hidden sm:inline">Cliquez sur un dossier pour dérouler ses détails</span>
         </div>
@@ -2261,13 +2470,13 @@ function renderDashboardHtml(data) {
   </div>
 
   <script>
-    const allUsers = ${usersJson};
-    const globalSummary = ${summaryJson};
+    let allUsers = ${usersJson};
+    let globalSummary = ${summaryJson};
     let globalConfig = ${globalConfigJson};
-    const d1TablesGlobal = ${d1TablesGlobalJson};
-    const r2FoldersGlobal = ${r2FoldersGlobalJson};
-    const tablesMeta = ${tablesMetaJson};
-    const r2Meta = ${r2MetaJson};
+    let d1TablesGlobal = ${d1TablesGlobalJson};
+    let r2FoldersGlobal = ${r2FoldersGlobalJson};
+    let tablesMeta = ${tablesMetaJson};
+    let r2Meta = ${r2MetaJson};
 
     let selectedUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
     let selectedDistributionUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
@@ -4835,9 +5044,94 @@ function renderDashboardHtml(data) {
       }
     }
 
+    async function pollLiveStorageStats(isManual = false) {
+      const spinner = document.getElementById('refresh-spinner');
+      if (spinner) spinner.classList.add('animate-spin');
+
+      try {
+        const resp = await fetch('/api/overview');
+        if (!resp.ok) return;
+        const data = await resp.json();
+        if (!data || !data.summary) return;
+
+        // Mise à jour des cartes métriques
+        const r2El = document.getElementById('stat-volume-r2');
+        if (r2El) r2El.textContent = data.summary.totalR2Formatted;
+
+        const d1El = document.getElementById('stat-volume-d1');
+        if (d1El) d1El.textContent = data.summary.totalD1Formatted;
+
+        const usersEl = document.getElementById('stat-total-users');
+        if (usersEl) usersEl.textContent = data.summary.totalUsers;
+
+        // Mise à jour des barres de progression
+        const totalStorageBytes = data.summary.totalStorageBytes || 0;
+        const totalR2Bytes = data.summary.totalR2Bytes || 0;
+        const totalD1Bytes = data.summary.totalD1Bytes || 0;
+
+        const barGlobLabel = document.getElementById('bar-global-label');
+        if (barGlobLabel) barGlobLabel.textContent = data.summary.totalStorageFormatted + " / 15 Go (" + ((totalStorageBytes / (15 * 1024 * 1024 * 1024)) * 100).toFixed(3) + "%)";
+
+        const barGlobFill = document.getElementById('bar-global-fill');
+        if (barGlobFill) barGlobFill.style.width = Math.max(1, Math.min(100, (totalStorageBytes / (15 * 1024 * 1024 * 1024)) * 100)) + '%';
+
+        const barR2Label = document.getElementById('bar-r2-label');
+        if (barR2Label) barR2Label.textContent = data.summary.totalR2Formatted + " / 10 Go gratuits (" + ((totalR2Bytes / (10 * 1024 * 1024 * 1024)) * 100).toFixed(3) + "%)";
+
+        const barR2Fill = document.getElementById('bar-r2-fill');
+        if (barR2Fill) barR2Fill.style.width = Math.max(1, Math.min(100, (totalR2Bytes / (10 * 1024 * 1024 * 1024)) * 100)) + '%';
+
+        const barD1Label = document.getElementById('bar-d1-label');
+        if (barD1Label) barD1Label.textContent = data.summary.totalD1Formatted + " / 5 Go gratuits (" + ((totalD1Bytes / (5 * 1024 * 1024 * 1024)) * 100).toFixed(3) + "%)";
+
+        const barD1Fill = document.getElementById('bar-d1-fill');
+        if (barD1Fill) barD1Fill.style.width = Math.max(1, Math.min(100, (totalD1Bytes / (5 * 1024 * 1024 * 1024)) * 100)) + '%';
+
+        // Mise à jour des tables et dossiers
+        if (data.d1Tables) {
+          d1TablesGlobal = data.d1Tables;
+          if (data.tablesMeta && Array.isArray(data.tablesMeta)) {
+            tablesMeta = data.tablesMeta;
+            const countBadge = document.getElementById('d1-tables-count-badge');
+            if (countBadge) countBadge.textContent = "(" + tablesMeta.length + " tables répertoriées)";
+          }
+          const searchInput = document.getElementById('global-search-input');
+          renderGlobalD1Tables(searchInput ? searchInput.value : '');
+        }
+
+        if (data.r2Folders) {
+          r2FoldersGlobal = data.r2Folders;
+          const searchInput = document.getElementById('global-search-input');
+          renderGlobalR2Folders(searchInput ? searchInput.value : '');
+        }
+
+        const badge = document.getElementById('live-indicator-badge');
+        if (badge) {
+          badge.innerHTML = '<span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> Écoute en direct Cloudflare D1 & R2 (' + new Date().toLocaleTimeString('fr-FR') + ')';
+        }
+
+        if (isManual) {
+          showToast('✓ Données Cloudflare actualisées en direct');
+        }
+      } catch (err) {
+        console.warn('Erreur actualisation en direct:', err);
+      } finally {
+        if (spinner) spinner.classList.remove('animate-spin');
+      }
+    }
+
+    function manualRefreshLiveStats() {
+      pollLiveStorageStats(true);
+    }
+
     // Initialisation
     renderGlobalD1Tables();
     renderGlobalR2Folders();
+
+    // Actualisation périodique automatique en direct toutes les 30 secondes
+    setInterval(() => {
+      pollLiveStorageStats(false);
+    }, 30000);
   </script>
 </body>
 </html>`;
@@ -5245,30 +5539,33 @@ export default {
 
       // Inspection pour chaque utilisateur
       const detailedUsers = [];
-      let globalR2Bytes = 0;
-      let globalD1Bytes = 0;
-      let globalD1Rows = 0;
-
       for (const u of rawUsers) {
         const detail = await inspectUserStorageDetail(db, bucket, u, globalConfigRow);
         detailedUsers.push(detail);
-
-        globalR2Bytes += detail.storage.r2.totalBytes || 0;
-        globalD1Bytes += detail.storage.d1.totalBytes || 0;
-        globalD1Rows += detail.storage.d1.totalRows || 0;
       }
 
-      // Inspection globale des tables D1 et des dossiers R2
-      const d1TablesGlobal = await inspectAllD1TablesGlobal(db);
-      const r2FoldersGlobal = await inspectAllR2FoldersGlobal(db, detailedUsers);
+      // Inspection GLOBALE et DYNAMIQUE de TOUTES les tables D1 (actuelles et futures)
+      const d1GlobalData = await inspectAllD1TablesGlobal(db);
+      const tablesMeta = d1GlobalData.tablesMeta;
+      const d1TablesGlobal = d1GlobalData.d1TablesGlobal;
+      const globalD1Bytes = d1GlobalData.totalD1Bytes;
+      const globalD1Rows = d1GlobalData.totalD1Rows;
 
-      // Synthèse globale
+      // Inspection GLOBALE et RÉELLE de TOUT le stockage R2 (fichiers de toute l'application)
+      const r2GlobalData = await inspectRealR2Global(bucket, db, detailedUsers);
+      const globalR2Bytes = r2GlobalData.totalR2Bytes;
+      const globalR2Files = r2GlobalData.totalR2Files;
+      const r2FoldersGlobal = r2GlobalData.r2FoldersGlobal;
+      const r2Meta = r2GlobalData.r2Meta;
+
+      // Synthèse globale RÉELLE de l'application entière
       const globalSummary = {
-        totalUsers: detailedUsers.length,
+        totalUsers: rawUsers.length,
         totalStorageBytes: globalR2Bytes + globalD1Bytes,
         totalStorageFormatted: formatBytes(globalR2Bytes + globalD1Bytes),
         totalR2Bytes: globalR2Bytes,
         totalR2Formatted: formatBytes(globalR2Bytes),
+        totalR2Files: globalR2Files,
         totalD1Bytes: globalD1Bytes,
         totalD1Formatted: formatBytes(globalD1Bytes),
         totalD1Rows: globalD1Rows,
@@ -5286,7 +5583,10 @@ export default {
           summary: globalSummary,
           globalConfig: globalConfigRow,
           d1Tables: d1TablesGlobal,
-          r2Folders: r2FoldersGlobal
+          r2Folders: r2FoldersGlobal,
+          tablesMeta,
+          r2Meta,
+          timestamp: new Date().toISOString()
         }, null, 2), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
@@ -5457,6 +5757,8 @@ export default {
         users: detailedUsers,
         d1TablesGlobal,
         r2FoldersGlobal,
+        tablesMeta,
+        r2Meta,
         upgradeRequests: rawUpgradeRequests,
         userSubscriptions: rawUserSubs,
         companyProfile: companyProfileRow
