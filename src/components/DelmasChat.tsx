@@ -377,11 +377,6 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
                     <span className="text-xs font-bold bg-gradient-to-r from-blue-400 to-sky-300 bg-clip-text text-transparent">
                       Delmas IA
                     </span>
-                    {msg.model && (
-                      <span className="text-[9px] font-semibold text-zinc-500 bg-zinc-800/80 px-1.5 py-0.5 rounded-md border border-zinc-700/40">
-                        {msg.model}
-                      </span>
-                    )}
                     <span className="text-[10px] text-zinc-500 ml-auto font-medium">
                       {msg.timestamp}
                     </span>

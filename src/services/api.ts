@@ -673,7 +673,7 @@ export async function sendDelmasChatMessage(params: {
       return {
         success: true,
         response: text || "Je suis à votre écoute ! Comment puis-je vous aider ?",
-        model: data.model || 'Delmas Direct AI',
+        model: 'Delmas IA',
       };
     }
   } catch (routeErr: any) {
@@ -710,7 +710,7 @@ export async function sendDelmasChatMessage(params: {
       return {
         success: true,
         response: text || "Je suis à votre écoute ! Comment puis-je vous aider ?",
-        model: data.model || 'Delmas Direct AI',
+        model: 'Delmas IA',
       };
     }
   } catch (err: any) {
@@ -728,7 +728,7 @@ export async function sendDelmasChatMessage(params: {
     response: isGreeting || !params.message
       ? "Bonjour ! Je suis **Delmas**, ton assistant et tuteur personnel StudyCloud. Je suis ravi de discuter avec toi ! Comment puis-je t'aider aujourd'hui dans tes cours, devoirs ou révisions ?"
       : `Bonjour ! Je suis **Delmas**, ton tuteur StudyCloud. J'ai bien reçu ton message : « *${params.message.slice(0, 100)}* ».\n\nJe suis prêt à t'accompagner ! Peux-tu me préciser le point de cours, l'exercice ou la formule que tu souhaites réviser ?`,
-    model: 'Delmas Tuteur (Mode Secours)',
+    model: 'Delmas IA',
   };
 }
 

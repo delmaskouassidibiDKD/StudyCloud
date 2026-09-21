@@ -3737,7 +3737,7 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
               if (candidateText && candidateText.trim().length > 0) {
                 return {
                   response: candidateText.trim(),
-                  usedEngine: `Google Gemini (${mod})`
+                  usedEngine: "Delmas IA"
                 };
               }
             } else {
@@ -3786,7 +3786,7 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
             if (answer && answer.trim().length > 0) {
               return {
                 response: answer.trim(),
-                usedEngine: `Cloudflare Workers AI (${cfModel.split("/").pop()})`
+                usedEngine: "Delmas IA"
               };
             }
           } catch (cfErr) {
@@ -3813,7 +3813,7 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
 
       return {
         response: fallbackText,
-        usedEngine: "Delmas Tuteur (Mode Secours)"
+        usedEngine: "Delmas IA"
       };
     }
 
