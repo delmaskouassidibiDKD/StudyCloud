@@ -11,6 +11,7 @@ interface Message {
   model?: string;
   reaction?: 'like' | 'dislike' | null;
   timestamp: string;
+  isStreaming?: boolean;
 }
 
 interface DelmasChatProps {
@@ -50,8 +51,9 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
   const scrollContainerRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
+  const typingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
 
-  // Auto-scroll vers le bas dès qu'un message arrive
+  // Auto-scroll fluide vers le bas dès qu'un message ou caractère arrive
   useEffect(() => {
     if (scrollContainerRef.current) {
       scrollContainerRef.current.scrollTop = scrollContainerRef.current.scrollHeight;
@@ -63,30 +65,48 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
     textareaRef.current?.focus();
   }, []);
 
-  // Écoute de la touche Échap pour fermer
+  // Nettoyage complet à la fermeture ou au démontage
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === 'Escape') {
+        handleStopGeneration();
         onClose();
       }
     };
     window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    return () => {
+      window.removeEventListener('keydown', handleKeyDown);
+      if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+      if (abortControllerRef.current) abortControllerRef.current.abort();
+    };
   }, [onClose]);
 
-  // Arrêter immédiatement la génération en cours
+  // Arrêter immédiatement la génération et l'écriture en cours
   const handleStopGeneration = () => {
     if (abortControllerRef.current) {
       abortControllerRef.current.abort();
       abortControllerRef.current = null;
     }
+    if (typingTimerRef.current) {
+      clearInterval(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
+    setMessages((prev) =>
+      prev.map((m) => (m.isStreaming ? { ...m, isStreaming: false } : m))
+    );
     setIsLoading(false);
   };
 
-  // Envoi d'un message
+  // Envoi d'un message avec animation d'écriture progressive (typewriter)
   const handleSendMessage = async (textToSend?: string) => {
     const text = (textToSend || inputValue).trim();
     if (!text || isLoading) return;
+
+    // Arrêter toute animation précédente
+    if (typingTimerRef.current) {
+      clearInterval(typingTimerRef.current);
+      typingTimerRef.current = null;
+    }
 
     const userMessage: Message = {
       id: `user-${Date.now()}`,
@@ -95,23 +115,30 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
       timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
     };
 
-    const newMessages = [...messages, userMessage];
+    const delmasMsgId = `delmas-${Date.now()}`;
+    const initialDelmasMessage: Message = {
+      id: delmasMsgId,
+      sender: 'delmas',
+      text: '',
+      isStreaming: true,
+      timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+    };
+
+    const newMessages = [...messages, userMessage, initialDelmasMessage];
     setMessages(newMessages);
     setInputValue('');
     setIsLoading(true);
 
-    // Ajuster la hauteur du textarea
     if (textareaRef.current) {
       textareaRef.current.style.height = 'auto';
     }
 
-    // Créer un nouveau contrôleur d'abandon pour ce message
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
     try {
-      // Construction de l'historique court en mémoire vive uniquement
-      const historyPayload = newMessages.slice(-8).map((m) => ({
+      // Historique court pour le contexte
+      const historyPayload = messages.slice(-6).map((m) => ({
         role: m.sender === 'user' ? 'user' : 'assistant',
         content: m.text,
       }));
@@ -122,36 +149,64 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
         signal: controller.signal,
       });
 
-      const delmasMessage: Message = {
-        id: `delmas-${Date.now()}`,
-        sender: 'delmas',
-        text: res.response || "Je n'ai pas pu générer de réponse pour le moment.",
-        model: res.model || 'Delmas Direct AI',
-        timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-      };
+      const fullResponseText = res.response || "Je suis à votre écoute !";
+      const modelName = res.model || 'Delmas Direct AI';
 
-      setMessages((prev) => [...prev, delmasMessage]);
+      // Animation dactylographique fluide ("il répond en écrivant")
+      let charIdx = 0;
+      const chunkSize = 4; // 4 caractères par cycle pour une vitesse de frappe ultra vive
+      const tickSpeed = 14; // 14ms par cycle
+
+      typingTimerRef.current = setInterval(() => {
+        charIdx += chunkSize;
+        if (charIdx >= fullResponseText.length) {
+          if (typingTimerRef.current) clearInterval(typingTimerRef.current);
+          typingTimerRef.current = null;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === delmasMsgId
+                ? { ...m, text: fullResponseText, model: modelName, isStreaming: false }
+                : m
+            )
+          );
+          setIsLoading(false);
+        } else {
+          const partial = fullResponseText.slice(0, charIdx);
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === delmasMsgId
+                ? { ...m, text: partial, model: modelName }
+                : m
+            )
+          );
+        }
+      }, tickSpeed);
+
     } catch (err: any) {
       if (err?.name === 'AbortError' || err?.message?.includes('interrompue') || controller.signal.aborted) {
-        const stoppedMessage: Message = {
-          id: `stopped-${Date.now()}`,
-          sender: 'delmas',
-          text: "⏹️ *Réponse arrêtée par l'utilisateur.*",
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
-        setMessages((prev) => [...prev, stoppedMessage]);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === delmasMsgId
+              ? { ...m, text: m.text ? `${m.text} \n\n⏹️ *Réponse arrêtée.*` : "⏹️ *Réponse arrêtée par l'utilisateur.*", isStreaming: false }
+              : m
+          )
+        );
       } else {
-        const errorMessage: Message = {
-          id: `err-${Date.now()}`,
-          sender: 'delmas',
-          text: `Désolé, une erreur temporaire est survenue : ${err?.message || 'Connexion impossible'}. Veuillez réessayer.`,
-          timestamp: new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        };
-        setMessages((prev) => [...prev, errorMessage]);
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === delmasMsgId
+              ? {
+                  ...m,
+                  text: `Désolé, une erreur est survenue : ${err?.message || 'Connexion impossible'}. Veuillez réessayer.`,
+                  isStreaming: false,
+                }
+              : m
+          )
+        );
       }
+      setIsLoading(false);
     } finally {
       abortControllerRef.current = null;
-      setIsLoading(false);
       setTimeout(() => textareaRef.current?.focus(), 50);
     }
   };
@@ -187,7 +242,7 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
       <div className="absolute top-0 left-1/4 w-96 h-48 bg-blue-600/10 rounded-full blur-3xl pointer-events-none" />
       <div className="absolute top-0 right-1/4 w-96 h-48 bg-indigo-600/10 rounded-full blur-3xl pointer-events-none" />
 
-      {/* EN-TÊTE : Robot Bleu, Titre, Bouton Fermer (badge Direct & Éphémère retiré) */}
+      {/* EN-TÊTE : Robot Bleu, Titre, Bouton Fermer */}
       <div className="flex items-center justify-between px-4 sm:px-6 py-3.5 border-b border-zinc-800/80 bg-[#1a1d24]/90 backdrop-blur-md shrink-0 z-20">
         <div className="flex items-center gap-3">
           <div className="relative">
@@ -328,80 +383,73 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
                     </span>
                   </div>
 
-                  {/* Corps du message avec KaTeX et Markdown */}
-                  <div className="rounded-2xl rounded-tl-xs bg-[#1a1c22] border border-zinc-800/90 px-4 py-3.5 text-[13px] sm:text-sm text-zinc-200 shadow-sm leading-relaxed">
-                    <DelmasMessageRenderer text={msg.text} />
+                  {/* Corps du message avec écriture progressive en direct */}
+                  <div className="rounded-2xl rounded-tl-xs bg-[#1a1c22] border border-zinc-800/90 px-4 py-3.5 text-[13px] sm:text-sm text-zinc-200 shadow-sm leading-relaxed min-h-[46px] flex flex-col justify-center">
+                    {msg.isStreaming && !msg.text ? (
+                      <div className="flex items-center gap-2 text-zinc-400 py-1">
+                        <span className="flex h-2.5 w-2.5 relative">
+                          <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
+                          <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" />
+                        </span>
+                        <span className="text-xs font-medium text-blue-300/90">Delmas est en train d'écrire...</span>
+                      </div>
+                    ) : (
+                      <DelmasMessageRenderer text={msg.text} isStreaming={msg.isStreaming} />
+                    )}
                   </div>
 
-                  {/* Barre d'action sous le message (Copier, Avis) */}
-                  <div className="flex items-center gap-2 mt-1.5 pl-2 text-zinc-400">
-                    <button
-                      onClick={() => handleCopy(msg.text, msg.id)}
-                      className="p-1 rounded-md hover:bg-zinc-800 hover:text-zinc-200 text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
-                      title="Copier la réponse"
-                    >
-                      {copiedId === msg.id ? (
-                        <>
-                          <Check className="w-3.5 h-3.5 text-emerald-400" />
-                          <span className="text-[11px] text-emerald-400">Copié</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span className="text-[11px]">Copier</span>
-                        </>
-                      )}
-                    </button>
+                  {/* Actions sous le message (affichées une fois que Delmas a terminé d'écrire) */}
+                  {!msg.isStreaming && msg.text && (
+                    <div className="flex items-center gap-2 mt-1.5 pl-2 text-zinc-400 animate-fadeIn">
+                      <button
+                        onClick={() => handleCopy(msg.text, msg.id)}
+                        className="p-1 rounded-md hover:bg-zinc-800 hover:text-zinc-200 text-xs font-medium flex items-center gap-1 transition-colors cursor-pointer"
+                        title="Copier la réponse"
+                      >
+                        {copiedId === msg.id ? (
+                          <>
+                            <Check className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="text-[11px] text-emerald-400">Copié</span>
+                          </>
+                        ) : (
+                          <>
+                            <Copy className="w-3.5 h-3.5" />
+                            <span className="text-[11px]">Copier</span>
+                          </>
+                        )}
+                      </button>
 
-                    <div className="h-3 w-px bg-zinc-800" />
+                      <div className="h-3 w-px bg-zinc-800" />
 
-                    <button
-                      onClick={() => handleReaction(msg.id, 'like')}
-                      className={`p-1 rounded-md transition-colors cursor-pointer ${
-                        msg.reaction === 'like'
-                          ? 'text-emerald-400 bg-emerald-500/20'
-                          : 'hover:bg-zinc-800 hover:text-zinc-200'
-                      }`}
-                      title="Bonne réponse"
-                    >
-                      <ThumbsUp className="w-3.5 h-3.5" />
-                    </button>
+                      <button
+                        onClick={() => handleReaction(msg.id, 'like')}
+                        className={`p-1 rounded-md transition-colors cursor-pointer ${
+                          msg.reaction === 'like'
+                            ? 'text-emerald-400 bg-emerald-500/20'
+                            : 'hover:bg-zinc-800 hover:text-zinc-200'
+                        }`}
+                        title="Bonne réponse"
+                      >
+                        <ThumbsUp className="w-3.5 h-3.5" />
+                      </button>
 
-                    <button
-                      onClick={() => handleReaction(msg.id, 'dislike')}
-                      className={`p-1 rounded-md transition-colors cursor-pointer ${
-                        msg.reaction === 'dislike'
-                          ? 'text-rose-400 bg-rose-500/20'
-                          : 'hover:bg-zinc-800 hover:text-zinc-200'
-                      }`}
-                      title="Réponse à améliorer"
-                    >
-                      <ThumbsDown className="w-3.5 h-3.5" />
-                    </button>
-                  </div>
+                      <button
+                        onClick={() => handleReaction(msg.id, 'dislike')}
+                        className={`p-1 rounded-md transition-colors cursor-pointer ${
+                          msg.reaction === 'dislike'
+                            ? 'text-rose-400 bg-rose-500/20'
+                            : 'hover:bg-zinc-800 hover:text-zinc-200'
+                        }`}
+                        title="Réponse à améliorer"
+                      >
+                        <ThumbsDown className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           ))
-        )}
-
-        {/* Indicateur d'écriture de Delmas */}
-        {isLoading && (
-          <div className="flex flex-col w-full animate-pulse pl-1">
-            <div className="flex items-center gap-2 mb-1.5">
-              <DelmasRobot size={22} variant="blue" />
-              <span className="text-xs font-bold text-blue-400">Delmas réfléchit...</span>
-            </div>
-            <div className="rounded-2xl rounded-tl-xs bg-[#1a1c22] border border-blue-500/30 px-4 py-3 text-zinc-300 max-w-sm flex items-center gap-3">
-              <span className="flex h-2.5 w-2.5 relative">
-                <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-blue-400 opacity-75" />
-                <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-blue-500" />
-              </span>
-              <span className="text-xs font-medium text-zinc-400">
-                Génération de la réponse en cours...
-              </span>
-            </div>
-          </div>
         )}
       </div>
 
@@ -414,7 +462,6 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
             value={inputValue}
             onChange={(e) => {
               setInputValue(e.target.value);
-              // Auto-grow jusqu'à 5 lignes
               e.target.style.height = 'auto';
               e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
             }}
@@ -423,7 +470,7 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
             className="flex-1 bg-transparent resize-none text-[13px] sm:text-sm text-zinc-100 placeholder-zinc-500 focus:outline-none max-h-36 py-1 px-2 leading-relaxed"
           />
 
-          {/* Bouton unique : Envoi quand inactif, Arrêt immédiat (Stop) quand en train de générer */}
+          {/* Bouton unique : Envoi quand inactif, Arrêt immédiat (Stop) quand en train de générer/écrire */}
           {isLoading ? (
             <button
               type="button"
@@ -459,8 +506,8 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
   );
 };
 
-// Helper interne pour afficher proprement le Markdown et le LaTeX dans les réponses de Delmas
-const DelmasMessageRenderer: React.FC<{ text: string }> = ({ text }) => {
+// Helper interne pour afficher proprement le Markdown et le LaTeX avec curseur d'écriture en temps réel
+const DelmasMessageRenderer: React.FC<{ text: string; isStreaming?: boolean }> = ({ text, isStreaming }) => {
   const lines = useMemo(() => {
     if (!text) return [];
     return text.split('\n');
@@ -469,6 +516,7 @@ const DelmasMessageRenderer: React.FC<{ text: string }> = ({ text }) => {
   return (
     <div className="space-y-2 text-left w-full leading-relaxed font-normal">
       {lines.map((line, idx) => {
+        const isLastLine = idx === lines.length - 1;
         const trimmed = line.trim();
 
         // Titres H3
@@ -476,6 +524,9 @@ const DelmasMessageRenderer: React.FC<{ text: string }> = ({ text }) => {
           return (
             <h3 key={idx} className="text-sm font-bold text-blue-300 pt-2 pb-0.5 border-b border-zinc-800/80">
               <MathText text={trimmed.slice(4)} inline={true} />
+              {isStreaming && isLastLine && (
+                <span className="inline-block w-2 h-3.5 ml-1 bg-blue-400 animate-pulse align-middle rounded-xs" />
+              )}
             </h3>
           );
         }
@@ -484,6 +535,9 @@ const DelmasMessageRenderer: React.FC<{ text: string }> = ({ text }) => {
           return (
             <h2 key={idx} className="text-base font-bold text-white pt-2.5 pb-1 border-b border-zinc-800">
               <MathText text={trimmed.slice(3)} inline={true} />
+              {isStreaming && isLastLine && (
+                <span className="inline-block w-2 h-4 ml-1 bg-blue-400 animate-pulse align-middle rounded-xs" />
+              )}
             </h2>
           );
         }
@@ -492,6 +546,9 @@ const DelmasMessageRenderer: React.FC<{ text: string }> = ({ text }) => {
           return (
             <h1 key={idx} className="text-lg font-black bg-gradient-to-r from-blue-400 to-sky-300 bg-clip-text text-transparent pt-3 pb-1">
               <MathText text={trimmed.slice(2)} inline={true} />
+              {isStreaming && isLastLine && (
+                <span className="inline-block w-2 h-4.5 ml-1 bg-blue-400 animate-pulse align-middle rounded-xs" />
+              )}
             </h1>
           );
         }
@@ -502,20 +559,21 @@ const DelmasMessageRenderer: React.FC<{ text: string }> = ({ text }) => {
               <span className="text-blue-400 mt-1.5 text-xs">•</span>
               <div className="flex-1 break-words">
                 <MathText text={trimmed.slice(2)} inline={true} />
+                {isStreaming && isLastLine && (
+                  <span className="inline-block w-2 h-3.5 ml-1 bg-blue-400 animate-pulse align-middle rounded-xs" />
+                )}
               </div>
             </div>
           );
         }
 
-        // Bloc de code simple
-        if (trimmed.startsWith('```')) {
-          return null;
-        }
-
-        // Ligne normale avec rendu KaTeX
+        // Ligne normale avec KaTeX
         return (
           <div key={idx} className="whitespace-pre-wrap break-words">
             <MathText text={line} inline={true} />
+            {isStreaming && isLastLine && (
+              <span className="inline-block w-2 h-3.5 ml-1 bg-blue-400 animate-pulse align-middle rounded-xs" />
+            )}
           </div>
         );
       })}

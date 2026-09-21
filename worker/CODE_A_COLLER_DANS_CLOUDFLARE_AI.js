@@ -160,7 +160,7 @@ export default {
           detail = `Cette clé commence par '${k.slice(0, 6)}' au lieu de 'AIzaSy...'. Les clés Google AI Studio commencent toujours par 'AIzaSy'. Veuillez générer une vraie clé API sur https://aistudio.google.com/apikey.`;
         } else {
           try {
-            const testModels = ["gemini-3.8-flash", "gemini-2.5-pro"];
+            const testModels = ["gemini-2.0-flash", "gemini-1.5-flash"];
             let workingModel = null;
             let lastErr = "";
             for (const tm of testModels) {
@@ -2984,8 +2984,8 @@ IL EST STRICTEMENT INTERDIT de renvoyer les exemples types génériques du promp
         });
 
         const candidateGeminiModels = [
-          "gemini-3.8-flash",
-          "gemini-2.5-pro"
+          "gemini-2.0-flash",
+          "gemini-1.5-flash"
         ];
 
         const generationConfig = {
@@ -3467,7 +3467,7 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
           let gradingSuccess = false;
           for (let kIdx = 0; kIdx < geminiKeysForGrading.length; kIdx++) {
             const activeGradingKey = geminiKeysForGrading[kIdx];
-            for (const mod of ["gemini-3.8-flash", "gemini-2.5-pro"]) {
+            for (const mod of ["gemini-2.0-flash", "gemini-1.5-flash"]) {
               try {
                 const gResp = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${activeGradingKey}`, {
                   method: "POST",
@@ -3653,7 +3653,7 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
     }
 
     // ========================================================================
-    // CAUSERIE DIRECTE DELMAS IA : (SANS CRÉATION DE MODULES NI ÉCRITURE D1)
+    // CAUSERIE DIRECTE ULTRA-RAPIDE DELMAS IA
     // ========================================================================
     async function executeDelmasDirectChat(body, env, ai, signal) {
       if (signal?.aborted) {
@@ -3663,131 +3663,96 @@ RENVOIE UNIQUEMENT UN JSON STRICT :
       const userPrompt = (body.message || body.prompt || body.text || "").trim();
       const geminiKeys = getAvailableGeminiKeys(env, body.geminiApiKey);
 
-      const delmasSystemPrompt = `Tu es Delmas, l'assistant d'apprentissage personnel et intelligent de StudyCloud.
-Tu accompagnes l'étudiant dans ses études par une conversation directe, chaleureuse, pédagogique et stimulante, exactement comme ChatGPT ou Google Gemini.
+      const delmasSystemPrompt = "Tu es Delmas, l'assistant intelligent et tuteur personnel de StudyCloud. Réponds directement, rapidement et clairement en français sous forme de conversation naturelle. Sois concis, encourageant et pédagogue. Utilise le formatage Markdown et le LaTeX ($...$) pour toute formule scientifique.";
 
-RÈGLES CAPITALES :
-1. CONVERSATION DIRECTE : Réponds toujours de manière claire, structurée et bienveillante directement dans le chat.
-2. AUCUNE CRÉATION DE MODULE NI DE CODE JSON : Ne renvoie JAMAIS de code JSON, pas de structure {"decision": "creation"...}, pas de balises spéciales, pas de commande de création de modules. Tu réponds UNIQUEMENT en texte Markdown fluide et soigné. Tout se passe sous forme d'échanges dans ce chat.
-3. PÉDAGOGIE ACTIVE : Explique les notions pas à pas, donne des exemples concrets, utilise des analogies si besoin, et guide l'élève avec méthode.
-4. FORMULES SCIENTIFIQUES & MATHÉMATIQUES : Formate toujours les équations et formules en LaTeX standard entourées de dollars simples ($...$) pour le texte en ligne ou de doubles dollars ($$...$$) pour les formules centrées (ex: $E = mc^2$, $V_s = -\\frac{R_2}{R_1} V_e$, etc.).
-5. AUCUN ESPACE LATÉRAL : Ne fais aucune référence à un panneau ou volet à droite. Tu es un tuteur conversationnel autonome.`;
-
-      let generatedContent = "";
-      let usedEngine = "";
-      const debugErrors = [];
-
-      // 1. APPEL À GOOGLE GEMINI (AVEC ROTATION MULTI-CLÉS ET SIGNAL D'ARRÊT)
-      if (geminiKeys.length > 0) {
-        const geminiContents = [];
-        const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
-        for (const m of incomingHist.slice(-8)) {
-          if (m && m.role && m.content && m.role !== "system") {
-            geminiContents.push({
-              role: m.role === "assistant" || m.role === "model" ? "model" : "user",
-              parts: [{ text: String(m.content) }]
-            });
-          }
+      const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
+      const geminiContents = [];
+      for (const m of incomingHist.slice(-6)) {
+        if (m && m.role && m.content && m.role !== "system") {
+          geminiContents.push({
+            role: m.role === "assistant" || m.role === "model" ? "model" : "user",
+            parts: [{ text: String(m.content) }]
+          });
         }
-        geminiContents.push({
-          role: "user",
-          parts: [{ text: userPrompt || "Bonjour Delmas !" }]
-        });
+      }
+      geminiContents.push({
+        role: "user",
+        parts: [{ text: userPrompt || "Bonjour Delmas !" }]
+      });
 
-        const candidateGeminiModels = [
-          "gemini-3.8-flash",
-          "gemini-2.5-pro"
-        ];
+      // 1. APPEL DIRECT ET ULTRA-RAPIDE : GOOGLE GEMINI 2.0 FLASH
+      for (let kIdx = 0; kIdx < geminiKeys.length; kIdx++) {
+        if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
+        const activeKey = geminiKeys[kIdx];
 
-        for (let kIdx = 0; kIdx < geminiKeys.length; kIdx++) {
+        for (const mod of ["gemini-2.0-flash", "gemini-1.5-flash"]) {
           if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
-          const activeKey = geminiKeys[kIdx];
-          let keySucceeded = false;
-
-          for (const mod of candidateGeminiModels) {
-            if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
-            try {
-              const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${activeKey}`;
-              const gResponse = await fetch(geminiApiEndpoint, {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({
-                  system_instruction: { parts: [{ text: delmasSystemPrompt }] },
-                  contents: geminiContents,
-                  generationConfig: {
-                    temperature: 0.7,
-                    maxOutputTokens: 3500,
-                  }
-                }),
-                signal: signal
-              });
-
-              if (gResponse.ok) {
-                const gData = await gResponse.json();
-                const candidateText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
-                if (candidateText && candidateText.trim().length > 0) {
-                  generatedContent = candidateText.trim();
-                  usedEngine = `Google Gemini (${mod} • Clé #${kIdx + 1})`;
-                  keySucceeded = true;
-                  break;
+          try {
+            const geminiApiEndpoint = `https://generativelanguage.googleapis.com/v1beta/models/${mod}:generateContent?key=${activeKey}`;
+            const gResponse = await fetch(geminiApiEndpoint, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                system_instruction: { parts: [{ text: delmasSystemPrompt }] },
+                contents: geminiContents,
+                generationConfig: {
+                  temperature: 0.7,
+                  maxOutputTokens: 2048,
                 }
-              } else {
-                const errTxt = await gResponse.text().catch(() => "");
-                debugErrors.push(`[Delmas Clé #${kIdx + 1} • ${mod} HTTP ${gResponse.status}] ${errTxt.slice(0, 100)}`);
-                if (gResponse.status === 403 || (gResponse.status === 400 && errTxt.includes("API_KEY_INVALID"))) {
-                  break;
-                }
+              }),
+              signal: signal
+            });
+
+            if (gResponse.ok) {
+              const gData = await gResponse.json();
+              const candidateText = gData?.candidates?.[0]?.content?.parts?.[0]?.text;
+              if (candidateText && candidateText.trim().length > 0) {
+                return {
+                  response: candidateText.trim(),
+                  usedEngine: `Google Gemini (${mod})`
+                };
               }
-            } catch (err) {
-              if (signal?.aborted || err.name === "AbortError") {
-                throw new Error("Génération interrompue par l'utilisateur.");
+            } else {
+              const errTxt = await gResponse.text().catch(() => "");
+              if (gResponse.status === 403 || (gResponse.status === 400 && errTxt.includes("API_KEY_INVALID"))) {
+                break; // Passer à la clé suivante
               }
-              debugErrors.push(`[Delmas Clé #${kIdx + 1} • ${mod}] ${err.message}`);
             }
-          }
-
-          if (keySucceeded && generatedContent) {
-            break;
+          } catch (err) {
+            if (signal?.aborted || err.name === "AbortError") {
+              throw new Error("Génération interrompue par l'utilisateur.");
+            }
           }
         }
       }
 
-      // 2. FALLBACK VERS CLOUDFLARE WORKERS AI
-      if (!generatedContent && !signal?.aborted && ai && typeof ai.run === "function") {
+      // 2. FALLBACK ULTRA-RAPIDE VERS CLOUDFLARE WORKERS AI (Llama 3.1 8B)
+      if (!signal?.aborted && ai && typeof ai.run === "function") {
         const messages = [{ role: "system", content: delmasSystemPrompt }];
-        const incomingHist = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
-        for (const m of incomingHist.slice(-6)) {
+        for (const m of incomingHist.slice(-4)) {
           if (m && m.role && m.content) {
             messages.push({
               role: m.role === "assistant" || m.role === "model" ? "assistant" : "user",
-              content: String(m.content).slice(0, 1500)
+              content: String(m.content).slice(0, 1000)
             });
           }
         }
-        messages.push({ role: "user", content: (userPrompt || "Bonjour Delmas !").slice(0, 2000) });
+        messages.push({ role: "user", content: (userPrompt || "Bonjour Delmas !").slice(0, 1500) });
 
-        const candidateModels = [
-          "@cf/meta/llama-3.3-70b-instruct-fp8-fast",
-          "@cf/meta/llama-3.1-8b-instruct",
-          "@cf/meta/llama-3-8b-instruct"
-        ];
-
-        for (const m of candidateModels) {
-          if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
-          try {
-            const aiResult = await ai.run(m, {
-              messages,
-              max_tokens: 2500,
-              temperature: 0.7,
-            });
-            if (aiResult?.response) {
-              generatedContent = aiResult.response.trim();
-              usedEngine = `Cloudflare Workers AI (${m})`;
-              break;
-            }
-          } catch (cfErr) {
-            debugErrors.push(`[Delmas Workers AI ${m}] ${cfErr.message}`);
+        try {
+          const aiResult = await ai.run("@cf/meta/llama-3.1-8b-instruct", {
+            messages,
+            max_tokens: 2000,
+            temperature: 0.7,
+          });
+          if (aiResult?.response) {
+            return {
+              response: aiResult.response.trim(),
+              usedEngine: "Cloudflare Workers AI (Llama 3.1)"
+            };
           }
+        } catch (cfErr) {
+          if (signal?.aborted) throw new Error("Génération interrompue par l'utilisateur.");
         }
       }
 
@@ -3795,21 +3760,7 @@ RÈGLES CAPITALES :
         throw new Error("Génération interrompue par l'utilisateur.");
       }
 
-      if (!generatedContent) {
-        throw new Error("L'assistant Delmas n'a pas pu répondre : " + (debugErrors.slice(0, 2).join(" | ") || "Veuillez réessayer."));
-      }
-
-      // Nettoyage de sécurité : si jamais un bloc json de création apparaissait malgré tout, on extrait le message textuel
-      if (generatedContent.includes('"creation_data"') || generatedContent.includes('"decision"')) {
-        try {
-          const parsed = JSON.parse(generatedContent.replace(/```json|```/gi, "").trim());
-          if (parsed && (parsed.chat_message || parsed.chat_response)) {
-            generatedContent = parsed.chat_message || parsed.chat_response;
-          }
-        } catch {}
-      }
-
-      return { response: generatedContent, usedEngine };
+      throw new Error("L'assistant Delmas n'a pas pu répondre immédiatement. Veuillez réessayer.");
     }
 
     // ========================================================================
