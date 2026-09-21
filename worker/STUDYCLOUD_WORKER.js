@@ -2190,14 +2190,65 @@ async function ensureStorageTables(db) {
       CREATE TABLE IF NOT EXISTS storage_upgrade_requests (
         id TEXT PRIMARY KEY,
         user_id TEXT NOT NULL,
-        pack_id TEXT,
-        pack_name TEXT,
+        user_name TEXT DEFAULT '',
+        user_phone TEXT DEFAULT '',
+        user_email TEXT DEFAULT '',
+        pack_id TEXT DEFAULT 'custom',
+        pack_name TEXT DEFAULT 'Pack Stockage',
         additional_mb REAL DEFAULT 0,
         additional_words INTEGER DEFAULT 0,
+        price_paid REAL DEFAULT 0,
+        currency TEXT DEFAULT 'FCFA',
+        payment_method TEXT DEFAULT 'Wave / Orange / Moov / MTN',
+        payment_reference TEXT DEFAULT '',
+        receipt_image_url TEXT DEFAULT '',
+        receipt_r2_key TEXT DEFAULT '',
         status TEXT DEFAULT 'pending',
         contact_phone TEXT DEFAULT '',
         notes TEXT DEFAULT '',
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        admin_notes TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    const upgradeCols = [
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_name TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_phone TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_email TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN price_paid REAL DEFAULT 0",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN currency TEXT DEFAULT 'FCFA'",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN payment_method TEXT DEFAULT 'Wave / Orange / Moov / MTN'",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN payment_reference TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN receipt_image_url TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN receipt_r2_key TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN admin_notes TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+    ];
+    for (const sql of upgradeCols) {
+      try { await db.prepare(sql).run(); } catch (e) {}
+    }
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_subscriptions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        user_name TEXT DEFAULT '',
+        user_phone TEXT DEFAULT '',
+        user_email TEXT DEFAULT '',
+        plan_name TEXT DEFAULT 'Standard',
+        total_storage_mb REAL DEFAULT 1024,
+        monthly_price REAL DEFAULT 0,
+        currency TEXT DEFAULT 'FCFA',
+        status TEXT DEFAULT 'active',
+        start_date TEXT DEFAULT CURRENT_TIMESTAMP,
+        end_date TEXT DEFAULT '',
+        cancelled_at TEXT DEFAULT '',
+        previous_storage_mb REAL DEFAULT 0,
+        cancel_reason TEXT DEFAULT '',
+        request_id TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
   } catch (err) {
@@ -7122,20 +7173,28 @@ Lien vers le produit : ${productShareUrl}`;
         await ensureStorageTables(env.DB);
         const requestId = generateCleanShareCode();
         const packId = body.packId || "custom";
-        const packName = body.packName || "Pack Personnalis\xE9";
+        const packName = body.packName || "Pack Personnalisé";
         const additionalMb = Number(body.additionalMb || 1024);
         const additionalWords = Number(body.additionalWords || 100000);
-        const contactPhone = body.contactPhone || "";
+        const contactPhone = body.contactPhone || body.userPhone || "";
         const notes = body.notes || "";
+        const userName = body.userName || "";
+        const userEmail = body.userEmail || "";
+        const pricePaid = Number(body.pricePaid || body.price || 0);
+        const currency = body.currency || "FCFA";
+        const paymentMethod = body.paymentMethod || "Wave / Orange / Moov / MTN";
+        const paymentReference = body.paymentReference || "";
+        const receiptImageUrl = body.receiptImageUrl || body.receiptUrl || "";
+        const receiptR2Key = body.receiptR2Key || (receiptImageUrl ? `storage-receipts/${userId}/recu_${requestId}.jpg` : "");
 
         await env.DB.prepare(`
-          INSERT INTO storage_upgrade_requests (id, user_id, pack_id, pack_name, additional_mb, additional_words, contact_phone, notes, status)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-        `).bind(requestId, userId, packId, packName, additionalMb, additionalWords, contactPhone, notes).run();
+          INSERT INTO storage_upgrade_requests (id, user_id, user_name, user_phone, user_email, pack_id, pack_name, additional_mb, additional_words, price_paid, currency, payment_method, payment_reference, receipt_image_url, receipt_r2_key, contact_phone, notes, status, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `).bind(requestId, userId, userName, contactPhone, userEmail, packId, packName, additionalMb, additionalWords, pricePaid, currency, paymentMethod, paymentReference, receiptImageUrl, receiptR2Key, contactPhone, notes).run();
 
         return jsonResponse({
           success: true,
-          message: "Demande d'augmentation de stockage enregistr\xE9e avec succ\xE8s",
+          message: "Demande d'augmentation de stockage enregistrée avec succès",
           requestId
         }, 200, origin);
       }

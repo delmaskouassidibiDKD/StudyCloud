@@ -166,6 +166,94 @@ async function ensureStorageTables(db) {
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+
+    // 4. Table 'storage_upgrade_requests' pour les demandes d'augmentation de stockage
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS storage_upgrade_requests (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        user_name TEXT DEFAULT '',
+        user_phone TEXT DEFAULT '',
+        user_email TEXT DEFAULT '',
+        pack_id TEXT DEFAULT 'custom',
+        pack_name TEXT DEFAULT 'Pack Stockage',
+        additional_mb REAL DEFAULT 0,
+        additional_words INTEGER DEFAULT 0,
+        price_paid REAL DEFAULT 0,
+        currency TEXT DEFAULT 'FCFA',
+        payment_method TEXT DEFAULT 'Wave / Orange / Moov / MTN',
+        payment_reference TEXT DEFAULT '',
+        receipt_image_url TEXT DEFAULT '',
+        receipt_r2_key TEXT DEFAULT '',
+        status TEXT DEFAULT 'pending',
+        admin_notes TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    const upgradeReqCols = [
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_name TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_phone TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_email TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN price_paid REAL DEFAULT 0",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN currency TEXT DEFAULT 'FCFA'",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN payment_method TEXT DEFAULT 'Wave / Orange / Moov / MTN'",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN payment_reference TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN receipt_image_url TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN receipt_r2_key TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN status TEXT DEFAULT 'pending'",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN admin_notes TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+    ];
+    for (const sql of upgradeReqCols) {
+      try { await db.prepare(sql).run(); } catch (e) {}
+    }
+
+    // 5. Table 'user_subscriptions' pour les abonnements actifs, résiliés et annulés
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_subscriptions (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        user_name TEXT DEFAULT '',
+        user_phone TEXT DEFAULT '',
+        user_email TEXT DEFAULT '',
+        plan_name TEXT DEFAULT 'Standard',
+        total_storage_mb REAL DEFAULT 1024,
+        monthly_price REAL DEFAULT 0,
+        currency TEXT DEFAULT 'FCFA',
+        status TEXT DEFAULT 'active',
+        start_date TEXT DEFAULT CURRENT_TIMESTAMP,
+        end_date TEXT DEFAULT '',
+        cancelled_at TEXT DEFAULT '',
+        previous_storage_mb REAL DEFAULT 0,
+        cancel_reason TEXT DEFAULT '',
+        request_id TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    const subCols = [
+      "ALTER TABLE user_subscriptions ADD COLUMN user_name TEXT DEFAULT ''",
+      "ALTER TABLE user_subscriptions ADD COLUMN user_phone TEXT DEFAULT ''",
+      "ALTER TABLE user_subscriptions ADD COLUMN user_email TEXT DEFAULT ''",
+      "ALTER TABLE user_subscriptions ADD COLUMN plan_name TEXT DEFAULT 'Standard'",
+      "ALTER TABLE user_subscriptions ADD COLUMN total_storage_mb REAL DEFAULT 1024",
+      "ALTER TABLE user_subscriptions ADD COLUMN monthly_price REAL DEFAULT 0",
+      "ALTER TABLE user_subscriptions ADD COLUMN currency TEXT DEFAULT 'FCFA'",
+      "ALTER TABLE user_subscriptions ADD COLUMN status TEXT DEFAULT 'active'",
+      "ALTER TABLE user_subscriptions ADD COLUMN start_date TEXT DEFAULT CURRENT_TIMESTAMP",
+      "ALTER TABLE user_subscriptions ADD COLUMN end_date TEXT DEFAULT ''",
+      "ALTER TABLE user_subscriptions ADD COLUMN cancelled_at TEXT DEFAULT ''",
+      "ALTER TABLE user_subscriptions ADD COLUMN previous_storage_mb REAL DEFAULT 0",
+      "ALTER TABLE user_subscriptions ADD COLUMN cancel_reason TEXT DEFAULT ''",
+      "ALTER TABLE user_subscriptions ADD COLUMN request_id TEXT DEFAULT ''",
+      "ALTER TABLE user_subscriptions ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
+    ];
+    for (const sql of subCols) {
+      try { await db.prepare(sql).run(); } catch (e) {}
+    }
   } catch (e) {
     console.warn('[Storage Tables Init]', e);
   }
@@ -496,6 +584,22 @@ const TABLES_METADATA = [
     role: "Permet de mettre à jour dynamiquement les canaux de support officiel sans recompiler l'application.",
     usage: "Lue à l'ouverture du menu pour afficher les bons liens d'aide.",
     example: "{ id: 'youtube', name: 'Tutoriels Vidéo', url: 'https://youtube.com/...' }"
+  },
+  {
+    table: 'storage_upgrade_requests',
+    label: 'Demandes d\'augmentation de stockage & Preuves de paiement',
+    uiConnection: "Menu d\'Administration > Demande de stockage",
+    role: "Enregistre chaque demande d'upgrade soumise par un étudiant : volume additionnel demandé (+Go/Mo), prix payé, image ou reçu du paiement Wave/Orange Money, et statut d'approbation.",
+    usage: "Écriture lors de la soumission de la demande d'upgrade, lecture et validation dans le panneau d'administration.",
+    example: "{ id: 'req_89', user_id: 'user_123', pack_name: 'Pack Pro 50 Go', additional_mb: 51200, price_paid: 2500, status: 'pending', receipt_r2_key: 'storage-receipts/user_123/recu.jpg' }"
+  },
+  {
+    table: 'user_subscriptions',
+    label: 'Abonnements de stockage en cours & Historique des résiliations',
+    uiConnection: "Menu d\'Administration > Demande de stockage (Abonnements en cours & Annulés)",
+    role: "Trace tous les abonnements payants attribués : volume total, date et heure de début/fin, prix mensuel, ainsi que les motifs et l'ancien quota pour les abonnements annulés.",
+    usage: "Créé à l'approbation d'une demande, mis à jour lors de l'annulation ou de l'expiration de l'abonnement.",
+    example: "{ id: 'sub_44', user_id: 'user_123', plan_name: 'Pack Pro 50 Go', total_storage_mb: 51200, monthly_price: 2500, status: 'active', previous_storage_mb: 30 }"
   }
 ];
 
@@ -552,6 +656,16 @@ const R2_FOLDERS_METADATA = [
     role: "Stocke la photo personnalisée de profil choisie par l'étudiant ou le vendeur pour personnaliser son compte.",
     usage: "Affiché dans le coin supérieur de l'application et sur les créations partagées.",
     examples: "avatar_user_123.jpg, profile_delmas.png",
+  },
+  {
+    folder: 'storage-receipts/',
+    name: 'Reçus de paiement des demandes de stockage (Wave / OM / Moov / MTN)',
+    uiConnection: "Tableau de bord admin > Demande de stockage > Espace reçu de paiement",
+    role: "Stocke physiquement dans Cloudflare R2 les captures d'écran, photos et reçus de transfert téléversés par les étudiants pour justifier le paiement de leur abonnement de stockage. Classé strictement par identifiant utilisateur pour ne rien mélanger.",
+    usage: "Téléversé lors de la demande d'upgrade de stockage, prévisualisé et agrandi par l'administrateur avant validation.",
+    examples: "storage-receipts/user_123/recu_wave_2500fcfa.jpg, storage-receipts/user_456/recu_om.png",
+    isExempted: true,
+    exemptReason: "Reçus comptables et administratifs de paiement (non décomptés du quota personnel de l'élève)"
   }
 ];
 
@@ -1056,6 +1170,8 @@ function renderDashboardHtml(data) {
   const r2FoldersGlobalJson = JSON.stringify(data.r2FoldersGlobal).replace(/</g, '\\u003c');
   const tablesMetaJson = JSON.stringify(TABLES_METADATA).replace(/</g, '\\u003c');
   const r2MetaJson = JSON.stringify(R2_FOLDERS_METADATA).replace(/</g, '\\u003c');
+  const upgradeRequestsJson = JSON.stringify(data.upgradeRequests || []).replace(/</g, '\\u003c');
+  const userSubscriptionsJson = JSON.stringify(data.userSubscriptions || []).replace(/</g, '\\u003c');
 
   return `<!DOCTYPE html>
 <html lang="fr" class="dark">
@@ -1212,8 +1328,17 @@ function renderDashboardHtml(data) {
         id="nav-btn-demandes"
         class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
       >
-        <span class="text-base">💾</span>
+        <span class="text-base">📥</span>
         <span>Demande de stockage</span>
+      </button>
+
+      <button 
+        onclick="switchView('distribution')" 
+        id="nav-btn-distribution"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+      >
+        <span class="text-base">🎁</span>
+        <span>Distribution de stockage</span>
       </button>
 
       <button 
@@ -1426,9 +1551,92 @@ function renderDashboardHtml(data) {
     </div>
 
     <!-- ================================================================== -->
-    <!-- VUE 3 : DEMANDE DE STOCKAGE & PARAMÈTRES GLOBAUX (COLONNES SCROLLABLES INDÉPENDANTES, PAGE FIXE) -->
+    <!-- VUE 3 : DEMANDES DE STOCKAGE (NOUVEAU MENU : VALIDATION, REÇUS R2, HISTORIQUE & ABONNEMENTS) -->
     <!-- ================================================================== -->
-    <div id="view-demandes" class="hidden w-full h-full flex flex-col space-y-2 min-h-0 overflow-hidden">
+    <div id="view-demandes" class="hidden w-full h-full flex flex-col min-h-0 overflow-hidden">
+      <!-- DEUX COLONNES SCROLLABLES INDÉPENDANTES (LA PAGE EXTÉRIEURE NE BOUGE PAS) -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 h-full min-h-0 overflow-hidden">
+        
+        <!-- COLONNE GAUCHE (4/12) : FILTRES, RECHERCHE ET LISTE DÉFILANTE -->
+        <div class="md:col-span-4 neo-card h-full flex flex-col min-h-0 overflow-hidden">
+          
+          <!-- Filtres onglets en haut -->
+          <div class="p-2.5 border-b border-slate-800 space-y-2 shrink-0">
+            <div class="grid grid-cols-2 gap-1 text-[11px] font-bold">
+              <button 
+                onclick="setDemandesTab('pending')" 
+                id="demande-tab-pending"
+                class="px-2 py-1.5 rounded-lg bg-orange-600 text-white flex items-center justify-between transition-all cursor-pointer shadow-sm"
+              >
+                <span>🟡 En attente</span>
+                <span id="tab-count-pending" class="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px] font-mono">0</span>
+              </button>
+              <button 
+                onclick="setDemandesTab('active')" 
+                id="demande-tab-active"
+                class="px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700/80 flex items-center justify-between transition-all cursor-pointer"
+              >
+                <span>🟢 Abonnés</span>
+                <span id="tab-count-active" class="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px] font-mono">0</span>
+              </button>
+              <button 
+                onclick="setDemandesTab('cancelled')" 
+                id="demande-tab-cancelled"
+                class="px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700/80 flex items-center justify-between transition-all cursor-pointer"
+              >
+                <span>🔴 Annulés</span>
+                <span id="tab-count-cancelled" class="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px] font-mono">0</span>
+              </button>
+              <button 
+                onclick="setDemandesTab('all')" 
+                id="demande-tab-all"
+                class="px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700/80 flex items-center justify-between transition-all cursor-pointer"
+              >
+                <span>👥 Tous</span>
+                <span id="tab-count-all" class="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px] font-mono">0</span>
+              </button>
+            </div>
+
+            <!-- Barre de recherche -->
+            <div class="relative">
+              <input 
+                type="text" 
+                id="demandes-search-input" 
+                placeholder="Rechercher nom, numéro, offre..." 
+                oninput="filterDemandesLeft()"
+                class="w-full bg-slate-900 text-slate-200 placeholder-slate-500 text-xs rounded-lg px-3 py-2 pl-8 border border-slate-700 focus:outline-none focus:border-orange-500"
+              >
+              <span class="absolute left-2.5 top-2.5 text-slate-500 text-xs">🔍</span>
+            </div>
+
+            <div class="flex items-center justify-between text-[10px] text-slate-400">
+              <span id="demandes-filter-label" class="font-medium text-amber-400">Demandes en attente de validation</span>
+              <button onclick="createDemoStorageRequest()" class="text-orange-400 hover:text-orange-300 font-bold underline cursor-pointer" title="Créer une fausse demande pour tester le tableau de bord">
+                + Demande test
+              </button>
+            </div>
+          </div>
+
+          <!-- LISTE SCROLLABLE GAUCHE (PAGE FIXE, SEULE LA LISTE DÉFILE) -->
+          <div id="demandes-left-items-list" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/60 text-xs font-medium overscroll-contain"></div>
+        </div>
+
+        <!-- COLONNE DROITE (8/12) : DÉTAILS DEMANDE, REÇU R2, OPTIONS 3 TRAITS, ACTIONS ADMIN -->
+        <div class="md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="demandes-right-detail-panel">
+          <div class="h-full flex flex-col items-center justify-center text-center text-slate-500 py-20">
+            <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">📥</div>
+            <h3 class="text-sm font-bold text-slate-300">Aucune demande ou abonnement sélectionné</h3>
+            <p class="text-xs text-slate-500 mt-1 max-w-sm">Choisissez un élément dans la colonne de gauche pour afficher les informations de l'étudiant, l'offre souscrite, le reçu de paiement et allouer le stockage.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- VUE 4 : DISTRIBUTION DE STOCKAGE (ANCIEN : BIENVENUE 30 MO & AJUSTEMENT QUOTAS) -->
+    <!-- ================================================================== -->
+    <div id="view-distribution" class="hidden w-full h-full flex flex-col space-y-2 min-h-0 overflow-hidden">
       
       <!-- BANNIÈRE EN HAUT : PARAMÈTRES DU STOCKAGE DE BIENVENUE POUR TOUS -->
       <div class="neo-card p-2.5 sm:p-3 bg-gradient-to-r from-slate-900 via-[#131b2e] to-slate-900 border-l-4 border-l-orange-500 shrink-0">
@@ -1475,12 +1683,12 @@ function renderDashboardHtml(data) {
             <span class="text-[10px] font-mono text-orange-400">(${data.users.length})</span>
           </div>
           <!-- ÉLÉMENTS SCROLLABLES GAUCHE (UNIQUEMENT LA LISTE QUI DÉFILE) -->
-          <div id="demandes-users-left-list" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/60 text-xs overscroll-contain"></div>
+          <div id="distribution-users-left-list" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/60 text-xs overscroll-contain"></div>
         </div>
 
         <!-- COLONNE DROITE (8/12) : FORMULAIRE COMPLET D'AJUSTEMENT DU STOCKAGE SCROLLABLE -->
         <!-- ÉLÉMENTS SCROLLABLES DROITE (UNIQUEMENT LE CONTENU QUI DÉFILE) -->
-        <div class="md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="demandes-right-panel">
+        <div class="md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="distribution-right-panel">
           <div class="py-20 text-center text-slate-500 text-xs">
             Sélectionnez un utilisateur sur la gauche pour afficher et ajuster son stockage de bienvenue ou son stockage payant.
           </div>
@@ -1615,6 +1823,47 @@ function renderDashboardHtml(data) {
 
   </main>
 
+  <!-- MODALE DE ZOOM PLEIN ÉCRAN DU REÇU DE PAIEMENT -->
+  <div id="receipt-zoom-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex flex-col items-center justify-center p-4" onclick="closeReceiptZoomModal(event)">
+    <div class="relative max-w-3xl w-full max-h-[90vh] bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden flex flex-col shadow-2xl" onclick="event.stopPropagation()">
+      <div class="px-4 py-3 bg-[#0d1424] border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-base">🧾</span>
+          <span class="text-xs sm:text-sm font-bold text-white">Reçu de Paiement • Visualisation Haute Définition</span>
+        </div>
+        <button onclick="closeReceiptZoomModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center cursor-pointer">✕</button>
+      </div>
+      <div class="p-3 overflow-auto flex-1 flex items-center justify-center bg-slate-950/80">
+        <img id="receipt-zoom-img" src="" class="max-h-[75vh] max-w-full rounded-lg object-contain shadow-lg border border-slate-800" alt="Reçu agrandi" />
+      </div>
+      <div class="px-4 py-2.5 bg-[#0d1424] border-t border-slate-800 flex items-center justify-between text-xs text-slate-400">
+        <span id="receipt-zoom-caption">Fichier hébergé dans Cloudflare R2</span>
+        <a id="receipt-zoom-download" href="" target="_blank" download class="px-3 py-1 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-lg transition">Ouvrir l'original</a>
+      </div>
+    </div>
+  </div>
+
+  <!-- MODALE HISTORIQUE DES DEMANDES ET ABONNEMENTS (BOUTON 3 TRAITS ☰) -->
+  <div id="user-history-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex flex-col items-center justify-center p-4" onclick="closeUserHistoryModal(event)">
+    <div class="relative max-w-2xl w-full max-h-[85vh] bg-slate-900 border border-slate-700 rounded-2xl overflow-hidden flex flex-col shadow-2xl" onclick="event.stopPropagation()">
+      <div class="px-4 py-3 bg-[#0d1424] border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2">
+          <span class="text-base">📜</span>
+          <h3 class="text-xs sm:text-sm font-bold text-white" id="user-history-modal-title">Historique de l'Utilisateur</h3>
+        </div>
+        <button onclick="closeUserHistoryModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 font-bold flex items-center justify-center cursor-pointer">✕</button>
+      </div>
+      <!-- Onglets internes modale -->
+      <div class="p-2.5 bg-slate-950/60 border-b border-slate-800 flex items-center gap-1.5 text-xs font-bold">
+        <button onclick="switchUserHistoryTab('requests')" id="hist-tab-requests" class="px-3 py-1.5 rounded-lg bg-orange-600 text-white transition">Historique des demandes</button>
+        <button onclick="switchUserHistoryTab('active')" id="hist-tab-active" class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition">Abonnements en cours</button>
+        <button onclick="switchUserHistoryTab('cancelled')" id="hist-tab-cancelled" class="px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition">Abonnements annulés</button>
+      </div>
+      <!-- Contenu liste -->
+      <div id="user-history-modal-content" class="p-4 overflow-y-auto max-h-[60vh] space-y-3 text-xs overscroll-contain"></div>
+    </div>
+  </div>
+
   <!-- TOAST DE NOTIFICATION FLOTTANT -->
   <div id="toast" class="fixed bottom-5 right-5 z-50 bg-emerald-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-2xl border border-emerald-400/40 hidden transition-opacity animate-bounce">
     Notification
@@ -1630,9 +1879,18 @@ function renderDashboardHtml(data) {
     const r2Meta = ${r2MetaJson};
 
     let selectedUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
-    let selectedDemandeUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
+    let selectedDistributionUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
+    let selectedDemandeUserId = allUsers.length > 0 ? allUsers[0].user.id : null; // compat
     let currentView = 'global';
     let userStorageViewMode = 'net'; // 'net' = Vrai Stockage Réel (Déduit & Non Pénalisé), 'gross' = Stockage Brut Total (Tout Inclus)
+
+    let allRequests = ${upgradeRequestsJson};
+    let allSubscriptions = ${userSubscriptionsJson};
+    let currentDemandeTab = 'pending'; // 'pending' | 'active' | 'cancelled' | 'all'
+    let selectedDemandeId = null;
+    let selectedDemandeType = 'request'; // 'request' | 'subscription'
+    let activeHistoryUserId = null;
+    let activeHistoryTab = 'requests';
 
     function setUserStorageViewMode(mode) {
       userStorageViewMode = mode;
@@ -1666,7 +1924,7 @@ function renderDashboardHtml(data) {
 
     function switchView(viewName) {
       currentView = viewName;
-      ['global', 'users', 'demandes', 'messages', 'signalements', 'abonnements', 'statistiques'].forEach(v => {
+      ['global', 'users', 'demandes', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques'].forEach(v => {
         const el = document.getElementById('view-' + v);
         const navBtn = document.getElementById('nav-btn-' + v);
         if (!el || !navBtn) return;
@@ -1685,6 +1943,7 @@ function renderDashboardHtml(data) {
           global: 'Vue Globale',
           users: 'Tous les Utilisateurs',
           demandes: 'Demandes de Stockage',
+          distribution: 'Distribution de Stockage',
           messages: 'Messages',
           signalements: 'Signalements & Retours',
           abonnements: 'Abonnements & Forfaits',
@@ -1700,8 +1959,16 @@ function renderDashboardHtml(data) {
         renderUsersLeftList();
         renderUserRightDetails(selectedUserId);
       } else if (viewName === 'demandes') {
-        renderDemandesUsersList();
-        renderDemandeRightDetails(selectedDemandeUserId);
+        updateDemandesTabCounts();
+        renderDemandesLeftList();
+        if (selectedDemandeId) {
+          renderDemandeDetail(selectedDemandeId, selectedDemandeType);
+        } else {
+          autoSelectFirstDemande();
+        }
+      } else if (viewName === 'distribution') {
+        renderDistributionUsersList();
+        renderDistributionRightDetails(selectedDistributionUserId || (allUsers[0] ? allUsers[0].user.id : null));
       } else if (viewName === 'messages') {
         renderSimpleMessagesUsersList();
       }
@@ -2196,13 +2463,13 @@ function renderDashboardHtml(data) {
     // ========================================================================
     // VUE 3 : DEMANDES DE STOCKAGE & AJUSTEMENT DES QUOTAS INDIVIDUELS
     // ========================================================================
-    function renderDemandesUsersList() {
-      const container = document.getElementById('demandes-users-left-list');
+    function renderDistributionUsersList() {
+      const container = document.getElementById('distribution-users-left-list');
       container.innerHTML = allUsers.map(item => {
         const u = item.user;
         const q = item.quotaConfig;
         const s = item.storage;
-        const isSelected = u.id === selectedDemandeUserId;
+        const isSelected = u.id === selectedDistributionUserId;
 
         return \`
           <div 
@@ -2231,14 +2498,16 @@ function renderDashboardHtml(data) {
       }).join('');
     }
 
-    function selectDemandeUser(userId) {
-      selectedDemandeUserId = userId;
-      renderDemandesUsersList();
-      renderDemandeRightDetails(userId);
+    function selectDistributionUser(userId) {
+      selectedDistributionUserId = userId;
+      renderDistributionUsersList();
+      renderDistributionRightDetails(userId);
     }
+    const selectDemandeUser = selectDistributionUser;
+    const renderDemandesUsersList = renderDistributionUsersList;
 
-    function renderDemandeRightDetails(userId) {
-      const panel = document.getElementById('demandes-right-panel');
+    function renderDistributionRightDetails(userId) {
+      const panel = document.getElementById('distribution-right-panel');
       const item = allUsers.find(x => x.user.id === userId);
       if (!item) return;
 
@@ -2461,6 +2730,939 @@ function renderDashboardHtml(data) {
         </div>
       \`;
     }
+
+    // ========================================================================
+    // FORMATAGE DATE & HEURE EN FRANÇAIS COMPLET (HEURE, MINUTE, JOUR, MOIS, ANNÉE)
+    // ========================================================================
+    function formatFullDateFrench(dateStr) {
+      if (!dateStr) return 'Date non renseignée';
+      try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        const days = ['Dimanche', 'Lundi', 'Mardi', 'Mercredi', 'Jeudi', 'Vendredi', 'Samedi'];
+        const months = ['Janvier', 'Février', 'Mars', 'Avril', 'Mai', 'Juin', 'Juillet', 'Août', 'Septembre', 'Octobre', 'Novembre', 'Décembre'];
+        const dayName = days[d.getDay()];
+        const day = String(d.getDate()).padStart(2, '0');
+        const monthName = months[d.getMonth()];
+        const year = d.getFullYear();
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        const seconds = String(d.getSeconds()).padStart(2, '0');
+        return dayName + ' ' + day + ' ' + monthName + ' ' + year + ' à ' + hours + 'h' + minutes + ':' + seconds;
+      } catch (e) {
+        return dateStr;
+      }
+    }
+
+    function formatShortDateFrench(dateStr) {
+      if (!dateStr) return '';
+      try {
+        const d = new Date(dateStr);
+        if (isNaN(d.getTime())) return dateStr;
+        const day = String(d.getDate()).padStart(2, '0');
+        const month = String(d.getMonth() + 1).padStart(2, '0');
+        const year = d.getFullYear();
+        const hours = String(d.getHours()).padStart(2, '0');
+        const minutes = String(d.getMinutes()).padStart(2, '0');
+        return day + '/' + month + '/' + year + ' ' + hours + ':' + minutes;
+      } catch (e) {
+        return dateStr;
+      }
+    }
+
+    // ========================================================================
+    // NOUVELLE VUE : GESTION DES DEMANDES DE STOCKAGE & ABONNEMENTS
+    // ========================================================================
+    function setDemandesTab(tab) {
+      currentDemandeTab = tab;
+      ['pending', 'active', 'cancelled', 'all'].forEach(t => {
+        const btn = document.getElementById('demande-tab-' + t);
+        if (!btn) return;
+        if (t === tab) {
+          btn.className = "px-2 py-1.5 rounded-lg bg-orange-600 text-white flex items-center justify-between transition-all cursor-pointer shadow-sm";
+        } else {
+          btn.className = "px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700/80 flex items-center justify-between transition-all cursor-pointer";
+        }
+      });
+
+      const label = document.getElementById('demandes-filter-label');
+      if (label) {
+        const labels = {
+          pending: "Demandes d'augmentation en attente de validation",
+          active: "Abonnements de stockage en cours",
+          cancelled: "Abonnements résiliés / annulés",
+          all: "Toutes les demandes et abonnements"
+        };
+        label.textContent = labels[tab] || '';
+      }
+
+      updateDemandesTabCounts();
+      renderDemandesLeftList();
+      autoSelectFirstDemande();
+    }
+
+    function updateDemandesTabCounts() {
+      const pendingCount = allRequests.filter(r => r.status === 'pending').length;
+      const activeCount = allSubscriptions.filter(s => s.status === 'active').length;
+      const cancelledCount = allSubscriptions.filter(s => s.status === 'cancelled').length;
+      const totalCount = allRequests.length + allSubscriptions.length;
+
+      const pEl = document.getElementById('tab-count-pending');
+      const aEl = document.getElementById('tab-count-active');
+      const cEl = document.getElementById('tab-count-cancelled');
+      const allEl = document.getElementById('tab-count-all');
+
+      if (pEl) pEl.textContent = pendingCount;
+      if (aEl) aEl.textContent = activeCount;
+      if (cEl) cEl.textContent = cancelledCount;
+      if (allEl) allEl.textContent = totalCount;
+    }
+
+    function filterDemandesLeft() {
+      renderDemandesLeftList();
+    }
+
+    function autoSelectFirstDemande() {
+      const q = (document.getElementById('demandes-search-input')?.value || '').toLowerCase().trim();
+      let list = getFilteredDemandesList(q);
+      if (list.length > 0) {
+        const first = list[0];
+        selectedDemandeId = first.id;
+        selectedDemandeType = first.itemType;
+        renderDemandeDetail(first.id, first.itemType);
+        renderDemandesLeftList();
+      } else {
+        selectedDemandeId = null;
+        const panel = document.getElementById('demandes-right-detail-panel');
+        if (panel) {
+          panel.innerHTML = \`
+            <div class="h-full flex flex-col items-center justify-center text-center text-slate-500 py-20">
+              <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">📥</div>
+              <h3 class="text-sm font-bold text-slate-300">Aucun élément dans cette section</h3>
+              <p class="text-xs text-slate-500 mt-1 max-w-sm">Aucune demande ou abonnement ne correspond aux filtres actuels. Cliquez sur "+ Demande test" pour simuler une demande.</p>
+              <button onclick="createDemoStorageRequest()" class="mt-4 px-3 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl shadow cursor-pointer">
+                + Simuler une demande de test
+              </button>
+            </div>
+          \`;
+        }
+      }
+    }
+
+    function getFilteredDemandesList(q = '') {
+      let combined = [];
+
+      // 1. Demandes d'augmentation
+      allRequests.forEach(req => {
+        const user = allUsers.find(u => u.user.id === req.user_id);
+        const name = req.user_name || (user ? user.user.name : 'Utilisateur');
+        const phone = req.user_phone || (user ? user.user.phone : '');
+        const pack = req.pack_name || 'Pack Stockage';
+
+        let matchesTab = false;
+        if (currentDemandeTab === 'pending' && req.status === 'pending') matchesTab = true;
+        if (currentDemandeTab === 'all') matchesTab = true;
+
+        if (matchesTab) {
+          combined.push({
+            id: req.id,
+            itemType: 'request',
+            raw: req,
+            userId: req.user_id,
+            userName: name,
+            userPhone: phone,
+            userAvatar: user ? user.user.avatar_url : '',
+            isOnline: user ? user.user.isOnline : false,
+            packName: pack,
+            amountMb: req.additional_mb || 0,
+            pricePaid: req.price_paid || 0,
+            currency: req.currency || 'FCFA',
+            status: req.status || 'pending',
+            date: req.created_at,
+            receiptUrl: req.receipt_image_url || '',
+            receiptR2Key: req.receipt_r2_key || ''
+          });
+        }
+      });
+
+      // 2. Abonnements
+      allSubscriptions.forEach(sub => {
+        const user = allUsers.find(u => u.user.id === sub.user_id);
+        const name = sub.user_name || (user ? user.user.name : 'Abonné');
+        const phone = sub.user_phone || (user ? user.user.phone : '');
+        const pack = sub.plan_name || 'Abonnement Stockage';
+
+        let matchesTab = false;
+        if (currentDemandeTab === 'active' && sub.status === 'active') matchesTab = true;
+        if (currentDemandeTab === 'cancelled' && sub.status === 'cancelled') matchesTab = true;
+        if (currentDemandeTab === 'all') matchesTab = true;
+
+        if (matchesTab) {
+          combined.push({
+            id: sub.id,
+            itemType: 'subscription',
+            raw: sub,
+            userId: sub.user_id,
+            userName: name,
+            userPhone: phone,
+            userAvatar: user ? user.user.avatar_url : '',
+            isOnline: user ? user.user.isOnline : false,
+            packName: pack,
+            amountMb: sub.total_storage_mb || 0,
+            pricePaid: sub.monthly_price || 0,
+            currency: sub.currency || 'FCFA',
+            status: sub.status || 'active',
+            date: sub.created_at || sub.start_date,
+            cancelledAt: sub.cancelled_at || '',
+            previousStorageMb: sub.previous_storage_mb || 0,
+            cancelReason: sub.cancel_reason || '',
+            receiptUrl: '',
+            receiptR2Key: ''
+          });
+        }
+      });
+
+      // 3. Si onglet 'all' et peu d'éléments, intégrer les utilisateurs ayant du stockage
+      if (currentDemandeTab === 'all' && combined.length === 0) {
+        allUsers.forEach(u => {
+          combined.push({
+            id: 'user_' + u.user.id,
+            itemType: 'user',
+            raw: u,
+            userId: u.user.id,
+            userName: u.user.name,
+            userPhone: u.user.phone,
+            userAvatar: u.user.avatar_url,
+            isOnline: u.user.isOnline,
+            packName: u.quotaConfig.paidTotalMb > 0 ? 'Compte Payant' : 'Compte Gratuit',
+            amountMb: u.quotaConfig.totalAllowedMb,
+            pricePaid: 0,
+            currency: 'FCFA',
+            status: u.quotaConfig.paidTotalMb > 0 ? 'active' : 'gratuit',
+            date: u.user.created_at,
+            receiptUrl: '',
+            receiptR2Key: ''
+          });
+        });
+      }
+
+      // Tri antéchronologique
+      combined.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+      if (!q) return combined;
+
+      return combined.filter(item => {
+        const text = (item.userName + ' ' + item.userPhone + ' ' + item.packName + ' ' + item.status + ' ' + item.userId).toLowerCase();
+        return text.includes(q);
+      });
+    }
+
+    function renderDemandesLeftList() {
+      const container = document.getElementById('demandes-left-items-list');
+      if (!container) return;
+
+      const q = (document.getElementById('demandes-search-input')?.value || '').toLowerCase().trim();
+      const list = getFilteredDemandesList(q);
+
+      if (list.length === 0) {
+        container.innerHTML = \`
+          <div class="p-6 text-center text-slate-500 text-xs">
+            Aucun élément trouvé.
+            <div class="mt-2">
+              <button onclick="createDemoStorageRequest()" class="text-orange-400 font-bold hover:underline cursor-pointer">
+                + Ajouter une demande de test
+              </button>
+            </div>
+          </div>
+        \`;
+        return;
+      }
+
+      container.innerHTML = list.map(item => {
+        const isSelected = item.id === selectedDemandeId;
+        const formattedAmount = item.amountMb >= 1024 
+          ? (item.amountMb / 1024).toFixed(item.amountMb % 1024 === 0 ? 0 : 1) + ' Go' 
+          : item.amountMb + ' Mo';
+
+        // Badge de statut
+        let badgeHtml = '';
+        if (item.status === 'pending') {
+          badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">🟡 En attente</span>';
+        } else if (item.status === 'active' || item.status === 'approved') {
+          badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">🟢 Abonné</span>';
+        } else if (item.status === 'cancelled') {
+          badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">🔴 Annulé</span>';
+        } else if (item.status === 'rejected') {
+          badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700">⚪ Rejeté</span>';
+        } else {
+          badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">Gratuit</span>';
+        }
+
+        return \`
+          <div 
+            onclick="selectDemandeItem('\${item.id}', '\${item.itemType}')"
+            class="p-2.5 cursor-pointer transition-all flex items-center justify-between \${isSelected ? 'bg-orange-600/15 border-l-4 border-l-orange-500' : 'hover:bg-slate-800/40'}"
+          >
+            <div class="flex items-center gap-2.5 overflow-hidden">
+              <div class="relative w-9 h-9 rounded-xl bg-slate-800 text-orange-400 font-bold flex items-center justify-center text-xs shrink-0 border border-slate-700">
+                \${item.userAvatar ? '<img src="' + item.userAvatar + '" class="w-full h-full rounded-xl object-cover" onerror="this.remove()">' : item.userName.charAt(0).toUpperCase()}
+                <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 \${item.isOnline ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-slate-600'}" title="\${item.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
+              </div>
+              <div class="truncate">
+                <div class="font-bold text-white truncate text-xs flex items-center gap-1.5">
+                  <span class="truncate">\${item.userName}</span>
+                </div>
+                <div class="text-[10px] text-slate-400 truncate flex items-center gap-1">
+                  <span>📞 \${item.userPhone || 'Sans numéro'}</span>
+                  <span>•</span>
+                  <span class="text-orange-400 font-medium truncate">\${item.packName}</span>
+                </div>
+                <div class="text-[9px] text-slate-500 font-mono mt-0.5">
+                  \${formatShortDateFrench(item.date)}
+                </div>
+              </div>
+            </div>
+
+            <div class="text-right shrink-0 space-y-1">
+              \${badgeHtml}
+              <div class="text-xs font-mono font-bold text-white">+\${formattedAmount}</div>
+              \${item.pricePaid > 0 ? \`<div class="text-[10px] font-mono text-emerald-400 font-semibold">\${Number(item.pricePaid).toLocaleString('fr-FR')} \${item.currency}</div>\` : ''}
+            </div>
+          </div>
+        \`;
+      }).join('');
+    }
+
+    function selectDemandeItem(id, itemType) {
+      selectedDemandeId = id;
+      selectedDemandeType = itemType;
+      renderDemandesLeftList();
+      renderDemandeDetail(id, itemType);
+    }
+
+    // ========================================================================
+    // PANNEAU DROIT DÉTAILS DEMANDE & ABONNEMENT
+    // ========================================================================
+    function renderDemandeDetail(id, itemType) {
+      const panel = document.getElementById('demandes-right-detail-panel');
+      if (!panel) return;
+
+      const q = (document.getElementById('demandes-search-input')?.value || '').toLowerCase().trim();
+      const list = getFilteredDemandesList(q);
+      const item = list.find(x => x.id === id) || list[0];
+
+      if (!item) {
+        panel.innerHTML = '<div class="p-8 text-center text-slate-500 text-xs">Élément introuvable.</div>';
+        return;
+      }
+
+      const userDetail = allUsers.find(u => u.user.id === item.userId);
+      const u = userDetail ? userDetail.user : {
+        id: item.userId,
+        name: item.userName,
+        phone: item.userPhone,
+        email: 'Non renseigné',
+        level: 'Étudiant',
+        school: 'Non renseignée',
+        filiere: '',
+        isOnline: item.isOnline
+      };
+      const quota = userDetail ? userDetail.quotaConfig : {
+        totalAllowedFormatted: '30 Mo',
+        welcomeTotalMb: 30,
+        paidTotalMb: 0
+      };
+      const storage = userDetail ? userDetail.storage : {
+        totalFormatted: '0 Octets',
+        usagePercentage: 0
+      };
+
+      const formattedAmount = item.amountMb >= 1024 
+        ? (item.amountMb / 1024).toFixed(item.amountMb % 1024 === 0 ? 0 : 1) + ' Go (' + item.amountMb + ' Mo)'
+        : item.amountMb + ' Mo';
+
+      const receiptUrl = item.receiptUrl || (item.raw && item.raw.receipt_image_url) || '';
+      const receiptR2Key = item.receiptR2Key || (item.raw && item.raw.receipt_r2_key) || ('storage-receipts/' + u.id + '/recu_demande_' + item.id + '.jpg');
+      const paymentMethod = (item.raw && item.raw.payment_method) || 'Wave / Mobile Money';
+      const paymentRef = (item.raw && item.raw.payment_reference) || ('TXN_' + item.id.slice(0, 8).toUpperCase());
+
+      panel.innerHTML = \`
+        <!-- EN-TÊTE PROFIL ÉTUDIANT & BOUTON 3 TRAITS OPTIONS -->
+        <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-800">
+          <div class="flex items-start gap-3.5">
+            <div class="relative w-12 h-12 rounded-2xl bg-orange-500/20 text-orange-400 font-black flex items-center justify-center border border-orange-500/30 text-lg shrink-0 mt-0.5">
+              \${u.avatar_url ? '<img src="' + u.avatar_url + '" class="w-full h-full rounded-2xl object-cover" onerror="this.remove()">' : u.name.charAt(0).toUpperCase()}
+              <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-slate-950 \${u.isOnline ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-slate-600'}" title="\${u.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
+            </div>
+            <div class="space-y-1.5 text-xs">
+              <!-- Ligne 1 : Nom, ID et Badge En ligne -->
+              <div class="flex items-center gap-2 flex-wrap">
+                <span class="text-base font-extrabold text-white">\${u.name}</span>
+                <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">ID: \${u.id}</span>
+                \${u.isOnline ? \`
+                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                    <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> En ligne
+                  </span>
+                \` : \`
+                  <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700/60">
+                    <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> Hors ligne
+                  </span>
+                \`}
+              </div>
+
+              <!-- Ligne 2 : Téléphone & E-mail -->
+              <div class="flex items-center gap-3 text-slate-300 flex-wrap">
+                <span class="font-mono">📞 <strong>\${u.phone || 'Non renseigné'}</strong></span>
+                <span>•</span>
+                <span class="font-mono text-slate-400">✉️ \${u.email || 'Non renseigné'}</span>
+              </div>
+
+              <!-- Ligne 3 : Filière & École -->
+              <div class="text-slate-400">
+                🏛️ <strong>\${u.school || 'École non renseignée'}</strong> \${u.filiere ? '(' + u.filiere + ')' : ''} • 🎓 \${u.level || 'Étudiant'}
+              </div>
+            </div>
+          </div>
+
+          <!-- ENCADRÉ DROIT : STOCKAGE ACTUEL ET BOUTON 3 TRAITS OPTIONS -->
+          <div class="flex items-start gap-2 self-start sm:self-auto shrink-0">
+            <!-- Quota actuel -->
+            <div class="bg-slate-900/90 px-3.5 py-2 rounded-xl border border-slate-800 text-right">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Stockage Actuel</span>
+              <div class="text-sm font-mono font-bold text-orange-400">\${storage.net ? storage.net.totalFormatted : storage.totalFormatted} / \${quota.totalAllowedFormatted}</div>
+              <div class="text-[10px] text-slate-400 mt-0.5">Consommé : <strong class="text-white">\${storage.net ? storage.net.usagePercentage : storage.usagePercentage}%</strong></div>
+            </div>
+
+            <!-- BOUTON 3 TRAITS ☰ (MENU HAMBURGER OPTIONS) -->
+            <div class="relative inline-block text-left">
+              <button 
+                onclick="toggleDemandeOptionsMenu()" 
+                id="demande-options-btn"
+                class="w-10 h-10 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center transition-all cursor-pointer shadow-md active:scale-95"
+                title="Options et Historique de l'utilisateur"
+              >
+                <span class="text-lg">☰</span>
+              </button>
+
+              <!-- DROPDOWN DU BOUTON 3 TRAITS -->
+              <div id="demande-options-dropdown" class="hidden absolute right-0 mt-2 w-64 rounded-2xl bg-[#0f172a] border border-slate-700 shadow-2xl z-50 p-2 space-y-1 backdrop-blur-xl">
+                <div class="px-3 py-1.5 text-[10px] font-bold text-slate-400 uppercase tracking-wider border-b border-slate-800">
+                  Dossier de \${u.name.split(' ')[0]}
+                </div>
+                <button onclick="openUserHistoryModal('\${u.id}', 'requests')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-slate-200 flex items-center gap-2.5 transition font-medium cursor-pointer">
+                  <span>📜</span>
+                  <div>
+                    <div class="font-bold">Historique de ses demandes</div>
+                    <div class="text-[10px] text-slate-400">Toutes les demandes passées</div>
+                  </div>
+                </button>
+                <button onclick="openUserHistoryModal('\${u.id}', 'active')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-emerald-300 flex items-center gap-2.5 transition font-medium cursor-pointer">
+                  <span>💳</span>
+                  <div>
+                    <div class="font-bold">Abonnements en cours</div>
+                    <div class="text-[10px] text-slate-400">Souscriptions actives</div>
+                  </div>
+                </button>
+                <button onclick="openUserHistoryModal('\${u.id}', 'cancelled')" class="w-full text-left px-3 py-2 text-xs rounded-xl hover:bg-slate-800 text-red-300 flex items-center gap-2.5 transition font-medium cursor-pointer">
+                  <span>🚫</span>
+                  <div>
+                    <div class="font-bold">Abonnements annulés</div>
+                    <div class="text-[10px] text-slate-400">Ex-quotas et motifs de résiliation</div>
+                  </div>
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <!-- DÉTAILS DE L'OFFRE / FORMULE DEMANDÉE -->
+        <div class="bg-gradient-to-br from-slate-900 via-[#11192e] to-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
+          <div class="flex items-center justify-between border-b border-slate-800/80 pb-3">
+            <h4 class="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
+              <span>📦</span>
+              <span>Offre Sélectionnée : <span class="text-orange-400">\${item.packName}</span></span>
+            </h4>
+            
+            <!-- Statut Badge -->
+            <div>
+              \${item.status === 'pending' ? \`
+                <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5">
+                  <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> En attente de validation
+                </span>
+              \` : (item.status === 'active' || item.status === 'approved') ? \`
+                <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-emerald-500/20 text-emerald-300 border border-emerald-500/40 flex items-center gap-1.5">
+                  <span>🟢</span> Abonnement Actif
+                </span>
+              \` : item.status === 'cancelled' ? \`
+                <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-red-500/20 text-red-300 border border-red-500/40 flex items-center gap-1.5">
+                  <span>🔴</span> Abonnement Annulé
+                </span>
+              \` : \`
+                <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-slate-800 text-slate-300 border border-slate-700">
+                  ⚪ Demande Rejetée
+                </span>
+              \`}
+            </div>
+          </div>
+
+          <!-- 3 Cartes : Stockage à ajouter, Prix payé, Méthode -->
+          <div class="grid grid-cols-1 sm:grid-cols-3 gap-3">
+            <!-- 1. Nombre de stockage qu'il veut ajouter -->
+            <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 border-l-4 border-l-blue-500">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Stockage Demandé</span>
+              <div class="text-lg font-black text-blue-400 font-mono">+\${formattedAmount}</div>
+              <div class="text-[10px] text-slate-400 mt-1">S'ajoute au quota personnel de l'élève</div>
+            </div>
+
+            <!-- 2. Prix payé -->
+            <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 border-l-4 border-l-emerald-500">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Prix Payé / Mensuel</span>
+              <div class="text-lg font-black text-emerald-400 font-mono">\${Number(item.pricePaid).toLocaleString('fr-FR')} \${item.currency}</div>
+              <div class="text-[10px] text-slate-400 mt-1">Paiement unique ou renouvellement</div>
+            </div>
+
+            <!-- 3. Méthode & Référence -->
+            <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800 border-l-4 border-l-purple-500">
+              <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Moyen & Réf. Virement</span>
+              <div class="text-xs font-bold text-purple-300 truncate mt-0.5">\${paymentMethod}</div>
+              <div class="text-[10px] font-mono text-slate-400 mt-1 truncate">Réf: \${paymentRef}</div>
+            </div>
+          </div>
+
+          <!-- ESPACE DÉDIÉ : IMAGE / REÇU DE PAIEMENT -->
+          <div class="bg-slate-950/90 rounded-2xl border-2 border-slate-800 p-4 space-y-3">
+            <div class="flex items-center justify-between">
+              <div class="flex items-center gap-2">
+                <span class="text-base">🧾</span>
+                <span class="text-xs font-extrabold text-white">Espace Preuve de Paiement • Capture d'Écran ou Reçu</span>
+              </div>
+              \${receiptUrl ? \`
+                <button 
+                  onclick="openReceiptZoomModal('\${receiptUrl}', 'Reçu de paiement - \${u.name} - \${item.packName}')" 
+                  class="px-3 py-1.5 bg-orange-600/20 hover:bg-orange-600/30 text-orange-400 border border-orange-500/40 rounded-xl text-xs font-bold flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+                >
+                  <span>🔍</span>
+                  <span>Agrandir le reçu</span>
+                </button>
+              \` : ''}
+            </div>
+
+            <!-- Zone d'affichage image -->
+            \${receiptUrl ? \`
+              <div 
+                onclick="openReceiptZoomModal('\${receiptUrl}', 'Reçu de paiement - \${u.name} - \${item.packName}')"
+                class="relative group rounded-xl overflow-hidden border border-slate-800 bg-slate-900/80 p-2 cursor-pointer flex items-center justify-center max-h-[300px]"
+              >
+                <img 
+                  src="\${receiptUrl}" 
+                  class="max-h-[280px] w-auto max-w-full rounded-lg object-contain transition duration-300 group-hover:scale-[1.02] shadow-xl" 
+                  alt="Reçu de paiement"
+                  onerror="this.onerror=null; this.src='https://placehold.co/600x400/0f172a/f97316?text=Image+Recu+R2'; this.classList.add('border','border-orange-500/40');"
+                />
+                <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center rounded-xl backdrop-blur-xs">
+                  <div class="px-3 py-2 rounded-xl bg-orange-600 text-white font-bold text-xs flex items-center gap-2 shadow-xl">
+                    <span>🔍</span> Cliquez pour afficher en plein écran
+                  </div>
+                </div>
+              </div>
+              <div class="flex items-center justify-between text-[11px] text-slate-400 font-mono pt-1">
+                <span class="truncate">📁 Dossier Cloudflare R2 : <strong class="text-slate-300">\${receiptR2Key}</strong></span>
+                <span class="text-emerald-400 shrink-0 font-sans">✓ Preuve enregistrée</span>
+              </div>
+            \` : \`
+              <div class="p-8 text-center rounded-xl border-2 border-dashed border-slate-800 bg-slate-900/40 space-y-2">
+                <div class="w-12 h-12 rounded-xl bg-slate-800 text-2xl flex items-center justify-center mx-auto text-slate-400">📄</div>
+                <div class="text-xs font-bold text-slate-300">Aucun fichier image de reçu joint</div>
+                <p class="text-[11px] text-slate-500 max-w-md mx-auto">Cette demande a été enregistrée sans capture d'écran (ex: confirmation par téléphone ou paiement direct). Le dossier de stockage R2 de l'étudiant reste configuré sous <code>storage-receipts/\${u.id}/</code>.</p>
+              </div>
+            \`}
+          </div>
+
+          <!-- DATE ET HEURE COMPLÈTES (HEURE, JOUR, MOIS, ANNÉE) -->
+          <div class="bg-slate-950/60 p-3 rounded-xl border border-slate-800 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2 text-xs">
+            <div class="flex items-center gap-2 text-slate-300">
+              <span class="text-base">🕒</span>
+              <div>
+                <span class="text-slate-400 block text-[10px] uppercase font-bold">Date & Heure de la Demande :</span>
+                <strong class="text-white font-mono text-xs">\${formatFullDateFrench(item.date)}</strong>
+              </div>
+            </div>
+
+            \${item.cancelledAt ? \`
+              <div class="text-right text-[11px] text-red-400 font-mono">
+                <span>Annulé le : </span> <strong>\${formatFullDateFrench(item.cancelledAt)}</strong>
+              </div>
+            \` : ''}
+          </div>
+
+          <!-- BOUTONS D'ACTION ADMINISTRATEUR -->
+          <div class="pt-2 border-t border-slate-800/80 flex flex-wrap items-center justify-between gap-3">
+            \${item.status === 'pending' ? \`
+              <div class="text-[11px] text-slate-400">
+                Action administrative : Validez pour ajouter immédiatement le quota à cet élève ou rejetez si le paiement n'est pas reçu.
+              </div>
+              <div class="flex items-center gap-2 flex-wrap">
+                <button 
+                  onclick="rejectStorageRequest('\${item.id}')" 
+                  class="px-4 py-2 bg-red-500/20 hover:bg-red-500/30 text-red-300 border border-red-500/40 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+                >
+                  <span>❌</span> Rejeter la demande
+                </button>
+                <button 
+                  onclick="approveStorageRequest('\${item.id}')" 
+                  class="px-5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-emerald-600/30 transition cursor-pointer flex items-center gap-2 active:scale-95"
+                >
+                  <span>✅</span> Valider & Allouer le stockage (+ \${formattedAmount})
+                </button>
+              </div>
+            \` : item.status === 'active' ? \`
+              <div class="text-[11px] text-slate-400">
+                Abonnement actuellement actif. Quota total attribué : <strong class="text-emerald-400 font-mono">\${formattedAmount}</strong>
+              </div>
+              <button 
+                onclick="cancelSubscription('\${item.id}', '\${u.id}')" 
+                class="px-4 py-2 bg-red-600/20 hover:bg-red-600/30 text-red-300 border border-red-600/50 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+              >
+                <span>🚫</span> Annuler l'abonnement
+              </button>
+            \` : item.status === 'cancelled' ? \`
+              <div class="text-xs text-red-400 p-2.5 rounded-xl bg-red-500/10 border border-red-500/20 w-full space-y-1">
+                <div class="font-bold flex items-center gap-1.5">
+                  <span>🚫</span> Abonnement résilié / annulé
+                </div>
+                <div class="text-[11px] text-slate-300">
+                  Stockage avant annulation : <strong>\${item.previousStorageMb || 0} Mo</strong> • Motif : \${item.cancelReason || 'Non spécifié'}
+                </div>
+                <div class="text-[10px] text-slate-400 font-mono">
+                  Date d'annulation : \${formatFullDateFrench(item.cancelledAt)}
+                </div>
+              </div>
+            \` : \`
+              <div class="text-xs text-slate-400 p-2.5 rounded-xl bg-slate-900 border border-slate-800 w-full">
+                Demande rejetée • Aucun stockage additionnel n'a été alloué à l'utilisateur.
+              </div>
+            \`}
+          </div>
+
+        </div>
+      \`;
+    }
+
+    function toggleDemandeOptionsMenu() {
+      const drop = document.getElementById('demande-options-dropdown');
+      if (!drop) return;
+      drop.classList.toggle('hidden');
+    }
+
+    // Fermer le dropdown au clic externe
+    document.addEventListener('click', (e) => {
+      const drop = document.getElementById('demande-options-dropdown');
+      const btn = document.getElementById('demande-options-btn');
+      if (drop && !drop.classList.contains('hidden')) {
+        if (btn && !btn.contains(e.target) && !drop.contains(e.target)) {
+          drop.classList.add('hidden');
+        }
+      }
+    });
+
+    // ========================================================================
+    // MODALE HISTORIQUE UTILISATEUR (DEMANDES, ABONNEMENTS EN COURS, ANNULÉS)
+    // ========================================================================
+    function openUserHistoryModal(userId, tab = 'requests') {
+      activeHistoryUserId = userId;
+      activeHistoryTab = tab;
+      const modal = document.getElementById('user-history-modal');
+      const user = allUsers.find(u => u.user.id === userId);
+      const title = document.getElementById('user-history-modal-title');
+      if (title) {
+        title.textContent = "Dossier & Historique de " + (user ? user.user.name : "l'Utilisateur");
+      }
+      switchUserHistoryTab(tab);
+      if (modal) modal.classList.remove('hidden');
+      const drop = document.getElementById('demande-options-dropdown');
+      if (drop) drop.classList.add('hidden');
+    }
+
+    function closeUserHistoryModal(e) {
+      if (e && e.target && e.target.id !== 'user-history-modal' && e.type === 'click' && !e.target.closest('button')) return;
+      const modal = document.getElementById('user-history-modal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    function switchUserHistoryTab(tab) {
+      activeHistoryTab = tab;
+      ['requests', 'active', 'cancelled'].forEach(t => {
+        const btn = document.getElementById('hist-tab-' + t);
+        if (!btn) return;
+        if (t === tab) {
+          btn.className = "px-3 py-1.5 rounded-lg bg-orange-600 text-white transition";
+        } else {
+          btn.className = "px-3 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700 transition";
+        }
+      });
+
+      const container = document.getElementById('user-history-modal-content');
+      if (!container || !activeHistoryUserId) return;
+
+      if (tab === 'requests') {
+        const reqs = allRequests.filter(r => r.user_id === activeHistoryUserId);
+        if (reqs.length === 0) {
+          container.innerHTML = '<div class="p-6 text-center text-slate-500 text-xs">Aucune demande de stockage enregistrée pour cet utilisateur.</div>';
+          return;
+        }
+        container.innerHTML = reqs.map(r => \`
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-3">
+            <div class="space-y-1">
+              <div class="font-bold text-white flex items-center gap-2">
+                <span>\${r.pack_name || 'Pack Stockage'}</span>
+                <span class="text-blue-400 font-mono">+\${r.additional_mb >= 1024 ? (r.additional_mb/1024).toFixed(1) + ' Go' : r.additional_mb + ' Mo'}</span>
+              </div>
+              <div class="text-[10px] text-slate-400 font-mono">
+                📅 \${formatFullDateFrench(r.created_at)}
+              </div>
+              <div class="text-[10px] text-emerald-400">
+                Prix : \${Number(r.price_paid || 0).toLocaleString('fr-FR')} \${r.currency || 'FCFA'}
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold \${r.status === 'approved' ? 'bg-emerald-500/20 text-emerald-400' : r.status === 'pending' ? 'bg-amber-500/20 text-amber-400' : 'bg-red-500/20 text-red-400'}">
+                \${(r.status || 'pending').toUpperCase()}
+              </span>
+              \${r.receipt_image_url ? \`
+                <button onclick="openReceiptZoomModal('\${r.receipt_image_url}')" class="block mt-2 text-[10px] text-orange-400 underline cursor-pointer">
+                  Voir le reçu
+                </button>
+              \` : ''}
+            </div>
+          </div>
+        \`).join('');
+      } else if (tab === 'active') {
+        const subs = allSubscriptions.filter(s => s.user_id === activeHistoryUserId && s.status === 'active');
+        if (subs.length === 0) {
+          container.innerHTML = '<div class="p-6 text-center text-slate-500 text-xs">Aucun abonnement en cours pour cet utilisateur.</div>';
+          return;
+        }
+        container.innerHTML = subs.map(s => \`
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-3 border-l-4 border-l-emerald-500">
+            <div class="space-y-1">
+              <div class="font-bold text-white flex items-center gap-2">
+                <span>\${s.plan_name || 'Abonnement'}</span>
+                <span class="text-emerald-400 font-mono">\${s.total_storage_mb >= 1024 ? (s.total_storage_mb/1024).toFixed(1) + ' Go' : s.total_storage_mb + ' Mo'} Total</span>
+              </div>
+              <div class="text-[10px] text-slate-400 font-mono">
+                Début : \${formatFullDateFrench(s.start_date || s.created_at)}
+              </div>
+              <div class="text-[10px] text-emerald-300">
+                Prix mensuel : \${Number(s.monthly_price || 0).toLocaleString('fr-FR')} \${s.currency || 'FCFA'}
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-500/20 text-emerald-400">ACTIF</span>
+              <button onclick="cancelSubscription('\${s.id}', '\${s.user_id}')" class="block mt-2 px-2.5 py-1 bg-red-500/20 text-red-300 rounded text-[10px] font-bold hover:bg-red-500/30 transition cursor-pointer">
+                Annuler
+              </button>
+            </div>
+          </div>
+        \`).join('');
+      } else if (tab === 'cancelled') {
+        const subs = allSubscriptions.filter(s => s.user_id === activeHistoryUserId && s.status === 'cancelled');
+        if (subs.length === 0) {
+          container.innerHTML = '<div class="p-6 text-center text-slate-500 text-xs">Aucun abonnement annulé pour cet utilisateur.</div>';
+          return;
+        }
+        container.innerHTML = subs.map(s => \`
+          <div class="bg-slate-950 p-3 rounded-xl border border-slate-800 flex items-center justify-between gap-3 border-l-4 border-l-red-500">
+            <div class="space-y-1">
+              <div class="font-bold text-white flex items-center gap-2">
+                <span>\${s.plan_name || 'Abonnement'}</span>
+                <span class="text-slate-400 font-mono">Était à : \${s.previous_storage_mb || s.total_storage_mb || 0} Mo</span>
+              </div>
+              <div class="text-[10px] text-red-300">
+                Motif d'annulation : \${s.cancel_reason || 'Résiliation client ou admin'}
+              </div>
+              <div class="text-[10px] text-slate-400 font-mono">
+                Annulé le : \${formatFullDateFrench(s.cancelled_at || s.updated_at)}
+              </div>
+            </div>
+            <div class="text-right">
+              <span class="px-2 py-0.5 rounded-full text-[10px] font-bold bg-red-500/20 text-red-400">ANNULÉ</span>
+            </div>
+          </div>
+        \`).join('');
+      }
+    }
+
+    // ========================================================================
+    // MODALE ZOOM REÇU DE PAIEMENT
+    // ========================================================================
+    function openReceiptZoomModal(imageUrl, caption = '') {
+      if (!imageUrl) return;
+      const modal = document.getElementById('receipt-zoom-modal');
+      const img = document.getElementById('receipt-zoom-img');
+      const cap = document.getElementById('receipt-zoom-caption');
+      const dl = document.getElementById('receipt-zoom-download');
+      if (img) img.src = imageUrl;
+      if (cap) cap.textContent = caption || "Reçu de paiement hébergé dans Cloudflare R2";
+      if (dl) dl.href = imageUrl;
+      if (modal) modal.classList.remove('hidden');
+    }
+
+    function closeReceiptZoomModal(e) {
+      if (e && e.target && e.target.id !== 'receipt-zoom-modal' && e.type === 'click' && !e.target.closest('button')) return;
+      const modal = document.getElementById('receipt-zoom-modal');
+      if (modal) modal.classList.add('hidden');
+    }
+
+    // ========================================================================
+    // ACTIONS ADMIN : APPROBATION, REJET ET RÉSILIATION D'ABONNEMENT
+    // ========================================================================
+    async function approveStorageRequest(requestId) {
+      if (!confirm("Voulez-vous valider cette demande et allouer immédiatement le stockage à cet utilisateur ?")) return;
+
+      try {
+        const resp = await fetch('/api/storage-requests/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requestId })
+        });
+        const res = await resp.json();
+        if (res.success) {
+          // Mettre à jour l'état local
+          const req = allRequests.find(r => r.id === requestId);
+          if (req) req.status = 'approved';
+
+          // Ajouter aux abonnements
+          if (res.subscription) {
+            allSubscriptions.unshift(res.subscription);
+          }
+
+          // Mettre à jour quota utilisateur local
+          const userItem = allUsers.find(u => u.user.id === res.userId);
+          if (userItem) {
+            userItem.quotaConfig.paidTotalMb = res.newPaidTotalMb;
+            const newTotal = userItem.quotaConfig.welcomeTotalMb + userItem.quotaConfig.paidTotalMb;
+            userItem.quotaConfig.totalAllowedMb = newTotal;
+            userItem.quotaConfig.totalAllowedFormatted = newTotal >= 1024 ? (newTotal/1024).toFixed(1) + ' Go' : newTotal + ' Mo';
+            userItem.quotaConfig.totalAllowedBytes = newTotal * 1024 * 1024;
+            userItem.quotaConfig.planName = 'payant';
+          }
+
+          showToast("Demande validée ! Stockage alloué avec succès.");
+          updateDemandesTabCounts();
+          renderDemandesLeftList();
+          renderDemandeDetail(requestId, 'request');
+        } else {
+          alert("Erreur: " + (res.error || "Impossible d'approuver"));
+        }
+      } catch (err) {
+        alert("Erreur réseau lors de l'approbation");
+      }
+    }
+
+    async function rejectStorageRequest(requestId) {
+      const reason = prompt("Motif du rejet (ex: Reçu de paiement illisible ou montant incorrect) :", "Paiement non confirmé");
+      if (reason === null) return;
+
+      try {
+        const resp = await fetch('/api/storage-requests/reject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requestId, reason })
+        });
+        const res = await resp.json();
+        if (res.success) {
+          const req = allRequests.find(r => r.id === requestId);
+          if (req) {
+            req.status = 'rejected';
+            req.admin_notes = reason;
+          }
+          showToast("Demande rejetée.");
+          updateDemandesTabCounts();
+          renderDemandesLeftList();
+          renderDemandeDetail(requestId, 'request');
+        } else {
+          alert("Erreur: " + (res.error || "Échec"));
+        }
+      } catch (err) {
+        alert("Erreur réseau lors du rejet");
+      }
+    }
+
+    async function cancelSubscription(subscriptionId, userId) {
+      const reason = prompt("Motif de l'annulation de l'abonnement :", "Demande de résiliation par l'étudiant");
+      if (reason === null) return;
+
+      try {
+        const resp = await fetch('/api/storage-requests/cancel-subscription', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ subscriptionId, userId, reason })
+        });
+        const res = await resp.json();
+        if (res.success) {
+          const sub = allSubscriptions.find(s => s.id === subscriptionId);
+          if (sub) {
+            sub.status = 'cancelled';
+            sub.cancelled_at = new Date().toISOString();
+            sub.cancel_reason = reason;
+            sub.previous_storage_mb = res.previousStorageMb;
+          }
+          const userItem = allUsers.find(u => u.user.id === userId);
+          if (userItem) {
+            userItem.quotaConfig.paidTotalMb = res.newPaidTotalMb;
+            const newTotal = userItem.quotaConfig.welcomeTotalMb + userItem.quotaConfig.paidTotalMb;
+            userItem.quotaConfig.totalAllowedMb = newTotal;
+            userItem.quotaConfig.totalAllowedFormatted = newTotal >= 1024 ? (newTotal/1024).toFixed(1) + ' Go' : newTotal + ' Mo';
+            userItem.quotaConfig.totalAllowedBytes = newTotal * 1024 * 1024;
+          }
+
+          showToast("Abonnement annulé avec succès.");
+          updateDemandesTabCounts();
+          renderDemandesLeftList();
+          renderDemandeDetail(subscriptionId, 'subscription');
+        } else {
+          alert("Erreur: " + (res.error || "Échec d'annulation"));
+        }
+      } catch (err) {
+        alert("Erreur réseau lors de l'annulation");
+      }
+    }
+
+    async function createDemoStorageRequest() {
+      if (allUsers.length === 0) {
+        alert("Aucun utilisateur dans la base de données pour simuler une demande.");
+        return;
+      }
+      const u = allUsers[0].user;
+      try {
+        const resp = await fetch('/api/storage-requests/create-test', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: u.id,
+            userName: u.name,
+            userPhone: u.phone || '+225 07 89 45 12 00',
+            packName: 'Pack Pro 50 Go',
+            additionalMb: 51200,
+            pricePaid: 2500,
+            paymentMethod: 'Wave CI (+225 07...)',
+            receiptImageUrl: 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=800&auto=format&fit=crop&q=80'
+          })
+        });
+        const res = await resp.json();
+        if (res.success && res.request) {
+          allRequests.unshift(res.request);
+          showToast("Demande test créée avec succès !");
+          setDemandesTab('pending');
+          selectDemandeItem(res.request.id, 'request');
+        } else {
+          alert("Erreur lors de la création du test: " + (res.error || 'Erreur'));
+        }
+      } catch (err) {
+        alert("Erreur réseau");
+      }
+    }
+
 
     async function saveUserQuota(userId) {
       const wTotal = parseFloat(document.getElementById('user-edit-w-total').value) || 0;
@@ -2827,6 +4029,206 @@ export default {
       }
 
       // ----------------------------------------------------------------------
+      // ROUTE POST : /api/storage-requests/approve
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/storage-requests/approve') {
+        const body = await request.json().catch(() => ({}));
+        const requestId = body.requestId;
+        if (!requestId) {
+          return new Response(JSON.stringify({ success: false, error: 'requestId requis' }), { status: 400, headers: corsHeaders(origin) });
+        }
+
+        const reqRow = await safeFirst(db, `SELECT * FROM storage_upgrade_requests WHERE id = ?`, [requestId]);
+        if (!reqRow) {
+          return new Response(JSON.stringify({ success: false, error: 'Demande introuvable' }), { status: 404, headers: corsHeaders(origin) });
+        }
+
+        const userId = reqRow.user_id;
+        const addMb = Number(reqRow.additional_mb || 1024);
+        const pricePaid = Number(reqRow.price_paid || 0);
+
+        // 1. Marquer la demande approuvée
+        await safeRun(db, `UPDATE storage_upgrade_requests SET status = 'approved', updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [requestId]);
+
+        // 2. Allouer le stockage à l'utilisateur
+        const currentQuota = await safeFirst(db, `SELECT * FROM user_storage_quotas WHERE user_id = ?`, [userId]);
+        const currentPaid = currentQuota ? Number(currentQuota.paid_total_mb || 0) : 0;
+        const newPaid = currentPaid + addMb;
+        const wTotal = currentQuota ? Number(currentQuota.welcome_total_mb || 30) : 30;
+
+        await safeRun(db, `
+          INSERT INTO user_storage_quotas (user_id, welcome_total_mb, welcome_r2_mb, welcome_d1_mb, paid_total_mb, paid_r2_mb, paid_d1_mb, plan_name, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'payant', CURRENT_TIMESTAMP)
+          ON CONFLICT(user_id) DO UPDATE SET
+            paid_total_mb = excluded.paid_total_mb,
+            paid_r2_mb = excluded.paid_r2_mb,
+            paid_d1_mb = excluded.paid_d1_mb,
+            plan_name = 'payant',
+            updated_at = CURRENT_TIMESTAMP
+        `, [userId, wTotal, Math.round(wTotal/3), Math.round(wTotal*2/3), newPaid, Math.round(newPaid/2), Math.round(newPaid/2)]);
+
+        // 3. Créer ou activer une souscription dans user_subscriptions
+        const subId = 'sub_' + Math.random().toString(36).substring(2, 10);
+        const subData = {
+          id: subId,
+          user_id: userId,
+          user_name: reqRow.user_name || '',
+          user_phone: reqRow.user_phone || '',
+          user_email: reqRow.user_email || '',
+          plan_name: reqRow.pack_name || 'Pack Stockage',
+          total_storage_mb: wTotal + newPaid,
+          monthly_price: pricePaid,
+          currency: reqRow.currency || 'FCFA',
+          status: 'active',
+          start_date: new Date().toISOString(),
+          end_date: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString(),
+          request_id: requestId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        await safeRun(db, `
+          INSERT INTO user_subscriptions (id, user_id, user_name, user_phone, user_email, plan_name, total_storage_mb, monthly_price, currency, status, start_date, end_date, request_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          subData.id, subData.user_id, subData.user_name, subData.user_phone, subData.user_email,
+          subData.plan_name, subData.total_storage_mb, subData.monthly_price, subData.currency,
+          subData.status, subData.start_date, subData.end_date, subData.request_id, subData.created_at, subData.updated_at
+        ]);
+
+        return new Response(JSON.stringify({
+          success: true,
+          requestId,
+          userId,
+          newPaidTotalMb: newPaid,
+          subscription: subData,
+          message: 'Demande validée et stockage alloué avec succès'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/storage-requests/reject
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/storage-requests/reject') {
+        const body = await request.json().catch(() => ({}));
+        const requestId = body.requestId;
+        const reason = body.reason || 'Paiement non confirmé';
+        if (!requestId) {
+          return new Response(JSON.stringify({ success: false, error: 'requestId requis' }), { status: 400, headers: corsHeaders(origin) });
+        }
+
+        await safeRun(db, `UPDATE storage_upgrade_requests SET status = 'rejected', admin_notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [reason, requestId]);
+
+        return new Response(JSON.stringify({ success: true, requestId, message: 'Demande rejetée' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/storage-requests/cancel-subscription
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/storage-requests/cancel-subscription') {
+        const body = await request.json().catch(() => ({}));
+        const subscriptionId = body.subscriptionId;
+        const userId = body.userId;
+        const reason = body.reason || 'Résiliation';
+
+        if (!subscriptionId) {
+          return new Response(JSON.stringify({ success: false, error: 'subscriptionId requis' }), { status: 400, headers: corsHeaders(origin) });
+        }
+
+        const subRow = await safeFirst(db, `SELECT * FROM user_subscriptions WHERE id = ?`, [subscriptionId]);
+        const targetUserId = userId || (subRow ? subRow.user_id : null);
+
+        const prevStorage = subRow ? Number(subRow.total_storage_mb || 0) : 0;
+
+        await safeRun(db, `
+          UPDATE user_subscriptions 
+          SET status = 'cancelled', 
+              cancelled_at = CURRENT_TIMESTAMP, 
+              cancel_reason = ?, 
+              previous_storage_mb = ?,
+              updated_at = CURRENT_TIMESTAMP 
+          WHERE id = ?
+        `, [reason, prevStorage, subscriptionId]);
+
+        // Retirer le quota payant si l'utilisateur est trouvé
+        let newPaid = 0;
+        if (targetUserId) {
+          const quota = await safeFirst(db, `SELECT * FROM user_storage_quotas WHERE user_id = ?`, [targetUserId]);
+          if (quota) {
+            newPaid = Math.max(0, Number(quota.paid_total_mb || 0) - (subRow ? Number(subRow.total_storage_mb || 0) : 0));
+            await safeRun(db, `UPDATE user_storage_quotas SET paid_total_mb = ?, plan_name = 'gratuit', updated_at = CURRENT_TIMESTAMP WHERE user_id = ?`, [newPaid, targetUserId]);
+          }
+        }
+
+        return new Response(JSON.stringify({
+          success: true,
+          subscriptionId,
+          previousStorageMb: prevStorage,
+          newPaidTotalMb: newPaid,
+          message: 'Abonnement résilié avec succès'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/storage-requests/create-test
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/storage-requests/create-test') {
+        const body = await request.json().catch(() => ({}));
+        const userId = body.userId;
+        if (!userId) {
+          return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
+        }
+
+        const reqId = 'req_' + Math.random().toString(36).substring(2, 10);
+        const reqItem = {
+          id: reqId,
+          user_id: userId,
+          user_name: body.userName || 'Étudiant Test',
+          user_phone: body.userPhone || '+225 07 00 00 00 00',
+          user_email: body.userEmail || 'etudiant@studycloud.ci',
+          pack_id: 'pro_50gb',
+          pack_name: body.packName || 'Pack Pro 50 Go',
+          additional_mb: Number(body.additionalMb || 51200),
+          additional_words: 100000,
+          price_paid: Number(body.pricePaid || 2500),
+          currency: 'FCFA',
+          payment_method: body.paymentMethod || 'Wave CI',
+          payment_reference: 'WV_' + Math.random().toString(36).substring(2, 8).toUpperCase(),
+          receipt_image_url: body.receiptImageUrl || 'https://images.unsplash.com/photo-1554224155-6726b3ff858f?w=800&auto=format&fit=crop&q=80',
+          receipt_r2_key: `storage-receipts/${userId}/recu_${reqId}.jpg`,
+          status: 'pending',
+          admin_notes: '',
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        await safeRun(db, `
+          INSERT INTO storage_upgrade_requests (id, user_id, user_name, user_phone, user_email, pack_id, pack_name, additional_mb, additional_words, price_paid, currency, payment_method, payment_reference, receipt_image_url, receipt_r2_key, status, admin_notes, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          reqItem.id, reqItem.user_id, reqItem.user_name, reqItem.user_phone, reqItem.user_email,
+          reqItem.pack_id, reqItem.pack_name, reqItem.additional_mb, reqItem.additional_words,
+          reqItem.price_paid, reqItem.currency, reqItem.payment_method, reqItem.payment_reference,
+          reqItem.receipt_image_url, reqItem.receipt_r2_key, reqItem.status, reqItem.admin_notes,
+          reqItem.created_at, reqItem.updated_at
+        ]);
+
+        return new Response(JSON.stringify({ success: true, request: reqItem }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
       // ROUTE POST : /api/users/toggle-online
       // ----------------------------------------------------------------------
       if (request.method === 'POST' && path === '/api/users/toggle-online') {
@@ -2944,6 +4346,15 @@ export default {
       }
 
       // ----------------------------------------------------------------------
+      // REQUÊTES D1 : DEMANDES DE STOCKAGE & ABONNEMENTS
+      // ----------------------------------------------------------------------
+      let upgradeRequestsRes = await safeQuery(db, `SELECT * FROM storage_upgrade_requests ORDER BY created_at DESC`, [], { results: [] });
+      let userSubsRes = await safeQuery(db, `SELECT * FROM user_subscriptions ORDER BY created_at DESC`, [], { results: [] });
+
+      const rawUpgradeRequests = (upgradeRequestsRes && upgradeRequestsRes.results) ? upgradeRequestsRes.results : [];
+      const rawUserSubs = (userSubsRes && userSubsRes.results) ? userSubsRes.results : [];
+
+      // ----------------------------------------------------------------------
       // ROUTE PAR DÉFAUT : Page Web Tableau de Bord (HTML)
       // ----------------------------------------------------------------------
       const htmlContent = renderDashboardHtml({
@@ -2951,7 +4362,9 @@ export default {
         globalConfig: globalConfigRow,
         users: detailedUsers,
         d1TablesGlobal,
-        r2FoldersGlobal
+        r2FoldersGlobal,
+        upgradeRequests: rawUpgradeRequests,
+        userSubscriptions: rawUserSubs
       });
 
       return new Response(htmlContent, {
