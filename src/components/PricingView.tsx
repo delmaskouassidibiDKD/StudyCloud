@@ -61,49 +61,101 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
 
   return (
     <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto animate-fadeIn pb-24 transition-colors duration-300">
-      {/* Fixed floating buttons directly below the top header */}
-      <div className="fixed top-[66px] md:top-[70px] left-4 right-4 md:left-[17.5rem] flex items-center justify-between z-40 pointer-events-none gap-2">
+      
+      {/* ========================================================================= */}
+      {/* BARRE SUPÉRIEURE FIXE / COLLÉE AU HAUT : RETOUR, MENUS ET FACTURATION     */}
+      {/* Ne bouge pas quand on défile la page                                      */}
+      {/* ========================================================================= */}
+      <div className="sticky top-0 z-40 bg-[#F5F0E8]/95 dark:bg-[#0b0f19]/95 backdrop-blur-md px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2 sm:gap-4 border-b-2 border-[#2D4A3E]/15 dark:border-[#1e293b] shadow-xs">
+        
+        {/* Bouton Retour (Gauche) */}
         <button
           onClick={onBack}
-          className="pointer-events-auto flex items-center gap-1.5 px-3 py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-xs rounded-xl border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+          className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-xs rounded-xl border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 shrink-0"
         >
           <ArrowLeft className="w-4 h-4 text-[#2D4A3E] dark:text-white" />
-          <span>Retour</span>
+          <span className="hidden sm:inline">Retour</span>
         </button>
 
-        {/* Compact Billing Toggle (Ans / Mois) */}
-        {activeTab !== 'renewal' && (
-          <div className="pointer-events-auto bg-[#E8DFD0] dark:bg-[#1e293b] rounded-full p-1 flex items-center shadow-xs border-2 border-[#1c1917] dark:border-[#334155]">
-            <button
-              onClick={() => setBillingCycle('annual')}
-              className={`flex items-center gap-1 px-3.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                billingCycle === 'annual'
-                  ? 'bg-[#F5F0E8] dark:bg-[#283852] text-[#2D4A3E] dark:text-white shadow-xs'
-                  : 'bg-transparent text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white'
-              }`}
-            >
-              <span>Ans</span>
-              <span className="bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] text-[9px] font-bold uppercase px-1.5 py-0.5 rounded">
-                -10%
-              </span>
-            </button>
-            <button
-              onClick={() => setBillingCycle('monthly')}
-              className={`flex items-center gap-1 px-3.5 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
-                billingCycle === 'monthly'
-                  ? 'bg-[#F5F0E8] dark:bg-[#283852] text-[#2D4A3E] dark:text-white shadow-xs'
-                  : 'bg-transparent text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white'
-              }`}
-            >
-              <span>Mois</span>
-            </button>
-          </div>
-        )}
+        {/* Boutons pour changer de menu au centre (Collés sur la ligne horizontale) */}
+        <div className="bg-[#E8DFD0] dark:bg-[#111a2e] p-1 rounded-2xl border-2 border-[#D4C9B5] dark:border-[#1e293b] flex items-center gap-1 shadow-sm overflow-x-auto no-scrollbar max-w-full">
+          <button
+            onClick={() => setActiveTab('storage')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
+              activeTab === 'storage'
+                ? 'bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white shadow-sm'
+                : 'text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white hover:bg-[#D4C9B5]/40 dark:hover:bg-slate-800'
+            }`}
+          >
+            <HardDrive className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Abonnements stockage</span>
+            <span className="md:hidden">Stockage</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('ai')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
+              activeTab === 'ai'
+                ? 'bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white shadow-sm'
+                : 'text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white hover:bg-[#D4C9B5]/40 dark:hover:bg-slate-800'
+            }`}
+          >
+            <Bot className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Abonnement assistante StudyCloud</span>
+            <span className="md:hidden">Assistante IA</span>
+          </button>
+
+          <button
+            onClick={() => setActiveTab('renewal')}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
+              activeTab === 'renewal'
+                ? 'bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white shadow-sm'
+                : 'text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white hover:bg-[#D4C9B5]/40 dark:hover:bg-slate-800'
+            }`}
+          >
+            <RotateCw className="w-3.5 h-3.5" />
+            <span className="hidden md:inline">Renouveler mon abonnement</span>
+            <span className="md:hidden">Renouveler</span>
+          </button>
+        </div>
+
+        {/* Toggle Facturation Ans / Mois (Droite) */}
+        <div className="shrink-0">
+          {activeTab !== 'renewal' ? (
+            <div className="bg-[#E8DFD0] dark:bg-[#1e293b] rounded-full p-1 flex items-center shadow-xs border-2 border-[#1c1917] dark:border-[#334155]">
+              <button
+                onClick={() => setBillingCycle('annual')}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                  billingCycle === 'annual'
+                    ? 'bg-[#F5F0E8] dark:bg-[#283852] text-[#2D4A3E] dark:text-white shadow-xs'
+                    : 'bg-transparent text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white'
+                }`}
+              >
+                <span>Ans</span>
+                <span className="bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] text-[9px] font-bold uppercase px-1.5 py-0.5 rounded">
+                  -10%
+                </span>
+              </button>
+              <button
+                onClick={() => setBillingCycle('monthly')}
+                className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
+                  billingCycle === 'monthly'
+                    ? 'bg-[#F5F0E8] dark:bg-[#283852] text-[#2D4A3E] dark:text-white shadow-xs'
+                    : 'bg-transparent text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white'
+                }`}
+              >
+                <span>Mois</span>
+              </button>
+            </div>
+          ) : (
+            <div className="w-6 sm:w-16"></div>
+          )}
+        </div>
       </div>
 
-      <div className="w-full max-w-[1250px] mx-auto px-4 pt-11 sm:pt-12">
+      <div className="w-full max-w-[1250px] mx-auto px-4 pt-6 sm:pt-8">
         {/* Header Section */}
-        <div className="text-center pt-2 pb-6 max-w-5xl mx-auto">
+        <div className="text-center pb-8 max-w-5xl mx-auto">
           <h1 className="text-3xl sm:text-5xl md:text-6xl font-serif font-normal text-[#2D4A3E] dark:text-white mb-3 leading-tight">
             Choisissez votre formule
           </h1>
@@ -113,55 +165,12 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
         </div>
 
         {/* ========================================================================= */}
-        {/* NAVIGATION DES 3 MENUS D'ABONNEMENT (STOCKAGE, IA, RENOUVELLEMENT)        */}
-        {/* ========================================================================= */}
-        <div className="flex items-center justify-center mb-8 px-2">
-          <div className="bg-[#E8DFD0] dark:bg-[#111a2e] p-1.5 rounded-2xl border-2 border-[#D4C9B5] dark:border-[#1e293b] flex items-center flex-wrap gap-1.5 shadow-sm max-w-2xl w-full justify-center">
-            <button
-              onClick={() => setActiveTab('storage')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex-1 justify-center min-w-[150px] ${
-                activeTab === 'storage'
-                  ? 'bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white shadow-md'
-                  : 'text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white hover:bg-[#D4C9B5]/40 dark:hover:bg-slate-800'
-              }`}
-            >
-              <HardDrive className="w-4 h-4" />
-              <span>Abonnements stockage</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('ai')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex-1 justify-center min-w-[150px] ${
-                activeTab === 'ai'
-                  ? 'bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white shadow-md'
-                  : 'text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white hover:bg-[#D4C9B5]/40 dark:hover:bg-slate-800'
-              }`}
-            >
-              <Bot className="w-4 h-4" />
-              <span>Abonnement assistante StudyCloud</span>
-            </button>
-
-            <button
-              onClick={() => setActiveTab('renewal')}
-              className={`flex items-center gap-2 px-4 py-2.5 rounded-xl text-xs sm:text-sm font-extrabold transition-all cursor-pointer flex-1 justify-center min-w-[150px] ${
-                activeTab === 'renewal'
-                  ? 'bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white shadow-md'
-                  : 'text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white hover:bg-[#D4C9B5]/40 dark:hover:bg-slate-800'
-              }`}
-            >
-              <RotateCw className="w-4 h-4" />
-              <span>Renouveler mon abonnement</span>
-            </button>
-          </div>
-        </div>
-
-        {/* ========================================================================= */}
-        {/* 1. SECTION : ABONNEMENTS STOCKAGE (DISPOSITION VERTICALE)                  */}
+        {/* 1. SECTION : ABONNEMENTS STOCKAGE (DISPOSITION HORIZONTALE SUR ORDINATEUR)*/}
         {/* ========================================================================= */}
         {activeTab === 'storage' && (
-          <div className="flex flex-col gap-6 items-stretch pb-20 w-full max-w-[540px] mx-auto px-2">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
             {/* Basique Card */}
-            <div className="bg-[#E8DFD0] dark:bg-[#111a2e] rounded-2xl p-6 sm:p-7 flex flex-col justify-between border border-[#D4C9B5] dark:border-[#1e293b] relative w-full shadow-sm">
+            <div className="bg-[#E8DFD0] dark:bg-[#111a2e] rounded-2xl p-6 sm:p-7 flex flex-col justify-between border border-[#D4C9B5] dark:border-[#1e293b] relative max-w-[380px] w-full mx-auto shadow-sm">
               <div>
                 <h3 className="text-2xl sm:text-3xl font-serif font-normal text-[#2D4A3E] dark:text-white mb-2 sm:mb-3">Basique</h3>
                 <p className="text-xs sm:text-sm font-sans text-[#5C6B5A] dark:text-slate-400 mb-4 sm:mb-6 leading-relaxed">
@@ -207,7 +216,7 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
             </div>
 
             {/* Pro Card (POPULAIRE) */}
-            <div className="bg-[#2D4A3E] dark:bg-[#16382b] rounded-2xl p-6 sm:p-7 flex flex-col justify-between border-2 border-[#2D4A3E] dark:border-emerald-500 relative w-full shadow-md">
+            <div className="bg-[#2D4A3E] dark:bg-[#16382b] rounded-2xl p-6 sm:p-7 flex flex-col justify-between border-2 border-[#2D4A3E] dark:border-emerald-500 relative max-w-[380px] w-full mx-auto shadow-md">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-2xl sm:text-3xl font-serif font-normal text-[#F5F0E8]">Pro</h3>
@@ -258,7 +267,7 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
             </div>
 
             {/* Enterprise Card */}
-            <div className="bg-[#E8DFD0] dark:bg-[#111a2e] rounded-2xl p-6 sm:p-7 flex flex-col justify-between border border-[#D4C9B5] dark:border-[#1e293b] relative w-full shadow-sm">
+            <div className="bg-[#E8DFD0] dark:bg-[#111a2e] rounded-2xl p-6 sm:p-7 flex flex-col justify-between border border-[#D4C9B5] dark:border-[#1e293b] relative max-w-[380px] w-full mx-auto shadow-sm">
               <div>
                 <h3 className="text-2xl sm:text-3xl font-serif font-normal text-[#2D4A3E] dark:text-white mb-2 sm:mb-3">Entreprise</h3>
                 <p className="text-xs sm:text-sm font-sans text-[#5C6B5A] dark:text-slate-400 mb-4 sm:mb-6 leading-relaxed">
@@ -306,12 +315,12 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
         )}
 
         {/* ========================================================================= */}
-        {/* 2. SECTION : ABONNEMENT ASSISTANTE STUDYCLOUD (DISPOSITION VERTICALE)       */}
+        {/* 2. SECTION : ASSISTANTE STUDYCLOUD (DISPOSITION HORIZONTALE SUR ORDINATEUR)*/}
         {/* ========================================================================= */}
         {activeTab === 'ai' && (
-          <div className="flex flex-col gap-6 items-stretch pb-20 w-full max-w-[540px] mx-auto px-2">
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
             {/* IA Basique Card */}
-            <div className="bg-[#E8DFD0] dark:bg-[#111a2e] rounded-2xl p-6 sm:p-7 flex flex-col justify-between border border-[#D4C9B5] dark:border-[#1e293b] relative w-full shadow-sm">
+            <div className="bg-[#E8DFD0] dark:bg-[#111a2e] rounded-2xl p-6 sm:p-7 flex flex-col justify-between border border-[#D4C9B5] dark:border-[#1e293b] relative max-w-[380px] w-full mx-auto shadow-sm">
               <div>
                 <h3 className="text-2xl sm:text-3xl font-serif font-normal text-[#2D4A3E] dark:text-white mb-2 sm:mb-3">IA Basique</h3>
                 <p className="text-xs sm:text-sm font-sans text-[#5C6B5A] dark:text-slate-400 mb-4 sm:mb-6 leading-relaxed">
@@ -357,7 +366,7 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
             </div>
 
             {/* IA Pro Card (POPULAIRE) */}
-            <div className="bg-[#2D4A3E] dark:bg-[#16382b] rounded-2xl p-6 sm:p-7 flex flex-col justify-between border-2 border-[#2D4A3E] dark:border-emerald-500 relative w-full shadow-md">
+            <div className="bg-[#2D4A3E] dark:bg-[#16382b] rounded-2xl p-6 sm:p-7 flex flex-col justify-between border-2 border-[#2D4A3E] dark:border-emerald-500 relative max-w-[380px] w-full mx-auto shadow-md">
               <div>
                 <div className="flex items-center justify-between mb-2">
                   <h3 className="text-2xl sm:text-3xl font-serif font-normal text-[#F5F0E8]">IA Pro Étudiant</h3>
@@ -408,7 +417,7 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
             </div>
 
             {/* IA Recherche & Master Card */}
-            <div className="bg-[#E8DFD0] dark:bg-[#111a2e] rounded-2xl p-6 sm:p-7 flex flex-col justify-between border border-[#D4C9B5] dark:border-[#1e293b] relative w-full shadow-sm">
+            <div className="bg-[#E8DFD0] dark:bg-[#111a2e] rounded-2xl p-6 sm:p-7 flex flex-col justify-between border border-[#D4C9B5] dark:border-[#1e293b] relative max-w-[380px] w-full mx-auto shadow-sm">
               <div>
                 <h3 className="text-2xl sm:text-3xl font-serif font-normal text-[#2D4A3E] dark:text-white mb-2 sm:mb-3">IA Recherche & Master</h3>
                 <p className="text-xs sm:text-sm font-sans text-[#5C6B5A] dark:text-slate-400 mb-4 sm:mb-6 leading-relaxed">
@@ -459,7 +468,7 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
         {/* 3. SECTION : RENOUVELER MON ABONNEMENT                                    */}
         {/* ========================================================================= */}
         {activeTab === 'renewal' && (
-          <div className="w-full max-w-[560px] mx-auto px-2 pb-20">
+          <div className="w-full max-w-[650px] mx-auto px-2 pb-20">
             <div className="bg-[#E8DFD0] dark:bg-[#111a2e] rounded-3xl p-6 sm:p-8 border-2 border-[#D4C9B5] dark:border-[#1e293b] shadow-md space-y-6">
               <div className="flex items-center gap-3.5 pb-4 border-b border-[#D4C9B5] dark:border-slate-800">
                 <div className="w-12 h-12 rounded-2xl bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white flex items-center justify-center shadow-md shrink-0">
