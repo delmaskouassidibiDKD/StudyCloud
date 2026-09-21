@@ -1,5 +1,5 @@
 import React, { useState, useRef, useEffect, useMemo } from 'react';
-import { Send, Copy, Check, X, ThumbsUp, ThumbsDown, Trash2, ArrowRight, Square } from 'lucide-react';
+import { Send, Copy, Check, X, ThumbsUp, ThumbsDown, Trash2, Square } from 'lucide-react';
 import { DelmasRobot } from './DelmasRobot';
 import { MathText } from './MathText';
 import { sendDelmasChatMessage } from '../services/api';
@@ -17,29 +17,6 @@ interface Message {
 interface DelmasChatProps {
   onClose: () => void;
 }
-
-const STARTER_PROMPTS = [
-  {
-    icon: '📚',
-    title: 'Comprendre un cours',
-    prompt: 'Explique-moi simplement un concept difficile avec des exemples concrets et faciles à retenir.',
-  },
-  {
-    icon: '💡',
-    title: 'Méthode de mémorisation',
-    prompt: 'Quelles sont les meilleures techniques pour mémoriser rapidement et durablement mes leçons ?',
-  },
-  {
-    icon: '📐',
-    title: 'Formules & Calculs',
-    prompt: 'Aide-moi à comprendre le raisonnement derrière une formule mathématique ou scientifique complexe.',
-  },
-  {
-    icon: '🎯',
-    title: 'Plan de révisions',
-    prompt: 'Comment organiser un emploi du temps de révision équilibré pour réussir mes prochains examens ?',
-  },
-];
 
 export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
   // État 100% en mémoire locale (éphémère : détruit dès que le composant est fermé/démonté)
@@ -326,33 +303,9 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
               Comment puis-je vous aider aujourd'hui ?
             </p>
 
-            <p className="text-xs text-zinc-400 max-w-md leading-relaxed mb-6">
+            <p className="text-xs text-zinc-400 max-w-md leading-relaxed">
               Posez toutes vos questions sur vos cours, devoirs et méthodologies. Vos échanges sont directs et disparaissent dès que vous fermez ce menu.
             </p>
-
-            {/* Suggestions rapides en 1 tap */}
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 w-full text-left">
-              {STARTER_PROMPTS.map((item, idx) => (
-                <button
-                  key={idx}
-                  onClick={() => handleSendMessage(item.prompt)}
-                  className="group p-3 rounded-2xl bg-[#1f222a]/80 hover:bg-[#252934] border border-zinc-800 hover:border-blue-500/40 transition-all duration-200 text-left cursor-pointer flex items-start gap-3 active:scale-98"
-                >
-                  <span className="text-xl shrink-0 p-1.5 rounded-xl bg-zinc-800/80 group-hover:scale-110 transition-transform">
-                    {item.icon}
-                  </span>
-                  <div className="flex-1 min-w-0">
-                    <div className="text-xs font-bold text-zinc-200 group-hover:text-blue-300 transition-colors flex items-center justify-between">
-                      <span>{item.title}</span>
-                      <ArrowRight className="w-3 h-3 text-zinc-500 group-hover:text-blue-400 transition-colors opacity-0 group-hover:opacity-100" />
-                    </div>
-                    <p className="text-[11px] text-zinc-400 line-clamp-2 mt-0.5 leading-snug">
-                      {item.prompt}
-                    </p>
-                  </div>
-                </button>
-              ))}
-            </div>
           </div>
         ) : (
           /* LISTE DES MESSAGES DU CHAT DIRECT */
@@ -496,9 +449,9 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
           )}
         </div>
 
-        {/* Note de précaution sous le champ (sans cadenas) */}
+        {/* Note de précaution sous le champ */}
         <div className="flex items-center justify-center gap-1.5 mt-2 text-[11px] text-zinc-400 font-medium text-center">
-          <span>L'assistant Delmas peut faire des erreurs. Pensez à vérifier les informations importantes.</span>
+          <span>L'assistant Delmas peut se tromper.</span>
         </div>
       </div>
     </div>
