@@ -192,12 +192,16 @@ export const DelmasChat: React.FC<DelmasChatProps> = ({ onClose }) => {
           )
         );
       } else {
+        const cleanErrMsg = (err?.message || 'Connexion impossible').trim();
+        const errorPrompt = cleanErrMsg.toLowerCase().includes('réessayer')
+          ? `Désolé, une erreur est survenue : ${cleanErrMsg}`
+          : `Désolé, une erreur est survenue : ${cleanErrMsg}. Veuillez réessayer.`;
         setMessages((prev) =>
           prev.map((m) =>
             m.id === delmasMsgId
               ? {
                   ...m,
-                  text: `Désolé, une erreur est survenue : ${err?.message || 'Connexion impossible'}. Veuillez réessayer.`,
+                  text: errorPrompt,
                   isStreaming: false,
                 }
               : m
