@@ -23,7 +23,10 @@ import {
   CheckCheck,
   Copy,
   ImageIcon,
-  ArrowRight
+  ArrowRight,
+  HelpCircle,
+  ShieldCheck,
+  UploadCloud
 } from 'lucide-react';
 import { 
   getUserSubscriptions, 
@@ -1385,18 +1388,18 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
       )}
 
       {/* ========================================================================= */}
-      {/* MODALE DE RENOUVELLEMENT DE L'ABONNEMENT (LARGE, ERGONOMIQUE, CONNECTÉE BDD) */}
+      {/* MODALE DE RENOUVELLEMENT DE L'ABONNEMENT (DESCENTE DU HAUT + GUIDE PAIEMENT) */}
       {/* ========================================================================= */}
       {showRenewalModal && activeSubscription && (
         <div 
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-md overflow-y-auto flex items-start justify-center p-3 sm:p-5 md:p-6 lg:p-8 pt-6 sm:pt-8 md:pt-10 animate-fadeIn"
+          className="fixed inset-0 z-[9999] bg-black/80 backdrop-blur-md overflow-y-auto flex items-start justify-center p-3 sm:p-5 md:p-6 lg:p-8 pt-16 sm:pt-20 md:pt-24 pb-12 animate-fadeIn"
           onClick={() => setShowRenewalModal(false)}
         >
           <div 
-            className="relative bg-[#F5F0E8] dark:bg-[#0f172a] rounded-3xl border-2 border-orange-500/40 shadow-2xl w-full max-w-5xl xl:max-w-6xl my-auto sm:my-2 overflow-hidden text-slate-900 dark:text-white flex flex-col max-h-[92vh]"
+            className="relative bg-[#F5F0E8] dark:bg-[#0f172a] rounded-3xl border-2 border-orange-500/40 shadow-2xl w-full max-w-6xl my-auto sm:my-2 overflow-hidden text-slate-900 dark:text-white flex flex-col max-h-[90vh]"
             onClick={(e) => e.stopPropagation()}
           >
-            {/* En-tête fixe (STICKY) avec style pro et aéré */}
+            {/* En-tête fixe (STICKY) descendu et bien aéré */}
             <div className="shrink-0 bg-[#E8DFD0] dark:bg-[#11192e] px-5 sm:px-8 py-4 border-b-2 border-orange-500/30 flex items-center justify-between gap-4">
               <div className="flex items-center gap-3.5 min-w-0">
                 <div className="w-11 h-11 rounded-2xl bg-gradient-to-br from-orange-500 to-amber-500 text-white flex items-center justify-center font-bold shrink-0 shadow-lg shadow-orange-500/25">
@@ -1412,7 +1415,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                     </span>
                   </div>
                   <p className="text-[11px] sm:text-xs text-[#5C6B5A] dark:text-slate-400 truncate mt-0.5">
-                    Données pré-remplies depuis votre compte BDD • Seul le reçu de paiement est à fournir
+                    Paramètres pré-remplis de votre forfait • Seul le reçu de paiement est à fournir
                   </p>
                 </div>
               </div>
@@ -1461,34 +1464,23 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                   </div>
                 </div>
               ) : (
-                /* Formulaire de renouvellement large (2 colonnes sur desktop) */
+                /* Formulaire de renouvellement large (2 colonnes comme SubscriptionFormView) */
                 <form onSubmit={handleRenewalSubmit} className="space-y-5">
                   <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
                     
                     {/* ======================================================== */}
-                    {/* COLONNE GAUCHE (6 COLONNES) : INFORMATIONS FORFAIT BDD & COMPTES */}
+                    {/* CÔTÉ GAUCHE (7 COLONNES) : FORMULAIRE & REÇU DE PAIEMENT */}
                     {/* ======================================================== */}
-                    <div className="lg:col-span-6 space-y-4">
+                    <div className="lg:col-span-7 space-y-4">
                       
-                      {/* Notice de verrouillage sécurisé */}
-                      <div className="p-3.5 rounded-2xl bg-orange-500/10 border border-orange-500/25 flex items-center gap-3 text-[#2D4A3E] dark:text-orange-300">
-                        <div className="w-8 h-8 rounded-xl bg-orange-500/20 text-orange-600 dark:text-orange-400 flex items-center justify-center shrink-0">
-                          <Lock className="w-4 h-4" />
-                        </div>
-                        <div className="text-[11px] leading-tight">
-                          <strong className="block font-bold">Données synchronisées de votre compte D1 :</strong>
-                          <span className="text-[#5C6B5A] dark:text-slate-300">Ces informations correspondent exactement à votre forfait actif et ne nécessitent aucune modification.</span>
-                        </div>
-                      </div>
-
-                      {/* Grille des paramètres verrouillés */}
+                      {/* Récapitulatif du forfait actif verrouillé */}
                       <div className="bg-white/80 dark:bg-slate-900/80 p-4 sm:p-5 rounded-2xl border border-[#D4C9B5] dark:border-slate-800 space-y-3 shadow-xs">
                         <div className="flex items-center justify-between border-b border-[#D4C9B5]/60 dark:border-slate-800 pb-2.5">
                           <span className="text-xs font-black uppercase tracking-wider text-[#2D4A3E] dark:text-white flex items-center gap-1.5">
                             <span>📋</span> Récapitulatif du forfait actif
                           </span>
-                          <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-500/10 px-2 py-0.5 rounded-full font-mono flex items-center gap-1">
-                            <span>✓</span> Données BDD
+                          <span className="text-[10px] font-bold text-[#5C6B5A] dark:text-slate-400 bg-stone-100 dark:bg-slate-800 px-2.5 py-0.5 rounded-full font-mono flex items-center gap-1">
+                            <span>🔒</span> Paramètres verrouillés
                           </span>
                         </div>
 
@@ -1497,7 +1489,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                           <div>
                             <label className="text-[10px] font-bold text-[#5C6B5A] dark:text-slate-400 block mb-1 flex items-center justify-between">
                               <span className="flex items-center gap-1"><User className="w-3 h-3" /> Nom & Prénoms</span>
-                              <span className="text-[9px] text-slate-500">🔒 Verrouillé</span>
+                              <span className="text-[9px] text-slate-500">🔒</span>
                             </label>
                             <input
                               type="text"
@@ -1511,7 +1503,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                           <div>
                             <label className="text-[10px] font-bold text-[#5C6B5A] dark:text-slate-400 block mb-1 flex items-center justify-between">
                               <span className="flex items-center gap-1"><Phone className="w-3 h-3" /> Contact téléphonique</span>
-                              <span className="text-[9px] text-slate-500">🔒 Verrouillé</span>
+                              <span className="text-[9px] text-slate-500">🔒</span>
                             </label>
                             <input
                               type="text"
@@ -1525,7 +1517,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                           <div>
                             <label className="text-[10px] font-bold text-[#5C6B5A] dark:text-slate-400 block mb-1 flex items-center justify-between">
                               <span className="flex items-center gap-1"><HardDrive className="w-3 h-3 text-orange-600" /> Formule à renouveler</span>
-                              <span className="text-[9px] text-slate-500">🔒 Verrouillé</span>
+                              <span className="text-[9px] text-slate-500">🔒</span>
                             </label>
                             <input
                               type="text"
@@ -1539,7 +1531,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                           <div>
                             <label className="text-[10px] font-bold text-[#5C6B5A] dark:text-slate-400 block mb-1 flex items-center justify-between">
                               <span>📦 Capacité de stockage</span>
-                              <span className="text-[9px] text-slate-500">🔒 Verrouillé</span>
+                              <span className="text-[9px] text-slate-500">🔒</span>
                             </label>
                             <input
                               type="text"
@@ -1553,13 +1545,13 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                           <div>
                             <label className="text-[10px] font-bold text-[#5C6B5A] dark:text-slate-400 block mb-1 flex items-center justify-between">
                               <span className="flex items-center gap-1"><CreditCard className="w-3 h-3 text-emerald-600" /> Somme à régler</span>
-                              <span className="text-[9px] text-slate-500">🔒 Verrouillé</span>
+                              <span className="text-[9px] text-slate-500">🔒</span>
                             </label>
                             <div className="w-full bg-[#F5F0E8] dark:bg-slate-950 border border-emerald-500/30 px-3 py-2 rounded-xl flex items-center justify-between">
                               <span className="font-mono font-black text-sm text-[#2D4A3E] dark:text-emerald-400">
                                 {pricePaid.toLocaleString('fr-FR')} {currency}
                               </span>
-                              <span className="text-[9px] uppercase font-bold text-slate-500">Tarif officiel</span>
+                              <span className="text-[9px] uppercase font-bold text-slate-500">Tarif régulier</span>
                             </div>
                           </div>
 
@@ -1567,7 +1559,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                           <div>
                             <label className="text-[10px] font-bold text-[#5C6B5A] dark:text-slate-400 block mb-1 flex items-center justify-between">
                               <span className="flex items-center gap-1"><Calendar className="w-3 h-3 text-blue-600" /> Période d'abonnement</span>
-                              <span className="text-[9px] text-slate-500">🔒 Verrouillé</span>
+                              <span className="text-[9px] text-slate-500">🔒</span>
                             </label>
                             <input
                               type="text"
@@ -1579,93 +1571,15 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                         </div>
                       </div>
 
-                      {/* Numéros pour le paiement mobile (Chargés depuis la base de données) */}
-                      <div className="p-4 rounded-2xl bg-white/80 dark:bg-slate-900/80 border border-[#D4C9B5] dark:border-slate-800 space-y-3 shadow-xs">
-                        <div className="flex items-center justify-between">
-                          <span className="text-[11px] font-extrabold uppercase tracking-wider text-[#2D4A3E] dark:text-white flex items-center gap-1.5">
-                            <span>📱</span> Comptes de transfert officiel StudyCloud :
-                          </span>
-                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold bg-emerald-500/10 px-2 py-0.5 rounded-full">
-                            Numéros marchands BDD
-                          </span>
-                        </div>
-
-                        <div className="grid grid-cols-1 sm:grid-cols-3 gap-2.5">
-                          {/* Wave */}
-                          <div className="p-2.5 rounded-xl bg-[#F5F0E8] dark:bg-slate-950 border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-1.5 hover:border-blue-500/50 transition">
-                            <div className="truncate">
-                              <span className="text-[10px] font-black text-blue-600 dark:text-blue-400 block uppercase">Wave</span>
-                              <span className="font-mono font-bold text-xs truncate block text-slate-900 dark:text-white">
-                                {companyProfile?.wave_number || '+225 07 00 00 00 00'}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleCopyNumber(companyProfile?.wave_number || '+2250700000000', 'wave')}
-                              className="p-1.5 rounded-lg bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 dark:hover:bg-slate-700 text-xs shrink-0 cursor-pointer transition active:scale-95"
-                              title="Copier le numéro Wave"
-                            >
-                              {copiedKey === 'wave' ? <CheckCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
-
-                          {/* Orange */}
-                          <div className="p-2.5 rounded-xl bg-[#F5F0E8] dark:bg-slate-950 border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-1.5 hover:border-orange-500/50 transition">
-                            <div className="truncate">
-                              <span className="text-[10px] font-black text-orange-600 dark:text-orange-400 block uppercase">Orange</span>
-                              <span className="font-mono font-bold text-xs truncate block text-slate-900 dark:text-white">
-                                {companyProfile?.orange_number || '+225 07 00 00 00 00'}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleCopyNumber(companyProfile?.orange_number || '+2250700000000', 'orange')}
-                              className="p-1.5 rounded-lg bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 dark:hover:bg-slate-700 text-xs shrink-0 cursor-pointer transition active:scale-95"
-                              title="Copier le numéro Orange"
-                            >
-                              {copiedKey === 'orange' ? <CheckCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
-
-                          {/* MTN */}
-                          <div className="p-2.5 rounded-xl bg-[#F5F0E8] dark:bg-slate-950 border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-1.5 hover:border-yellow-500/50 transition">
-                            <div className="truncate">
-                              <span className="text-[10px] font-black text-yellow-600 dark:text-yellow-400 block uppercase">MTN / Moov</span>
-                              <span className="font-mono font-bold text-xs truncate block text-slate-900 dark:text-white">
-                                {companyProfile?.mtn_number || '+225 05 00 00 00 00'}
-                              </span>
-                            </div>
-                            <button
-                              type="button"
-                              onClick={() => handleCopyNumber(companyProfile?.mtn_number || '+2250500000000', 'mtn')}
-                              className="p-1.5 rounded-lg bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 dark:hover:bg-slate-700 text-xs shrink-0 cursor-pointer transition active:scale-95"
-                              title="Copier le numéro MTN"
-                            >
-                              {copiedKey === 'mtn' ? <CheckCheck className="w-3.5 h-3.5 text-emerald-600" /> : <Copy className="w-3.5 h-3.5" />}
-                            </button>
-                          </div>
-                        </div>
-
-                        <p className="text-[10px] text-slate-500 dark:text-slate-400 pt-0.5 italic">
-                          💡 Effectuez le paiement exact de <strong>{pricePaid.toLocaleString('fr-FR')} {currency}</strong> sur l'un de ces comptes officiels avant de joindre votre reçu à droite.
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* ======================================================== */}
-                    {/* COLONNE DROITE (6 COLONNES) : REÇU DE PAIEMENT & ACTION */}
-                    {/* ======================================================== */}
-                    <div className="lg:col-span-6 space-y-4 flex flex-col justify-between h-full">
-                      
-                      {/* Notice unique modifiable */}
-                      <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border-2 border-orange-500/60 dark:border-orange-500/60 space-y-3.5 shadow-md">
+                      {/* SEUL CHAMP MODIFIABLE : IMAGE DU REÇU DE PAIEMENT */}
+                      <div className="p-4 rounded-2xl bg-white dark:bg-slate-900 border-2 border-orange-500/60 dark:border-orange-500/60 space-y-3 shadow-sm">
                         <div className="flex items-center justify-between flex-wrap gap-2">
                           <label className="text-xs sm:text-sm font-black text-[#2D4A3E] dark:text-white flex items-center gap-2">
                             <span className="p-1.5 rounded-xl bg-orange-500/10 text-orange-600 dark:text-orange-400"><ImageIcon className="w-4 h-4" /></span>
                             <span>Image du reçu de paiement (Capture d'écran) *</span>
                           </label>
                           <span className="text-[10px] font-extrabold text-orange-600 dark:text-orange-400 bg-orange-500/15 border border-orange-500/30 px-2.5 py-0.5 rounded-full">
-                            ★ Seul champ modifiable
+                            ★ Seul champ à fournir
                           </span>
                         </div>
 
@@ -1698,13 +1612,13 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
 
                             <div 
                               onClick={() => setZoomedReceiptUrl(receiptImage)}
-                              className="relative rounded-xl overflow-hidden bg-black/5 dark:bg-black/50 border border-slate-700 flex items-center justify-center max-h-[260px] cursor-pointer group"
+                              className="relative rounded-xl overflow-hidden bg-black/5 dark:bg-black/50 border border-slate-700 flex items-center justify-center max-h-[220px] cursor-pointer group"
                               title="Cliquer pour voir en plein écran"
                             >
                               <img
                                 src={receiptImage}
                                 alt="Reçu de paiement"
-                                className="max-h-[250px] w-auto max-w-full object-contain rounded-lg transition duration-200 group-hover:scale-[1.02]"
+                                className="max-h-[210px] w-auto max-w-full object-contain rounded-lg transition duration-200 group-hover:scale-[1.02]"
                               />
                               <div className="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center backdrop-blur-xs">
                                 <span className="px-3 py-1.5 rounded-xl bg-orange-600 text-white font-bold text-xs flex items-center gap-1.5 shadow-lg">
@@ -1727,30 +1641,28 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                             </div>
                           </div>
                         ) : (
-                          /* Zone de clic/drag-and-drop grand format */
+                          /* Zone de clic/drag-and-drop à l'identique de SubscriptionFormView */
                           <div
                             onClick={() => fileInputRef.current?.click()}
-                            className="border-2 border-dashed border-orange-500/50 hover:border-orange-500 dark:border-orange-500/40 dark:hover:border-orange-400 rounded-2xl p-8 sm:p-12 text-center cursor-pointer transition duration-200 hover:bg-orange-500/5 group flex flex-col items-center justify-center space-y-3"
+                            className="border-2 border-dashed border-[#2D4A3E]/30 dark:border-slate-700 hover:border-[#2D4A3E] dark:hover:border-emerald-500 rounded-2xl p-6 sm:p-8 text-center cursor-pointer transition-all bg-[#E8DFD0]/40 dark:bg-[#111a2e]/60 hover:bg-[#E8DFD0] dark:hover:bg-[#111a2e] group"
                           >
-                            <div className="w-14 h-14 rounded-2xl bg-orange-500/10 text-orange-600 dark:text-orange-400 flex items-center justify-center group-hover:scale-110 transition shadow-inner">
-                              <ImageIcon className="w-7 h-7" />
+                            <div className="w-12 h-12 rounded-2xl bg-[#C9B896]/50 dark:bg-slate-800 flex items-center justify-center mx-auto mb-3 group-hover:scale-105 transition-transform text-[#2D4A3E] dark:text-white">
+                              <UploadCloud className="w-6 h-6" />
                             </div>
-                            <div className="space-y-1 text-center">
-                              <div className="text-sm font-black text-[#2D4A3E] dark:text-white group-hover:text-orange-600 dark:group-hover:text-orange-400 transition">
-                                Cliquez ici pour importer votre capture d'écran de paiement
-                              </div>
-                              <p className="text-xs text-[#5C6B5A] dark:text-slate-400">
-                                Preuve de transaction Wave, Orange Money, MTN Mobile Money
-                              </p>
-                            </div>
-                            <div className="inline-flex items-center gap-1 px-3 py-1 rounded-full bg-[#E8DFD0] dark:bg-slate-800 text-[10px] font-mono text-slate-600 dark:text-slate-300 font-bold">
-                              Formats acceptés : JPG, PNG, WEBP • Max 20 Mo
-                            </div>
+                            <p className="text-xs sm:text-sm font-extrabold text-[#2D4A3E] dark:text-white mb-1">
+                              Cliquez pour importer la capture du reçu
+                            </p>
+                            <p className="text-[11px] text-[#5C6B5A] dark:text-slate-400">
+                              Formats supportés : JPG, PNG, WEBP (Max 20 Mo)
+                            </p>
+                            <span className="inline-block mt-3 px-3.5 py-1.5 bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white text-xs font-bold rounded-xl shadow-xs">
+                              Parcourir les fichiers
+                            </span>
                           </div>
                         )}
                       </div>
 
-                      {/* Bouton de confirmation grand format */}
+                      {/* Bouton de confirmation */}
                       <div className="pt-2">
                         <button
                           type="submit"
@@ -1780,6 +1692,229 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                       </div>
 
                     </div>
+
+                    {/* ===================================================================== */}
+                    {/* CÔTÉ DROIT (5 COLONNES) : COMMENT ÇA SE PASSE (À L'IDENTIQUE)         */}
+                    {/* ===================================================================== */}
+                    <div className="lg:col-span-5 space-y-4 lg:pl-6 border-t-2 lg:border-t-0 border-[#2D4A3E]/15 dark:border-slate-800 pt-6 lg:pt-0">
+                      
+                      <div className="border-b border-[#2D4A3E]/15 dark:border-slate-800 pb-3">
+                        <h3 className="text-base sm:text-lg font-bold text-[#2D4A3E] dark:text-white flex items-center gap-2">
+                          <HelpCircle className="w-5 h-5 text-emerald-700 dark:text-emerald-400" />
+                          <span>Comment ça se passe ?</span>
+                        </h3>
+                        <p className="text-xs text-[#5C6B5A] dark:text-slate-400">
+                          Procédure rapide de renouvellement de votre abonnement StudyCloud.
+                        </p>
+                      </div>
+
+                      {/* Étape 1 : Effectuer le paiement */}
+                      <div className="bg-[#E8DFD0] dark:bg-[#111a2e] p-4 sm:p-5 rounded-2xl border-2 border-[#D4C9B5] dark:border-slate-800 space-y-3">
+                        <div className="flex items-center gap-2.5 text-xs font-extrabold text-[#2D4A3E] dark:text-white">
+                          <span className="w-6 h-6 rounded-full bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white flex items-center justify-center text-xs shrink-0 font-mono font-bold">
+                            1
+                          </span>
+                          <span>Étape 1 : Effectuez le paiement mobile</span>
+                        </div>
+                        <p className="text-xs text-[#5C6B5A] dark:text-slate-300 leading-relaxed">
+                          Transférez le montant exact de <strong className="text-[#2D4A3E] dark:text-white font-mono font-black">{pricePaid.toLocaleString('fr-FR')} {currency}</strong> sur l'un de nos numéros officiels ci-dessous :
+                        </p>
+
+                        {/* Comptes Marchands avec boutons copier */}
+                        <div className="space-y-2 pt-1">
+                          {/* WAVE */}
+                          <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
+                            <div>
+                              <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-700 dark:text-blue-400 mr-2">
+                                Wave
+                              </span>
+                              <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
+                                {companyProfile?.wave_number || '+225 07 00 00 00 00'}
+                              </span>
+                              <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
+                                Titulaire : {companyProfile?.wave_name || 'StudyCloud CI'}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyNumber(companyProfile?.wave_number || '+2250700000000', 'wave')}
+                              className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
+                            >
+                              {copiedKey === 'wave' ? (
+                                <>
+                                  <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="text-[11px] text-emerald-600">Copié</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span className="text-[11px]">Copier</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          {/* ORANGE MONEY */}
+                          <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
+                            <div>
+                              <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 dark:text-orange-400 mr-2">
+                                Orange
+                              </span>
+                              <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
+                                {companyProfile?.orange_number || '+225 07 00 00 00 00'}
+                              </span>
+                              <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
+                                Titulaire : {companyProfile?.orange_name || "Orange Money Côte d'Ivoire"}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyNumber(companyProfile?.orange_number || '+2250700000000', 'orange')}
+                              className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
+                            >
+                              {copiedKey === 'orange' ? (
+                                <>
+                                  <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="text-[11px] text-emerald-600">Copié</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span className="text-[11px]">Copier</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          {/* MTN / MOOV */}
+                          <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
+                            <div>
+                              <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-700 dark:text-yellow-400 mr-2">
+                                MTN / Moov
+                              </span>
+                              <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
+                                {companyProfile?.mtn_number || '+225 05 00 00 00 00'}
+                              </span>
+                              <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
+                                Titulaire : {companyProfile?.mtn_name || 'Paiement Mobile National'}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyNumber(companyProfile?.mtn_number || '+2250500000000', 'mtn')}
+                              className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
+                            >
+                              {copiedKey === 'mtn' ? (
+                                <>
+                                  <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="text-[11px] text-emerald-600">Copié</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span className="text-[11px]">Copier</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+
+                          {/* MOOV DÉDIÉ (SI CONFIGURÉ) */}
+                          {companyProfile?.moov_number && (
+                            <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
+                              <div>
+                                <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-700 dark:text-purple-400 mr-2">
+                                  Moov
+                                </span>
+                                <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
+                                  {companyProfile.moov_number}
+                                </span>
+                                <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
+                                  Titulaire : {companyProfile.moov_name || 'Moov Money'}
+                                </span>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleCopyNumber(companyProfile.moov_number!, 'moov')}
+                                className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
+                              >
+                                {copiedKey === 'moov' ? (
+                                  <>
+                                    <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                    <span className="text-[11px] text-emerald-600">Copié</span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <Copy className="w-3.5 h-3.5" />
+                                    <span className="text-[11px]">Copier</span>
+                                  </>
+                                )}
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Consigne de paiement */}
+                        {companyProfile?.payment_instructions && (
+                          <div className="p-2.5 bg-emerald-500/10 border border-emerald-500/20 rounded-xl text-[11px] text-emerald-800 dark:text-emerald-300">
+                            💡 <strong>Consigne :</strong> {companyProfile.payment_instructions}
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Étape 2 : Capturer la preuve */}
+                      <div className="bg-[#E8DFD0] dark:bg-[#111a2e] p-4 sm:p-5 rounded-2xl border-2 border-[#D4C9B5] dark:border-slate-800 space-y-2">
+                        <div className="flex items-center gap-2.5 text-xs font-extrabold text-[#2D4A3E] dark:text-white">
+                          <span className="w-6 h-6 rounded-full bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white flex items-center justify-center text-xs shrink-0 font-mono font-bold">
+                            2
+                          </span>
+                          <span>Étape 2 : Prenez une capture d'écran du reçu</span>
+                        </div>
+                        <p className="text-xs text-[#5C6B5A] dark:text-slate-300 leading-relaxed">
+                          Une fois la transaction effectuée, réalisez une capture d'écran claire de votre reçu de transfert affichant la date, le montant et le numéro de transaction.
+                        </p>
+                      </div>
+
+                      {/* Étape 3 : Renseigner le formulaire */}
+                      <div className="bg-[#E8DFD0] dark:bg-[#111a2e] p-4 sm:p-5 rounded-2xl border-2 border-[#D4C9B5] dark:border-slate-800 space-y-2">
+                        <div className="flex items-center gap-2.5 text-xs font-extrabold text-[#2D4A3E] dark:text-white">
+                          <span className="w-6 h-6 rounded-full bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white flex items-center justify-center text-xs shrink-0 font-mono font-bold">
+                            3
+                          </span>
+                          <span>Étape 3 : Joignez votre reçu & confirmez</span>
+                        </div>
+                        <p className="text-xs text-[#5C6B5A] dark:text-slate-300 leading-relaxed">
+                          Les paramètres de votre forfait sont déjà pré-remplis à gauche. Importez simplement votre capture d'écran et cliquez sur <strong>Confirmer le renouvellement</strong>.
+                        </p>
+                      </div>
+
+                      {/* Étape 4 : Prolongation immédiate de l'abonnement */}
+                      <div className="bg-[#E8DFD0] dark:bg-[#111a2e] p-4 sm:p-5 rounded-2xl border-2 border-emerald-600/40 dark:border-emerald-500/40 space-y-2">
+                        <div className="flex items-center gap-2.5 text-xs font-extrabold text-emerald-800 dark:text-emerald-300">
+                          <span className="w-6 h-6 rounded-full bg-emerald-600 text-white flex items-center justify-center text-xs shrink-0 font-mono font-bold">
+                            4
+                          </span>
+                          <span>Étape 4 : Prolongation rapide de votre abonnement</span>
+                        </div>
+                        <p className="text-xs text-[#5C6B5A] dark:text-slate-300 leading-relaxed">
+                          Dès réception, l'administrateur vérifie votre reçu et approuve la demande. Votre abonnement <strong className="text-emerald-700 dark:text-emerald-400">{planName}</strong> est immédiatement prolongé pour une nouvelle période sans interruption de vos services !
+                        </p>
+                      </div>
+
+                      {/* Encadré d'assurance et de support */}
+                      <div className="p-4 rounded-2xl bg-emerald-500/10 border border-emerald-500/30 flex items-start gap-3">
+                        <ShieldCheck className="w-5 h-5 text-emerald-600 dark:text-emerald-400 shrink-0 mt-0.5" />
+                        <div className="text-xs space-y-1">
+                          <span className="font-extrabold text-[#2D4A3E] dark:text-emerald-300 block">
+                            Paiement 100% sécurisé & Garanti
+                          </span>
+                          <p className="text-[#5C6B5A] dark:text-slate-400">
+                            En cas de question ou de besoin d'assistance, notre équipe est disponible 7j/7 pour vous assister directement.
+                          </p>
+                        </div>
+                      </div>
+
+                    </div>
+
                   </div>
                 </form>
               )}
