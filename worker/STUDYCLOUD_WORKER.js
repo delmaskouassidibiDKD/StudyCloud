@@ -7420,6 +7420,90 @@ Lien vers le produit : ${productShareUrl}`;
         }, 200, origin);
       }
 
+      // Route administrateur : Confirmation et activation d'une demande de stockage dans la BDD
+      if (path === "/api/storage-requests/approve" && method === "POST") {
+        if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
+        const body = await request.json().catch(() => ({}));
+        const requestId = body.requestId;
+        if (!requestId) return errorResponse("requestId requis", 400, origin);
+
+        await ensureStorageTables(env.DB);
+        const reqRow = await env.DB.prepare("SELECT * FROM storage_upgrade_requests WHERE id = ?").bind(requestId).first();
+        if (!reqRow) return errorResponse("Demande introuvable", 404, origin);
+
+        const userId = reqRow.user_id;
+        const addMb = Number(body.allocatedMb !== undefined ? body.allocatedMb : (reqRow.additional_mb || 1024));
+        const pricePaid = Number(body.pricePaid !== undefined ? body.pricePaid : (reqRow.price_paid || 0));
+        const startDate = body.startDate || new Date().toISOString();
+        const endDate = body.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        const gracePeriodDays = Number(body.gracePeriodDays || 5);
+
+        // 1. Marquer la demande approuvée
+        await env.DB.prepare(`
+          UPDATE storage_upgrade_requests 
+          SET status = 'approved', 
+              confirmed_start_date = ?, 
+              confirmed_end_date = ?, 
+              grace_period_days = ?, 
+              updated_at = CURRENT_TIMESTAMP 
+          WHERE id = ?
+        `).bind(startDate, endDate, gracePeriodDays, requestId).run();
+
+        // 2. Allouer le stockage dans user_storage_quotas
+        const currentQuota = await env.DB.prepare("SELECT * FROM user_storage_quotas WHERE user_id = ?").bind(userId).first();
+        const currentPaid = currentQuota ? Number(currentQuota.paid_total_mb || 0) : 0;
+        const newPaid = currentPaid + addMb;
+        const wTotal = currentQuota ? Number(currentQuota.welcome_total_mb || 30) : 30;
+
+        await env.DB.prepare(`
+          INSERT INTO user_storage_quotas (user_id, welcome_total_mb, welcome_r2_mb, welcome_d1_mb, paid_total_mb, paid_r2_mb, paid_d1_mb, plan_name, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, 'payant', CURRENT_TIMESTAMP)
+          ON CONFLICT(user_id) DO UPDATE SET
+            paid_total_mb = excluded.paid_total_mb,
+            paid_r2_mb = excluded.paid_r2_mb,
+            paid_d1_mb = excluded.paid_d1_mb,
+            plan_name = 'payant',
+            updated_at = CURRENT_TIMESTAMP
+        `).bind(userId, wTotal, Math.round(wTotal/3), Math.round(wTotal*2/3), newPaid, Math.round(newPaid/2), Math.round(newPaid/2)).run();
+
+        // 3. Insérer ou activer l'abonnement dans user_subscriptions
+        const subId = "sub_" + Math.random().toString(36).substring(2, 10);
+        await env.DB.prepare(`
+          UPDATE user_subscriptions 
+          SET status = 'renewed', updated_at = CURRENT_TIMESTAMP 
+          WHERE user_id = ? AND status = 'active'
+        `).bind(userId).run();
+
+        await env.DB.prepare(`
+          INSERT INTO user_subscriptions (id, user_id, user_name, user_phone, user_email, plan_name, total_storage_mb, monthly_price, currency, status, start_date, end_date, grace_period_days, request_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+        `).bind(
+          subId, userId, reqRow.user_name || "", reqRow.user_phone || "", reqRow.user_email || "",
+          reqRow.pack_name || "Pack Stockage", wTotal + newPaid, pricePaid, reqRow.currency || "FCFA",
+          startDate, endDate, gracePeriodDays, requestId
+        ).run();
+
+        return jsonResponse({
+          success: true,
+          requestId,
+          userId,
+          newPaidTotalMb: newPaid,
+          message: "Abonnement confirmé et stockage alloué avec succès dans la base de données"
+        }, 200, origin);
+      }
+
+      // Route administrateur : Rejet d'une demande de stockage
+      if (path === "/api/storage-requests/reject" && method === "POST") {
+        if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
+        const body = await request.json().catch(() => ({}));
+        const requestId = body.requestId;
+        const reason = body.reason || "Paiement non confirmé";
+        if (!requestId) return errorResponse("requestId requis", 400, origin);
+
+        await env.DB.prepare(`UPDATE storage_upgrade_requests SET status = 'rejected', admin_notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(reason, requestId).run();
+        return jsonResponse({ success: true, requestId, message: "Demande rejetée" }, 200, origin);
+      }
+
       // Route utilisateur : Récupération des abonnements actifs et passés
       if (path === "/api/user/subscriptions" && method === "GET") {
         if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
