@@ -129,15 +129,17 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
       </div>
 
       <div className="w-full max-w-[1250px] mx-auto px-4 pt-6 sm:pt-8">
-        {/* Header Section */}
-        <div className="text-center pb-8 max-w-5xl mx-auto">
-          <h1 className="text-3xl sm:text-5xl md:text-6xl font-serif font-normal text-[#2D4A3E] dark:text-white mb-3 leading-tight">
-            Choisissez votre formule
-          </h1>
-          <p className="text-sm sm:text-lg md:text-xl font-sans text-[#5C6B5A] dark:text-slate-400 max-w-xl mx-auto leading-relaxed px-2">
-            Des tarifs abordables et adaptés à vos objectifs.
-          </p>
-        </div>
+        {/* Header Section (Uniquement sur Stockage et IA) */}
+        {activeTab !== 'renewal' && (
+          <div className="text-center pb-8 max-w-5xl mx-auto">
+            <h1 className="text-3xl sm:text-5xl md:text-6xl font-serif font-normal text-[#2D4A3E] dark:text-white mb-3 leading-tight">
+              Choisissez votre formule
+            </h1>
+            <p className="text-sm sm:text-lg md:text-xl font-sans text-[#5C6B5A] dark:text-slate-400 max-w-xl mx-auto leading-relaxed px-2">
+              Des tarifs abordables et adaptés à vos objectifs.
+            </p>
+          </div>
+        )}
 
         {/* ========================================================================= */}
         {/* 1. SECTION : ABONNEMENTS STOCKAGE (DISPOSITION HORIZONTALE SUR ORDINATEUR)*/}

@@ -5896,10 +5896,74 @@ export default {
         if (!userId) {
           return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
         }
-        const reqs = await safeQuery(db, `SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC`, [userId], { results: [] });
+        const includeDeleted = url.searchParams.get('includeDeleted') === 'true';
+        const query = includeDeleted
+          ? `SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC`
+          : `SELECT * FROM storage_upgrade_requests WHERE user_id = ? AND (user_deleted_at IS NULL OR user_deleted_at = '') ORDER BY created_at DESC`;
+        const reqs = await safeQuery(db, query, [userId], { results: [] });
         return new Response(JSON.stringify({
           success: true,
           requests: (reqs && reqs.results) ? reqs.results : []
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/user/storage/delete-history-item (PURGE DIFFÉRÉE À 1 MOIS)
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/user/storage/delete-history-item') {
+        const body = await request.json().catch(() => ({}));
+        const requestId = body.requestId;
+        const userId = body.userId || url.searchParams.get('userId') || request.headers.get('x-user-id');
+        if (!requestId || !userId) {
+          return new Response(JSON.stringify({ success: false, error: 'requestId et userId requis' }), { status: 400, headers: corsHeaders(origin) });
+        }
+
+        const nowISO = new Date().toISOString();
+        const purgeDateISO = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        const purgeId = 'purge_' + Math.random().toString(36).substring(2, 10);
+
+        try {
+          await safeRun(db, `
+            CREATE TABLE IF NOT EXISTS user_requests_history_purge (
+              id TEXT PRIMARY KEY,
+              request_id TEXT NOT NULL,
+              user_id TEXT NOT NULL,
+              requested_at TEXT NOT NULL,
+              purge_effective_at TEXT NOT NULL,
+              status TEXT DEFAULT 'pending_purge',
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `);
+        } catch (e) {}
+
+        try {
+          await safeRun(db, `
+            INSERT INTO user_requests_history_purge (id, request_id, user_id, requested_at, purge_effective_at, status, created_at)
+            VALUES (?, ?, ?, ?, ?, 'pending_purge', ?)
+          `, [purgeId, requestId, userId, nowISO, purgeDateISO, nowISO]);
+        } catch (e) {}
+
+        try {
+          await safeRun(db, `ALTER TABLE storage_upgrade_requests ADD COLUMN user_deleted_at TEXT DEFAULT ''`);
+        } catch (e) {}
+        try {
+          await safeRun(db, `ALTER TABLE storage_upgrade_requests ADD COLUMN purge_scheduled_at TEXT DEFAULT ''`);
+        } catch (e) {}
+
+        try {
+          await safeRun(db, `
+            UPDATE storage_upgrade_requests 
+            SET user_deleted_at = ?, purge_scheduled_at = ? 
+            WHERE id = ? AND user_id = ?
+          `, [nowISO, purgeDateISO, requestId, userId]);
+        } catch (e) {}
+
+        return new Response(JSON.stringify({
+          success: true,
+          message: "Votre demande de suppression a été enregistrée. Conformément à la réglementation de traçabilité comptable, la suppression définitive de cet historique sera effective après 1 mois (30 jours)."
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }

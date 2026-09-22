@@ -2061,3 +2061,25 @@ export async function getUserStorageRequests(userId?: string): Promise<{ success
   }
 }
 
+/**
+ * Supprime une demande de l'historique utilisateur (Purge effective après 1 mois / 30 jours)
+ */
+export async function deleteUserRequestHistory(
+  requestId: string,
+  userId?: string
+): Promise<{ success: boolean; message?: string; purgeEffectiveAt?: string; error?: string }> {
+  const currentUserId = userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+  try {
+    return await request<{ success: boolean; message?: string; purgeEffectiveAt?: string; error?: string }>(
+      '/api/user/storage/delete-history-item',
+      {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ requestId, userId: currentUserId })
+      }
+    );
+  } catch (err: any) {
+    return { success: false, error: err?.message || 'Erreur lors de la suppression' };
+  }
+}
+

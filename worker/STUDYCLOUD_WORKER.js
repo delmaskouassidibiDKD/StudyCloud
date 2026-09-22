@@ -2232,11 +2232,27 @@ async function ensureStorageTables(db) {
       "ALTER TABLE storage_upgrade_requests ADD COLUMN user_whatsapp TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN storage_display TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN price_display TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN billing_cycle TEXT DEFAULT 'annual'"
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN billing_cycle TEXT DEFAULT 'annual'",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_deleted_at TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN purge_scheduled_at TEXT DEFAULT ''"
     ];
     for (const sql of upgradeCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
     }
+
+    try {
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS user_requests_history_purge (
+          id TEXT PRIMARY KEY,
+          request_id TEXT NOT NULL,
+          user_id TEXT NOT NULL,
+          requested_at TEXT NOT NULL,
+          purge_effective_at TEXT NOT NULL,
+          status TEXT DEFAULT 'pending_purge',
+          created_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+    } catch (e) {}
 
     try {
       await db.prepare(`
@@ -7353,18 +7369,54 @@ Lien vers le produit : ${productShareUrl}`;
         }, 200, origin);
       }
 
-      // Route utilisateur : Récupération de l'historique des demandes de stockage et de renouvellement
+      // Route utilisateur : Récupération des demandes de stockage et de renouvellement
       if (path === "/api/user/storage/upgrade-requests" && method === "GET") {
         if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
         const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
         if (!userId) return errorResponse("userId requis", 400, origin);
         await ensureStorageTables(env.DB);
-        const reqs = await env.DB.prepare(
-          "SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC"
-        ).bind(userId).all();
+        const includeDeleted = url.searchParams.get("includeDeleted") === "true";
+        const query = includeDeleted
+          ? "SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC"
+          : "SELECT * FROM storage_upgrade_requests WHERE user_id = ? AND (user_deleted_at IS NULL OR user_deleted_at = '') ORDER BY created_at DESC";
+        const reqs = await env.DB.prepare(query).bind(userId).all();
         return jsonResponse({
           success: true,
           requests: (reqs && reqs.results) ? reqs.results : []
+        }, 200, origin);
+      }
+
+      // Route utilisateur : Demande de suppression de l'historique (Purge définitive différée à 1 mois / 30 jours)
+      if (path === "/api/user/storage/delete-history-item" && method === "POST") {
+        if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
+        const body = await request.json().catch(() => ({}));
+        const requestId = body.requestId;
+        const userId = body.userId || url.searchParams.get("userId") || request.headers.get("x-user-id");
+        if (!requestId || !userId) return errorResponse("requestId et userId requis", 400, origin);
+
+        await ensureStorageTables(env.DB);
+        const nowISO = new Date().toISOString();
+        const purgeDateISO = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        const purgeId = "purge_" + Math.random().toString(36).substring(2, 10);
+
+        try {
+          await env.DB.prepare(`
+            INSERT INTO user_requests_history_purge (id, request_id, user_id, requested_at, purge_effective_at, status, created_at)
+            VALUES (?, ?, ?, ?, ?, 'pending_purge', ?)
+          `).bind(purgeId, requestId, userId, nowISO, purgeDateISO, nowISO).run();
+        } catch (e) {}
+
+        try {
+          await env.DB.prepare(`
+            UPDATE storage_upgrade_requests 
+            SET user_deleted_at = ?, purge_scheduled_at = ? 
+            WHERE id = ? AND user_id = ?
+          `).bind(nowISO, purgeDateISO, requestId, userId).run();
+        } catch (e) {}
+
+        return jsonResponse({
+          success: true,
+          message: "Votre demande de suppression a été enregistrée. Conformément à la réglementation de traçabilité comptable, la suppression définitive de cet historique sera effective après 1 mois (30 jours)."
         }, 200, origin);
       }
 
