@@ -376,6 +376,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
+  const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
   const [zoomedReceiptUrl, setZoomedReceiptUrl] = useState<string | null>(null);
 
@@ -700,9 +701,9 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
     ? `${(totalStorageMb / 1024).toFixed(1)} Go (${totalStorageMb} Mo)` 
     : `${totalStorageMb} Mo`;
 
-  const studentName = activeSubscription?.user_name || user?.name || user?.full_name || (typeof localStorage !== 'undefined' ? localStorage.getItem('studycloud_user_name') : '') || 'Étudiant StudyCloud';
+  const studentName = activeSubscription?.user_name || user?.name || (user as any)?.full_name || (typeof localStorage !== 'undefined' ? localStorage.getItem('studycloud_user_name') : '') || 'Étudiant StudyCloud';
   const studentPhone = activeSubscription?.user_phone || user?.phone || (typeof localStorage !== 'undefined' ? localStorage.getItem('studycloud_user_phone') : '') || '';
-  const studentWhatsapp = activeSubscription?.user_whatsapp || user?.whatsapp || studentPhone;
+  const studentWhatsapp = activeSubscription?.user_whatsapp || (user as any)?.whatsapp || studentPhone;
   const planName = activeSubscription?.plan_name || 'Abonnement StudyCloud';
   const pricePaid = Number(activeSubscription?.monthly_price || 0);
   const currency = activeSubscription?.currency || 'FCFA';

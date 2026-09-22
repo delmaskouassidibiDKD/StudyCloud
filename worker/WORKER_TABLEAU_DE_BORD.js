@@ -2163,23 +2163,18 @@ function renderDashboardHtml(data) {
               <span>Informations Professionnelles & Comptes de Réception</span>
             </h3>
             <p class="text-xs text-slate-400 mt-0.5">
-              Ces coordonnées sont stockées dans Cloudflare D1. Les numéros Wave, Orange Money et MTN/Moov configurés ici s'affichent automatiquement aux utilisateurs lors du paiement de leur abonnement.
+              Ces coordonnées sont stockées dans Cloudflare D1. Les numéros Wave, Orange Money, MTN Money et Moov Money configurés ici s'affichent automatiquement aux utilisateurs lors du paiement de leur abonnement.
             </p>
           </div>
-          <button 
-            type="button" 
-            onclick="saveCompanyProfile()" 
-            id="save-company-btn-top"
-            class="px-5 py-2.5 rounded-xl bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs shadow-lg shadow-orange-600/30 flex items-center gap-2 transition cursor-pointer self-start sm:self-auto shrink-0 active:scale-95"
-          >
-            <span>💾</span>
-            <span>Enregistrer les modifications</span>
-          </button>
+          <div class="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-orange-500/10 border border-orange-500/20 text-orange-400 text-xs font-bold shrink-0">
+            <span class="w-2 h-2 rounded-full bg-emerald-400 animate-pulse"></span>
+            <span>⚡ Cliquez sur un champ pour le modifier en direct</span>
+          </div>
         </div>
       </div>
 
-      <!-- Formulaire structuré en 3 blocs principaux -->
-      <form id="company-profile-form" onsubmit="event.preventDefault(); saveCompanyProfile();" class="space-y-5">
+      <!-- Conteneur structuré en 3 blocs principaux avec édition individuelle par modale -->
+      <div id="company-profile-container" class="space-y-5">
         
         <div class="grid grid-cols-1 lg:grid-cols-2 gap-5">
           
@@ -2192,73 +2187,139 @@ function renderDashboardHtml(data) {
 
             <!-- Nom de la société -->
             <div class="space-y-1">
-              <label class="text-[11px] font-bold text-slate-300 block">Nom de la société / Entreprise *</label>
-              <input 
-                type="text" 
-                id="pro-company-name" 
-                value="${safeAttr(cp.company_name, "DKD Technologies")}"
-                placeholder="Ex: DKD Technologies" 
-                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
-              >
+              <div class="flex items-center justify-between">
+                <label class="text-[11px] font-bold text-slate-300 block">Nom de la société / Entreprise *</label>
+                <span class="text-[10px] text-orange-400/80 hover:text-orange-300 cursor-pointer font-semibold flex items-center gap-1" onclick="openFieldEditModal('pro-company-name', 'Nom de la société / Entreprise', 'company_name', 'text')">
+                  <span>✏️</span> <span>Modifier</span>
+                </span>
+              </div>
+              <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-company-name', 'Nom de la société / Entreprise', 'company_name', 'text')">
+                <input 
+                  type="text" 
+                  id="pro-company-name" 
+                  value="${safeAttr(cp.company_name, "DKD Technologies")}"
+                  placeholder="Ex: DKD Technologies" 
+                  readonly
+                  class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-20 border border-slate-700 hover:border-orange-500/60 transition cursor-pointer select-none"
+                >
+                <div id="spinner-pro-company-name" class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs pointer-events-none">
+                  <span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>
+                </div>
+              </div>
             </div>
 
             <!-- Où on est situé (Localisation) -->
             <div class="space-y-1">
-              <label class="text-[11px] font-bold text-slate-300 block">Où on est situé (Ville / Pays) *</label>
-              <input 
-                type="text" 
-                id="pro-location" 
-                value="${safeAttr(cp.location, "Abidjan, Côte d'Ivoire")}"
-                placeholder="Ex: Abidjan, Côte d'Ivoire" 
-                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
-              >
+              <div class="flex items-center justify-between">
+                <label class="text-[11px] font-bold text-slate-300 block">Où on est situé (Ville / Pays) *</label>
+                <span class="text-[10px] text-orange-400/80 hover:text-orange-300 cursor-pointer font-semibold flex items-center gap-1" onclick="openFieldEditModal('pro-location', 'Où on est situé (Ville / Pays)', 'location', 'text')">
+                  <span>✏️</span> <span>Modifier</span>
+                </span>
+              </div>
+              <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-location', 'Où on est situé (Ville / Pays)', 'location', 'text')">
+                <input 
+                  type="text" 
+                  id="pro-location" 
+                  value="${safeAttr(cp.location, "Abidjan, Côte d'Ivoire")}"
+                  placeholder="Ex: Abidjan, Côte d'Ivoire" 
+                  readonly
+                  class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-20 border border-slate-700 hover:border-orange-500/60 transition cursor-pointer select-none"
+                >
+                <div id="spinner-pro-location" class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs pointer-events-none">
+                  <span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>
+                </div>
+              </div>
             </div>
 
             <!-- Notre activité -->
             <div class="space-y-1">
-              <label class="text-[11px] font-bold text-slate-300 block">Notre activité / Domaine d'expertise *</label>
-              <input 
-                type="text" 
-                id="pro-activity" 
-                value="${safeAttr(cp.activity, "Technologies & Éducation Numérique")}"
-                placeholder="Ex: Technologies, Logiciels & Éducation Numérique" 
-                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
-              >
+              <div class="flex items-center justify-between">
+                <label class="text-[11px] font-bold text-slate-300 block">Notre activité / Domaine d'expertise *</label>
+                <span class="text-[10px] text-orange-400/80 hover:text-orange-300 cursor-pointer font-semibold flex items-center gap-1" onclick="openFieldEditModal('pro-activity', 'Notre activité / Domaine d\'expertise', 'activity', 'text')">
+                  <span>✏️</span> <span>Modifier</span>
+                </span>
+              </div>
+              <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-activity', 'Notre activité / Domaine d\'expertise', 'activity', 'text')">
+                <input 
+                  type="text" 
+                  id="pro-activity" 
+                  value="${safeAttr(cp.activity, "Technologies & Éducation Numérique")}"
+                  placeholder="Ex: Technologies, Logiciels & Éducation Numérique" 
+                  readonly
+                  class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-20 border border-slate-700 hover:border-orange-500/60 transition cursor-pointer select-none"
+                >
+                <div id="spinner-pro-activity" class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs pointer-events-none">
+                  <span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>
+                </div>
+              </div>
             </div>
 
             <!-- Adresse physique / Siège -->
             <div class="space-y-1">
-              <label class="text-[11px] font-bold text-slate-300 block">Adresse physique / Quartier / Siège</label>
-              <input 
-                type="text" 
-                id="pro-address" 
-                value="${safeAttr(cp.address, "Abidjan, Côte d'Ivoire")}"
-                placeholder="Ex: Cocody Angré, Abidjan" 
-                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
-              >
+              <div class="flex items-center justify-between">
+                <label class="text-[11px] font-bold text-slate-300 block">Adresse physique / Quartier / Siège</label>
+                <span class="text-[10px] text-orange-400/80 hover:text-orange-300 cursor-pointer font-semibold flex items-center gap-1" onclick="openFieldEditModal('pro-address', 'Adresse physique / Quartier / Siège', 'address', 'text')">
+                  <span>✏️</span> <span>Modifier</span>
+                </span>
+              </div>
+              <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-address', 'Adresse physique / Quartier / Siège', 'address', 'text')">
+                <input 
+                  type="text" 
+                  id="pro-address" 
+                  value="${safeAttr(cp.address, "Abidjan, Côte d'Ivoire")}"
+                  placeholder="Ex: Cocody Angré, Abidjan" 
+                  readonly
+                  class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-20 border border-slate-700 hover:border-orange-500/60 transition cursor-pointer select-none"
+                >
+                <div id="spinner-pro-address" class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs pointer-events-none">
+                  <span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>
+                </div>
+              </div>
             </div>
 
             <!-- Site web & Email officiel -->
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
               <div class="space-y-1">
-                <label class="text-[11px] font-bold text-slate-300 block">Site web officiel</label>
-                <input 
-                  type="text" 
-                  id="pro-website" 
-                  value="${safeAttr(cp.website, "https://studycloud.dkd-technologies.com")}"
-                  placeholder="https://..." 
-                  class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
-                >
+                <div class="flex items-center justify-between">
+                  <label class="text-[11px] font-bold text-slate-300 block">Site web officiel</label>
+                  <span class="text-[10px] text-orange-400/80 hover:text-orange-300 cursor-pointer font-semibold flex items-center gap-1" onclick="openFieldEditModal('pro-website', 'Site web officiel', 'website', 'url')">
+                    <span>✏️</span>
+                  </span>
+                </div>
+                <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-website', 'Site web officiel', 'website', 'url')">
+                  <input 
+                    type="text" 
+                    id="pro-website" 
+                    value="${safeAttr(cp.website, "https://studycloud.dkd-technologies.com")}"
+                    placeholder="https://..." 
+                    readonly
+                    class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-14 border border-slate-700 hover:border-orange-500/60 transition cursor-pointer select-none"
+                  >
+                  <div id="spinner-pro-website" class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs pointer-events-none">
+                    <span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>
+                  </div>
+                </div>
               </div>
               <div class="space-y-1">
-                <label class="text-[11px] font-bold text-slate-300 block">Email professionnel</label>
-                <input 
-                  type="email" 
-                  id="pro-email" 
-                  value="${safeAttr(cp.email, "contact@dkd-technologies.com")}"
-                  placeholder="contact@..." 
-                  class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
-                >
+                <div class="flex items-center justify-between">
+                  <label class="text-[11px] font-bold text-slate-300 block">Email professionnel</label>
+                  <span class="text-[10px] text-orange-400/80 hover:text-orange-300 cursor-pointer font-semibold flex items-center gap-1" onclick="openFieldEditModal('pro-email', 'Email professionnel', 'email', 'email')">
+                    <span>✏️</span>
+                  </span>
+                </div>
+                <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-email', 'Email professionnel', 'email', 'email')">
+                  <input 
+                    type="email" 
+                    id="pro-email" 
+                    value="${safeAttr(cp.email, "contact@dkd-technologies.com")}"
+                    placeholder="contact@..." 
+                    readonly
+                    class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-14 border border-slate-700 hover:border-orange-500/60 transition cursor-pointer select-none"
+                  >
+                  <div id="spinner-pro-email" class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs pointer-events-none">
+                    <span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -2273,159 +2334,289 @@ function renderDashboardHtml(data) {
 
             <!-- Numéro d'appel / SMS principal -->
             <div class="space-y-1">
-              <label class="text-[11px] font-bold text-slate-300 block">Numéro d'appel officiel (Appels / SMS) *</label>
-              <input 
-                type="text" 
-                id="pro-phone-contact" 
-                value="${safeAttr(cp.phone_contact, "+225 0101007978")}"
-                placeholder="Ex: +225 0101007978" 
-                class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
-              >
+              <div class="flex items-center justify-between">
+                <label class="text-[11px] font-bold text-slate-300 block">Numéro d'appel officiel (Appels / SMS) *</label>
+                <span class="text-[10px] text-orange-400/80 hover:text-orange-300 cursor-pointer font-semibold flex items-center gap-1" onclick="openFieldEditModal('pro-phone-contact', 'Numéro d\'appel officiel', 'phone_contact', 'text')">
+                  <span>✏️</span> <span>Modifier</span>
+                </span>
+              </div>
+              <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-phone-contact', 'Numéro d\'appel officiel', 'phone_contact', 'text')">
+                <input 
+                  type="text" 
+                  id="pro-phone-contact" 
+                  value="${safeAttr(cp.phone_contact, "+225 0101007978")}"
+                  placeholder="Ex: +225 0101007978" 
+                  readonly
+                  class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3.5 py-2.5 pr-20 border border-slate-700 hover:border-orange-500/60 transition cursor-pointer select-none"
+                >
+                <div id="spinner-pro-phone-contact" class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs pointer-events-none">
+                  <span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>
+                </div>
+              </div>
               <span class="text-[10px] text-slate-500">Numéro principal de service client.</span>
             </div>
 
             <!-- Numéro WhatsApp professionnel -->
             <div class="space-y-1">
-              <label class="text-[11px] font-bold text-emerald-400 block flex items-center gap-1">
-                <span>💬</span> <span>Numéro WhatsApp officiel *</span>
-              </label>
-              <input 
-                type="text" 
-                id="pro-phone-whatsapp" 
-                value="${safeAttr(cp.phone_whatsapp, "+225 0101007978")}"
-                placeholder="Ex: +225 0101007978" 
-                class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-emerald-500"
-              >
+              <div class="flex items-center justify-between">
+                <label class="text-[11px] font-bold text-emerald-400 block flex items-center gap-1">
+                  <span>💬</span> <span>Numéro WhatsApp officiel *</span>
+                </label>
+                <span class="text-[10px] text-emerald-400 hover:text-emerald-300 cursor-pointer font-semibold flex items-center gap-1" onclick="openFieldEditModal('pro-phone-whatsapp', 'Numéro WhatsApp officiel', 'phone_whatsapp', 'text')">
+                  <span>✏️</span> <span>Modifier</span>
+                </span>
+              </div>
+              <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-phone-whatsapp', 'Numéro WhatsApp officiel', 'phone_whatsapp', 'text')">
+                <input 
+                  type="text" 
+                  id="pro-phone-whatsapp" 
+                  value="${safeAttr(cp.phone_whatsapp, "+225 0101007978")}"
+                  placeholder="Ex: +225 0101007978" 
+                  readonly
+                  class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3.5 py-2.5 pr-20 border border-slate-700 hover:border-emerald-500/60 transition cursor-pointer select-none"
+                >
+                <div id="spinner-pro-phone-whatsapp" class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs pointer-events-none">
+                  <span class="text-slate-500 group-hover:text-emerald-400 transition text-xs">✏️</span>
+                </div>
+              </div>
               <span class="text-[10px] text-slate-500">Permet aux étudiants de vous contacter directement sur WhatsApp.</span>
             </div>
 
             <!-- Numéro secondaire optionnel -->
             <div class="space-y-1">
-              <label class="text-[11px] font-bold text-slate-300 block">Numéro de secours / Ligne secondaire (Facultatif)</label>
-              <input 
-                type="text" 
-                id="pro-phone-secondary" 
-                value="${safeAttr(cp.phone_contact_secondary, "")}"
-                placeholder="Ex: +225 0500000000 (optionnel)" 
-                class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
-              >
+              <div class="flex items-center justify-between">
+                <label class="text-[11px] font-bold text-slate-300 block">Numéro de secours / Ligne secondaire (Facultatif)</label>
+                <span class="text-[10px] text-orange-400/80 hover:text-orange-300 cursor-pointer font-semibold flex items-center gap-1" onclick="openFieldEditModal('pro-phone-secondary', 'Numéro secondaire', 'phone_contact_secondary', 'text')">
+                  <span>✏️</span> <span>Modifier</span>
+                </span>
+              </div>
+              <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-phone-secondary', 'Numéro secondaire', 'phone_contact_secondary', 'text')">
+                <input 
+                  type="text" 
+                  id="pro-phone-secondary" 
+                  value="${safeAttr(cp.phone_contact_secondary, "")}"
+                  placeholder="Ex: +225 0500000000 (optionnel)" 
+                  readonly
+                  class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3.5 py-2.5 pr-20 border border-slate-700 hover:border-orange-500/60 transition cursor-pointer select-none"
+                >
+                <div id="spinner-pro-phone-secondary" class="absolute right-3 top-1/2 -translate-y-1/2 flex items-center gap-1 text-xs pointer-events-none">
+                  <span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>
+                </div>
+              </div>
             </div>
 
             <!-- Description / À propos de l'entreprise -->
             <div class="space-y-1">
-              <label class="text-[11px] font-bold text-slate-300 block">Présentation courte / Informations écrites</label>
-              <textarea 
-                id="pro-about-text" 
-                rows="3"
-                placeholder="Décrivez votre service, mission ou entreprise..." 
-                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
-              >${safeHtml(cp.about_text, "Plateforme d'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.")}</textarea>
+              <div class="flex items-center justify-between">
+                <label class="text-[11px] font-bold text-slate-300 block">Présentation courte / Informations écrites</label>
+                <span class="text-[10px] text-orange-400/80 hover:text-orange-300 cursor-pointer font-semibold flex items-center gap-1" onclick="openFieldEditModal('pro-about-text', 'Présentation courte / Informations', 'about_text', 'textarea')">
+                  <span>✏️</span> <span>Modifier</span>
+                </span>
+              </div>
+              <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-about-text', 'Présentation courte / Informations', 'about_text', 'textarea')">
+                <textarea 
+                  id="pro-about-text" 
+                  rows="3"
+                  readonly
+                  placeholder="Décrivez votre service, mission ou entreprise..." 
+                  class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-20 border border-slate-700 hover:border-orange-500/60 transition cursor-pointer select-none resize-none"
+                >${safeHtml(cp.about_text, "Plateforme d'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.")}</textarea>
+                <div id="spinner-pro-about-text" class="absolute right-3 top-3 flex items-center gap-1 text-xs pointer-events-none">
+                  <span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>
+                </div>
+              </div>
             </div>
 
           </div>
         </div>
 
-        <!-- BLOC 3 : COMPTES ET NUMÉROS DE PAIEMENT MOBILE (WAVE, ORANGE, MTN, MOOV) -->
+        <!-- BLOC 3 : COMPTES ET NUMÉROS DE PAIEMENT MOBILE (WAVE, ORANGE, MTN, MOOV DISTINCTS) -->
         <div class="neo-card p-4 sm:p-5 space-y-4">
-          <div class="border-b border-slate-800 pb-3 flex items-center justify-between">
+          <div class="border-b border-slate-800 pb-3 flex items-center justify-between flex-wrap gap-2">
             <div class="flex items-center gap-2 text-white font-bold text-xs sm:text-sm">
               <span class="text-base">💳</span>
               <span>Numéros Officiels pour Recevoir les Paiements Mobiles</span>
             </div>
             <span class="text-[10px] text-amber-400 bg-amber-500/10 border border-amber-500/20 px-2.5 py-1 rounded-full font-bold">
-              Affichés aux étudiants dans le formulaire
+              Affichés individuellement aux étudiants lors du réabonnement
             </span>
           </div>
 
-          <div class="grid grid-cols-1 md:grid-cols-3 gap-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
             
-            <!-- WAVE -->
-            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-blue-500">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-black uppercase text-blue-400 flex items-center gap-1.5">
-                  <span class="w-2 h-2 rounded-full bg-blue-500"></span> Wave
-                </span>
-                <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono">Mobile Money</span>
-              </div>
-              <div class="space-y-1">
-                <label class="text-[10px] text-slate-400 block font-bold">Numéro Wave de réception :</label>
-                <input 
-                  type="text" 
-                  id="pro-wave-number" 
-                  value="${safeAttr(cp.wave_number, "+225 07 00 00 00 00")}"
-                  placeholder="+225 07 00 00 00 00" 
-                  class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-blue-500 font-bold"
-                >
-              </div>
-              <div class="space-y-1">
-                <label class="text-[10px] text-slate-400 block font-bold">Nom du Titulaire affiché :</label>
-                <input 
-                  type="text" 
-                  id="pro-wave-name" 
-                  value="${safeAttr(cp.wave_name, "StudyCloud CI")}"
-                  placeholder="Ex: StudyCloud CI" 
-                  class="w-full bg-slate-900 text-slate-300 text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-blue-500"
-                >
-              </div>
-            </div>
-
-            <!-- ORANGE MONEY -->
-            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-orange-500">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-black uppercase text-orange-400 flex items-center gap-1.5">
-                  <span class="w-2 h-2 rounded-full bg-orange-500"></span> Orange Money
-                </span>
-                <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-mono">Mobile Money</span>
-              </div>
-              <div class="space-y-1">
-                <label class="text-[10px] text-slate-400 block font-bold">Numéro Orange de réception :</label>
-                <input 
-                  type="text" 
-                  id="pro-orange-number" 
-                  value="${safeAttr(cp.orange_number, "+225 07 00 00 00 00")}"
-                  placeholder="+225 07 00 00 00 00" 
-                  class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-orange-500 font-bold"
-                >
-              </div>
-              <div class="space-y-1">
-                <label class="text-[10px] text-slate-400 block font-bold">Nom du Titulaire affiché :</label>
-                <input 
-                  type="text" 
-                  id="pro-orange-name" 
-                  value="${safeAttr(cp.orange_name, "Orange Money Côte d'Ivoire")}"
-                  placeholder="Ex: Orange Money CI" 
-                  class="w-full bg-slate-900 text-slate-300 text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-orange-500"
-                >
+            <!-- 1. WAVE -->
+            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-blue-500 flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-black uppercase text-blue-400 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-blue-500"></span> Wave
+                  </span>
+                  <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono">Mobile Money</span>
+                </div>
+                <div class="space-y-1">
+                  <label class="text-[10px] text-slate-400 block font-bold">Numéro Wave :</label>
+                  <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-wave-number', 'Numéro Wave de réception', 'wave_number', 'text')">
+                    <input 
+                      type="text" 
+                      id="pro-wave-number" 
+                      value="${safeAttr(cp.wave_number, "+225 07 00 00 00 00")}"
+                      placeholder="+225 07 00 00 00 00" 
+                      readonly
+                      class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3 py-2 pr-14 border border-slate-700 hover:border-blue-500/60 transition cursor-pointer select-none font-bold"
+                    >
+                    <div id="spinner-pro-wave-number" class="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center text-xs pointer-events-none">
+                      <span class="text-slate-500 group-hover:text-blue-400 transition text-xs">✏️</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="space-y-1 mt-2">
+                  <label class="text-[10px] text-slate-400 block font-bold">Titulaire affiché :</label>
+                  <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-wave-name', 'Nom du Titulaire Wave', 'wave_name', 'text')">
+                    <input 
+                      type="text" 
+                      id="pro-wave-name" 
+                      value="${safeAttr(cp.wave_name, "StudyCloud CI")}"
+                      placeholder="Ex: StudyCloud CI" 
+                      readonly
+                      class="w-full bg-slate-900 text-slate-300 text-xs rounded-xl px-3 py-2 pr-14 border border-slate-700 hover:border-blue-500/60 transition cursor-pointer select-none"
+                    >
+                    <div id="spinner-pro-wave-name" class="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center text-xs pointer-events-none">
+                      <span class="text-slate-500 group-hover:text-blue-400 transition text-xs">✏️</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
-            <!-- MTN / MOOV -->
-            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-yellow-500">
-              <div class="flex items-center justify-between">
-                <span class="text-xs font-black uppercase text-yellow-400 flex items-center gap-1.5">
-                  <span class="w-2 h-2 rounded-full bg-yellow-500"></span> MTN / Moov
-                </span>
-                <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300 font-mono">Mobile Money</span>
+            <!-- 2. ORANGE MONEY -->
+            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-orange-500 flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-black uppercase text-orange-400 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-orange-500"></span> Orange Money
+                  </span>
+                  <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-mono">Mobile Money</span>
+                </div>
+                <div class="space-y-1">
+                  <label class="text-[10px] text-slate-400 block font-bold">Numéro Orange :</label>
+                  <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-orange-number', 'Numéro Orange de réception', 'orange_number', 'text')">
+                    <input 
+                      type="text" 
+                      id="pro-orange-number" 
+                      value="${safeAttr(cp.orange_number, "+225 07 00 00 00 00")}"
+                      placeholder="+225 07 00 00 00 00" 
+                      readonly
+                      class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3 py-2 pr-14 border border-slate-700 hover:border-orange-500/60 transition cursor-pointer select-none font-bold"
+                    >
+                    <div id="spinner-pro-orange-number" class="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center text-xs pointer-events-none">
+                      <span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="space-y-1 mt-2">
+                  <label class="text-[10px] text-slate-400 block font-bold">Titulaire affiché :</label>
+                  <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-orange-name', 'Nom du Titulaire Orange', 'orange_name', 'text')">
+                    <input 
+                      type="text" 
+                      id="pro-orange-name" 
+                      value="${safeAttr(cp.orange_name, "Orange Money Côte d'Ivoire")}"
+                      placeholder="Ex: Orange Money CI" 
+                      readonly
+                      class="w-full bg-slate-900 text-slate-300 text-xs rounded-xl px-3 py-2 pr-14 border border-slate-700 hover:border-orange-500/60 transition cursor-pointer select-none"
+                    >
+                    <div id="spinner-pro-orange-name" class="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center text-xs pointer-events-none">
+                      <span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="space-y-1">
-                <label class="text-[10px] text-slate-400 block font-bold">Numéro MTN / Moov de réception :</label>
-                <input 
-                  type="text" 
-                  id="pro-mtn-number" 
-                  value="${safeAttr(cp.mtn_number, "+225 05 00 00 00 00")}"
-                  placeholder="+225 05 00 00 00 00" 
-                  class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-yellow-500 font-bold"
-                >
+            </div>
+
+            <!-- 3. MTN MONEY -->
+            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-yellow-500 flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-black uppercase text-yellow-400 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-yellow-500"></span> MTN Money
+                  </span>
+                  <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300 font-mono">Mobile Money</span>
+                </div>
+                <div class="space-y-1">
+                  <label class="text-[10px] text-slate-400 block font-bold">Numéro MTN :</label>
+                  <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-mtn-number', 'Numéro MTN de réception', 'mtn_number', 'text')">
+                    <input 
+                      type="text" 
+                      id="pro-mtn-number" 
+                      value="${safeAttr(cp.mtn_number, "+225 05 00 00 00 00")}"
+                      placeholder="+225 05 00 00 00 00" 
+                      readonly
+                      class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3 py-2 pr-14 border border-slate-700 hover:border-yellow-500/60 transition cursor-pointer select-none font-bold"
+                    >
+                    <div id="spinner-pro-mtn-number" class="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center text-xs pointer-events-none">
+                      <span class="text-slate-500 group-hover:text-yellow-400 transition text-xs">✏️</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="space-y-1 mt-2">
+                  <label class="text-[10px] text-slate-400 block font-bold">Titulaire affiché :</label>
+                  <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-mtn-name', 'Nom du Titulaire MTN Money', 'mtn_name', 'text')">
+                    <input 
+                      type="text" 
+                      id="pro-mtn-name" 
+                      value="${safeAttr(cp.mtn_name, "MTN Mobile Money CI")}"
+                      placeholder="Ex: MTN Money CI" 
+                      readonly
+                      class="w-full bg-slate-900 text-slate-300 text-xs rounded-xl px-3 py-2 pr-14 border border-slate-700 hover:border-yellow-500/60 transition cursor-pointer select-none"
+                    >
+                    <div id="spinner-pro-mtn-name" class="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center text-xs pointer-events-none">
+                      <span class="text-slate-500 group-hover:text-yellow-400 transition text-xs">✏️</span>
+                    </div>
+                  </div>
+                </div>
               </div>
-              <div class="space-y-1">
-                <label class="text-[10px] text-slate-400 block font-bold">Nom du Titulaire affiché :</label>
-                <input 
-                  type="text" 
-                  id="pro-mtn-name" 
-                  value="${safeAttr(cp.mtn_name, "Paiement Mobile National")}"
-                  placeholder="Ex: Paiement Mobile National" 
-                  class="w-full bg-slate-900 text-slate-300 text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-yellow-500"
-                >
+            </div>
+
+            <!-- 4. MOOV MONEY -->
+            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-emerald-500 flex flex-col justify-between">
+              <div>
+                <div class="flex items-center justify-between mb-2">
+                  <span class="text-xs font-black uppercase text-emerald-400 flex items-center gap-1.5">
+                    <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Moov Money
+                  </span>
+                  <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">Mobile Money</span>
+                </div>
+                <div class="space-y-1">
+                  <label class="text-[10px] text-slate-400 block font-bold">Numéro Moov :</label>
+                  <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-moov-number', 'Numéro Moov de réception', 'moov_number', 'text')">
+                    <input 
+                      type="text" 
+                      id="pro-moov-number" 
+                      value="${safeAttr(cp.moov_number, "+225 01 00 00 00 00")}"
+                      placeholder="+225 01 00 00 00 00" 
+                      readonly
+                      class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3 py-2 pr-14 border border-slate-700 hover:border-emerald-500/60 transition cursor-pointer select-none font-bold"
+                    >
+                    <div id="spinner-pro-moov-number" class="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center text-xs pointer-events-none">
+                      <span class="text-slate-500 group-hover:text-emerald-400 transition text-xs">✏️</span>
+                    </div>
+                  </div>
+                </div>
+                <div class="space-y-1 mt-2">
+                  <label class="text-[10px] text-slate-400 block font-bold">Titulaire affiché :</label>
+                  <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-moov-name', 'Nom du Titulaire Moov Money', 'moov_name', 'text')">
+                    <input 
+                      type="text" 
+                      id="pro-moov-name" 
+                      value="${safeAttr(cp.moov_name, "Moov Money Côte d'Ivoire")}"
+                      placeholder="Ex: Moov Money CI" 
+                      readonly
+                      class="w-full bg-slate-900 text-slate-300 text-xs rounded-xl px-3 py-2 pr-14 border border-slate-700 hover:border-emerald-500/60 transition cursor-pointer select-none"
+                    >
+                    <div id="spinner-pro-moov-name" class="absolute right-2.5 top-1/2 -translate-y-1/2 flex items-center text-xs pointer-events-none">
+                      <span class="text-slate-500 group-hover:text-emerald-400 transition text-xs">✏️</span>
+                    </div>
+                  </div>
+                </div>
               </div>
             </div>
 
@@ -2433,39 +2624,80 @@ function renderDashboardHtml(data) {
 
           <!-- Instructions de paiement affichées aux étudiants -->
           <div class="space-y-1 pt-2">
-            <label class="text-[11px] font-bold text-slate-300 block flex items-center gap-1">
-              <span>📝</span>
-              <span>Consignes et Instructions de Paiement (affichées aux utilisateurs à l'Étape 1)</span>
-            </label>
-            <textarea 
-              id="pro-payment-instructions" 
-              rows="2"
-              placeholder="Ex: Transférez le montant exact sur l'un de nos numéros ci-dessous, puis prenez une capture..." 
-              class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
-            >${safeHtml(cp.payment_instructions, "Transférez le montant exact sur l'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.")}</textarea>
+            <div class="flex items-center justify-between">
+              <label class="text-[11px] font-bold text-slate-300 block flex items-center gap-1">
+                <span>📝</span>
+                <span>Consignes et Instructions de Paiement (affichées aux utilisateurs à l'Étape 1)</span>
+              </label>
+              <span class="text-[10px] text-orange-400/80 hover:text-orange-300 cursor-pointer font-semibold flex items-center gap-1" onclick="openFieldEditModal('pro-payment-instructions', 'Consignes et Instructions de Paiement', 'payment_instructions', 'textarea')">
+                <span>✏️</span> <span>Modifier</span>
+              </span>
+            </div>
+            <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-payment-instructions', 'Consignes et Instructions de Paiement', 'payment_instructions', 'textarea')">
+              <textarea 
+                id="pro-payment-instructions" 
+                rows="2"
+                readonly
+                placeholder="Ex: Transférez le montant exact sur l'un de nos numéros ci-dessous, puis prenez une capture..." 
+                class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 pr-20 border border-slate-700 hover:border-orange-500/60 transition cursor-pointer select-none resize-none"
+              >${safeHtml(cp.payment_instructions, "Transférez le montant exact sur l'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.")}</textarea>
+              <div id="spinner-pro-payment-instructions" class="absolute right-3 top-3 flex items-center gap-1 text-xs pointer-events-none">
+                <span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>
+              </div>
+            </div>
           </div>
 
         </div>
 
-        <!-- BARRE D'ENREGISTREMENT EN BAS -->
-        <div class="neo-card p-4 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-slate-950">
-          <div class="flex items-center gap-2">
-            <span id="save-company-status" class="text-xs font-bold text-slate-400">Toutes les modifications sont synchronisées avec Cloudflare D1.</span>
-          </div>
-          <button 
-            type="submit" 
-            id="save-company-btn"
-            class="w-full sm:w-auto px-8 py-3.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs sm:text-sm shadow-xl shadow-emerald-600/30 flex items-center justify-center gap-2 transition cursor-pointer active:scale-95"
-          >
-            <span>💾</span>
-            <span>Enregistrer toutes les informations professionnelles</span>
-          </button>
-        </div>
-
-      </form>
+      </div>
     </div>
 
   </main>
+
+  <!-- MODALE D'ÉDITION DE CHAMP INDIVIDUEL (INFORMATIONS PROFESSIONNELLES) -->
+  <div id="field-edit-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex flex-col items-center justify-center p-4" onclick="closeFieldEditModal(event)">
+    <div class="relative max-w-lg w-full bg-[#0f172a] border border-slate-700 rounded-2xl overflow-hidden shadow-2xl animate-in fade-in zoom-in-95 duration-150" onclick="event.stopPropagation()">
+      <div class="px-5 py-4 bg-[#0d1424] border-b border-slate-800 flex items-center justify-between">
+        <div class="flex items-center gap-2.5">
+          <div class="w-7 h-7 rounded-lg bg-orange-600/20 border border-orange-500/30 flex items-center justify-center text-sm">
+            ✏️
+          </div>
+          <div>
+            <h3 class="text-sm font-black text-white" id="field-edit-modal-title">Modifier le champ</h3>
+            <p class="text-[10px] text-slate-400" id="field-edit-modal-subtitle">Enregistrement individuel dans la base de données D1</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeFieldEditModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold flex items-center justify-center cursor-pointer transition">✕</button>
+      </div>
+      <form onsubmit="event.preventDefault(); saveFieldEditModal();" class="p-5 space-y-4">
+        <div class="space-y-1.5">
+          <label class="text-xs font-bold text-slate-200 block" id="field-edit-modal-label">Nouvelle valeur :</label>
+          <div id="field-edit-modal-input-container">
+            <!-- Champ injecté dynamiquement (input ou textarea) -->
+          </div>
+          <p class="text-[11px] text-slate-400" id="field-edit-modal-hint"></p>
+        </div>
+        <div id="field-edit-modal-error" class="text-xs text-rose-400 font-semibold hidden"></div>
+        <div class="pt-2 border-t border-slate-800 flex items-center justify-end gap-2.5">
+          <button 
+            type="button" 
+            onclick="closeFieldEditModal()" 
+            class="px-4 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold text-xs transition cursor-pointer"
+          >
+            Annuler
+          </button>
+          <button 
+            type="submit" 
+            id="field-edit-modal-save-btn" 
+            class="px-5 py-2.5 rounded-xl bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-black text-xs flex items-center gap-2 shadow-lg shadow-orange-600/30 transition cursor-pointer active:scale-95"
+          >
+            <span>💾</span>
+            <span>Enregistrer</span>
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
 
   <!-- MODALE DE ZOOM PLEIN ÉCRAN DU REÇU DE PAIEMENT -->
   <div id="receipt-zoom-modal" class="fixed inset-0 z-50 bg-black/85 backdrop-blur-md hidden flex flex-col items-center justify-center p-4" onclick="closeReceiptZoomModal(event)">
@@ -5574,81 +5806,146 @@ function renderDashboardHtml(data) {
       }
     }
 
-    async function saveCompanyProfile() {
-      const btn = document.getElementById('save-company-btn');
-      const btnTop = document.getElementById('save-company-btn-top');
-      const statusEl = document.getElementById('save-company-status');
+    let currentEditFieldId = null;
+    let currentEditCol = null;
+    let currentEditLabel = null;
+    let currentEditType = 'text';
 
-      const payload = {
-        company_name: document.getElementById('pro-company-name')?.value || '',
-        location: document.getElementById('pro-location')?.value || '',
-        activity: document.getElementById('pro-activity')?.value || '',
-        address: document.getElementById('pro-address')?.value || '',
-        website: document.getElementById('pro-website')?.value || '',
-        email: document.getElementById('pro-email')?.value || '',
-        phone_contact: document.getElementById('pro-phone-contact')?.value || '',
-        phone_whatsapp: document.getElementById('pro-phone-whatsapp')?.value || '',
-        phone_contact_secondary: document.getElementById('pro-phone-secondary')?.value || '',
-        about_text: document.getElementById('pro-about-text')?.value || '',
-        wave_number: document.getElementById('pro-wave-number')?.value || '',
-        wave_name: document.getElementById('pro-wave-name')?.value || '',
-        orange_number: document.getElementById('pro-orange-number')?.value || '',
-        orange_name: document.getElementById('pro-orange-name')?.value || '',
-        mtn_number: document.getElementById('pro-mtn-number')?.value || '',
-        mtn_name: document.getElementById('pro-mtn-name')?.value || '',
-        payment_instructions: document.getElementById('pro-payment-instructions')?.value || ''
-      };
+    function openFieldEditModal(fieldId, fieldLabel, colName, inputType, hint) {
+      currentEditFieldId = fieldId;
+      currentEditCol = colName;
+      currentEditLabel = fieldLabel;
+      currentEditType = inputType || 'text';
 
-      if (btn) {
-        btn.disabled = true;
-        btn.innerHTML = '<span>⏳</span> Enregistrement dans D1 en cours...';
-      }
-      if (btnTop) {
-        btnTop.disabled = true;
-        btnTop.innerHTML = '<span>⏳</span> Sauvegarde...';
-      }
-      if (statusEl) {
-        statusEl.className = "text-xs font-bold text-amber-400";
-        statusEl.textContent = "Synchronisation avec la base de données...";
+      const modal = document.getElementById('field-edit-modal');
+      const titleEl = document.getElementById('field-edit-modal-title');
+      const labelEl = document.getElementById('field-edit-modal-label');
+      const hintEl = document.getElementById('field-edit-modal-hint');
+      const container = document.getElementById('field-edit-modal-input-container');
+      const errorEl = document.getElementById('field-edit-modal-error');
+
+      if (!modal || !container) return;
+
+      if (errorEl) {
+        errorEl.classList.add('hidden');
+        errorEl.textContent = '';
       }
 
+      if (titleEl) titleEl.textContent = fieldLabel;
+      if (labelEl) labelEl.textContent = fieldLabel + ' :';
+      if (hintEl) hintEl.textContent = hint || 'La modification sera immédiatement enregistrée de manière individuelle.';
+
+      const targetField = document.getElementById(fieldId);
+      const currentVal = targetField ? targetField.value : '';
+
+      if (inputType === 'textarea') {
+        const safeVal = currentVal.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        container.innerHTML = '<textarea id="field-edit-modal-input" rows="4" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500 transition resize-y font-sans leading-relaxed" placeholder="Entrez ' + fieldLabel + '...">' + safeVal + '</textarea>';
+      } else {
+        const safeVal = currentVal.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        const isMono = inputType === 'tel' || colName.includes('number') || colName.includes('phone');
+        const fontCls = isMono ? 'font-mono font-bold text-sm' : 'font-sans';
+        container.innerHTML = '<input type="' + (inputType || 'text') + '" id="field-edit-modal-input" value="' + safeVal + '" class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500 transition ' + fontCls + '" placeholder="Entrez ' + fieldLabel + '..." />';
+      }
+
+      modal.classList.remove('hidden');
+      modal.style.display = 'flex';
+
+      setTimeout(() => {
+        const inputEl = document.getElementById('field-edit-modal-input');
+        if (inputEl) {
+          inputEl.focus();
+          if (inputEl.select) inputEl.select();
+        }
+      }, 50);
+    }
+    window.openFieldEditModal = openFieldEditModal;
+
+    function closeFieldEditModal(event) {
+      if (event && event.target && event.target.id !== 'field-edit-modal') return;
+      const modal = document.getElementById('field-edit-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+    }
+    window.closeFieldEditModal = closeFieldEditModal;
+
+    async function saveFieldEditModal() {
+      const inputEl = document.getElementById('field-edit-modal-input');
+      if (!inputEl) return;
+      const newVal = inputEl.value;
+      const fieldId = currentEditFieldId;
+      const colName = currentEditCol;
+      const fieldLabel = currentEditLabel;
+
+      // 1. Fermer le menu/modale IMMÉDIATEMENT à l'appui sur Enregistrer
+      closeFieldEditModal();
+
+      // 2. Mettre à jour visuellement le champ dans la page
+      const targetField = document.getElementById(fieldId);
+      const prevVal = targetField ? targetField.value : '';
+      if (targetField) {
+        targetField.value = newVal;
+      }
+
+      // 3. Un rond apparaît au bord du champ et tourne pendant l'enregistrement en BDD
+      const spinnerContainer = document.getElementById('spinner-' + fieldId);
+      if (spinnerContainer) {
+        spinnerContainer.innerHTML = '<div class="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-orange-500/20 border border-orange-500/40 text-orange-400">' +
+          '<svg class="animate-spin w-3.5 h-3.5" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">' +
+          '<circle class="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" stroke-width="4"></circle>' +
+          '<path class="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8v8H4z"></path>' +
+          '</svg>' +
+          '<span class="text-[9px] font-bold">Enregistrement...</span>' +
+          '</div>';
+      }
+
+      // 4. Envoi individuel à Cloudflare D1
       try {
         const resp = await fetch('/api/company-profile/update', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify(payload)
+          body: JSON.stringify({ field: colName, value: newVal })
         });
         const res = await resp.json();
-        if (res.success) {
-          showToast("✓ Informations professionnelles enregistrées avec succès !");
-          if (statusEl) {
-            statusEl.className = "text-xs font-bold text-emerald-400";
-            statusEl.textContent = "✓ Enregistré dans Cloudflare D1 à " + new Date().toLocaleTimeString('fr-FR');
+        if (res && res.success) {
+          if (typeof companyProfileGlobal === 'object' && companyProfileGlobal) {
+            companyProfileGlobal[colName] = newVal;
           }
+          if (spinnerContainer) {
+            spinnerContainer.innerHTML = '<div class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400">' +
+              '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
+              '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>' +
+              '</svg>' +
+              '<span class="text-[9px] font-bold">Enregistré</span>' +
+              '</div>';
+            setTimeout(() => {
+              spinnerContainer.innerHTML = '<span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>';
+            }, 2500);
+          }
+          showToast("✓ " + (fieldLabel || 'Champ') + " enregistré avec succès dans la base de données !");
         } else {
-          alert("Erreur: " + (res.error || "Impossible d'enregistrer"));
-          if (statusEl) {
-            statusEl.className = "text-xs font-bold text-red-400";
-            statusEl.textContent = "Erreur lors de l'enregistrement";
-          }
+          throw new Error(res?.error || 'Échec de la sauvegarde');
         }
       } catch (err) {
-        alert("Erreur réseau: " + err.message);
-        if (statusEl) {
-          statusEl.className = "text-xs font-bold text-red-400";
-          statusEl.textContent = "Erreur réseau";
+        console.error('Erreur sauvegarde champ:', err);
+        if (targetField) {
+          targetField.value = prevVal;
         }
-      } finally {
-        if (btn) {
-          btn.disabled = false;
-          btn.innerHTML = '<span>💾</span> <span>Enregistrer toutes les informations professionnelles</span>';
+        if (spinnerContainer) {
+          spinnerContainer.innerHTML = '<div class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-400">' +
+            '<span class="text-xs">⚠️</span>' +
+            '<span class="text-[9px] font-bold">Erreur</span>' +
+            '</div>';
+          setTimeout(() => {
+            spinnerContainer.innerHTML = '<span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>';
+          }, 4000);
         }
-        if (btnTop) {
-          btnTop.disabled = false;
-          btnTop.innerHTML = '<span>💾</span> <span>Enregistrer les modifications</span>';
-        }
+        showToast("⚠️ Erreur lors de l'enregistrement : " + err.message);
       }
     }
+    window.saveFieldEditModal = saveFieldEditModal;
 
     async function loadCompanyProfileClient() {
       const setField = (id, val, fallback) => {
@@ -5676,7 +5973,9 @@ function renderDashboardHtml(data) {
         setField('pro-orange-number', p.orange_number, '+225 07 00 00 00 00');
         setField("pro-orange-name", p.orange_name, "Orange Money Côte d'Ivoire");
         setField('pro-mtn-number', p.mtn_number, '+225 05 00 00 00 00');
-        setField('pro-mtn-name', p.mtn_name, 'Paiement Mobile National');
+        setField('pro-mtn-name', p.mtn_name, 'MTN Mobile Money CI');
+        setField('pro-moov-number', p.moov_number, '+225 01 00 00 00 00');
+        setField('pro-moov-name', p.moov_name, "Moov Money Côte d'Ivoire");
         setField("pro-payment-instructions", p.payment_instructions, "Transférez le montant exact sur l'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.");
       }
 
@@ -5702,7 +6001,9 @@ function renderDashboardHtml(data) {
           setField('pro-orange-number', p.orange_number, '+225 07 00 00 00 00');
           setField("pro-orange-name", p.orange_name, "Orange Money Côte d'Ivoire");
           setField('pro-mtn-number', p.mtn_number, '+225 05 00 00 00 00');
-          setField('pro-mtn-name', p.mtn_name, 'Paiement Mobile National');
+          setField('pro-mtn-name', p.mtn_name, 'MTN Mobile Money CI');
+          setField('pro-moov-number', p.moov_number, '+225 01 00 00 00 00');
+          setField('pro-moov-name', p.moov_name, "Moov Money Côte d'Ivoire");
           setField("pro-payment-instructions", p.payment_instructions, "Transférez le montant exact sur l'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.");
         }
       } catch (err) {
@@ -6669,59 +6970,51 @@ export default {
       // ----------------------------------------------------------------------
       if (request.method === 'POST' && path === '/api/company-profile/update') {
         const body = await request.json().catch(() => ({}));
-        
+        const allowedCols = [
+          'company_name', 'activity', 'location', 'address', 'website', 'email',
+          'phone_contact', 'phone_whatsapp', 'phone_contact_secondary', 'about_text',
+          'wave_number', 'wave_name', 'orange_number', 'orange_name',
+          'mtn_number', 'mtn_name', 'moov_number', 'moov_name',
+          'payment_instructions', 'notes'
+        ];
+
+        // S'assurer que la ligne 'main' existe
         await safeRun(db, `
-          INSERT INTO company_profile (
-            id, company_name, activity, location, address, website, email,
-            phone_contact, phone_whatsapp, phone_contact_secondary, about_text,
-            wave_number, wave_name, orange_number, orange_name, mtn_number, mtn_name,
-            payment_instructions, updated_at
-          )
-          VALUES ('main', ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-          ON CONFLICT(id) DO UPDATE SET
-            company_name = excluded.company_name,
-            activity = excluded.activity,
-            location = excluded.location,
-            address = excluded.address,
-            website = excluded.website,
-            email = excluded.email,
-            phone_contact = excluded.phone_contact,
-            phone_whatsapp = excluded.phone_whatsapp,
-            phone_contact_secondary = excluded.phone_contact_secondary,
-            about_text = excluded.about_text,
-            wave_number = excluded.wave_number,
-            wave_name = excluded.wave_name,
-            orange_number = excluded.orange_number,
-            orange_name = excluded.orange_name,
-            mtn_number = excluded.mtn_number,
-            mtn_name = excluded.mtn_name,
-            payment_instructions = excluded.payment_instructions,
-            updated_at = CURRENT_TIMESTAMP
-        `, [
-          body.company_name || 'DKD Technologies',
-          body.activity || 'Technologies & Éducation Numérique',
-          body.location || 'Abidjan, Côte d\'Ivoire',
-          body.address || 'Abidjan, Côte d\'Ivoire',
-          body.website || 'https://studycloud.dkd-technologies.com',
-          body.email || 'contact@dkd-technologies.com',
-          body.phone_contact || '+225 0101007978',
-          body.phone_whatsapp || '+225 0101007978',
-          body.phone_contact_secondary || '',
-          body.about_text || '',
-          body.wave_number || '+225 07 00 00 00 00',
-          body.wave_name || 'StudyCloud CI',
-          body.orange_number || '+225 07 00 00 00 00',
-          body.orange_name || 'Orange Money Côte d\'Ivoire',
-          body.mtn_number || '+225 05 00 00 00 00',
-          body.mtn_name || 'Paiement Mobile National',
-          body.payment_instructions || ''
-        ]);
+          INSERT OR IGNORE INTO company_profile (id) VALUES ('main')
+        `);
+
+        if (body.field && allowedCols.includes(body.field)) {
+          // Mise à jour individuelle ciblée sans toucher aux autres champs
+          const colName = body.field;
+          const colValue = String(body.value ?? '');
+          await safeRun(db, `
+            UPDATE company_profile 
+            SET ${colName} = ?, updated_at = CURRENT_TIMESTAMP 
+            WHERE id = 'main'
+          `, [colValue]);
+        } else {
+          // Mise à jour multiple (uniquement pour les champs explicitement passés)
+          const updates = [];
+          const values = [];
+          for (const col of allowedCols) {
+            if (body[col] !== undefined) {
+              updates.push(`${col} = ?`);
+              values.push(String(body[col] ?? ''));
+            }
+          }
+          if (updates.length > 0) {
+            updates.push(`updated_at = CURRENT_TIMESTAMP`);
+            await safeRun(db, `
+              UPDATE company_profile SET ${updates.join(', ')} WHERE id = 'main'
+            `, values);
+          }
+        }
 
         const updatedProfile = await safeFirst(db, `SELECT * FROM company_profile WHERE id = 'main'`);
 
         return new Response(JSON.stringify({
           success: true,
-          message: 'Informations professionnelles mises à jour avec succès',
+          message: 'Informations professionnelles enregistrées avec succès',
           profile: updatedProfile
         }), {
           status: 200,
@@ -6742,6 +7035,7 @@ export default {
             location: 'Abidjan, Côte d\'Ivoire',
             address: 'Abidjan, Côte d\'Ivoire',
             phone_contact: '+225 0101007978',
+            phone_contact_secondary: '',
             phone_whatsapp: '+225 0101007978',
             email: 'contact@dkd-technologies.com',
             website: 'https://studycloud.dkd-technologies.com',
@@ -6750,8 +7044,12 @@ export default {
             orange_number: '+225 07 00 00 00 00',
             orange_name: 'Orange Money Côte d\'Ivoire',
             mtn_number: '+225 05 00 00 00 00',
-            mtn_name: 'Paiement Mobile National',
-            payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.'
+            mtn_name: 'MTN Mobile Money CI',
+            moov_number: '+225 01 00 00 00 00',
+            moov_name: 'Moov Money Côte d\'Ivoire',
+            payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.',
+            about_text: 'Plateforme d\'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
+            notes: ''
           };
         }
         return new Response(JSON.stringify({ success: true, profile }), {
@@ -6774,6 +7072,7 @@ export default {
           location: 'Abidjan, Côte d\'Ivoire',
           address: 'Abidjan, Côte d\'Ivoire',
           phone_contact: '+225 0101007978',
+          phone_contact_secondary: '',
           phone_whatsapp: '+225 0101007978',
           email: 'contact@dkd-technologies.com',
           website: 'https://studycloud.dkd-technologies.com',
@@ -6782,8 +7081,12 @@ export default {
           orange_number: '+225 07 00 00 00 00',
           orange_name: 'Orange Money Côte d\'Ivoire',
           mtn_number: '+225 05 00 00 00 00',
-          mtn_name: 'Paiement Mobile National',
-          payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.'
+          mtn_name: 'MTN Mobile Money CI',
+          moov_number: '+225 01 00 00 00 00',
+          moov_name: 'Moov Money Côte d\'Ivoire',
+          payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.',
+          about_text: 'Plateforme d\'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
+          notes: ''
         };
       }
 

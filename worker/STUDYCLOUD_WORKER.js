@@ -7683,9 +7683,9 @@ Lien vers le produit : ${productShareUrl}`;
           orange_number: '+225 07 00 00 00 00',
           orange_name: 'Orange Money Côte d\'Ivoire',
           mtn_number: '+225 05 00 00 00 00',
-          mtn_name: 'Paiement Mobile National',
-          moov_number: '',
-          moov_name: '',
+          mtn_name: 'MTN Mobile Money CI',
+          moov_number: '+225 01 00 00 00 00',
+          moov_name: 'Moov Money Côte d\'Ivoire',
           payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.',
           about_text: 'Plateforme d\'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
           notes: ''
@@ -7702,6 +7702,55 @@ Lien vers le produit : ${productShareUrl}`;
         } catch (e) {
           return jsonResponse({ success: true, profile: defaultProfile }, 200, origin);
         }
+      }
+
+      // Route de mise à jour des informations professionnelles (individuelle ou globale)
+      if (path === "/api/company-profile/update" && method === "POST") {
+        if (!env.DB) {
+          return errorResponse("Base de données D1 indisponible", 500, origin);
+        }
+        await ensureStorageTables(env.DB);
+        const body = await request.json().catch(() => ({}));
+        const allowedCols = [
+          'company_name', 'activity', 'location', 'address', 'website', 'email',
+          'phone_contact', 'phone_whatsapp', 'phone_contact_secondary', 'about_text',
+          'wave_number', 'wave_name', 'orange_number', 'orange_name',
+          'mtn_number', 'mtn_name', 'moov_number', 'moov_name',
+          'payment_instructions', 'notes'
+        ];
+
+        // S'assurer que la ligne 'main' existe
+        await env.DB.prepare(`INSERT OR IGNORE INTO company_profile (id) VALUES ('main')`).run();
+
+        if (body.field && allowedCols.includes(body.field)) {
+          const colName = body.field;
+          const colValue = String(body.value ?? '');
+          await env.DB.prepare(`
+            UPDATE company_profile SET ${colName} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'
+          `).bind(colValue).run();
+        } else {
+          const updates = [];
+          const values = [];
+          for (const col of allowedCols) {
+            if (body[col] !== undefined) {
+              updates.push(`${col} = ?`);
+              values.push(String(body[col] ?? ''));
+            }
+          }
+          if (updates.length > 0) {
+            updates.push(`updated_at = CURRENT_TIMESTAMP`);
+            await env.DB.prepare(`
+              UPDATE company_profile SET ${updates.join(', ')} WHERE id = 'main'
+            `).bind(...values).run();
+          }
+        }
+
+        const updatedProfile = await env.DB.prepare(`SELECT * FROM company_profile WHERE id = 'main'`).first();
+        return jsonResponse({
+          success: true,
+          message: "Informations professionnelles enregistrées avec succès",
+          profile: updatedProfile
+        }, 200, origin);
       }
       return errorResponse(`Route non trouv\xE9e : ${method} ${path}`, 404, origin);
     } catch (err) {

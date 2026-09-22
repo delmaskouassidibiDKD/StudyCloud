@@ -89,7 +89,7 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
   const studentName = 
     subscription?.user_name || 
     user?.name ||
-    user?.full_name ||
+    (user as any)?.full_name ||
     (typeof localStorage !== 'undefined' ? localStorage.getItem('studycloud_user_name') || localStorage.getItem('unifolder_user_name') : '') || 
     'Étudiant StudyCloud';
 
@@ -101,7 +101,7 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
 
   const studentWhatsapp = 
     subscription?.user_whatsapp || 
-    user?.whatsapp ||
+    (user as any)?.whatsapp ||
     (typeof localStorage !== 'undefined' ? localStorage.getItem('studycloud_user_whatsapp') : '') || 
     studentPhone;
 
@@ -226,7 +226,7 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
         storageDisplay: storageDisplay,
         pricePaid: pricePaid,
         priceDisplay: priceDisplay,
-        billingCycle: isYearly ? 'yearly' : 'monthly',
+        billingCycle: isYearly ? 'annual' : 'monthly',
         currency: currency,
         userName: studentName,
         contactPhone: studentPhone,
@@ -738,17 +738,17 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
                     </button>
                   </div>
 
-                  {/* MTN / MOOV */}
+                  {/* MTN MONEY */}
                   <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
                     <div>
                       <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-800 dark:text-yellow-400 mr-2">
-                        MTN / Moov
+                        MTN Money
                       </span>
                       <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
                         {companyProfile?.mtn_number || '+225 05 00 00 00 00'}
                       </span>
                       <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
-                        Titulaire : {companyProfile?.mtn_name || 'Paiement Mobile National'}
+                        Titulaire : {companyProfile?.mtn_name || 'MTN Mobile Money CI'}
                       </span>
                     </div>
                     <button
@@ -770,39 +770,37 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
                     </button>
                   </div>
 
-                  {/* MOOV DÉDIÉ (SI CONFIGURÉ) */}
-                  {companyProfile?.moov_number && (
-                    <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
-                      <div>
-                        <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-purple-500/20 text-purple-700 dark:text-purple-400 mr-2">
-                          Moov
-                        </span>
-                        <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
-                          {companyProfile.moov_number}
-                        </span>
-                        <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
-                          Titulaire : {companyProfile.moov_name || 'Moov Money'}
-                        </span>
-                      </div>
-                      <button
-                        type="button"
-                        onClick={() => handleCopyNumber(companyProfile.moov_number!, 'moov')}
-                        className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
-                      >
-                        {copiedKey === 'moov' ? (
-                          <>
-                            <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
-                            <span className="text-[11px] text-emerald-600">Copié</span>
-                          </>
-                        ) : (
-                          <>
-                            <Copy className="w-3.5 h-3.5" />
-                            <span className="text-[11px]">Copier</span>
-                          </>
-                        )}
-                      </button>
+                  {/* MOOV MONEY */}
+                  <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
+                    <div>
+                      <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 mr-2">
+                        Moov Money
+                      </span>
+                      <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
+                        {companyProfile?.moov_number || '+225 01 00 00 00 00'}
+                      </span>
+                      <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
+                        Titulaire : {companyProfile?.moov_name || 'Moov Money Côte d\'Ivoire'}
+                      </span>
                     </div>
-                  )}
+                    <button
+                      type="button"
+                      onClick={() => handleCopyNumber(companyProfile?.moov_number || '+2250100000000', 'moov')}
+                      className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
+                    >
+                      {copiedKey === 'moov' ? (
+                        <>
+                          <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                          <span className="text-[11px] text-emerald-600">Copié</span>
+                        </>
+                      ) : (
+                        <>
+                          <Copy className="w-3.5 h-3.5" />
+                          <span className="text-[11px]">Copier</span>
+                        </>
+                      )}
+                    </button>
+                  </div>
                 </div>
 
                 {/* Consigne de paiement */}

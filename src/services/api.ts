@@ -2010,7 +2010,9 @@ const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
   orange_number: '+225 07 00 00 00 00',
   orange_name: 'Orange Money Côte d\'Ivoire',
   mtn_number: '+225 05 00 00 00 00',
-  mtn_name: 'Paiement Mobile National',
+  mtn_name: 'MTN Mobile Money CI',
+  moov_number: '+225 01 00 00 00 00',
+  moov_name: 'Moov Money Côte d\'Ivoire',
   payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.'
 };
 
