@@ -1950,6 +1950,8 @@ export async function requestStorageUpgrade(params: {
   receiptR2Key?: string;
   notes?: string;
   userId?: string;
+  requestType?: 'renewal' | 'upgrade' | string;
+  isRenewal?: boolean;
 }): Promise<{ success: boolean; message: string; requestId?: string }> {
   const currentUserId = params.userId || localStorage.getItem('unifolder_user_id') || 'default-user';
   try {

@@ -2234,7 +2234,8 @@ async function ensureStorageTables(db) {
       "ALTER TABLE storage_upgrade_requests ADD COLUMN price_display TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN billing_cycle TEXT DEFAULT 'annual'",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN user_deleted_at TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN purge_scheduled_at TEXT DEFAULT ''"
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN purge_scheduled_at TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN request_type TEXT DEFAULT 'upgrade'"
     ];
     for (const sql of upgradeCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
@@ -7319,6 +7320,7 @@ Lien vers le produit : ${productShareUrl}`;
         const storageDisplay = body.storageDisplay || (additionalMb >= 1024 ? `${(additionalMb / 1024).toFixed(additionalMb % 1024 === 0 ? 0 : 1)} Go (${additionalMb} Mo)` : `${additionalMb} Mo`);
         const priceDisplay = body.priceDisplay || `${pricePaid} ${currency}`;
         const billingCycle = body.billingCycle || "annual";
+        const requestType = body.requestType || (body.isRenewal || (packName && packName.toLowerCase().includes('renouvellement')) ? 'renewal' : 'upgrade');
 
         let finalReceiptUrl = receiptImageUrl;
         // Si l'image est un Data URI Base64, l'extraire et l'enregistrer dans R2 si possible
@@ -7357,15 +7359,15 @@ Lien vers le produit : ${productShareUrl}`;
               additional_mb, additional_words, price_paid, currency, payment_method, payment_reference,
               receipt_image_url, receipt_r2_key, contact_phone, user_whatsapp,
               storage_display, price_display, billing_cycle,
-              notes, status, created_at, updated_at
+              notes, request_type, status, created_at, updated_at
             )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
           `).bind(
             requestId, userId, userName, contactPhone, userEmail, packId, packName,
             additionalMb, additionalWords, pricePaid, currency, paymentMethod, paymentReference,
             finalReceiptUrl, receiptR2Key, contactPhone, userWhatsapp,
             storageDisplay, priceDisplay, billingCycle,
-            notes
+            notes, requestType
           ).run();
         } catch (insertErr) {
           console.error("Erreur insertion storage_upgrade_requests:", insertErr);

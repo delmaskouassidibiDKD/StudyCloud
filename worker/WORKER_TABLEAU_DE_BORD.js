@@ -213,7 +213,8 @@ async function ensureStorageTables(db) {
       "ALTER TABLE storage_upgrade_requests ADD COLUMN user_whatsapp TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN storage_display TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN price_display TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN billing_cycle TEXT DEFAULT 'annual'"
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN billing_cycle TEXT DEFAULT 'annual'",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN request_type TEXT DEFAULT 'upgrade'"
     ];
     for (const sql of upgradeReqCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
@@ -3515,10 +3516,15 @@ function renderDashboardHtml(data) {
       if (currentDemandeTab === 'pending') {
         allRequests.filter(r => r.status === 'pending').forEach(req => {
           const user = allUsers.find(u => u.user.id === req.user_id);
+          const isRenewal = req.request_type === 'renewal' ||
+            (req.pack_name && req.pack_name.toLowerCase().includes('renouvellement')) ||
+            (req.notes && req.notes.toLowerCase().includes('renouvellement'));
           combined.push({
             id: req.id,
             itemType: 'request',
             raw: req,
+            isRenewal: Boolean(isRenewal),
+            requestType: isRenewal ? 'renewal' : (req.request_type || 'upgrade'),
             userId: req.user_id,
             userName: req.user_name || (user ? user.user.name : 'Utilisateur'),
             userPhone: req.contact_phone || req.user_phone || (user ? user.user.phone : ''),
@@ -3720,7 +3726,9 @@ function renderDashboardHtml(data) {
 
         let badgeHtml = '';
         if (item.status === 'pending') {
-          badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">🟡 En attente</span>';
+          badgeHtml = item.isRenewal
+            ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-orange-500/20 text-orange-400 border border-orange-500/30">🔄 Renouvellement</span>'
+            : '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">🟡 En attente</span>';
         } else if (item.status === 'active' || item.status === 'approved') {
           badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">🟢 Abonné</span>';
         } else if (item.status === 'cancelled') {
@@ -3746,7 +3754,7 @@ function renderDashboardHtml(data) {
                 <div class="text-[10px] text-slate-400 truncate flex items-center gap-1">
                   <span>📞 \${item.userPhone || 'Sans numéro'}</span>
                   <span>•</span>
-                  <span class="text-orange-400 font-medium truncate">\${item.packName}</span>
+                  <span class="text-orange-400 font-medium truncate">\${item.isRenewal ? '🔄 Renouvellement : ' + item.packName.replace(/^Renouvellement des abonnements\\s*[-–:]\\s*/i, '') : item.packName}</span>
                 </div>
                 <div class="text-[9px] text-slate-500 font-mono mt-0.5">
                   \${formatShortDateFrench(item.date)}
@@ -4304,13 +4312,19 @@ function renderDashboardHtml(data) {
             <div class="bg-gradient-to-br from-slate-900 via-[#11192e] to-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
               <div class="flex items-center justify-between border-b border-slate-800/80 pb-3 flex-wrap gap-2">
                 <h4 class="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
-                  <span>📦</span>
-                  <span>Formule Sélectionnée : <span class="text-orange-400">\${item.packName}</span></span>
+                  <span class="\${item.isRenewal ? 'text-orange-400 text-base' : ''}">\${item.isRenewal ? '🔄' : '📦'}</span>
+                  <span>\${item.isRenewal ? 'Renouvellement des abonnements' : 'Formule Sélectionnée'} : <span class="text-orange-400">\${item.packName.replace(/^Renouvellement des abonnements\\s*[-–:]\\s*/i, '')}</span></span>
                 </h4>
                 <div class="flex items-center gap-2">
-                  <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
-                    \${(req.billing_cycle === 'monthly' ? 'Facturation mensuelle' : 'Facturation annuelle (-10%)')}
-                  </span>
+                  \${item.isRenewal ? \`
+                    <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-orange-500/20 text-orange-300 border border-orange-500/40 flex items-center gap-1.5">
+                      <span>🔄</span> Renouvellement des abonnements
+                    </span>
+                  \` : \`
+                    <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                      \${(req.billing_cycle === 'monthly' ? 'Facturation mensuelle' : 'Facturation annuelle (-10%)')}
+                    </span>
+                  \`}
                   <span class="px-2.5 py-1 rounded-lg text-xs font-bold bg-amber-500/20 text-amber-300 border border-amber-500/40 flex items-center gap-1.5">
                     <span class="w-2 h-2 rounded-full bg-amber-400 animate-ping"></span> En attente de validation
                   </span>
@@ -5871,6 +5885,7 @@ export default {
         const storageDisplay = body.storageDisplay || (additionalMb >= 1024 ? `${(additionalMb / 1024).toFixed(additionalMb % 1024 === 0 ? 0 : 1)} Go (${additionalMb} Mo)` : `${additionalMb} Mo`);
         const priceDisplay = body.priceDisplay || `${pricePaid} ${currency}`;
         const billingCycle = body.billingCycle || 'annual';
+        const requestType = body.requestType || (body.isRenewal || (packName && packName.toLowerCase().includes('renouvellement')) ? 'renewal' : 'upgrade');
 
         let finalReceiptUrl = receiptImageUrl;
         if (receiptImageUrl && receiptImageUrl.startsWith('data:') && bucket) {
@@ -5895,13 +5910,13 @@ export default {
             id, user_id, user_name, user_phone, user_email, pack_id, pack_name,
             additional_mb, additional_words, price_paid, currency, payment_method, payment_reference,
             receipt_image_url, receipt_r2_key, contact_phone, user_whatsapp,
-            storage_display, price_display, billing_cycle, notes, status, created_at, updated_at
-          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            storage_display, price_display, billing_cycle, notes, request_type, status, created_at, updated_at
+          ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
         `, [
           requestId, userId, userName, contactPhone, userEmail, packId, packName,
           additionalMb, additionalWords, pricePaid, currency, paymentMethod, paymentReference,
           finalReceiptUrl, receiptR2Key, contactPhone, userWhatsapp,
-          storageDisplay, priceDisplay, billingCycle, notes
+          storageDisplay, priceDisplay, billingCycle, notes, requestType
         ]);
 
         return new Response(JSON.stringify({
