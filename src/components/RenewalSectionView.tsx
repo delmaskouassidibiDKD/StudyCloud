@@ -373,12 +373,16 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  const [isPolling, setIsPolling] = useState(false);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
   const [zoomedReceiptUrl, setZoomedReceiptUrl] = useState<string | null>(null);
+
+  // Références d'empreinte pour éviter les actualisations graphiques et re-renders incessants
+  const prevRequestsFingerprintRef = React.useRef<string>('');
+  const prevSubsFingerprintRef = React.useRef<string>('');
+  const prevPurchasesFingerprintRef = React.useRef<string>('');
 
   // État de la modale d'historique des achats
   const [showHistoryModal, setShowHistoryModal] = useState(false);
@@ -392,20 +396,35 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
     ? localStorage.getItem('unifolder_user_id') || 'default-user'
     : 'default-user');
 
+  const fallbackUserId = typeof localStorage !== 'undefined'
+    ? localStorage.getItem('unifolder_user_id')
+    : undefined;
+
   const fetchData = async (isSilent = false) => {
     try {
-      if (!isSilent) {
+      if (!isSilent && requests.length === 0) {
         setLoading(true);
-      } else {
-        setIsPolling(true);
       }
       // 1. Récupération des abonnements depuis l'API BDD
       const subRes = await getUserSubscriptions(currentUserId);
       let subs = (subRes.success && Array.isArray(subRes.subscriptions)) ? subRes.subscriptions : [];
 
-      // 2. Récupération des demandes depuis l'API BDD
+      // 2. Récupération des demandes depuis l'API BDD (vérification userId principal et fallback si différent)
       const reqRes = await getUserStorageRequests(currentUserId);
       let serverReqs = (reqRes.success && Array.isArray(reqRes.requests)) ? reqRes.requests : [];
+
+      if (fallbackUserId && fallbackUserId !== currentUserId) {
+        try {
+          const fallbackRes = await getUserStorageRequests(fallbackUserId);
+          if (fallbackRes && fallbackRes.success && Array.isArray(fallbackRes.requests)) {
+            fallbackRes.requests.forEach(r => {
+              if (r && r.id && !serverReqs.some(s => s.id === r.id)) {
+                serverReqs.push(r);
+              }
+            });
+          }
+        } catch {}
+      }
 
       // 3. Récupération de l'historique officiel des achats depuis la table BDD user_purchases_history
       const purRes = await getUserPurchasesHistory(currentUserId);
@@ -479,9 +498,9 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
       // D) Fusion et consolidation de toutes les demandes individuelles pour l'utilisateur
       const allRequestsMap = new Map<string, any>();
       
-      // Ingestion des demandes serveur de la base de données D1
+      // Ingestion de toutes les demandes serveur retournées pour cet utilisateur
       serverReqs.forEach(r => {
-        if (r && r.id && (!r.user_id || r.user_id === currentUserId)) {
+        if (r && r.id) {
           allRequestsMap.set(r.id, r);
         }
       });
@@ -492,7 +511,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
         const local = JSON.parse(localStorage.getItem('studycloud_local_requests') || '[]');
         let updatedLocal = false;
         local.forEach((r: any) => {
-          if (r && r.id && (!r.user_id || r.user_id === currentUserId)) {
+          if (r && r.id) {
             if (allRequestsMap.has(r.id)) {
               const serverVersion = allRequestsMap.get(r.id);
               if (serverVersion.status !== r.status || serverVersion.admin_notes !== r.admin_notes) {
@@ -555,9 +574,25 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
         return tB - tA;
       });
 
-      setSubscriptions(subs);
-      setRequests(activeRequests);
-      setPurchases(mergedPurchases);
+      // Mise à jour ultra-précise : On ne met à jour l'état React QUE si les données ont réellement changé en BDD
+      // Empêche tout clignotement ou actualisation intempestive à l'écran
+      const reqFingerprint = activeRequests.map(r => `${r.id}_${r.status}_${r.admin_notes || ''}_${r.updated_at || ''}`).join('|');
+      if (reqFingerprint !== prevRequestsFingerprintRef.current) {
+        prevRequestsFingerprintRef.current = reqFingerprint;
+        setRequests(activeRequests);
+      }
+
+      const subsFingerprint = subs.map(s => `${s.id}_${s.status}_${s.total_storage_mb}`).join('|');
+      if (subsFingerprint !== prevSubsFingerprintRef.current) {
+        prevSubsFingerprintRef.current = subsFingerprint;
+        setSubscriptions(subs);
+      }
+
+      const purFingerprint = mergedPurchases.map(p => `${p.id}_${p.status}`).join('|');
+      if (purFingerprint !== prevPurchasesFingerprintRef.current) {
+        prevPurchasesFingerprintRef.current = purFingerprint;
+        setPurchases(mergedPurchases);
+      }
 
       // IMPORTANT : Pas de dépliage automatique au chargement ! Reste replié jusqu'au clic utilisateur.
     } catch (err) {
@@ -565,19 +600,18 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
     } finally {
       setLoading(false);
       setRefreshing(false);
-      setIsPolling(false);
     }
   };
 
   useEffect(() => {
     fetchData(false);
 
-    // Écoute temps réel : actualisation automatique toutes les 4 secondes
+    // Écoute silencieuse en arrière-plan toutes les 5 secondes : AUCUN clignotement ni texte agité
     const intervalId = setInterval(() => {
       fetchData(true);
-    }, 4000);
+    }, 5000);
 
-    // Actualisation immédiate quand l'utilisateur revient sur l'onglet
+    // Actualisation silencieuse quand l'utilisateur revient sur l'onglet
     const handleSyncOnVisible = () => {
       if (document.visibilityState === 'visible') {
         fetchData(true);
@@ -592,7 +626,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
       window.removeEventListener('focus', handleSyncOnVisible);
       document.removeEventListener('visibilitychange', handleSyncOnVisible);
     };
-  }, [currentUserId]);
+  }, [currentUserId, fallbackUserId]);
 
   const handleManualRefresh = () => {
     setRefreshing(true);
@@ -943,15 +977,9 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                     <h3 className="text-base sm:text-lg font-bold text-[#2D4A3E] dark:text-white">
                       Demandes en cours
                     </h3>
-                    <div className="text-[11px] text-[#5C6B5A] dark:text-slate-400 flex items-center gap-2 flex-wrap">
-                      <span>Suivi en temps réel de vos commandes et activations</span>
-                      {isPolling && (
-                        <span className="inline-flex items-center gap-1 text-[10px] text-orange-600 dark:text-orange-400 font-bold bg-orange-500/10 dark:bg-orange-500/20 px-2 py-0.5 rounded-full animate-pulse">
-                          <RotateCw className="w-2.5 h-2.5 animate-spin" />
-                          <span>Actualisation...</span>
-                        </span>
-                      )}
-                    </div>
+                    <span className="text-[11px] text-[#5C6B5A] dark:text-slate-400">
+                      Suivi en temps réel de vos commandes et activations
+                    </span>
                   </div>
                 </div>
 

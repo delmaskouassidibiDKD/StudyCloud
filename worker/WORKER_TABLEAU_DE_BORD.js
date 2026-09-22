@@ -214,6 +214,8 @@ async function ensureStorageTables(db) {
       "ALTER TABLE storage_upgrade_requests ADD COLUMN storage_display TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN price_display TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN billing_cycle TEXT DEFAULT 'annual'",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_deleted_at TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN purge_scheduled_at TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN request_type TEXT DEFAULT 'upgrade'"
     ];
     for (const sql of upgradeReqCols) {
@@ -5937,13 +5939,15 @@ export default {
         if (!userId) {
           return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
         }
-        const query = includeDeleted
-          ? `SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC`
-          : `SELECT * FROM storage_upgrade_requests WHERE user_id = ? AND (user_deleted_at IS NULL OR user_deleted_at = '') ORDER BY created_at DESC`;
+        await ensureStorageTables(db);
+        const includeDeleted = url.searchParams.get('includeDeleted') === 'true';
+        const query = `SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC`;
         const reqs = await safeQuery(db, query, [userId], { results: [] });
+        const list = (reqs && reqs.results) ? reqs.results : [];
+        const filtered = includeDeleted ? list : list.filter(r => !r.user_deleted_at);
         return new Response(JSON.stringify({
           success: true,
-          requests: (reqs && reqs.results) ? reqs.results : []
+          requests: filtered
         }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }

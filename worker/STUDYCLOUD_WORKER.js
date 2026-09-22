@@ -7404,13 +7404,13 @@ Lien vers le produit : ${productShareUrl}`;
         if (!userId) return errorResponse("userId requis", 400, origin);
         await ensureStorageTables(env.DB);
         const includeDeleted = url.searchParams.get("includeDeleted") === "true";
-        const query = includeDeleted
-          ? "SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC"
-          : "SELECT * FROM storage_upgrade_requests WHERE user_id = ? AND (user_deleted_at IS NULL OR user_deleted_at = '') ORDER BY created_at DESC";
+        const query = "SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC";
         const reqs = await env.DB.prepare(query).bind(userId).all();
+        const list = (reqs && reqs.results) ? reqs.results : [];
+        const filtered = includeDeleted ? list : list.filter(r => !r.user_deleted_at);
         return jsonResponse({
           success: true,
-          requests: (reqs && reqs.results) ? reqs.results : []
+          requests: filtered
         }, 200, origin);
       }
 
