@@ -405,6 +405,82 @@ async function ensureStorageTables(db) {
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+
+    // 7. Table 'storage_subscription_plans' pour les cartes de paiement / forfaits de stockage
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS storage_subscription_plans (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        badge TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        storage_amount TEXT NOT NULL,
+        storage_mb REAL DEFAULT 0,
+        price REAL NOT NULL,
+        primary_currency TEXT DEFAULT 'USD',
+        currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
+        currency_conversions TEXT DEFAULT '{}',
+        yearly_price REAL DEFAULT 0,
+        yearly_discount_pct REAL DEFAULT 10,
+        features TEXT DEFAULT '[]',
+        is_auto_billing INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // 8. Table 'ai_subscription_plans' pour les cartes d'abonnement de l'assistante StudyCloud
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS ai_subscription_plans (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        badge TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        credits_or_words TEXT NOT NULL,
+        credits_count REAL DEFAULT 0,
+        price REAL NOT NULL,
+        primary_currency TEXT DEFAULT 'USD',
+        currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
+        currency_conversions TEXT DEFAULT '{}',
+        yearly_price REAL DEFAULT 0,
+        yearly_discount_pct REAL DEFAULT 10,
+        features TEXT DEFAULT '[]',
+        is_auto_billing INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // Insérer les plans de stockage par défaut si vides
+    try {
+      const countStorage = await db.prepare("SELECT COUNT(*) as c FROM storage_subscription_plans").first();
+      if (!countStorage || countStorage.c === 0) {
+        await db.prepare(`
+          INSERT INTO storage_subscription_plans (id, name, badge, description, storage_amount, storage_mb, price, primary_currency, currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features, is_auto_billing, is_active, sort_order)
+          VALUES 
+          ('storage_plan_basique', 'Basique', '', 'Pour les particuliers et petites équipes qui débutent.', '10 Go', 10240, 10, 'USD', '["USD","XOF","EUR"]', '{"USD":10,"XOF":6500,"EUR":9.2}', 90, 10, '[{"text":"10 Go de stockage cloud haute vitesse","enabled":true},{"text":"Messagerie d''équipe et partage de fichiers","enabled":true},{"text":"Fil d''activité et aperçu des projets","enabled":true},{"text":"Accès mobile et bureau","enabled":true},{"text":"Support par e-mail","enabled":true}]', 0, 1, 1),
+          ('storage_plan_pro', 'Pro', 'Populaire', 'Pour les professionnels et étudiants avancés.', '50 Go', 51200, 32, 'USD', '["USD","XOF","EUR"]', '{"USD":32,"XOF":20000,"EUR":29.5}', 290, 10, '[{"text":"50 Go de stockage cloud haute vitesse","enabled":true},{"text":"Support prioritaire 24/7","enabled":true},{"text":"Analyses avancées et rapports","enabled":true},{"text":"Collaboration en temps réel illimitée","enabled":true},{"text":"Domaine personnalisé","enabled":true}]', 0, 1, 2),
+          ('storage_plan_entreprise', 'Entreprise', '', 'Pour les universités, laboratoires et grandes équipes.', '200 Go', 204800, 89, 'USD', '["USD","XOF","EUR"]', '{"USD":89,"XOF":55000,"EUR":82}', 790, 10, '[{"text":"200 Go de stockage cloud haute vitesse","enabled":true},{"text":"Sécurité renforcée et SSO","enabled":true},{"text":"Gestionnaire de compte dédié","enabled":true},{"text":"SLA garanti 99.9%","enabled":true},{"text":"Formations personnalisées","enabled":true},{"text":"Facturation centralisée","enabled":true}]', 0, 1, 3)
+        `).run();
+      }
+    } catch (e) {}
+
+    // Insérer les plans IA par défaut si vides
+    try {
+      const countAi = await db.prepare("SELECT COUNT(*) as c FROM ai_subscription_plans").first();
+      if (!countAi || countAi.c === 0) {
+        await db.prepare(`
+          INSERT INTO ai_subscription_plans (id, name, badge, description, credits_or_words, credits_count, price, primary_currency, currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features, is_auto_billing, is_active, sort_order)
+          VALUES 
+          ('ai_plan_basique', 'IA Basique', '', 'Pour réviser, poser des questions et comprendre rapidement vos cours au quotidien.', '100 000 mots IA', 100000, 10, 'USD', '["USD","XOF","EUR"]', '{"USD":10,"XOF":6500,"EUR":9.2}', 90, 10, '[{"text":"100 000 mots IA générés par mois","enabled":true},{"text":"Résumés automatiques de cours et PDF","enabled":true},{"text":"Création instantanée de cartes mémoires (Flashcards)","enabled":true},{"text":"Aide aux devoirs et explications pas à pas","enabled":true},{"text":"Support par e-mail","enabled":true}]', 0, 1, 1),
+          ('ai_plan_pro', 'IA Pro Étudiant', 'Populaire', 'L''assistant d''apprentissage complet pour exceller et réussir tous vos examens.', '1 000 000 mots IA', 1000000, 32, 'USD', '["USD","XOF","EUR"]', '{"USD":32,"XOF":20000,"EUR":29.5}', 290, 10, '[{"text":"1 000 000 mots IA avec priorité maximale","enabled":true},{"text":"Génération de Quiz interactifs & examens blancs","enabled":true},{"text":"Synthèse vocale & lecture audio de vos fiches","enabled":true},{"text":"Analyse intelligente de documents scannés et photos","enabled":true},{"text":"Support prioritaire 24/7","enabled":true}]', 0, 1, 2),
+          ('ai_plan_master', 'IA Recherche & Master', '', 'Pour les doctorants, thèses, mémoires volumineux et laboratoires universitaires.', 'Mots IA illimités', 10000000, 89, 'USD', '["USD","XOF","EUR"]', '{"USD":89,"XOF":55000,"EUR":82}', 790, 10, '[{"text":"Mots IA illimités avec accès modèles avancés","enabled":true},{"text":"Traitement prioritaire ultra-rapide","enabled":true},{"text":"Export complet des synthèses & fiches en PDF/Word","enabled":true},{"text":"Analyse illimitée de livres et thèses entières","enabled":true},{"text":"Accès API assistante pour vos projets de recherche","enabled":true}]', 0, 1, 3)
+        `).run();
+      }
+    } catch (e) {}
   } catch (e) {
     console.warn('[Storage Tables Init]', e);
   }
@@ -1528,6 +1604,8 @@ function renderDashboardHtml(data) {
   const upgradeRequestsJson = JSON.stringify(data.upgradeRequests || []).replace(/</g, '\\u003c');
   const userSubscriptionsJson = JSON.stringify(data.userSubscriptions || []).replace(/</g, '\\u003c');
   const companyProfileJson = JSON.stringify(data.companyProfile || {}).replace(/</g, '\\u003c');
+  const storagePlansJson = JSON.stringify(data.storagePlans || []).replace(/</g, '\\u003c');
+  const aiPlansJson = JSON.stringify(data.aiPlans || []).replace(/</g, '\\u003c');
   const cp = data.companyProfile || {};
   const safeAttr = (val, fallback = '') => {
     const s = (val !== null && val !== undefined && String(val).trim() !== '') ? String(val) : fallback;
@@ -3073,6 +3151,63 @@ function renderDashboardHtml(data) {
             </div>
           </div>
 
+          <!-- ==================================================================== -->
+          <!-- ESPACE FORMULAIRES & CARTES DE PAIEMENT (STOCKAGE ET ASSISTANTE IA) -->
+          <!-- ==================================================================== -->
+          <div class="mt-6 pt-5 border-t border-slate-800 space-y-4">
+            <div class="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+              <div>
+                <h4 class="text-sm font-black text-white flex items-center gap-2">
+                  <span>💳</span>
+                  <span>Formules et Cartes d'Abonnement (Interface Utilisateur)</span>
+                </h4>
+                <p class="text-[11px] text-slate-400">
+                  Créez et configurez les cartes de forfaits visibles par les étudiants dans l'application StudyCloud.
+                </p>
+              </div>
+
+              <!-- Bouton + Créer une carte d'abonnement -->
+              <button 
+                type="button" 
+                onclick="openSubscriptionPlanModal(currentSubPlanTab)"
+                class="px-3.5 py-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-orange-950/40 flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shrink-0"
+              >
+                <span>➕</span>
+                <span>Créer une carte d'abonnement</span>
+              </button>
+            </div>
+
+            <!-- Deux Boutons d'Onglets Principaux : Paiement Stockage vs Assistante StudyCloud -->
+            <div class="flex items-center gap-2 p-1 bg-slate-900/90 rounded-xl border border-slate-800 w-fit">
+              <button 
+                type="button" 
+                id="btn-subtab-storage"
+                onclick="switchSubscriptionTab('storage')"
+                class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer bg-orange-600 text-white shadow"
+              >
+                <span>💾</span>
+                <span>Paiement de Stockage</span>
+                <span id="badge-count-storage-plans" class="px-1.5 py-0.2 rounded-full text-[10px] bg-black/30 text-white">0</span>
+              </button>
+
+              <button 
+                type="button" 
+                id="btn-subtab-ai"
+                onclick="switchSubscriptionTab('ai')"
+                class="px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer text-slate-400 hover:text-white"
+              >
+                <span>🤖</span>
+                <span>Paiement Assistante StudyCloud</span>
+                <span id="badge-count-ai-plans" class="px-1.5 py-0.2 rounded-full text-[10px] bg-black/30 text-white">0</span>
+              </button>
+            </div>
+
+            <!-- Grille des cartes d'abonnements générées dynamiquement -->
+            <div id="sub-plans-cards-grid" class="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pt-1">
+              <!-- Injecté en JS par renderSubscriptionPlansCards() -->
+            </div>
+          </div>
+
         </div>
 
       </div>
@@ -3166,6 +3301,178 @@ function renderDashboardHtml(data) {
     </div>
   </div>
 
+  <!-- MODALE DE CRÉATION ET MODIFICATION D'UNE CARTE D'ABONNEMENT -->
+  <div id="subscription-plan-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex flex-col items-center justify-center p-3 sm:p-4" onclick="closeSubscriptionPlanModal(event)">
+    <div class="relative max-w-2xl w-full max-h-[92vh] bg-[#0f172a] border border-slate-700 rounded-2xl overflow-hidden flex flex-col shadow-2xl animate-in fade-in zoom-in-95 duration-150" onclick="event.stopPropagation()">
+      
+      <!-- En-tête -->
+      <div class="px-5 py-3.5 bg-[#0d1424] border-b border-slate-800 flex items-center justify-between shrink-0">
+        <div class="flex items-center gap-2.5">
+          <div class="w-8 h-8 rounded-lg bg-orange-600/20 border border-orange-500/30 flex items-center justify-center text-base" id="sub-modal-icon">
+            💾
+          </div>
+          <div>
+            <h3 class="text-sm font-black text-white" id="sub-modal-title">Créer une carte d'abonnement</h3>
+            <p class="text-[10px] text-slate-400" id="sub-modal-subtitle">Configuration tarifaire et avantages pour les utilisateurs</p>
+          </div>
+        </div>
+        <button type="button" onclick="closeSubscriptionPlanModal()" class="w-8 h-8 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-300 hover:text-white font-bold flex items-center justify-center cursor-pointer transition">✕</button>
+      </div>
+
+      <!-- Corps du formulaire avec défilement -->
+      <form id="form-sub-plan" onsubmit="event.preventDefault(); saveSubscriptionPlanModal();" class="p-5 overflow-y-auto space-y-4 text-xs">
+        <input type="hidden" id="sub-plan-id" value="" />
+        <input type="hidden" id="sub-plan-category" value="storage" />
+
+        <!-- 1. Catégorie et Nom du forfait -->
+        <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div>
+            <label class="text-[11px] font-bold text-slate-300 block mb-1">Nom du forfait / abonnement *</label>
+            <input type="text" id="sub-plan-name" required placeholder="Ex: Pro, Basique, Master..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold focus:border-orange-500 outline-none" />
+          </div>
+          <div>
+            <label class="text-[11px] font-bold text-slate-300 block mb-1">Badge optionnel (sur la carte)</label>
+            <input type="text" id="sub-plan-badge" placeholder="Ex: Populaire, Recommandé..." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-orange-500 outline-none" />
+          </div>
+        </div>
+
+        <div>
+          <label class="text-[11px] font-bold text-slate-300 block mb-1">Description courte</label>
+          <input type="text" id="sub-plan-desc" placeholder="Ex: Pour les professionnels et étudiants avancés." class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white focus:border-orange-500 outline-none" />
+        </div>
+
+        <!-- 2. Prix et Choix des devises -->
+        <div class="p-3.5 bg-slate-950/60 rounded-xl border border-slate-800 space-y-3">
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label class="text-[11px] font-bold text-slate-300 block mb-1">Prix de base mensuel *</label>
+              <input type="number" step="any" min="0" id="sub-plan-price" required value="10" oninput="updateSubscriptionPricingCalculations()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold text-base focus:border-orange-500 outline-none" />
+            </div>
+            <div>
+              <label class="text-[11px] font-bold text-slate-300 block mb-1">Devise principale (affichée en grand) *</label>
+              <select id="sub-plan-primary-curr" onchange="updateSubscriptionPricingCalculations()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-bold focus:border-orange-500 outline-none">
+                <option value="USD">Dollars US ($ USD)</option>
+                <option value="XOF">Francs CFA (FCFA / XOF)</option>
+                <option value="EUR">Euros (€ EUR)</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- Devises secondaires à convertir et afficher en petit -->
+          <div>
+            <label class="text-[11px] font-bold text-slate-300 block mb-1.5">Devises secondaires à afficher en dessous sur la carte :</label>
+            <div class="flex flex-wrap items-center gap-4 text-slate-300">
+              <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" id="sub-curr-xof" checked onchange="updateSubscriptionPricingCalculations()" class="w-4 h-4 rounded text-orange-500 bg-slate-900 border-slate-700" />
+                <span class="font-bold">FCFA (XOF)</span>
+              </label>
+              <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" id="sub-curr-usd" checked onchange="updateSubscriptionPricingCalculations()" class="w-4 h-4 rounded text-orange-500 bg-slate-900 border-slate-700" />
+                <span class="font-bold">Dollars ($ USD)</span>
+              </label>
+              <label class="inline-flex items-center gap-1.5 cursor-pointer">
+                <input type="checkbox" id="sub-curr-eur" checked onchange="updateSubscriptionPricingCalculations()" class="w-4 h-4 rounded text-orange-500 bg-slate-900 border-slate-700" />
+                <span class="font-bold">Euros (€ EUR)</span>
+              </label>
+            </div>
+          </div>
+        </div>
+
+        <!-- 3. Encadré Récapitulatif : Prix par Mois & Prix par An avec Réduction -->
+        <div class="p-3.5 bg-gradient-to-r from-slate-900 to-slate-950 rounded-xl border border-slate-700/80 grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+          <!-- Côté Gauche : Prix Mois -->
+          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Tarif par Mois</span>
+            <div class="text-xl font-extrabold text-white" id="sub-preview-monthly-primary">$ 10 / mois</div>
+            <div class="text-[11px] text-amber-400 font-medium mt-0.5" id="sub-preview-monthly-conversions">≈ 6 500 FCFA • ≈ 9.20 €</div>
+          </div>
+
+          <!-- Côté Droit : Prix An & Réduction -->
+          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-1.5">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tarif par An (12 mois)</span>
+              <div class="flex items-center gap-1">
+                <span class="text-[10px] text-emerald-400 font-bold">Réduction :</span>
+                <input type="number" min="0" max="90" id="sub-plan-discount" value="10" oninput="updateSubscriptionPricingCalculations()" class="w-12 bg-slate-950 border border-slate-700 rounded px-1.5 py-0.5 text-center text-xs text-emerald-400 font-bold outline-none" />
+                <span class="text-xs text-emerald-400 font-bold">%</span>
+              </div>
+            </div>
+            <div class="text-xl font-extrabold text-emerald-400" id="sub-preview-yearly-primary">$ 90 / an</div>
+            <div class="text-[11px] text-slate-400 mt-0.5" id="sub-preview-yearly-conversions">≈ 58 500 FCFA • ≈ 82.80 €</div>
+          </div>
+        </div>
+
+        <!-- 4. Avantages (Perks) avec Première Ligne Verrouillée (Stockage ou IA) -->
+        <div class="space-y-2">
+          <div class="flex items-center justify-between">
+            <label class="text-[11px] font-bold text-slate-200 block flex items-center gap-1.5">
+              <span>✨</span>
+              <span>Avantages inclus dans ce forfait :</span>
+            </label>
+            <button type="button" onclick="addSubscriptionFeatureLine()" class="text-[11px] text-orange-400 hover:text-orange-300 font-bold flex items-center gap-1 cursor-pointer">
+              <span>➕</span> <span>Ajouter une ligne</span>
+            </button>
+          </div>
+
+          <!-- Première ligne FIXE et NON DÉCOCHABLE -->
+          <div class="p-2.5 bg-orange-950/20 border border-orange-500/40 rounded-xl space-y-1">
+            <div class="flex items-center gap-2">
+              <div class="w-5 h-5 rounded bg-orange-500/30 border border-orange-500 flex items-center justify-center text-orange-300 font-bold text-xs select-none">
+                🔒
+              </div>
+              <span class="text-[10px] font-bold text-orange-300 uppercase" id="sub-main-feature-label">
+                Volume de stockage inclus (Obligatoire, non décochable)
+              </span>
+            </div>
+            <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
+              <input type="text" id="sub-plan-main-feature-text" required placeholder="Ex: 50 Go supplémentaires (+ 51 200 Mo)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-semibold text-xs focus:border-orange-500 outline-none" />
+              <input type="number" id="sub-plan-main-feature-val" required placeholder="Valeur numérique (Mo ou Mots)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:border-orange-500 outline-none" />
+            </div>
+          </div>
+
+          <!-- Lignes d'avantages supplémentaires cochables/décochables -->
+          <div id="sub-plan-features-list" class="space-y-2 max-h-48 overflow-y-auto pr-1">
+            <!-- Injecté dynamiquement par addSubscriptionFeatureLine() -->
+          </div>
+        </div>
+
+        <!-- 5. Mode de facturation (Manuel vs Automatique) -->
+        <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800 space-y-2">
+          <label class="text-[11px] font-bold text-slate-300 block">Mode de déclenchement dans l'application :</label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label class="flex items-start gap-2.5 p-2 rounded-lg border border-slate-700 bg-slate-900/60 cursor-pointer hover:border-slate-600">
+              <input type="radio" name="sub-plan-billing-mode" value="manual" id="sub-billing-manual" checked class="mt-0.5 text-orange-500" />
+              <div>
+                <span class="font-bold text-white block">Paiement Manuel (Bouton "Commencer")</span>
+                <span class="text-[10px] text-slate-400 block">L'étudiant effectue un transfert Wave / Orange / MTN / Moov et joint son reçu.</span>
+              </div>
+            </label>
+
+            <label class="flex items-start gap-2.5 p-2 rounded-lg border border-slate-700 bg-slate-900/60 cursor-pointer hover:border-slate-600">
+              <input type="radio" name="sub-plan-billing-mode" value="auto" id="sub-billing-auto" class="mt-0.5 text-orange-500" />
+              <div>
+                <span class="font-bold text-white block">Abonnement Automatique (Bouton "S'abonner")</span>
+                <span class="text-[10px] text-slate-400 block">Demande au Worker d'afficher les options cartes de crédit / prélèvement automatique.</span>
+              </div>
+            </label>
+          </div>
+        </div>
+
+        <div id="sub-plan-modal-error" class="text-xs text-rose-400 font-semibold hidden"></div>
+
+        <!-- Boutons d'action -->
+        <div class="pt-3 border-t border-slate-800 flex items-center justify-end gap-2.5 shrink-0">
+          <button type="button" onclick="closeSubscriptionPlanModal()" class="px-4 py-2 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-xl font-bold transition cursor-pointer">
+            Annuler
+          </button>
+          <button type="submit" id="btn-save-sub-plan" class="px-5 py-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white rounded-xl font-extrabold shadow-lg shadow-orange-950/40 transition cursor-pointer active:scale-95">
+            Enregistrer la carte
+          </button>
+        </div>
+      </form>
+    </div>
+  </div>
+
   <!-- TOAST DE NOTIFICATION FLOTTANT -->
   <div id="toast" class="fixed bottom-5 right-5 z-50 bg-emerald-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-2xl border border-emerald-400/40 hidden transition-opacity animate-bounce">
     Notification
@@ -3180,6 +3487,9 @@ function renderDashboardHtml(data) {
     let tablesMeta = ${tablesMetaJson};
     let r2Meta = ${r2MetaJson};
     let companyProfileGlobal = ${companyProfileJson};
+    let allStoragePlans = ${storagePlansJson};
+    let allAiPlans = ${aiPlansJson};
+    let currentSubPlanTab = 'storage';
 
     let selectedUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
     let selectedDistributionUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
@@ -6654,6 +6964,651 @@ function renderDashboardHtml(data) {
       }
     }
 
+    function switchSubscriptionTab(tab) {
+      currentSubPlanTab = tab === 'ai' ? 'ai' : 'storage';
+      const btnStorage = document.getElementById('btn-subtab-storage');
+      const btnAi = document.getElementById('btn-subtab-ai');
+      if (btnStorage && btnAi) {
+        if (currentSubPlanTab === 'storage') {
+          btnStorage.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer bg-orange-600 text-white shadow';
+          btnAi.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer text-slate-400 hover:text-white';
+        } else {
+          btnAi.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer bg-orange-600 text-white shadow';
+          btnStorage.className = 'px-3.5 py-1.5 rounded-lg text-xs font-bold transition flex items-center gap-2 cursor-pointer text-slate-400 hover:text-white';
+        }
+      }
+      renderSubscriptionPlansCards(currentSubPlanTab);
+    }
+    window.switchSubscriptionTab = switchSubscriptionTab;
+
+    function getCurrencySymbol(curr) {
+      if (curr === 'USD') return '$';
+      if (curr === 'EUR') return '€';
+      if (curr === 'XOF') return 'FCFA';
+      return curr;
+    }
+
+    function calculateConversions(price, primaryCurr) {
+      const p = Number(price) || 0;
+      let usd = 0;
+      let xof = 0;
+      let eur = 0;
+      if (primaryCurr === 'USD') {
+        usd = p;
+        xof = Math.round(p * 650);
+        eur = Math.round(p * 0.92 * 100) / 100;
+      } else if (primaryCurr === 'XOF') {
+        xof = p;
+        usd = Math.round((p / 650) * 100) / 100;
+        eur = Math.round((p / 655.957) * 100) / 100;
+      } else if (primaryCurr === 'EUR') {
+        eur = p;
+        usd = Math.round((p / 0.92) * 100) / 100;
+        xof = Math.round(p * 655.957);
+      }
+      return { USD: usd, XOF: xof, EUR: eur };
+    }
+
+    function updateSubscriptionPricingCalculations() {
+      const priceInput = document.getElementById('sub-plan-price');
+      const currSelect = document.getElementById('sub-plan-primary-curr');
+      const discountInput = document.getElementById('sub-plan-discount');
+      const currXof = document.getElementById('sub-curr-xof');
+      const currUsd = document.getElementById('sub-curr-usd');
+      const currEur = document.getElementById('sub-curr-eur');
+
+      const price = Number(priceInput ? priceInput.value : 10) || 0;
+      const primaryCurr = currSelect ? currSelect.value : 'USD';
+      const discountPct = Number(discountInput ? discountInput.value : 10) || 0;
+
+      const conv = calculateConversions(price, primaryCurr);
+
+      // Aperçu mensuel
+      const monthlyPrimaryEl = document.getElementById('sub-preview-monthly-primary');
+      const monthlyConvEl = document.getElementById('sub-preview-monthly-conversions');
+      if (monthlyPrimaryEl) {
+        monthlyPrimaryEl.textContent = getCurrencySymbol(primaryCurr) + ' ' + (primaryCurr === 'XOF' ? conv.XOF.toLocaleString() : conv[primaryCurr]) + ' / mois';
+      }
+      if (monthlyConvEl) {
+        const parts = [];
+        if (currXof && currXof.checked && primaryCurr !== 'XOF') parts.push('≈ ' + conv.XOF.toLocaleString() + ' FCFA');
+        if (currUsd && currUsd.checked && primaryCurr !== 'USD') parts.push('≈ ' + conv.USD + ' $');
+        if (currEur && currEur.checked && primaryCurr !== 'EUR') parts.push('≈ ' + conv.EUR + ' €');
+        monthlyConvEl.textContent = parts.length > 0 ? parts.join(' • ') : 'Aucune conversion secondaire cochée';
+      }
+
+      // Aperçu annuel (12 mois avec réduction)
+      const yearlyPrice = Math.round(price * 12 * (1 - (discountPct / 100)) * 100) / 100;
+      const yearlyConv = calculateConversions(yearlyPrice, primaryCurr);
+
+      const yearlyPrimaryEl = document.getElementById('sub-preview-yearly-primary');
+      const yearlyConvEl = document.getElementById('sub-preview-yearly-conversions');
+      if (yearlyPrimaryEl) {
+        yearlyPrimaryEl.textContent = getCurrencySymbol(primaryCurr) + ' ' + (primaryCurr === 'XOF' ? yearlyConv.XOF.toLocaleString() : yearlyConv[primaryCurr]) + ' / an';
+      }
+      if (yearlyConvEl) {
+        const yearlyParts = [];
+        if (currXof && currXof.checked && primaryCurr !== 'XOF') yearlyParts.push('≈ ' + yearlyConv.XOF.toLocaleString() + ' FCFA');
+        if (currUsd && currUsd.checked && primaryCurr !== 'USD') yearlyParts.push('≈ ' + yearlyConv.USD + ' $');
+        if (currEur && currEur.checked && primaryCurr !== 'EUR') yearlyParts.push('≈ ' + yearlyConv.EUR + ' €');
+        yearlyConvEl.textContent = yearlyParts.length > 0 ? yearlyParts.join(' • ') : 'Aucune conversion secondaire';
+      }
+    }
+    window.updateSubscriptionPricingCalculations = updateSubscriptionPricingCalculations;
+
+    function renderSubscriptionPlansCards(category) {
+      const targetCat = category === 'ai' ? 'ai' : 'storage';
+      const plans = targetCat === 'ai' ? (allAiPlans || []) : (allStoragePlans || []);
+
+      // Mettre à jour les compteurs sur les onglets
+      const bStorage = document.getElementById('badge-count-storage-plans');
+      const bAi = document.getElementById('badge-count-ai-plans');
+      if (bStorage) bStorage.textContent = (allStoragePlans || []).length;
+      if (bAi) bAi.textContent = (allAiPlans || []).length;
+
+      const container = document.getElementById('sub-plans-cards-grid');
+      if (!container) return;
+      container.innerHTML = '';
+
+      if (plans.length === 0) {
+        const emptyDiv = document.createElement("div");
+        emptyDiv.className = "col-span-full py-8 text-center text-slate-400 bg-slate-900/40 rounded-2xl border border-dashed border-slate-800";
+        emptyDiv.innerHTML = '<div class="text-3xl mb-2">📦</div>' +
+          '<p class="font-bold text-sm text-slate-300">Aucune carte d&apos;abonnement créée pour le moment</p>' +
+          '<p class="text-xs text-slate-500 mt-1">Cliquez sur « + Créer une carte d&apos;abonnement » ci-dessus pour configurer un forfait.</p>';
+        container.appendChild(emptyDiv);
+        return;
+      }
+
+      plans.forEach(function(plan) {
+        const card = document.createElement('div');
+        const isActive = plan.is_active !== 0;
+        const isAuto = plan.is_auto_billing === 1;
+
+        card.className = 'relative flex flex-col justify-between rounded-2xl p-5 border ' + 
+          (isActive ? (plan.badge ? 'border-orange-500/60 bg-[#111927]' : 'border-slate-800 bg-[#0d1424]') : 'border-slate-800/60 bg-slate-950/60 opacity-60') + 
+          ' shadow-xl transition-all';
+
+        // En-tête de la carte
+        const headerDiv = document.createElement('div');
+        headerDiv.className = 'space-y-3';
+
+        const topRow = document.createElement('div');
+        topRow.className = 'flex items-center justify-between gap-2';
+
+        const titleDiv = document.createElement('div');
+        titleDiv.className = 'flex items-center gap-2 flex-wrap';
+
+        const titleSpan = document.createElement('h5');
+        titleSpan.className = 'text-base font-black text-white';
+        titleSpan.textContent = plan.name || 'Forfait';
+        titleDiv.appendChild(titleSpan);
+
+        if (plan.badge) {
+          const badgeSpan = document.createElement('span');
+          badgeSpan.className = 'px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30';
+          badgeSpan.textContent = plan.badge;
+          titleDiv.appendChild(badgeSpan);
+        }
+        topRow.appendChild(titleDiv);
+
+        // Badge visibilité
+        const visSpan = document.createElement('span');
+        visSpan.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold ' + (isActive ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400');
+        visSpan.textContent = isActive ? "Actif dans l'app" : "Masqué";
+        topRow.appendChild(visSpan);
+        headerDiv.appendChild(topRow);
+
+        if (plan.description) {
+          const descP = document.createElement('p');
+          descP.className = 'text-xs text-slate-400 leading-relaxed';
+          descP.textContent = plan.description;
+          headerDiv.appendChild(descP);
+        }
+
+        // Prix & devises
+        const priceBox = document.createElement('div');
+        priceBox.className = 'p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1';
+
+        const priceRow = document.createElement('div');
+        priceRow.className = 'flex items-baseline gap-1.5';
+
+        const mainPrice = document.createElement('span');
+        mainPrice.className = 'text-2xl font-black text-white font-mono';
+        const primaryCurr = plan.primary_currency || 'USD';
+        mainPrice.textContent = getCurrencySymbol(primaryCurr) + ' ' + (primaryCurr === 'XOF' ? Number(plan.price).toLocaleString() : plan.price);
+        priceRow.appendChild(mainPrice);
+
+        const perMonth = document.createElement('span');
+        perMonth.className = 'text-xs text-slate-400 font-bold';
+        perMonth.textContent = '/ mois';
+        priceRow.appendChild(perMonth);
+        priceBox.appendChild(priceRow);
+
+        // Devises secondaires
+        let convObj = {};
+        try {
+          convObj = typeof plan.currency_conversions === 'string' ? JSON.parse(plan.currency_conversions) : (plan.currency_conversions || {});
+        } catch (e) {
+          convObj = calculateConversions(plan.price, primaryCurr);
+        }
+
+        let currEnabled = ['USD', 'XOF', 'EUR'];
+        try {
+          if (typeof plan.currencies_enabled === 'string') currEnabled = JSON.parse(plan.currencies_enabled);
+          else if (Array.isArray(plan.currencies_enabled)) currEnabled = plan.currencies_enabled;
+        } catch (e) {}
+
+        const convParts = [];
+        if (currEnabled.includes('XOF') && primaryCurr !== 'XOF' && convObj.XOF) convParts.push('≈ ' + Number(convObj.XOF).toLocaleString() + ' FCFA');
+        if (currEnabled.includes('USD') && primaryCurr !== 'USD' && convObj.USD) convParts.push('≈ ' + convObj.USD + ' $');
+        if (currEnabled.includes('EUR') && primaryCurr !== 'EUR' && convObj.EUR) convParts.push('≈ ' + convObj.EUR + ' €');
+
+        if (convParts.length > 0) {
+          const secDiv = document.createElement('div');
+          secDiv.className = 'text-[11px] font-semibold text-amber-400/90';
+          secDiv.textContent = convParts.join(' • ');
+          priceBox.appendChild(secDiv);
+        }
+
+        // Réduction annuelle
+        const yearlyP = Number(plan.yearly_price) || 0;
+        const discPct = Number(plan.yearly_discount_pct) || 0;
+        if (yearlyP > 0) {
+          const yrRow = document.createElement('div');
+          yrRow.className = 'flex items-center justify-between pt-1 mt-1 border-t border-slate-800 text-[11px]';
+          yrRow.innerHTML = '<span class="text-slate-400">Annuel (12 mois) :</span>' +
+            '<span class="font-bold text-emerald-400 font-mono">' + getCurrencySymbol(primaryCurr) + ' ' + (primaryCurr === 'XOF' ? yearlyP.toLocaleString() : yearlyP) + ' / an ' +
+            (discPct > 0 ? '<span class="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold">-' + discPct + '%</span>' : '') + '</span>';
+          priceBox.appendChild(yrRow);
+        }
+        headerDiv.appendChild(priceBox);
+
+        // Liste des avantages
+        const featBox = document.createElement('div');
+        featBox.className = 'space-y-1.5 pt-1';
+
+        // 1ère ligne verrouillée (stockage ou IA)
+        const mainAmount = plan.storage_amount || plan.credits_or_words || (targetCat === 'ai' ? 'Crédits IA' : 'Stockage cloud');
+        const mainFeat = document.createElement('div');
+        mainFeat.className = 'flex items-center gap-2 p-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-200 text-xs font-bold';
+        mainFeat.innerHTML = '<span>🔒</span><span>' + mainAmount + '</span>';
+        featBox.appendChild(mainFeat);
+
+        // Autres avantages
+        let feats = [];
+        try {
+          feats = typeof plan.features === 'string' ? JSON.parse(plan.features) : (plan.features || []);
+        } catch (e) {}
+
+        if (Array.isArray(feats) && feats.length > 0) {
+          feats.forEach(function(f) {
+            const fText = typeof f === 'string' ? f : f.text;
+            const fEnabled = typeof f === 'object' ? (f.enabled !== false) : true;
+            if (!fText) return;
+            const item = document.createElement('div');
+            item.className = 'flex items-start gap-2 text-xs ' + (fEnabled ? 'text-slate-300' : 'text-slate-500 line-through');
+            item.innerHTML = '<span class="mt-0.5 ' + (fEnabled ? 'text-emerald-400' : 'text-slate-600') + '">' + (fEnabled ? '✓' : '✗') + '</span><span>' + fText + '</span>';
+            featBox.appendChild(item);
+          });
+        }
+        headerDiv.appendChild(featBox);
+        card.appendChild(headerDiv);
+
+        // Mode bouton étudiant + Actions d'administration
+        const footerDiv = document.createElement('div');
+        footerDiv.className = 'pt-4 mt-3 border-t border-slate-800 space-y-2.5';
+
+        // Badge du bouton dans l'application
+        const buttonBadge = document.createElement('div');
+        buttonBadge.className = 'flex items-center justify-between p-2 rounded-xl ' + 
+          (isAuto ? 'bg-cyan-950/40 border border-cyan-500/30 text-cyan-300' : 'bg-slate-900 border border-slate-700 text-slate-300') + ' text-[11px]';
+        
+        const badgeLabel = document.createElement('span');
+        badgeLabel.innerHTML = 'Bouton étudiant : <strong>' + (isAuto ? '« S&apos;abonner »' : '« Commencer »') + '</strong>';
+        
+        const badgeToggleBtn = document.createElement('button');
+        badgeToggleBtn.type = 'button';
+        badgeToggleBtn.className = 'text-[10px] font-bold underline cursor-pointer';
+        badgeToggleBtn.textContent = isAuto ? 'Passer en Manuel' : 'Passer en Auto';
+        badgeToggleBtn.onclick = function() { toggleSubscriptionPlanAutoBilling(targetCat, plan.id); };
+        
+        buttonBadge.appendChild(badgeLabel);
+        buttonBadge.appendChild(badgeToggleBtn);
+        footerDiv.appendChild(buttonBadge);
+
+        // Boutons d'action
+        const actionRow = document.createElement('div');
+        actionRow.className = 'flex items-center gap-1.5';
+
+        const btnEdit = document.createElement('button');
+        btnEdit.type = 'button';
+        btnEdit.className = 'flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer';
+        btnEdit.innerHTML = '<span>✏️</span><span>Modifier</span>';
+        btnEdit.onclick = function() { openSubscriptionPlanModal(targetCat, plan.id); };
+
+        const btnToggleVis = document.createElement('button');
+        btnToggleVis.type = 'button';
+        btnToggleVis.className = 'px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition cursor-pointer';
+        btnToggleVis.title = isActive ? 'Masquer cette carte' : 'Activer cette carte';
+        btnToggleVis.innerHTML = isActive ? '👁️' : '🚫';
+        btnToggleVis.onclick = function() { toggleSubscriptionPlanActive(targetCat, plan.id); };
+
+        const btnDel = document.createElement('button');
+        btnDel.type = 'button';
+        btnDel.className = 'px-2.5 py-1.5 bg-rose-950/40 hover:bg-rose-900 text-rose-300 border border-rose-800/40 rounded-lg text-xs font-bold transition cursor-pointer';
+        btnDel.title = 'Supprimer définitivement';
+        btnDel.innerHTML = '🗑️';
+        btnDel.onclick = function() { deleteSubscriptionPlan(targetCat, plan.id); };
+
+        actionRow.appendChild(btnEdit);
+        actionRow.appendChild(btnToggleVis);
+        actionRow.appendChild(btnDel);
+        footerDiv.appendChild(actionRow);
+
+        card.appendChild(footerDiv);
+        container.appendChild(card);
+      });
+    }
+    window.renderSubscriptionPlansCards = renderSubscriptionPlansCards;
+
+    function openSubscriptionPlanModal(category, planId) {
+      const targetCat = category === 'ai' ? 'ai' : 'storage';
+      const modal = document.getElementById('subscription-plan-modal');
+      const errBox = document.getElementById('sub-plan-modal-error');
+      if (errBox) errBox.classList.add('hidden');
+
+      document.getElementById('sub-plan-category').value = targetCat;
+      document.getElementById('sub-modal-icon').textContent = targetCat === 'ai' ? '🤖' : '💾';
+      document.getElementById('sub-main-feature-label').textContent = targetCat === 'ai' ? 
+        'Nombre de crédits / mots IA (Obligatoire, non décochable)' : 
+        'Volume de stockage inclus (Obligatoire, non décochable)';
+
+      const featInput = document.getElementById('sub-plan-main-feature-text');
+      if (featInput) {
+        featInput.placeholder = targetCat === 'ai' ? 'Ex: 1 000 000 mots IA / mois' : 'Ex: 50 Go supplémentaires (+ 51 200 Mo)';
+      }
+
+      const listContainer = document.getElementById('sub-plan-features-list');
+      if (listContainer) listContainer.innerHTML = '';
+
+      const plans = targetCat === 'ai' ? (allAiPlans || []) : (allStoragePlans || []);
+      const existing = planId ? plans.find(p => p.id === planId) : null;
+
+      if (existing) {
+        document.getElementById('sub-modal-title').textContent = "Modifier la carte d'abonnement";
+        document.getElementById('sub-plan-id').value = existing.id;
+        document.getElementById('sub-plan-name').value = existing.name || '';
+        document.getElementById('sub-plan-badge').value = existing.badge || '';
+        document.getElementById('sub-plan-desc').value = existing.description || '';
+        document.getElementById('sub-plan-price').value = existing.price || 10;
+        document.getElementById('sub-plan-primary-curr').value = existing.primary_currency || 'USD';
+        document.getElementById('sub-plan-discount').value = existing.yearly_discount_pct !== undefined ? existing.yearly_discount_pct : 10;
+
+        document.getElementById('sub-plan-main-feature-text').value = existing.storage_amount || existing.credits_or_words || '';
+        document.getElementById('sub-plan-main-feature-val').value = existing.storage_mb || existing.credits_count || 0;
+
+        let currEnabled = ['USD', 'XOF', 'EUR'];
+        try {
+          if (typeof existing.currencies_enabled === 'string') currEnabled = JSON.parse(existing.currencies_enabled);
+          else if (Array.isArray(existing.currencies_enabled)) currEnabled = existing.currencies_enabled;
+        } catch (e) {}
+
+        const cXof = document.getElementById('sub-curr-xof');
+        const cUsd = document.getElementById('sub-curr-usd');
+        const cEur = document.getElementById('sub-curr-eur');
+        if (cXof) cXof.checked = currEnabled.includes('XOF');
+        if (cUsd) cUsd.checked = currEnabled.includes('USD');
+        if (cEur) cEur.checked = currEnabled.includes('EUR');
+
+        let feats = [];
+        try {
+          feats = typeof existing.features === 'string' ? JSON.parse(existing.features) : (existing.features || []);
+        } catch (e) {}
+
+        if (Array.isArray(feats) && feats.length > 0) {
+          feats.forEach(function(f) {
+            const fText = typeof f === 'string' ? f : f.text;
+            const fEn = typeof f === 'object' ? (f.enabled !== false) : true;
+            addSubscriptionFeatureLine(fText, fEn);
+          });
+        }
+
+        const isAuto = existing.is_auto_billing === 1;
+        const bAuto = document.getElementById('sub-billing-auto');
+        const bManual = document.getElementById('sub-billing-manual');
+        if (bAuto && bManual) {
+          bAuto.checked = isAuto;
+          bManual.checked = !isAuto;
+        }
+      } else {
+        document.getElementById('sub-modal-title').textContent = targetCat === 'ai' ? "Créer une carte d'abonnement IA" : "Créer une carte d'abonnement Stockage";
+        document.getElementById('sub-plan-id').value = '';
+        document.getElementById('sub-plan-name').value = '';
+        document.getElementById('sub-plan-badge').value = '';
+        document.getElementById('sub-plan-desc').value = '';
+        document.getElementById('sub-plan-price').value = '10';
+        document.getElementById('sub-plan-primary-curr').value = 'USD';
+        document.getElementById('sub-plan-discount').value = '10';
+
+        document.getElementById('sub-plan-main-feature-text').value = targetCat === 'ai' ? '100 000 mots IA / mois' : '10 Go supplémentaires';
+        document.getElementById('sub-plan-main-feature-val').value = targetCat === 'ai' ? '100000' : '10240';
+
+        const cXof = document.getElementById('sub-curr-xof');
+        const cUsd = document.getElementById('sub-curr-usd');
+        const cEur = document.getElementById('sub-curr-eur');
+        if (cXof) cXof.checked = true;
+        if (cUsd) cUsd.checked = true;
+        if (cEur) cEur.checked = true;
+
+        // Avantages suggérés
+        if (targetCat === 'ai') {
+          addSubscriptionFeatureLine('Résumés automatiques de cours et PDF', true);
+          addSubscriptionFeatureLine('Création instantanée de Flashcards', true);
+          addSubscriptionFeatureLine('Aide aux devoirs et explications pas à pas', true);
+          addSubscriptionFeatureLine('Support par e-mail', true);
+        } else {
+          addSubscriptionFeatureLine("Messagerie d'équipe et partage de fichiers", true);
+          addSubscriptionFeatureLine("Fil d'activité et aperçu des projets", true);
+          addSubscriptionFeatureLine("Accès mobile et bureau", true);
+          addSubscriptionFeatureLine("Support par e-mail", true);
+        }
+
+        const bManual = document.getElementById('sub-billing-manual');
+        if (bManual) bManual.checked = true;
+      }
+
+      updateSubscriptionPricingCalculations();
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+      }
+    }
+    window.openSubscriptionPlanModal = openSubscriptionPlanModal;
+
+    function closeSubscriptionPlanModal(event) {
+      if (event && event.target && event.target.closest && event.target.closest('#form-sub-plan')) return;
+      const modal = document.getElementById('subscription-plan-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+    }
+    window.closeSubscriptionPlanModal = closeSubscriptionPlanModal;
+
+    function addSubscriptionFeatureLine(text = '', enabled = true) {
+      const listContainer = document.getElementById('sub-plan-features-list');
+      if (!listContainer) return;
+      const row = document.createElement('div');
+      row.className = 'flex items-center gap-2 bg-slate-900/80 p-1.5 rounded-lg border border-slate-800';
+
+      const cb = document.createElement('input');
+      cb.type = 'checkbox';
+      cb.checked = enabled;
+      cb.className = 'w-4 h-4 rounded text-orange-500 bg-slate-950 border-slate-700 cursor-pointer';
+
+      const txt = document.createElement('input');
+      txt.type = 'text';
+      txt.value = text;
+      txt.placeholder = 'Ex: Support prioritaire 24/7, Analyses avancées...';
+      txt.className = 'flex-1 bg-transparent text-white text-xs outline-none';
+
+      const delBtn = document.createElement('button');
+      delBtn.type = 'button';
+      delBtn.className = 'w-6 h-6 rounded bg-slate-800 hover:bg-rose-900/60 text-slate-400 hover:text-rose-300 flex items-center justify-center text-xs font-bold transition cursor-pointer';
+      delBtn.textContent = '✕';
+      delBtn.onclick = function() { row.remove(); };
+
+      row.appendChild(cb);
+      row.appendChild(txt);
+      row.appendChild(delBtn);
+      listContainer.appendChild(row);
+    }
+    window.addSubscriptionFeatureLine = addSubscriptionFeatureLine;
+
+    async function saveSubscriptionPlanModal() {
+      const category = document.getElementById('sub-plan-category').value || 'storage';
+      const planId = document.getElementById('sub-plan-id').value;
+      const name = document.getElementById('sub-plan-name').value.trim();
+      const badge = document.getElementById('sub-plan-badge').value.trim();
+      const desc = document.getElementById('sub-plan-desc').value.trim();
+      const price = Number(document.getElementById('sub-plan-price').value) || 0;
+      const primaryCurr = document.getElementById('sub-plan-primary-curr').value || 'USD';
+      const discountPct = Number(document.getElementById('sub-plan-discount').value) || 0;
+
+      const mainText = document.getElementById('sub-plan-main-feature-text').value.trim();
+      const mainVal = Number(document.getElementById('sub-plan-main-feature-val').value) || 0;
+
+      const currEnabled = [];
+      if (document.getElementById('sub-curr-xof')?.checked) currEnabled.push('XOF');
+      if (document.getElementById('sub-curr-usd')?.checked) currEnabled.push('USD');
+      if (document.getElementById('sub-curr-eur')?.checked) currEnabled.push('EUR');
+      if (!currEnabled.includes(primaryCurr)) currEnabled.unshift(primaryCurr);
+
+      const conv = calculateConversions(price, primaryCurr);
+      const yearlyPrice = Math.round(price * 12 * (1 - (discountPct / 100)) * 100) / 100;
+
+      const bAuto = document.getElementById('sub-billing-auto');
+      const isAuto = bAuto && bAuto.checked ? 1 : 0;
+
+      // Rassembler les avantages
+      const features = [];
+      const listContainer = document.getElementById('sub-plan-features-list');
+      if (listContainer) {
+        const rows = listContainer.children;
+        for (let i = 0; i < rows.length; i++) {
+          const cb = rows[i].querySelector('input[type="checkbox"]');
+          const txt = rows[i].querySelector('input[type="text"]');
+          if (txt && txt.value.trim()) {
+            features.push({
+              text: txt.value.trim(),
+              enabled: cb ? cb.checked : true
+            });
+          }
+        }
+      }
+
+      const planData = {
+        id: planId || (category + '_plan_' + Date.now()),
+        name,
+        badge,
+        description: desc,
+        price,
+        primary_currency: primaryCurr,
+        currencies_enabled: currEnabled,
+        currency_conversions: conv,
+        yearly_price: yearlyPrice,
+        yearly_discount_pct: discountPct,
+        features,
+        is_auto_billing: isAuto,
+        is_active: 1
+      };
+
+      if (category === 'ai') {
+        planData.credits_or_words = mainText;
+        planData.credits_count = mainVal;
+      } else {
+        planData.storage_amount = mainText;
+        planData.storage_mb = mainVal;
+      }
+
+      const saveBtn = document.getElementById('btn-save-sub-plan');
+      if (saveBtn) {
+        saveBtn.disabled = true;
+        saveBtn.textContent = 'Enregistrement D1...';
+      }
+
+      try {
+        const resp = await fetch('/api/subscription-plans/save', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category, plan: planData })
+        });
+        const res = await resp.json();
+        if (res && res.success && res.plan) {
+          if (category === 'ai') {
+            const idx = (allAiPlans || []).findIndex(p => p.id === res.plan.id);
+            if (idx >= 0) allAiPlans[idx] = res.plan;
+            else allAiPlans.push(res.plan);
+          } else {
+            const idx = (allStoragePlans || []).findIndex(p => p.id === res.plan.id);
+            if (idx >= 0) allStoragePlans[idx] = res.plan;
+            else allStoragePlans.push(res.plan);
+          }
+          renderSubscriptionPlansCards(currentSubPlanTab);
+          closeSubscriptionPlanModal();
+          showToast("✓ Carte d'abonnement enregistrée dans la base de données !");
+        } else {
+          throw new Error(res?.error || "Échec de la sauvegarde");
+        }
+      } catch (err) {
+        console.error('Erreur sauvegarde forfait:', err);
+        const errBox = document.getElementById('sub-plan-modal-error');
+        if (errBox) {
+          errBox.textContent = 'Erreur : ' + err.message;
+          errBox.classList.remove('hidden');
+        }
+        showToast('⚠️ Erreur: ' + err.message);
+      } finally {
+        if (saveBtn) {
+          saveBtn.disabled = false;
+          saveBtn.textContent = 'Enregistrer la carte';
+        }
+      }
+    }
+    window.saveSubscriptionPlanModal = saveSubscriptionPlanModal;
+
+    async function deleteSubscriptionPlan(category, id) {
+      if (!confirm("Êtes-vous sûr de vouloir supprimer définitivement cette carte d'abonnement ?")) return;
+      try {
+        const resp = await fetch('/api/subscription-plans/delete', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category, id })
+        });
+        const res = await resp.json();
+        if (res && res.success) {
+          if (category === 'ai') {
+            allAiPlans = (allAiPlans || []).filter(p => p.id !== id);
+          } else {
+            allStoragePlans = (allStoragePlans || []).filter(p => p.id !== id);
+          }
+          renderSubscriptionPlansCards(currentSubPlanTab);
+          showToast("✓ Carte d'abonnement supprimée avec succès.");
+        } else {
+          throw new Error(res?.error || "Échec de la suppression");
+        }
+      } catch (err) {
+        console.error('Erreur suppression forfait:', err);
+        showToast('⚠️ Erreur: ' + err.message);
+      }
+    }
+    window.deleteSubscriptionPlan = deleteSubscriptionPlan;
+
+    async function toggleSubscriptionPlanActive(category, id) {
+      try {
+        const resp = await fetch('/api/subscription-plans/toggle-active', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category, id })
+        });
+        const res = await resp.json();
+        if (res && res.success) {
+          const list = category === 'ai' ? allAiPlans : allStoragePlans;
+          const p = (list || []).find(item => item.id === id);
+          if (p) p.is_active = res.is_active;
+          renderSubscriptionPlansCards(currentSubPlanTab);
+          showToast(res.is_active === 1 ? "✓ Carte visible pour les étudiants" : "✓ Carte masquée dans l'application");
+        }
+      } catch (err) {
+        console.error('Erreur toggle actif:', err);
+        showToast('⚠️ Erreur: ' + err.message);
+      }
+    }
+    window.toggleSubscriptionPlanActive = toggleSubscriptionPlanActive;
+
+    async function toggleSubscriptionPlanAutoBilling(category, id) {
+      try {
+        const resp = await fetch('/api/subscription-plans/toggle-auto-billing', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ category, id })
+        });
+        const res = await resp.json();
+        if (res && res.success) {
+          const list = category === 'ai' ? allAiPlans : allStoragePlans;
+          const p = (list || []).find(item => item.id === id);
+          if (p) p.is_auto_billing = res.is_auto_billing;
+          renderSubscriptionPlansCards(currentSubPlanTab);
+          showToast(res.is_auto_billing === 1 ? "⚡ Mode Abonnement Automatique activé (Bouton S'abonner)" : '🔄 Mode Paiement Manuel activé (Bouton Commencer)');
+        }
+      } catch (err) {
+        console.error('Erreur toggle auto billing:', err);
+        showToast('⚠️ Erreur: ' + err.message);
+      }
+    }
+    window.toggleSubscriptionPlanAutoBilling = toggleSubscriptionPlanAutoBilling;
+
     async function pollLiveStorageStats(isManual = false) {
       const spinner = document.getElementById('refresh-spinner');
       if (spinner) spinner.classList.add('animate-spin');
@@ -6738,6 +7693,7 @@ function renderDashboardHtml(data) {
     renderGlobalD1Tables();
     renderGlobalR2Folders();
     loadCompanyProfileClient();
+    renderSubscriptionPlansCards(currentSubPlanTab);
 
     // Prise en charge du lien direct ou du rechargement de page via le hash URL (#profil-pro, etc.)
     const initialHash = (window.location.hash || '').replace('#', '').trim();
@@ -7400,6 +8356,163 @@ export default {
       }
 
       // ----------------------------------------------------------------------
+      // ROUTE GET : /api/subscription-plans
+      // ----------------------------------------------------------------------
+      if (request.method === 'GET' && path === '/api/subscription-plans') {
+        await ensureStorageTables(db);
+        const storagePlansRes = await safeAll(db, "SELECT * FROM storage_subscription_plans ORDER BY sort_order ASC, created_at ASC");
+        const aiPlansRes = await safeAll(db, "SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC");
+        return new Response(JSON.stringify({
+          success: true,
+          storagePlans: storagePlansRes || [],
+          aiPlans: aiPlansRes || []
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/save
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/subscription-plans/save') {
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const plan = body.plan || {};
+        const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+
+        const planId = plan.id || (category + '_plan_' + Date.now());
+        const name = String(plan.name || 'Nouveau Forfait').trim();
+        const badge = String(plan.badge || '').trim();
+        const description = String(plan.description || '').trim();
+        const mainAmount = String(plan.storage_amount || plan.credits_or_words || '').trim();
+        const mainVal = Number(plan.storage_mb || plan.credits_count || 0);
+        const price = Number(plan.price || 0);
+        const primaryCurrency = String(plan.primary_currency || 'USD').trim();
+        const currenciesEnabled = typeof plan.currencies_enabled === 'string' ? plan.currencies_enabled : JSON.stringify(plan.currencies_enabled || ['USD', 'XOF', 'EUR']);
+        const currencyConversions = typeof plan.currency_conversions === 'string' ? plan.currency_conversions : JSON.stringify(plan.currency_conversions || {});
+        const yearlyPrice = Number(plan.yearly_price || 0);
+        const yearlyDiscountPct = Number(plan.yearly_discount_pct || 10);
+        const features = typeof plan.features === 'string' ? plan.features : JSON.stringify(plan.features || []);
+        const isAutoBilling = Number(plan.is_auto_billing ? 1 : 0);
+        const isActive = Number(plan.is_active === 0 ? 0 : 1);
+        const sortOrder = Number(plan.sort_order || 0);
+
+        if (category === 'ai') {
+          await safeRun(db, `
+            INSERT INTO ai_subscription_plans (id, name, badge, description, credits_or_words, credits_count, price, primary_currency, currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features, is_auto_billing, is_active, sort_order, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              badge = excluded.badge,
+              description = excluded.description,
+              credits_or_words = excluded.credits_or_words,
+              credits_count = excluded.credits_count,
+              price = excluded.price,
+              primary_currency = excluded.primary_currency,
+              currencies_enabled = excluded.currencies_enabled,
+              currency_conversions = excluded.currency_conversions,
+              yearly_price = excluded.yearly_price,
+              yearly_discount_pct = excluded.yearly_discount_pct,
+              features = excluded.features,
+              is_auto_billing = excluded.is_auto_billing,
+              is_active = excluded.is_active,
+              sort_order = excluded.sort_order,
+              updated_at = CURRENT_TIMESTAMP
+          `, [planId, name, badge, description, mainAmount, mainVal, price, primaryCurrency, currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features, isAutoBilling, isActive, sortOrder]);
+        } else {
+          await safeRun(db, `
+            INSERT INTO storage_subscription_plans (id, name, badge, description, storage_amount, storage_mb, price, primary_currency, currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features, is_auto_billing, is_active, sort_order, updated_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              badge = excluded.badge,
+              description = excluded.description,
+              storage_amount = excluded.storage_amount,
+              storage_mb = excluded.storage_mb,
+              price = excluded.price,
+              primary_currency = excluded.primary_currency,
+              currencies_enabled = excluded.currencies_enabled,
+              currency_conversions = excluded.currency_conversions,
+              yearly_price = excluded.yearly_price,
+              yearly_discount_pct = excluded.yearly_discount_pct,
+              features = excluded.features,
+              is_auto_billing = excluded.is_auto_billing,
+              is_active = excluded.is_active,
+              sort_order = excluded.sort_order,
+              updated_at = CURRENT_TIMESTAMP
+          `, [planId, name, badge, description, mainAmount, mainVal, price, primaryCurrency, currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features, isAutoBilling, isActive, sortOrder]);
+        }
+
+        const savedPlan = await safeFirst(db, `SELECT * FROM ${tableName} WHERE id = ?`, [planId]);
+        return new Response(JSON.stringify({
+          success: true,
+          plan: savedPlan,
+          category,
+          message: 'Carte d\'abonnement enregistrée avec succès'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/delete
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/subscription-plans/delete') {
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const planId = body.id;
+        if (!planId) {
+          return new Response(JSON.stringify({ success: false, error: 'id requis' }), { status: 400, headers: corsHeaders(origin) });
+        }
+        const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+        await safeRun(db, `DELETE FROM ${tableName} WHERE id = ?`, [planId]);
+        return new Response(JSON.stringify({ success: true, id: planId, category, message: 'Carte supprimée' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/toggle-active
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/subscription-plans/toggle-active') {
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const planId = body.id;
+        const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+        const current = await safeFirst(db, `SELECT is_active FROM ${tableName} WHERE id = ?`, [planId]);
+        const nextState = current && current.is_active === 1 ? 0 : 1;
+        await safeRun(db, `UPDATE ${tableName} SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [nextState, planId]);
+        return new Response(JSON.stringify({ success: true, id: planId, is_active: nextState }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/toggle-auto-billing
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/subscription-plans/toggle-auto-billing') {
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const planId = body.id;
+        const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+        const current = await safeFirst(db, `SELECT is_auto_billing FROM ${tableName} WHERE id = ?`, [planId]);
+        const nextState = current && current.is_auto_billing === 1 ? 0 : 1;
+        await safeRun(db, `UPDATE ${tableName} SET is_auto_billing = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [nextState, planId]);
+        return new Response(JSON.stringify({ success: true, id: planId, is_auto_billing: nextState }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
       // ROUTE POST : /api/storage-requests/reject
       // ----------------------------------------------------------------------
       if (request.method === 'POST' && path === '/api/storage-requests/reject') {
@@ -7844,6 +8957,210 @@ export default {
       }
 
       // ----------------------------------------------------------------------
+      // ROUTE GET : /api/subscription-plans (Plans de stockage et IA)
+      // ----------------------------------------------------------------------
+      if (request.method === 'GET' && path === '/api/subscription-plans') {
+        await ensureStorageTables(db);
+        const onlyActive = url.searchParams.get('active_only') === '1';
+        const storageQuery = onlyActive 
+          ? "SELECT * FROM storage_subscription_plans WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC"
+          : "SELECT * FROM storage_subscription_plans ORDER BY sort_order ASC, created_at ASC";
+        const aiQuery = onlyActive
+          ? "SELECT * FROM ai_subscription_plans WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC"
+          : "SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC";
+
+        const storageRes = await safeQuery(db, storageQuery, [], { results: [] });
+        const aiRes = await safeQuery(db, aiQuery, [], { results: [] });
+
+        return new Response(JSON.stringify({
+          success: true,
+          storagePlans: (storageRes && storageRes.results) ? storageRes.results : [],
+          aiPlans: (aiRes && aiRes.results) ? aiRes.results : []
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/save
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/subscription-plans/save') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const plan = body.plan || {};
+
+        const planId = String(plan.id || (category + '_plan_' + Date.now())).trim();
+        const name = String(plan.name || 'Nouveau Forfait').trim();
+        const badge = String(plan.badge || '').trim();
+        const description = String(plan.description || '').trim();
+        const price = Number(plan.price) || 0;
+        const primaryCurrency = String(plan.primary_currency || 'USD').trim();
+        const currenciesEnabled = typeof plan.currencies_enabled === 'string' ? plan.currencies_enabled : JSON.stringify(plan.currencies_enabled || ['USD', 'XOF', 'EUR']);
+        const currencyConversions = typeof plan.currency_conversions === 'string' ? plan.currency_conversions : JSON.stringify(plan.currency_conversions || {});
+        const yearlyPrice = Number(plan.yearly_price) || 0;
+        const yearlyDiscountPct = Number(plan.yearly_discount_pct) || 10;
+        const features = typeof plan.features === 'string' ? plan.features : JSON.stringify(plan.features || []);
+        const isAutoBilling = plan.is_auto_billing ? 1 : 0;
+        const isActive = plan.is_active !== undefined ? (plan.is_active ? 1 : 0) : 1;
+        const sortOrder = Number(plan.sort_order) || 1;
+
+        if (category === 'ai') {
+          const creditsOrWords = String(plan.credits_or_words || '100 000 mots IA').trim();
+          const creditsCount = Number(plan.credits_count) || 100000;
+          await db.prepare(`
+            INSERT INTO ai_subscription_plans (
+              id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
+              currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
+              is_auto_billing, is_active, sort_order, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              badge = excluded.badge,
+              description = excluded.description,
+              credits_or_words = excluded.credits_or_words,
+              credits_count = excluded.credits_count,
+              price = excluded.price,
+              primary_currency = excluded.primary_currency,
+              currencies_enabled = excluded.currencies_enabled,
+              currency_conversions = excluded.currency_conversions,
+              yearly_price = excluded.yearly_price,
+              yearly_discount_pct = excluded.yearly_discount_pct,
+              features = excluded.features,
+              is_auto_billing = excluded.is_auto_billing,
+              is_active = excluded.is_active,
+              sort_order = excluded.sort_order,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            planId, name, badge, description, creditsOrWords, creditsCount, price, primaryCurrency,
+            currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
+            isAutoBilling, isActive, sortOrder
+          ).run();
+
+          const updatedPlan = await db.prepare("SELECT * FROM ai_subscription_plans WHERE id = ?").bind(planId).first();
+          return new Response(JSON.stringify({ success: true, plan: updatedPlan }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        } else {
+          const storageAmount = String(plan.storage_amount || '10 Go').trim();
+          const storageMb = Number(plan.storage_mb) || 10240;
+          await db.prepare(`
+            INSERT INTO storage_subscription_plans (
+              id, name, badge, description, storage_amount, storage_mb, price, primary_currency,
+              currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
+              is_auto_billing, is_active, sort_order, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              badge = excluded.badge,
+              description = excluded.description,
+              storage_amount = excluded.storage_amount,
+              storage_mb = excluded.storage_mb,
+              price = excluded.price,
+              primary_currency = excluded.primary_currency,
+              currencies_enabled = excluded.currencies_enabled,
+              currency_conversions = excluded.currency_conversions,
+              yearly_price = excluded.yearly_price,
+              yearly_discount_pct = excluded.yearly_discount_pct,
+              features = excluded.features,
+              is_auto_billing = excluded.is_auto_billing,
+              is_active = excluded.is_active,
+              sort_order = excluded.sort_order,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            planId, name, badge, description, storageAmount, storageMb, price, primaryCurrency,
+            currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
+            isAutoBilling, isActive, sortOrder
+          ).run();
+
+          const updatedPlan = await db.prepare("SELECT * FROM storage_subscription_plans WHERE id = ?").bind(planId).first();
+          return new Response(JSON.stringify({ success: true, plan: updatedPlan }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/delete
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/subscription-plans/delete') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const planId = String(body.id || '').trim();
+        const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+
+        await db.prepare(`DELETE FROM ${tableName} WHERE id = ?`).bind(planId).run();
+        return new Response(JSON.stringify({ success: true, id: planId }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/toggle-active
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/subscription-plans/toggle-active') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const planId = String(body.id || '').trim();
+        const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+
+        await db.prepare(`UPDATE ${tableName} SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        const row = await db.prepare(`SELECT is_active FROM ${tableName} WHERE id = ?`).bind(planId).first();
+        return new Response(JSON.stringify({ success: true, is_active: row ? row.is_active : 1 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/toggle-auto-billing
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/subscription-plans/toggle-auto-billing') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const planId = String(body.id || '').trim();
+        const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+
+        await db.prepare(`UPDATE ${tableName} SET is_auto_billing = CASE WHEN is_auto_billing = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        const row = await db.prepare(`SELECT is_auto_billing FROM ${tableName} WHERE id = ?`).bind(planId).first();
+        return new Response(JSON.stringify({ success: true, is_auto_billing: row ? row.is_auto_billing : 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
       // REQUÊTES D1 : DEMANDES DE STOCKAGE & ABONNEMENTS
       // ----------------------------------------------------------------------
       let upgradeRequestsRes = await safeQuery(db, `SELECT * FROM storage_upgrade_requests ORDER BY created_at DESC`, [], { results: [] });
@@ -7916,6 +9233,15 @@ export default {
       const rawUpgradeRequests = (upgradeRequestsRes && upgradeRequestsRes.results) ? upgradeRequestsRes.results : [];
       const rawUserSubs = (userSubsRes && userSubsRes.results) ? userSubsRes.results : [];
 
+      let storagePlansRes = { results: [] };
+      let aiPlansRes = { results: [] };
+      try {
+        storagePlansRes = await db.prepare("SELECT * FROM storage_subscription_plans ORDER BY sort_order ASC, created_at ASC").all();
+      } catch (e) {}
+      try {
+        aiPlansRes = await db.prepare("SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC").all();
+      } catch (e) {}
+
       // ----------------------------------------------------------------------
       // ROUTE PAR DÉFAUT : Page Web Tableau de Bord (HTML)
       // ----------------------------------------------------------------------
@@ -7929,7 +9255,9 @@ export default {
         r2Meta,
         upgradeRequests: rawUpgradeRequests,
         userSubscriptions: rawUserSubs,
-        companyProfile: companyProfileRow
+        companyProfile: companyProfileRow,
+        storagePlans: (storagePlansRes && storagePlansRes.results) ? storagePlansRes.results : [],
+        aiPlans: (aiPlansRes && aiPlansRes.results) ? aiPlansRes.results : []
       });
 
       return new Response(htmlContent, {

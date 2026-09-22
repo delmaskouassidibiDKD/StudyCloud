@@ -2411,6 +2411,82 @@ async function ensureStorageTables(db) {
         created_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+
+    // 7. Table 'storage_subscription_plans' pour les cartes de paiement / forfaits de stockage
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS storage_subscription_plans (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        badge TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        storage_amount TEXT NOT NULL,
+        storage_mb REAL DEFAULT 0,
+        price REAL NOT NULL,
+        primary_currency TEXT DEFAULT 'USD',
+        currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
+        currency_conversions TEXT DEFAULT '{}',
+        yearly_price REAL DEFAULT 0,
+        yearly_discount_pct REAL DEFAULT 10,
+        features TEXT DEFAULT '[]',
+        is_auto_billing INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // 8. Table 'ai_subscription_plans' pour les cartes d'abonnement de l'assistante StudyCloud
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS ai_subscription_plans (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        badge TEXT DEFAULT '',
+        description TEXT DEFAULT '',
+        credits_or_words TEXT NOT NULL,
+        credits_count REAL DEFAULT 0,
+        price REAL NOT NULL,
+        primary_currency TEXT DEFAULT 'USD',
+        currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
+        currency_conversions TEXT DEFAULT '{}',
+        yearly_price REAL DEFAULT 0,
+        yearly_discount_pct REAL DEFAULT 10,
+        features TEXT DEFAULT '[]',
+        is_auto_billing INTEGER DEFAULT 0,
+        is_active INTEGER DEFAULT 1,
+        sort_order INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // Insérer les plans de stockage par défaut si vides
+    try {
+      const countStorage = await db.prepare("SELECT COUNT(*) as c FROM storage_subscription_plans").first();
+      if (!countStorage || countStorage.c === 0) {
+        await db.prepare(`
+          INSERT INTO storage_subscription_plans (id, name, badge, description, storage_amount, storage_mb, price, primary_currency, currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features, is_auto_billing, is_active, sort_order)
+          VALUES 
+          ('storage_plan_basique', 'Basique', '', 'Pour les particuliers et petites équipes qui débutent.', '10 Go', 10240, 10, 'USD', '["USD","XOF","EUR"]', '{"USD":10,"XOF":6500,"EUR":9.2}', 90, 10, '[{"text":"10 Go de stockage cloud haute vitesse","enabled":true},{"text":"Messagerie d''équipe et partage de fichiers","enabled":true},{"text":"Fil d''activité et aperçu des projets","enabled":true},{"text":"Accès mobile et bureau","enabled":true},{"text":"Support par e-mail","enabled":true}]', 0, 1, 1),
+          ('storage_plan_pro', 'Pro', 'Populaire', 'Pour les professionnels et étudiants avancés.', '50 Go', 51200, 32, 'USD', '["USD","XOF","EUR"]', '{"USD":32,"XOF":20000,"EUR":29.5}', 290, 10, '[{"text":"50 Go de stockage cloud haute vitesse","enabled":true},{"text":"Support prioritaire 24/7","enabled":true},{"text":"Analyses avancées et rapports","enabled":true},{"text":"Collaboration en temps réel illimitée","enabled":true},{"text":"Domaine personnalisé","enabled":true}]', 0, 1, 2),
+          ('storage_plan_entreprise', 'Entreprise', '', 'Pour les universités, laboratoires et grandes équipes.', '200 Go', 204800, 89, 'USD', '["USD","XOF","EUR"]', '{"USD":89,"XOF":55000,"EUR":82}', 790, 10, '[{"text":"200 Go de stockage cloud haute vitesse","enabled":true},{"text":"Sécurité renforcée et SSO","enabled":true},{"text":"Gestionnaire de compte dédié","enabled":true},{"text":"SLA garanti 99.9%","enabled":true},{"text":"Formations personnalisées","enabled":true},{"text":"Facturation centralisée","enabled":true}]', 0, 1, 3)
+        `).run();
+      }
+    } catch (e) {}
+
+    // Insérer les plans IA par défaut si vides
+    try {
+      const countAi = await db.prepare("SELECT COUNT(*) as c FROM ai_subscription_plans").first();
+      if (!countAi || countAi.c === 0) {
+        await db.prepare(`
+          INSERT INTO ai_subscription_plans (id, name, badge, description, credits_or_words, credits_count, price, primary_currency, currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features, is_auto_billing, is_active, sort_order)
+          VALUES 
+          ('ai_plan_basique', 'IA Basique', '', 'Pour réviser, poser des questions et comprendre rapidement vos cours au quotidien.', '100 000 mots IA', 100000, 10, 'USD', '["USD","XOF","EUR"]', '{"USD":10,"XOF":6500,"EUR":9.2}', 90, 10, '[{"text":"100 000 mots IA générés par mois","enabled":true},{"text":"Résumés automatiques de cours et PDF","enabled":true},{"text":"Création instantanée de cartes mémoires (Flashcards)","enabled":true},{"text":"Aide aux devoirs et explications pas à pas","enabled":true},{"text":"Support par e-mail","enabled":true}]', 0, 1, 1),
+          ('ai_plan_pro', 'IA Pro Étudiant', 'Populaire', 'L''assistant d''apprentissage complet pour exceller et réussir tous vos examens.', '1 000 000 mots IA', 1000000, 32, 'USD', '["USD","XOF","EUR"]', '{"USD":32,"XOF":20000,"EUR":29.5}', 290, 10, '[{"text":"1 000 000 mots IA avec priorité maximale","enabled":true},{"text":"Génération de Quiz interactifs & examens blancs","enabled":true},{"text":"Synthèse vocale & lecture audio de vos fiches","enabled":true},{"text":"Analyse intelligente de documents scannés et photos","enabled":true},{"text":"Support prioritaire 24/7","enabled":true}]', 0, 1, 2),
+          ('ai_plan_master', 'IA Recherche & Master', '', 'Pour les doctorants, thèses, mémoires volumineux et laboratoires universitaires.', 'Mots IA illimités', 10000000, 89, 'USD', '["USD","XOF","EUR"]', '{"USD":89,"XOF":55000,"EUR":82}', 790, 10, '[{"text":"Mots IA illimités avec accès modèles avancés","enabled":true},{"text":"Traitement prioritaire ultra-rapide","enabled":true},{"text":"Export complet des synthèses & fiches en PDF/Word","enabled":true},{"text":"Analyse illimitée de livres et thèses entières","enabled":true},{"text":"Accès API assistante pour vos projets de recherche","enabled":true}]', 0, 1, 3)
+        `).run();
+      }
+    } catch (e) {}
   } catch (err) {
     console.warn("[ensureStorageTables Warn]", err);
   }
@@ -7905,6 +7981,184 @@ Lien vers le produit : ${productShareUrl}`;
         }
         return errorResponse("Image de paiement introuvable dans R2", 404, origin);
       }
+
+      // ----------------------------------------------------------------------
+      // ROUTE GET : /api/subscription-plans (Plans de stockage et IA)
+      // ----------------------------------------------------------------------
+      if (path === "/api/subscription-plans" && method === "GET") {
+        if (!env.DB) {
+          return errorResponse("Base de données D1 indisponible", 500, origin);
+        }
+        await ensureStorageTables(env.DB);
+        const onlyActive = url.searchParams.get("active_only") === "1";
+        const storageQuery = onlyActive
+          ? "SELECT * FROM storage_subscription_plans WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC"
+          : "SELECT * FROM storage_subscription_plans ORDER BY sort_order ASC, created_at ASC";
+        const aiQuery = onlyActive
+          ? "SELECT * FROM ai_subscription_plans WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC"
+          : "SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC";
+
+        const storageRes = await env.DB.prepare(storageQuery).all();
+        const aiRes = await env.DB.prepare(aiQuery).all();
+
+        return jsonResponse({
+          success: true,
+          storagePlans: (storageRes && storageRes.results) ? storageRes.results : [],
+          aiPlans: (aiRes && aiRes.results) ? aiRes.results : []
+        }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/save
+      // ----------------------------------------------------------------------
+      if (path === "/api/subscription-plans/save" && method === "POST") {
+        if (!env.DB) {
+          return errorResponse("Base de données D1 indisponible", 500, origin);
+        }
+        await ensureStorageTables(env.DB);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === "ai" ? "ai" : "storage";
+        const plan = body.plan || {};
+
+        const planId = String(plan.id || (category + "_plan_" + Date.now())).trim();
+        const name = String(plan.name || "Nouveau Forfait").trim();
+        const badge = String(plan.badge || "").trim();
+        const description = String(plan.description || "").trim();
+        const price = Number(plan.price) || 0;
+        const primaryCurrency = String(plan.primary_currency || "USD").trim();
+        const currenciesEnabled = typeof plan.currencies_enabled === "string" ? plan.currencies_enabled : JSON.stringify(plan.currencies_enabled || ["USD", "XOF", "EUR"]);
+        const currencyConversions = typeof plan.currency_conversions === "string" ? plan.currency_conversions : JSON.stringify(plan.currency_conversions || {});
+        const yearlyPrice = Number(plan.yearly_price) || 0;
+        const yearlyDiscountPct = Number(plan.yearly_discount_pct) || 10;
+        const features = typeof plan.features === "string" ? plan.features : JSON.stringify(plan.features || []);
+        const isAutoBilling = plan.is_auto_billing ? 1 : 0;
+        const isActive = plan.is_active !== undefined ? (plan.is_active ? 1 : 0) : 1;
+        const sortOrder = Number(plan.sort_order) || 1;
+
+        if (category === "ai") {
+          const creditsOrWords = String(plan.credits_or_words || "100 000 mots IA").trim();
+          const creditsCount = Number(plan.credits_count) || 100000;
+          await env.DB.prepare(`
+            INSERT INTO ai_subscription_plans (
+              id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
+              currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
+              is_auto_billing, is_active, sort_order, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              badge = excluded.badge,
+              description = excluded.description,
+              credits_or_words = excluded.credits_or_words,
+              credits_count = excluded.credits_count,
+              price = excluded.price,
+              primary_currency = excluded.primary_currency,
+              currencies_enabled = excluded.currencies_enabled,
+              currency_conversions = excluded.currency_conversions,
+              yearly_price = excluded.yearly_price,
+              yearly_discount_pct = excluded.yearly_discount_pct,
+              features = excluded.features,
+              is_auto_billing = excluded.is_auto_billing,
+              is_active = excluded.is_active,
+              sort_order = excluded.sort_order,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            planId, name, badge, description, creditsOrWords, creditsCount, price, primaryCurrency,
+            currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
+            isAutoBilling, isActive, sortOrder
+          ).run();
+
+          const updatedPlan = await env.DB.prepare("SELECT * FROM ai_subscription_plans WHERE id = ?").bind(planId).first();
+          return jsonResponse({ success: true, plan: updatedPlan }, 200, origin);
+        } else {
+          const storageAmount = String(plan.storage_amount || "10 Go").trim();
+          const storageMb = Number(plan.storage_mb) || 10240;
+          await env.DB.prepare(`
+            INSERT INTO storage_subscription_plans (
+              id, name, badge, description, storage_amount, storage_mb, price, primary_currency,
+              currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
+              is_auto_billing, is_active, sort_order, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              badge = excluded.badge,
+              description = excluded.description,
+              storage_amount = excluded.storage_amount,
+              storage_mb = excluded.storage_mb,
+              price = excluded.price,
+              primary_currency = excluded.primary_currency,
+              currencies_enabled = excluded.currencies_enabled,
+              currency_conversions = excluded.currency_conversions,
+              yearly_price = excluded.yearly_price,
+              yearly_discount_pct = excluded.yearly_discount_pct,
+              features = excluded.features,
+              is_auto_billing = excluded.is_auto_billing,
+              is_active = excluded.is_active,
+              sort_order = excluded.sort_order,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            planId, name, badge, description, storageAmount, storageMb, price, primaryCurrency,
+            currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
+            isAutoBilling, isActive, sortOrder
+          ).run();
+
+          const updatedPlan = await env.DB.prepare("SELECT * FROM storage_subscription_plans WHERE id = ?").bind(planId).first();
+          return jsonResponse({ success: true, plan: updatedPlan }, 200, origin);
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/delete
+      // ----------------------------------------------------------------------
+      if (path === "/api/subscription-plans/delete" && method === "POST") {
+        if (!env.DB) {
+          return errorResponse("Base de données D1 indisponible", 500, origin);
+        }
+        await ensureStorageTables(env.DB);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === "ai" ? "ai" : "storage";
+        const planId = String(body.id || "").trim();
+        const tableName = category === "ai" ? "ai_subscription_plans" : "storage_subscription_plans";
+
+        await env.DB.prepare(`DELETE FROM ${tableName} WHERE id = ?`).bind(planId).run();
+        return jsonResponse({ success: true, id: planId }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/toggle-active
+      // ----------------------------------------------------------------------
+      if (path === "/api/subscription-plans/toggle-active" && method === "POST") {
+        if (!env.DB) {
+          return errorResponse("Base de données D1 indisponible", 500, origin);
+        }
+        await ensureStorageTables(env.DB);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === "ai" ? "ai" : "storage";
+        const planId = String(body.id || "").trim();
+        const tableName = category === "ai" ? "ai_subscription_plans" : "storage_subscription_plans";
+
+        await env.DB.prepare(`UPDATE ${tableName} SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        const row = await env.DB.prepare(`SELECT is_active FROM ${tableName} WHERE id = ?`).bind(planId).first();
+        return jsonResponse({ success: true, is_active: row ? row.is_active : 1 }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/toggle-auto-billing
+      // ----------------------------------------------------------------------
+      if (path === "/api/subscription-plans/toggle-auto-billing" && method === "POST") {
+        if (!env.DB) {
+          return errorResponse("Base de données D1 indisponible", 500, origin);
+        }
+        await ensureStorageTables(env.DB);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === "ai" ? "ai" : "storage";
+        const planId = String(body.id || "").trim();
+        const tableName = category === "ai" ? "ai_subscription_plans" : "storage_subscription_plans";
+
+        await env.DB.prepare(`UPDATE ${tableName} SET is_auto_billing = CASE WHEN is_auto_billing = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        const row = await env.DB.prepare(`SELECT is_auto_billing FROM ${tableName} WHERE id = ?`).bind(planId).first();
+        return jsonResponse({ success: true, is_auto_billing: row ? row.is_auto_billing : 0 }, 200, origin);
+      }
+
       return errorResponse(`Route non trouv\xE9e : ${method} ${path}`, 404, origin);
     } catch (err) {
       console.error("Worker API Error:", err);

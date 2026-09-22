@@ -2136,3 +2136,50 @@ export async function getUserPurchasesHistory(
   }
 }
 
+export interface SubscriptionPlan {
+  id: string;
+  name: string;
+  badge?: string;
+  description?: string;
+  storage_amount?: string;
+  storage_mb?: number;
+  credits_or_words?: string;
+  credits_count?: number;
+  price: number;
+  primary_currency: string;
+  currencies_enabled: string | string[];
+  currency_conversions: string | Record<string, number>;
+  yearly_price: number;
+  yearly_discount_pct: number;
+  features: string | Array<{ text: string; enabled: boolean }>;
+  is_auto_billing: number;
+  is_active: number;
+  sort_order?: number;
+}
+
+/**
+ * Récupère dynamiquement les formules et cartes d'abonnements (Stockage & Assistante IA)
+ */
+export async function getSubscriptionPlans(): Promise<{
+  success: boolean;
+  storagePlans: SubscriptionPlan[];
+  aiPlans: SubscriptionPlan[];
+}> {
+  try {
+    const res = await request<{
+      success: boolean;
+      storagePlans?: SubscriptionPlan[];
+      aiPlans?: SubscriptionPlan[];
+    }>('/api/subscription-plans?active_only=1', { method: 'GET' });
+    return {
+      success: !!(res && res.success),
+      storagePlans: res?.storagePlans || [],
+      aiPlans: res?.aiPlans || []
+    };
+  } catch (err) {
+    console.warn('[API] Erreur récupération des forfaits d\'abonnement:', err);
+    return { success: false, storagePlans: [], aiPlans: [] };
+  }
+}
+
+
