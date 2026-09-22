@@ -18,6 +18,7 @@ import {
   ArrowRight
 } from 'lucide-react';
 import { requestStorageUpgrade, getCompanyProfile, CompanyProfile } from '../services/api';
+import { useAuth } from '../context/AuthContext';
 
 export interface RenewalSubscriptionData {
   id?: string;
@@ -35,6 +36,7 @@ export interface RenewalSubscriptionData {
   storage_display?: string;
   words_count?: number;
   plan_type?: string;
+  user_id?: string;
 }
 
 interface RenewalFormViewProps {
@@ -48,6 +50,8 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
   onBack,
   onSuccess
 }) => {
+  const { user } = useAuth();
+
   // Profil entreprise & comptes marchands chargés dynamiquement
   const [companyProfile, setCompanyProfile] = useState<CompanyProfile | null>(null);
 
@@ -76,19 +80,28 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  // Identifiant utilisateur individuel garanti
+  const currentUserId = subscription?.user_id || user?.id || (typeof localStorage !== 'undefined'
+    ? localStorage.getItem('unifolder_user_id') || 'default-user'
+    : 'default-user');
+
   // Extraction et calcul des données d'abonnement
   const studentName = 
     subscription?.user_name || 
+    user?.name ||
+    user?.full_name ||
     (typeof localStorage !== 'undefined' ? localStorage.getItem('studycloud_user_name') || localStorage.getItem('unifolder_user_name') : '') || 
     'Étudiant StudyCloud';
 
   const studentPhone = 
     subscription?.user_phone || 
+    user?.phone ||
     (typeof localStorage !== 'undefined' ? localStorage.getItem('studycloud_user_phone') || localStorage.getItem('unifolder_user_phone') : '') || 
     '+225 0101007978';
 
   const studentWhatsapp = 
     subscription?.user_whatsapp || 
+    user?.whatsapp ||
     (typeof localStorage !== 'undefined' ? localStorage.getItem('studycloud_user_whatsapp') : '') || 
     studentPhone;
 
@@ -203,11 +216,8 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
     setSubmitting(true);
 
     try {
-      const currentUserId = (typeof localStorage !== 'undefined'
-        ? localStorage.getItem('unifolder_user_id') || 'default-user'
-        : 'default-user');
-
       const res = await requestStorageUpgrade({
+        userId: currentUserId,
         packId: planName.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
         packName: `Renouvellement des abonnements - ${planName}`,
         requestType: 'renewal',
@@ -257,9 +267,9 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
           localStorage.setItem('studycloud_local_requests', JSON.stringify([newReqObj, ...existing.filter((x: any) => x.id !== reqId)]));
         } catch {}
 
-        if (onSuccess) {
-          onSuccess(reqId);
-        }
+        // ATTENTION : On n'appelle PAS onSuccess ici immédiatement !
+        // On laisse l'écran de succès affiché pour que l'étudiant voie son récapitulatif
+        // et le message de confirmation avec le numéro de référence.
       } else {
         alert(res.message || "Une erreur est survenue lors de l'enregistrement de votre renouvellement.");
       }
@@ -384,7 +394,12 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
             <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
               <button
                 type="button"
-                onClick={onBack}
+                onClick={() => {
+                  if (onSuccess) {
+                    onSuccess(submittedRequestId);
+                  }
+                  onBack();
+                }}
                 className="w-full sm:w-auto px-6 py-3 bg-[#2D4A3E] dark:bg-emerald-600 hover:bg-[#20362d] dark:hover:bg-emerald-700 text-[#F5F0E8] dark:text-white font-bold text-xs sm:text-sm rounded-xl shadow-md cursor-pointer transition flex items-center justify-center gap-2 active:scale-95 group"
               >
                 <span>Retourner au suivi de l'abonnement</span>
@@ -595,12 +610,14 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
                   <button
                     type="submit"
                     disabled={submitting}
-                    className="w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-sm shadow-xl shadow-orange-500/25 cursor-pointer flex items-center justify-center gap-2.5 transition-all transform hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99]"
+                    className={`w-full py-4 px-6 rounded-2xl bg-gradient-to-r from-orange-500 to-amber-500 hover:from-orange-600 hover:to-amber-600 text-white font-extrabold text-sm shadow-xl shadow-orange-500/25 flex items-center justify-center gap-2.5 transition-all transform hover:-translate-y-0.5 active:translate-y-0 active:scale-[0.99] ${
+                      submitting ? 'cursor-wait opacity-90' : 'cursor-pointer'
+                    }`}
                   >
                     {submitting ? (
                       <>
-                        <div className="w-5 h-5 border-2 border-white/30 border-t-white rounded-full animate-spin"></div>
-                        <span>Transmission de votre renouvellement...</span>
+                        <RotateCw className="w-5 h-5 animate-spin text-white" />
+                        <span className="animate-pulse">Transmission de votre renouvellement en cours...</span>
                       </>
                     ) : (
                       <>

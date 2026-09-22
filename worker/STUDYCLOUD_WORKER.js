@@ -7406,7 +7406,7 @@ Lien vers le produit : ${productShareUrl}`;
         const includeDeleted = url.searchParams.get("includeDeleted") === "true";
         const query = includeDeleted
           ? "SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC"
-          : "SELECT * FROM storage_upgrade_requests WHERE user_id = ? AND (user_deleted_at IS NULL OR user_deleted_at = '') ORDER BY created_at DESC";
+          : "SELECT * FROM storage_upgrade_requests WHERE user_id = ? AND (user_deleted_at IS NULL OR user_deleted_at = '') AND (status = 'pending' OR datetime(COALESCE(confirmed_at, updated_at, created_at)) >= datetime('now', '-30 days')) ORDER BY created_at DESC";
         const reqs = await env.DB.prepare(query).bind(userId).all();
         return jsonResponse({
           success: true,

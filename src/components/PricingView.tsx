@@ -19,6 +19,7 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
 
   // État pour afficher le vrai menu complet de renouvellement (à l'identique de SubscriptionFormView)
   const [selectedPlanForRenewal, setSelectedPlanForRenewal] = useState<any | null>(null);
+  const [renewalRefreshKey, setRenewalRefreshKey] = useState<number>(0);
 
   // Si l'utilisateur clique sur "Commencer" ou choisit un plan, on affiche le NOUVEAU MENU
   // (Pas une popup/modal, mais une vue complète divisée en deux avec formulaire et explications)
@@ -45,10 +46,14 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
       <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto animate-fadeIn pb-24 transition-colors duration-300">
         <RenewalFormView
           subscription={selectedPlanForRenewal}
-          onBack={() => setSelectedPlanForRenewal(null)}
+          onBack={() => {
+            setSelectedPlanForRenewal(null);
+            setRenewalRefreshKey(k => k + 1);
+          }}
           onSuccess={() => {
             setSelectedPlanForRenewal(null);
             setActiveTab('renewal');
+            setRenewalRefreshKey(k => k + 1);
           }}
         />
       </div>
@@ -491,6 +496,7 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
         {/* ========================================================================= */}
         {activeTab === 'renewal' && (
           <RenewalSectionView
+            key={renewalRefreshKey}
             onGoToStorage={() => setActiveTab('storage')}
             onSelectPlan={onSelectPlan}
             onStartRenewal={(sub) => setSelectedPlanForRenewal(sub)}

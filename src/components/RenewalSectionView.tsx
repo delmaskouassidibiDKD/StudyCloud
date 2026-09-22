@@ -470,7 +470,53 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
         }
       });
 
-      // D) Fusion de secours local si présent
+      // D) Fusion et consolidation de toutes les demandes individuelles pour l'utilisateur
+      const allRequestsMap = new Map<string, any>();
+      
+      // Ingestion des demandes serveur de la base de données
+      serverReqs.forEach(r => {
+        if (r && r.id && (!r.user_id || r.user_id === currentUserId)) {
+          allRequestsMap.set(r.id, r);
+        }
+      });
+
+      // Ingestion des demandes locales pour cet utilisateur (secours / réactivité immédiate)
+      try {
+        const local = JSON.parse(localStorage.getItem('studycloud_local_requests') || '[]');
+        local.forEach((r: any) => {
+          if (r && r.id && (!r.user_id || r.user_id === currentUserId) && !allRequestsMap.has(r.id)) {
+            allRequestsMap.set(r.id, r);
+          }
+        });
+      } catch {}
+
+      // Règle des 1 mois (30 jours) et exclusion des demandes supprimées :
+      // - Si marquée supprimée par l'utilisateur (user_deleted_at), on l'exclut
+      // - Si terminée (acceptée ou rejetée), et que sa date remonte à plus de 30 jours, elle s'efface automatiquement
+      const nowTime = Date.now();
+      const ONE_MONTH_MS = 30 * 24 * 60 * 60 * 1000;
+
+      const activeRequests = Array.from(allRequestsMap.values()).filter(r => {
+        if (r.user_deleted_at) return false;
+
+        const isFinished = r.status === 'approved' || r.status === 'confirmed' || r.status === 'rejected';
+        if (isFinished) {
+          const reqTime = new Date(r.confirmed_at || r.updated_at || r.created_at || 0).getTime();
+          if (reqTime > 0 && (nowTime - reqTime > ONE_MONTH_MS)) {
+            return false; // Purge automatique après 1 mois si non effacé
+          }
+        }
+        return true;
+      });
+
+      // Tri chronologique inversé : les plus récents TOUT EN HAUT, les anciens en bas
+      activeRequests.sort((a, b) => {
+        const tA = new Date(a.created_at || a.updated_at || a.confirmed_at || 0).getTime();
+        const tB = new Date(b.created_at || b.updated_at || b.confirmed_at || 0).getTime();
+        return tB - tA;
+      });
+
+      // D'autre part, fusion des achats validés pour l'historique complet
       try {
         const local = JSON.parse(localStorage.getItem('studycloud_local_requests') || '[]');
         local.forEach((r: any) => {
@@ -485,9 +531,6 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
         const tB = new Date(b.purchased_at || b.confirmed_at || b.created_at || 0).getTime();
         return tB - tA;
       });
-
-      // Filtrer les demandes actives pour le panneau de droite
-      const activeRequests = serverReqs.filter(r => !r.user_deleted_at);
 
       setSubscriptions(subs);
       setRequests(activeRequests);
@@ -890,26 +933,43 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                       return (
                         <div
                           key={req.id}
-                          className="rounded-2xl border-2 border-emerald-500 bg-emerald-50/90 dark:bg-emerald-950/40 p-4 sm:p-5 shadow-sm space-y-3 transition-all duration-200"
+                          className="rounded-2xl border-2 border-emerald-500 bg-emerald-50/90 dark:bg-emerald-950/40 p-4 sm:p-5 shadow-sm space-y-3 transition-all duration-200 relative group"
                         >
-                          {/* Message de confirmation en vert */}
-                          <div className="flex items-start gap-3">
-                            <div className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
-                              <CheckCircle2 className="w-5 h-5" />
-                            </div>
-                            <div className="space-y-0.5">
-                              <div className="flex items-center gap-2 flex-wrap">
-                                <span className="text-xs sm:text-sm font-black text-emerald-900 dark:text-emerald-300">
-                                  Votre demande a été acceptée !
-                                </span>
-                                <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-600 text-white font-mono">
-                                  Validée
-                                </span>
+                          {/* Message de confirmation en vert avec bouton croix pour effacer */}
+                          <div className="flex items-start justify-between gap-3">
+                            <div className="flex items-start gap-3">
+                              <div className="w-9 h-9 rounded-xl bg-emerald-500 text-white flex items-center justify-center shrink-0 shadow-xs mt-0.5">
+                                <CheckCircle2 className="w-5 h-5" />
                               </div>
-                              <p className="text-xs text-emerald-800 dark:text-emerald-200 font-medium">
-                                Vous disposez désormais du stockage demandé sur votre compte StudyCloud.
-                              </p>
+                              <div className="space-y-0.5">
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <span className="text-xs sm:text-sm font-black text-emerald-900 dark:text-emerald-300">
+                                    Votre demande a été acceptée !
+                                  </span>
+                                  <span className="px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-600 text-white font-mono">
+                                    Validée
+                                  </span>
+                                </div>
+                                <p className="text-xs text-emerald-800 dark:text-emerald-200 font-medium">
+                                  Vous disposez désormais du stockage demandé sur votre compte StudyCloud.
+                                </p>
+                              </div>
                             </div>
+
+                            {/* BOUTON CROIX POUR EFFACER LA DEMANDE ACCEPTÉE */}
+                            <button
+                              type="button"
+                              onClick={() => handleDeleteHistoryItem(req.id)}
+                              disabled={deletingId === req.id}
+                              className="p-1.5 text-emerald-800 hover:text-red-600 hover:bg-red-500/10 dark:text-emerald-300 dark:hover:text-red-400 rounded-lg transition cursor-pointer shrink-0"
+                              title="Effacer cette demande acceptée (purge BDD sous 1 mois)"
+                            >
+                              {deletingId === req.id ? (
+                                <RotateCw className="w-4 h-4 animate-spin text-red-500" />
+                              ) : (
+                                <X className="w-4 h-4" />
+                              )}
+                            </button>
                           </div>
 
                           {/* Informations synthétiques sur l'abonnement validé */}
@@ -934,8 +994,12 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                             <span>Réf: {req.id}</span>
                           </div>
 
-                          {/* BOUTON FLÈCHE TÉLÉCHARGER LE REÇU */}
-                          <div className="pt-2 flex items-center justify-end">
+                          {/* Action : Télécharger le reçu et durée de conservation */}
+                          <div className="pt-2 flex items-center justify-between flex-wrap gap-2">
+                            <span className="text-[10px] text-emerald-700 dark:text-emerald-400 font-medium flex items-center gap-1">
+                              <span>⏳</span>
+                              <span>Conservé 1 mois dans l'historique</span>
+                            </span>
                             <button
                               type="button"
                               onClick={() => downloadReceiptSlip(req, activeSubscription, user)}
@@ -1007,9 +1071,28 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                               </span>
                             )}
                             {isRejected && (
-                              <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-red-500/20 text-red-700 dark:text-red-300 border border-red-500/30">
-                                Rejetée
-                              </span>
+                              <div className="flex items-center gap-1.5">
+                                <span className="px-2.5 py-1 rounded-full text-[10px] font-extrabold bg-red-500/20 text-red-700 dark:text-red-300 border border-red-500/30">
+                                  Rejetée
+                                </span>
+                                {/* Bouton croix pour effacer une demande rejetée */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteHistoryItem(req.id);
+                                  }}
+                                  disabled={deletingId === req.id}
+                                  className="p-1 text-red-500 hover:text-red-700 hover:bg-red-500/15 rounded-lg transition cursor-pointer"
+                                  title="Effacer cette demande rejetée (purge BDD sous 1 mois)"
+                                >
+                                  {deletingId === req.id ? (
+                                    <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <X className="w-3.5 h-3.5" />
+                                  )}
+                                </button>
+                              </div>
                             )}
 
                             <div className="w-7 h-7 rounded-lg bg-[#D4C9B5]/40 dark:bg-slate-800 text-[#2D4A3E] dark:text-slate-300 flex items-center justify-center transition-transform duration-200">
@@ -1074,17 +1157,35 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                               </div>
                             )}
 
-                            {/* Message pour la demande en attente */}
-                            <div className={`p-3 rounded-xl text-xs flex items-start gap-2 ${
+                            {/* Message pour la demande en attente ou rejetée */}
+                            <div className={`p-3 rounded-xl text-xs flex items-start justify-between gap-3 ${
                               isPending 
                                 ? 'bg-amber-500/10 text-amber-900 dark:text-amber-300 border border-amber-500/20' 
                                 : 'bg-red-500/10 text-red-900 dark:text-red-300 border border-red-500/20'
                             }`}>
-                              <span className="text-sm mt-0.5">ℹ️</span>
-                              <span className="leading-relaxed">
-                                {isPending && "Votre demande ainsi que votre preuve de paiement sont en cours de vérification par l'équipe administrative. Dès confirmation, cette case deviendra verte avec votre reçu téléchargeable."}
-                                {isRejected && "Cette demande n'a pas pu être validée. Veuillez contacter l'assistance ou renouveler votre démarche."}
-                              </span>
+                              <div className="flex items-start gap-2">
+                                <span className="text-sm mt-0.5">ℹ️</span>
+                                <span className="leading-relaxed">
+                                  {isPending && "Votre demande ainsi que votre preuve de paiement sont en cours de vérification par l'équipe administrative. Dès confirmation, cette case deviendra verte avec votre reçu téléchargeable."}
+                                  {isRejected && "Cette demande n'a pas pu être validée. Vous pouvez effacer cet enregistrement de votre liste."}
+                                </span>
+                              </div>
+                              {isRejected && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleDeleteHistoryItem(req.id)}
+                                  disabled={deletingId === req.id}
+                                  className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-red-600 hover:bg-red-700 text-white rounded-lg font-bold text-[11px] shrink-0 transition cursor-pointer active:scale-95"
+                                  title="Supprimer cette demande rejetée"
+                                >
+                                  {deletingId === req.id ? (
+                                    <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <X className="w-3.5 h-3.5" />
+                                  )}
+                                  <span>Effacer</span>
+                                </button>
+                              )}
                             </div>
                           </div>
                         )}
