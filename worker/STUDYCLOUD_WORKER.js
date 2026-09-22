@@ -7572,7 +7572,11 @@ Lien vers le produit : ${productShareUrl}`;
         // 2. Allouer le stockage dans user_storage_quotas
         const currentQuota = await env.DB.prepare("SELECT * FROM user_storage_quotas WHERE user_id = ?").bind(userId).first();
         const currentPaid = currentQuota ? Number(currentQuota.paid_total_mb || 0) : 0;
-        const newPaid = currentPaid + addMb;
+        const isRenewalReq = (reqRow.request_type === 'renewal') || (reqRow.pack_name && reqRow.pack_name.toLowerCase().includes('renouvellement'));
+        let newPaid = currentPaid + addMb;
+        if (isRenewalReq && (body.allocatedMb === undefined || body.allocatedMb === 0)) {
+          newPaid = currentPaid > 0 ? currentPaid : addMb;
+        }
         const wTotal = currentQuota ? Number(currentQuota.welcome_total_mb || 30) : 30;
 
         await env.DB.prepare(`

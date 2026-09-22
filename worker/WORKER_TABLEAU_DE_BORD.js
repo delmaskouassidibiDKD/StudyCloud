@@ -4616,13 +4616,13 @@ function renderDashboardHtml(data) {
                       <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800 space-y-1.5">
                         <div class="flex items-center justify-between">
                           <span class="text-slate-300 font-bold text-xs">Stockage à allouer :</span>
-                          <span class="text-[10px] text-blue-400 font-mono">+\${item.amountMb} Mo demandé</span>
+                          <span class="text-[10px] text-blue-400 font-mono">\${item.isRenewal ? 'Renouvellement (quota conservé)' : ('+' + item.amountMb + ' Mo demandé')}</span>
                         </div>
                         <div class="flex items-center gap-2">
                           <input 
                             type="number" 
                             id="admin-confirm-allocated-mb" 
-                            value="\${item.amountMb}" 
+                            value="\${(item.isRenewal && currentTotalMb > 30) ? 0 : item.amountMb}" 
                             oninput="updateAdminLiveStoragePreview(\${currentTotalMb})"
                             class="w-full bg-slate-950 text-blue-400 font-black font-mono text-sm px-3 py-1.5 rounded-lg border border-slate-700 text-center focus:border-blue-500 focus:outline-none"
                           >
@@ -6310,7 +6310,11 @@ export default {
         // 2. Allouer le stockage à l'utilisateur dans user_storage_quotas
         const currentQuota = await safeFirst(db, `SELECT * FROM user_storage_quotas WHERE user_id = ?`, [userId]);
         const currentPaid = currentQuota ? Number(currentQuota.paid_total_mb || 0) : 0;
-        const newPaid = currentPaid + addMb;
+        const isRenewalReq = (reqRow.request_type === 'renewal') || (reqRow.pack_name && reqRow.pack_name.toLowerCase().includes('renouvellement'));
+        let newPaid = currentPaid + addMb;
+        if (isRenewalReq && (body.allocatedMb === undefined || body.allocatedMb === 0)) {
+          newPaid = currentPaid > 0 ? currentPaid : addMb;
+        }
         const wTotal = currentQuota ? Number(currentQuota.welcome_total_mb || 30) : 30;
 
         await safeRun(db, `
