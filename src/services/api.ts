@@ -2159,27 +2159,69 @@ export interface SubscriptionPlan {
 
 /**
  * Récupère dynamiquement les formules et cartes d'abonnements (Stockage & Assistante IA)
+ * avec horodatage anti-cache et fallback multi-serveurs Cloudflare D1
  */
 export async function getSubscriptionPlans(): Promise<{
   success: boolean;
   storagePlans: SubscriptionPlan[];
   aiPlans: SubscriptionPlan[];
 }> {
+  const t = Date.now();
+  const endpoint = `/api/subscription-plans?active_only=1&_t=${t}`;
+
+  // 1. Essai via le connecteur d'API standard du Worker
   try {
     const res = await request<{
       success: boolean;
       storagePlans?: SubscriptionPlan[];
       aiPlans?: SubscriptionPlan[];
-    }>('/api/subscription-plans?active_only=1', { method: 'GET' });
-    return {
-      success: !!(res && res.success),
-      storagePlans: res?.storagePlans || [],
-      aiPlans: res?.aiPlans || []
-    };
+    }>(endpoint, {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
+      }
+    });
+    if (res && res.success && (res.storagePlans || res.aiPlans)) {
+      return {
+        success: true,
+        storagePlans: res.storagePlans || [],
+        aiPlans: res.aiPlans || []
+      };
+    }
   } catch (err) {
-    console.warn('[API] Erreur récupération des forfaits d\'abonnement:', err);
-    return { success: false, storagePlans: [], aiPlans: [] };
+    console.warn('[API] getSubscriptionPlans via baseUrl a échoué, essai fallback:', err);
   }
+
+  // 2. Fallback direct vers les endpoints Cloudflare Workers
+  const fallbackUrls = [
+    `https://api-worker.dkd-technologies.com/api/subscription-plans?active_only=1&_t=${t}`,
+    `https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev/api/subscription-plans?active_only=1&_t=${t}`,
+    `https://studycloud-worker.delmaskouassidibi.workers.dev/api/subscription-plans?active_only=1&_t=${t}`
+  ];
+
+  for (const url of fallbackUrls) {
+    try {
+      const resp = await fetch(url, {
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && data.success) {
+          return {
+            success: true,
+            storagePlans: data.storagePlans || [],
+            aiPlans: data.aiPlans || []
+          };
+        }
+      }
+    } catch (e) {}
+  }
+
+  return { success: false, storagePlans: [], aiPlans: [] };
 }
 
 

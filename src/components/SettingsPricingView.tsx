@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Check, HardDrive, Bot, RotateCw } from 'lucide-react';
+import { ArrowLeft, Check, HardDrive, Bot, RotateCw, Sparkles, CreditCard, Lock } from 'lucide-react';
 import { SubscriptionFormView, SelectedPlan } from './SubscriptionFormView';
 import { RenewalFormView } from './RenewalFormView';
 import { RenewalSectionView } from './RenewalSectionView';
@@ -17,7 +17,7 @@ const DEFAULT_STORAGE_PLANS: SubscriptionPlan[] = [
     name: 'Basique',
     badge: '',
     description: 'Pour les particuliers et petites équipes qui débutent.',
-    storage_amount: '10 Go supplémentaires (+ 10 240 Mo)',
+    storage_amount: '10 Go',
     storage_mb: 10240,
     price: 10,
     primary_currency: 'USD',
@@ -41,7 +41,7 @@ const DEFAULT_STORAGE_PLANS: SubscriptionPlan[] = [
     name: 'Pro',
     badge: 'Populaire',
     description: 'Pour les professionnels et étudiants avancés.',
-    storage_amount: '50 Go supplémentaires (+ 51 200 Mo)',
+    storage_amount: '50 Go',
     storage_mb: 51200,
     price: 32,
     primary_currency: 'USD',
@@ -65,7 +65,7 @@ const DEFAULT_STORAGE_PLANS: SubscriptionPlan[] = [
     name: 'Entreprise',
     badge: '',
     description: 'Pour les universités, laboratoires et grandes équipes.',
-    storage_amount: '200 Go supplémentaires (+ 204 800 Mo)',
+    storage_amount: '200 Go',
     storage_mb: 204800,
     price: 89,
     primary_currency: 'USD',
@@ -93,7 +93,7 @@ const DEFAULT_AI_PLANS: SubscriptionPlan[] = [
     name: 'IA Basique',
     badge: '',
     description: 'Pour réviser, poser des questions et comprendre rapidement vos cours au quotidien.',
-    credits_or_words: '100 000 mots IA / mois',
+    credits_or_words: '100 000 mots IA',
     credits_count: 100000,
     price: 10,
     primary_currency: 'USD',
@@ -117,7 +117,7 @@ const DEFAULT_AI_PLANS: SubscriptionPlan[] = [
     name: 'IA Pro Étudiant',
     badge: 'Populaire',
     description: 'L\'assistant d\'apprentissage complet pour exceller et réussir tous vos examens.',
-    credits_or_words: '1 000 000 mots IA avec priorité maximale',
+    credits_or_words: '1 000 000 mots IA',
     credits_count: 1000000,
     price: 32,
     primary_currency: 'USD',
@@ -141,7 +141,7 @@ const DEFAULT_AI_PLANS: SubscriptionPlan[] = [
     name: 'IA Recherche & Master',
     badge: '',
     description: 'Pour les doctorants, thèses, mémoires volumineux et laboratoires universitaires.',
-    credits_or_words: 'Mots IA illimités avec modèles avancés',
+    credits_or_words: 'Mots IA illimités',
     credits_count: 10000000,
     price: 89,
     primary_currency: 'USD',
@@ -211,13 +211,74 @@ function calculateConversions(price: number, primaryCurr: string) {
   return { USD: usd, XOF: xof, EUR: eur };
 }
 
+function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean) {
+  const primaryCurr = plan.primary_currency || 'USD';
+  const monthlyPrice = Number(plan.price) || 0;
+  const discountPct = Number(plan.yearly_discount_pct) || 10;
+  const yearlyPrice = Number(plan.yearly_price) > 0
+    ? Number(plan.yearly_price)
+    : Math.round(monthlyPrice * 12 * (1 - (discountPct / 100)) * 100) / 100;
+
+  const activePrice = isAnnual ? yearlyPrice : monthlyPrice;
+  const annualRatio = monthlyPrice > 0 ? (yearlyPrice / monthlyPrice) : (12 * (1 - (discountPct / 100)));
+
+  let convObj: Record<string, number> = {};
+  if (typeof plan.currency_conversions === 'string') {
+    try {
+      convObj = JSON.parse(plan.currency_conversions);
+    } catch (e) {}
+  } else if (typeof plan.currency_conversions === 'object' && plan.currency_conversions !== null) {
+    convObj = plan.currency_conversions as Record<string, number>;
+  }
+
+  const enabledCurrs = parsePlanCurrencies(plan.currencies_enabled);
+  const secondaryParts: string[] = [];
+
+  for (const curr of ['XOF', 'USD', 'EUR']) {
+    if (enabledCurrs.includes(curr) && curr !== primaryCurr) {
+      let rawVal = convObj[curr];
+      if (!rawVal) {
+        const fallback = calculateConversions(monthlyPrice, primaryCurr);
+        rawVal = fallback[curr as keyof typeof fallback];
+      }
+      const finalVal = isAnnual ? Math.round(rawVal * annualRatio) : rawVal;
+
+      if (curr === 'XOF') {
+        secondaryParts.push(`≈ ${finalVal.toLocaleString('fr-FR')} FCFA`);
+      } else if (curr === 'USD') {
+        secondaryParts.push(`≈ ${finalVal} $`);
+      } else if (curr === 'EUR') {
+        secondaryParts.push(`≈ ${finalVal} €`);
+      }
+    }
+  }
+
+  let finalPriceFcfa: number;
+  if (primaryCurr === 'XOF') {
+    finalPriceFcfa = activePrice;
+  } else {
+    const baseFcfa = convObj.XOF || Math.round(monthlyPrice * 650);
+    finalPriceFcfa = isAnnual ? Math.round(baseFcfa * annualRatio) : baseFcfa;
+  }
+
+  return {
+    activePrice,
+    yearlyPrice,
+    monthlyPrice,
+    discountPct,
+    primaryCurr,
+    secondaryString: secondaryParts.join(' • '),
+    priceFcfa: finalPriceFcfa
+  };
+}
+
 export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack, onSelectPlan, initialTab = 'storage' }) => {
   const [activeTab, setActiveTab] = useState<'storage' | 'ai' | 'renewal'>(initialTab);
   const [billingCycle, setBillingCycle] = useState<'annual' | 'monthly'>('annual');
 
   const [dbStoragePlans, setDbStoragePlans] = useState<SubscriptionPlan[]>(DEFAULT_STORAGE_PLANS);
   const [dbAiPlans, setDbAiPlans] = useState<SubscriptionPlan[]>(DEFAULT_AI_PLANS);
-  const [, setLoadingPlans] = useState<boolean>(true);
+  const [loadingPlans, setLoadingPlans] = useState<boolean>(true);
 
   // État du plan sélectionné pour afficher le menu de souscription
   const [selectedPlanForSubscription, setSelectedPlanForSubscription] = useState<SelectedPlan | null>(null);
@@ -226,9 +287,11 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
   const [selectedPlanForRenewal, setSelectedPlanForRenewal] = useState<any | null>(null);
   const [renewalRefreshKey, setRenewalRefreshKey] = useState<number>(0);
 
-  // Charger dynamiquement les forfaits depuis Cloudflare D1
+  // Charger dynamiquement les cartes de forfaits depuis Cloudflare D1 avec horodatage anti-cache
   useEffect(() => {
     let isMounted = true;
+    setLoadingPlans(true);
+
     getSubscriptionPlans()
       .then((res) => {
         if (isMounted && res && res.success) {
@@ -244,15 +307,19 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
         console.warn('[SettingsPricingView] Erreur chargement forfaits D1:', err);
       })
       .finally(() => {
-        if (isMounted) setLoadingPlans(false);
+        if (isMounted) {
+          setTimeout(() => {
+            if (isMounted) setLoadingPlans(false);
+          }, 250);
+        }
       });
 
     return () => {
       isMounted = false;
     };
-  }, []);
+  }, [activeTab]);
 
-  // Si l'utilisateur clique sur "Commencer" ou choisit un plan, on affiche le menu de souscription
+  // Si l'utilisateur clique sur "Commencer" ou choisit un plan, on affiche le formulaire de souscription
   if (selectedPlanForSubscription) {
     return (
       <div className="absolute inset-x-0 bottom-0 top-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-white overflow-y-auto animate-fadeIn pb-24">
@@ -269,7 +336,7 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
     );
   }
 
-  // Si l'utilisateur clique sur "Renouveler l'abonnement", on affiche le menu complet de renouvellement
+  // Si l'utilisateur clique sur "Renouveler l'abonnement", on affiche le formulaire de renouvellement
   if (selectedPlanForRenewal) {
     return (
       <div className="absolute inset-x-0 bottom-0 top-0 md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-white overflow-y-auto animate-fadeIn pb-24">
@@ -289,152 +356,194 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
     );
   }
 
-  // Rendu d'une carte d'abonnement
+  // Rendu des cartes squelettes avec animation de pulsation / chargement
+  const renderSkeletonCards = () => (
+    <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
+      {[1, 2, 3].map((i) => (
+        <div
+          key={i}
+          className="rounded-2xl p-6 bg-[#0d1424] border border-slate-800 relative overflow-hidden shadow-2xl animate-pulse flex flex-col justify-between min-h-[510px]"
+        >
+          <div className="space-y-4">
+            <div className="flex items-center justify-between">
+              <div className="h-6 w-28 bg-slate-800 rounded-lg"></div>
+              {i === 2 && <div className="h-5 w-20 bg-amber-500/20 rounded-full border border-amber-500/30"></div>}
+            </div>
+
+            <div className="space-y-1.5 pt-1">
+              <div className="h-3 w-4/5 bg-slate-800/80 rounded"></div>
+              <div className="h-3 w-3/5 bg-slate-800/60 rounded"></div>
+            </div>
+
+            {/* Boîte de prix factice */}
+            <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800/90 space-y-2">
+              <div className="h-8 w-36 bg-slate-800 rounded"></div>
+              <div className="h-3 w-48 bg-amber-500/20 rounded"></div>
+            </div>
+
+            {/* Ligne verrouillée factice */}
+            <div className="p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center gap-2">
+              <div className="w-4 h-4 bg-orange-500/40 rounded-full shrink-0"></div>
+              <div className="h-3.5 w-44 bg-orange-500/30 rounded"></div>
+            </div>
+
+            {/* Avantages factices */}
+            <div className="space-y-2.5 pt-2">
+              {[1, 2, 3, 4].map((j) => (
+                <div key={j} className="flex items-center gap-2.5">
+                  <div className="w-4 h-4 rounded-full bg-slate-800 shrink-0"></div>
+                  <div className="h-3 bg-slate-800 rounded" style={{ width: `${55 + (j * 10)}%` }}></div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Bouton factice */}
+          <div className="h-12 w-full bg-slate-800 rounded-xl mt-6"></div>
+        </div>
+      ))}
+    </div>
+  );
+
+  // Rendu fidèle et identique aux cartes du tableau de bord
   const renderCard = (plan: SubscriptionPlan, type: 'storage' | 'ai') => {
     const isPopular = !!(plan.badge && plan.badge.trim());
     const isAnnual = billingCycle === 'annual';
-    const discountPct = Number(plan.yearly_discount_pct) || 10;
-    
-    // Prix calculé
-    const monthlyPrice = Number(plan.price) || 0;
-    const yearlyPrice = Number(plan.yearly_price) > 0 
-      ? Number(plan.yearly_price) 
-      : Math.round(monthlyPrice * 12 * (1 - (discountPct / 100)) * 100) / 100;
-    const activePrice = isAnnual ? yearlyPrice : monthlyPrice;
+    const pricing = getCardPricingAndConversions(plan, isAnnual);
 
-    // Conversions monétaires
-    const primaryCurr = plan.primary_currency || 'USD';
-    const conv = calculateConversions(activePrice, primaryCurr);
-    const enabledCurrs = parsePlanCurrencies(plan.currencies_enabled);
-    const secondaryParts: string[] = [];
-    if (enabledCurrs.includes('XOF') && primaryCurr !== 'XOF') {
-      secondaryParts.push(`≈ ${conv.XOF.toLocaleString('fr-FR')} FCFA`);
-    }
-    if (enabledCurrs.includes('USD') && primaryCurr !== 'USD') {
-      secondaryParts.push(`≈ ${conv.USD} $`);
-    }
-    if (enabledCurrs.includes('EUR') && primaryCurr !== 'EUR') {
-      secondaryParts.push(`≈ ${conv.EUR} €`);
-    }
-    const secondaryString = secondaryParts.join(' • ');
-
-    // Premier avantage verrouillé
-    const mainLockedPerk = type === 'ai'
+    // Première ligne verrouillée (stockage ou IA avec 🔒)
+    const lockedPerk = type === 'ai'
       ? (plan.credits_or_words || `${(plan.credits_count || 100000).toLocaleString('fr-FR')} mots IA / mois`)
-      : (plan.storage_amount || `${plan.storage_mb ? (plan.storage_mb / 1024) : 10} Go supplémentaires`);
+      : (plan.storage_amount 
+          ? (plan.storage_mb && plan.storage_mb > 0 
+              ? `${plan.storage_amount} supplémentaires (+ ${plan.storage_mb.toLocaleString('fr-FR')} Mo)` 
+              : `${plan.storage_amount} supplémentaires`)
+          : `${plan.storage_mb ? (plan.storage_mb / 1024) : 10} Go supplémentaires`);
 
-    // Autres avantages
+    // Autres avantages filtrés
     const allFeatures = parsePlanFeatures(plan.features);
-    const activeFeatures = allFeatures.filter(f => f.enabled !== false);
+    const activeFeatures = allFeatures.filter(f => {
+      if (f.enabled === false) return false;
+      const t = (f.text || '').toLowerCase().trim();
+      if (type === 'storage' && (t === '10 go' || t === '50 go' || t === '200 go')) return false;
+      return true;
+    });
 
     const isAuto = plan.is_auto_billing === 1;
 
     return (
       <div 
         key={plan.id}
-        className={`rounded-2xl p-6 sm:p-7 flex flex-col justify-between relative max-w-[380px] w-full mx-auto shadow-md transition-all duration-200 ${
+        className={`relative flex flex-col justify-between rounded-2xl p-6 border shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-in fade-in zoom-in-95 duration-200 ${
           isPopular
-            ? 'bg-[#2D4A3E] dark:bg-[#16382b] border-2 border-[#2D4A3E] dark:border-emerald-500 text-[#F5F0E8]'
-            : 'bg-[#E8DFD0] dark:bg-[#111a2e] border border-[#D4C9B5] dark:border-[#1e293b] text-[#2D4A3E] dark:text-slate-100'
+            ? 'border-orange-500/80 bg-[#111927] shadow-[0_0_30px_rgba(249,115,22,0.2)]'
+            : 'border-slate-800 bg-[#0d1424]'
         }`}
       >
-        <div>
+        <div className="space-y-3.5">
           {/* En-tête : Titre & Badge */}
-          <div className="flex items-center justify-between mb-2">
-            <h3 className={`text-2xl sm:text-3xl font-serif font-normal ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E] dark:text-white'}`}>
+          <div className="flex items-center justify-between gap-2 flex-wrap">
+            <h5 className="text-xl font-black text-white tracking-wide">
               {plan.name}
-            </h3>
+            </h5>
             {isPopular && (
-              <span className="bg-[#C9B896] dark:bg-emerald-500 text-[#2D4A3E] dark:text-white text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-xs">
-                {plan.badge}
+              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-xs flex items-center gap-1">
+                <Sparkles className="w-3 h-3 text-amber-300" />
+                <span>{plan.badge}</span>
               </span>
             )}
           </div>
 
           {/* Description */}
           {plan.description && (
-            <p className={`text-xs sm:text-sm font-sans mb-4 sm:mb-6 leading-relaxed ${isPopular ? 'text-[#E8DFD0]/80' : 'text-[#5C6B5A] dark:text-slate-400'}`}>
+            <p className="text-xs text-slate-400 leading-relaxed min-h-[32px]">
               {plan.description}
             </p>
           )}
 
-          {/* Bloc Prix Principal & Conversions secondaires */}
-          <div className="mb-4 sm:mb-6">
-            <div className="flex items-baseline gap-1">
-              <span className={`text-4xl sm:text-5xl md:text-6xl font-serif font-normal ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E] dark:text-white'}`}>
-                {getCurrencySymbol(primaryCurr)} {primaryCurr === 'XOF' ? activePrice.toLocaleString('fr-FR') : activePrice}
+          {/* Boîte de prix & devises secondaires */}
+          <div className="p-3.5 rounded-xl bg-slate-900/95 border border-slate-800 space-y-1.5">
+            <div className="flex items-baseline gap-1.5 flex-wrap">
+              <span className="text-3xl sm:text-4xl font-black text-white font-mono tracking-tight">
+                {getCurrencySymbol(pricing.primaryCurr)} {pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice}
               </span>
-              <span className={`text-base sm:text-lg font-sans ml-1 ${isPopular ? 'text-[#E8DFD0]/90' : 'text-[#2D4A3E] dark:text-slate-300'}`}>
-                {isAnnual ? '/an' : '/mois'}
+              <span className="text-xs text-slate-400 font-bold">
+                {isAnnual ? '/ an' : '/ mois'}
               </span>
+              {isAnnual && pricing.discountPct > 0 && (
+                <span className="ml-1 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
+                  -{pricing.discountPct}%
+                </span>
+              )}
             </div>
 
-            {/* Conversions secondaires en petit en dessous */}
-            {secondaryString && (
-              <div className={`text-[11px] sm:text-xs mt-1 font-medium ${isPopular ? 'text-[#E8DFD0]/70' : 'text-[#5C6B5A] dark:text-slate-400'}`}>
-                {secondaryString}
+            {/* Devises secondaires en petit */}
+            {pricing.secondaryString && (
+              <div className="text-[11px] font-semibold text-amber-400/90 pt-0.5">
+                {pricing.secondaryString}
               </div>
             )}
           </div>
 
-          <div className={`h-0.5 w-full mb-4 sm:mb-6 ${isPopular ? 'bg-[#E8DFD0]/20' : 'bg-gradient-to-r from-[#C9B896] to-[#D4C9B5] dark:from-[#1e293b] dark:to-[#334155]'}`}></div>
+          {/* Liste des avantages */}
+          <div className="space-y-2 pt-1">
+            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Ce qui est inclus :
+            </p>
 
-          {/* Avantages inclus */}
-          <p className={`text-xs sm:text-sm font-semibold mb-3 sm:mb-4 ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E] dark:text-slate-200'}`}>
-            Ce qui est inclus :
-          </p>
+            {/* 1ère ligne verrouillée (stockage ou IA avec 🔒) */}
+            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/25 text-orange-200 text-xs font-bold shadow-xs">
+              <Lock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
+              <span>{lockedPerk}</span>
+            </div>
 
-          <ul className="space-y-2.5 sm:space-y-3 mb-6 sm:mb-8">
-            {/* Première ligne spéciale et verrouillée */}
-            <li className="flex items-start gap-2.5 sm:gap-3">
-              <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-                isPopular ? 'bg-[#C9B896] text-[#2D4A3E]' : 'bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white'
-              }`}>
-                <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-              </div>
-              <span className={`text-xs sm:text-sm font-bold ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E] dark:text-white'}`}>
-                {mainLockedPerk}
-              </span>
-            </li>
-
-            {/* Autres lignes d'options */}
-            {activeFeatures.map((feature, i) => (
-              <li key={i} className="flex items-start gap-2.5 sm:gap-3">
-                <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
-                  isPopular ? 'bg-[#C9B896] text-[#2D4A3E]' : 'bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white'
-                }`}>
-                  <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+            {/* Autres avantages de la carte */}
+            <div className="space-y-2 pt-1">
+              {activeFeatures.map((f, i) => (
+                <div key={i} className="flex items-start gap-2 text-xs text-slate-300 leading-snug">
+                  <span className="text-emerald-400 font-bold shrink-0 mt-0.5">✓</span>
+                  <span>{f.text}</span>
                 </div>
-                <span className={`text-xs sm:text-sm ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E] dark:text-slate-300'}`}>
-                  {feature.text}
-                </span>
-              </li>
-            ))}
-          </ul>
+              ))}
+            </div>
+          </div>
         </div>
 
         {/* Bouton d'action : Commencer (Paiement Manuel) OU S'abonner (Abonnement Automatique) */}
-        <button
-          onClick={() => setSelectedPlanForSubscription({
-            name: `${plan.name} ${type === 'ai' ? 'IA' : 'Stockage'}`,
-            type: type,
-            storageDisplay: mainLockedPerk,
-            priceDisplay: `${getCurrencySymbol(primaryCurr)} ${primaryCurr === 'XOF' ? activePrice.toLocaleString('fr-FR') : activePrice} / ${isAnnual ? 'an' : 'mois'} ${secondaryString ? '(' + secondaryString + ')' : ''}`,
-            price: activePrice,
-            priceFcfa: conv.XOF,
-            currency: getCurrencySymbol(primaryCurr),
-            billingCycle: billingCycle,
-            mb: plan.storage_mb,
-            words: plan.credits_count
-          })}
-          className={`w-full py-3 font-semibold text-sm rounded-xl transition-all cursor-pointer shadow-sm text-center active:scale-[0.98] ${
-            isPopular
-              ? 'bg-[#C9B896] hover:bg-[#B8A785] text-[#2D4A3E] font-bold shadow-md'
-              : 'bg-[#C9B896] dark:bg-[#1e293b] hover:bg-[#B8A785] dark:hover:bg-[#283852] text-[#2D4A3E] dark:text-white border border-[#B8A785] dark:border-[#334155]'
-          }`}
-        >
-          {isAuto ? "S'abonner" : "Commencer"}
-        </button>
+        <div className="pt-5 mt-4 border-t border-slate-800">
+          <button
+            type="button"
+            onClick={() => setSelectedPlanForSubscription({
+              name: `${plan.name} ${type === 'ai' ? 'IA' : 'Stockage'}`,
+              type: type,
+              storageDisplay: lockedPerk,
+              priceDisplay: `${getCurrencySymbol(pricing.primaryCurr)} ${pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice} / ${isAnnual ? 'an' : 'mois'} ${pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''}`,
+              price: pricing.activePrice,
+              priceFcfa: pricing.priceFcfa,
+              currency: getCurrencySymbol(pricing.primaryCurr),
+              billingCycle: billingCycle,
+              mb: plan.storage_mb,
+              words: plan.credits_count
+            })}
+            className={`w-full py-3.5 px-4 font-extrabold text-sm rounded-xl shadow-lg transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] ${
+              isAuto
+                ? 'bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white shadow-cyan-950/40'
+                : 'bg-gradient-to-r from-orange-600 via-amber-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white shadow-orange-950/40'
+            }`}
+          >
+            {isAuto ? (
+              <>
+                <Sparkles className="w-4 h-4 text-white" />
+                <span>S'abonner</span>
+              </>
+            ) : (
+              <>
+                <CreditCard className="w-4 h-4 text-white" />
+                <span>Commencer</span>
+              </>
+            )}
+          </button>
+        </div>
       </div>
     );
   };
@@ -536,31 +645,36 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
         {/* Header Section (Uniquement sur Stockage et IA) */}
         {activeTab !== 'renewal' && (
           <div className="text-center pb-8 max-w-5xl mx-auto">
-            <h1 className="text-3xl sm:text-5xl md:text-6xl font-serif font-normal text-[#2D4A3E] dark:text-white mb-3 leading-tight">
+            <h1 className="text-3xl sm:text-5xl md:text-6xl font-sans font-black text-[#2D4A3E] dark:text-white mb-3 leading-tight tracking-tight">
               Choisissez votre formule
             </h1>
-            <p className="text-sm sm:text-lg md:text-xl font-sans text-[#5C6B5A] dark:text-slate-400 max-w-xl mx-auto leading-relaxed px-2">
-              Des tarifs abordables et adaptés à vos objectifs d'apprentissage et de stockage.
+            <p className="text-sm sm:text-base font-sans font-medium text-[#5C6B5A] dark:text-slate-400 max-w-xl mx-auto leading-relaxed px-2">
+              Des tarifs flexibles synchronisés en direct avec votre plateforme d'apprentissage StudyCloud.
             </p>
           </div>
         )}
 
         {/* ========================================================================= */}
-        {/* 1. SECTION : ABONNEMENTS STOCKAGE (DYNAMIQUES DEPUIS LA BASE DE DONNÉES)  */}
+        {/* ANIMATION DE CHARGEMENT OU GRILLE DES FORFAITS SYNCHRONISÉE               */}
         {/* ========================================================================= */}
-        {activeTab === 'storage' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
-            {dbStoragePlans.map(plan => renderCard(plan, 'storage'))}
-          </div>
-        )}
+        {loadingPlans ? (
+          renderSkeletonCards()
+        ) : (
+          <>
+            {/* 1. SECTION : ABONNEMENTS STOCKAGE (DYNAMIQUES DEPUIS LA BASE DE DONNÉES)  */}
+            {activeTab === 'storage' && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
+                {dbStoragePlans.map(plan => renderCard(plan, 'storage'))}
+              </div>
+            )}
 
-        {/* ========================================================================= */}
-        {/* 2. SECTION : ASSISTANTE STUDYCLOUD (DYNAMIQUES DEPUIS LA BASE DE DONNÉES) */}
-        {/* ========================================================================= */}
-        {activeTab === 'ai' && (
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
-            {dbAiPlans.map(plan => renderCard(plan, 'ai'))}
-          </div>
+            {/* 2. SECTION : ASSISTANTE STUDYCLOUD (DYNAMIQUES DEPUIS LA BASE DE DONNÉES) */}
+            {activeTab === 'ai' && (
+              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
+                {dbAiPlans.map(plan => renderCard(plan, 'ai'))}
+              </div>
+            )}
+          </>
         )}
 
         {/* ========================================================================= */}
