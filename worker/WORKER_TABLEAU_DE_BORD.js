@@ -2442,7 +2442,7 @@ function renderDashboardHtml(data) {
             </span>
           </div>
 
-          <div class="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-4 gap-4">
+          <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             
             <!-- 1. WAVE -->
             <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-blue-500 flex flex-col justify-between">
@@ -6978,6 +6978,9 @@ export default {
           'payment_instructions', 'notes'
         ];
 
+        // S'assurer que les tables et colonnes existent
+        await ensureStorageTables(db);
+
         // S'assurer que la ligne 'main' existe
         await safeRun(db, `
           INSERT OR IGNORE INTO company_profile (id) VALUES ('main')
@@ -7026,6 +7029,7 @@ export default {
       // ROUTE GET : /api/company-profile
       // ----------------------------------------------------------------------
       if (path === '/api/company-profile') {
+        await ensureStorageTables(db);
         let profile = await safeFirst(db, `SELECT * FROM company_profile WHERE id = 'main'`);
         if (!profile) {
           profile = {
