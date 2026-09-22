@@ -1477,6 +1477,16 @@ function renderDashboardHtml(data) {
   const r2MetaJson = JSON.stringify(data.r2Meta || R2_FOLDERS_METADATA).replace(/</g, '\\u003c');
   const upgradeRequestsJson = JSON.stringify(data.upgradeRequests || []).replace(/</g, '\\u003c');
   const userSubscriptionsJson = JSON.stringify(data.userSubscriptions || []).replace(/</g, '\\u003c');
+  const companyProfileJson = JSON.stringify(data.companyProfile || {}).replace(/</g, '\\u003c');
+  const cp = data.companyProfile || {};
+  const safeAttr = (val, fallback = '') => {
+    const s = (val !== null && val !== undefined && String(val).trim() !== '') ? String(val) : fallback;
+    return s.replace(/&/g, '&amp;').replace(/"/g, '&quot;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  };
+  const safeHtml = (val, fallback = '') => {
+    const s = (val !== null && val !== undefined && String(val).trim() !== '') ? String(val) : fallback;
+    return s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;');
+  };
 
   return `<!DOCTYPE html>
 <html lang="fr" class="dark">
@@ -2137,6 +2147,8 @@ function renderDashboardHtml(data) {
           </div>
         </div>
       </div>
+    </div>
+
     <!-- ================================================================== -->
     <!-- VUE 8 : INFORMATIONS PROFESSIONNELLES (GESTION PRO, CONTACTS & COMPTES MARCHANDS) -->
     <!-- ================================================================== -->
@@ -2184,7 +2196,7 @@ function renderDashboardHtml(data) {
               <input 
                 type="text" 
                 id="pro-company-name" 
-                value="${(data.companyProfile && data.companyProfile.company_name) || "DKD Technologies"}"
+                value="${safeAttr(cp.company_name, "DKD Technologies")}"
                 placeholder="Ex: DKD Technologies" 
                 class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
               >
@@ -2196,7 +2208,7 @@ function renderDashboardHtml(data) {
               <input 
                 type="text" 
                 id="pro-location" 
-                value="${(data.companyProfile && data.companyProfile.location) || "Abidjan, Côte d'Ivoire"}"
+                value="${safeAttr(cp.location, "Abidjan, Côte d'Ivoire")}"
                 placeholder="Ex: Abidjan, Côte d'Ivoire" 
                 class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
               >
@@ -2208,7 +2220,7 @@ function renderDashboardHtml(data) {
               <input 
                 type="text" 
                 id="pro-activity" 
-                value="${(data.companyProfile && data.companyProfile.activity) || "Technologies & Éducation Numérique"}"
+                value="${safeAttr(cp.activity, "Technologies & Éducation Numérique")}"
                 placeholder="Ex: Technologies, Logiciels & Éducation Numérique" 
                 class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
               >
@@ -2220,7 +2232,7 @@ function renderDashboardHtml(data) {
               <input 
                 type="text" 
                 id="pro-address" 
-                value="${(data.companyProfile && data.companyProfile.address) || "Abidjan, Côte d'Ivoire"}"
+                value="${safeAttr(cp.address, "Abidjan, Côte d'Ivoire")}"
                 placeholder="Ex: Cocody Angré, Abidjan" 
                 class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
               >
@@ -2233,7 +2245,7 @@ function renderDashboardHtml(data) {
                 <input 
                   type="text" 
                   id="pro-website" 
-                  value="${(data.companyProfile && data.companyProfile.website) || "https://studycloud.dkd-technologies.com"}"
+                  value="${safeAttr(cp.website, "https://studycloud.dkd-technologies.com")}"
                   placeholder="https://..." 
                   class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
                 >
@@ -2243,7 +2255,7 @@ function renderDashboardHtml(data) {
                 <input 
                   type="email" 
                   id="pro-email" 
-                  value="${(data.companyProfile && data.companyProfile.email) || "contact@dkd-technologies.com"}"
+                  value="${safeAttr(cp.email, "contact@dkd-technologies.com")}"
                   placeholder="contact@..." 
                   class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
                 >
@@ -2265,7 +2277,7 @@ function renderDashboardHtml(data) {
               <input 
                 type="text" 
                 id="pro-phone-contact" 
-                value="${(data.companyProfile && data.companyProfile.phone_contact) || "+225 0101007978"}"
+                value="${safeAttr(cp.phone_contact, "+225 0101007978")}"
                 placeholder="Ex: +225 0101007978" 
                 class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
               >
@@ -2280,7 +2292,7 @@ function renderDashboardHtml(data) {
               <input 
                 type="text" 
                 id="pro-phone-whatsapp" 
-                value="${(data.companyProfile && data.companyProfile.phone_whatsapp) || "+225 0101007978"}"
+                value="${safeAttr(cp.phone_whatsapp, "+225 0101007978")}"
                 placeholder="Ex: +225 0101007978" 
                 class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-emerald-500"
               >
@@ -2293,7 +2305,7 @@ function renderDashboardHtml(data) {
               <input 
                 type="text" 
                 id="pro-phone-secondary" 
-                value="${(data.companyProfile && data.companyProfile.phone_contact_secondary) || ""}"
+                value="${safeAttr(cp.phone_contact_secondary, "")}"
                 placeholder="Ex: +225 0500000000 (optionnel)" 
                 class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
               >
@@ -2307,7 +2319,7 @@ function renderDashboardHtml(data) {
                 rows="3"
                 placeholder="Décrivez votre service, mission ou entreprise..." 
                 class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
-              >${(data.companyProfile && data.companyProfile.about_text) || "Plateforme d'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels."}</textarea>
+              >${safeHtml(cp.about_text, "Plateforme d'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.")}</textarea>
             </div>
 
           </div>
@@ -2340,7 +2352,7 @@ function renderDashboardHtml(data) {
                 <input 
                   type="text" 
                   id="pro-wave-number" 
-                  value="${(data.companyProfile && data.companyProfile.wave_number) || "+225 07 00 00 00 00"}"
+                  value="${safeAttr(cp.wave_number, "+225 07 00 00 00 00")}"
                   placeholder="+225 07 00 00 00 00" 
                   class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-blue-500 font-bold"
                 >
@@ -2350,7 +2362,7 @@ function renderDashboardHtml(data) {
                 <input 
                   type="text" 
                   id="pro-wave-name" 
-                  value="${(data.companyProfile && data.companyProfile.wave_name) || "StudyCloud CI"}"
+                  value="${safeAttr(cp.wave_name, "StudyCloud CI")}"
                   placeholder="Ex: StudyCloud CI" 
                   class="w-full bg-slate-900 text-slate-300 text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-blue-500"
                 >
@@ -2370,7 +2382,7 @@ function renderDashboardHtml(data) {
                 <input 
                   type="text" 
                   id="pro-orange-number" 
-                  value="${(data.companyProfile && data.companyProfile.orange_number) || "+225 07 00 00 00 00"}"
+                  value="${safeAttr(cp.orange_number, "+225 07 00 00 00 00")}"
                   placeholder="+225 07 00 00 00 00" 
                   class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-orange-500 font-bold"
                 >
@@ -2380,7 +2392,7 @@ function renderDashboardHtml(data) {
                 <input 
                   type="text" 
                   id="pro-orange-name" 
-                  value="${(data.companyProfile && data.companyProfile.orange_name) || "Orange Money Côte d'Ivoire"}"
+                  value="${safeAttr(cp.orange_name, "Orange Money Côte d'Ivoire")}"
                   placeholder="Ex: Orange Money CI" 
                   class="w-full bg-slate-900 text-slate-300 text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-orange-500"
                 >
@@ -2400,7 +2412,7 @@ function renderDashboardHtml(data) {
                 <input 
                   type="text" 
                   id="pro-mtn-number" 
-                  value="${(data.companyProfile && data.companyProfile.mtn_number) || "+225 05 00 00 00 00"}"
+                  value="${safeAttr(cp.mtn_number, "+225 05 00 00 00 00")}"
                   placeholder="+225 05 00 00 00 00" 
                   class="w-full bg-slate-900 text-white font-mono text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-yellow-500 font-bold"
                 >
@@ -2410,7 +2422,7 @@ function renderDashboardHtml(data) {
                 <input 
                   type="text" 
                   id="pro-mtn-name" 
-                  value="${(data.companyProfile && data.companyProfile.mtn_name) || "Paiement Mobile National"}"
+                  value="${safeAttr(cp.mtn_name, "Paiement Mobile National")}"
                   placeholder="Ex: Paiement Mobile National" 
                   class="w-full bg-slate-900 text-slate-300 text-xs rounded-xl px-3 py-2 border border-slate-700 focus:outline-none focus:border-yellow-500"
                 >
@@ -2430,7 +2442,7 @@ function renderDashboardHtml(data) {
               rows="2"
               placeholder="Ex: Transférez le montant exact sur l'un de nos numéros ci-dessous, puis prenez une capture..." 
               class="w-full bg-slate-900 text-white text-xs rounded-xl px-3.5 py-2.5 border border-slate-700 focus:outline-none focus:border-orange-500"
-            >${(data.companyProfile && data.companyProfile.payment_instructions) || "Transférez le montant exact sur l'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction."}</textarea>
+            >${safeHtml(cp.payment_instructions, "Transférez le montant exact sur l'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.")}</textarea>
           </div>
 
         </div>
@@ -2509,6 +2521,7 @@ function renderDashboardHtml(data) {
     let r2FoldersGlobal = ${r2FoldersGlobalJson};
     let tablesMeta = ${tablesMetaJson};
     let r2Meta = ${r2MetaJson};
+    let companyProfileGlobal = ${companyProfileJson};
 
     let selectedUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
     let selectedDistributionUserId = allUsers.length > 0 ? allUsers[0].user.id : null;
@@ -2611,8 +2624,14 @@ function renderDashboardHtml(data) {
         badge.textContent = titles[viewName] || viewName;
       }
 
-      const drawer = document.getElementById('sidebar-drawer');
-      if (drawer && drawer.classList.contains('open')) toggleSidebar(false);
+      // Ferme systématiquement le tiroir mobile et masque le backdrop
+      toggleSidebar(false);
+
+      try {
+        if (window.location.hash !== '#' + viewName) {
+          window.location.hash = viewName;
+        }
+      } catch(e) {}
 
       if (viewName === 'users') {
         renderUsersLeftList();
@@ -5632,19 +5651,42 @@ function renderDashboardHtml(data) {
     }
 
     async function loadCompanyProfileClient() {
+      const setField = (id, val, fallback) => {
+        const el = document.getElementById(id);
+        if (el) {
+          const v = (val !== null && val !== undefined && String(val).trim() !== '') ? val : (fallback || '');
+          el.value = v;
+        }
+      };
+
+      if (typeof companyProfileGlobal === 'object' && companyProfileGlobal) {
+        const p = companyProfileGlobal;
+        setField("pro-company-name", p.company_name, "DKD Technologies");
+        setField("pro-location", p.location, "Abidjan, Côte d'Ivoire");
+        setField("pro-activity", p.activity, "Technologies & Éducation Numérique");
+        setField("pro-address", p.address, "Abidjan, Côte d'Ivoire");
+        setField('pro-website', p.website, 'https://studycloud.dkd-technologies.com');
+        setField('pro-email', p.email, 'contact@dkd-technologies.com');
+        setField('pro-phone-contact', p.phone_contact, '+225 0101007978');
+        setField('pro-phone-whatsapp', p.phone_whatsapp, '+225 0101007978');
+        setField('pro-phone-secondary', p.phone_contact_secondary, '');
+        setField("pro-about-text", p.about_text, "Plateforme d'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.");
+        setField('pro-wave-number', p.wave_number, '+225 07 00 00 00 00');
+        setField('pro-wave-name', p.wave_name, 'StudyCloud CI');
+        setField('pro-orange-number', p.orange_number, '+225 07 00 00 00 00');
+        setField("pro-orange-name", p.orange_name, "Orange Money Côte d'Ivoire");
+        setField('pro-mtn-number', p.mtn_number, '+225 05 00 00 00 00');
+        setField('pro-mtn-name', p.mtn_name, 'Paiement Mobile National');
+        setField("pro-payment-instructions", p.payment_instructions, "Transférez le montant exact sur l'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.");
+      }
+
       try {
         const resp = await fetch('/api/company-profile');
         if (!resp.ok) return;
         const res = await resp.json();
         if (res && res.profile) {
           const p = res.profile;
-          const setField = (id, val, fallback) => {
-            const el = document.getElementById(id);
-            if (el) {
-              const v = (val !== null && val !== undefined && String(val).trim() !== '') ? val : (fallback || '');
-              el.value = v;
-            }
-          };
+          companyProfileGlobal = p;
           setField("pro-company-name", p.company_name, "DKD Technologies");
           setField("pro-location", p.location, "Abidjan, Côte d'Ivoire");
           setField("pro-activity", p.activity, "Technologies & Éducation Numérique");
@@ -5752,6 +5794,19 @@ function renderDashboardHtml(data) {
     renderGlobalD1Tables();
     renderGlobalR2Folders();
     loadCompanyProfileClient();
+
+    // Prise en charge du lien direct ou du rechargement de page via le hash URL (#profil-pro, etc.)
+    const initialHash = (window.location.hash || '').replace('#', '').trim();
+    if (initialHash && ['global', 'users', 'demandes', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro'].includes(initialHash)) {
+      switchView(initialHash);
+    }
+
+    window.addEventListener('hashchange', () => {
+      const hv = (window.location.hash || '').replace('#', '').trim();
+      if (hv && ['global', 'users', 'demandes', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro'].includes(hv) && hv !== currentView) {
+        switchView(hv);
+      }
+    });
 
     const burgerBtn = document.getElementById('btn-hamburger');
     if (burgerBtn) {
