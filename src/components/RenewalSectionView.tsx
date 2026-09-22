@@ -606,12 +606,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
   useEffect(() => {
     fetchData(false);
 
-    // Écoute silencieuse en arrière-plan toutes les 5 secondes : AUCUN clignotement ni texte agité
-    const intervalId = setInterval(() => {
-      fetchData(true);
-    }, 5000);
-
-    // Actualisation silencieuse quand l'utilisateur revient sur l'onglet
+    // Actualisation silencieuse uniquement quand l'utilisateur revient sur l'onglet (zéro appel en boucle, protège le quota du worker)
     const handleSyncOnVisible = () => {
       if (document.visibilityState === 'visible') {
         fetchData(true);
@@ -622,7 +617,6 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
     document.addEventListener('visibilitychange', handleSyncOnVisible);
 
     return () => {
-      clearInterval(intervalId);
       window.removeEventListener('focus', handleSyncOnVisible);
       document.removeEventListener('visibilitychange', handleSyncOnVisible);
     };
