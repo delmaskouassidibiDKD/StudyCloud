@@ -1987,12 +1987,28 @@ export interface CompanyProfile {
   about_text?: string;
   wave_number: string;
   wave_name: string;
+  wave_enabled?: number;
+  wave_show_number?: number;
+  wave_show_image?: number;
+  wave_image_url?: string;
   orange_number: string;
   orange_name: string;
+  orange_enabled?: number;
+  orange_show_number?: number;
+  orange_show_image?: number;
+  orange_image_url?: string;
   mtn_number: string;
   mtn_name: string;
+  mtn_enabled?: number;
+  mtn_show_number?: number;
+  mtn_show_image?: number;
+  mtn_image_url?: string;
   moov_number?: string;
   moov_name?: string;
+  moov_enabled?: number;
+  moov_show_number?: number;
+  moov_show_image?: number;
+  moov_image_url?: string;
   payment_instructions?: string;
 }
 
@@ -2007,12 +2023,28 @@ const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
   website: 'https://studycloud.dkd-technologies.com',
   wave_number: '+225 07 00 00 00 00',
   wave_name: 'StudyCloud CI',
+  wave_enabled: 1,
+  wave_show_number: 1,
+  wave_show_image: 1,
+  wave_image_url: '',
   orange_number: '+225 07 00 00 00 00',
   orange_name: 'Orange Money Côte d\'Ivoire',
+  orange_enabled: 1,
+  orange_show_number: 1,
+  orange_show_image: 1,
+  orange_image_url: '',
   mtn_number: '+225 05 00 00 00 00',
   mtn_name: 'MTN Mobile Money CI',
+  mtn_enabled: 1,
+  mtn_show_number: 1,
+  mtn_show_image: 1,
+  mtn_image_url: '',
   moov_number: '+225 01 00 00 00 00',
   moov_name: 'Moov Money Côte d\'Ivoire',
+  moov_enabled: 1,
+  moov_show_number: 1,
+  moov_show_image: 1,
+  moov_image_url: '',
   payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.'
 };
 

@@ -77,6 +77,7 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
 
   // Outil de copie des numéros de paiement
   const [copiedKey, setCopiedKey] = useState<string | null>(null);
+  const [zoomedPaymentImage, setZoomedPaymentImage] = useState<{ url: string; title: string } | null>(null);
 
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -672,135 +673,155 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
                   Transférez le montant exact de <strong className="text-[#2D4A3E] dark:text-white font-mono">{priceDisplay}</strong> sur l'un de nos numéros officiels ci-dessous :
                 </p>
 
-                {/* Comptes Marchands avec boutons copier */}
-                <div className="space-y-2 pt-1">
-                  {/* WAVE */}
-                  <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
-                    <div>
-                      <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-700 dark:text-blue-400 mr-2">
-                        Wave
-                      </span>
-                      <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
-                        {companyProfile?.wave_number || '+225 0101007978'}
-                      </span>
-                      <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
-                        Titulaire : {companyProfile?.wave_name || 'StudyCloud CI'}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyNumber(companyProfile?.wave_number || '+2250101007978', 'wave')}
-                      className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
-                    >
-                      {copiedKey === 'wave' ? (
-                        <>
-                          <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
-                          <span className="text-[11px] text-emerald-600">Copié</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span className="text-[11px]">Copier</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+                {/* Comptes Marchands avec boutons copier et cartes QR */}
+                <div className="space-y-3 pt-1">
+                  {(() => {
+                    const networks = [
+                      {
+                        id: 'wave',
+                        name: 'Wave',
+                        badgeColor: 'bg-blue-500/20 text-blue-700 dark:text-blue-400',
+                        borderAccent: 'border-l-4 border-l-blue-500',
+                        enabled: companyProfile?.wave_enabled !== 0,
+                        showNumber: companyProfile?.wave_show_number !== 0,
+                        showImage: companyProfile?.wave_show_image !== 0,
+                        number: companyProfile?.wave_number || '+225 0101007978',
+                        titulaire: companyProfile?.wave_name || 'StudyCloud CI',
+                        imageUrl: companyProfile?.wave_image_url || ''
+                      },
+                      {
+                        id: 'orange',
+                        name: 'Orange',
+                        badgeColor: 'bg-orange-500/20 text-orange-700 dark:text-orange-400',
+                        borderAccent: 'border-l-4 border-l-orange-500',
+                        enabled: companyProfile?.orange_enabled !== 0,
+                        showNumber: companyProfile?.orange_show_number !== 0,
+                        showImage: companyProfile?.orange_show_image !== 0,
+                        number: companyProfile?.orange_number || '+225 07 00 00 00 00',
+                        titulaire: companyProfile?.orange_name || "Orange Money Côte d'Ivoire",
+                        imageUrl: companyProfile?.orange_image_url || ''
+                      },
+                      {
+                        id: 'mtn',
+                        name: 'MTN',
+                        badgeColor: 'bg-yellow-500/20 text-yellow-800 dark:text-yellow-400',
+                        borderAccent: 'border-l-4 border-l-yellow-500',
+                        enabled: companyProfile?.mtn_enabled !== 0,
+                        showNumber: companyProfile?.mtn_show_number !== 0,
+                        showImage: companyProfile?.mtn_show_image !== 0,
+                        number: companyProfile?.mtn_number || '+225 05 00 00 00 00',
+                        titulaire: companyProfile?.mtn_name || 'MTN Mobile Money CI',
+                        imageUrl: companyProfile?.mtn_image_url || ''
+                      },
+                      {
+                        id: 'moov',
+                        name: 'Moov',
+                        badgeColor: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400',
+                        borderAccent: 'border-l-4 border-l-emerald-500',
+                        enabled: companyProfile?.moov_enabled !== 0,
+                        showNumber: companyProfile?.moov_show_number !== 0,
+                        showImage: companyProfile?.moov_show_image !== 0,
+                        number: companyProfile?.moov_number || '+225 01 00 00 00 00',
+                        titulaire: companyProfile?.moov_name || "Moov Money Côte d'Ivoire",
+                        imageUrl: companyProfile?.moov_image_url || ''
+                      }
+                    ];
 
-                  {/* ORANGE */}
-                  <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
-                    <div>
-                      <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-700 dark:text-orange-400 mr-2">
-                        Orange
-                      </span>
-                      <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
-                        {companyProfile?.orange_number || '+225 07 00 00 00 00'}
-                      </span>
-                      <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
-                        Titulaire : {companyProfile?.orange_name || "Orange Money Côte d'Ivoire"}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyNumber(companyProfile?.orange_number || '+2250700000000', 'orange')}
-                      className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
-                    >
-                      {copiedKey === 'orange' ? (
-                        <>
-                          <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
-                          <span className="text-[11px] text-emerald-600">Copié</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span className="text-[11px]">Copier</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+                    const active = networks.filter(net => net.enabled && (net.showNumber || (net.showImage && net.imageUrl)));
 
-                  {/* MTN MONEY */}
-                  <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
-                    <div>
-                      <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-800 dark:text-yellow-400 mr-2">
-                        MTN
-                      </span>
-                      <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
-                        {companyProfile?.mtn_number || '+225 05 00 00 00 00'}
-                      </span>
-                      <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
-                        Titulaire : {companyProfile?.mtn_name || 'MTN Mobile Money CI'}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyNumber(companyProfile?.mtn_number || '+2250500000000', 'mtn')}
-                      className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
-                    >
-                      {copiedKey === 'mtn' ? (
-                        <>
-                          <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
-                          <span className="text-[11px] text-emerald-600">Copié</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span className="text-[11px]">Copier</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+                    if (active.length === 0) {
+                      return (
+                        <div className="p-3 text-center text-xs text-amber-600 dark:text-amber-400 bg-amber-500/10 rounded-xl border border-amber-500/20">
+                          Aucun réseau de paiement mobile actif pour le moment.
+                        </div>
+                      );
+                    }
 
-                  {/* MOOV MONEY */}
-                  <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
-                    <div>
-                      <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 mr-2">
-                        Moov
-                      </span>
-                      <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
-                        {companyProfile?.moov_number || '+225 01 00 00 00 00'}
-                      </span>
-                      <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
-                        Titulaire : {companyProfile?.moov_name || 'Moov Money Côte d\'Ivoire'}
-                      </span>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => handleCopyNumber(companyProfile?.moov_number || '+2250100000000', 'moov')}
-                      className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
-                    >
-                      {copiedKey === 'moov' ? (
-                        <>
-                          <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
-                          <span className="text-[11px] text-emerald-600">Copié</span>
-                        </>
-                      ) : (
-                        <>
-                          <Copy className="w-3.5 h-3.5" />
-                          <span className="text-[11px]">Copier</span>
-                        </>
-                      )}
-                    </button>
-                  </div>
+                    return active.map(net => (
+                      <div 
+                        key={net.id} 
+                        className={`bg-[#F5F0E8] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#D4C9B5] dark:border-slate-800 ${net.borderAccent} space-y-2.5 transition-all shadow-sm`}
+                      >
+                        {/* Numéro et Titulaire si showNumber activé */}
+                        {net.showNumber && (
+                          <div className="flex items-center justify-between gap-2">
+                            <div>
+                              <span className={`text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded ${net.badgeColor} mr-2`}>
+                                {net.name}
+                              </span>
+                              <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
+                                {net.number}
+                              </span>
+                              <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
+                                Titulaire : {net.titulaire}
+                              </span>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleCopyNumber(net.number, net.id)}
+                              className="px-2.5 py-1 bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-slate-800 text-xs font-bold rounded-lg transition flex items-center gap-1 cursor-pointer shrink-0"
+                            >
+                              {copiedKey === net.id ? (
+                                <>
+                                  <CheckCheck className="w-3.5 h-3.5 text-emerald-600" />
+                                  <span className="text-[11px] text-emerald-600">Copié</span>
+                                </>
+                              ) : (
+                                <>
+                                  <Copy className="w-3.5 h-3.5" />
+                                  <span className="text-[11px]">Copier</span>
+                                </>
+                              )}
+                            </button>
+                          </div>
+                        )}
+
+                        {/* Si le numéro est masqué mais l'image est active, afficher l'en-tête du réseau */}
+                        {!net.showNumber && (
+                          <div className="flex items-center justify-between">
+                            <span className={`text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded ${net.badgeColor}`}>
+                              {net.name}
+                            </span>
+                            <span className="text-[10px] text-[#5C6B5A] dark:text-slate-400 font-medium">
+                              Titulaire : {net.titulaire}
+                            </span>
+                          </div>
+                        )}
+
+                        {/* Carte commerçant / QR Code si showImage et imageUrl */}
+                        {net.showImage && net.imageUrl && (
+                          <div className="pt-2 border-t border-[#D4C9B5]/60 dark:border-slate-800/80">
+                            <div className="flex items-center justify-between mb-1.5">
+                              <span className="text-[10px] font-bold text-[#2D4A3E] dark:text-slate-300 flex items-center gap-1">
+                                <span>📱</span>
+                                <span>Carte Commerçant / QR {net.name} (Scannez pour payer) :</span>
+                              </span>
+                              <button
+                                type="button"
+                                onClick={() => setZoomedPaymentImage({ url: net.imageUrl, title: `Carte Commerçant ${net.name} • ${net.titulaire}` })}
+                                className="text-[10px] text-blue-600 dark:text-blue-400 hover:underline flex items-center gap-1 font-semibold cursor-pointer"
+                              >
+                                <span>🔍 Agrandir</span>
+                              </button>
+                            </div>
+                            <div 
+                              onClick={() => setZoomedPaymentImage({ url: net.imageUrl, title: `Carte Commerçant ${net.name} • ${net.titulaire}` })}
+                              className="relative group cursor-pointer bg-white dark:bg-slate-950 p-2 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex flex-col items-center justify-center overflow-hidden hover:border-blue-500/50 transition shadow-inner"
+                            >
+                              <img 
+                                src={net.imageUrl} 
+                                alt={`Carte Commerçant ${net.name}`} 
+                                className="max-h-36 w-auto object-contain rounded-lg transition-transform group-hover:scale-[1.02]"
+                              />
+                              <span className="mt-1 text-[9px] text-[#5C6B5A] dark:text-slate-500 group-hover:text-blue-500 dark:group-hover:text-blue-400 font-medium">
+                                Cliquez pour afficher en grand et scanner
+                              </span>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    ));
+                  })()}
                 </div>
 
                 {/* Consigne de paiement */}
@@ -865,6 +886,44 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
 
           </div>
         )}
+
+        {/* Modale de zoom plein écran de la carte commerçant / QR */}
+        {zoomedPaymentImage && (
+          <div 
+            className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-150"
+            onClick={() => setZoomedPaymentImage(null)}
+          >
+            <div 
+              className="relative max-w-lg w-full bg-white dark:bg-slate-900 border border-slate-300 dark:border-slate-700 rounded-2xl overflow-hidden shadow-2xl p-4 flex flex-col items-center gap-3"
+              onClick={e => e.stopPropagation()}
+            >
+              <div className="w-full flex items-center justify-between pb-2 border-b border-slate-200 dark:border-slate-800">
+                <span className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5 truncate">
+                  <span>💳</span>
+                  <span className="truncate">{zoomedPaymentImage.title}</span>
+                </span>
+                <button 
+                  type="button" 
+                  onClick={() => setZoomedPaymentImage(null)}
+                  className="w-7 h-7 rounded-lg bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-600 dark:text-slate-300 font-bold flex items-center justify-center text-xs cursor-pointer"
+                >
+                  ✕
+                </button>
+              </div>
+              <div className="w-full flex items-center justify-center bg-slate-50 dark:bg-slate-950 p-2 rounded-xl">
+                <img 
+                  src={zoomedPaymentImage.url} 
+                  alt="Carte QR agrandie" 
+                  className="max-h-[65vh] max-w-full object-contain rounded-lg shadow-md"
+                />
+              </div>
+              <p className="text-[11px] text-center text-slate-500 dark:text-slate-400">
+                Scannez directement avec votre application mobile de paiement pour renouveler instantanément.
+              </p>
+            </div>
+          </div>
+        )}
+
       </div>
     </div>
   );

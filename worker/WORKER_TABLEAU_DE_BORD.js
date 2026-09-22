@@ -237,12 +237,28 @@ async function ensureStorageTables(db) {
         website TEXT DEFAULT 'https://studycloud.dkd-technologies.com',
         wave_number TEXT DEFAULT '+225 07 00 00 00 00',
         wave_name TEXT DEFAULT 'StudyCloud CI',
+        wave_enabled INTEGER DEFAULT 1,
+        wave_show_number INTEGER DEFAULT 1,
+        wave_show_image INTEGER DEFAULT 1,
+        wave_image_url TEXT DEFAULT '',
         orange_number TEXT DEFAULT '+225 07 00 00 00 00',
         orange_name TEXT DEFAULT 'Orange Money Côte d''Ivoire',
+        orange_enabled INTEGER DEFAULT 1,
+        orange_show_number INTEGER DEFAULT 1,
+        orange_show_image INTEGER DEFAULT 1,
+        orange_image_url TEXT DEFAULT '',
         mtn_number TEXT DEFAULT '+225 05 00 00 00 00',
         mtn_name TEXT DEFAULT 'MTN Mobile Money CI',
+        mtn_enabled INTEGER DEFAULT 1,
+        mtn_show_number INTEGER DEFAULT 1,
+        mtn_show_image INTEGER DEFAULT 1,
+        mtn_image_url TEXT DEFAULT '',
         moov_number TEXT DEFAULT '+225 01 00 00 00 00',
         moov_name TEXT DEFAULT 'Moov Money Côte d''Ivoire',
+        moov_enabled INTEGER DEFAULT 1,
+        moov_show_number INTEGER DEFAULT 1,
+        moov_show_image INTEGER DEFAULT 1,
+        moov_image_url TEXT DEFAULT '',
         payment_instructions TEXT DEFAULT 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.',
         about_text TEXT DEFAULT 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
         notes TEXT DEFAULT '',
@@ -267,12 +283,28 @@ async function ensureStorageTables(db) {
       "ALTER TABLE company_profile ADD COLUMN website TEXT DEFAULT 'https://studycloud.dkd-technologies.com'",
       "ALTER TABLE company_profile ADD COLUMN wave_number TEXT DEFAULT '+225 07 00 00 00 00'",
       "ALTER TABLE company_profile ADD COLUMN wave_name TEXT DEFAULT 'StudyCloud CI'",
+      "ALTER TABLE company_profile ADD COLUMN wave_enabled INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN wave_show_number INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN wave_show_image INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN wave_image_url TEXT DEFAULT ''",
       "ALTER TABLE company_profile ADD COLUMN orange_number TEXT DEFAULT '+225 07 00 00 00 00'",
       "ALTER TABLE company_profile ADD COLUMN orange_name TEXT DEFAULT 'Orange Money Côte d''Ivoire'",
+      "ALTER TABLE company_profile ADD COLUMN orange_enabled INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN orange_show_number INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN orange_show_image INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN orange_image_url TEXT DEFAULT ''",
       "ALTER TABLE company_profile ADD COLUMN mtn_number TEXT DEFAULT '+225 05 00 00 00 00'",
       "ALTER TABLE company_profile ADD COLUMN mtn_name TEXT DEFAULT 'MTN Mobile Money CI'",
+      "ALTER TABLE company_profile ADD COLUMN mtn_enabled INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN mtn_show_number INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN mtn_show_image INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN mtn_image_url TEXT DEFAULT ''",
       "ALTER TABLE company_profile ADD COLUMN moov_number TEXT DEFAULT '+225 01 00 00 00 00'",
       "ALTER TABLE company_profile ADD COLUMN moov_name TEXT DEFAULT 'Moov Money Côte d''Ivoire'",
+      "ALTER TABLE company_profile ADD COLUMN moov_enabled INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN moov_show_number INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN moov_show_image INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN moov_image_url TEXT DEFAULT ''",
       "ALTER TABLE company_profile ADD COLUMN payment_instructions TEXT DEFAULT ''",
       "ALTER TABLE company_profile ADD COLUMN about_text TEXT DEFAULT ''",
       "ALTER TABLE company_profile ADD COLUMN notes TEXT DEFAULT ''",
@@ -2463,14 +2495,71 @@ function renderDashboardHtml(data) {
           <div class="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
             
             <!-- 1. WAVE -->
-            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-blue-500 flex flex-col justify-between">
+            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3 border-t-4 border-t-blue-500 flex flex-col justify-between">
               <div>
-                <div class="flex items-center justify-between mb-2">
+                <!-- En-tête Réseau + Switch Activation Réseau -->
+                <div class="flex items-center justify-between pb-2 border-b border-slate-800/80">
                   <span class="text-xs font-black uppercase text-blue-400 flex items-center gap-1.5">
                     <span class="w-2 h-2 rounded-full bg-blue-500"></span> Wave
                   </span>
-                  <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-blue-500/20 text-blue-300 font-mono">Mobile Money</span>
+                  <div class="flex items-center gap-1.5">
+                    <label class="relative inline-flex items-center cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        id="pro-wave-enabled" 
+                        ${cp.wave_enabled !== 0 ? 'checked' : ''} 
+                        onchange="togglePaymentSetting('wave_enabled', this.checked, 'pro-wave-enabled')" 
+                        class="sr-only peer"
+                      >
+                      <div class="w-8 h-4 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3.5 after:transition-all peer-checked:bg-blue-600"></div>
+                      <span class="ml-1.5 text-[10px] font-bold ${cp.wave_enabled !== 0 ? 'text-blue-400' : 'text-slate-500'}" id="status-label-pro-wave-enabled">
+                        ${cp.wave_enabled !== 0 ? 'Actif' : 'Inactif'}
+                      </span>
+                    </label>
+                    <div id="spinner-pro-wave-enabled" class="text-xs"></div>
+                  </div>
                 </div>
+
+                <!-- Options d'affichage : Numéro et/ou Image -->
+                <div class="bg-slate-900/90 rounded-xl p-2 border border-slate-800 my-2 space-y-1">
+                  <span class="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
+                    Affichage aux étudiants :
+                  </span>
+                  <div class="flex flex-col gap-1">
+                    <label class="flex items-center justify-between cursor-pointer hover:bg-slate-800/40 p-1 rounded-lg transition">
+                      <span class="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
+                        <span>📞</span> Afficher le numéro
+                      </span>
+                      <div class="flex items-center gap-1">
+                        <input 
+                          type="checkbox" 
+                          id="pro-wave-show-number" 
+                          ${cp.wave_show_number !== 0 ? 'checked' : ''} 
+                          onchange="togglePaymentSetting('wave_show_number', this.checked, 'pro-wave-show-number')" 
+                          class="rounded border-slate-700 text-blue-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                        >
+                        <div id="spinner-pro-wave-show-number" class="text-[10px]"></div>
+                      </div>
+                    </label>
+                    <label class="flex items-center justify-between cursor-pointer hover:bg-slate-800/40 p-1 rounded-lg transition">
+                      <span class="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
+                        <span>🖼️</span> Afficher la carte / QR
+                      </span>
+                      <div class="flex items-center gap-1">
+                        <input 
+                          type="checkbox" 
+                          id="pro-wave-show-image" 
+                          ${cp.wave_show_image !== 0 ? 'checked' : ''} 
+                          onchange="togglePaymentSetting('wave_show_image', this.checked, 'pro-wave-show-image')" 
+                          class="rounded border-slate-700 text-blue-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                        >
+                        <div id="spinner-pro-wave-show-image" class="text-[10px]"></div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Champs Numéro & Titulaire -->
                 <div class="space-y-1">
                   <label class="text-[10px] text-slate-400 block font-bold">Numéro Wave :</label>
                   <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-wave-number', 'Numéro Wave de réception', 'wave_number', 'text')">
@@ -2487,6 +2576,7 @@ function renderDashboardHtml(data) {
                     </div>
                   </div>
                 </div>
+
                 <div class="space-y-1 mt-2">
                   <label class="text-[10px] text-slate-400 block font-bold">Titulaire affiché :</label>
                   <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-wave-name', 'Nom du Titulaire Wave', 'wave_name', 'text')">
@@ -2503,18 +2593,111 @@ function renderDashboardHtml(data) {
                     </div>
                   </div>
                 </div>
+
+                <!-- ZONE IMAGE CARTE COMMERÇANT / QR CODE (R2) -->
+                <div class="mt-2.5 pt-2 border-t border-slate-800 space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] font-bold text-slate-300 flex items-center gap-1">
+                      <span>🏷️</span>
+                      <span>Carte Commerçant / QR :</span>
+                    </label>
+                    <div id="spinner-pro-wave-image" class="text-[10px]"></div>
+                  </div>
+
+                  <input type="file" id="file-pro-wave" accept="image/*" class="hidden" onchange="uploadPaymentImage('wave', event)">
+
+                  <div id="container-img-wave">
+                    ${cp.wave_image_url ? `
+                      <div class="relative group rounded-xl overflow-hidden border border-slate-700 bg-slate-900">
+                        <img src="${safeAttr(cp.wave_image_url)}" alt="Carte Wave" class="w-full h-24 object-contain bg-slate-950 p-1 cursor-pointer" onclick="openImageZoomModal('${safeAttr(cp.wave_image_url)}', 'Carte Commerçant / QR Wave')" />
+                        <div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <button type="button" onclick="document.getElementById('file-pro-wave').click()" class="px-2 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded text-[10px] font-bold shadow cursor-pointer">
+                            Changer
+                          </button>
+                          <button type="button" onclick="deletePaymentImage('wave')" class="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold shadow cursor-pointer">
+                            Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    ` : `
+                      <button type="button" onclick="document.getElementById('file-pro-wave').click()" class="w-full py-2.5 px-2 border-2 border-dashed border-slate-700 hover:border-blue-500/60 rounded-xl bg-slate-900/60 hover:bg-slate-900 text-slate-400 hover:text-blue-300 flex flex-col items-center justify-center gap-1 transition cursor-pointer text-center">
+                        <span class="text-base">📸</span>
+                        <span class="text-[10px] font-bold">+ Ajouter Carte / QR</span>
+                        <span class="text-[8px] text-slate-500">PNG, JPG, WEBP (R2)</span>
+                      </button>
+                    `}
+                  </div>
+                </div>
+
               </div>
             </div>
 
             <!-- 2. ORANGE MONEY -->
-            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-orange-500 flex flex-col justify-between">
+            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3 border-t-4 border-t-orange-500 flex flex-col justify-between">
               <div>
-                <div class="flex items-center justify-between mb-2">
+                <!-- En-tête Réseau + Switch Activation Réseau -->
+                <div class="flex items-center justify-between pb-2 border-b border-slate-800/80">
                   <span class="text-xs font-black uppercase text-orange-400 flex items-center gap-1.5">
                     <span class="w-2 h-2 rounded-full bg-orange-500"></span> Orange Money
                   </span>
-                  <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-mono">Mobile Money</span>
+                  <div class="flex items-center gap-1.5">
+                    <label class="relative inline-flex items-center cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        id="pro-orange-enabled" 
+                        ${cp.orange_enabled !== 0 ? 'checked' : ''} 
+                        onchange="togglePaymentSetting('orange_enabled', this.checked, 'pro-orange-enabled')" 
+                        class="sr-only peer"
+                      >
+                      <div class="w-8 h-4 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3.5 after:transition-all peer-checked:bg-orange-600"></div>
+                      <span class="ml-1.5 text-[10px] font-bold ${cp.orange_enabled !== 0 ? 'text-orange-400' : 'text-slate-500'}" id="status-label-pro-orange-enabled">
+                        ${cp.orange_enabled !== 0 ? 'Actif' : 'Inactif'}
+                      </span>
+                    </label>
+                    <div id="spinner-pro-orange-enabled" class="text-xs"></div>
+                  </div>
                 </div>
+
+                <!-- Options d'affichage : Numéro et/ou Image -->
+                <div class="bg-slate-900/90 rounded-xl p-2 border border-slate-800 my-2 space-y-1">
+                  <span class="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
+                    Affichage aux étudiants :
+                  </span>
+                  <div class="flex flex-col gap-1">
+                    <label class="flex items-center justify-between cursor-pointer hover:bg-slate-800/40 p-1 rounded-lg transition">
+                      <span class="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
+                        <span>📞</span> Afficher le numéro
+                      </span>
+                      <div class="flex items-center gap-1">
+                        <input 
+                          type="checkbox" 
+                          id="pro-orange-show-number" 
+                          ${cp.orange_show_number !== 0 ? 'checked' : ''} 
+                          onchange="togglePaymentSetting('orange_show_number', this.checked, 'pro-orange-show-number')" 
+                          class="rounded border-slate-700 text-orange-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                        >
+                        <div id="spinner-pro-orange-show-number" class="text-[10px]"></div>
+                      </div>
+                    </label>
+                    <label class="flex items-center justify-between cursor-pointer hover:bg-slate-800/40 p-1 rounded-lg transition">
+                      <span class="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
+                        <span>🖼️</span> Afficher la carte / QR
+                      </span>
+                      <div class="flex items-center gap-1">
+                        <input 
+                          type="checkbox" 
+                          id="pro-orange-show-image" 
+                          ${cp.orange_show_image !== 0 ? 'checked' : ''} 
+                          onchange="togglePaymentSetting('orange_show_image', this.checked, 'pro-orange-show-image')" 
+                          class="rounded border-slate-700 text-orange-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                        >
+                        <div id="spinner-pro-orange-show-image" class="text-[10px]"></div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Champs Numéro & Titulaire -->
                 <div class="space-y-1">
                   <label class="text-[10px] text-slate-400 block font-bold">Numéro Orange :</label>
                   <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-orange-number', 'Numéro Orange de réception', 'orange_number', 'text')">
@@ -2531,6 +2714,7 @@ function renderDashboardHtml(data) {
                     </div>
                   </div>
                 </div>
+
                 <div class="space-y-1 mt-2">
                   <label class="text-[10px] text-slate-400 block font-bold">Titulaire affiché :</label>
                   <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-orange-name', 'Nom du Titulaire Orange', 'orange_name', 'text')">
@@ -2547,18 +2731,111 @@ function renderDashboardHtml(data) {
                     </div>
                   </div>
                 </div>
+
+                <!-- ZONE IMAGE CARTE COMMERÇANT / QR CODE (R2) -->
+                <div class="mt-2.5 pt-2 border-t border-slate-800 space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] font-bold text-slate-300 flex items-center gap-1">
+                      <span>🏷️</span>
+                      <span>Carte Commerçant / QR :</span>
+                    </label>
+                    <div id="spinner-pro-orange-image" class="text-[10px]"></div>
+                  </div>
+
+                  <input type="file" id="file-pro-orange" accept="image/*" class="hidden" onchange="uploadPaymentImage('orange', event)">
+
+                  <div id="container-img-orange">
+                    ${cp.orange_image_url ? `
+                      <div class="relative group rounded-xl overflow-hidden border border-slate-700 bg-slate-900">
+                        <img src="${safeAttr(cp.orange_image_url)}" alt="Carte Orange" class="w-full h-24 object-contain bg-slate-950 p-1 cursor-pointer" onclick="openImageZoomModal('${safeAttr(cp.orange_image_url)}', 'Carte Commerçant / QR Orange Money')" />
+                        <div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <button type="button" onclick="document.getElementById('file-pro-orange').click()" class="px-2 py-1 bg-orange-600 hover:bg-orange-500 text-white rounded text-[10px] font-bold shadow cursor-pointer">
+                            Changer
+                          </button>
+                          <button type="button" onclick="deletePaymentImage('orange')" class="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold shadow cursor-pointer">
+                            Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    ` : `
+                      <button type="button" onclick="document.getElementById('file-pro-orange').click()" class="w-full py-2.5 px-2 border-2 border-dashed border-slate-700 hover:border-orange-500/60 rounded-xl bg-slate-900/60 hover:bg-slate-900 text-slate-400 hover:text-orange-300 flex flex-col items-center justify-center gap-1 transition cursor-pointer text-center">
+                        <span class="text-base">📸</span>
+                        <span class="text-[10px] font-bold">+ Ajouter Carte / QR</span>
+                        <span class="text-[8px] text-slate-500">PNG, JPG, WEBP (R2)</span>
+                      </button>
+                    `}
+                  </div>
+                </div>
+
               </div>
             </div>
 
             <!-- 3. MTN MONEY -->
-            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-yellow-500 flex flex-col justify-between">
+            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3 border-t-4 border-t-yellow-500 flex flex-col justify-between">
               <div>
-                <div class="flex items-center justify-between mb-2">
+                <!-- En-tête Réseau + Switch Activation Réseau -->
+                <div class="flex items-center justify-between pb-2 border-b border-slate-800/80">
                   <span class="text-xs font-black uppercase text-yellow-400 flex items-center gap-1.5">
                     <span class="w-2 h-2 rounded-full bg-yellow-500"></span> MTN Money
                   </span>
-                  <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-300 font-mono">Mobile Money</span>
+                  <div class="flex items-center gap-1.5">
+                    <label class="relative inline-flex items-center cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        id="pro-mtn-enabled" 
+                        ${cp.mtn_enabled !== 0 ? 'checked' : ''} 
+                        onchange="togglePaymentSetting('mtn_enabled', this.checked, 'pro-mtn-enabled')" 
+                        class="sr-only peer"
+                      >
+                      <div class="w-8 h-4 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3.5 after:transition-all peer-checked:bg-yellow-600"></div>
+                      <span class="ml-1.5 text-[10px] font-bold ${cp.mtn_enabled !== 0 ? 'text-yellow-400' : 'text-slate-500'}" id="status-label-pro-mtn-enabled">
+                        ${cp.mtn_enabled !== 0 ? 'Actif' : 'Inactif'}
+                      </span>
+                    </label>
+                    <div id="spinner-pro-mtn-enabled" class="text-xs"></div>
+                  </div>
                 </div>
+
+                <!-- Options d'affichage : Numéro et/ou Image -->
+                <div class="bg-slate-900/90 rounded-xl p-2 border border-slate-800 my-2 space-y-1">
+                  <span class="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
+                    Affichage aux étudiants :
+                  </span>
+                  <div class="flex flex-col gap-1">
+                    <label class="flex items-center justify-between cursor-pointer hover:bg-slate-800/40 p-1 rounded-lg transition">
+                      <span class="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
+                        <span>📞</span> Afficher le numéro
+                      </span>
+                      <div class="flex items-center gap-1">
+                        <input 
+                          type="checkbox" 
+                          id="pro-mtn-show-number" 
+                          ${cp.mtn_show_number !== 0 ? 'checked' : ''} 
+                          onchange="togglePaymentSetting('mtn_show_number', this.checked, 'pro-mtn-show-number')" 
+                          class="rounded border-slate-700 text-yellow-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                        >
+                        <div id="spinner-pro-mtn-show-number" class="text-[10px]"></div>
+                      </div>
+                    </label>
+                    <label class="flex items-center justify-between cursor-pointer hover:bg-slate-800/40 p-1 rounded-lg transition">
+                      <span class="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
+                        <span>🖼️</span> Afficher la carte / QR
+                      </span>
+                      <div class="flex items-center gap-1">
+                        <input 
+                          type="checkbox" 
+                          id="pro-mtn-show-image" 
+                          ${cp.mtn_show_image !== 0 ? 'checked' : ''} 
+                          onchange="togglePaymentSetting('mtn_show_image', this.checked, 'pro-mtn-show-image')" 
+                          class="rounded border-slate-700 text-yellow-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                        >
+                        <div id="spinner-pro-mtn-show-image" class="text-[10px]"></div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Champs Numéro & Titulaire -->
                 <div class="space-y-1">
                   <label class="text-[10px] text-slate-400 block font-bold">Numéro MTN :</label>
                   <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-mtn-number', 'Numéro MTN de réception', 'mtn_number', 'text')">
@@ -2575,6 +2852,7 @@ function renderDashboardHtml(data) {
                     </div>
                   </div>
                 </div>
+
                 <div class="space-y-1 mt-2">
                   <label class="text-[10px] text-slate-400 block font-bold">Titulaire affiché :</label>
                   <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-mtn-name', 'Nom du Titulaire MTN Money', 'mtn_name', 'text')">
@@ -2591,18 +2869,111 @@ function renderDashboardHtml(data) {
                     </div>
                   </div>
                 </div>
+
+                <!-- ZONE IMAGE CARTE COMMERÇANT / QR CODE (R2) -->
+                <div class="mt-2.5 pt-2 border-t border-slate-800 space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] font-bold text-slate-300 flex items-center gap-1">
+                      <span>🏷️</span>
+                      <span>Carte Commerçant / QR :</span>
+                    </label>
+                    <div id="spinner-pro-mtn-image" class="text-[10px]"></div>
+                  </div>
+
+                  <input type="file" id="file-pro-mtn" accept="image/*" class="hidden" onchange="uploadPaymentImage('mtn', event)">
+
+                  <div id="container-img-mtn">
+                    ${cp.mtn_image_url ? `
+                      <div class="relative group rounded-xl overflow-hidden border border-slate-700 bg-slate-900">
+                        <img src="${safeAttr(cp.mtn_image_url)}" alt="Carte MTN" class="w-full h-24 object-contain bg-slate-950 p-1 cursor-pointer" onclick="openImageZoomModal('${safeAttr(cp.mtn_image_url)}', 'Carte Commerçant / QR MTN Money')" />
+                        <div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <button type="button" onclick="document.getElementById('file-pro-mtn').click()" class="px-2 py-1 bg-yellow-600 hover:bg-yellow-500 text-white rounded text-[10px] font-bold shadow cursor-pointer">
+                            Changer
+                          </button>
+                          <button type="button" onclick="deletePaymentImage('mtn')" class="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold shadow cursor-pointer">
+                            Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    ` : `
+                      <button type="button" onclick="document.getElementById('file-pro-mtn').click()" class="w-full py-2.5 px-2 border-2 border-dashed border-slate-700 hover:border-yellow-500/60 rounded-xl bg-slate-900/60 hover:bg-slate-900 text-slate-400 hover:text-yellow-300 flex flex-col items-center justify-center gap-1 transition cursor-pointer text-center">
+                        <span class="text-base">📸</span>
+                        <span class="text-[10px] font-bold">+ Ajouter Carte / QR</span>
+                        <span class="text-[8px] text-slate-500">PNG, JPG, WEBP (R2)</span>
+                      </button>
+                    `}
+                  </div>
+                </div>
+
               </div>
             </div>
 
             <!-- 4. MOOV MONEY -->
-            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-2.5 border-t-4 border-t-emerald-500 flex flex-col justify-between">
+            <div class="p-3.5 rounded-2xl bg-slate-950/80 border border-slate-800 space-y-3 border-t-4 border-t-emerald-500 flex flex-col justify-between">
               <div>
-                <div class="flex items-center justify-between mb-2">
+                <!-- En-tête Réseau + Switch Activation Réseau -->
+                <div class="flex items-center justify-between pb-2 border-b border-slate-800/80">
                   <span class="text-xs font-black uppercase text-emerald-400 flex items-center gap-1.5">
                     <span class="w-2 h-2 rounded-full bg-emerald-500"></span> Moov Money
                   </span>
-                  <span class="text-[9px] uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 font-mono">Mobile Money</span>
+                  <div class="flex items-center gap-1.5">
+                    <label class="relative inline-flex items-center cursor-pointer select-none">
+                      <input 
+                        type="checkbox" 
+                        id="pro-moov-enabled" 
+                        ${cp.moov_enabled !== 0 ? 'checked' : ''} 
+                        onchange="togglePaymentSetting('moov_enabled', this.checked, 'pro-moov-enabled')" 
+                        class="sr-only peer"
+                      >
+                      <div class="w-8 h-4 bg-slate-800 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3 after:w-3.5 after:transition-all peer-checked:bg-emerald-600"></div>
+                      <span class="ml-1.5 text-[10px] font-bold ${cp.moov_enabled !== 0 ? 'text-emerald-400' : 'text-slate-500'}" id="status-label-pro-moov-enabled">
+                        ${cp.moov_enabled !== 0 ? 'Actif' : 'Inactif'}
+                      </span>
+                    </label>
+                    <div id="spinner-pro-moov-enabled" class="text-xs"></div>
+                  </div>
                 </div>
+
+                <!-- Options d'affichage : Numéro et/ou Image -->
+                <div class="bg-slate-900/90 rounded-xl p-2 border border-slate-800 my-2 space-y-1">
+                  <span class="text-[9px] font-black uppercase tracking-wider text-slate-400 block">
+                    Affichage aux étudiants :
+                  </span>
+                  <div class="flex flex-col gap-1">
+                    <label class="flex items-center justify-between cursor-pointer hover:bg-slate-800/40 p-1 rounded-lg transition">
+                      <span class="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
+                        <span>📞</span> Afficher le numéro
+                      </span>
+                      <div class="flex items-center gap-1">
+                        <input 
+                          type="checkbox" 
+                          id="pro-moov-show-number" 
+                          ${cp.moov_show_number !== 0 ? 'checked' : ''} 
+                          onchange="togglePaymentSetting('moov_show_number', this.checked, 'pro-moov-show-number')" 
+                          class="rounded border-slate-700 text-emerald-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                        >
+                        <div id="spinner-pro-moov-show-number" class="text-[10px]"></div>
+                      </div>
+                    </label>
+                    <label class="flex items-center justify-between cursor-pointer hover:bg-slate-800/40 p-1 rounded-lg transition">
+                      <span class="text-[11px] font-medium text-slate-300 flex items-center gap-1.5">
+                        <span>🖼️</span> Afficher la carte / QR
+                      </span>
+                      <div class="flex items-center gap-1">
+                        <input 
+                          type="checkbox" 
+                          id="pro-moov-show-image" 
+                          ${cp.moov_show_image !== 0 ? 'checked' : ''} 
+                          onchange="togglePaymentSetting('moov_show_image', this.checked, 'pro-moov-show-image')" 
+                          class="rounded border-slate-700 text-emerald-600 focus:ring-0 cursor-pointer h-3.5 w-3.5"
+                        >
+                        <div id="spinner-pro-moov-show-image" class="text-[10px]"></div>
+                      </div>
+                    </label>
+                  </div>
+                </div>
+
+                <!-- Champs Numéro & Titulaire -->
                 <div class="space-y-1">
                   <label class="text-[10px] text-slate-400 block font-bold">Numéro Moov :</label>
                   <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-moov-number', 'Numéro Moov de réception', 'moov_number', 'text')">
@@ -2619,6 +2990,7 @@ function renderDashboardHtml(data) {
                     </div>
                   </div>
                 </div>
+
                 <div class="space-y-1 mt-2">
                   <label class="text-[10px] text-slate-400 block font-bold">Titulaire affiché :</label>
                   <div class="relative group cursor-pointer" onclick="openFieldEditModal('pro-moov-name', 'Nom du Titulaire Moov Money', 'moov_name', 'text')">
@@ -2635,6 +3007,42 @@ function renderDashboardHtml(data) {
                     </div>
                   </div>
                 </div>
+
+                <!-- ZONE IMAGE CARTE COMMERÇANT / QR CODE (R2) -->
+                <div class="mt-2.5 pt-2 border-t border-slate-800 space-y-1.5">
+                  <div class="flex items-center justify-between">
+                    <label class="text-[10px] font-bold text-slate-300 flex items-center gap-1">
+                      <span>🏷️</span>
+                      <span>Carte Commerçant / QR :</span>
+                    </label>
+                    <div id="spinner-pro-moov-image" class="text-[10px]"></div>
+                  </div>
+
+                  <input type="file" id="file-pro-moov" accept="image/*" class="hidden" onchange="uploadPaymentImage('moov', event)">
+
+                  <div id="container-img-moov">
+                    ${cp.moov_image_url ? `
+                      <div class="relative group rounded-xl overflow-hidden border border-slate-700 bg-slate-900">
+                        <img src="${safeAttr(cp.moov_image_url)}" alt="Carte Moov" class="w-full h-24 object-contain bg-slate-950 p-1 cursor-pointer" onclick="openImageZoomModal('${safeAttr(cp.moov_image_url)}', 'Carte Commerçant / QR Moov Money')" />
+                        <div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">
+                          <button type="button" onclick="document.getElementById('file-pro-moov').click()" class="px-2 py-1 bg-emerald-600 hover:bg-emerald-500 text-white rounded text-[10px] font-bold shadow cursor-pointer">
+                            Changer
+                          </button>
+                          <button type="button" onclick="deletePaymentImage('moov')" class="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold shadow cursor-pointer">
+                            Supprimer
+                          </button>
+                        </div>
+                      </div>
+                    ` : `
+                      <button type="button" onclick="document.getElementById('file-pro-moov').click()" class="w-full py-2.5 px-2 border-2 border-dashed border-slate-700 hover:border-emerald-500/60 rounded-xl bg-slate-900/60 hover:bg-slate-900 text-slate-400 hover:text-emerald-300 flex flex-col items-center justify-center gap-1 transition cursor-pointer text-center">
+                        <span class="text-base">📸</span>
+                        <span class="text-[10px] font-bold">+ Ajouter Carte / QR</span>
+                        <span class="text-[8px] text-slate-500">PNG, JPG, WEBP (R2)</span>
+                      </button>
+                    `}
+                  </div>
+                </div>
+
               </div>
             </div>
 
@@ -5965,6 +6373,176 @@ function renderDashboardHtml(data) {
     }
     window.saveFieldEditModal = saveFieldEditModal;
 
+    async function togglePaymentSetting(field, isChecked, elementId) {
+      const val = isChecked ? 1 : 0;
+      const spinner = document.getElementById('spinner-' + elementId);
+      const label = document.getElementById('status-label-' + elementId);
+      if (spinner) {
+        spinner.innerHTML = '<span class="inline-block animate-spin text-orange-400 text-xs">⏳</span>';
+      }
+      try {
+        const resp = await fetch('/api/company-profile/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ field, value: val })
+        });
+        const res = await resp.json();
+        if (res && res.success) {
+          if (typeof companyProfileGlobal === 'object' && companyProfileGlobal) {
+            companyProfileGlobal[field] = val;
+          }
+          if (label) {
+            label.textContent = isChecked ? 'Actif' : 'Inactif';
+            const colorCls = elementId.includes('wave') ? 'text-blue-400' : elementId.includes('orange') ? 'text-orange-400' : elementId.includes('mtn') ? 'text-yellow-400' : 'text-emerald-400';
+            label.className = 'ml-1.5 text-[10px] font-bold ' + (isChecked ? colorCls : 'text-slate-500');
+          }
+          if (spinner) {
+            spinner.innerHTML = '<span class="text-emerald-400 font-bold text-xs">✓</span>';
+            setTimeout(() => { if (spinner) spinner.innerHTML = ''; }, 2000);
+          }
+          showToast('✓ Paramètre mis à jour dans la base de données !');
+        } else {
+          throw new Error(res?.error || 'Échec de la mise à jour');
+        }
+      } catch (err) {
+        console.error('Erreur toggle:', err);
+        const input = document.getElementById(elementId);
+        if (input) input.checked = !isChecked;
+        if (spinner) {
+          spinner.innerHTML = '<span class="text-rose-400 font-bold text-xs">⚠️</span>';
+          setTimeout(() => { if (spinner) spinner.innerHTML = ''; }, 3000);
+        }
+        showToast('⚠️ Erreur: ' + err.message);
+      }
+    }
+    window.togglePaymentSetting = togglePaymentSetting;
+
+    async function uploadPaymentImage(network, event) {
+      const file = event.target.files && event.target.files[0];
+      if (!file) return;
+      
+      const spinner = document.getElementById('spinner-pro-' + network + '-image');
+      if (spinner) {
+        spinner.innerHTML = '<span class="inline-block animate-spin text-orange-400 text-xs">⏳ Envoi R2...</span>';
+      }
+
+      const reader = new FileReader();
+      reader.onload = async function(e) {
+        const dataUrl = e.target.result;
+        const ext = file.name.split('.').pop() || 'png';
+        try {
+          const resp = await fetch('/api/company-profile/upload-payment-image', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ network, image: dataUrl, ext })
+          });
+          const res = await resp.json();
+          if (res && res.success) {
+            if (typeof companyProfileGlobal === 'object' && companyProfileGlobal) {
+              companyProfileGlobal[network + '_image_url'] = res.url;
+            }
+            renderPaymentImageContainer(network, res.url);
+            if (spinner) {
+              spinner.innerHTML = '<span class="text-emerald-400 font-bold text-xs">✓ Enregistré R2</span>';
+              setTimeout(() => { if (spinner) spinner.innerHTML = ''; }, 2500);
+            }
+            showToast('✓ Carte / QR ' + network.toUpperCase() + ' sauvegardé avec succès dans Cloudflare R2 !');
+          } else {
+            throw new Error(res?.error || 'Échec de l\'upload');
+          }
+        } catch (err) {
+          console.error('Erreur upload:', err);
+          if (spinner) {
+            spinner.innerHTML = '<span class="text-rose-400 font-bold text-xs">⚠️ Erreur</span>';
+            setTimeout(() => { if (spinner) spinner.innerHTML = ''; }, 3500);
+          }
+          showToast('⚠️ Erreur upload : ' + err.message);
+        }
+      };
+      reader.readAsDataURL(file);
+    }
+    window.uploadPaymentImage = uploadPaymentImage;
+
+    async function deletePaymentImage(network) {
+      if (!confirm("Voulez-vous supprimer cette carte commerçant / QR code pour " + network.toUpperCase() + " ?")) return;
+
+      const spinner = document.getElementById('spinner-pro-' + network + '-image');
+      if (spinner) {
+        spinner.innerHTML = '<span class="inline-block animate-spin text-rose-400 text-xs">⏳ Suppression...</span>';
+      }
+
+      try {
+        const resp = await fetch('/api/company-profile/update', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ field: network + '_image_url', value: '' })
+        });
+        const res = await resp.json();
+        if (res && res.success) {
+          if (typeof companyProfileGlobal === 'object' && companyProfileGlobal) {
+            companyProfileGlobal[network + '_image_url'] = '';
+          }
+          renderPaymentImageContainer(network, '');
+          if (spinner) {
+            spinner.innerHTML = '<span class="text-emerald-400 font-bold text-xs">✓ Supprimé</span>';
+            setTimeout(() => { if (spinner) spinner.innerHTML = ''; }, 2000);
+          }
+          showToast('✓ Carte supprimée avec succès.');
+        } else {
+          throw new Error(res?.error || 'Échec suppression');
+        }
+      } catch (err) {
+        console.error('Erreur suppression:', err);
+        if (spinner) {
+          spinner.innerHTML = '<span class="text-rose-400 font-bold text-xs">⚠️ Erreur</span>';
+          setTimeout(() => { if (spinner) spinner.innerHTML = ''; }, 3000);
+        }
+        showToast('⚠️ Erreur: ' + err.message);
+      }
+    }
+    window.deletePaymentImage = deletePaymentImage;
+
+    function renderPaymentImageContainer(network, imageUrl) {
+      const container = document.getElementById('container-img-' + network);
+      if (!container) return;
+      const netColor = network === 'wave' ? 'blue' : network === 'orange' ? 'orange' : network === 'mtn' ? 'yellow' : 'emerald';
+      if (imageUrl) {
+        container.innerHTML = '<div class="relative group rounded-xl overflow-hidden border border-slate-700 bg-slate-900">' +
+          '<img src="' + imageUrl + '" alt="Carte ' + network + '" class="w-full h-24 object-contain bg-slate-950 p-1 cursor-pointer" onclick="openImageZoomModal(\'' + imageUrl + '\', \'Carte Commer\u00e7ant / QR ' + network.toUpperCase() + '\')" />' +
+          '<div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">' +
+          '<button type="button" onclick="document.getElementById(\'file-pro-' + network + '\').click()" class="px-2 py-1 bg-' + netColor + '-600 hover:bg-' + netColor + '-500 text-white rounded text-[10px] font-bold shadow cursor-pointer">' +
+          'Changer' +
+          '</button>' +
+          '<button type="button" onclick="deletePaymentImage(\'' + network + '\')" class="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold shadow cursor-pointer">' +
+          'Supprimer' +
+          '</button>' +
+          '</div>' +
+          '</div>';
+      } else {
+        container.innerHTML = '<button type="button" onclick="document.getElementById(\'file-pro-' + network + '\').click()" class="w-full py-2.5 px-2 border-2 border-dashed border-slate-700 hover:border-' + netColor + '-500/60 rounded-xl bg-slate-900/60 hover:bg-slate-900 text-slate-400 hover:text-' + netColor + '-300 flex flex-col items-center justify-center gap-1 transition cursor-pointer text-center">' +
+          '<span class="text-base">\ud83d\udcf8</span>' +
+          '<span class="text-[10px] font-bold">+ Ajouter Carte / QR</span>' +
+          '<span class="text-[8px] text-slate-500">PNG, JPG, WEBP (R2)</span>' +
+          '</button>';
+      }
+    }
+    window.renderPaymentImageContainer = renderPaymentImageContainer;
+
+    function openImageZoomModal(url, caption) {
+      const modal = document.getElementById('receipt-zoom-modal');
+      const img = document.getElementById('receipt-zoom-img');
+      const cap = document.getElementById('receipt-zoom-caption');
+      const dl = document.getElementById('receipt-zoom-download');
+      if (img) img.src = url;
+      if (cap) cap.textContent = caption || 'Carte Commerçant / QR Code (R2)';
+      if (dl) dl.href = url;
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+      }
+    }
+    window.openImageZoomModal = openImageZoomModal;
+
     async function loadCompanyProfileClient() {
       const setField = (id, val, fallback) => {
         const el = document.getElementById(id);
@@ -5973,9 +6551,20 @@ function renderDashboardHtml(data) {
           el.value = v;
         }
       };
+      const setCheck = (id, val) => {
+        const el = document.getElementById(id);
+        if (el) el.checked = (val !== 0 && val !== false);
+      };
+      const setLabel = (id, val, activeColor) => {
+        const el = document.getElementById(id);
+        if (el) {
+          const isAct = (val !== 0 && val !== false);
+          el.textContent = isAct ? 'Actif' : 'Inactif';
+          el.className = 'ml-1.5 text-[10px] font-bold ' + (isAct ? (activeColor || 'text-blue-400') : 'text-slate-500');
+        }
+      };
 
-      if (typeof companyProfileGlobal === 'object' && companyProfileGlobal) {
-        const p = companyProfileGlobal;
+      const syncProfileData = (p) => {
         setField("pro-company-name", p.company_name, "DKD Technologies");
         setField("pro-location", p.location, "Abidjan, Côte d'Ivoire");
         setField("pro-activity", p.activity, "Technologies & Éducation Numérique");
@@ -5986,15 +6575,44 @@ function renderDashboardHtml(data) {
         setField('pro-phone-whatsapp', p.phone_whatsapp, '+225 0101007978');
         setField('pro-phone-secondary', p.phone_contact_secondary, '');
         setField("pro-about-text", p.about_text, "Plateforme d'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.");
+        
         setField('pro-wave-number', p.wave_number, '+225 07 00 00 00 00');
         setField('pro-wave-name', p.wave_name, 'StudyCloud CI');
+        setCheck('pro-wave-enabled', p.wave_enabled);
+        setLabel('status-label-pro-wave-enabled', p.wave_enabled, 'text-blue-400');
+        setCheck('pro-wave-show-number', p.wave_show_number);
+        setCheck('pro-wave-show-image', p.wave_show_image);
+        renderPaymentImageContainer('wave', p.wave_image_url);
+
         setField('pro-orange-number', p.orange_number, '+225 07 00 00 00 00');
         setField("pro-orange-name", p.orange_name, "Orange Money Côte d'Ivoire");
+        setCheck('pro-orange-enabled', p.orange_enabled);
+        setLabel('status-label-pro-orange-enabled', p.orange_enabled, 'text-orange-400');
+        setCheck('pro-orange-show-number', p.orange_show_number);
+        setCheck('pro-orange-show-image', p.orange_show_image);
+        renderPaymentImageContainer('orange', p.orange_image_url);
+
         setField('pro-mtn-number', p.mtn_number, '+225 05 00 00 00 00');
         setField('pro-mtn-name', p.mtn_name, 'MTN Mobile Money CI');
+        setCheck('pro-mtn-enabled', p.mtn_enabled);
+        setLabel('status-label-pro-mtn-enabled', p.mtn_enabled, 'text-yellow-400');
+        setCheck('pro-mtn-show-number', p.mtn_show_number);
+        setCheck('pro-mtn-show-image', p.mtn_show_image);
+        renderPaymentImageContainer('mtn', p.mtn_image_url);
+
         setField('pro-moov-number', p.moov_number, '+225 01 00 00 00 00');
         setField('pro-moov-name', p.moov_name, "Moov Money Côte d'Ivoire");
+        setCheck('pro-moov-enabled', p.moov_enabled);
+        setLabel('status-label-pro-moov-enabled', p.moov_enabled, 'text-emerald-400');
+        setCheck('pro-moov-show-number', p.moov_show_number);
+        setCheck('pro-moov-show-image', p.moov_show_image);
+        renderPaymentImageContainer('moov', p.moov_image_url);
+
         setField("pro-payment-instructions", p.payment_instructions, "Transférez le montant exact sur l'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.");
+      };
+
+      if (typeof companyProfileGlobal === 'object' && companyProfileGlobal) {
+        syncProfileData(companyProfileGlobal);
       }
 
       try {
@@ -6002,27 +6620,8 @@ function renderDashboardHtml(data) {
         if (!resp.ok) return;
         const res = await resp.json();
         if (res && res.profile) {
-          const p = res.profile;
-          companyProfileGlobal = p;
-          setField("pro-company-name", p.company_name, "DKD Technologies");
-          setField("pro-location", p.location, "Abidjan, Côte d'Ivoire");
-          setField("pro-activity", p.activity, "Technologies & Éducation Numérique");
-          setField("pro-address", p.address, "Abidjan, Côte d'Ivoire");
-          setField('pro-website', p.website, 'https://studycloud.dkd-technologies.com');
-          setField('pro-email', p.email, 'contact@dkd-technologies.com');
-          setField('pro-phone-contact', p.phone_contact, '+225 0101007978');
-          setField('pro-phone-whatsapp', p.phone_whatsapp, '+225 0101007978');
-          setField('pro-phone-secondary', p.phone_contact_secondary, '');
-          setField("pro-about-text", p.about_text, "Plateforme d'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.");
-          setField('pro-wave-number', p.wave_number, '+225 07 00 00 00 00');
-          setField('pro-wave-name', p.wave_name, 'StudyCloud CI');
-          setField('pro-orange-number', p.orange_number, '+225 07 00 00 00 00');
-          setField("pro-orange-name", p.orange_name, "Orange Money Côte d'Ivoire");
-          setField('pro-mtn-number', p.mtn_number, '+225 05 00 00 00 00');
-          setField('pro-mtn-name', p.mtn_name, 'MTN Mobile Money CI');
-          setField('pro-moov-number', p.moov_number, '+225 01 00 00 00 00');
-          setField('pro-moov-name', p.moov_name, "Moov Money Côte d'Ivoire");
-          setField("pro-payment-instructions", p.payment_instructions, "Transférez le montant exact sur l'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.");
+          companyProfileGlobal = res.profile;
+          syncProfileData(res.profile);
         }
       } catch (err) {
         console.warn('Erreur chargement profil pro client:', err);
@@ -6991,8 +7590,10 @@ export default {
         const allowedCols = [
           'company_name', 'activity', 'location', 'address', 'website', 'email',
           'phone_contact', 'phone_whatsapp', 'phone_contact_secondary', 'about_text',
-          'wave_number', 'wave_name', 'orange_number', 'orange_name',
-          'mtn_number', 'mtn_name', 'moov_number', 'moov_name',
+          'wave_number', 'wave_name', 'wave_enabled', 'wave_show_number', 'wave_show_image', 'wave_image_url',
+          'orange_number', 'orange_name', 'orange_enabled', 'orange_show_number', 'orange_show_image', 'orange_image_url',
+          'mtn_number', 'mtn_name', 'mtn_enabled', 'mtn_show_number', 'mtn_show_image', 'mtn_image_url',
+          'moov_number', 'moov_name', 'moov_enabled', 'moov_show_number', 'moov_show_image', 'moov_image_url',
           'payment_instructions', 'notes'
         ];
 
@@ -7007,7 +7608,7 @@ export default {
         if (body.field && allowedCols.includes(body.field)) {
           // Mise à jour individuelle ciblée sans toucher aux autres champs
           const colName = body.field;
-          const colValue = String(body.value ?? '');
+          const colValue = (typeof body.value === 'number') ? body.value : String(body.value ?? '');
           await safeRun(db, `
             UPDATE company_profile 
             SET ${colName} = ?, updated_at = CURRENT_TIMESTAMP 
@@ -7020,7 +7621,8 @@ export default {
           for (const col of allowedCols) {
             if (body[col] !== undefined) {
               updates.push(`${col} = ?`);
-              values.push(String(body[col] ?? ''));
+              const v = (typeof body[col] === 'number') ? body[col] : String(body[col] ?? '');
+              values.push(v);
             }
           }
           if (updates.length > 0) {
@@ -7039,6 +7641,103 @@ export default {
           profile: updatedProfile
         }), {
           status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/company-profile/upload-payment-image (Stockage R2)
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/company-profile/upload-payment-image') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, message: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const network = (body.network || '').toLowerCase().trim();
+        if (!['wave', 'orange', 'mtn', 'moov'].includes(network)) {
+          return new Response(JSON.stringify({ success: false, message: 'Réseau de paiement invalide (wave, orange, mtn, moov)' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+
+        const rawData = body.image || '';
+        if (!rawData) {
+          return new Response(JSON.stringify({ success: false, message: 'Image manquante' }), {
+            status: 400,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+
+        let imageUrl = rawData;
+        const ext = (body.ext || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+        const r2Key = `payment-methods/${network}_merchant_${Date.now()}.${ext}`;
+
+        // Si le bucket Cloudflare R2 est disponible, stocker le binaire physiquement dans R2
+        if (bucket && rawData.startsWith('data:')) {
+          try {
+            const parts = rawData.split(',');
+            const mimeMatch = parts[0].match(/:(.*?);/);
+            const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+            const base64Data = parts[1];
+            const binaryString = atob(base64Data);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+
+            await bucket.put(r2Key, bytes, {
+              httpMetadata: { contentType: mimeType }
+            });
+
+            const workerOrigin = (url && url.origin) ? url.origin : 'https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev';
+            imageUrl = `${workerOrigin}/api/payment-methods/image/${encodeURIComponent(r2Key)}`;
+          } catch (r2Err) {
+            console.warn('[R2 Upload Error Fallback base64]:', r2Err);
+            imageUrl = rawData;
+          }
+        }
+
+        // Sauvegarder l'URL ou dataUrl dans D1
+        const fieldName = `${network}_image_url`;
+        await safeRun(db, `UPDATE company_profile SET ${fieldName} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`, [imageUrl]);
+
+        return new Response(JSON.stringify({ 
+          success: true, 
+          url: imageUrl, 
+          key: r2Key,
+          message: 'Carte commerçant / QR enregistré avec succès dans R2' 
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE GET : /api/payment-methods/image/:key (Stream depuis R2)
+      // ----------------------------------------------------------------------
+      if (request.method === 'GET' && path.startsWith('/api/payment-methods/image/')) {
+        const key = decodeURIComponent(path.replace('/api/payment-methods/image/', ''));
+        if (bucket && key) {
+          try {
+            const object = await bucket.get(key);
+            if (object) {
+              const headers = new Headers();
+              object.writeHttpMetadata(headers);
+              headers.set('etag', object.httpEtag);
+              headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+              headers.set('Access-Control-Allow-Origin', origin);
+              return new Response(object.body, { headers });
+            }
+          } catch (e) {}
+        }
+        return new Response(JSON.stringify({ error: 'Image de paiement introuvable dans R2' }), {
+          status: 404,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });
       }
@@ -7063,12 +7762,28 @@ export default {
             website: 'https://studycloud.dkd-technologies.com',
             wave_number: '+225 07 00 00 00 00',
             wave_name: 'StudyCloud CI',
+            wave_enabled: 1,
+            wave_show_number: 1,
+            wave_show_image: 1,
+            wave_image_url: '',
             orange_number: '+225 07 00 00 00 00',
             orange_name: 'Orange Money Côte d\'Ivoire',
+            orange_enabled: 1,
+            orange_show_number: 1,
+            orange_show_image: 1,
+            orange_image_url: '',
             mtn_number: '+225 05 00 00 00 00',
             mtn_name: 'MTN Mobile Money CI',
+            mtn_enabled: 1,
+            mtn_show_number: 1,
+            mtn_show_image: 1,
+            mtn_image_url: '',
             moov_number: '+225 01 00 00 00 00',
             moov_name: 'Moov Money Côte d\'Ivoire',
+            moov_enabled: 1,
+            moov_show_number: 1,
+            moov_show_image: 1,
+            moov_image_url: '',
             payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.',
             about_text: 'Plateforme d\'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
             notes: ''
@@ -7083,6 +7798,18 @@ export default {
           if (!profile.moov_name) {
             profile.moov_name = "Moov Money Côte d'Ivoire";
           }
+          if (profile.wave_enabled === undefined || profile.wave_enabled === null) profile.wave_enabled = 1;
+          if (profile.wave_show_number === undefined || profile.wave_show_number === null) profile.wave_show_number = 1;
+          if (profile.wave_show_image === undefined || profile.wave_show_image === null) profile.wave_show_image = 1;
+          if (profile.orange_enabled === undefined || profile.orange_enabled === null) profile.orange_enabled = 1;
+          if (profile.orange_show_number === undefined || profile.orange_show_number === null) profile.orange_show_number = 1;
+          if (profile.orange_show_image === undefined || profile.orange_show_image === null) profile.orange_show_image = 1;
+          if (profile.mtn_enabled === undefined || profile.mtn_enabled === null) profile.mtn_enabled = 1;
+          if (profile.mtn_show_number === undefined || profile.mtn_show_number === null) profile.mtn_show_number = 1;
+          if (profile.mtn_show_image === undefined || profile.mtn_show_image === null) profile.mtn_show_image = 1;
+          if (profile.moov_enabled === undefined || profile.moov_enabled === null) profile.moov_enabled = 1;
+          if (profile.moov_show_number === undefined || profile.moov_show_number === null) profile.moov_show_number = 1;
+          if (profile.moov_show_image === undefined || profile.moov_show_image === null) profile.moov_show_image = 1;
         }
         return new Response(JSON.stringify({ success: true, profile }), {
           status: 200,
@@ -7110,12 +7837,28 @@ export default {
           website: 'https://studycloud.dkd-technologies.com',
           wave_number: '+225 07 00 00 00 00',
           wave_name: 'StudyCloud CI',
+          wave_enabled: 1,
+          wave_show_number: 1,
+          wave_show_image: 1,
+          wave_image_url: '',
           orange_number: '+225 07 00 00 00 00',
           orange_name: 'Orange Money Côte d\'Ivoire',
+          orange_enabled: 1,
+          orange_show_number: 1,
+          orange_show_image: 1,
+          orange_image_url: '',
           mtn_number: '+225 05 00 00 00 00',
           mtn_name: 'MTN Mobile Money CI',
+          mtn_enabled: 1,
+          mtn_show_number: 1,
+          mtn_show_image: 1,
+          mtn_image_url: '',
           moov_number: '+225 01 00 00 00 00',
           moov_name: 'Moov Money Côte d\'Ivoire',
+          moov_enabled: 1,
+          moov_show_number: 1,
+          moov_show_image: 1,
+          moov_image_url: '',
           payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.',
           about_text: 'Plateforme d\'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
           notes: ''
@@ -7130,6 +7873,18 @@ export default {
         if (!companyProfileRow.moov_name) {
           companyProfileRow.moov_name = "Moov Money Côte d'Ivoire";
         }
+        if (companyProfileRow.wave_enabled === undefined || companyProfileRow.wave_enabled === null) companyProfileRow.wave_enabled = 1;
+        if (companyProfileRow.wave_show_number === undefined || companyProfileRow.wave_show_number === null) companyProfileRow.wave_show_number = 1;
+        if (companyProfileRow.wave_show_image === undefined || companyProfileRow.wave_show_image === null) companyProfileRow.wave_show_image = 1;
+        if (companyProfileRow.orange_enabled === undefined || companyProfileRow.orange_enabled === null) companyProfileRow.orange_enabled = 1;
+        if (companyProfileRow.orange_show_number === undefined || companyProfileRow.orange_show_number === null) companyProfileRow.orange_show_number = 1;
+        if (companyProfileRow.orange_show_image === undefined || companyProfileRow.orange_show_image === null) companyProfileRow.orange_show_image = 1;
+        if (companyProfileRow.mtn_enabled === undefined || companyProfileRow.mtn_enabled === null) companyProfileRow.mtn_enabled = 1;
+        if (companyProfileRow.mtn_show_number === undefined || companyProfileRow.mtn_show_number === null) companyProfileRow.mtn_show_number = 1;
+        if (companyProfileRow.mtn_show_image === undefined || companyProfileRow.mtn_show_image === null) companyProfileRow.mtn_show_image = 1;
+        if (companyProfileRow.moov_enabled === undefined || companyProfileRow.moov_enabled === null) companyProfileRow.moov_enabled = 1;
+        if (companyProfileRow.moov_show_number === undefined || companyProfileRow.moov_show_number === null) companyProfileRow.moov_show_number = 1;
+        if (companyProfileRow.moov_show_image === undefined || companyProfileRow.moov_show_image === null) companyProfileRow.moov_show_image = 1;
       }
 
       const rawUpgradeRequests = (upgradeRequestsRes && upgradeRequestsRes.results) ? upgradeRequestsRes.results : [];

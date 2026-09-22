@@ -2296,12 +2296,28 @@ async function ensureStorageTables(db) {
       "ALTER TABLE company_profile ADD COLUMN website TEXT DEFAULT 'https://studycloud.dkd-technologies.com'",
       "ALTER TABLE company_profile ADD COLUMN wave_number TEXT DEFAULT '+225 07 00 00 00 00'",
       "ALTER TABLE company_profile ADD COLUMN wave_name TEXT DEFAULT 'StudyCloud CI'",
+      "ALTER TABLE company_profile ADD COLUMN wave_enabled INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN wave_show_number INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN wave_show_image INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN wave_image_url TEXT DEFAULT ''",
       "ALTER TABLE company_profile ADD COLUMN orange_number TEXT DEFAULT '+225 07 00 00 00 00'",
       "ALTER TABLE company_profile ADD COLUMN orange_name TEXT DEFAULT 'Orange Money Côte d''Ivoire'",
+      "ALTER TABLE company_profile ADD COLUMN orange_enabled INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN orange_show_number INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN orange_show_image INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN orange_image_url TEXT DEFAULT ''",
       "ALTER TABLE company_profile ADD COLUMN mtn_number TEXT DEFAULT '+225 05 00 00 00 00'",
       "ALTER TABLE company_profile ADD COLUMN mtn_name TEXT DEFAULT 'MTN Mobile Money CI'",
+      "ALTER TABLE company_profile ADD COLUMN mtn_enabled INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN mtn_show_number INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN mtn_show_image INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN mtn_image_url TEXT DEFAULT ''",
       "ALTER TABLE company_profile ADD COLUMN moov_number TEXT DEFAULT '+225 01 00 00 00 00'",
       "ALTER TABLE company_profile ADD COLUMN moov_name TEXT DEFAULT 'Moov Money Côte d''Ivoire'",
+      "ALTER TABLE company_profile ADD COLUMN moov_enabled INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN moov_show_number INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN moov_show_image INTEGER DEFAULT 1",
+      "ALTER TABLE company_profile ADD COLUMN moov_image_url TEXT DEFAULT ''",
       "ALTER TABLE company_profile ADD COLUMN payment_instructions TEXT DEFAULT ''",
       "ALTER TABLE company_profile ADD COLUMN about_text TEXT DEFAULT ''",
       "ALTER TABLE company_profile ADD COLUMN notes TEXT DEFAULT ''",
@@ -7696,12 +7712,28 @@ Lien vers le produit : ${productShareUrl}`;
           website: 'https://studycloud.dkd-technologies.com',
           wave_number: '+225 07 00 00 00 00',
           wave_name: 'StudyCloud CI',
+          wave_enabled: 1,
+          wave_show_number: 1,
+          wave_show_image: 1,
+          wave_image_url: '',
           orange_number: '+225 07 00 00 00 00',
           orange_name: 'Orange Money Côte d\'Ivoire',
+          orange_enabled: 1,
+          orange_show_number: 1,
+          orange_show_image: 1,
+          orange_image_url: '',
           mtn_number: '+225 05 00 00 00 00',
           mtn_name: 'MTN Mobile Money CI',
+          mtn_enabled: 1,
+          mtn_show_number: 1,
+          mtn_show_image: 1,
+          mtn_image_url: '',
           moov_number: '+225 01 00 00 00 00',
           moov_name: 'Moov Money Côte d\'Ivoire',
+          moov_enabled: 1,
+          moov_show_number: 1,
+          moov_show_image: 1,
+          moov_image_url: '',
           payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.',
           about_text: 'Plateforme d\'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
           notes: ''
@@ -7724,6 +7756,18 @@ Lien vers le produit : ${productShareUrl}`;
             if (!row.moov_name) {
               row.moov_name = "Moov Money Côte d'Ivoire";
             }
+            if (row.wave_enabled === undefined || row.wave_enabled === null) row.wave_enabled = 1;
+            if (row.wave_show_number === undefined || row.wave_show_number === null) row.wave_show_number = 1;
+            if (row.wave_show_image === undefined || row.wave_show_image === null) row.wave_show_image = 1;
+            if (row.orange_enabled === undefined || row.orange_enabled === null) row.orange_enabled = 1;
+            if (row.orange_show_number === undefined || row.orange_show_number === null) row.orange_show_number = 1;
+            if (row.orange_show_image === undefined || row.orange_show_image === null) row.orange_show_image = 1;
+            if (row.mtn_enabled === undefined || row.mtn_enabled === null) row.mtn_enabled = 1;
+            if (row.mtn_show_number === undefined || row.mtn_show_number === null) row.mtn_show_number = 1;
+            if (row.mtn_show_image === undefined || row.mtn_show_image === null) row.mtn_show_image = 1;
+            if (row.moov_enabled === undefined || row.moov_enabled === null) row.moov_enabled = 1;
+            if (row.moov_show_number === undefined || row.moov_show_number === null) row.moov_show_number = 1;
+            if (row.moov_show_image === undefined || row.moov_show_image === null) row.moov_show_image = 1;
           }
           return jsonResponse({ success: true, profile: row || defaultProfile }, 200, origin);
         } catch (e) {
@@ -7741,8 +7785,10 @@ Lien vers le produit : ${productShareUrl}`;
         const allowedCols = [
           'company_name', 'activity', 'location', 'address', 'website', 'email',
           'phone_contact', 'phone_whatsapp', 'phone_contact_secondary', 'about_text',
-          'wave_number', 'wave_name', 'orange_number', 'orange_name',
-          'mtn_number', 'mtn_name', 'moov_number', 'moov_name',
+          'wave_number', 'wave_name', 'wave_enabled', 'wave_show_number', 'wave_show_image', 'wave_image_url',
+          'orange_number', 'orange_name', 'orange_enabled', 'orange_show_number', 'orange_show_image', 'orange_image_url',
+          'mtn_number', 'mtn_name', 'mtn_enabled', 'mtn_show_number', 'mtn_show_image', 'mtn_image_url',
+          'moov_number', 'moov_name', 'moov_enabled', 'moov_show_number', 'moov_show_image', 'moov_image_url',
           'payment_instructions', 'notes'
         ];
 
@@ -7751,7 +7797,7 @@ Lien vers le produit : ${productShareUrl}`;
 
         if (body.field && allowedCols.includes(body.field)) {
           const colName = body.field;
-          const colValue = String(body.value ?? '');
+          const colValue = typeof body.value === 'number' ? body.value : String(body.value ?? '');
           await env.DB.prepare(`
             UPDATE company_profile SET ${colName} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'
           `).bind(colValue).run();
@@ -7761,7 +7807,7 @@ Lien vers le produit : ${productShareUrl}`;
           for (const col of allowedCols) {
             if (body[col] !== undefined) {
               updates.push(`${col} = ?`);
-              values.push(String(body[col] ?? ''));
+              values.push(typeof body[col] === 'number' ? body[col] : String(body[col] ?? ''));
             }
           }
           if (updates.length > 0) {
@@ -7778,6 +7824,86 @@ Lien vers le produit : ${productShareUrl}`;
           message: "Informations professionnelles enregistrées avec succès",
           profile: updatedProfile
         }, 200, origin);
+      }
+
+      // Route d'upload direct d'image de paiement (Carte commerçant / QR) vers Cloudflare R2
+      if (path === "/api/company-profile/upload-payment-image" && method === "POST") {
+        if (!env.DB) {
+          return errorResponse("Base de données D1 indisponible", 500, origin);
+        }
+        await ensureStorageTables(env.DB);
+        const body = await request.json().catch(() => ({}));
+        const network = (body.network || '').toLowerCase().trim();
+        const validNetworks = ['wave', 'orange', 'mtn', 'moov'];
+        if (!validNetworks.includes(network)) {
+          return errorResponse("Réseau de paiement invalide (wave, orange, mtn, moov)", 400, origin);
+        }
+
+        const rawData = body.image || '';
+        if (!rawData) {
+          return errorResponse("Image manquante", 400, origin);
+        }
+
+        let imageUrl = rawData;
+        const ext = (body.ext || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+        const r2Key = `payment-methods/${network}_merchant_${Date.now()}.${ext}`;
+        const bucket = env.BUCKET || env.MON_R2_STUDYCLOUD;
+
+        if (bucket && rawData.startsWith('data:')) {
+          try {
+            const parts = rawData.split(',');
+            const mimeMatch = parts[0].match(/:(.*?);/);
+            const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+            const base64Data = parts[1];
+            const binaryString = atob(base64Data);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+
+            await bucket.put(r2Key, bytes, {
+              httpMetadata: { contentType: mimeType }
+            });
+
+            const workerOrigin = (url && url.origin) ? url.origin : 'https://studycloud-worker.delmaskouassidibi.workers.dev';
+            imageUrl = `${workerOrigin}/api/payment-methods/image/${encodeURIComponent(r2Key)}`;
+          } catch (r2Err) {
+            console.warn('[STUDYCLOUD R2 Upload Error Fallback base64]:', r2Err);
+            imageUrl = rawData;
+          }
+        }
+
+        const fieldName = `${network}_image_url`;
+        await env.DB.prepare(`INSERT OR IGNORE INTO company_profile (id) VALUES ('main')`).run();
+        await env.DB.prepare(`UPDATE company_profile SET ${fieldName} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`).bind(imageUrl).run();
+
+        return jsonResponse({
+          success: true,
+          url: imageUrl,
+          key: r2Key,
+          message: "Carte commerçant / QR enregistré avec succès dans R2"
+        }, 200, origin);
+      }
+
+      // Route de streaming image de paiement depuis R2
+      if (path.startsWith("/api/payment-methods/image/") && method === "GET") {
+        const key = decodeURIComponent(path.replace('/api/payment-methods/image/', ''));
+        const bucket = env.BUCKET || env.MON_R2_STUDYCLOUD;
+        if (bucket && key) {
+          try {
+            const object = await bucket.get(key);
+            if (object) {
+              const headers = new Headers();
+              object.writeHttpMetadata(headers);
+              headers.set('etag', object.httpEtag);
+              headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+              headers.set('Access-Control-Allow-Origin', origin);
+              return new Response(object.body, { headers });
+            }
+          } catch (e) {}
+        }
+        return errorResponse("Image de paiement introuvable dans R2", 404, origin);
       }
       return errorResponse(`Route non trouv\xE9e : ${method} ${path}`, 404, origin);
     } catch (err) {
