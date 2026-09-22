@@ -2031,3 +2031,33 @@ export async function getCompanyProfile(): Promise<CompanyProfile> {
   }
 }
 
+/**
+ * Récupère les abonnements actifs et passés de l'utilisateur
+ */
+export async function getUserSubscriptions(userId?: string): Promise<{ success: boolean; subscriptions: any[]; quota?: any }> {
+  const currentUserId = userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+  try {
+    return await request<{ success: boolean; subscriptions: any[]; quota?: any }>(
+      `/api/user/subscriptions?userId=${encodeURIComponent(currentUserId)}`,
+      { method: 'GET' }
+    );
+  } catch (err) {
+    return { success: false, subscriptions: [] };
+  }
+}
+
+/**
+ * Récupère l'historique des demandes de stockage et de renouvellement de l'utilisateur
+ */
+export async function getUserStorageRequests(userId?: string): Promise<{ success: boolean; requests: any[] }> {
+  const currentUserId = userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+  try {
+    return await request<{ success: boolean; requests: any[] }>(
+      `/api/user/storage/upgrade-requests?userId=${encodeURIComponent(currentUserId)}`,
+      { method: 'GET' }
+    );
+  } catch (err) {
+    return { success: false, requests: [] };
+  }
+}
+

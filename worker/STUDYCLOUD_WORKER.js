@@ -2223,6 +2223,7 @@ async function ensureStorageTables(db) {
       "ALTER TABLE storage_upgrade_requests ADD COLUMN receipt_image_url TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN receipt_r2_key TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN admin_notes TEXT DEFAULT ''",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN notes TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_start_date TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_end_date TEXT DEFAULT ''",
@@ -2237,37 +2238,34 @@ async function ensureStorageTables(db) {
       try { await db.prepare(sql).run(); } catch (e) {}
     }
 
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS company_profile (
-        id TEXT PRIMARY KEY DEFAULT 'main',
-        company_name TEXT DEFAULT 'DKD Technologies',
-        activity TEXT DEFAULT 'Technologies & Éducation Numérique',
-        location TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
-        address TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
-        phone_contact TEXT DEFAULT '+225 0101007978',
-        phone_contact_secondary TEXT DEFAULT '',
-        phone_whatsapp TEXT DEFAULT '+225 0101007978',
-        email TEXT DEFAULT 'contact@dkd-technologies.com',
-        website TEXT DEFAULT 'https://studycloud.dkd-technologies.com',
-        wave_number TEXT DEFAULT '+225 07 00 00 00 00',
-        wave_name TEXT DEFAULT 'StudyCloud CI',
-        orange_number TEXT DEFAULT '+225 07 00 00 00 00',
-        orange_name TEXT DEFAULT 'Orange Money Côte d''Ivoire',
-        mtn_number TEXT DEFAULT '+225 05 00 00 00 00',
-        mtn_name TEXT DEFAULT 'Paiement Mobile National',
-        moov_number TEXT DEFAULT '',
-        moov_name TEXT DEFAULT '',
-        payment_instructions TEXT DEFAULT 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.',
-        about_text TEXT DEFAULT 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
-        notes TEXT DEFAULT '',
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-
-    await db.prepare(`
-      INSERT OR IGNORE INTO company_profile (id, company_name, activity, location, address, phone_contact, phone_whatsapp, email, website, wave_number, wave_name, orange_number, orange_name, mtn_number, mtn_name, moov_number, moov_name, payment_instructions, about_text)
-      VALUES ('main', 'DKD Technologies', 'Technologies & Éducation Numérique', 'Abidjan, Côte d''Ivoire', 'Abidjan, Côte d''Ivoire', '+225 0101007978', '+225 0101007978', 'contact@dkd-technologies.com', 'https://studycloud.dkd-technologies.com', '+225 07 00 00 00 00', 'StudyCloud CI', '+225 07 00 00 00 00', 'Orange Money Côte d''Ivoire', '+225 05 00 00 00 00', 'Paiement Mobile National', '', '', 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.', 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.')
-    `).run();
+    try {
+      await db.prepare(`
+        CREATE TABLE IF NOT EXISTS company_profile (
+          id TEXT PRIMARY KEY DEFAULT 'main',
+          company_name TEXT DEFAULT 'DKD Technologies',
+          activity TEXT DEFAULT 'Technologies & Éducation Numérique',
+          location TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
+          address TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
+          phone_contact TEXT DEFAULT '+225 0101007978',
+          phone_contact_secondary TEXT DEFAULT '',
+          phone_whatsapp TEXT DEFAULT '+225 0101007978',
+          email TEXT DEFAULT 'contact@dkd-technologies.com',
+          website TEXT DEFAULT 'https://studycloud.dkd-technologies.com',
+          wave_number TEXT DEFAULT '+225 07 00 00 00 00',
+          wave_name TEXT DEFAULT 'StudyCloud CI',
+          orange_number TEXT DEFAULT '+225 07 00 00 00 00',
+          orange_name TEXT DEFAULT 'Orange Money Côte d''Ivoire',
+          mtn_number TEXT DEFAULT '+225 05 00 00 00 00',
+          mtn_name TEXT DEFAULT 'Paiement Mobile National',
+          moov_number TEXT DEFAULT '',
+          moov_name TEXT DEFAULT '',
+          payment_instructions TEXT DEFAULT 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.',
+          about_text TEXT DEFAULT 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
+          notes TEXT DEFAULT '',
+          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+        )
+      `).run();
+    } catch (e) {}
 
     const companyCols = [
       "ALTER TABLE company_profile ADD COLUMN company_name TEXT DEFAULT 'DKD Technologies'",
@@ -2295,6 +2293,13 @@ async function ensureStorageTables(db) {
     for (const sql of companyCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
     }
+
+    try {
+      await db.prepare(`
+        INSERT OR IGNORE INTO company_profile (id, company_name, activity, location, address, phone_contact, phone_whatsapp, email, website, wave_number, wave_name, orange_number, orange_name, mtn_number, mtn_name, moov_number, moov_name, payment_instructions, about_text)
+        VALUES ('main', 'DKD Technologies', 'Technologies & Éducation Numérique', 'Abidjan, Côte d''Ivoire', 'Abidjan, Côte d''Ivoire', '+225 0101007978', '+225 0101007978', 'contact@dkd-technologies.com', 'https://studycloud.dkd-technologies.com', '+225 07 00 00 00 00', 'StudyCloud CI', '+225 07 00 00 00 00', 'Orange Money Côte d''Ivoire', '+225 05 00 00 00 00', 'Paiement Mobile National', '', '', 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.', 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.')
+      `).run();
+    } catch (e) {}
 
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS user_subscriptions (
@@ -7273,27 +7278,112 @@ Lien vers le produit : ${productShareUrl}`;
         const priceDisplay = body.priceDisplay || `${pricePaid} ${currency}`;
         const billingCycle = body.billingCycle || "annual";
 
-        await env.DB.prepare(`
-          INSERT INTO storage_upgrade_requests (
-            id, user_id, user_name, user_phone, user_email, pack_id, pack_name,
-            additional_mb, additional_words, price_paid, currency, payment_method, payment_reference,
-            receipt_image_url, receipt_r2_key, contact_phone, user_whatsapp,
-            storage_display, price_display, billing_cycle,
-            notes, status, created_at, updated_at
-          )
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        `).bind(
-          requestId, userId, userName, contactPhone, userEmail, packId, packName,
-          additionalMb, additionalWords, pricePaid, currency, paymentMethod, paymentReference,
-          receiptImageUrl, receiptR2Key, contactPhone, userWhatsapp,
-          storageDisplay, priceDisplay, billingCycle,
-          notes
-        ).run();
+        let finalReceiptUrl = receiptImageUrl;
+        // Si l'image est un Data URI Base64, l'extraire et l'enregistrer dans R2 si possible
+        if (receiptImageUrl && receiptImageUrl.startsWith("data:")) {
+          try {
+            const mimeMatch = receiptImageUrl.match(/^data:([^;]+);base64,/);
+            const contentType = mimeMatch ? mimeMatch[1] : "image/jpeg";
+            const base64Content = receiptImageUrl.replace(/^data:[^;]+;base64,/, "");
+
+            if (env.BUCKET) {
+              const binStr = atob(base64Content);
+              const len = binStr.length;
+              const bytes = new Uint8Array(len);
+              for (let i = 0; i < len; i++) {
+                bytes[i] = binStr.charCodeAt(i);
+              }
+              await env.BUCKET.put(receiptR2Key, bytes.buffer, {
+                httpMetadata: { contentType }
+              });
+              finalReceiptUrl = `${url.origin}/api/storage/file/${encodeURIComponent(receiptR2Key)}`;
+            } else if (receiptImageUrl.length > 500000) {
+              finalReceiptUrl = receiptImageUrl.slice(0, 500000);
+            }
+          } catch (imgErr) {
+            console.warn("Erreur traitement image reçu R2:", imgErr);
+            if (receiptImageUrl.length > 500000) {
+              finalReceiptUrl = receiptImageUrl.slice(0, 500000);
+            }
+          }
+        }
+
+        try {
+          await env.DB.prepare(`
+            INSERT INTO storage_upgrade_requests (
+              id, user_id, user_name, user_phone, user_email, pack_id, pack_name,
+              additional_mb, additional_words, price_paid, currency, payment_method, payment_reference,
+              receipt_image_url, receipt_r2_key, contact_phone, user_whatsapp,
+              storage_display, price_display, billing_cycle,
+              notes, status, created_at, updated_at
+            )
+            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+          `).bind(
+            requestId, userId, userName, contactPhone, userEmail, packId, packName,
+            additionalMb, additionalWords, pricePaid, currency, paymentMethod, paymentReference,
+            finalReceiptUrl, receiptR2Key, contactPhone, userWhatsapp,
+            storageDisplay, priceDisplay, billingCycle,
+            notes
+          ).run();
+        } catch (insertErr) {
+          console.error("Erreur insertion storage_upgrade_requests:", insertErr);
+          try {
+            await ensureStorageTables(env.DB);
+            await env.DB.prepare(`
+              INSERT OR REPLACE INTO storage_upgrade_requests (
+                id, user_id, user_name, pack_id, pack_name, additional_mb, price_paid,
+                currency, contact_phone, user_whatsapp, receipt_image_url, receipt_r2_key,
+                storage_display, price_display, billing_cycle, notes, status
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
+            `).bind(
+              requestId, userId, userName, packId, packName, additionalMb, pricePaid,
+              currency, contactPhone, userWhatsapp, finalReceiptUrl, receiptR2Key,
+              storageDisplay, priceDisplay, billingCycle, notes
+            ).run();
+          } catch (retryErr) {
+            console.error("Erreur critique de secours insertion commande:", retryErr);
+            return errorResponse("Impossible d'enregistrer la commande dans la base: " + (retryErr.message || insertErr.message), 500, origin);
+          }
+        }
 
         return jsonResponse({
           success: true,
           message: "Demande d'augmentation de stockage enregistrée avec succès",
           requestId
+        }, 200, origin);
+      }
+
+      // Route utilisateur : Récupération de l'historique des demandes de stockage et de renouvellement
+      if (path === "/api/user/storage/upgrade-requests" && method === "GET") {
+        if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
+        const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
+        if (!userId) return errorResponse("userId requis", 400, origin);
+        await ensureStorageTables(env.DB);
+        const reqs = await env.DB.prepare(
+          "SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC"
+        ).bind(userId).all();
+        return jsonResponse({
+          success: true,
+          requests: (reqs && reqs.results) ? reqs.results : []
+        }, 200, origin);
+      }
+
+      // Route utilisateur : Récupération des abonnements actifs et passés
+      if (path === "/api/user/subscriptions" && method === "GET") {
+        if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
+        const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
+        if (!userId) return errorResponse("userId requis", 400, origin);
+        await ensureStorageTables(env.DB);
+        const subs = await env.DB.prepare(
+          "SELECT * FROM user_subscriptions WHERE user_id = ? ORDER BY created_at DESC"
+        ).bind(userId).all();
+        const quota = await env.DB.prepare(
+          "SELECT * FROM user_storage_quotas WHERE user_id = ?"
+        ).bind(userId).first();
+        return jsonResponse({
+          success: true,
+          subscriptions: (subs && subs.results) ? subs.results : [],
+          quota: quota || null
         }, 200, origin);
       }
 

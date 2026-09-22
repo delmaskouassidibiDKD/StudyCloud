@@ -1,6 +1,7 @@
 import React, { useState, useRef, useEffect } from 'react';
 import { 
   ArrowLeft, 
+  ArrowRight,
   UploadCloud, 
   CheckCircle2, 
   AlertCircle, 
@@ -36,12 +37,14 @@ interface SubscriptionFormViewProps {
   plan: SelectedPlan;
   onBack: () => void;
   onSuccess?: () => void;
+  onGoToRenewal?: () => void;
 }
 
 export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({ 
   plan, 
   onBack, 
-  onSuccess 
+  onSuccess,
+  onGoToRenewal 
 }) => {
   // Pré-remplissage avec les informations locales si existantes
   const initialName = localStorage.getItem('unifolder_user_name') || '';
@@ -85,7 +88,7 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
     contactPhone.trim().length >= 6 && 
     receiptImage !== null;
 
-  // Gestion de l'import de l'image du reçu
+  // Gestion de l'import et de la compression du reçu de paiement
   const handleFileSelect = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -95,20 +98,55 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
       return;
     }
 
-    if (file.size > 8 * 1024 * 1024) {
-      alert("L'image est trop volumineuse. Veuillez choisir une image de moins de 8 Mo.");
+    if (file.size > 20 * 1024 * 1024) {
+      alert("L'image est trop volumineuse. Veuillez choisir une image de moins de 20 Mo.");
       return;
     }
 
-    const sizeFormatted = file.size > 1024 * 1024 
-      ? (file.size / (1024 * 1024)).toFixed(1) + ' Mo' 
-      : Math.round(file.size / 1024) + ' Ko';
-
     const reader = new FileReader();
     reader.onload = (event) => {
-      setReceiptImage(event.target?.result as string);
-      setReceiptFileName(file.name);
-      setReceiptFileSize(sizeFormatted);
+      const rawDataUrl = event.target?.result as string;
+      const img = new Image();
+      img.onload = () => {
+        // Redimensionnement automatique pour garantir une clarté optimale tout en réduisant le poids à ~150 Ko
+        const maxDim = 1280;
+        let width = img.width;
+        let height = img.height;
+        if (width > maxDim || height > maxDim) {
+          if (width > height) {
+            height = Math.round((height * maxDim) / width);
+            width = maxDim;
+          } else {
+            width = Math.round((width * maxDim) / height);
+            height = maxDim;
+          }
+        }
+        const canvas = document.createElement('canvas');
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const compressedDataUrl = canvas.toDataURL('image/jpeg', 0.82);
+          const approxBytes = Math.round((compressedDataUrl.length * 3) / 4);
+          const formatted = approxBytes > 1024 * 1024
+            ? (approxBytes / (1024 * 1024)).toFixed(1) + ' Mo'
+            : Math.round(approxBytes / 1024) + ' Ko';
+          setReceiptImage(compressedDataUrl);
+          setReceiptFileName(file.name);
+          setReceiptFileSize(formatted);
+        } else {
+          setReceiptImage(rawDataUrl);
+          setReceiptFileName(file.name);
+          setReceiptFileSize(Math.round(file.size / 1024) + ' Ko');
+        }
+      };
+      img.onerror = () => {
+        setReceiptImage(rawDataUrl);
+        setReceiptFileName(file.name);
+        setReceiptFileSize(Math.round(file.size / 1024) + ' Ko');
+      };
+      img.src = rawDataUrl;
     };
     reader.readAsDataURL(file);
   };
@@ -154,8 +192,33 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
       });
 
       if (res.success) {
-        setSubmittedRequestId(res.requestId || 'REQ-' + Math.floor(100000 + Math.random() * 900000));
+        const reqId = res.requestId || 'REQ-' + Math.floor(100000 + Math.random() * 900000);
+        setSubmittedRequestId(reqId);
         setIsSuccess(true);
+        try {
+          const currentUserId = localStorage.getItem('unifolder_user_id') || 'default-user';
+          const newReqObj = {
+            id: reqId,
+            user_id: currentUserId,
+            pack_id: plan.name.toLowerCase().replace(/[^a-z0-9]+/g, '_'),
+            pack_name: plan.name,
+            additional_mb: plan.mb || 51200,
+            storage_display: plan.storageDisplay,
+            price_display: plan.priceDisplay,
+            billing_cycle: plan.billingCycle,
+            price_paid: plan.priceFcfa || plan.price,
+            currency: 'FCFA',
+            payment_method: 'Mobile Money (Wave / Orange / MTN / Moov)',
+            receipt_image_url: receiptImage || '',
+            contact_phone: contactPhone.trim(),
+            user_whatsapp: whatsappNumber.trim(),
+            notes: `Demande de souscription à ${plan.name} (${plan.storageDisplay}). Contact: ${contactPhone.trim()}${whatsappNumber.trim() ? ` | WhatsApp: ${whatsappNumber.trim()}` : ''}`,
+            status: 'pending',
+            created_at: new Date().toISOString()
+          };
+          const existing = JSON.parse(localStorage.getItem('studycloud_local_requests') || '[]');
+          localStorage.setItem('studycloud_local_requests', JSON.stringify([newReqObj, ...existing.filter((x: any) => x.id !== reqId)]));
+        } catch {}
         if (onSuccess) onSuccess();
       } else {
         alert(res.message || "Une erreur est survenue lors de l'enregistrement de votre demande.");
@@ -231,9 +294,14 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
               <h2 className="text-2xl sm:text-3xl font-serif text-[#2D4A3E] dark:text-white pt-2">
                 Merci, {fullName} !
               </h2>
-              <p className="text-xs sm:text-sm text-[#5C6B5A] dark:text-slate-300 max-w-md mx-auto">
-                Votre demande d'abonnement a été transmise au tableau de bord administrateur avec votre preuve de paiement.
-              </p>
+              <div className="space-y-1.5 max-w-md mx-auto">
+                <p className="text-xs sm:text-sm text-[#5C6B5A] dark:text-slate-300 leading-relaxed">
+                  Votre demande d'abonnement a bien été transmise à <strong className="text-[#2D4A3E] dark:text-white font-semibold">l'équipe StudyCloud</strong> et sera traitée rapidement.
+                </p>
+                <p className="text-[11px] sm:text-xs text-[#5C6B5A]/90 dark:text-slate-400 leading-relaxed">
+                  Vous pouvez suivre son avancement et vos échéances à tout moment dans le menu <strong className="text-[#2D4A3E] dark:text-emerald-400 font-semibold">« Renouveler mon abonnement »</strong>.
+                </p>
+              </div>
             </div>
 
             {/* Récapitulatif de la commande */}
@@ -272,10 +340,25 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
               </div>
             </div>
 
-            <div className="pt-2">
+            <div className="pt-2 flex flex-col sm:flex-row items-center justify-center gap-3">
+              {onGoToRenewal && (
+                <button
+                  type="button"
+                  onClick={onGoToRenewal}
+                  className="w-full sm:w-auto px-6 py-3 bg-[#2D4A3E] dark:bg-emerald-600 hover:bg-[#20362d] dark:hover:bg-emerald-700 text-[#F5F0E8] dark:text-white font-bold text-xs sm:text-sm rounded-xl shadow-md cursor-pointer transition flex items-center justify-center gap-2 active:scale-95 group"
+                >
+                  <span>Suivre ma demande dans le menu Renouvellement</span>
+                  <ArrowRight className="w-4 h-4 transition-transform group-hover:translate-x-1" />
+                </button>
+              )}
               <button
+                type="button"
                 onClick={onBack}
-                className="w-full sm:w-auto px-8 py-3 bg-[#2D4A3E] dark:bg-emerald-600 hover:bg-[#20362d] dark:hover:bg-emerald-700 text-[#F5F0E8] dark:text-white font-extrabold text-sm rounded-xl shadow-md cursor-pointer transition active:scale-95"
+                className={`w-full sm:w-auto px-6 py-3 ${
+                  onGoToRenewal 
+                    ? 'bg-[#D4C9B5] hover:bg-[#C2B59D] dark:bg-slate-800 dark:hover:bg-slate-700 text-[#2D4A3E] dark:text-slate-200 border border-[#2D4A3E]/20 dark:border-slate-700' 
+                    : 'bg-[#2D4A3E] dark:bg-emerald-600 hover:bg-[#20362d] dark:hover:bg-emerald-700 text-[#F5F0E8] dark:text-white shadow-md'
+                } font-bold text-xs sm:text-sm rounded-xl cursor-pointer transition active:scale-95`}
               >
                 Retourner aux formules d'abonnement
               </button>

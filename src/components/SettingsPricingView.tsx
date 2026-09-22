@@ -1,6 +1,7 @@
 import React, { useState } from 'react';
 import { ArrowLeft, Check, HardDrive, Bot, RotateCw, Sparkles } from 'lucide-react';
 import { SubscriptionFormView, SelectedPlan } from './SubscriptionFormView';
+import { RenewalSectionView } from './RenewalSectionView';
 
 interface SettingsPricingViewProps {
   onBack: () => void;
@@ -24,6 +25,10 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
           plan={selectedPlanForSubscription}
           onBack={() => setSelectedPlanForSubscription(null)}
           onSuccess={() => onSelectPlan(selectedPlanForSubscription.name)}
+          onGoToRenewal={() => {
+            setSelectedPlanForSubscription(null);
+            setActiveTab('renewal');
+          }}
         />
       </div>
     );
@@ -459,68 +464,13 @@ export const SettingsPricingView: React.FC<SettingsPricingViewProps> = ({ onBack
         )}
 
         {/* ========================================================================= */}
-        {/* 3. SECTION : RENOUVELER MON ABONNEMENT                                    */}
+        {/* 3. SECTION : RENOUVELER MON ABONNEMENT (DIVISÉE EN 2 VOLETS)               */}
         {/* ========================================================================= */}
         {activeTab === 'renewal' && (
-          <div className="w-full max-w-[650px] mx-auto px-2 pb-20">
-            <div className="bg-[#E8DFD0] dark:bg-[#111a2e] rounded-3xl p-6 sm:p-8 border-2 border-[#D4C9B5] dark:border-[#1e293b] shadow-md space-y-6">
-              <div className="flex items-center gap-3.5 pb-4 border-b border-[#D4C9B5] dark:border-slate-800">
-                <div className="w-12 h-12 rounded-2xl bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white flex items-center justify-center shadow-md shrink-0">
-                  <RotateCw className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-xl sm:text-2xl font-serif font-bold text-[#2D4A3E] dark:text-white">
-                    Renouveler mon abonnement
-                  </h3>
-                  <p className="text-xs text-[#5C6B5A] dark:text-slate-400 mt-0.5">
-                    Réabonnement & Prolongation de votre formule active
-                  </p>
-                </div>
-              </div>
-
-              {/* État actuel du compte */}
-              <div className="p-4 rounded-2xl bg-[#F5F0E8] dark:bg-slate-900/80 border border-[#D4C9B5] dark:border-slate-800 space-y-2">
-                <div className="flex items-center justify-between text-xs">
-                  <span className="text-[#5C6B5A] dark:text-slate-400 font-bold uppercase text-[10px]">Statut de votre compte :</span>
-                  <span className="px-2.5 py-0.5 rounded-full bg-[#2D4A3E]/15 dark:bg-emerald-500/20 text-[#2D4A3E] dark:text-emerald-400 font-bold text-xs">
-                    Compte Étudiant Connecté
-                  </span>
-                </div>
-                <div className="text-sm font-extrabold text-[#2D4A3E] dark:text-white flex items-center gap-2">
-                  <Sparkles className="w-4 h-4 text-amber-500 fill-current" />
-                  <span>Prêt pour le renouvellement</span>
-                </div>
-                <p className="text-xs text-[#5C6B5A] dark:text-slate-400 leading-relaxed">
-                  Cette section dédiée vous permettra très prochainement de prolonger votre formule active d'un simple clic et de régler vos échéances sans interruption de service.
-                </p>
-              </div>
-
-              {/* Actions de redirection immédiate */}
-              <div className="space-y-3 pt-2">
-                <span className="text-xs font-bold text-[#2D4A3E] dark:text-slate-300 block">
-                  En attendant, choisissez la formule que vous souhaitez renouveler :
-                </span>
-
-                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <button
-                    onClick={() => setActiveTab('storage')}
-                    className="p-4 rounded-2xl bg-[#2D4A3E] dark:bg-emerald-600 hover:bg-[#233b31] text-white font-bold text-xs flex flex-col items-center justify-center gap-2 shadow-md transition cursor-pointer active:scale-95"
-                  >
-                    <HardDrive className="w-5 h-5" />
-                    <span>Renouveler mon Stockage</span>
-                  </button>
-
-                  <button
-                    onClick={() => setActiveTab('ai')}
-                    className="p-4 rounded-2xl bg-[#C9B896] dark:bg-[#1e293b] hover:bg-[#b8a785] dark:hover:bg-[#283852] text-[#2D4A3E] dark:text-white border border-[#2D4A3E]/20 dark:border-slate-700 font-bold text-xs flex flex-col items-center justify-center gap-2 shadow-sm transition cursor-pointer active:scale-95"
-                  >
-                    <Bot className="w-5 h-5" />
-                    <span>Renouveler l'Assistante IA</span>
-                  </button>
-                </div>
-              </div>
-            </div>
-          </div>
+          <RenewalSectionView
+            onGoToStorage={() => setActiveTab('storage')}
+            onSelectPlan={onSelectPlan}
+          />
         )}
       </div>
     </div>

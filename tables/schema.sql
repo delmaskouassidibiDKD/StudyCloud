@@ -455,3 +455,98 @@ CREATE TABLE IF NOT EXISTS ai_generated_contents (
 CREATE INDEX IF NOT EXISTS idx_ai_contents_user ON ai_generated_contents(user_id);
 CREATE INDEX IF NOT EXISTS idx_ai_contents_tool ON ai_generated_contents(user_id, tool_type);
 CREATE INDEX IF NOT EXISTS idx_ai_contents_file ON ai_generated_contents(file_id);
+
+-- ============================================================================
+-- 16. DEMANDES D'AUGMENTATION DE STOCKAGE & SOUSCRIPTIONS ÉTUDIANTES
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS storage_upgrade_requests (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    user_name TEXT DEFAULT '',
+    user_phone TEXT DEFAULT '',
+    user_email TEXT DEFAULT '',
+    pack_id TEXT DEFAULT 'custom',
+    pack_name TEXT DEFAULT 'Pack Stockage',
+    additional_mb REAL DEFAULT 0,
+    additional_words INTEGER DEFAULT 0,
+    price_paid REAL DEFAULT 0,
+    currency TEXT DEFAULT 'FCFA',
+    payment_method TEXT DEFAULT 'Mobile Money (Wave / Orange / MTN / Moov)',
+    payment_reference TEXT DEFAULT '',
+    receipt_image_url TEXT DEFAULT '',
+    receipt_r2_key TEXT DEFAULT '',
+    contact_phone TEXT DEFAULT '',
+    user_whatsapp TEXT DEFAULT '',
+    storage_display TEXT DEFAULT '',
+    price_display TEXT DEFAULT '',
+    billing_cycle TEXT DEFAULT 'annual',
+    notes TEXT DEFAULT '',
+    admin_notes TEXT DEFAULT '',
+    status TEXT DEFAULT 'pending', -- 'pending' | 'active' | 'rejected' | 'cancelled'
+    confirmed_start_date TEXT DEFAULT '',
+    confirmed_end_date TEXT DEFAULT '',
+    grace_period_days INTEGER DEFAULT 5,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+CREATE INDEX IF NOT EXISTS idx_upgrade_user ON storage_upgrade_requests(user_id);
+CREATE INDEX IF NOT EXISTS idx_upgrade_status ON storage_upgrade_requests(status);
+
+-- ============================================================================
+-- 17. PROFIL D'ENTREPRISE & INFORMATIONS PROFESSIONNELLES (DKD Technologies)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS company_profile (
+    id TEXT PRIMARY KEY DEFAULT 'main',
+    company_name TEXT DEFAULT 'DKD Technologies',
+    activity TEXT DEFAULT 'Technologies & Éducation Numérique',
+    location TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
+    address TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
+    phone_contact TEXT DEFAULT '+225 0101007978',
+    phone_contact_secondary TEXT DEFAULT '',
+    phone_whatsapp TEXT DEFAULT '+225 0101007978',
+    email TEXT DEFAULT 'contact@dkd-technologies.com',
+    website TEXT DEFAULT 'https://studycloud.dkd-technologies.com',
+    wave_number TEXT DEFAULT '+225 07 00 00 00 00',
+    wave_name TEXT DEFAULT 'StudyCloud CI',
+    orange_number TEXT DEFAULT '+225 07 00 00 00 00',
+    orange_name TEXT DEFAULT 'Orange Money Côte d''Ivoire',
+    mtn_number TEXT DEFAULT '+225 05 00 00 00 00',
+    mtn_name TEXT DEFAULT 'Paiement Mobile National',
+    moov_number TEXT DEFAULT '',
+    moov_name TEXT DEFAULT '',
+    payment_instructions TEXT DEFAULT 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.',
+    about_text TEXT DEFAULT 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
+    notes TEXT DEFAULT '',
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
+
+-- ============================================================================
+-- 18. GESTION DES QUOTAS DE STOCKAGE UTILISATEURS
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS user_storage_quotas (
+    user_id TEXT PRIMARY KEY,
+    welcome_total_mb REAL DEFAULT 30.0,
+    welcome_r2_mb REAL DEFAULT 10.0,
+    welcome_d1_mb REAL DEFAULT 20.0,
+    paid_total_mb REAL DEFAULT 0.0,
+    paid_r2_mb REAL DEFAULT 0.0,
+    paid_d1_mb REAL DEFAULT 0.0,
+    bonus_total_mb REAL DEFAULT 0.0,
+    bonus_r2_mb REAL DEFAULT 0.0,
+    bonus_d1_mb REAL DEFAULT 0.0,
+    plan_name TEXT DEFAULT 'gratuit',
+    is_unlimited INTEGER DEFAULT 0,
+    notes TEXT DEFAULT '',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS storage_global_config (
+    id TEXT PRIMARY KEY DEFAULT 'default',
+    default_welcome_total_mb REAL DEFAULT 30.0,
+    default_welcome_r2_mb REAL DEFAULT 10.0,
+    default_welcome_d1_mb REAL DEFAULT 20.0,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+);
