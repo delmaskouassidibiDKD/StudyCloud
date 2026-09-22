@@ -2316,6 +2316,22 @@ async function ensureStorageTables(db) {
         INSERT OR IGNORE INTO company_profile (id, company_name, activity, location, address, phone_contact, phone_whatsapp, email, website, wave_number, wave_name, orange_number, orange_name, mtn_number, mtn_name, moov_number, moov_name, payment_instructions, about_text)
         VALUES ('main', 'DKD Technologies', 'Technologies & Éducation Numérique', 'Abidjan, Côte d''Ivoire', 'Abidjan, Côte d''Ivoire', '+225 0101007978', '+225 0101007978', 'contact@dkd-technologies.com', 'https://studycloud.dkd-technologies.com', '+225 07 00 00 00 00', 'StudyCloud CI', '+225 07 00 00 00 00', 'Orange Money Côte d''Ivoire', '+225 05 00 00 00 00', 'MTN Mobile Money CI', '+225 01 00 00 00 00', 'Moov Money Côte d''Ivoire', 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.', 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.')
       `).run();
+
+      await db.prepare(`
+        UPDATE company_profile 
+        SET mtn_name = 'MTN Mobile Money CI' 
+        WHERE id = 'main' AND (mtn_name = 'Paiement Mobile National' OR mtn_name LIKE '%Moov%' OR mtn_name IS NULL OR mtn_name = '')
+      `).run();
+      await db.prepare(`
+        UPDATE company_profile 
+        SET moov_number = '+225 01 00 00 00 00' 
+        WHERE id = 'main' AND (moov_number IS NULL OR moov_number = '')
+      `).run();
+      await db.prepare(`
+        UPDATE company_profile 
+        SET moov_name = 'Moov Money Côte d''Ivoire' 
+        WHERE id = 'main' AND (moov_name IS NULL OR moov_name = '')
+      `).run();
     } catch (e) {}
 
     await db.prepare(`
@@ -7698,6 +7714,17 @@ Lien vers le produit : ${productShareUrl}`;
         try {
           await ensureStorageTables(env.DB);
           const row = await env.DB.prepare(`SELECT * FROM company_profile WHERE id = 'main'`).first();
+          if (row) {
+            if (!row.mtn_name || row.mtn_name === 'Paiement Mobile National' || row.mtn_name.includes('Moov')) {
+              row.mtn_name = 'MTN Mobile Money CI';
+            }
+            if (!row.moov_number) {
+              row.moov_number = '+225 01 00 00 00 00';
+            }
+            if (!row.moov_name) {
+              row.moov_name = "Moov Money Côte d'Ivoire";
+            }
+          }
           return jsonResponse({ success: true, profile: row || defaultProfile }, 200, origin);
         } catch (e) {
           return jsonResponse({ success: true, profile: defaultProfile }, 200, origin);
