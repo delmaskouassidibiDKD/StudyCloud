@@ -373,6 +373,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
   const { user } = useAuth();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
+  const [isPolling, setIsPolling] = useState(false);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
   const [purchases, setPurchases] = useState<any[]>([]);
@@ -391,8 +392,13 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
     ? localStorage.getItem('unifolder_user_id') || 'default-user'
     : 'default-user');
 
-  const fetchData = async () => {
+  const fetchData = async (isSilent = false) => {
     try {
+      if (!isSilent) {
+        setLoading(true);
+      } else {
+        setIsPolling(true);
+      }
       // 1. Récupération des abonnements depuis l'API BDD
       const subRes = await getUserSubscriptions(currentUserId);
       let subs = (subRes.success && Array.isArray(subRes.subscriptions)) ? subRes.subscriptions : [];
@@ -473,7 +479,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
       // D) Fusion et consolidation de toutes les demandes individuelles pour l'utilisateur
       const allRequestsMap = new Map<string, any>();
       
-      // Ingestion des demandes serveur de la base de données
+      // Ingestion des demandes serveur de la base de données D1
       serverReqs.forEach(r => {
         if (r && r.id && (!r.user_id || r.user_id === currentUserId)) {
           allRequestsMap.set(r.id, r);
@@ -481,13 +487,30 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
       });
 
       // Ingestion des demandes locales pour cet utilisateur (secours / réactivité immédiate)
+      // et synchronisation bidirectionnelle avec la BDD
       try {
         const local = JSON.parse(localStorage.getItem('studycloud_local_requests') || '[]');
+        let updatedLocal = false;
         local.forEach((r: any) => {
-          if (r && r.id && (!r.user_id || r.user_id === currentUserId) && !allRequestsMap.has(r.id)) {
-            allRequestsMap.set(r.id, r);
+          if (r && r.id && (!r.user_id || r.user_id === currentUserId)) {
+            if (allRequestsMap.has(r.id)) {
+              const serverVersion = allRequestsMap.get(r.id);
+              if (serverVersion.status !== r.status || serverVersion.admin_notes !== r.admin_notes) {
+                r.status = serverVersion.status;
+                r.admin_notes = serverVersion.admin_notes || r.admin_notes;
+                r.updated_at = serverVersion.updated_at || r.updated_at;
+                r.confirmed_start_date = serverVersion.confirmed_start_date || r.confirmed_start_date;
+                r.confirmed_end_date = serverVersion.confirmed_end_date || r.confirmed_end_date;
+                updatedLocal = true;
+              }
+            } else {
+              allRequestsMap.set(r.id, r);
+            }
           }
         });
+        if (updatedLocal) {
+          localStorage.setItem('studycloud_local_requests', JSON.stringify(local));
+        }
       } catch {}
 
       // Règle des 1 mois (30 jours) et exclusion des demandes supprimées :
@@ -536,21 +559,40 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
       setRequests(activeRequests);
       setPurchases(mergedPurchases);
 
-      // Ouvrir automatiquement la première demande si elle existe
-      if (activeRequests.length > 0 && !expandedRequestId) {
-        setExpandedRequestId(activeRequests[0].id);
-      }
+      // IMPORTANT : Pas de dépliage automatique au chargement ! Reste replié jusqu'au clic utilisateur.
     } catch (err) {
       console.error('Erreur chargement données de renouvellement:', err);
     } finally {
       setLoading(false);
       setRefreshing(false);
+      setIsPolling(false);
     }
   };
 
   useEffect(() => {
-    fetchData();
-  }, []);
+    fetchData(false);
+
+    // Écoute temps réel : actualisation automatique toutes les 4 secondes
+    const intervalId = setInterval(() => {
+      fetchData(true);
+    }, 4000);
+
+    // Actualisation immédiate quand l'utilisateur revient sur l'onglet
+    const handleSyncOnVisible = () => {
+      if (document.visibilityState === 'visible') {
+        fetchData(true);
+      }
+    };
+
+    window.addEventListener('focus', handleSyncOnVisible);
+    document.addEventListener('visibilitychange', handleSyncOnVisible);
+
+    return () => {
+      clearInterval(intervalId);
+      window.removeEventListener('focus', handleSyncOnVisible);
+      document.removeEventListener('visibilitychange', handleSyncOnVisible);
+    };
+  }, [currentUserId]);
 
   const handleManualRefresh = () => {
     setRefreshing(true);
@@ -692,12 +734,12 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
       {/* GAUCHE : Abonnements en cours | DROITE : Demandes en cours                */}
       {/* ========================================================================= */}
       <div className="bg-[#E8DFD0] dark:bg-[#111a2e] rounded-3xl border-2 border-[#D4C9B5] dark:border-[#1e293b] shadow-sm overflow-hidden">
-        <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-[#D4C9B5] dark:divide-slate-800 items-stretch">
+        <div className="grid grid-cols-1 lg:grid-cols-2 divide-y lg:divide-y-0 lg:divide-x divide-[#D4C9B5] dark:divide-slate-800 items-start">
           
           {/* --------------------------------------------------------------------- */}
-          {/* CÔTÉ GAUCHE : ABONNEMENTS EN COURS                                    */}
+          {/* CÔTÉ GAUCHE : ABONNEMENTS EN COURS (Hauteur propre, fixe et autonome)  */}
           {/* --------------------------------------------------------------------- */}
-          <div className="p-5 sm:p-7 space-y-5 flex flex-col justify-between">
+          <div className="p-5 sm:p-7 space-y-5 self-start w-full">
             <div>
               {/* En-tête côté gauche */}
               <div className="flex items-center justify-between border-b border-[#D4C9B5] dark:border-slate-800 pb-3.5 mb-5">
@@ -889,7 +931,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
           {/* --------------------------------------------------------------------- */}
           {/* CÔTÉ DROIT : DEMANDES EN COURS                                        */}
           {/* --------------------------------------------------------------------- */}
-          <div className="p-5 sm:p-7 space-y-5 flex flex-col justify-between">
+          <div className="p-5 sm:p-7 space-y-5 self-start w-full">
             <div>
               {/* En-tête côté droit */}
               <div className="flex items-center justify-between border-b border-[#D4C9B5] dark:border-slate-800 pb-3.5 mb-5">
@@ -901,9 +943,15 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                     <h3 className="text-base sm:text-lg font-bold text-[#2D4A3E] dark:text-white">
                       Demandes en cours
                     </h3>
-                    <span className="text-[11px] text-[#5C6B5A] dark:text-slate-400">
-                      Suivi en temps réel de vos commandes et activations
-                    </span>
+                    <div className="text-[11px] text-[#5C6B5A] dark:text-slate-400 flex items-center gap-2 flex-wrap">
+                      <span>Suivi en temps réel de vos commandes et activations</span>
+                      {isPolling && (
+                        <span className="inline-flex items-center gap-1 text-[10px] text-orange-600 dark:text-orange-400 font-bold bg-orange-500/10 dark:bg-orange-500/20 px-2 py-0.5 rounded-full animate-pulse">
+                          <RotateCw className="w-2.5 h-2.5 animate-spin" />
+                          <span>Actualisation...</span>
+                        </span>
+                      )}
+                    </div>
                   </div>
                 </div>
 
@@ -1165,10 +1213,22 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({
                             }`}>
                               <div className="flex items-start gap-2">
                                 <span className="text-sm mt-0.5">ℹ️</span>
-                                <span className="leading-relaxed">
-                                  {isPending && "Votre demande ainsi que votre preuve de paiement sont en cours de vérification par l'équipe administrative. Dès confirmation, cette case deviendra verte avec votre reçu téléchargeable."}
-                                  {isRejected && "Cette demande n'a pas pu être validée. Vous pouvez effacer cet enregistrement de votre liste."}
-                                </span>
+                                <div className="leading-relaxed space-y-1">
+                                  {isPending && (
+                                    <span>Votre demande ainsi que votre preuve de paiement sont en cours de vérification par l'équipe administrative. Dès confirmation, cette case deviendra verte avec votre reçu téléchargeable.</span>
+                                  )}
+                                  {isRejected && (
+                                    <>
+                                      <span className="font-bold text-red-800 dark:text-red-300">Cette demande n'a pas pu être validée par l'administration.</span>
+                                      {req.admin_notes && (
+                                        <div className="text-xs font-semibold text-red-950 dark:text-red-200 bg-red-500/10 dark:bg-red-900/30 p-2 rounded-lg border border-red-500/20">
+                                          Motif du rejet : {req.admin_notes}
+                                        </div>
+                                      )}
+                                      <span className="block text-[11px] opacity-80">Vous pouvez effacer cet enregistrement avec le bouton ci-contre.</span>
+                                    </>
+                                  )}
+                                </div>
                               </div>
                               {isRejected && (
                                 <button

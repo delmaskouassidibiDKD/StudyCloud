@@ -5937,10 +5937,9 @@ export default {
         if (!userId) {
           return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
         }
-        const includeDeleted = url.searchParams.get('includeDeleted') === 'true';
         const query = includeDeleted
           ? `SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC`
-          : `SELECT * FROM storage_upgrade_requests WHERE user_id = ? AND (user_deleted_at IS NULL OR user_deleted_at = '') AND (status = 'pending' OR datetime(COALESCE(confirmed_at, updated_at, created_at)) >= datetime('now', '-30 days')) ORDER BY created_at DESC`;
+          : `SELECT * FROM storage_upgrade_requests WHERE user_id = ? AND (user_deleted_at IS NULL OR user_deleted_at = '') ORDER BY created_at DESC`;
         const reqs = await safeQuery(db, query, [userId], { results: [] });
         return new Response(JSON.stringify({
           success: true,
