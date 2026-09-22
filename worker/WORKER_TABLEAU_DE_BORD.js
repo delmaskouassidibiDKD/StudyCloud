@@ -6448,7 +6448,7 @@ function renderDashboardHtml(data) {
             }
             showToast('✓ Carte / QR ' + network.toUpperCase() + ' sauvegardé avec succès dans Cloudflare R2 !');
           } else {
-            throw new Error(res?.error || 'Échec de l\'upload');
+            throw new Error(res?.error || "Échec de l'upload");
           }
         } catch (err) {
           console.error('Erreur upload:', err);
@@ -6503,27 +6503,53 @@ function renderDashboardHtml(data) {
     window.deletePaymentImage = deletePaymentImage;
 
     function renderPaymentImageContainer(network, imageUrl) {
-      const container = document.getElementById('container-img-' + network);
+      const container = document.getElementById("container-img-" + network);
       if (!container) return;
-      const netColor = network === 'wave' ? 'blue' : network === 'orange' ? 'orange' : network === 'mtn' ? 'yellow' : 'emerald';
+      const netColor = network === "wave" ? "blue" : network === "orange" ? "orange" : network === "mtn" ? "yellow" : "emerald";
+      container.innerHTML = "";
       if (imageUrl) {
-        container.innerHTML = '<div class="relative group rounded-xl overflow-hidden border border-slate-700 bg-slate-900">' +
-          '<img src="' + imageUrl + '" alt="Carte ' + network + '" class="w-full h-24 object-contain bg-slate-950 p-1 cursor-pointer" onclick="openImageZoomModal(\'' + imageUrl + '\', \'Carte Commer\u00e7ant / QR ' + network.toUpperCase() + '\')" />' +
-          '<div class="absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2">' +
-          '<button type="button" onclick="document.getElementById(\'file-pro-' + network + '\').click()" class="px-2 py-1 bg-' + netColor + '-600 hover:bg-' + netColor + '-500 text-white rounded text-[10px] font-bold shadow cursor-pointer">' +
-          'Changer' +
-          '</button>' +
-          '<button type="button" onclick="deletePaymentImage(\'' + network + '\')" class="px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold shadow cursor-pointer">' +
-          'Supprimer' +
-          '</button>' +
-          '</div>' +
-          '</div>';
+        const wrap = document.createElement("div");
+        wrap.className = "relative group rounded-xl overflow-hidden border border-slate-700 bg-slate-900";
+        
+        const img = document.createElement("img");
+        img.src = imageUrl;
+        img.alt = "Carte " + network;
+        img.className = "w-full h-24 object-contain bg-slate-950 p-1 cursor-pointer";
+        img.onclick = function() { openImageZoomModal(imageUrl, "Carte Commerçant / QR " + network.toUpperCase()); };
+        
+        const overlay = document.createElement("div");
+        overlay.className = "absolute inset-0 bg-black/70 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2";
+        
+        const btnChange = document.createElement("button");
+        btnChange.type = "button";
+        btnChange.className = "px-2 py-1 bg-" + netColor + "-600 hover:bg-" + netColor + "-500 text-white rounded text-[10px] font-bold shadow cursor-pointer";
+        btnChange.textContent = "Changer";
+        btnChange.onclick = function() {
+          const fi = document.getElementById("file-pro-" + network);
+          if (fi) fi.click();
+        };
+        
+        const btnDelete = document.createElement("button");
+        btnDelete.type = "button";
+        btnDelete.className = "px-2 py-1 bg-rose-600 hover:bg-rose-500 text-white rounded text-[10px] font-bold shadow cursor-pointer";
+        btnDelete.textContent = "Supprimer";
+        btnDelete.onclick = function() { deletePaymentImage(network); };
+        
+        overlay.appendChild(btnChange);
+        overlay.appendChild(btnDelete);
+        wrap.appendChild(img);
+        wrap.appendChild(overlay);
+        container.appendChild(wrap);
       } else {
-        container.innerHTML = '<button type="button" onclick="document.getElementById(\'file-pro-' + network + '\').click()" class="w-full py-2.5 px-2 border-2 border-dashed border-slate-700 hover:border-' + netColor + '-500/60 rounded-xl bg-slate-900/60 hover:bg-slate-900 text-slate-400 hover:text-' + netColor + '-300 flex flex-col items-center justify-center gap-1 transition cursor-pointer text-center">' +
-          '<span class="text-base">\ud83d\udcf8</span>' +
-          '<span class="text-[10px] font-bold">+ Ajouter Carte / QR</span>' +
-          '<span class="text-[8px] text-slate-500">PNG, JPG, WEBP (R2)</span>' +
-          '</button>';
+        const btnAdd = document.createElement("button");
+        btnAdd.type = "button";
+        btnAdd.className = "w-full py-2.5 px-2 border-2 border-dashed border-slate-700 hover:border-" + netColor + "-500/60 rounded-xl bg-slate-900/60 hover:bg-slate-900 text-slate-400 hover:text-" + netColor + "-300 flex flex-col items-center justify-center gap-1 transition cursor-pointer text-center";
+        btnAdd.innerHTML = '<span class="text-base">📷</span><span class="text-[10px] font-bold">+ Ajouter Carte / QR</span><span class="text-[8px] text-slate-500">PNG, JPG, WEBP (R2)</span>';
+        btnAdd.onclick = function() {
+          const fi = document.getElementById("file-pro-" + network);
+          if (fi) fi.click();
+        };
+        container.appendChild(btnAdd);
       }
     }
     window.renderPaymentImageContainer = renderPaymentImageContainer;
