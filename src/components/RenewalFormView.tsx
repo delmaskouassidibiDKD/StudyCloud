@@ -742,7 +742,7 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
                   <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
                     <div>
                       <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-yellow-500/20 text-yellow-800 dark:text-yellow-400 mr-2">
-                        MTN Money
+                        MTN
                       </span>
                       <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
                         {companyProfile?.mtn_number || '+225 05 00 00 00 00'}
@@ -774,7 +774,7 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
                   <div className="bg-[#F5F0E8] dark:bg-[#0b0f19] p-2.5 rounded-xl border border-[#D4C9B5] dark:border-slate-800 flex items-center justify-between gap-2">
                     <div>
                       <span className="text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 mr-2">
-                        Moov Money
+                        Moov
                       </span>
                       <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
                         {companyProfile?.moov_number || '+225 01 00 00 00 00'}
