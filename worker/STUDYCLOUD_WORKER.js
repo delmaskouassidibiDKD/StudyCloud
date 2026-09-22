@@ -2352,6 +2352,32 @@ async function ensureStorageTables(db) {
     for (const sql of subCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
     }
+
+    // 6. Table 'user_purchases_history' pour l'historique complet des achats et paiements
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_purchases_history (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        user_name TEXT DEFAULT '',
+        user_email TEXT DEFAULT '',
+        user_phone TEXT DEFAULT '',
+        pack_name TEXT NOT NULL,
+        storage_bought_mb REAL DEFAULT 0,
+        total_storage_mb REAL DEFAULT 30,
+        price_paid REAL DEFAULT 0,
+        currency TEXT DEFAULT 'FCFA',
+        payment_method TEXT DEFAULT 'Mobile Money',
+        payment_reference TEXT DEFAULT '',
+        billing_cycle TEXT DEFAULT 'monthly',
+        renewal_date TEXT DEFAULT '',
+        status TEXT DEFAULT 'confirmed',
+        purchased_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        confirmed_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        user_deleted_at TEXT DEFAULT '',
+        purge_scheduled_at TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
   } catch (err) {
     console.warn("[ensureStorageTables Warn]", err);
   }
@@ -7414,9 +7440,101 @@ Lien vers le produit : ${productShareUrl}`;
           `).bind(nowISO, purgeDateISO, requestId, userId).run();
         } catch (e) {}
 
+        try {
+          await env.DB.prepare(`
+            UPDATE user_purchases_history 
+            SET user_deleted_at = ?, purge_scheduled_at = ? 
+            WHERE (id = ? OR id = ? OR id = ?) AND user_id = ?
+          `).bind(nowISO, purgeDateISO, requestId, "PUR_" + requestId, requestId.replace("PUR_", ""), userId).run();
+        } catch (e) {}
+
         return jsonResponse({
           success: true,
           message: "Votre demande de suppression a été enregistrée. Conformément à la réglementation de traçabilité comptable, la suppression définitive de cet historique sera effective après 1 mois (30 jours)."
+        }, 200, origin);
+      }
+
+      // Route utilisateur : Récupération de l'historique complet des achats et paiements
+      if (path === "/api/user/purchases-history" && method === "GET") {
+        if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
+        const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
+        if (!userId) return errorResponse("userId requis", 400, origin);
+
+        await ensureStorageTables(env.DB);
+
+        // 1. Récupérer dans la table officielle user_purchases_history
+        let purchasesRes = await env.DB.prepare(`
+          SELECT * FROM user_purchases_history 
+          WHERE user_id = ? AND (user_deleted_at IS NULL OR user_deleted_at = '') 
+          ORDER BY purchased_at DESC, created_at DESC
+        `).bind(userId).all();
+        let purchases = (purchasesRes && purchasesRes.results) ? purchasesRes.results : [];
+
+        // 2. Synchronisation automatique de secours si la table est encore vide
+        if (purchases.length === 0) {
+          const subsRes = await env.DB.prepare(`SELECT * FROM user_subscriptions WHERE user_id = ? ORDER BY created_at DESC`).bind(userId).all();
+          const userSubs = (subsRes && subsRes.results) ? subsRes.results : [];
+
+          const reqsRes = await env.DB.prepare(`SELECT * FROM storage_upgrade_requests WHERE user_id = ? AND status = 'approved' AND (user_deleted_at IS NULL OR user_deleted_at = '') ORDER BY created_at DESC`).bind(userId).all();
+          const approvedReqs = (reqsRes && reqsRes.results) ? reqsRes.results : [];
+
+          for (const req of approvedReqs) {
+            const purId = "PUR_" + (req.id ? req.id.replace(/[^a-zA-Z0-9]/g, "") : Math.random().toString(36).substring(2, 10));
+            const addMb = Number(req.additional_mb || 1024);
+            const price = Number(req.price_paid || 1000);
+            const dateVal = req.confirmed_start_date || req.confirmed_at || req.updated_at || req.created_at || new Date().toISOString();
+            const renDate = req.confirmed_end_date || "";
+            try {
+              await env.DB.prepare(`
+                INSERT OR IGNORE INTO user_purchases_history (
+                  id, user_id, user_name, user_phone, user_email, pack_name,
+                  storage_bought_mb, total_storage_mb, price_paid, currency,
+                  payment_method, payment_reference, billing_cycle, renewal_date,
+                  status, purchased_at, confirmed_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)
+              `).bind(
+                purId, userId, req.user_name || "", req.user_phone || req.contact_phone || "", req.user_email || "",
+                req.pack_name || "Pack Stockage StudyCloud", addMb, addMb + 30, price, req.currency || "FCFA",
+                req.payment_method || "Mobile Money", req.payment_reference || req.id || "",
+                req.billing_cycle || "monthly", renDate, dateVal, dateVal, dateVal
+              ).run();
+            } catch (e) {}
+          }
+
+          for (const sub of userSubs) {
+            const purId = "PUR_" + (sub.id ? sub.id.replace(/[^a-zA-Z0-9]/g, "") : Math.random().toString(36).substring(2, 10));
+            const totMb = Number(sub.total_storage_mb || 1024);
+            const boughtMb = sub.storage_added_mb ? Number(sub.storage_added_mb) : Math.max(0, totMb - 30);
+            const price = Number(sub.monthly_price || 1000);
+            const dateVal = sub.start_date || sub.created_at || new Date().toISOString();
+            const renDate = sub.end_date || "";
+            try {
+              await env.DB.prepare(`
+                INSERT OR IGNORE INTO user_purchases_history (
+                  id, user_id, user_name, user_phone, user_email, pack_name,
+                  storage_bought_mb, total_storage_mb, price_paid, currency,
+                  payment_method, payment_reference, billing_cycle, renewal_date,
+                  status, purchased_at, confirmed_at, created_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)
+              `).bind(
+                purId, userId, sub.user_name || "", sub.user_phone || "", sub.user_email || "",
+                sub.plan_name || "Abonnement StudyCloud", boughtMb, totMb, price, sub.currency || "FCFA",
+                "Mobile Money", sub.request_id || sub.id, "monthly", renDate, dateVal, dateVal, dateVal
+              ).run();
+            } catch (e) {}
+          }
+
+          purchasesRes = await env.DB.prepare(`
+            SELECT * FROM user_purchases_history 
+            WHERE user_id = ? AND (user_deleted_at IS NULL OR user_deleted_at = '') 
+            ORDER BY purchased_at DESC, created_at DESC
+          `).bind(userId).all();
+          purchases = (purchasesRes && purchasesRes.results) ? purchasesRes.results : [];
+        }
+
+        return jsonResponse({
+          success: true,
+          purchases
         }, 200, origin);
       }
 
@@ -7482,6 +7600,24 @@ Lien vers le produit : ${productShareUrl}`;
           reqRow.pack_name || "Pack Stockage", wTotal + newPaid, pricePaid, reqRow.currency || "FCFA",
           startDate, endDate, gracePeriodDays, requestId
         ).run();
+
+        // 4. Enregistrer immédiatement l'achat dans user_purchases_history
+        const purchaseId = "PUR_" + Math.random().toString(36).substring(2, 10).toUpperCase();
+        try {
+          await env.DB.prepare(`
+            INSERT INTO user_purchases_history (
+              id, user_id, user_name, user_phone, user_email, pack_name,
+              storage_bought_mb, total_storage_mb, price_paid, currency,
+              payment_method, payment_reference, billing_cycle, renewal_date,
+              status, purchased_at, confirmed_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, CURRENT_TIMESTAMP)
+          `).bind(
+            purchaseId, userId, reqRow.user_name || "", reqRow.user_phone || "", reqRow.user_email || "",
+            reqRow.pack_name || "Pack Stockage", addMb, wTotal + newPaid, pricePaid, reqRow.currency || "FCFA",
+            reqRow.payment_method || "Mobile Money", reqRow.payment_reference || reqRow.id || "",
+            reqRow.billing_cycle || "monthly", endDate, startDate, startDate
+          ).run();
+        } catch (e) {}
 
         return jsonResponse({
           success: true,

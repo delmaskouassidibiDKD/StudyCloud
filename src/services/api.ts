@@ -2083,3 +2083,20 @@ export async function deleteUserRequestHistory(
   }
 }
 
+/**
+ * Récupère l'historique complet de tous les achats et paiements effectués par l'utilisateur
+ */
+export async function getUserPurchasesHistory(
+  userId?: string
+): Promise<{ success: boolean; purchases: any[] }> {
+  const currentUserId = userId || localStorage.getItem('unifolder_user_id') || 'default-user';
+  try {
+    return await request<{ success: boolean; purchases: any[] }>(
+      `/api/user/purchases-history?userId=${encodeURIComponent(currentUserId)}`,
+      { method: 'GET' }
+    );
+  } catch (err) {
+    return { success: false, purchases: [] };
+  }
+}
+

@@ -15,10 +15,14 @@ import {
   FileText,
   Download,
   Trash2,
-  Check,
   Info
 } from 'lucide-react';
-import { getUserSubscriptions, getUserStorageRequests, deleteUserRequestHistory } from '../services/api';
+import { 
+  getUserSubscriptions, 
+  getUserStorageRequests, 
+  getUserPurchasesHistory,
+  deleteUserRequestHistory 
+} from '../services/api';
 import { useAuth } from '../context/AuthContext';
 
 interface RenewalSectionViewProps {
@@ -58,42 +62,55 @@ function formatFullDateTimeFrench(dateStr?: string | null): { datePart: string; 
  * Génère et télécharge la fiche officielle / reçu de paiement de l'utilisateur
  * Ne contient que les informations le concernant (aucune information interne)
  */
-function downloadReceiptSlip(req: any, activeSub: any, user: any) {
-  const ref = req.id || ('SC-REC-' + Math.random().toString(36).substring(2, 8).toUpperCase());
-  const studentName = user?.name || user?.full_name || localStorage.getItem('studycloud_user_name') || 'Étudiant StudyCloud';
-  const planName = req.pack_name || activeSub?.plan_name || 'Abonnement Stockage StudyCloud';
-  const validationDate = formatFullDateTimeFrench(req.confirmed_at || req.updated_at || req.created_at).full;
-  const renewalDate = formatFullDateTimeFrench(activeSub?.end_date || activeSub?.payment_due_date || req.renewal_date).full;
+function downloadReceiptSlip(item: any, activeSub: any, user: any) {
+  const ref = item.payment_reference || item.id || ('SC-REC-' + Math.random().toString(36).substring(2, 8).toUpperCase());
+  const studentName = user?.name || user?.full_name || item.user_name || localStorage.getItem('studycloud_user_name') || 'Étudiant StudyCloud';
+  const planName = item.pack_name || item.plan_name || activeSub?.plan_name || 'Abonnement Stockage StudyCloud';
+  const validationDate = formatFullDateTimeFrench(item.confirmed_at || item.purchased_at || item.start_date || item.updated_at || item.created_at).full;
+  const renewalDate = formatFullDateTimeFrench(item.renewal_date || item.end_date || activeSub?.end_date || activeSub?.payment_due_date).full;
 
   // Calcul du stockage acheté
-  let storagePurchased = req.storage_display || '';
-  if (!storagePurchased && req.storage_added_mb) {
-    storagePurchased = req.storage_added_mb >= 1024 
-      ? `${(req.storage_added_mb / 1024).toFixed(0)} Go` 
-      : `${req.storage_added_mb} Mo`;
+  let storagePurchased = item.storage_display || '';
+  if (!storagePurchased && item.storage_bought_mb) {
+    storagePurchased = item.storage_bought_mb >= 1024 
+      ? `${(item.storage_bought_mb / 1024).toFixed(0)} Go` 
+      : `${item.storage_bought_mb} Mo`;
+  }
+  if (!storagePurchased && item.storage_added_mb) {
+    storagePurchased = item.storage_added_mb >= 1024 
+      ? `${(item.storage_added_mb / 1024).toFixed(0)} Go` 
+      : `${item.storage_added_mb} Mo`;
+  }
+  if (!storagePurchased && item.total_storage_mb) {
+    const calcBought = Math.max(0, Number(item.total_storage_mb) - 30);
+    storagePurchased = calcBought >= 1024 ? `${(calcBought / 1024).toFixed(0)} Go` : `${calcBought} Mo`;
   }
   if (!storagePurchased && activeSub?.total_storage_mb) {
-    storagePurchased = `${activeSub.total_storage_mb} Mo`;
+    storagePurchased = `${Math.max(0, activeSub.total_storage_mb - 30)} Mo`;
   }
 
   // Calcul du stockage total
   let totalStorage = '';
-  if (activeSub?.total_storage_mb) {
+  if (item.total_storage_mb) {
+    totalStorage = item.total_storage_mb >= 1024
+      ? `${(item.total_storage_mb / 1024).toFixed(1)} Go (${item.total_storage_mb} Mo)`
+      : `${item.total_storage_mb} Mo`;
+  } else if (activeSub?.total_storage_mb) {
     totalStorage = activeSub.total_storage_mb >= 1024
       ? `${(activeSub.total_storage_mb / 1024).toFixed(1)} Go (${activeSub.total_storage_mb} Mo)`
       : `${activeSub.total_storage_mb} Mo`;
-  } else if (req.storage_added_mb) {
-    const sum = Number(req.storage_added_mb) + 30;
+  } else if (item.storage_bought_mb || item.storage_added_mb) {
+    const sum = Number(item.storage_bought_mb || item.storage_added_mb) + 30;
     totalStorage = sum >= 1024 ? `${(sum / 1024).toFixed(1)} Go (${sum} Mo)` : `${sum} Mo`;
   } else {
     totalStorage = storagePurchased || 'Espace actif';
   }
 
-  const pricePaid = req.price_display || (req.price_paid 
-    ? `${Number(req.price_paid).toLocaleString('fr-FR')} ${req.currency || 'FCFA'}` 
-    : (activeSub?.monthly_price ? `${Number(activeSub.monthly_price).toLocaleString('fr-FR')} FCFA` : '1 000 FCFA'));
-  const paymentMethod = req.payment_method || 'Mobile Money';
-  const cycle = req.billing_cycle === 'yearly' ? 'Annuel' : 'Mensuel';
+  const pricePaid = item.price_display || (item.price_paid 
+    ? `${Number(item.price_paid).toLocaleString('fr-FR')} ${item.currency || 'FCFA'}` 
+    : (item.monthly_price ? `${Number(item.monthly_price).toLocaleString('fr-FR')} FCFA` : (activeSub?.monthly_price ? `${Number(activeSub.monthly_price).toLocaleString('fr-FR')} FCFA` : '1 000 FCFA')));
+  const paymentMethod = item.payment_method || 'Mobile Money';
+  const cycle = (item.billing_cycle === 'yearly' || item.billing_cycle === 'annual') ? 'Annuel' : 'Mensuel';
 
   const htmlContent = `<!DOCTYPE html>
 <html lang="fr">
@@ -256,7 +273,7 @@ function downloadReceiptSlip(req: any, activeSub: any, user: any) {
     <div class="header">
       <h1>StudyCloud — Reçu Officiel</h1>
       <p>Attestation de Paiement & Confirmation d'Attribution de Stockage</p>
-      <div class="badge-approved">✓ Demande Acceptée & Validée</div>
+      <div class="badge-approved">✓ Paiement Enregistré & Stockage Validé</div>
     </div>
 
     <div class="body">
@@ -267,7 +284,7 @@ function downloadReceiptSlip(req: any, activeSub: any, user: any) {
           <div class="box-val" style="font-family: monospace;">${ref}</div>
         </div>
         <div class="box">
-          <div class="box-label">Date & Heure de Validation</div>
+          <div class="box-label">Date & Heure du Paiement</div>
           <div class="box-val">${validationDate}</div>
         </div>
         <div class="box">
@@ -288,7 +305,7 @@ function downloadReceiptSlip(req: any, activeSub: any, user: any) {
         </div>
         <div class="highlight-row">
           <span class="hl-label">Stockage Acheté</span>
-          <span class="hl-val">+${storagePurchased}</span>
+          <span class="hl-val">${storagePurchased}</span>
         </div>
         <div class="highlight-row">
           <span class="hl-label">Somme du Stockage Total Disponible</span>
@@ -338,10 +355,11 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
   const [refreshing, setRefreshing] = useState(false);
   const [subscriptions, setSubscriptions] = useState<any[]>([]);
   const [requests, setRequests] = useState<any[]>([]);
+  const [purchases, setPurchases] = useState<any[]>([]);
   const [expandedRequestId, setExpandedRequestId] = useState<string | null>(null);
   const [zoomedReceiptUrl, setZoomedReceiptUrl] = useState<string | null>(null);
 
-  // État de la modale d'historique des demandes confirmées
+  // État de la modale d'historique des achats
   const [showHistoryModal, setShowHistoryModal] = useState(false);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [historyNotice, setHistoryNotice] = useState<string | null>(null);
@@ -352,41 +370,101 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
 
   const fetchData = async () => {
     try {
-      // 1. Récupération des abonnements depuis l'API
+      // 1. Récupération des abonnements depuis l'API BDD
       const subRes = await getUserSubscriptions(currentUserId);
       let subs = (subRes.success && Array.isArray(subRes.subscriptions)) ? subRes.subscriptions : [];
 
-      // 2. Récupération des demandes depuis l'API
+      // 2. Récupération des demandes depuis l'API BDD
       const reqRes = await getUserStorageRequests(currentUserId);
       let serverReqs = (reqRes.success && Array.isArray(reqRes.requests)) ? reqRes.requests : [];
 
-      // 3. Récupération des requêtes sauvegardées localement en secours immédiat
-      let localReqs: any[] = [];
+      // 3. Récupération de l'historique officiel des achats depuis la table BDD user_purchases_history
+      const purRes = await getUserPurchasesHistory(currentUserId);
+      let dbPurchases = (purRes.success && Array.isArray(purRes.purchases)) ? purRes.purchases : [];
+
+      // 4. Fusion complète et déduplication de tous les achats de l'utilisateur
+      const allPurchasesMap = new Map<string, any>();
+
+      // A) Ingestion des achats depuis la table BDD user_purchases_history
+      dbPurchases.forEach(p => {
+        if (p && p.id && !p.user_deleted_at) {
+          allPurchasesMap.set(p.id, p);
+        }
+      });
+
+      // B) Ingestion des demandes validées/approuvées
+      serverReqs.forEach(r => {
+        if (r && (r.status === 'approved' || r.status === 'confirmed') && !r.user_deleted_at) {
+          const key = r.id;
+          if (!allPurchasesMap.has(key)) {
+            allPurchasesMap.set(key, {
+              ...r,
+              id: r.id,
+              pack_name: r.pack_name || 'Demande de Stockage',
+              purchased_at: r.confirmed_start_date || r.confirmed_at || r.updated_at || r.created_at,
+              confirmed_at: r.confirmed_start_date || r.confirmed_at || r.updated_at || r.created_at,
+              price_paid: r.price_paid,
+              price_display: r.price_display,
+              storage_bought_mb: r.additional_mb || 1024,
+              storage_display: r.storage_display,
+              total_storage_mb: (r.additional_mb || 1024) + 30,
+              payment_reference: r.id,
+              payment_method: r.payment_method || 'Mobile Money',
+              renewal_date: r.confirmed_end_date || ''
+            });
+          }
+        }
+      });
+
+      // C) Ingestion des abonnements actifs ou passés (afin qu'un abonnement payant ne manque jamais)
+      subs.forEach(s => {
+        if (s && s.status !== 'free' && Number(s.total_storage_mb || 0) > 30 && !s.user_deleted_at) {
+          const key = s.request_id || s.id;
+          if (!allPurchasesMap.has(key)) {
+            allPurchasesMap.set(key, {
+              ...s,
+              id: s.id,
+              pack_name: s.plan_name || 'Abonnement StudyCloud',
+              purchased_at: s.start_date || s.created_at,
+              confirmed_at: s.start_date || s.created_at,
+              price_paid: s.monthly_price,
+              currency: s.currency || 'FCFA',
+              storage_bought_mb: Math.max(0, Number(s.total_storage_mb) - 30),
+              total_storage_mb: s.total_storage_mb,
+              renewal_date: s.end_date,
+              payment_reference: s.id,
+              payment_method: 'Mobile Money'
+            });
+          }
+        }
+      });
+
+      // D) Fusion de secours local si présent
       try {
-        localReqs = JSON.parse(localStorage.getItem('studycloud_local_requests') || '[]');
+        const local = JSON.parse(localStorage.getItem('studycloud_local_requests') || '[]');
+        local.forEach((r: any) => {
+          if (r && (r.status === 'approved' || r.status === 'confirmed') && !r.user_deleted_at && !allPurchasesMap.has(r.id)) {
+            allPurchasesMap.set(r.id, r);
+          }
+        });
       } catch {}
 
-      // Fusion sans doublons par ID et filtre des demandes supprimées
-      const allReqsMap = new Map<string, any>();
-      localReqs.forEach(r => { 
-        if (r && r.id && !r.user_deleted_at) allReqsMap.set(r.id, r); 
+      const mergedPurchases = Array.from(allPurchasesMap.values()).sort((a, b) => {
+        const tA = new Date(a.purchased_at || a.confirmed_at || a.created_at || 0).getTime();
+        const tB = new Date(b.purchased_at || b.confirmed_at || b.created_at || 0).getTime();
+        return tB - tA;
       });
-      serverReqs.forEach(r => { 
-        if (r && r.id && !r.user_deleted_at) allReqsMap.set(r.id, r); 
-      });
-      
-      const combinedRequests = Array.from(allReqsMap.values()).sort((a, b) => {
-        const timeA = new Date(a.created_at || 0).getTime();
-        const timeB = new Date(b.created_at || 0).getTime();
-        return timeB - timeA;
-      });
+
+      // Filtrer les demandes actives pour le panneau de droite
+      const activeRequests = serverReqs.filter(r => !r.user_deleted_at);
 
       setSubscriptions(subs);
-      setRequests(combinedRequests);
+      setRequests(activeRequests);
+      setPurchases(mergedPurchases);
 
       // Ouvrir automatiquement la première demande si elle existe
-      if (combinedRequests.length > 0 && !expandedRequestId) {
-        setExpandedRequestId(combinedRequests[0].id);
+      if (activeRequests.length > 0 && !expandedRequestId) {
+        setExpandedRequestId(activeRequests[0].id);
       }
     } catch (err) {
       console.error('Erreur chargement données de renouvellement:', err);
@@ -410,26 +488,27 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
   };
 
   // Suppression d'un historique avec le délai de 1 mois
-  const handleDeleteHistoryItem = async (requestId: string) => {
-    if (!window.confirm('Voulez-vous masquer cette demande de votre historique ?\n\n⚠️ Note : La suppression définitive de cet historique sera effective après 1 mois (30 jours).')) {
+  const handleDeleteHistoryItem = async (itemId: string) => {
+    if (!window.confirm('Voulez-vous supprimer cet achat de votre historique ?\n\n⚠️ Note : La suppression définitive de cet historique sera effective après 1 mois (30 jours).')) {
       return;
     }
 
-    setDeletingId(requestId);
+    setDeletingId(itemId);
     try {
-      const res = await deleteUserRequestHistory(requestId, currentUserId);
+      const res = await deleteUserRequestHistory(itemId, currentUserId);
       
-      // Retirer immédiatement de la vue locale
-      setRequests(prev => prev.filter(r => r.id !== requestId));
+      // Retirer immédiatement de la vue locale des achats et des demandes
+      setPurchases(prev => prev.filter(p => p.id !== itemId));
+      setRequests(prev => prev.filter(r => r.id !== itemId));
       
       // Mettre à jour le localStorage
       try {
         const local = JSON.parse(localStorage.getItem('studycloud_local_requests') || '[]');
-        const updated = local.filter((r: any) => r.id !== requestId);
+        const updated = local.filter((r: any) => r.id !== itemId);
         localStorage.setItem('studycloud_local_requests', JSON.stringify(updated));
       } catch {}
 
-      setHistoryNotice(res.message || 'Demande retirée de l\'affichage. La suppression définitive de cet historique sera effective après 1 mois (30 jours).');
+      setHistoryNotice(res.message || 'Achat retiré de l\'affichage. La suppression définitive de cet historique sera effective après 1 mois (30 jours).');
       setTimeout(() => setHistoryNotice(null), 8000);
     } catch (err) {
       console.error('Erreur suppression historique:', err);
@@ -456,13 +535,10 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
     ? `${(totalStorageMb / 1024).toFixed(1)} Go (${totalStorageMb} Mo)` 
     : `${totalStorageMb} Mo`;
 
-  // Demandes confirmées / validées (pour l'historique)
-  const confirmedRequests = requests.filter(r => r.status === 'approved');
-
   return (
     <div className="w-full max-w-6xl mx-auto px-2 sm:px-4 pb-20 animate-fadeIn">
       {/* ========================================================================= */}
-      {/* BARRE D'ACTIONS SUPÉRIEURE (HISTORIQUE DES DEMANDES & ACTUALISER)          */}
+      {/* BARRE D'ACTIONS SUPÉRIEURE (HISTORIQUE DES ACHATS & ACTUALISER)           */}
       {/* ========================================================================= */}
       <div className="flex flex-wrap items-center justify-between gap-3 mb-4">
         <button
@@ -471,10 +547,10 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
           className="inline-flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#E8DFD0] hover:bg-[#D4C9B5] dark:bg-[#111a2e] dark:hover:bg-[#1e293b] text-[#2D4A3E] dark:text-emerald-400 border border-[#2D4A3E]/20 dark:border-emerald-500/30 text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
         >
           <FileText className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-          <span>Historique des demandes confirmées</span>
-          {confirmedRequests.length > 0 && (
+          <span>Historique des achats & paiements</span>
+          {purchases.length > 0 && (
             <span className="px-2 py-0.5 rounded-full text-[10px] font-bold bg-emerald-600 text-white font-mono shadow-xs">
-              {confirmedRequests.length}
+              {purchases.length}
             </span>
           )}
         </button>
@@ -735,7 +811,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                   {requests.map((req) => {
                     const isExpanded = expandedRequestId === req.id;
                     const isPending = req.status === 'pending';
-                    const isApproved = req.status === 'approved';
+                    const isApproved = req.status === 'approved' || req.status === 'confirmed';
                     const isRejected = req.status === 'rejected';
 
                     const reqDate = formatFullDateTimeFrench(req.created_at);
@@ -772,7 +848,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                             <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-emerald-500/30">
                               <span className="text-[10px] uppercase font-bold text-[#5C6B5A] dark:text-slate-400 block">Stockage ajouté :</span>
                               <div className="text-xs sm:text-sm font-extrabold text-emerald-700 dark:text-emerald-400 font-mono">
-                                +{req.storage_display || `${req.storage_added_mb || 0} Mo`}
+                                +{req.storage_display || `${req.storage_added_mb || req.additional_mb || 0} Mo`}
                               </div>
                             </div>
                             <div className="p-2.5 rounded-xl bg-white/80 dark:bg-slate-900/80 border border-emerald-500/30">
@@ -789,15 +865,16 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                             <span>Réf: {req.id}</span>
                           </div>
 
-                          {/* BOUTON TÉLÉCHARGER LE REÇU */}
+                          {/* BOUTON FLÈCHE TÉLÉCHARGER LE REÇU */}
                           <div className="pt-2 flex items-center justify-end">
                             <button
                               type="button"
                               onClick={() => downloadReceiptSlip(req, activeSubscription, user)}
                               className="inline-flex items-center gap-2 px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs shadow-md transition cursor-pointer active:scale-95"
+                              title="Télécharger la fiche de reçu officiel"
                             >
                               <Download className="w-4 h-4" />
-                              <span>Télécharger le reçu officiel</span>
+                              <span>Télécharger le reçu</span>
                             </button>
                           </div>
                         </div>
@@ -976,7 +1053,7 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
       </div>
 
       {/* ========================================================================= */}
-      {/* MODALE HISTORIQUE DES DEMANDES CONFIRMÉES                                 */}
+      {/* MODALE HISTORIQUE OFFICIEL DES ACHATS ET PAIEMENTS                        */}
       {/* ========================================================================= */}
       {showHistoryModal && (
         <div 
@@ -995,10 +1072,10 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
                 </div>
                 <div>
                   <h3 className="text-base sm:text-lg font-bold text-[#2D4A3E] dark:text-white">
-                    Historique des Demandes Confirmées
+                    Historique des Achats & Paiements
                   </h3>
                   <span className="text-[11px] text-slate-500 dark:text-slate-400">
-                    Consultez vos reçus et gérez votre historique
+                    Consultez vos transactions enregistrées et téléchargez vos reçus officiels
                   </span>
                 </div>
               </div>
@@ -1019,59 +1096,68 @@ export const RenewalSectionView: React.FC<RenewalSectionViewProps> = ({ onGoToSt
               </span>
             </div>
 
-            {/* Liste des demandes confirmées */}
+            {/* Liste des achats et paiements */}
             <div className="flex-1 overflow-y-auto space-y-3 pr-1">
-              {confirmedRequests.length === 0 ? (
+              {purchases.length === 0 ? (
                 <div className="py-12 text-center text-xs text-slate-500 dark:text-slate-400 space-y-2">
                   <CheckCircle2 className="w-8 h-8 mx-auto text-slate-300 dark:text-slate-600" />
-                  <p>Aucune demande confirmée dans votre historique pour le moment.</p>
+                  <p>Aucun achat enregistré dans votre historique pour le moment.</p>
                 </div>
               ) : (
-                confirmedRequests.map((req) => {
-                  const confDate = formatFullDateTimeFrench(req.confirmed_at || req.updated_at || req.created_at);
-                  const isDeleting = deletingId === req.id;
+                purchases.map((item) => {
+                  const confDate = formatFullDateTimeFrench(item.purchased_at || item.confirmed_at || item.start_date || item.created_at);
+                  const isDeleting = deletingId === item.id;
+                  const storageBoughtText = item.storage_display || (item.storage_bought_mb ? (item.storage_bought_mb >= 1024 ? `+${(item.storage_bought_mb / 1024).toFixed(0)} Go` : `+${item.storage_bought_mb} Mo`) : (item.storage_added_mb ? `+${item.storage_added_mb} Mo` : ''));
+                  const totalStorageText = item.total_storage_mb ? (item.total_storage_mb >= 1024 ? `${(item.total_storage_mb / 1024).toFixed(1)} Go` : `${item.total_storage_mb} Mo`) : '';
 
                   return (
                     <div 
-                      key={req.id}
+                      key={item.id}
                       className="p-4 rounded-2xl bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-emerald-500/40 transition"
                     >
-                      <div className="space-y-1 min-w-0">
+                      <div className="space-y-1 min-w-0 flex-1">
                         <div className="flex items-center gap-2 flex-wrap">
                           <span className="text-xs sm:text-sm font-extrabold text-[#2D4A3E] dark:text-white">
-                            {req.pack_name || 'Demande de Stockage'}
+                            {item.pack_name || item.plan_name || 'Abonnement Stockage'}
                           </span>
-                          <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 font-bold">
-                            +{req.storage_display || `${req.storage_added_mb || 0} Mo`}
+                          {storageBoughtText && (
+                            <span className="text-[10px] font-mono px-2 py-0.5 rounded bg-emerald-100 dark:bg-emerald-900/50 text-emerald-800 dark:text-emerald-300 font-bold">
+                              {storageBoughtText}
+                            </span>
+                          )}
+                          <span className="text-[10px] font-bold px-2 py-0.5 rounded bg-emerald-500/15 text-emerald-700 dark:text-emerald-400 border border-emerald-500/30">
+                            Confirmé
                           </span>
                         </div>
 
-                        <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5">
-                          <div>📅 <strong>Confirmée le :</strong> {confDate.full}</div>
-                          <div>💰 <strong>Montant :</strong> {req.price_display || `${Number(req.price_paid || 0).toLocaleString('fr-FR')} FCFA`}</div>
-                          <div>🔖 <strong>Réf :</strong> <span className="font-mono">{req.id}</span></div>
+                        <div className="text-[11px] text-slate-500 dark:text-slate-400 space-y-0.5 pt-1">
+                          <div>📅 <strong>Date du paiement :</strong> {confDate.full}</div>
+                          <div>💰 <strong>Montant réglé :</strong> <span className="font-bold text-[#2D4A3E] dark:text-emerald-400 font-mono">{item.price_display || `${Number(item.price_paid || item.monthly_price || 0).toLocaleString('fr-FR')} FCFA`}</span> ({item.payment_method || 'Mobile Money'})</div>
+                          {totalStorageText && <div>💾 <strong>Stockage total :</strong> {totalStorageText}</div>}
+                          {item.renewal_date && <div>🗓️ <strong>Date de renouvellement :</strong> {formatFullDateTimeFrench(item.renewal_date).full}</div>}
+                          <div>🔖 <strong>Réf reçu :</strong> <span className="font-mono">{item.payment_reference || item.id}</span></div>
                         </div>
                       </div>
 
                       <div className="flex items-center gap-2 shrink-0 self-end sm:self-center">
-                        {/* Bouton Télécharger le reçu */}
+                        {/* Bouton Télécharger le reçu avec la flèche */}
                         <button
                           type="button"
-                          onClick={() => downloadReceiptSlip(req, activeSubscription, user)}
-                          className="inline-flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#2D4A3E] hover:bg-[#233b31] dark:bg-emerald-600 dark:hover:bg-emerald-500 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
-                          title="Télécharger la fiche de reçu"
+                          onClick={() => downloadReceiptSlip(item, activeSubscription, user)}
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold transition shadow-xs cursor-pointer active:scale-95"
+                          title="Télécharger la fiche de reçu officiel"
                         >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>Reçu</span>
+                          <Download className="w-4 h-4" />
+                          <span>Télécharger le reçu</span>
                         </button>
 
                         {/* Bouton Poubelle pour supprimer l'historique */}
                         <button
                           type="button"
                           disabled={isDeleting}
-                          onClick={() => handleDeleteHistoryItem(req.id)}
+                          onClick={() => handleDeleteHistoryItem(item.id)}
                           className="w-8 h-8 rounded-xl bg-red-50 hover:bg-red-100 dark:bg-red-950/40 dark:hover:bg-red-900/50 text-red-600 dark:text-red-400 border border-red-200 dark:border-red-900/50 flex items-center justify-center transition cursor-pointer active:scale-95 disabled:opacity-50"
-                          title="Supprimer cet élément de l'historique (effectif après 1 mois)"
+                          title="Supprimer cet achat de l'historique (effectif après 1 mois)"
                         >
                           {isDeleting ? (
                             <RotateCw className="w-3.5 h-3.5 animate-spin" />
