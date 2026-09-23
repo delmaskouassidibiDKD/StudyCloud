@@ -1658,8 +1658,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
     return (
       <>
+        {/* Fond transparent pour fermer en cliquant n'importe où */}
         <div 
-          className="fixed inset-0 z-40" 
+          className="fixed inset-0 z-40 bg-black/20" 
           onClick={(e) => { 
             e.stopPropagation(); 
             setActiveMenuFileId(null); 
@@ -1667,108 +1668,137 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             setAudioMenuSongId(null); 
           }} 
         />
+        {/* Panneau de menu 100% opaque, au-dessus de tout le contenu */}
         <div 
-          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-8 z-50 w-52 bg-[#0D1527] border border-slate-700/90 rounded-xl shadow-[0_12px_30px_rgba(0,0,0,0.85)] py-1 text-slate-200 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 divide-y divide-white/5`}
+          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-50 w-56 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* Section 1 : Sélection (Cocher, Tout cocher, Télécharger) */}
-          <div className="py-1">
+          {/* En-tête de menu dédié avec nom du fichier et bouton fermeture */}
+          <div className="px-3 py-2 bg-slate-900 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
+            <div className="min-w-0">
+              <p className="text-[11px] font-black text-white truncate" title={file.name}>
+                {file.name}
+              </p>
+              <p className="text-[9px] font-semibold text-slate-400">
+                {file.size} • <span className="uppercase text-amber-400">{file.extension || file.category}</span>
+              </p>
+            </div>
             <button
               type="button"
-              onClick={() => handleGenericFileAction('check', file, currentCategoryList)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFileId(null);
+                setDocMenuOpenId(null);
+                setAudioMenuSongId(null);
+              }}
+              className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              title="Fermer"
             >
-              <CheckSquare className="w-3.5 h-3.5 shrink-0" />
-              <span>Cocher</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleGenericFileAction('check_all', file, currentCategoryList)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
-            >
-              <CheckSquare className="w-3.5 h-3.5 shrink-0" />
-              <span>Tout cocher</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleGenericFileAction('download', file, currentCategoryList)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-blue-400 hover:bg-blue-500/15 transition-colors cursor-pointer text-left"
-            >
-              <Download className="w-3.5 h-3.5 shrink-0" />
-              <span>Télécharger</span>
+              <X className="w-3.5 h-3.5" />
             </button>
           </div>
 
-          {/* Section 2 : Actions principales de gestion */}
-          <div className="py-1">
-            <button
-              type="button"
-              onClick={() => handleGenericFileAction('delete', file, currentCategoryList)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
-            >
-              <Trash2 className="w-3.5 h-3.5 shrink-0" />
-              <span>Supprimer le fichier</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleGenericFileAction('share', file, currentCategoryList)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-            >
-              <Share2 className="w-3.5 h-3.5 shrink-0 text-blue-400" />
-              <span>Partager</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleGenericFileAction('create_link', file, currentCategoryList)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-            >
-              <Link className="w-3.5 h-3.5 shrink-0 text-sky-400" />
-              <span>Créer un lien</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleGenericFileAction('move', file, currentCategoryList)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-            >
-              <FolderInput className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-              <span>Le déplacer</span>
-            </button>
-          </div>
+          {/* Liste déroulante des 11 options avec défilement fluide garanti */}
+          <div className="max-h-[min(380px,calc(100vh-140px))] overflow-y-auto no-scrollbar py-1 divide-y divide-white/5">
+            {/* Section 1 : Sélection (Cocher, Tout cocher, Télécharger) */}
+            <div className="py-1">
+              <button
+                type="button"
+                onClick={() => handleGenericFileAction('check', file, currentCategoryList)}
+                className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+              >
+                <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+                <span>Cocher</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenericFileAction('check_all', file, currentCategoryList)}
+                className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+              >
+                <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+                <span>Tout cocher</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenericFileAction('download', file, currentCategoryList)}
+                className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-blue-400 hover:bg-blue-500/15 transition-colors cursor-pointer text-left"
+              >
+                <Download className="w-3.5 h-3.5 shrink-0" />
+                <span>Télécharger</span>
+              </button>
+            </div>
 
-          {/* Section 3 : Organisation & Édition */}
-          <div className="py-1">
-            <button
-              type="button"
-              onClick={() => handleGenericFileAction('duplicate', file, currentCategoryList)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-            >
-              <Copy className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-              <span>Dupliquer</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleGenericFileAction('favorite', file, currentCategoryList)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-            >
-              <Star className={`w-3.5 h-3.5 shrink-0 ${file.isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-yellow-400'}`} />
-              <span>{file.isFavorite ? 'Retirer des favoris' : 'Ajouter au favoris'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleGenericFileAction('pin', file, currentCategoryList)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-            >
-              <Pin className="w-3.5 h-3.5 shrink-0 text-purple-400" />
-              <span>Épinglez</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => handleGenericFileAction('rename', file, currentCategoryList)}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-            >
-              <Pencil className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
-              <span>Modifier le nom</span>
-            </button>
+            {/* Section 2 : Actions principales de gestion */}
+            <div className="py-1">
+              <button
+                type="button"
+                onClick={() => handleGenericFileAction('delete', file, currentCategoryList)}
+                className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+              >
+                <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                <span>Supprimer le fichier</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenericFileAction('share', file, currentCategoryList)}
+                className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+              >
+                <Share2 className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+                <span>Partager</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenericFileAction('create_link', file, currentCategoryList)}
+                className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+              >
+                <Link className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+                <span>Créer un lien</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenericFileAction('move', file, currentCategoryList)}
+                className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+              >
+                <FolderInput className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                <span>Le déplacer</span>
+              </button>
+            </div>
+
+            {/* Section 3 : Organisation & Édition */}
+            <div className="py-1">
+              <button
+                type="button"
+                onClick={() => handleGenericFileAction('duplicate', file, currentCategoryList)}
+                className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+              >
+                <Copy className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                <span>Dupliquer</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenericFileAction('favorite', file, currentCategoryList)}
+                className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+              >
+                <Star className={`w-3.5 h-3.5 shrink-0 ${file.isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-yellow-400'}`} />
+                <span>{file.isFavorite ? 'Retirer des favoris' : 'Ajouter au favoris'}</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenericFileAction('pin', file, currentCategoryList)}
+                className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+              >
+                <Pin className="w-3.5 h-3.5 shrink-0 text-purple-400" />
+                <span>Épinglez</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => handleGenericFileAction('rename', file, currentCategoryList)}
+                className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+              >
+                <Pencil className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
+                <span>Modifier le nom</span>
+              </button>
+            </div>
           </div>
         </div>
       </>
@@ -1793,7 +1823,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         className={`aspect-[3/4] ${theme.border} ${isSelected ? 'ring-4 ring-white shadow-2xl scale-[1.02]' : ''} ${
           isChecked ? 'ring-4 ring-amber-400 shadow-2xl' : ''
         } ${
-          isMenuOpen ? 'z-40' : 'z-10'
+          isMenuOpen ? 'z-50 relative' : 'z-10'
         } rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none cursor-pointer active:scale-98`}
         onClick={() => {
           if (isSelectionMode) {
@@ -1903,10 +1933,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   };
 
   // Rendu Carte Image (Image 3 : titre directement sur l'image avec dégradé comme les vidéos, bouton 3 traits & case à cocher)
-  const renderImageCard = (img: FileItem) => {
+  const renderImageCard = (img: FileItem, index?: number) => {
     const isSelected = splitSelectedFile?.id === img.id;
     const isMenuOpen = activeMenuFileId === img.id;
     const isChecked = selectedItemIds.includes(img.id);
+
+    // Déterminer alignement du menu (inverser si carte sur la droite pour ne pas déborder de l'écran)
+    const isRightCol = typeof index === 'number' && ((index + 1) % (splitSelectedFile ? 2 : 3) === 0);
+    const menuAlign: 'left' | 'right' = isRightCol ? 'right' : 'left';
 
     return (
       <div
@@ -1918,21 +1952,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             handleSelectFile(img);
           }
         }}
-        className={`group relative aspect-square sm:aspect-[4/5] rounded-2xl overflow-hidden bg-[#151C2C] border transition-all duration-200 cursor-pointer ${
+        className={`group relative aspect-square sm:aspect-[4/5] rounded-2xl bg-[#151C2C] border transition-all duration-200 cursor-pointer ${
           isChecked
             ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
             : isSelected 
               ? 'border-blue-500 ring-4 ring-blue-500/50 shadow-2xl scale-[1.02]' 
               : 'border-white/10 hover:border-blue-400/50 shadow-md'
-        } ${isMenuOpen ? 'z-40' : 'z-10'}`}
+        } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
       >
-        <img
-          src={img.previewUrl}
-          alt={img.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          loading="lazy"
-        />
-        <div className="absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-none" />
+        {/* Conteneur média interne avec overflow-hidden : arrondit l'image et ses dégradés sans couper le menu qui dépasse */}
+        <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+          <img
+            src={img.previewUrl}
+            alt={img.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            loading="lazy"
+          />
+          <div className="absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-black/80 via-black/40 to-transparent" />
+
+          {/* Titre sur l'image avec dégradé identique aux vidéos */}
+          <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/95 via-black/50 to-transparent">
+            <p className="text-[9px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">{img.name}</p>
+          </div>
+        </div>
 
         {/* Haut gauche : Bouton 3 traits & Checkbox */}
         <div className="absolute top-1.5 sm:top-2 left-1.5 sm:left-2 z-20 flex items-center gap-1.5">
@@ -1943,13 +1985,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 e.stopPropagation();
                 setActiveMenuFileId(isMenuOpen ? null : img.id);
               }}
-              className="p-1 sm:p-1.2 rounded-lg bg-black/60 hover:bg-black/85 text-white border border-white/20 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-md backdrop-blur-sm"
+              className="p-1 sm:p-1.2 rounded-lg bg-black/75 hover:bg-black text-white border border-white/30 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm"
               title="Options de l'image (3 traits)"
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {renderFileOptionsMenu(img, filteredImages, 'left')}
+            {renderFileOptionsMenu(img, filteredImages, menuAlign)}
           </div>
 
           {isSelectionMode && (
@@ -1973,24 +2015,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
         {/* Haut droit : Taille */}
         <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
-          <span className="text-[10px] sm:text-xs font-black text-white bg-black/40 px-1.5 py-0.5 rounded border border-white/10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+          <span className="text-[10px] sm:text-xs font-black text-white bg-black/60 px-1.5 py-0.5 rounded border border-white/20 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
             {img.size}
           </span>
-        </div>
-
-        {/* Titre sur l'image avec dégradé identique aux vidéos */}
-        <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
-          <p className="text-[9px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">{img.name}</p>
         </div>
       </div>
     );
   };
 
   // Rendu Carte Vidéo (Bouton lecture central, taille en haut à droite, bouton 3 traits & case à cocher, titre en bas)
-  const renderVideoCard = (vid: FileItem) => {
+  const renderVideoCard = (vid: FileItem, index?: number) => {
     const isSelected = splitSelectedFile?.id === vid.id;
     const isMenuOpen = activeMenuFileId === vid.id;
     const isChecked = selectedItemIds.includes(vid.id);
+
+    // Déterminer alignement du menu
+    const isRightCol = typeof index === 'number' && ((index + 1) % (splitSelectedFile ? 2 : 3) === 0);
+    const menuAlign: 'left' | 'right' = isRightCol ? 'right' : 'left';
 
     return (
       <div
@@ -2002,21 +2043,36 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             handleSelectFile(vid);
           }
         }}
-        className={`group relative aspect-[4/5] rounded-2xl overflow-hidden bg-[#0A0E18] border transition-all duration-200 cursor-pointer ${
+        className={`group relative aspect-[4/5] rounded-2xl bg-[#0A0E18] border transition-all duration-200 cursor-pointer ${
           isChecked
             ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
             : isSelected 
               ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02]' 
               : 'border-white/10 hover:border-purple-400/50 shadow-md'
-        } ${isMenuOpen ? 'z-40' : 'z-10'}`}
+        } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
       >
-        <img
-          src={vid.previewUrl}
-          alt={vid.name}
-          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-          loading="lazy"
-        />
-        <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors pointer-events-none" />
+        {/* Conteneur média interne avec overflow-hidden : arrondit la vignette sans couper le menu déroulant */}
+        <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+          <img
+            src={vid.previewUrl}
+            alt={vid.name}
+            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+            loading="lazy"
+          />
+          <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors" />
+
+          {/* Centre : Bouton Play */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-2xl group-hover:scale-115 transition-transform duration-200">
+              <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-stone-950 translate-x-0.5" />
+            </div>
+          </div>
+
+          {/* Titre en bas */}
+          <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/95 via-black/50 to-transparent">
+            <p className="text-[9px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">{vid.name}</p>
+          </div>
+        </div>
 
         {/* Haut gauche : Bouton 3 traits & Checkbox */}
         <div className="absolute top-1.5 sm:top-2 left-1.5 sm:left-2 z-20 flex items-center gap-1.5">
@@ -2027,13 +2083,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 e.stopPropagation();
                 setActiveMenuFileId(isMenuOpen ? null : vid.id);
               }}
-              className="p-1 sm:p-1.2 rounded-lg bg-black/60 hover:bg-black/85 text-white border border-white/20 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-md backdrop-blur-sm"
+              className="p-1 sm:p-1.2 rounded-lg bg-black/75 hover:bg-black text-white border border-white/30 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm"
               title="Options de la vidéo (3 traits)"
             >
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {renderFileOptionsMenu(vid, filteredVideos, 'left')}
+            {renderFileOptionsMenu(vid, filteredVideos, menuAlign)}
           </div>
 
           {isSelectionMode && (
@@ -2057,21 +2113,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
         {/* Haut droit : Taille */}
         <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
-          <span className="text-[10px] sm:text-xs font-black text-white bg-black/40 px-1.5 py-0.5 rounded border border-white/10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+          <span className="text-[10px] sm:text-xs font-black text-white bg-black/60 px-1.5 py-0.5 rounded border border-white/20 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
             {vid.size}
           </span>
-        </div>
-
-        {/* Centre : Bouton Play */}
-        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
-          <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-2xl group-hover:scale-115 transition-transform duration-200">
-            <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-stone-950 translate-x-0.5" />
-          </div>
-        </div>
-
-        {/* Titre en bas */}
-        <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
-          <p className="text-[9px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">{vid.name}</p>
         </div>
       </div>
     );
@@ -2094,6 +2138,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
           }
         }}
         className={`group flex items-center justify-between gap-3 p-2 sm:p-2.5 rounded-2xl transition-all cursor-pointer select-none ${
+          isMenuOpen ? 'z-50 relative' : 'relative z-10'
+        } ${
           isChecked
             ? 'bg-amber-500/15 border border-amber-400 ring-2 ring-amber-400/40'
             : isSelected 
@@ -2193,6 +2239,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
           }
         }}
         className={`group bg-[#151C2C] hover:bg-[#1A2338] border rounded-2xl p-3 flex items-center justify-between gap-3 shadow-md transition-all cursor-pointer ${
+          isMenuOpen ? 'z-50 relative' : 'relative z-10'
+        } ${
           isChecked
             ? 'border-amber-400 ring-2 ring-amber-400/40'
             : isSelected ? 'border-sky-400 ring-2 ring-sky-400/40' : 'border-slate-800 hover:border-sky-400/50'
@@ -2428,7 +2476,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                   <div className={`grid gap-2 sm:gap-3 ${
                     splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
-                    {filteredImages.map(img => renderImageCard(img))}
+                    {filteredImages.map((img, idx) => renderImageCard(img, idx))}
                   </div>
                 </div>
               )}
@@ -2448,7 +2496,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                   <div className={`grid gap-2 sm:gap-3 ${
                     splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
-                    {filteredVideos.map(vid => renderVideoCard(vid))}
+                    {filteredVideos.map((vid, idx) => renderVideoCard(vid, idx))}
                   </div>
                 </div>
               )}
@@ -2477,6 +2525,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     {filteredAudio.map((track) => {
                       const isSelected = splitSelectedFile?.id === track.id;
                       const isChecked = selectedItemIds.includes(track.id);
+                      const isMenuOpen = activeMenuFileId === track.id || audioMenuSongId === track.id;
 
                       return (
                         <div
@@ -2490,6 +2539,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                             }
                           }}
                           className={`group flex items-center justify-between gap-3 p-3 rounded-2xl transition-all cursor-pointer select-none border ${
+                            isMenuOpen ? 'z-50 relative' : 'relative z-10'
+                          } ${
                             isChecked
                               ? 'bg-amber-500/15 border-amber-400 ring-2 ring-amber-400/40 shadow-sm'
                               : isSelected 
@@ -2703,7 +2754,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                           <div className={`grid gap-2 sm:gap-3 ${
                             splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                           }`}>
-                            {downloadImages.map(img => renderImageCard(img))}
+                            {downloadImages.map((img, idx) => renderImageCard(img, idx))}
                           </div>
                         </div>
                       )}
@@ -2720,7 +2771,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                           <div className={`grid gap-2 sm:gap-3 ${
                             splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                           }`}>
-                            {downloadVideos.map(vid => renderVideoCard(vid))}
+                            {downloadVideos.map((vid, idx) => renderVideoCard(vid, idx))}
                           </div>
                         </div>
                       )}
@@ -3550,10 +3601,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                   <div
                     key={file.id}
                     onClick={() => handleSelectFile(file)}
-                    className="group relative bg-[#151C2C] hover:bg-[#1A2338] border border-slate-800 hover:border-slate-700 rounded-2xl overflow-hidden shadow-sm hover:shadow-xl transition-all duration-200 cursor-pointer flex flex-col"
+                    className={`group relative bg-[#151C2C] hover:bg-[#1A2338] border border-slate-800 hover:border-slate-700 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-200 cursor-pointer flex flex-col ${
+                      menuOpenId === file.id ? 'z-50 relative' : 'z-10'
+                    }`}
                   >
                     {/* Vignette compacte */}
-                    <div className="w-full h-24 sm:h-28 md:h-28 bg-slate-900/90 relative overflow-hidden flex items-center justify-center">
+                    <div className="w-full h-24 sm:h-28 md:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center">
+                      <div className="absolute inset-0 rounded-t-2xl overflow-hidden pointer-events-none">
                       {file.previewUrl ? (
                         <img 
                           src={file.previewUrl} 
@@ -3571,6 +3625,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                           {file.category === 'apps' && <LayoutGrid className="w-8 h-8 sm:w-10 sm:h-10 text-pink-400/85 stroke-[1.8]" />}
                         </div>
                       )}
+                      </div>
 
                       {/* Bouton 3 petits points verticaux en haut à droite */}
                       <button
@@ -3579,7 +3634,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                           e.stopPropagation();
                           setMenuOpenId(menuOpenId === file.id ? null : file.id);
                         }}
-                        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/60 hover:bg-black/85 backdrop-blur-xs flex items-center justify-center text-white transition-colors cursor-pointer shadow-sm z-10"
+                        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/75 hover:bg-black flex items-center justify-center text-white transition-colors cursor-pointer shadow-md z-20 border border-white/20"
                         title="Options du fichier"
                       >
                         <MoreVertical className="w-3.5 h-3.5" />
@@ -3587,43 +3642,49 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
                       {/* Menu contextuel 3 points */}
                       {menuOpenId === file.id && (
-                        <div 
-                          onClick={(e) => e.stopPropagation()}
-                          className="absolute top-8 right-1.5 z-20 w-36 bg-[#1A2234] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs font-semibold text-slate-200 animate-in fade-in zoom-in-95"
-                        >
-                          <button
-                            onClick={() => {
-                              handleSelectFile(file);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full px-3 py-1.5 text-left hover:bg-slate-700/50 flex items-center gap-2 cursor-pointer text-white"
+                        <>
+                          <div 
+                            className="fixed inset-0 z-40 bg-black/20" 
+                            onClick={(e) => { e.stopPropagation(); setMenuOpenId(null); }} 
+                          />
+                          <div 
+                            onClick={(e) => e.stopPropagation()}
+                            className="absolute top-9 right-1.5 z-50 w-44 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.15)] py-1.5 text-xs font-semibold text-white animate-in fade-in zoom-in-95 overflow-hidden divide-y divide-white/10"
                           >
-                            <Eye className="w-3.5 h-3.5" /> Ouvrir
-                          </button>
-                          <button
-                            onClick={() => {
-                              handleShareFile(file);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full px-3 py-1.5 text-left hover:bg-slate-700/50 flex items-center gap-2 cursor-pointer text-white"
-                          >
-                            <Share2 className="w-3.5 h-3.5" /> Partager
-                          </button>
-                          <button
-                            onClick={() => {
-                              handleDownloadFile(file);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full px-3 py-1.5 text-left hover:bg-slate-700/50 flex items-center gap-2 cursor-pointer text-white"
-                          >
-                            <Download className="w-3.5 h-3.5" /> Télécharger
-                          </button>
-                        </div>
+                            <button
+                              onClick={() => {
+                                handleSelectFile(file);
+                                setMenuOpenId(null);
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
+                            >
+                              <Eye className="w-3.5 h-3.5 text-blue-400" /> Ouvrir
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleShareFile(file);
+                                setMenuOpenId(null);
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
+                            >
+                              <Share2 className="w-3.5 h-3.5 text-emerald-400" /> Partager
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleDownloadFile(file);
+                                setMenuOpenId(null);
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
+                            >
+                              <Download className="w-3.5 h-3.5 text-amber-400" /> Télécharger
+                            </button>
+                          </div>
+                        </>
                       )}
                     </div>
 
                     {/* Bas de carte avec Nom et Emplacement */}
-                    <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-[#151C2C]">
+                    <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-[#151C2C] rounded-b-2xl">
                       <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-blue-400 transition-colors" title={file.name}>
                         {file.name}
                       </p>
