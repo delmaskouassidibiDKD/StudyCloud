@@ -24,8 +24,6 @@ import {
   Maximize2, 
   Minimize2, 
   Menu,
-  Database,
-  Smartphone,
   ShieldCheck,
   FolderCheck
 } from 'lucide-react';
@@ -131,16 +129,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       id: 'rec-cld-1',
       name: 'Cours_Supply_Chain_Logistique.pdf',
       category: 'documents',
-      source: 'D1 StudyCloud',
+      source: 'StudyCloud Drive',
       size: '4,2 Mo',
       sizeBytes: 4404019,
       date: "Aujourd'hui, 10:15"
     },
     {
       id: 'rec-cld-2',
-      name: 'Base_Donnees_D1_Export.sql',
+      name: 'Synthese_Cours_Semestre_1.docx',
       category: 'documents',
-      source: 'D1 Database',
+      source: 'StudyCloud Drive',
       size: '1,1 Mo',
       sizeBytes: 1153433,
       date: "Aujourd'hui, 09:30"
@@ -149,7 +147,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       id: 'rec-cld-3',
       name: 'Devoir_Economie_Appliquee.pdf',
       category: 'documents',
-      source: 'R2 Storage',
+      source: 'StudyCloud Drive',
       size: '2,8 Mo',
       sizeBytes: 2936012,
       date: 'Hier, 18:20'
@@ -158,7 +156,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       id: 'rec-cld-4',
       name: 'Projet_Algorithmique_V2.zip',
       category: 'downloads',
-      source: 'Cloud Drive',
+      source: 'StudyCloud Drive',
       size: '6,4 Mo',
       sizeBytes: 6710886,
       date: 'Hier, 16:45'
@@ -167,7 +165,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       id: 'rec-cld-5',
       name: 'Notes_Revision_Semestre_1.pdf',
       category: 'documents',
-      source: 'D1 StudyCloud',
+      source: 'StudyCloud Drive',
       size: '950 Ko',
       sizeBytes: 972800,
       date: '21 Sept, 14:00'
@@ -176,7 +174,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       id: 'rec-cld-6',
       name: 'Fiche_TD_Mathematiques.pdf',
       category: 'documents',
-      source: 'R2 Storage',
+      source: 'StudyCloud Drive',
       size: '1,7 Mo',
       sizeBytes: 1782579,
       date: '20 Sept, 11:20'
@@ -251,7 +249,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     }
   ];
 
-  // Catégories pour "StudyCloud Drive" (Base de données en ligne D1 & R2)
+  // Catégories pour "StudyCloud Drive"
   const cloudCategories = [
     {
       id: 'documents',
@@ -261,15 +259,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       color: 'text-blue-400'
     },
     {
-      id: 'database',
-      name: 'Base D1 StudyCloud',
+      id: 'sync',
+      name: 'Synchronisation',
       size: 'Connecté',
-      icon: Database,
+      icon: Cloud,
       color: 'text-emerald-400'
     },
     {
       id: 'backups',
-      name: 'Sauvegardes R2',
+      name: 'Sauvegardes Cloud',
       size: '3,5 Go',
       icon: Cloud,
       color: 'text-sky-400'
@@ -346,7 +344,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         : 'absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-[calc(100vh-66px)]'
     }`}>
       
-      {/* Toast Notification */}
+      {/* Toast Notification (pour actions fichiers uniquement, jamais pour le changement d'onglet) */}
       {toastMessage && (
         <div className="fixed top-20 right-6 z-50 bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-xl border border-blue-400/30 animate-in fade-in slide-in-from-top-2">
           {toastMessage}
@@ -363,19 +361,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
           <button
             type="button"
             onClick={onBack}
-            className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#182234] hover:bg-[#222E46] text-slate-200 hover:text-white border border-slate-700/60 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+            className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
             title="Retour au Tableau de bord"
             aria-label="Retour"
           >
             <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
           </button>
 
-          {/* Barre de Recherche Pilule (identique à la capture d'écran ≡ Recherchez "billet" 🔍) */}
+          {/* Barre de Recherche Pilule (fond noir profond avec texte blanc) */}
           <div className="flex-1 relative flex items-center">
-            <div className="w-full flex items-center bg-[#151C2C] hover:bg-[#1A2338] focus-within:bg-[#1A2338] focus-within:ring-2 focus-within:ring-blue-500/50 border border-slate-700/60 rounded-full px-3.5 sm:px-4 py-1.5 sm:py-2 transition-all shadow-inner gap-2.5">
+            <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 sm:py-2 transition-all shadow-inner gap-2.5">
               
-              {/* Icône Menu hamburger intégrée à gauche comme sur la photo */}
-              <div className="text-slate-300 shrink-0">
+              {/* Icône Menu hamburger intégrée à gauche */}
+              <div className="text-white shrink-0">
                 <Menu className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
               </div>
 
@@ -384,20 +382,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 value={searchQuery}
                 onChange={(e) => setSearchQuery(e.target.value)}
                 placeholder='Recherchez "billet", photos, cours...'
-                className="w-full bg-transparent text-xs sm:text-sm md:text-base text-slate-100 placeholder:text-slate-400 focus:outline-none"
+                className="w-full bg-transparent text-xs sm:text-sm md:text-base text-white placeholder:text-slate-400 focus:outline-none"
               />
 
               {searchQuery ? (
                 <button
                   type="button"
                   onClick={() => setSearchQuery('')}
-                  className="p-1 text-slate-400 hover:text-white rounded-full hover:bg-slate-700/50 transition-colors"
+                  className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
                   title="Effacer la recherche"
                 >
                   <X className="w-3.5 h-3.5" />
                 </button>
               ) : (
-                <div className="p-1 text-slate-400 shrink-0">
+                <div className="p-1 text-slate-300 shrink-0">
                   <Search className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
                 </div>
               )}
@@ -408,7 +406,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
           <button
             type="button"
             onClick={() => setIsFullscreen(!isFullscreen)}
-            className="hidden md:flex items-center justify-center w-10 h-10 rounded-full bg-[#182234] hover:bg-[#222E46] text-slate-300 hover:text-white border border-slate-700/60 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+            className="hidden md:flex items-center justify-center w-10 h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
             title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet (Prendre tout l'écran)"}
           >
             {isFullscreen ? (
@@ -423,12 +421,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         {/* Filtre de catégorie actif s'il y en a un */}
         {selectedCategory && (
           <div className="flex items-center gap-2 mt-2 pt-0.5">
-            <span className="text-[11px] text-slate-400">Filtre actif :</span>
-            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-blue-400 bg-blue-500/10 border border-blue-500/30 px-2.5 py-0.5 rounded-full">
+            <span className="text-[11px] text-white font-medium">Filtre actif :</span>
+            <span className="inline-flex items-center gap-1.5 text-xs font-bold text-white bg-[#04060A] border border-blue-400/60 px-2.5 py-0.5 rounded-full shadow-sm">
               {currentCategories.find(c => c.id === selectedCategory)?.name || selectedCategory}
               <button 
                 onClick={() => setSelectedCategory(null)}
-                className="hover:text-white ml-0.5"
+                className="hover:text-rose-400 ml-0.5 cursor-pointer"
                 title="Supprimer le filtre"
               >
                 <X className="w-3 h-3" />
@@ -444,56 +442,59 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       <div className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-3 sm:py-4 space-y-4 sm:space-y-5">
         
         {/* ========================================================================= */}
-        {/* LES DEUX BOUTONS DU HAUT : StudyCloud Drive & Cet Appareil (traits rouges) */}
+        {/* LES DEUX BOUTONS DU HAUT : PLUS NOIR QUE LE FOND, ÉCRITURES BLANCHES       */}
+        {/* SANS AUCUN MESSAGE AU CLIC                                                */}
         {/* ========================================================================= */}
         <div className="flex items-center gap-2.5 sm:gap-4 w-full">
           
-          {/* Bouton 1 : StudyCloud Drive (Base de données) */}
+          {/* Bouton 1 : StudyCloud Drive (sans message au clic, plus noir que le fond, écriture blanche) */}
           <button
             type="button"
             onClick={() => {
               setActiveDriveSource('cloud');
               setSelectedCategory(null);
-              showToast("Basculé sur StudyCloud Drive (Base de données)");
             }}
-            className={`flex-1 flex items-center justify-center gap-2.5 sm:gap-3 py-2 sm:py-2.5 px-3 sm:px-5 rounded-2xl font-bold text-xs sm:text-sm md:text-base border-2 transition-all cursor-pointer shadow-sm active:scale-95 ${
+            className={`flex-1 flex items-center justify-center gap-2.5 sm:gap-3 py-2.5 sm:py-3 px-3 sm:px-5 rounded-2xl transition-all cursor-pointer shadow-md active:scale-95 border ${
               activeDriveSource === 'cloud'
-                ? 'bg-blue-600 text-white border-blue-400 shadow-[0_4px_18px_rgba(37,99,235,0.45)] ring-2 ring-blue-500/30'
-                : 'bg-[#151C2C] hover:bg-[#1A2338] text-slate-300 hover:text-white border-slate-700/70'
+                ? 'bg-[#04060A] text-white border-2 border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.35)] ring-1 ring-blue-400/40'
+                : 'bg-[#04060A] hover:bg-[#0A0E18] text-slate-100 hover:text-white border-white/10'
             }`}
           >
-            <div className={`p-1.5 sm:p-2 rounded-xl shrink-0 ${activeDriveSource === 'cloud' ? 'bg-white/20 text-white' : 'bg-blue-500/10 text-blue-400'}`}>
+            <div className={`p-1.5 sm:p-2 rounded-xl shrink-0 ${activeDriveSource === 'cloud' ? 'bg-blue-600 text-white' : 'bg-black text-blue-400 border border-white/10'}`}>
               <Cloud className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
             </div>
             <div className="text-left min-w-0">
-              <span className="block leading-tight truncate">StudyCloud Drive</span>
-              <span className={`text-[10px] sm:text-[11px] font-medium block leading-tight truncate ${activeDriveSource === 'cloud' ? 'text-blue-100' : 'text-slate-400'}`}>
-                Base de données en ligne
+              <span className="block leading-tight text-white font-black text-xs sm:text-sm md:text-base tracking-wide truncate">
+                StudyCloud Drive
+              </span>
+              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-100 block leading-tight truncate mt-0.5">
+                En ligne
               </span>
             </div>
           </button>
 
-          {/* Bouton 2 : Cet Appareil (Données de l'appareil : photos, son, documents...) */}
+          {/* Bouton 2 : Cet Appareil (sans message au clic, plus noir que le fond, écriture blanche) */}
           <button
             type="button"
             onClick={() => {
               setActiveDriveSource('device');
               setSelectedCategory(null);
-              showToast("Basculé sur Cet Appareil (Stockage local)");
             }}
-            className={`flex-1 flex items-center justify-center gap-2.5 sm:gap-3 py-2 sm:py-2.5 px-3 sm:px-5 rounded-2xl font-bold text-xs sm:text-sm md:text-base border-2 transition-all cursor-pointer shadow-sm active:scale-95 ${
+            className={`flex-1 flex items-center justify-center gap-2.5 sm:gap-3 py-2.5 sm:py-3 px-3 sm:px-5 rounded-2xl transition-all cursor-pointer shadow-md active:scale-95 border ${
               activeDriveSource === 'device'
-                ? 'bg-blue-600 text-white border-blue-400 shadow-[0_4px_18px_rgba(37,99,235,0.45)] ring-2 ring-blue-500/30'
-                : 'bg-[#151C2C] hover:bg-[#1A2338] text-slate-300 hover:text-white border-slate-700/70'
+                ? 'bg-[#04060A] text-white border-2 border-blue-400 shadow-[0_0_20px_rgba(59,130,246,0.35)] ring-1 ring-blue-400/40'
+                : 'bg-[#04060A] hover:bg-[#0A0E18] text-slate-100 hover:text-white border-white/10'
             }`}
           >
-            <div className={`p-1.5 sm:p-2 rounded-xl shrink-0 ${activeDriveSource === 'device' ? 'bg-white/20 text-white' : 'bg-emerald-500/10 text-emerald-400'}`}>
+            <div className={`p-1.5 sm:p-2 rounded-xl shrink-0 ${activeDriveSource === 'device' ? 'bg-emerald-600 text-white' : 'bg-black text-emerald-400 border border-white/10'}`}>
               <HardDrive className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
             </div>
             <div className="text-left min-w-0">
-              <span className="block leading-tight truncate">Cet Appareil</span>
-              <span className={`text-[10px] sm:text-[11px] font-medium block leading-tight truncate ${activeDriveSource === 'device' ? 'text-blue-100' : 'text-slate-400'}`}>
-                Données de l'appareil (Photos, Sons...)
+              <span className="block leading-tight text-white font-black text-xs sm:text-sm md:text-base tracking-wide truncate">
+                Cet Appareil
+              </span>
+              <span className="text-[10px] sm:text-[11px] font-semibold text-slate-100 block leading-tight truncate mt-0.5">
+                Stockage local
               </span>
             </div>
           </button>
@@ -501,20 +502,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         </div>
 
         {/* ========================================================================= */}
-        {/* SECTION 1 : RÉCENTS (STRICTEMENT 6 ÉLÉMENTS MAXIMUM & STRICTEMENT 1 LIGNE) */}
+        {/* SECTION 1 : RÉCENTS (DESIGN CONSERVÉ TEL QUEL, STRICTEMENT 6 SUR 1 LIGNE)  */}
         {/* ========================================================================= */}
         <section className="space-y-2">
           <div className="flex items-center justify-between">
-            <h2 className="text-sm sm:text-base font-bold text-white tracking-tight flex items-center gap-2">
-              <span>Récents</span>
-              <span className="text-[11px] font-semibold text-blue-400 bg-blue-500/10 border border-blue-500/20 px-2 py-0.5 rounded-full">
-                {displayedFiles.length} sur 6 max
-              </span>
+            <h2 className="text-sm sm:text-base font-bold text-white tracking-tight">
+              Récents
             </h2>
-
-            <span className="text-[11px] text-slate-400">
-              {activeDriveSource === 'cloud' ? 'Base D1 / R2 Cloud' : 'Mémoire locale'}
-            </span>
           </div>
 
           {/* Grille STRICTEMENT sur 1 ligne : 6 colonnes sur écran moyen/grand, défilement horizontal sans retour à la ligne sur mobile */}
@@ -568,7 +562,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                           handleSelectFile(file);
                           setMenuOpenId(null);
                         }}
-                        className="w-full px-3 py-1.5 text-left hover:bg-slate-700/50 flex items-center gap-2"
+                        className="w-full px-3 py-1.5 text-left hover:bg-slate-700/50 flex items-center gap-2 cursor-pointer"
                       >
                         <Eye className="w-3.5 h-3.5" /> Ouvrir
                       </button>
@@ -577,7 +571,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                           showToast(`Lien partagé pour ${file.name}`);
                           setMenuOpenId(null);
                         }}
-                        className="w-full px-3 py-1.5 text-left hover:bg-slate-700/50 flex items-center gap-2"
+                        className="w-full px-3 py-1.5 text-left hover:bg-slate-700/50 flex items-center gap-2 cursor-pointer"
                       >
                         <Share2 className="w-3.5 h-3.5" /> Partager
                       </button>
@@ -586,7 +580,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                           showToast(`Téléchargement de ${file.name}...`);
                           setMenuOpenId(null);
                         }}
-                        className="w-full px-3 py-1.5 text-left hover:bg-slate-700/50 flex items-center gap-2"
+                        className="w-full px-3 py-1.5 text-left hover:bg-slate-700/50 flex items-center gap-2 cursor-pointer"
                       >
                         <Download className="w-3.5 h-3.5" /> Télécharger
                       </button>
@@ -610,17 +604,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         </section>
 
         {/* ========================================================================= */}
-        {/* SECTION 2 : CATÉGORIES (REMONTÉE POUR COMBLER L'ESPACE)                    */}
+        {/* SECTION 2 : CATÉGORIES (BOUTONS PLUS NOIRS, ÉCRITURES BIEN BLANCHES)       */}
         {/* ========================================================================= */}
         <section className="space-y-2">
           <div className="flex items-center justify-between">
             <h2 className="text-sm sm:text-base font-bold text-white tracking-tight">
-              {activeDriveSource === 'cloud' ? 'Catégories Cloud (Base de données)' : 'Catégories de l\'appareil'}
+              Catégories
             </h2>
             {selectedCategory && (
               <button 
                 onClick={() => setSelectedCategory(null)}
-                className="text-[11px] text-blue-400 hover:text-blue-300 font-semibold cursor-pointer"
+                className="text-[11px] text-blue-400 hover:text-blue-300 font-bold cursor-pointer"
               >
                 Réinitialiser
               </button>
@@ -636,21 +630,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 <div
                   key={cat.id}
                   onClick={() => setSelectedCategory(isSelected ? null : cat.id)}
-                  className={`group rounded-2xl p-2.5 sm:p-3 flex items-center gap-2.5 transition-all duration-200 cursor-pointer select-none border ${
+                  className={`group rounded-2xl p-2.5 sm:p-3 flex items-center gap-2.5 transition-all duration-200 cursor-pointer select-none border shadow-md ${
                     isSelected
-                      ? 'bg-blue-600/25 border-blue-500 shadow-md scale-[1.02]'
-                      : 'bg-[#151C2C] hover:bg-[#1A2338] border-slate-800 hover:border-slate-700'
+                      ? 'bg-[#04060A] border-2 border-blue-400 shadow-[0_0_15px_rgba(59,130,246,0.35)] scale-[1.02]'
+                      : 'bg-[#04060A] hover:bg-[#0A0E18] border-white/10 hover:border-white/25'
                   }`}
                 >
-                  <div className={`p-2 rounded-xl bg-slate-900/90 border border-slate-800 shrink-0 group-hover:scale-110 transition-transform ${cat.color}`}>
+                  <div className={`p-2 rounded-xl bg-black border border-white/10 shrink-0 group-hover:scale-110 transition-transform ${cat.color}`}>
                     <IconComp className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-blue-400 transition-colors">
+                    <h3 className="text-xs sm:text-sm font-black text-white truncate tracking-wide group-hover:text-blue-400 transition-colors">
                       {cat.name}
                     </h3>
-                    <p className="text-[10px] sm:text-[11px] text-slate-400 truncate mt-0.5">
+                    <p className="text-[10px] sm:text-[11px] font-bold text-slate-100 truncate mt-0.5">
                       {cat.size}
                     </p>
                   </div>
@@ -661,7 +655,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         </section>
 
         {/* ========================================================================= */}
-        {/* SECTION 3 : COLLECTIONS                                                    */}
+        {/* SECTION 3 : COLLECTIONS (BOUTONS PLUS NOIRS, ÉCRITURES BIEN BLANCHES)      */}
         {/* ========================================================================= */}
         <section className="space-y-2">
           <div className="flex items-center justify-between">
@@ -671,7 +665,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             <button 
               type="button"
               onClick={() => showToast('Gestion des collections')}
-              className="text-slate-400 hover:text-white p-1 rounded-lg transition-colors cursor-pointer"
+              className="text-white hover:text-blue-400 p-1 rounded-lg transition-colors cursor-pointer"
               title="Options des collections"
             >
               <MoreVertical className="w-4 h-4" />
@@ -685,14 +679,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 <div
                   key={col.id}
                   onClick={() => showToast(`Ouverture de : ${col.name}`)}
-                  className="group rounded-2xl p-2.5 sm:p-3 flex items-center gap-2.5 bg-[#151C2C] hover:bg-[#1A2338] border border-slate-800 hover:border-slate-700 transition-all duration-200 cursor-pointer select-none"
+                  className="group rounded-2xl p-2.5 sm:p-3 flex items-center gap-2.5 bg-[#04060A] hover:bg-[#0A0E18] border border-white/10 hover:border-white/25 transition-all duration-200 cursor-pointer select-none shadow-md"
                 >
-                  <div className={`p-2 rounded-xl bg-slate-900/90 border border-slate-800 shrink-0 group-hover:scale-110 transition-transform ${col.color}`}>
+                  <div className={`p-2 rounded-xl bg-black border border-white/10 shrink-0 group-hover:scale-110 transition-transform ${col.color}`}>
                     <IconComp className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
                   </div>
 
                   <div className="min-w-0 flex-1">
-                    <h3 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-blue-400 transition-colors">
+                    <h3 className="text-xs sm:text-sm font-black text-white truncate tracking-wide group-hover:text-blue-400 transition-colors">
                       {col.name}
                     </h3>
                   </div>
@@ -703,36 +697,36 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         </section>
 
         {/* ========================================================================= */}
-        {/* SECTION 4 : ÉTAT DU STOCKAGE                                               */}
+        {/* SECTION 4 : ÉTAT DU STOCKAGE (PLUS NOIR QUE LE FOND, ÉCRITURES BLANCHES)   */}
         {/* ========================================================================= */}
-        <section className="bg-[#151C2C] border border-slate-800 rounded-2xl p-3 sm:p-4 space-y-2.5 shadow-sm">
+        <section className="bg-[#04060A] border border-white/10 rounded-2xl p-3 sm:p-4 space-y-2.5 shadow-md">
           <div className="flex items-center justify-between">
             <div className="flex items-center gap-2.5">
-              <div className="p-2 rounded-xl bg-blue-500/10 border border-blue-500/20 text-blue-400">
+              <div className="p-2 rounded-xl bg-black border border-white/10 text-blue-400">
                 {activeDriveSource === 'cloud' ? <Cloud className="w-4 h-4 sm:w-5 sm:h-5" /> : <HardDrive className="w-4 h-4 sm:w-5 sm:h-5" />}
               </div>
               <div>
-                <h3 className="text-xs sm:text-sm font-bold text-white">
-                  {activeDriveSource === 'cloud' ? 'Espace Cloud StudyCloud (D1 / R2)' : 'Stockage interne (Cet appareil)'}
+                <h3 className="text-xs sm:text-sm font-black text-white tracking-wide">
+                  {activeDriveSource === 'cloud' ? 'Espace StudyCloud Drive' : 'Stockage interne'}
                 </h3>
-                <p className="text-[10px] sm:text-[11px] text-slate-400">
-                  {activeDriveSource === 'cloud' ? '3,2 Go utilisés sur 15 Go (Synchronisé)' : '37,3 Go utilisés sur 64 Go'}
+                <p className="text-[10px] sm:text-[11px] font-bold text-slate-100">
+                  {activeDriveSource === 'cloud' ? '3,2 Go utilisés sur 15 Go' : '37,3 Go utilisés sur 64 Go'}
                 </p>
               </div>
             </div>
 
-            <span className="text-[11px] sm:text-xs font-bold text-slate-200 bg-slate-800 px-2.5 py-0.5 rounded-full border border-slate-700">
+            <span className="text-[11px] sm:text-xs font-black text-white bg-black px-2.5 py-0.5 rounded-full border border-white/20 shadow-sm">
               {activeDriveSource === 'cloud' ? '21%' : '58%'}
             </span>
           </div>
 
           {/* Barre de progression multi-segments */}
-          <div className="w-full h-2.5 bg-slate-800 rounded-full overflow-hidden flex">
+          <div className="w-full h-2.5 bg-black rounded-full overflow-hidden flex border border-white/10">
             {activeDriveSource === 'cloud' ? (
               <>
-                <div style={{ width: '12%' }} className="bg-blue-500 h-full" title="Documents Cloud" />
-                <div style={{ width: '6%' }} className="bg-sky-500 h-full" title="Sauvegardes R2" />
-                <div style={{ width: '3%' }} className="bg-emerald-500 h-full" title="Base D1" />
+                <div style={{ width: '12%' }} className="bg-blue-500 h-full" title="Documents" />
+                <div style={{ width: '6%' }} className="bg-sky-500 h-full" title="Sauvegardes" />
+                <div style={{ width: '3%' }} className="bg-emerald-500 h-full" title="Sync" />
               </>
             ) : (
               <>
@@ -754,27 +748,27 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       {activeFilePreview && (
         <div 
           onClick={() => setActiveFilePreview(null)}
-          className="fixed inset-0 z-50 bg-black/80 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
+          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
         >
           <div 
             onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg bg-[#151C2C] border border-slate-700 rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xl animate-in zoom-in-95"
+            className="w-full max-w-lg bg-[#04060A] border border-white/15 rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xl animate-in zoom-in-95"
           >
-            <div className="flex items-center justify-between border-b border-slate-800 pb-3">
-              <h3 className="text-sm sm:text-base font-bold text-white truncate max-w-[280px]">
+            <div className="flex items-center justify-between border-b border-white/10 pb-3">
+              <h3 className="text-sm sm:text-base font-black text-white truncate max-w-[280px]">
                 {activeFilePreview.name}
               </h3>
               <button 
                 type="button"
                 onClick={() => setActiveFilePreview(null)}
-                className="w-8 h-8 rounded-full bg-slate-800 hover:bg-slate-700 text-slate-300 flex items-center justify-center transition-colors cursor-pointer"
+                className="w-8 h-8 rounded-full bg-black hover:bg-slate-900 text-white border border-white/10 flex items-center justify-center transition-colors cursor-pointer"
               >
                 <X className="w-4 h-4" />
               </button>
             </div>
 
             {activeFilePreview.previewUrl ? (
-              <div className="w-full h-60 rounded-2xl overflow-hidden bg-black flex items-center justify-center">
+              <div className="w-full h-60 rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-white/10">
                 <img 
                   src={activeFilePreview.previewUrl} 
                   alt={activeFilePreview.name}
@@ -782,28 +776,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 />
               </div>
             ) : (
-              <div className="w-full h-40 rounded-2xl bg-slate-900 border border-slate-800 flex flex-col items-center justify-center p-4 text-center">
+              <div className="w-full h-40 rounded-2xl bg-black border border-white/10 flex flex-col items-center justify-center p-4 text-center">
                 <FileText className="w-10 h-10 text-blue-400 mb-2 stroke-[1.5]" />
-                <p className="text-xs text-slate-400">Aperçu direct du document disponible au téléchargement</p>
+                <p className="text-xs font-semibold text-slate-200">Aperçu direct du document disponible au téléchargement</p>
               </div>
             )}
 
-            <div className="grid grid-cols-2 gap-2.5 text-xs bg-slate-900/60 p-3 rounded-xl border border-slate-800">
+            <div className="grid grid-cols-2 gap-2.5 text-xs bg-black p-3 rounded-xl border border-white/10">
               <div>
-                <span className="text-slate-500 block text-[10px] uppercase font-bold">Emplacement</span>
-                <span className="text-slate-200 font-semibold">{activeFilePreview.source}</span>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Emplacement</span>
+                <span className="text-white font-bold">{activeFilePreview.source}</span>
               </div>
               <div>
-                <span className="text-slate-500 block text-[10px] uppercase font-bold">Taille</span>
-                <span className="text-slate-200 font-semibold">{activeFilePreview.size}</span>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Taille</span>
+                <span className="text-white font-bold">{activeFilePreview.size}</span>
               </div>
               <div>
-                <span className="text-slate-500 block text-[10px] uppercase font-bold">Date</span>
-                <span className="text-slate-200 font-semibold">{activeFilePreview.date}</span>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Date</span>
+                <span className="text-white font-bold">{activeFilePreview.date}</span>
               </div>
               <div>
-                <span className="text-slate-500 block text-[10px] uppercase font-bold">Catégorie</span>
-                <span className="text-slate-200 font-semibold capitalize">{activeFilePreview.category}</span>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Catégorie</span>
+                <span className="text-white font-bold capitalize">{activeFilePreview.category}</span>
               </div>
             </div>
 
@@ -814,7 +808,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                   showToast("Ouverture du fichier...");
                   setActiveFilePreview(null);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-md"
               >
                 <Eye className="w-4 h-4" />
                 <span>Ouvrir</span>
@@ -826,7 +820,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                   showToast("Lien copié dans le presse-papier !");
                   setActiveFilePreview(null);
                 }}
-                className="flex-1 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-slate-700"
+                className="flex-1 py-2.5 rounded-xl bg-black hover:bg-slate-900 text-white font-black text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-white/20"
               >
                 <Share2 className="w-4 h-4" />
                 <span>Partager</span>
