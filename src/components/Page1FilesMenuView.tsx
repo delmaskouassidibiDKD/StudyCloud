@@ -55,6 +55,7 @@ interface SubMenuView {
 
 export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }) => {
   const [searchQuery, setSearchQuery] = useState('');
+  const [subSearchQuery, setSubSearchQuery] = useState('');
   const [selectedCategory, setSelectedCategory] = useState<string | null>(null);
   const [activeFilePreview, setActiveFilePreview] = useState<FileItem | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
@@ -72,13 +73,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     setTimeout(() => setToastMessage(null), 2500);
   };
 
-  // FICHIERS RÉCENTS : STUDYCLOUD DRIVE (Strictement 6 éléments maximum, 1 seule ligne, FIFO)
+  // FICHIERS RÉCENTS : STUDYCLOUD (Strictement 6 éléments maximum, 1 seule ligne, FIFO)
   const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>([
     {
       id: 'rec-cld-1',
       name: 'Cours_Supply_Chain_Logistique.pdf',
       category: 'documents',
-      source: 'StudyCloud Drive',
+      source: 'StudyCloud',
       size: '4,2 Mo',
       sizeBytes: 4404019,
       date: "Aujourd'hui, 10:15"
@@ -87,7 +88,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       id: 'rec-cld-2',
       name: 'Synthese_Cours_Semestre_1.docx',
       category: 'documents',
-      source: 'StudyCloud Drive',
+      source: 'StudyCloud',
       size: '1,1 Mo',
       sizeBytes: 1153433,
       date: "Aujourd'hui, 09:30"
@@ -96,7 +97,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       id: 'rec-cld-3',
       name: 'Devoir_Economie_Appliquee.pdf',
       category: 'documents',
-      source: 'StudyCloud Drive',
+      source: 'StudyCloud',
       size: '2,8 Mo',
       sizeBytes: 2936012,
       date: 'Hier, 18:20'
@@ -105,7 +106,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       id: 'rec-cld-4',
       name: 'Projet_Algorithmique_V2.zip',
       category: 'downloads',
-      source: 'StudyCloud Drive',
+      source: 'StudyCloud',
       size: '6,4 Mo',
       sizeBytes: 6710886,
       date: 'Hier, 16:45'
@@ -114,7 +115,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       id: 'rec-cld-5',
       name: 'Notes_Revision_Semestre_1.pdf',
       category: 'documents',
-      source: 'StudyCloud Drive',
+      source: 'StudyCloud',
       size: '950 Ko',
       sizeBytes: 972800,
       date: '21 Sept, 14:00'
@@ -123,7 +124,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       id: 'rec-cld-6',
       name: 'Fiche_TD_Mathematiques.pdf',
       category: 'documents',
-      source: 'StudyCloud Drive',
+      source: 'StudyCloud',
       size: '1,7 Mo',
       sizeBytes: 1782579,
       date: '20 Sept, 11:20'
@@ -151,7 +152,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         id: `rec-imp-${Date.now()}-${idx}`,
         name: file.name,
         category,
-        source: 'StudyCloud Drive',
+        source: 'StudyCloud',
         size: `${(file.size / (1024 * 1024)).toFixed(1)} Mo`,
         sizeBytes: file.size,
         date: "Aujourd'hui, " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
@@ -161,7 +162,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     });
 
     setCloudRecentFiles(prev => [...newItems, ...prev].slice(0, 6));
-    showToast(`${files.length} fichier(s) importé(s) dans StudyCloud Drive !`);
+    showToast(`${files.length} fichier(s) importé(s) dans StudyCloud !`);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
@@ -176,7 +177,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       try {
         await navigator.share({
           title: file.name,
-          text: `Fichier StudyCloud Drive : ${file.name}`
+          text: `Fichier StudyCloud : ${file.name}`
         });
         showToast('Partage réussi !');
         return;
@@ -293,6 +294,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     icon: any,
     color: string
   ) => {
+    setSubSearchQuery('');
     setCurrentSubView({
       id: `studycloud-${type}-${id}`,
       type,
@@ -306,10 +308,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   const subViewDocuments = useMemo(() => {
     if (!currentSubView) return [];
     if (currentSubView.id === 'studycloud-category-documents') {
-      return cloudRecentFiles.filter(f => f.category === 'documents');
+      return cloudRecentFiles.filter(f => {
+        const matchesCategory = f.category === 'documents';
+        const matchesSubSearch = subSearchQuery.trim() === '' || f.name.toLowerCase().includes(subSearchQuery.toLowerCase());
+        return matchesCategory && matchesSubSearch;
+      });
     }
     return [];
-  }, [currentSubView, cloudRecentFiles]);
+  }, [currentSubView, cloudRecentFiles, subSearchQuery]);
 
   return (
     <div className={`transition-colors duration-300 bg-[#F4F6F8] dark:bg-[#0C111D] text-stone-900 dark:text-slate-100 flex flex-col overflow-y-auto selection:bg-blue-600 selection:text-white ${
@@ -340,38 +346,82 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       {currentSubView ? (
         <div className="flex-1 flex flex-col w-full animate-in fade-in duration-200">
           
-          {/* En-tête de la sous-page avec bouton Retour vers le gestionnaire */}
-          <div className="sticky top-0 z-30 w-full bg-[#F4F6F8]/95 dark:bg-[#0C111D]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-3 border-b border-stone-300/70 dark:border-slate-800/60 flex items-center justify-between shadow-xs">
-            <div className="flex items-center gap-3">
-              <button
-                type="button"
-                onClick={() => setCurrentSubView(null)}
-                className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
-                title="Retour au gestionnaire de fichiers"
-              >
-                <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
-                <span>Retour</span>
-              </button>
+          {/* En-tête de la sous-page avec champ de recherche au milieu */}
+          <div className="sticky top-0 z-30 w-full bg-[#F4F6F8]/95 dark:bg-[#0C111D]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-300/70 dark:border-slate-800/60 shadow-xs">
+            <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
+              
+              {/* GAUCHE : Bouton Retour et Titre */}
+              <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => {
+                    setCurrentSubView(null);
+                    setSubSearchQuery('');
+                  }}
+                  className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
+                  title="Retour au gestionnaire de fichiers"
+                >
+                  <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
+                  <span className="hidden xs:inline">Retour</span>
+                </button>
 
-              <div className="flex items-center gap-2.5">
-                <div className={`p-1.5 rounded-xl bg-black border border-white/10 ${currentSubView.color}`}>
-                  <currentSubView.icon className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
-                </div>
-                <div>
-                  <h1 className="text-sm sm:text-base font-black text-stone-900 dark:text-white leading-tight">
-                    {currentSubView.name}
-                  </h1>
-                  <p className="text-[10px] sm:text-[11px] font-semibold text-stone-500 dark:text-slate-400 leading-tight">
-                    StudyCloud Drive
-                  </p>
+                <div className="flex items-center gap-2">
+                  <div className={`p-1.5 rounded-xl bg-black border border-white/10 ${currentSubView.color}`}>
+                    <currentSubView.icon className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+                  </div>
+                  <div>
+                    <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 dark:text-white leading-tight">
+                      {currentSubView.name}
+                    </h1>
+                    <p className="text-[10px] sm:text-[11px] font-semibold text-stone-500 dark:text-slate-400 leading-tight">
+                      StudyCloud
+                    </p>
+                  </div>
                 </div>
               </div>
-            </div>
 
-            <div className="flex items-center gap-2">
-              <span className="text-[11px] font-bold text-slate-100 bg-[#04060A] border border-white/10 px-3 py-1 rounded-full hidden sm:inline-block shadow-sm">
-                Code : {currentSubView.id}
-              </span>
+              {/* MILIEU : Champ de recherche en haut du sous-menu */}
+              <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-1 sm:px-2">
+                <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
+                  <div className="text-white shrink-0">
+                    <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+                  </div>
+                  <input
+                    type="text"
+                    value={subSearchQuery}
+                    onChange={(e) => setSubSearchQuery(e.target.value)}
+                    placeholder={`Rechercher dans ${currentSubView.name}...`}
+                    className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
+                  />
+                  {subSearchQuery && (
+                    <button
+                      type="button"
+                      onClick={() => setSubSearchQuery('')}
+                      className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Effacer"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  )}
+                </div>
+              </div>
+
+              {/* DROITE : Plein écran ou équilibre visuel */}
+              <div className="shrink-0 flex items-center gap-2">
+                <button
+                  type="button"
+                  onClick={() => setIsFullscreen(!isFullscreen)}
+                  className="hidden md:flex items-center justify-center w-9 h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                  title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet"}
+                >
+                  {isFullscreen ? (
+                    <Minimize2 className="w-4 h-4 stroke-[2.2]" />
+                  ) : (
+                    <Maximize2 className="w-4 h-4 stroke-[2.2]" />
+                  )}
+                </button>
+              </div>
+
             </div>
           </div>
 
@@ -435,12 +485,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         /* VUE PRINCIPALE DIRECTE : GESTIONNAIRE STUDYCLOUD SANS LES DEUX BOUTONS    */
         /* ========================================================================= */
         <>
-          {/* EN-TÊTE FIXE / STICKY : Barre de recherche réduite vers la gauche + Bouton Importer */}
+          {/* EN-TÊTE FIXE / STICKY : Barre de recherche pilule AU MILIEU */}
           <div className="sticky top-0 z-30 w-full bg-[#F4F6F8]/95 dark:bg-[#0C111D]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 pt-2.5 pb-2.5 border-b border-stone-300/70 dark:border-slate-800/60 shadow-xs">
-            <div className="w-full flex items-center justify-between gap-2 sm:gap-3">
+            <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
               
-              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
-                {/* Bouton Retour rapide vers l'accueil */}
+              {/* GAUCHE : Bouton Retour rapide vers l'accueil */}
+              <div className="flex items-center shrink-0">
                 <button
                   type="button"
                   onClick={onBack}
@@ -450,57 +500,55 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 >
                   <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
                 </button>
+              </div>
 
-                {/* Barre de Recherche Pilule RÉDUITE VERS LA GAUCHE (fond noir profond avec texte blanc) */}
-                <div className="w-full max-w-[210px] xs:max-w-[260px] sm:max-w-xs md:max-w-sm relative flex items-center">
-                  <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 sm:py-2 transition-all shadow-inner gap-2">
-                    
-                    {/* Icône Menu hamburger intégrée à gauche */}
-                    <div className="text-white shrink-0">
-                      <Menu className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.2]" />
-                    </div>
-
-                    <input
-                      type="text"
-                      value={searchQuery}
-                      onChange={(e) => setSearchQuery(e.target.value)}
-                      placeholder='Recherchez photos, cours...'
-                      className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
-                    />
-
-                    {searchQuery ? (
-                      <button
-                        type="button"
-                        onClick={() => setSearchQuery('')}
-                        className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
-                        title="Effacer la recherche"
-                      >
-                        <X className="w-3.5 h-3.5" />
-                      </button>
-                    ) : (
-                      <div className="p-1 text-slate-300 shrink-0">
-                        <Search className="w-4 h-4 stroke-[2.2]" />
-                      </div>
-                    )}
+              {/* MILIEU : Barre de Recherche Pilule AU CENTRE (Où se trouve la marque rouge) */}
+              <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md lg:max-w-lg mx-auto relative flex items-center px-1 sm:px-2">
+                <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 sm:py-2 transition-all shadow-inner gap-2">
+                  
+                  {/* Icône Menu hamburger intégrée à gauche */}
+                  <div className="text-white shrink-0">
+                    <Menu className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.2]" />
                   </div>
+
+                  <input
+                    type="text"
+                    value={searchQuery}
+                    onChange={(e) => setSearchQuery(e.target.value)}
+                    placeholder='Recherchez photos, cours, documents...'
+                    className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
+                  />
+
+                  {searchQuery ? (
+                    <button
+                      type="button"
+                      onClick={() => setSearchQuery('')}
+                      className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
+                      title="Effacer la recherche"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  ) : (
+                    <div className="p-1 text-slate-300 shrink-0">
+                      <Search className="w-4 h-4 stroke-[2.2]" />
+                    </div>
+                  )}
                 </div>
               </div>
 
-              {/* SECTION DROITE : Bouton + Importer un fichier et Plein écran */}
+              {/* DROITE : Bouton + Importer un fichier et Plein écran */}
               <div className="flex items-center gap-2 shrink-0">
-                {/* Bouton + Importer un fichier */}
                 <button
                   type="button"
                   onClick={handleTriggerImport}
                   className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-blue-400/40 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black"
-                  title="Importer un fichier dans StudyCloud Drive"
+                  title="Importer un fichier dans StudyCloud"
                 >
                   <Plus className="w-4 h-4 text-blue-400 stroke-[2.5]" />
                   <span className="hidden xs:inline">Importer un fichier</span>
                   <span className="xs:hidden">Importer</span>
                 </button>
 
-                {/* Bouton Plein Écran (Spécifique Ordinateur pour prendre 100% de l'écran) */}
                 <button
                   type="button"
                   onClick={() => setIsFullscreen(!isFullscreen)}
