@@ -174,6 +174,48 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isViewerMaximized]);
 
+  // Fermer les menus déroulants lors d'un clic extérieur ou touche Échap SANS jamais bloquer le défilement de la page
+  useEffect(() => {
+    if (!activeMenuFileId && !docMenuOpenId && !audioMenuSongId && !menuOpenId && !isPlayerMenuOpen) {
+      return;
+    }
+
+    const handleClickOutside = (e: MouseEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (!target) return;
+      if (target.closest('.studycloud-file-menu-panel') || target.closest('.studycloud-menu-trigger')) {
+        return;
+      }
+      setActiveMenuFileId(null);
+      setDocMenuOpenId(null);
+      setAudioMenuSongId(null);
+      setMenuOpenId(null);
+      setIsPlayerMenuOpen(false);
+    };
+
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') {
+        setActiveMenuFileId(null);
+        setDocMenuOpenId(null);
+        setAudioMenuSongId(null);
+        setMenuOpenId(null);
+        setIsPlayerMenuOpen(false);
+      }
+    };
+
+    // Timeout de 10ms pour ne pas capturer le clic d'ouverture du menu lui-même
+    const timer = setTimeout(() => {
+      document.addEventListener('click', handleClickOutside);
+    }, 10);
+    window.addEventListener('keydown', handleKeyDown);
+
+    return () => {
+      clearTimeout(timer);
+      document.removeEventListener('click', handleClickOutside);
+      window.removeEventListener('keydown', handleKeyDown);
+    };
+  }, [activeMenuFileId, docMenuOpenId, audioMenuSongId, menuOpenId, isPlayerMenuOpen]);
+
   // Référence pour l'import de fichier
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1657,22 +1699,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     if (!isMenuOpen) return null;
 
     return (
-      <>
-        {/* Fond transparent pour fermer en cliquant n'importe où */}
-        <div 
-          className="fixed inset-0 z-40 bg-black/20" 
-          onClick={(e) => { 
-            e.stopPropagation(); 
-            setActiveMenuFileId(null); 
-            setDocMenuOpenId(null); 
-            setAudioMenuSongId(null); 
-          }} 
-        />
-        {/* Panneau de menu 100% opaque, au-dessus de tout le contenu */}
-        <div 
-          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-50 w-56 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
-          onClick={(e) => e.stopPropagation()}
-        >
+      <div 
+        className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-50 w-56 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
+        onClick={(e) => e.stopPropagation()}
+      >
           {/* En-tête de menu dédié avec nom du fichier et bouton fermeture */}
           <div className="px-3 py-2 bg-slate-900 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
             <div className="min-w-0">
@@ -1801,7 +1831,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             </div>
           </div>
         </div>
-      </>
     );
   };
 
@@ -1836,7 +1865,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         {/* Barre supérieure : Bouton 3 traits, Checkbox (en mode sélection) & Taille */}
         <div className="flex items-center justify-between gap-1 z-20 relative">
           <div className="flex items-center gap-1.5">
-            <div className="relative">
+            <div className="relative studycloud-menu-trigger">
               <button
                 type="button"
                 onClick={(e) => {
@@ -1978,7 +2007,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
         {/* Haut gauche : Bouton 3 traits & Checkbox */}
         <div className="absolute top-1.5 sm:top-2 left-1.5 sm:left-2 z-20 flex items-center gap-1.5">
-          <div className="relative">
+          <div className="relative studycloud-menu-trigger">
             <button
               type="button"
               onClick={(e) => {
@@ -2076,7 +2105,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
         {/* Haut gauche : Bouton 3 traits & Checkbox */}
         <div className="absolute top-1.5 sm:top-2 left-1.5 sm:left-2 z-20 flex items-center gap-1.5">
-          <div className="relative">
+          <div className="relative studycloud-menu-trigger">
             <button
               type="button"
               onClick={(e) => {
@@ -2193,7 +2222,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
           )}
 
           {/* Bouton 3 traits */}
-          <div className="relative shrink-0">
+          <div className="relative shrink-0 studycloud-menu-trigger">
             <button
               type="button"
               onClick={(e) => {
@@ -2279,7 +2308,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
         <div className="flex items-center gap-1.5 shrink-0">
           {/* Bouton 3 traits */}
-          <div className="relative">
+          <div className="relative studycloud-menu-trigger">
             <button
               type="button"
               onClick={(e) => {
@@ -2429,7 +2458,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             {/* PANNEAU DE GAUCHE : LE RESTE DES FICHIERS                            */}
             {/* Si un élément est sélectionné, prend 50% de l'écran avec scroll       */}
             {/* --------------------------------------------------------------------- */}
-            <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 ${
+            <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
               isViewerMaximized 
                 ? 'hidden' 
                 : currentSubView.id === 'studycloud-category-audio'
@@ -2681,7 +2710,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                             </span>
 
                             {/* Bouton 3 traits sur chaque musique avec toutes les propositions */}
-                            <div className="relative shrink-0">
+                            <div className="relative shrink-0 studycloud-menu-trigger">
                               <button
                                 type="button"
                                 onClick={(e) => {
@@ -2941,7 +2970,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
                     {/* BOUTON 3 TRAITS D'OPTIONS AUDIO OU AGRANDIR POUR AUTRES FORMATS */}
                     {splitSelectedFile.category === 'audio' ? (
-                      <div className="relative">
+                      <div className="relative studycloud-menu-trigger">
                         <button
                           type="button"
                           onClick={() => setIsPlayerMenuOpen(!isPlayerMenuOpen)}
@@ -2952,15 +2981,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                         </button>
 
                         {isPlayerMenuOpen && (
-                          <>
-                            <div 
-                              className="fixed inset-0 z-40" 
-                              onClick={() => setIsPlayerMenuOpen(false)} 
-                            />
-                            <div 
-                              className="absolute right-0 top-9 z-50 w-52 bg-[#0D1527] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs text-white divide-y divide-white/10 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100"
-                              onClick={(e) => e.stopPropagation()}
-                            >
+                          <div 
+                            className="studycloud-file-menu-panel absolute right-0 top-9 z-50 w-52 bg-[#0D1527] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs text-white divide-y divide-white/10 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100"
+                            onClick={(e) => e.stopPropagation()}
+                          >
                               <button 
                                 type="button" 
                                 onClick={() => { handleDownloadFile(splitSelectedFile); setIsPlayerMenuOpen(false); }} 
@@ -3021,7 +3045,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                                 <Trash2 className="w-4 h-4 text-rose-500" /> Supprimer ce son
                               </button>
                             </div>
-                          </>
                         )}
                       </div>
                     ) : (
@@ -3585,7 +3608,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
           </div>
 
           {/* CORPS PRINCIPAL DIRECT : SANS LES DEUX BOUTONS, DIRECTEMENT LE MENU STUDYCLOUD */}
-          <div className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-3 sm:py-4 space-y-4 sm:space-y-5">
+          <div className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-3 sm:py-4 pb-48 sm:pb-64 space-y-4 sm:space-y-5">
 
             {/* SECTION 1 : RÉCENTS (STRICTEMENT 6 ÉLÉMENTS SUR 1 LIGNE) */}
             <section className="space-y-2">
@@ -3634,7 +3657,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                           e.stopPropagation();
                           setMenuOpenId(menuOpenId === file.id ? null : file.id);
                         }}
-                        className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/75 hover:bg-black flex items-center justify-center text-white transition-colors cursor-pointer shadow-md z-20 border border-white/20"
+                        className="studycloud-menu-trigger absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/75 hover:bg-black flex items-center justify-center text-white transition-colors cursor-pointer shadow-md z-20 border border-white/20"
                         title="Options du fichier"
                       >
                         <MoreVertical className="w-3.5 h-3.5" />
@@ -3642,44 +3665,38 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
                       {/* Menu contextuel 3 points */}
                       {menuOpenId === file.id && (
-                        <>
-                          <div 
-                            className="fixed inset-0 z-40 bg-black/20" 
-                            onClick={(e) => { e.stopPropagation(); setMenuOpenId(null); }} 
-                          />
-                          <div 
-                            onClick={(e) => e.stopPropagation()}
-                            className="absolute top-9 right-1.5 z-50 w-44 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.15)] py-1.5 text-xs font-semibold text-white animate-in fade-in zoom-in-95 overflow-hidden divide-y divide-white/10"
+                        <div 
+                          onClick={(e) => e.stopPropagation()}
+                          className="studycloud-file-menu-panel absolute top-9 right-1.5 z-50 w-44 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.15)] py-1.5 text-xs font-semibold text-white animate-in fade-in zoom-in-95 overflow-hidden divide-y divide-white/10"
+                        >
+                          <button
+                            onClick={() => {
+                              handleSelectFile(file);
+                              setMenuOpenId(null);
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
                           >
-                            <button
-                              onClick={() => {
-                                handleSelectFile(file);
-                                setMenuOpenId(null);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
-                            >
-                              <Eye className="w-3.5 h-3.5 text-blue-400" /> Ouvrir
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleShareFile(file);
-                                setMenuOpenId(null);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
-                            >
-                              <Share2 className="w-3.5 h-3.5 text-emerald-400" /> Partager
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleDownloadFile(file);
-                                setMenuOpenId(null);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
-                            >
-                              <Download className="w-3.5 h-3.5 text-amber-400" /> Télécharger
-                            </button>
-                          </div>
-                        </>
+                            <Eye className="w-3.5 h-3.5 text-blue-400" /> Ouvrir
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleShareFile(file);
+                              setMenuOpenId(null);
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
+                          >
+                            <Share2 className="w-3.5 h-3.5 text-emerald-400" /> Partager
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleDownloadFile(file);
+                              setMenuOpenId(null);
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
+                          >
+                            <Download className="w-3.5 h-3.5 text-amber-400" /> Télécharger
+                          </button>
+                        </div>
                       )}
                     </div>
 
