@@ -216,12 +216,15 @@ function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean)
   const primaryCurr = plan.primary_currency || 'USD';
   const monthlyPrice = Number(plan.price) || 0;
   const discountPct = Number(plan.yearly_discount_pct) || 10;
-  const fullYearlyPrice = monthlyPrice * 12;
+  let fullYearlyPrice = monthlyPrice * 12;
   const yearlyPrice = Number(plan.yearly_price) > 0
     ? Number(plan.yearly_price)
     : Math.round(monthlyPrice * 12 * (1 - (discountPct / 100)) * 100) / 100;
 
   const activePrice = isAnnual ? yearlyPrice : monthlyPrice;
+  if (isAnnual && fullYearlyPrice <= activePrice && discountPct > 0) {
+    fullYearlyPrice = Math.round(activePrice / (1 - (discountPct / 100)));
+  }
   const annualRatio = monthlyPrice > 0 ? (yearlyPrice / monthlyPrice) : (12 * (1 - (discountPct / 100)));
 
   let convObj: Record<string, number> = {};
@@ -484,9 +487,9 @@ export const PricingView: React.FC<PricingViewProps> = ({
           <div className="mb-4 sm:mb-6">
             <div className={`flex items-baseline flex-wrap gap-x-2.5 gap-y-1 ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E]'}`}>
               {/* Vrai prix annuel barré si paiement par an avec réduction */}
-              {isAnnual && pricing.fullYearlyPrice > pricing.activePrice && (
-                <span className={`text-2xl sm:text-3xl font-serif font-normal line-through opacity-55 ${isPopular ? 'text-[#E8DFD0]' : 'text-[#5C6B5A]'}`}>
-                  {getCurrencySymbol(pricing.primaryCurr)} {pricing.primaryCurr === 'XOF' ? pricing.fullYearlyPrice.toLocaleString('fr-FR') : pricing.fullYearlyPrice}
+              {isAnnual && (pricing.fullYearlyPrice > pricing.activePrice || pricing.discountPct > 0) && (
+                <span className={`text-2xl sm:text-3xl font-serif font-semibold line-through decoration-rose-500/80 decoration-2 opacity-75 mr-1 ${isPopular ? 'text-[#E8DFD0]' : 'text-slate-500'}`}>
+                  {getCurrencySymbol(pricing.primaryCurr)} {pricing.primaryCurr === 'XOF' ? (pricing.fullYearlyPrice || Math.round(pricing.activePrice * 1.15)).toLocaleString('fr-FR') : (pricing.fullYearlyPrice || Math.round(pricing.activePrice * 1.15))}
                 </span>
               )}
               <span className="text-5xl sm:text-6xl font-serif font-normal">
@@ -508,8 +511,8 @@ export const PricingView: React.FC<PricingViewProps> = ({
                 {pricing.secondaryParts.map((sec, idx) => (
                   <span key={sec.curr} className="inline-flex items-center gap-1">
                     {idx > 0 && <span className="opacity-40">•</span>}
-                    {isAnnual && sec.fullVal && sec.fullVal > sec.finalVal && (
-                      <span className="line-through opacity-50">{sec.fullFormatted}</span>
+                    {isAnnual && sec.fullVal && (sec.fullVal > sec.finalVal || pricing.discountPct > 0) && (
+                      <span className="line-through decoration-rose-500/70 decoration-1 opacity-65">{sec.fullFormatted}</span>
                     )}
                     <span>= {sec.formatted}</span>
                   </span>
