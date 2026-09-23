@@ -49,7 +49,12 @@ import {
   SlidersHorizontal,
   ChevronDown,
   Layers,
-  BookOpen
+  BookOpen,
+  Link,
+  FolderInput,
+  Copy,
+  Pin,
+  Pencil
 } from 'lucide-react';
 import { getDownloadedFiles, recordDownloadedFile, DownloadedItem } from '../services/downloadsManager';
 
@@ -86,8 +91,7 @@ interface SubMenuView {
 export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [subSearchQuery, setSubSearchQuery] = useState('');
-  const [selectedDocFilter, setSelectedDocFilter] = useState<'TOUS' | 'COURS' | 'TD' | 'DEVOIRS'>('TOUS');
-  const [selectedDownloadFilter, setSelectedDownloadFilter] = useState<'TOUS' | 'DOCUMENTS' | 'IMAGES' | 'VIDEOS' | 'AUDIO' | 'AUTRES'>('TOUS');
+  const [docMenuOpenId, setDocMenuOpenId] = useState<string | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
@@ -158,7 +162,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   // =========================================================================
 
   // IMAGE 1 : DOCUMENTS (PDF, WORD,...) CODES COULEURS EN FONCTION DU FORMAT
-  const sampleDocuments: FileItem[] = [
+  const [documentsList, setDocumentsList] = useState<FileItem[]>([
     {
       id: 'doc-1',
       name: 'CHI_AOP_LINEAIRE_MONT_BASE (1) (1).pdf',
@@ -255,7 +259,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       extension: 'XLSX',
       downloadsCount: 4
     }
-  ];
+  ]);
 
   // IMAGE 2 : IMAGES (GRILLE 3 COLONNES AVEC TAILLES EXACTES EN HAUT À DROITE)
   const sampleImages: FileItem[] = [
@@ -749,6 +753,68 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     }
   };
 
+  // Actions du menu document (3 traits) :
+  // Supprimer le fichier, Partager, Crée un lien, Le déplacer, Dupliquer, Ajouter au favoris, Épinglez, Modifier le nom
+  const handleDocAction = (action: string, doc: FileItem) => {
+    setDocMenuOpenId(null);
+    switch (action) {
+      case 'delete':
+        setDocumentsList(prev => prev.filter(d => d.id !== doc.id));
+        if (splitSelectedFile?.id === doc.id) {
+          setSplitSelectedFile(null);
+        }
+        showToast(`Document "${doc.name}" supprimé !`);
+        break;
+      case 'share':
+        handleShareFile(doc);
+        break;
+      case 'create_link': {
+        const link = `${window.location.origin}${window.location.pathname}#doc-${doc.id}`;
+        try {
+          navigator.clipboard?.writeText(link);
+          showToast('Lien copié dans le presse-papier !');
+        } catch {
+          showToast(`Lien créé pour "${doc.name}"`);
+        }
+        break;
+      }
+      case 'move':
+        showToast(`Fichier "${doc.name}" déplacé dans Dossier Sécurisé !`);
+        break;
+      case 'duplicate': {
+        const ext = doc.extension || 'pdf';
+        const nameWithoutExt = doc.name.replace(/\.[^/.]+$/, '');
+        const newDoc: FileItem = {
+          ...doc,
+          id: `doc-dup-${Date.now()}`,
+          name: `${nameWithoutExt} (Copie).${ext}`,
+          date: "Aujourd'hui, " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+        };
+        setDocumentsList(prev => [newDoc, ...prev]);
+        showToast(`Document dupliqué : "${newDoc.name}" !`);
+        break;
+      }
+      case 'favorite':
+        setDocumentsList(prev => prev.map(d => d.id === doc.id ? { ...d, isFavorite: !d.isFavorite } : d));
+        showToast(doc.isFavorite ? 'Retiré des favoris' : 'Ajouté aux favoris !');
+        break;
+      case 'pin':
+        setDocumentsList(prev => [doc, ...prev.filter(d => d.id !== doc.id)]);
+        showToast(`Document "${doc.name}" épinglé !`);
+        break;
+      case 'rename': {
+        const newName = window.prompt('Modifier le nom du fichier :', doc.name);
+        if (newName && newName.trim() && newName.trim() !== doc.name) {
+          setDocumentsList(prev => prev.map(d => d.id === doc.id ? { ...d, name: newName.trim() } : d));
+          showToast(`Fichier renommé en "${newName.trim()}" !`);
+        }
+        break;
+      }
+      default:
+        break;
+    }
+  };
+
   // SÉLECTION D'UN ÉLÉMENT : DÉCLENCHE LA DIVISION EN DEUX (SPLIT SCREEN)
   const handleSelectFile = (file: FileItem) => {
     setSplitSelectedFile(file);
@@ -885,13 +951,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
   // Liste des documents pour le sous-menu Documents (Image 1)
   const filteredDocuments = useMemo(() => {
-    const list = [...sampleDocuments, ...cloudRecentFiles.filter(f => f.category === 'documents' && !sampleDocuments.some(s => s.name === f.name))];
+    const list = [...documentsList, ...cloudRecentFiles.filter(f => f.category === 'documents' && !documentsList.some(s => s.name === f.name))];
     return list.filter(doc => {
-      const matchesSearch = subSearchQuery.trim() === '' || doc.name.toLowerCase().includes(subSearchQuery.toLowerCase());
-      const matchesFilter = selectedDocFilter === 'TOUS' || doc.documentCategory === selectedDocFilter;
-      return matchesSearch && matchesFilter;
+      return subSearchQuery.trim() === '' || doc.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
-  }, [sampleDocuments, cloudRecentFiles, subSearchQuery, selectedDocFilter]);
+  }, [documentsList, cloudRecentFiles, subSearchQuery]);
 
   // Liste des images pour le sous-menu Images (Image 2)
   const filteredImages = useMemo(() => {
@@ -936,17 +1000,60 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   // Liste des téléchargements pour le sous-menu Téléchargements (Prend tout type de fichier)
   const filteredDownloads = useMemo(() => {
     return downloadedItems.filter(item => {
-      const matchesSearch = subSearchQuery.trim() === '' || item.name.toLowerCase().includes(subSearchQuery.toLowerCase());
-      if (!matchesSearch) return false;
-      if (selectedDownloadFilter === 'TOUS') return true;
-      if (selectedDownloadFilter === 'DOCUMENTS') return item.category === 'documents';
-      if (selectedDownloadFilter === 'IMAGES') return item.category === 'images';
-      if (selectedDownloadFilter === 'VIDEOS') return item.category === 'videos';
-      if (selectedDownloadFilter === 'AUDIO') return item.category === 'audio';
-      if (selectedDownloadFilter === 'AUTRES') return ['downloads', 'apps'].includes(item.category);
-      return true;
+      return subSearchQuery.trim() === '' || item.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
-  }, [downloadedItems, subSearchQuery, selectedDownloadFilter]);
+  }, [downloadedItems, subSearchQuery]);
+
+  // Conversion d'un DownloadedItem en FileItem pour l'affichage riche et le lecteur
+  const toFileItem = (item: DownloadedItem): FileItem => ({
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    source: 'Téléchargements',
+    size: item.size,
+    sizeBytes: item.sizeBytes || 0,
+    date: item.date,
+    previewUrl: item.previewUrl,
+    videoUrl: item.videoUrl,
+    audioUrl: item.audioUrl,
+    isImage: item.isImage || item.category === 'images',
+    documentCategory: item.documentCategory || 'COURS',
+    extension: item.extension || 'PDF'
+  });
+
+  // Catégorisation des téléchargements pour l'affichage selon le type d'origine
+  const downloadDocs = useMemo(() => {
+    return filteredDownloads.filter(item => 
+      item.category === 'documents' || ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'].includes(item.extension?.toLowerCase() || '')
+    ).map(toFileItem);
+  }, [filteredDownloads]);
+
+  const downloadImages = useMemo(() => {
+    return filteredDownloads.filter(item => 
+      item.category === 'images' || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(item.extension?.toLowerCase() || '')
+    ).map(toFileItem);
+  }, [filteredDownloads]);
+
+  const downloadVideos = useMemo(() => {
+    return filteredDownloads.filter(item => 
+      item.category === 'videos' || ['mp4', 'mov', 'webm', 'avi', 'mkv'].includes(item.extension?.toLowerCase() || '')
+    ).map(toFileItem);
+  }, [filteredDownloads]);
+
+  const downloadAudio = useMemo(() => {
+    return filteredDownloads.filter(item => 
+      item.category === 'audio' || ['mp3', 'm4a', 'wav', 'aac', 'ogg'].includes(item.extension?.toLowerCase() || '')
+    ).map(toFileItem);
+  }, [filteredDownloads]);
+
+  const downloadOthers = useMemo(() => {
+    return filteredDownloads.filter(item => 
+      !downloadDocs.some(d => d.id === item.id) &&
+      !downloadImages.some(d => d.id === item.id) &&
+      !downloadVideos.some(d => d.id === item.id) &&
+      !downloadAudio.some(d => d.id === item.id)
+    ).map(toFileItem);
+  }, [filteredDownloads, downloadDocs, downloadImages, downloadVideos, downloadAudio]);
 
   // NAVIGATION PRÉCÉDENT / SUIVANT DANS LA VUE DIVISÉE
   const handleNavigateSplit = (direction: 'prev' | 'next') => {
@@ -956,8 +1063,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     else if (currentSubView?.id === 'studycloud-category-videos') list = filteredVideos;
     else if (currentSubView?.id === 'studycloud-category-audio') list = filteredAudio;
     else if (currentSubView?.id === 'studycloud-category-documents') list = filteredDocuments;
-    else if (currentSubView?.id === 'studycloud-category-downloads') list = filteredDownloads as any;
-    else list = displayedFiles;
+    else if (currentSubView?.id === 'studycloud-category-downloads') {
+      list = [...downloadDocs, ...downloadImages, ...downloadVideos, ...downloadAudio, ...downloadOthers];
+    } else {
+      list = displayedFiles;
+    }
 
     const currentIndex = list.findIndex(f => f.id === splitSelectedFile.id);
     if (currentIndex === -1) return;
@@ -1021,6 +1131,325 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     const mins = Math.floor(seconds / 60);
     const secs = Math.floor(seconds % 60);
     return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
+  // =========================================================================
+  // FONCTIONS DE RENDU DES CARTES MULTIMÉDIA (RÉUTILISÉES DANS DOCUMENTS & TÉLÉCHARGEMENTS)
+  // =========================================================================
+
+  // Rendu Carte Document (Image 1 : bouton 3 traits, suppression téléchargements, un seul titre)
+  const renderDocumentCard = (doc: FileItem) => {
+    const theme = getDocumentTheme(doc.extension || 'PDF');
+    const isSelected = splitSelectedFile?.id === doc.id;
+    const isMenuOpen = docMenuOpenId === doc.id;
+
+    return (
+      <div
+        key={doc.id}
+        style={{ background: theme.bg }}
+        className={`aspect-[3/4] ${theme.border} ${isSelected ? 'ring-4 ring-white shadow-2xl scale-[1.02]' : ''} ${
+          isMenuOpen ? 'z-40' : 'z-10'
+        } rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none cursor-pointer active:scale-98`}
+        onClick={() => handleSelectFile(doc)}
+      >
+        {/* Barre supérieure : Bouton 3 traits & Taille */}
+        <div className="flex items-center justify-between gap-1 z-20 relative">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setDocMenuOpenId(isMenuOpen ? null : doc.id);
+              }}
+              className="p-1 sm:p-1.2 rounded-lg bg-black/40 hover:bg-black/70 text-white border border-white/20 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-sm"
+              title="Options du fichier"
+            >
+              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+
+            {/* Menu déroulant à côté avec les 8 options demandées */}
+            {isMenuOpen && (
+              <>
+                <div 
+                  className="fixed inset-0 z-40" 
+                  onClick={(e) => { e.stopPropagation(); setDocMenuOpenId(null); }} 
+                />
+                <div 
+                  className="absolute left-0 top-7 z-50 w-48 bg-[#0D1527] border border-slate-700/90 rounded-xl shadow-[0_12px_30px_rgba(0,0,0,0.85)] py-1 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 divide-y divide-white/5"
+                  onClick={(e) => e.stopPropagation()}
+                >
+                  <div className="py-1">
+                    <button
+                      type="button"
+                      onClick={() => handleDocAction('delete', doc)}
+                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+                    >
+                      <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                      <span>Supprimer le fichier</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDocAction('share', doc)}
+                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+                    >
+                      <Share2 className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+                      <span>Partager</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDocAction('create_link', doc)}
+                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+                    >
+                      <Link className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+                      <span>Crée un lien</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDocAction('move', doc)}
+                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+                    >
+                      <FolderInput className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                      <span>Le déplacer</span>
+                    </button>
+                  </div>
+                  <div className="py-1">
+                    <button
+                      type="button"
+                      onClick={() => handleDocAction('duplicate', doc)}
+                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+                    >
+                      <Copy className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                      <span>Dupliquer</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDocAction('favorite', doc)}
+                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+                    >
+                      <Star className={`w-3.5 h-3.5 shrink-0 ${doc.isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-yellow-400'}`} />
+                      <span>{doc.isFavorite ? 'Retirer des favoris' : 'Ajouter au favoris'}</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDocAction('pin', doc)}
+                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+                    >
+                      <Pin className="w-3.5 h-3.5 shrink-0 text-purple-400" />
+                      <span>Épinglez</span>
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleDocAction('rename', doc)}
+                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+                    >
+                      <Pencil className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
+                      <span>Modifier le nom</span>
+                    </button>
+                  </div>
+                </div>
+              </>
+            )}
+          </div>
+
+          <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1.5 py-0.5 rounded shadow-sm">
+            {doc.size}
+          </span>
+        </div>
+
+        {/* Corps de carte / illustration schéma */}
+        <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white p-2 relative shadow-inner border border-white/20 flex flex-col justify-between pointer-events-none">
+          <div className="flex items-center justify-between border-b border-stone-200 pb-1">
+            <span className="text-[9px] font-black text-red-600 tracking-tighter">cme</span>
+            <span className="text-[7px] font-bold bg-stone-900 text-white px-1 py-0.2 rounded">StudyCloud</span>
+          </div>
+          <div className="my-1">
+            <p className="text-[7px] sm:text-[8px] font-black text-stone-800 leading-tight uppercase line-clamp-2">
+              AMPLIFICATEUR OPERATIONNEL EN REGIME LINEAIRE : MONTAGES DE BASE
+            </p>
+            <p className="text-[6px] text-stone-500 font-semibold mt-0.5">1. Définition</p>
+          </div>
+          <div className="w-full h-12 flex items-center justify-center bg-stone-50 rounded border border-stone-200/80 my-0.5">
+            <svg className="w-full h-full max-h-11" viewBox="0 0 100 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <polygon points="35,5 35,40 70,22.5" fill="#FFFFFF" stroke="#1c1917" strokeWidth="1.5" />
+              <line x1="15" y1="14" x2="35" y2="14" stroke="#1c1917" strokeWidth="1.2" />
+              <line x1="15" y1="31" x2="35" y2="31" stroke="#1c1917" strokeWidth="1.2" />
+              <text x="38" y="16" fontSize="7" fontWeight="bold" fill="#1c1917">-</text>
+              <text x="38" y="33" fontSize="7" fontWeight="bold" fill="#1c1917">+</text>
+              <line x1="70" y1="22.5" x2="90" y2="22.5" stroke="#1c1917" strokeWidth="1.2" />
+              <text x="91" y="24" fontSize="6" fontWeight="bold" fill="#1c1917">Vs</text>
+            </svg>
+          </div>
+          <div className="space-y-0.5 opacity-60">
+            <div className="h-0.5 bg-stone-400 rounded-full w-full"></div>
+            <div className="h-0.5 bg-stone-400 rounded-full w-5/6"></div>
+          </div>
+        </div>
+
+        {/* Titre unique : un seul nom en bas */}
+        <div className="px-0.5 mb-1">
+          <p className="text-[9px] sm:text-[10px] font-black text-white truncate drop-shadow-md" title={doc.name}>
+            {doc.name}
+          </p>
+        </div>
+
+        {/* Pied de carte : sans nombre de téléchargement */}
+        <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
+          <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
+            {theme.typeBadge}
+          </span>
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleDownloadFile(doc); }}
+            className="p-1 sm:p-1.2 bg-orange-500 hover:bg-orange-600 text-white rounded border border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:scale-95"
+            title="Télécharger"
+          >
+            <Download className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // Rendu Carte Image (Image 3 : titre directement sur l'image avec dégradé comme les vidéos)
+  const renderImageCard = (img: FileItem) => {
+    const isSelected = splitSelectedFile?.id === img.id;
+    return (
+      <div
+        key={img.id}
+        onClick={() => handleSelectFile(img)}
+        className={`group relative aspect-square sm:aspect-[4/5] rounded-2xl overflow-hidden bg-[#151C2C] border transition-all duration-200 cursor-pointer ${
+          isSelected 
+            ? 'border-blue-500 ring-4 ring-blue-500/50 shadow-2xl scale-[1.02]' 
+            : 'border-white/10 hover:border-blue-400/50 shadow-md'
+        }`}
+      >
+        <img
+          src={img.previewUrl}
+          alt={img.name}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          loading="lazy"
+        />
+        <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/75 to-transparent pointer-events-none" />
+        <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
+          <span className="text-[10px] sm:text-xs md:text-sm font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+            {img.size}
+          </span>
+        </div>
+        {/* Titre sur l'image avec dégradé identique aux vidéos, pas en noir uni */}
+        <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
+          <p className="text-[9px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">{img.name}</p>
+        </div>
+      </div>
+    );
+  };
+
+  // Rendu Carte Vidéo (Bouton lecture central, taille en haut à droite, titre en bas)
+  const renderVideoCard = (vid: FileItem) => {
+    const isSelected = splitSelectedFile?.id === vid.id;
+    return (
+      <div
+        key={vid.id}
+        onClick={() => handleSelectFile(vid)}
+        className={`group relative aspect-[4/5] rounded-2xl overflow-hidden bg-[#0A0E18] border transition-all duration-200 cursor-pointer ${
+          isSelected 
+            ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02]' 
+            : 'border-white/10 hover:border-purple-400/50 shadow-md'
+        }`}
+      >
+        <img
+          src={vid.previewUrl}
+          alt={vid.name}
+          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+          loading="lazy"
+        />
+        <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors pointer-events-none" />
+        <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
+          <span className="text-[10px] sm:text-xs md:text-sm font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+            {vid.size}
+          </span>
+        </div>
+        <div className="absolute inset-0 flex items-center justify-center z-10">
+          <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-2xl group-hover:scale-115 transition-transform duration-200">
+            <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-stone-950 translate-x-0.5" />
+          </div>
+        </div>
+        <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
+          <p className="text-[9px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">{vid.name}</p>
+        </div>
+      </div>
+    );
+  };
+
+  // Rendu Élément Audio
+  const renderAudioItem = (track: FileItem) => {
+    const isSelected = splitSelectedFile?.id === track.id;
+    return (
+      <div
+        key={track.id}
+        onClick={() => handleSelectFile(track)}
+        className={`group flex items-center justify-between gap-3 p-2 sm:p-2.5 rounded-2xl transition-all cursor-pointer select-none ${
+          isSelected 
+            ? 'bg-[#182236] border border-amber-400/60 shadow-md ring-2 ring-amber-400/40' 
+            : 'hover:bg-[#121826] border border-transparent'
+        }`}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-12 h-12 rounded-2xl bg-black border border-white/10 relative overflow-hidden flex items-center justify-center shrink-0 shadow-sm">
+            {track.previewUrl && (
+              <img src={track.previewUrl} alt={track.name} className="absolute inset-0 w-full h-full object-cover opacity-40" />
+            )}
+            <div className="absolute inset-0 bg-black/40" />
+            <Music className="w-6 h-6 text-white stroke-[2.2] relative z-10 drop-shadow-md" />
+          </div>
+          <div className="min-w-0">
+            <h3 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-amber-400 transition-colors">{track.name}</h3>
+            <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5">{track.size} • {track.date}</p>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); handleDownloadFile(track); }}
+          className="w-8 h-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+        >
+          <Download className="w-4 h-4" />
+        </button>
+      </div>
+    );
+  };
+
+  // Rendu Autre Fichier (Archive, App, etc.)
+  const renderOtherFileCard = (item: FileItem) => {
+    const isSelected = splitSelectedFile?.id === item.id;
+    return (
+      <div
+        key={item.id}
+        onClick={() => handleSelectFile(item)}
+        className={`group bg-[#151C2C] hover:bg-[#1A2338] border rounded-2xl p-3 flex items-center justify-between gap-3 shadow-md transition-all cursor-pointer ${
+          isSelected ? 'border-sky-400 ring-2 ring-sky-400/40' : 'border-slate-800 hover:border-sky-400/50'
+        }`}
+      >
+        <div className="flex items-center gap-3 min-w-0">
+          <div className="w-10 h-10 rounded-xl bg-black border border-white/10 flex items-center justify-center shrink-0">
+            <Archive className="w-5 h-5 text-sky-400" />
+          </div>
+          <div className="min-w-0">
+            <h4 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-sky-400 transition-colors">{item.name}</h4>
+            <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+              <span className="font-bold text-sky-300 uppercase">{item.extension || 'FICHIER'}</span>
+              <span>•</span>
+              <span>{item.size}</span>
+            </div>
+          </div>
+        </div>
+        <button
+          type="button"
+          onClick={(e) => { e.stopPropagation(); handleDownloadFile(item); }}
+          className="w-8 h-8 rounded-xl bg-black hover:bg-sky-600 text-white flex items-center justify-center transition-colors border border-white/10 shrink-0"
+        >
+          <Download className="w-3.5 h-3.5" />
+        </button>
+      </div>
+    );
   };
 
   return (
@@ -1156,24 +1585,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
               {/* 1. DOCUMENTS (IMAGE 1) */}
               {currentSubView.id === 'studycloud-category-documents' && (
                 <div className="space-y-3 sm:space-y-4">
-                  {/* Filtres du haut : TOUS, COURS, TD, DEVOIRS */}
-                  <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                    {(['TOUS', 'COURS', 'TD', 'DEVOIRS'] as const).map(filter => (
-                      <button
-                        key={filter}
-                        type="button"
-                        onClick={() => setSelectedDocFilter(filter)}
-                        className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer shadow-xs border ${
-                          selectedDocFilter === filter
-                            ? 'bg-blue-600 text-white border-blue-500 scale-105'
-                            : 'bg-[#04060A] hover:bg-[#121826] text-slate-300 border-white/10'
-                        }`}
-                      >
-                        {filter}
-                      </button>
-                    ))}
-                  </div>
-
                   {/* Compteur */}
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
@@ -1185,80 +1596,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                   <div className={`grid gap-2.5 sm:gap-3.5 ${
                     splitSelectedFile ? 'grid-cols-2 lg:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
-                    {filteredDocuments.map(doc => {
-                      const theme = getDocumentTheme(doc.extension || 'PDF');
-                      const isSelected = splitSelectedFile?.id === doc.id;
-                      return (
-                        <div
-                          key={doc.id}
-                          style={{ background: theme.bg }}
-                          className={`aspect-[3/4] ${theme.border} ${isSelected ? 'ring-4 ring-white shadow-2xl scale-[1.02]' : ''} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none overflow-hidden cursor-pointer active:scale-98`}
-                          onClick={() => handleSelectFile(doc)}
-                        >
-                          <div className="flex items-center justify-between gap-1 z-10">
-                            <span className="text-[7.5px] sm:text-[8.5px] font-black bg-white text-stone-800 border border-white px-1.5 py-0.5 rounded shadow-sm truncate max-w-[70px]">
-                              {doc.documentCategory || 'COURS'}
-                            </span>
-                            <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1.5 py-0.5 rounded shadow-sm">
-                              {doc.size}
-                            </span>
-                          </div>
-
-                          <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white p-2 relative shadow-inner border border-white/20 flex flex-col justify-between">
-                            <div className="flex items-center justify-between border-b border-stone-200 pb-1">
-                              <span className="text-[9px] font-black text-red-600 tracking-tighter">cme</span>
-                              <span className="text-[7px] font-bold bg-stone-900 text-white px-1 py-0.2 rounded">StudyCloud</span>
-                            </div>
-                            <div className="my-1">
-                              <p className="text-[7px] sm:text-[8px] font-black text-stone-800 leading-tight uppercase line-clamp-2">
-                                AMPLIFICATEUR OPERATIONNEL EN REGIME LINEAIRE : MONTAGES DE BASE
-                              </p>
-                              <p className="text-[6px] text-stone-500 font-semibold mt-0.5">1. Définition</p>
-                            </div>
-                            <div className="w-full h-12 flex items-center justify-center bg-stone-50 rounded border border-stone-200/80 my-0.5">
-                              <svg className="w-full h-full max-h-11" viewBox="0 0 100 45" fill="none" xmlns="http://www.w3.org/2000/svg">
-                                <polygon points="35,5 35,40 70,22.5" fill="#FFFFFF" stroke="#1c1917" strokeWidth="1.5" />
-                                <line x1="15" y1="14" x2="35" y2="14" stroke="#1c1917" strokeWidth="1.2" />
-                                <line x1="15" y1="31" x2="35" y2="31" stroke="#1c1917" strokeWidth="1.2" />
-                                <text x="38" y="16" fontSize="7" fontWeight="bold" fill="#1c1917">-</text>
-                                <text x="38" y="33" fontSize="7" fontWeight="bold" fill="#1c1917">+</text>
-                                <line x1="70" y1="22.5" x2="90" y2="22.5" stroke="#1c1917" strokeWidth="1.2" />
-                                <text x="91" y="24" fontSize="6" fontWeight="bold" fill="#1c1917">Vs</text>
-                              </svg>
-                            </div>
-                            <div className="space-y-0.5 opacity-60">
-                              <div className="h-0.5 bg-stone-400 rounded-full w-full"></div>
-                              <div className="h-0.5 bg-stone-400 rounded-full w-5/6"></div>
-                            </div>
-                          </div>
-
-                          <div className="px-0.5 mb-1 flex flex-col gap-0.5">
-                            <p className="text-[8.5px] sm:text-[9px] font-semibold text-white truncate drop-shadow-sm" title={doc.name}>{doc.name}</p>
-                            <p className="text-[9.5px] sm:text-[10px] font-black text-white truncate drop-shadow-md">{doc.name.replace(/\.[^/.]+$/, '').toUpperCase()}</p>
-                          </div>
-
-                          <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
-                            <div className="flex items-center gap-0.5 text-[7.5px] sm:text-[8.5px] font-bold text-white truncate drop-shadow-sm">
-                              <Download className="w-2.5 h-2.5 text-white shrink-0" />
-                              <span>{doc.downloadsCount || 0}</span>
-                            </div>
-                            <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
-                              {theme.typeBadge}
-                            </span>
-                            <div className="flex items-center gap-1">
-                              <button
-                                type="button"
-                                onClick={(e) => { e.stopPropagation(); handleDownloadFile(doc); }}
-                                className="p-1 sm:p-1.2 bg-orange-500 hover:bg-orange-600 text-white rounded border border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:scale-95"
-                                title="Télécharger"
-                              >
-                                <Download className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                              </button>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {filteredDocuments.map(doc => renderDocumentCard(doc))}
                   </div>
                 </div>
               )}
@@ -1275,36 +1613,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                   <div className={`grid gap-2 sm:gap-3 ${
                     splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
-                    {filteredImages.map(img => {
-                      const isSelected = splitSelectedFile?.id === img.id;
-                      return (
-                        <div
-                          key={img.id}
-                          onClick={() => handleSelectFile(img)}
-                          className={`group relative aspect-square sm:aspect-[4/5] rounded-2xl overflow-hidden bg-[#151C2C] border transition-all duration-200 cursor-pointer ${
-                            isSelected 
-                              ? 'border-blue-500 ring-4 ring-blue-500/50 shadow-2xl scale-[1.02]' 
-                              : 'border-white/10 hover:border-blue-400/50 shadow-md'
-                          }`}
-                        >
-                          <img
-                            src={img.previewUrl}
-                            alt={img.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            loading="lazy"
-                          />
-                          <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/75 to-transparent pointer-events-none" />
-                          <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
-                            <span className="text-[10px] sm:text-xs md:text-sm font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
-                              {img.size}
-                            </span>
-                          </div>
-                          <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/90 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                            <p className="text-[10px] sm:text-xs font-bold text-white truncate">{img.name}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {filteredImages.map(img => renderImageCard(img))}
                   </div>
                 </div>
               )}
@@ -1415,69 +1724,103 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
               {/* 5. TÉLÉCHARGEMENTS */}
               {currentSubView.id === 'studycloud-category-downloads' && (
-                <div className="space-y-3 sm:space-y-4">
-                  <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                    {(['TOUS', 'DOCUMENTS', 'IMAGES', 'VIDEOS', 'AUDIO', 'AUTRES'] as const).map(filter => (
-                      <button
-                        key={filter}
-                        type="button"
-                        onClick={() => setSelectedDownloadFilter(filter)}
-                        className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer shadow-xs border ${
-                          selectedDownloadFilter === filter
-                            ? 'bg-sky-500 text-white border-sky-400 scale-105'
-                            : 'bg-[#04060A] hover:bg-[#121826] text-slate-300 border-white/10'
-                        }`}
-                      >
-                        {filter}
-                      </button>
-                    ))}
-                  </div>
-
+                <div className="space-y-6">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
                       {filteredDownloads.length} fichier{filteredDownloads.length > 1 ? 's' : ''} téléchargé{filteredDownloads.length > 1 ? 's' : ''}
                     </span>
                   </div>
 
-                  <div className="space-y-2">
-                    {filteredDownloads.map(item => {
-                      const isSelected = splitSelectedFile?.id === item.id;
-                      return (
-                        <div
-                          key={item.id}
-                          onClick={() => handleSelectFile(item as any)}
-                          className={`group bg-[#151C2C] hover:bg-[#1A2338] border rounded-2xl p-3 flex items-center justify-between gap-3 shadow-md transition-all cursor-pointer ${
-                            isSelected ? 'border-sky-400 ring-2 ring-sky-400/40' : 'border-slate-800 hover:border-sky-400/50'
-                          }`}
-                        >
-                          <div className="flex items-center gap-3 min-w-0">
-                            <div className="w-10 h-10 rounded-xl bg-black border border-white/10 flex items-center justify-center shrink-0">
-                              {item.category === 'documents' && <FileText className="w-5 h-5 text-blue-400" />}
-                              {item.category === 'images' && <ImageIcon className="w-5 h-5 text-emerald-400" />}
-                              {item.category === 'videos' && <Film className="w-5 h-5 text-purple-400" />}
-                              {item.category === 'audio' && <Music className="w-5 h-5 text-amber-400" />}
-                              {['downloads', 'apps'].includes(item.category) && <Archive className="w-5 h-5 text-sky-400" />}
-                            </div>
-                            <div className="min-w-0">
-                              <h4 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-sky-400 transition-colors">{item.name}</h4>
-                              <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
-                                <span className="font-bold text-sky-300 uppercase">{item.extension || 'FICHIER'}</span>
-                                <span>•</span>
-                                <span>{item.size}</span>
-                              </div>
-                            </div>
+                  {filteredDownloads.length === 0 ? (
+                    <div className="py-16 text-center text-stone-500 dark:text-slate-400">
+                      <Download className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5]" />
+                      <p className="text-sm font-semibold">Aucun fichier téléchargé</p>
+                      <p className="text-xs opacity-70 mt-1">Les fichiers téléchargés s'afficheront ici avec leur vue dédiée.</p>
+                    </div>
+                  ) : (
+                    <div className="space-y-6">
+                      {/* Documents téléchargés */}
+                      {downloadDocs.length > 0 && (
+                        <div className="space-y-2.5">
+                          <div className="flex items-center gap-2">
+                            <FileText className="w-4 h-4 text-blue-400" />
+                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
+                              Documents ({downloadDocs.length})
+                            </h3>
                           </div>
-                          <button
-                            type="button"
-                            onClick={(e) => { e.stopPropagation(); handleDownloadFile(item); }}
-                            className="w-8 h-8 rounded-xl bg-black hover:bg-sky-600 text-white flex items-center justify-center transition-colors border border-white/10 shrink-0"
-                          >
-                            <Download className="w-3.5 h-3.5" />
-                          </button>
+                          <div className={`grid gap-2.5 sm:gap-3.5 ${
+                            splitSelectedFile ? 'grid-cols-2 lg:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                          }`}>
+                            {downloadDocs.map(doc => renderDocumentCard(doc))}
+                          </div>
                         </div>
-                      );
-                    })}
-                  </div>
+                      )}
+
+                      {/* Images téléchargées */}
+                      {downloadImages.length > 0 && (
+                        <div className="space-y-2.5">
+                          <div className="flex items-center gap-2">
+                            <ImageIcon className="w-4 h-4 text-emerald-400" />
+                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
+                              Images ({downloadImages.length})
+                            </h3>
+                          </div>
+                          <div className={`grid gap-2 sm:gap-3 ${
+                            splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                          }`}>
+                            {downloadImages.map(img => renderImageCard(img))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Vidéos téléchargées */}
+                      {downloadVideos.length > 0 && (
+                        <div className="space-y-2.5">
+                          <div className="flex items-center gap-2">
+                            <Film className="w-4 h-4 text-purple-400" />
+                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
+                              Vidéos ({downloadVideos.length})
+                            </h3>
+                          </div>
+                          <div className={`grid gap-2 sm:gap-3 ${
+                            splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                          }`}>
+                            {downloadVideos.map(vid => renderVideoCard(vid))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Audio téléchargé */}
+                      {downloadAudio.length > 0 && (
+                        <div className="space-y-2.5">
+                          <div className="flex items-center gap-2">
+                            <Music className="w-4 h-4 text-amber-400" />
+                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
+                              Fichiers Audio ({downloadAudio.length})
+                            </h3>
+                          </div>
+                          <div className="space-y-1">
+                            {downloadAudio.map(aud => renderAudioItem(aud))}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Autres téléchargements */}
+                      {downloadOthers.length > 0 && (
+                        <div className="space-y-2.5">
+                          <div className="flex items-center gap-2">
+                            <Archive className="w-4 h-4 text-sky-400" />
+                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
+                              Autres fichiers ({downloadOthers.length})
+                            </h3>
+                          </div>
+                          <div className="space-y-2">
+                            {downloadOthers.map(other => renderOtherFileCard(other))}
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 

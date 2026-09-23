@@ -15,6 +15,10 @@ export interface DownloadedItem {
   extension: string;
   type?: string;
   previewUrl?: string;
+  videoUrl?: string;
+  audioUrl?: string;
+  isImage?: boolean;
+  documentCategory?: 'COURS' | 'TD' | 'DEVOIRS' | "PAS D'INF...";
 }
 
 const STORAGE_KEY = 'studycloud_downloaded_files';
@@ -30,7 +34,8 @@ const DEFAULT_DOWNLOADED_ITEMS: DownloadedItem[] = [
     date: 'Aujourd\'hui, 11:20',
     timestamp: Date.now() - 3600000,
     extension: 'PDF',
-    type: 'application/pdf'
+    type: 'application/pdf',
+    documentCategory: 'COURS'
   },
   {
     id: 'dl-2',
@@ -41,7 +46,9 @@ const DEFAULT_DOWNLOADED_ITEMS: DownloadedItem[] = [
     date: '19 août',
     timestamp: 1724068800000,
     extension: 'M4A',
-    type: 'audio/m4a'
+    type: 'audio/m4a',
+    previewUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80',
+    audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
   },
   {
     id: 'dl-3',
@@ -63,7 +70,9 @@ const DEFAULT_DOWNLOADED_ITEMS: DownloadedItem[] = [
     date: 'Hier, 14:10',
     timestamp: Date.now() - 95000000,
     extension: 'PNG',
-    type: 'image/png'
+    type: 'image/png',
+    isImage: true,
+    previewUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=800&q=80'
   },
   {
     id: 'dl-5',
@@ -74,7 +83,9 @@ const DEFAULT_DOWNLOADED_ITEMS: DownloadedItem[] = [
     date: '20 août',
     timestamp: 1724155200000,
     extension: 'MP4',
-    type: 'video/mp4'
+    type: 'video/mp4',
+    previewUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=800&q=80',
+    videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
   },
   {
     id: 'dl-6',
@@ -85,7 +96,8 @@ const DEFAULT_DOWNLOADED_ITEMS: DownloadedItem[] = [
     date: '18 août',
     timestamp: 1723982400000,
     extension: 'DOCX',
-    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
+    type: 'application/vnd.openxmlformats-officedocument.wordprocessingml.document',
+    documentCategory: 'COURS'
   }
 ];
 
