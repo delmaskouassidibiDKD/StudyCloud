@@ -18,6 +18,7 @@ import {
   ExternalLink, 
   Share2, 
   ChevronRight, 
+  ChevronLeft,
   Eye, 
   Info, 
   Maximize2, 
@@ -30,14 +31,25 @@ import {
   Play,
   Pause,
   RotateCcw,
+  RotateCw,
   CheckCircle2,
   Volume2,
   VolumeX,
+  Volume1,
   Clock,
   Sparkles,
   FileCode,
   Archive,
-  AlertCircle
+  AlertCircle,
+  ZoomIn,
+  ZoomOut,
+  SkipBack,
+  SkipForward,
+  Repeat,
+  SlidersHorizontal,
+  ChevronDown,
+  Layers,
+  BookOpen
 } from 'lucide-react';
 import { getDownloadedFiles, recordDownloadedFile, DownloadedItem } from '../services/downloadsManager';
 
@@ -60,6 +72,7 @@ export interface FileItem {
   documentCategory?: 'COURS' | 'TD' | 'DEVOIRS' | "PAS D'INF...";
   extension?: string;
   downloadsCount?: number;
+  isFavorite?: boolean;
 }
 
 interface SubMenuView {
@@ -75,15 +88,37 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   const [subSearchQuery, setSubSearchQuery] = useState('');
   const [selectedDocFilter, setSelectedDocFilter] = useState<'TOUS' | 'COURS' | 'TD' | 'DEVOIRS'>('TOUS');
   const [selectedDownloadFilter, setSelectedDownloadFilter] = useState<'TOUS' | 'DOCUMENTS' | 'IMAGES' | 'VIDEOS' | 'AUDIO' | 'AUTRES'>('TOUS');
-  const [activeFilePreview, setActiveFilePreview] = useState<FileItem | null>(null);
   const [menuOpenId, setMenuOpenId] = useState<string | null>(null);
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Audio player state
-  const [playingAudio, setPlayingAudio] = useState<FileItem | null>(null);
-  const [isPlayingAudio, setIsPlayingAudio] = useState(false);
-  const [audioProgress, setAudioProgress] = useState(25);
+  // =========================================================================
+  // ÉTAT DE LA DIVISION EN DEUX (SPLIT SCREEN) & LECTEUR GRAND FORMAT
+  // =========================================================================
+  const [splitSelectedFile, setSplitSelectedFile] = useState<FileItem | null>(null);
+  const [isViewerMaximized, setIsViewerMaximized] = useState(false);
+  const [viewerZoom, setViewerZoom] = useState(1);
+  const [viewerRotation, setViewerRotation] = useState(0);
+
+  // Lecteur Audio
+  const [isAudioPlaying, setIsAudioPlaying] = useState(false);
+  const [audioCurrentTime, setAudioCurrentTime] = useState(18);
+  const [audioDuration, setAudioDuration] = useState(215);
+  const [audioVolume, setAudioVolume] = useState(0.85);
+  const [isAudioMuted, setIsAudioMuted] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // Lecteur Vidéo
+  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
+  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
+  const [videoDuration, setVideoDuration] = useState(90);
+  const [videoVolume, setVideoVolume] = useState(0.9);
+  const [isVideoMuted, setIsVideoMuted] = useState(false);
+  const videoRef = useRef<HTMLVideoElement | null>(null);
+
+  // Lecteur Document (Pages)
+  const [docCurrentPage, setDocCurrentPage] = useState(1);
+  const totalDocPages = 4;
 
   // Téléchargements réels synchronisés
   const [downloadedItems, setDownloadedItems] = useState<DownloadedItem[]>(() => getDownloadedFiles());
@@ -222,7 +257,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       sizeBytes: 2285895,
       date: '21 Sept',
       isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1200&q=85'
     },
     {
       id: 'img-2',
@@ -233,7 +268,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       sizeBytes: 2097152,
       date: '21 Sept',
       isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1544383835-bda2bc66a55d?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1544383835-bda2bc66a55d?auto=format&fit=crop&w=1200&q=85'
     },
     {
       id: 'img-3',
@@ -244,7 +279,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       sizeBytes: 2736783,
       date: '20 Sept',
       isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=85'
     },
     {
       id: 'img-4',
@@ -255,7 +290,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       sizeBytes: 299008,
       date: '19 Sept',
       isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=1200&q=85'
     },
     {
       id: 'img-5',
@@ -266,7 +301,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       sizeBytes: 2673868,
       date: '18 Sept',
       isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=85'
     },
     {
       id: 'img-6',
@@ -277,7 +312,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       sizeBytes: 3040870,
       date: '18 Sept',
       isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=85'
     },
     {
       id: 'img-7',
@@ -288,7 +323,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       sizeBytes: 515072,
       date: '17 Sept',
       isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&w=1200&q=85'
     },
     {
       id: 'img-8',
@@ -299,7 +334,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       sizeBytes: 2443182,
       date: '16 Sept',
       isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1200&q=85'
     },
     {
       id: 'img-9',
@@ -310,7 +345,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       sizeBytes: 533504,
       date: '15 Sept',
       isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=85'
     },
     {
       id: 'img-10',
@@ -321,7 +356,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       sizeBytes: 42321,
       date: '15 Sept',
       isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=85'
     },
     {
       id: 'img-11',
@@ -332,7 +367,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       sizeBytes: 2684354,
       date: '14 Sept',
       isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=1200&q=85'
     }
   ];
 
@@ -346,7 +381,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '2,79 Mo',
       sizeBytes: 2925527,
       date: '21 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
     },
     {
       id: 'vid-2',
@@ -356,7 +392,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '5,28 Mo',
       sizeBytes: 5536481,
       date: '21 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4'
     },
     {
       id: 'vid-3',
@@ -366,7 +403,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '39,07 Mo',
       sizeBytes: 40967864,
       date: '20 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
     },
     {
       id: 'vid-4',
@@ -376,7 +414,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '3,22 Mo',
       sizeBytes: 3376414,
       date: '20 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4'
     },
     {
       id: 'vid-5',
@@ -386,7 +425,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '7,34 Mo',
       sizeBytes: 7696547,
       date: '19 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4'
     },
     {
       id: 'vid-6',
@@ -396,7 +436,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '3,45 Mo',
       sizeBytes: 3617587,
       date: '19 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4'
     },
     {
       id: 'vid-7',
@@ -406,7 +447,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '6,72 Mo',
       sizeBytes: 7046430,
       date: '18 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4'
     },
     {
       id: 'vid-8',
@@ -416,7 +458,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '1,35 Mo',
       sizeBytes: 1415577,
       date: '18 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4'
     },
     {
       id: 'vid-9',
@@ -426,7 +469,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '1,42 Mo',
       sizeBytes: 1488977,
       date: '17 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackSeeTheWorld.mp4'
     },
     {
       id: 'vid-10',
@@ -436,7 +480,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '2,14 Mo',
       sizeBytes: 2243952,
       date: '17 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1540573133985-87b6da6d54a9?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1540573133985-87b6da6d54a9?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4'
     },
     {
       id: 'vid-11',
@@ -446,7 +491,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '6,95 Mo',
       sizeBytes: 7287603,
       date: '16 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1511192336575-5a79af67a629?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1511192336575-5a79af67a629?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4'
     },
     {
       id: 'vid-12',
@@ -456,7 +502,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '11,01 Mo',
       sizeBytes: 11544821,
       date: '16 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1508873696983-2df5293cb32f?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1508873696983-2df5293cb32f?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WhatCarCanYouGetForAGrand.mp4'
     },
     {
       id: 'vid-13',
@@ -466,7 +513,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '1,55 Mo',
       sizeBytes: 1625292,
       date: '15 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1519689680058-324335c77eba?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1519689680058-324335c77eba?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
     },
     {
       id: 'vid-14',
@@ -476,7 +524,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '4,16 Mo',
       sizeBytes: 4362076,
       date: '15 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4'
     },
     {
       id: 'vid-15',
@@ -486,7 +535,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '20,91 Mo',
       sizeBytes: 21925724,
       date: '14 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=600&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&q=80',
+      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
     }
   ];
 
@@ -500,7 +550,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '3,61 Mo',
       sizeBytes: 3785359,
       date: '19 août',
-      previewUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=200&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80',
+      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
     },
     {
       id: 'aud-2',
@@ -510,7 +561,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '5,81 Mo',
       sizeBytes: 6092226,
       date: '19 août',
-      previewUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=200&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=400&q=80',
+      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'
     },
     {
       id: 'aud-3',
@@ -520,7 +572,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '3,58 Mo',
       sizeBytes: 3753902,
       date: '19 août',
-      previewUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=200&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80',
+      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'
     },
     {
       id: 'aud-4',
@@ -530,7 +583,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '5,47 Mo',
       sizeBytes: 5735710,
       date: '19 août',
-      previewUrl: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=200&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=400&q=80',
+      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3'
     },
     {
       id: 'aud-5',
@@ -540,7 +594,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '4,37 Mo',
       sizeBytes: 4582277,
       date: '19 août',
-      previewUrl: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&w=200&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&w=400&q=80',
+      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3'
     },
     {
       id: 'aud-6',
@@ -550,7 +605,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       size: '4,87 Mo',
       sizeBytes: 5106565,
       date: '14 août',
-      previewUrl: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=200&q=80'
+      previewUrl: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=400&q=80',
+      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3'
     }
   ];
 
@@ -629,6 +685,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       else if (file.type.startsWith('audio/')) category = 'audio';
       else if (file.type.startsWith('video/')) category = 'videos';
 
+      const blobUrl = URL.createObjectURL(file);
+
       return {
         id: `rec-imp-${Date.now()}-${idx}`,
         name: file.name,
@@ -637,7 +695,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         size: `${(file.size / (1024 * 1024)).toFixed(1)} Mo`,
         sizeBytes: file.size,
         date: "Aujourd'hui, " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        previewUrl: isImg ? URL.createObjectURL(file) : undefined,
+        previewUrl: isImg ? blobUrl : undefined,
+        videoUrl: file.type.startsWith('video/') ? blobUrl : undefined,
+        audioUrl: file.type.startsWith('audio/') ? blobUrl : undefined,
         isImage: isImg
       };
     });
@@ -678,24 +738,33 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     }
   };
 
-  // Sélection d'un fichier pour aperçu avec logique FIFO
+  // SÉLECTION D'UN ÉLÉMENT : DÉCLENCHE LA DIVISION EN DEUX (SPLIT SCREEN)
   const handleSelectFile = (file: FileItem) => {
-    setActiveFilePreview(file);
+    setSplitSelectedFile(file);
+    setViewerZoom(1);
+    setViewerRotation(0);
+    setDocCurrentPage(1);
+
+    // Si audio, démarrer l'écouteur
+    if (file.category === 'audio') {
+      setIsAudioPlaying(true);
+      setAudioCurrentTime(0);
+    } else {
+      setIsAudioPlaying(false);
+    }
+
+    // Si vidéo, réinitialiser
+    if (file.category === 'videos') {
+      setIsVideoPlaying(true);
+      setVideoCurrentTime(0);
+    } else {
+      setIsVideoPlaying(false);
+    }
+
     setCloudRecentFiles(prev => {
       const withoutCurrent = prev.filter(f => f.id !== file.id);
       return [file, ...withoutCurrent].slice(0, 6);
     });
-  };
-
-  // Lecture audio
-  const handlePlayAudio = (file: FileItem) => {
-    if (playingAudio?.id === file.id) {
-      setIsPlayingAudio(!isPlayingAudio);
-    } else {
-      setPlayingAudio(file);
-      setIsPlayingAudio(true);
-      setAudioProgress(15);
-    }
   };
 
   // Catégories StudyCloud
@@ -772,7 +841,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     }
   ];
 
-  // Filtrage selon la recherche (strictement 6 éléments maximum)
+  // Filtrage selon la recherche (strictement 6 éléments maximum sur l'accueil)
   const displayedFiles = useMemo(() => {
     return cloudRecentFiles.filter(f => {
       const matchQuery = searchQuery.trim() === '' || 
@@ -792,6 +861,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     color: string
   ) => {
     setSubSearchQuery('');
+    setSplitSelectedFile(null); // Réinitialiser le split lors du changement de menu
+    setIsViewerMaximized(false);
     setCurrentSubView({
       id: `studycloud-${type}-${id}`,
       type,
@@ -866,6 +937,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     });
   }, [downloadedItems, subSearchQuery, selectedDownloadFilter]);
 
+  // NAVIGATION PRÉCÉDENT / SUIVANT DANS LA VUE DIVISÉE
+  const handleNavigateSplit = (direction: 'prev' | 'next') => {
+    if (!splitSelectedFile) return;
+    let list: FileItem[] = [];
+    if (currentSubView?.id === 'studycloud-category-images') list = filteredImages;
+    else if (currentSubView?.id === 'studycloud-category-videos') list = filteredVideos;
+    else if (currentSubView?.id === 'studycloud-category-audio') list = filteredAudio;
+    else if (currentSubView?.id === 'studycloud-category-documents') list = filteredDocuments;
+    else if (currentSubView?.id === 'studycloud-category-downloads') list = filteredDownloads as any;
+    else list = displayedFiles;
+
+    const currentIndex = list.findIndex(f => f.id === splitSelectedFile.id);
+    if (currentIndex === -1) return;
+    const nextIndex = direction === 'next' 
+      ? (currentIndex + 1) % list.length 
+      : (currentIndex - 1 + list.length) % list.length;
+    
+    setSplitSelectedFile(list[nextIndex]);
+    setViewerZoom(1);
+    setViewerRotation(0);
+    setDocCurrentPage(1);
+  };
+
   // Récupération des styles de carte document en fonction de l'extension
   const getDocumentTheme = (ext: string = 'PDF') => {
     const upper = ext.toUpperCase();
@@ -911,6 +1005,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     };
   };
 
+  // Formatter temps audio/vidéo (ex: 02:45)
+  const formatTime = (seconds: number) => {
+    const mins = Math.floor(seconds / 60);
+    const secs = Math.floor(seconds % 60);
+    return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
+  };
+
   return (
     <div className={`transition-colors duration-300 bg-[#F4F6F8] dark:bg-[#0C111D] text-stone-900 dark:text-slate-100 flex flex-col overflow-y-auto selection:bg-blue-600 selection:text-white ${
       isFullscreen
@@ -935,7 +1036,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       )}
 
       {/* ========================================================================= */}
-      {/* SI UN SOUS-MENU EST OUVERT : AFFICHAGE CONFORME EXACTEMENT AUX IMAGES     */}
+      {/* SI UN SOUS-MENU EST OUVERT : NAVIGATION & AFFICHAGE                       */}
       {/* ========================================================================= */}
       {currentSubView ? (
         <div className="flex-1 flex flex-col w-full animate-in fade-in duration-200 min-h-screen">
@@ -951,6 +1052,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                   onClick={() => {
                     setCurrentSubView(null);
                     setSubSearchQuery('');
+                    setSplitSelectedFile(null);
                   }}
                   className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
                   title="Retour au gestionnaire de fichiers"
@@ -1000,7 +1102,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 </div>
               </div>
 
-              {/* DROITE : Plein écran */}
+              {/* DROITE : Plein écran général */}
               <div className="shrink-0 flex items-center gap-2">
                 <button
                   type="button"
@@ -1020,576 +1122,797 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
           </div>
 
           {/* ========================================================================= */}
-          {/* 1. MENU DOCUMENTS : CONFORME EXACTEMENT À L'IMAGE 1                       */}
-          {/* Cartes couleur selon code (Rouge PDF, Bleu Word...), AOP miniature, etc.  */}
+          {/* ZONE PRINCIPALE : VUE DIVISÉE EN DEUX (SPLIT SCREEN) OU PLEINE LARGEUR    */}
           {/* ========================================================================= */}
-          {currentSubView.id === 'studycloud-category-documents' && (
-            <div className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-3 sm:py-4 space-y-3 sm:space-y-4">
-              
-              {/* Filtres du haut : TOUS, COURS, TD, DEVOIRS (Exactement comme Image 1) */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                {(['TOUS', 'COURS', 'TD', 'DEVOIRS'] as const).map(filter => (
-                  <button
-                    key={filter}
-                    type="button"
-                    onClick={() => setSelectedDocFilter(filter)}
-                    className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer shadow-xs border ${
-                      selectedDocFilter === filter
-                        ? 'bg-blue-600 text-white border-blue-500 scale-105'
-                        : 'bg-[#04060A] hover:bg-[#121826] text-slate-300 border-white/10'
-                    }`}
-                  >
-                    {filter}
-                  </button>
-                ))}
-              </div>
+          <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden min-h-[calc(100vh-120px)] relative">
+            
+            {/* --------------------------------------------------------------------- */}
+            {/* PANNEAU DE GAUCHE : LE RESTE DES FICHIERS                            */}
+            {/* Si un élément est sélectionné, prend 50% de l'écran avec scroll       */}
+            {/* --------------------------------------------------------------------- */}
+            <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 ${
+              isViewerMaximized 
+                ? 'hidden' 
+                : splitSelectedFile 
+                  ? 'w-full md:w-1/2 lg:w-1/2 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
+                  : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
+            }`}>
 
-              {/* Compteur : "8 documents publiés" (comme sur Image 1) */}
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                  {filteredDocuments.length} document{filteredDocuments.length > 1 ? 's' : ''} publié{filteredDocuments.length > 1 ? 's' : ''}
-                </span>
-              </div>
-
-              {/* Grille des cartes documents (Style Image 1) */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-3 sm:gap-4">
-                {filteredDocuments.map(doc => {
-                  const theme = getDocumentTheme(doc.extension || 'PDF');
-                  return (
-                    <div
-                      key={doc.id}
-                      style={{ background: theme.bg }}
-                      className={`aspect-[3/4] ${theme.border} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none overflow-hidden cursor-pointer active:scale-98`}
-                      onClick={() => handleSelectFile(doc)}
-                    >
-                      {/* Haut de carte : Catégorie à gauche ("COURS" / "TD"), Taille à droite ("647.5 Ko") */}
-                      <div className="flex items-center justify-between gap-1 z-10">
-                        <span className="text-[7.5px] sm:text-[8.5px] font-black bg-white text-stone-800 border border-white px-1.5 py-0.5 rounded shadow-sm truncate max-w-[70px]">
-                          {doc.documentCategory || 'COURS'}
-                        </span>
-                        <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1.5 py-0.5 rounded shadow-sm">
-                          {doc.size}
-                        </span>
-                      </div>
-
-                      {/* Zone centrale : Miniature réaliste du document avec schéma AOP et logo CME (Image 1) */}
-                      <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white p-2 relative shadow-inner border border-white/20 flex flex-col justify-between">
-                        {/* En-tête miniature : Logo cme + StudyCloud */}
-                        <div className="flex items-center justify-between border-b border-stone-200 pb-1">
-                          <span className="text-[9px] font-black text-red-600 tracking-tighter">
-                            cme
-                          </span>
-                          <span className="text-[7px] font-bold bg-stone-900 text-white px-1 py-0.2 rounded">
-                            StudyCloud
-                          </span>
-                        </div>
-
-                        {/* Titre miniature du cours */}
-                        <div className="my-1">
-                          <p className="text-[7px] sm:text-[8px] font-black text-stone-800 leading-tight uppercase line-clamp-2">
-                            AMPLIFICATEUR OPERATIONNEL EN REGIME LINEAIRE : MONTAGES DE BASE
-                          </p>
-                          <p className="text-[6px] text-stone-500 font-semibold mt-0.5">
-                            1. Définition
-                          </p>
-                        </div>
-
-                        {/* Schéma électronique AOP (Montage de base triangle) */}
-                        <div className="w-full h-12 flex items-center justify-center bg-stone-50 rounded border border-stone-200/80 my-0.5">
-                          <svg className="w-full h-full max-h-11" viewBox="0 0 100 45" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            {/* Triangle AOP */}
-                            <polygon points="35,5 35,40 70,22.5" fill="#FFFFFF" stroke="#1c1917" strokeWidth="1.5" />
-                            {/* Entrées - et + */}
-                            <line x1="15" y1="14" x2="35" y2="14" stroke="#1c1917" strokeWidth="1.2" />
-                            <line x1="15" y1="31" x2="35" y2="31" stroke="#1c1917" strokeWidth="1.2" />
-                            <text x="38" y="16" fontSize="7" fontWeight="bold" fill="#1c1917">-</text>
-                            <text x="38" y="33" fontSize="7" fontWeight="bold" fill="#1c1917">+</text>
-                            {/* Sortie Vs */}
-                            <line x1="70" y1="22.5" x2="90" y2="22.5" stroke="#1c1917" strokeWidth="1.2" />
-                            <text x="91" y="24" fontSize="6" fontWeight="bold" fill="#1c1917">Vs</text>
-                            {/* Masse ground */}
-                            <line x1="15" y1="31" x2="15" y2="38" stroke="#1c1917" strokeWidth="1" />
-                            <line x1="11" y1="38" x2="19" y2="38" stroke="#1c1917" strokeWidth="1" />
-                            <line x1="13" y1="40" x2="17" y2="40" stroke="#1c1917" strokeWidth="1" />
-                          </svg>
-                        </div>
-
-                        {/* Lignes de texte simulées */}
-                        <div className="space-y-0.5 opacity-60">
-                          <div className="h-0.5 bg-stone-400 rounded-full w-full"></div>
-                          <div className="h-0.5 bg-stone-400 rounded-full w-5/6"></div>
-                        </div>
-                      </div>
-
-                      {/* Titres du document en blanc (Image 1) */}
-                      <div className="px-0.5 mb-1 flex flex-col gap-0.5">
-                        <p className="text-[8.5px] sm:text-[9px] font-semibold text-white truncate drop-shadow-sm" title={doc.name}>
-                          {doc.name}
-                        </p>
-                        <p className="text-[9.5px] sm:text-[10px] font-black text-white truncate drop-shadow-md">
-                          {doc.name.replace(/\.[^/.]+$/, '').toUpperCase()}
-                        </p>
-                      </div>
-
-                      {/* Bas de carte : Téléchargements (⤓ 0) + Badge Type (PDF) + Bouton Télécharger + 3 traits */}
-                      <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
-                        <div className="flex items-center gap-0.5 text-[7.5px] sm:text-[8.5px] font-bold text-white truncate drop-shadow-sm">
-                          <Download className="w-2.5 h-2.5 text-white shrink-0" />
-                          <span>{doc.downloadsCount || 0}</span>
-                        </div>
-
-                        <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
-                          {theme.typeBadge}
-                        </span>
-
-                        <div className="flex items-center gap-1">
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDownloadFile(doc);
-                            }}
-                            className="p-1 sm:p-1.2 bg-orange-500 hover:bg-orange-600 text-white rounded border border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:scale-95"
-                            title="Télécharger"
-                          >
-                            <Download className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                          </button>
-
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleSelectFile(doc);
-                            }}
-                            className="p-1 sm:p-1.2 bg-black/60 hover:bg-black text-white rounded border border-white/20 transition-all cursor-pointer"
-                            title="Options"
-                          >
-                            <Menu className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
-                          </button>
-                        </div>
-                      </div>
-
-                    </div>
-                  );
-                })}
-              </div>
-
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* 2. MENU IMAGES : CONFORME EXACTEMENT À L'IMAGE 2                           */}
-          {/* Grille 3 colonnes avec taille du fichier en blanc en haut à droite        */}
-          {/* ========================================================================= */}
-          {currentSubView.id === 'studycloud-category-images' && (
-            <div className="flex-1 w-full px-2.5 sm:px-6 md:px-10 lg:px-12 py-3 sm:py-4 space-y-3 sm:space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                  {filteredImages.length} image{filteredImages.length > 1 ? 's' : ''} disponible{filteredImages.length > 1 ? 's' : ''}
-                </span>
-              </div>
-
-              {/* Grille STRICTEMENT 3 COLONNES sur mobile/tablette (comme sur la capture Image 2) */}
-              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3 md:gap-3.5">
-                {filteredImages.map(img => (
-                  <div
-                    key={img.id}
-                    onClick={() => handleSelectFile(img)}
-                    className="group relative aspect-square sm:aspect-[4/5] rounded-2xl overflow-hidden bg-[#151C2C] border border-white/10 hover:border-blue-400/50 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer"
-                  >
-                    {/* Image en plein format (Cover) */}
-                    <img
-                      src={img.previewUrl}
-                      alt={img.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      loading="lazy"
-                    />
-
-                    {/* Dégradé doux en haut pour la lisibilité */}
-                    <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/75 to-transparent pointer-events-none" />
-
-                    {/* TAILLE DU FICHIER EN HAUT À DROITE EN BLANC (Exactement comme Image 2 : 2,18 Mo, 2,00 Mo...) */}
-                    <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
-                      <span className="text-[10px] sm:text-xs md:text-sm font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
-                        {img.size}
-                      </span>
-                    </div>
-
-                    {/* Nom en bas au survol */}
-                    <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/90 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
-                      <p className="text-[10px] sm:text-xs font-bold text-white truncate">
-                        {img.name}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* 3. MENU VIDÉOS : CONFORME EXACTEMENT À L'IMAGE 3                           */}
-          {/* Grille 3 colonnes avec bouton Play blanc au centre et taille en haut à D  */}
-          {/* ========================================================================= */}
-          {currentSubView.id === 'studycloud-category-videos' && (
-            <div className="flex-1 w-full px-2.5 sm:px-6 md:px-10 lg:px-12 py-3 sm:py-4 space-y-3 sm:space-y-4">
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                  {filteredVideos.length} vidéo{filteredVideos.length > 1 ? 's' : ''} disponible{filteredVideos.length > 1 ? 's' : ''}
-                </span>
-              </div>
-
-              {/* Grille STRICTEMENT 3 COLONNES sur mobile/tablette (comme sur la capture Image 3) */}
-              <div className="grid grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6 gap-2 sm:gap-3 md:gap-3.5">
-                {filteredVideos.map(vid => (
-                  <div
-                    key={vid.id}
-                    onClick={() => handleSelectFile(vid)}
-                    className="group relative aspect-[4/5] rounded-2xl overflow-hidden bg-[#0A0E18] border border-white/10 hover:border-purple-400/50 shadow-md hover:shadow-xl transition-all duration-200 cursor-pointer"
-                  >
-                    {/* Miniature vidéo */}
-                    <img
-                      src={vid.previewUrl}
-                      alt={vid.name}
-                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                      loading="lazy"
-                    />
-
-                    {/* Voile sombre pour le contraste */}
-                    <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors pointer-events-none" />
-
-                    {/* TAILLE DU FICHIER EN HAUT À DROITE EN BLANC (Exactement comme Image 3 : 2,79 Mo, 5,28 Mo...) */}
-                    <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
-                      <span className="text-[10px] sm:text-xs md:text-sm font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
-                        {vid.size}
-                      </span>
-                    </div>
-
-                    {/* BOUTON PLAY BLANC CIRCULAIRE AU CENTRE (Image 3) */}
-                    <div className="absolute inset-0 flex items-center justify-center z-10">
-                      <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-2xl group-hover:scale-115 transition-transform duration-200">
-                        <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-stone-950 translate-x-0.5" />
-                      </div>
-                    </div>
-
-                    {/* Titre vidéo en bas */}
-                    <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
-                      <p className="text-[9px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">
-                        {vid.name}
-                      </p>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* 4. MENU SON OU AUDIO : CONFORME EXACTEMENT À L'IMAGE 4                    */}
-          {/* Liste verticale sombre, vignette noire avec note de musique blanche, etc. */}
-          {/* ========================================================================= */}
-          {currentSubView.id === 'studycloud-category-audio' && (
-            <div className="flex-1 w-full max-w-4xl mx-auto px-3 sm:px-6 py-3 sm:py-5 space-y-4">
-              
-              {/* Entête du lecteur audio si actif */}
-              {playingAudio && (
-                <div className="sticky top-14 z-20 bg-[#121826] border border-amber-400/40 rounded-2xl p-3 sm:p-4 shadow-2xl animate-in slide-in-from-top-2 flex items-center justify-between gap-3">
-                  <div className="flex items-center gap-3 min-w-0">
-                    <div className="w-10 h-10 sm:w-12 sm:h-12 rounded-xl bg-black border border-white/20 relative overflow-hidden flex items-center justify-center shrink-0">
-                      <Music className="w-5 h-5 text-white stroke-[2.2]" />
-                    </div>
-                    <div className="min-w-0">
-                      <p className="text-xs sm:text-sm font-black text-white truncate">
-                        {playingAudio.name}
-                      </p>
-                      <p className="text-[10px] sm:text-xs text-amber-400 font-bold">
-                        En cours de lecture • {playingAudio.size}
-                      </p>
-                    </div>
+              {/* 1. DOCUMENTS (IMAGE 1) */}
+              {currentSubView.id === 'studycloud-category-documents' && (
+                <div className="space-y-3 sm:space-y-4">
+                  {/* Filtres du haut : TOUS, COURS, TD, DEVOIRS */}
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                    {(['TOUS', 'COURS', 'TD', 'DEVOIRS'] as const).map(filter => (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => setSelectedDocFilter(filter)}
+                        className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer shadow-xs border ${
+                          selectedDocFilter === filter
+                            ? 'bg-blue-600 text-white border-blue-500 scale-105'
+                            : 'bg-[#04060A] hover:bg-[#121826] text-slate-300 border-white/10'
+                        }`}
+                      >
+                        {filter}
+                      </button>
+                    ))}
                   </div>
 
-                  <div className="flex items-center gap-2 shrink-0">
-                    <button
-                      type="button"
-                      onClick={() => setIsPlayingAudio(!isPlayingAudio)}
-                      className="w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-amber-500 hover:bg-amber-400 text-stone-950 flex items-center justify-center font-bold transition-all shadow-md active:scale-95"
-                    >
-                      {isPlayingAudio ? <Pause className="w-4 h-4 fill-stone-950" /> : <Play className="w-4 h-4 fill-stone-950 translate-x-0.5" />}
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => setPlayingAudio(null)}
-                      className="p-1.5 text-slate-400 hover:text-white rounded-full hover:bg-slate-800 transition-colors"
-                      title="Fermer le lecteur"
-                    >
-                      <X className="w-4 h-4" />
-                    </button>
+                  {/* Compteur */}
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
+                      {filteredDocuments.length} document{filteredDocuments.length > 1 ? 's' : ''} publié{filteredDocuments.length > 1 ? 's' : ''}
+                    </span>
                   </div>
-                </div>
-              )}
 
-              {/* LISTE GROUPÉE PAR DATE (Comme "ven. 14 août", "19 août" sur Image 4) */}
-              <div className="space-y-4 sm:space-y-6">
-                {Object.entries(groupedAudio).map(([dateGroup, items]) => (
-                  <div key={dateGroup} className="space-y-2">
-                    
-                    {/* En-tête de date avec coche sélectionnable (Image 4) */}
-                    <div className="flex items-center justify-between px-2 pt-2">
-                      <span className="text-xs sm:text-sm font-bold text-slate-400">
-                        {dateGroup}
-                      </span>
-                      <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 hover:text-white transition-colors cursor-pointer" />
-                    </div>
+                  {/* Grille : s'adapte en 2 colonnes en mode divisé ou 5-6 en pleine largeur */}
+                  <div className={`grid gap-2.5 sm:gap-3.5 ${
+                    splitSelectedFile ? 'grid-cols-2 lg:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                  }`}>
+                    {filteredDocuments.map(doc => {
+                      const theme = getDocumentTheme(doc.extension || 'PDF');
+                      const isSelected = splitSelectedFile?.id === doc.id;
+                      return (
+                        <div
+                          key={doc.id}
+                          style={{ background: theme.bg }}
+                          className={`aspect-[3/4] ${theme.border} ${isSelected ? 'ring-4 ring-white shadow-2xl scale-[1.02]' : ''} rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none overflow-hidden cursor-pointer active:scale-98`}
+                          onClick={() => handleSelectFile(doc)}
+                        >
+                          <div className="flex items-center justify-between gap-1 z-10">
+                            <span className="text-[7.5px] sm:text-[8.5px] font-black bg-white text-stone-800 border border-white px-1.5 py-0.5 rounded shadow-sm truncate max-w-[70px]">
+                              {doc.documentCategory || 'COURS'}
+                            </span>
+                            <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1.5 py-0.5 rounded shadow-sm">
+                              {doc.size}
+                            </span>
+                          </div>
 
-                    {/* Liste des pistes audio */}
-                    <div className="space-y-1">
-                      {items.map(track => {
-                        const isCurrent = playingAudio?.id === track.id;
-                        return (
-                          <div
-                            key={track.id}
-                            onClick={() => handlePlayAudio(track)}
-                            className={`group flex items-center justify-between gap-3 p-2 sm:p-2.5 rounded-2xl transition-all cursor-pointer select-none ${
-                              isCurrent 
-                                ? 'bg-[#182236] border border-amber-400/40 shadow-md' 
-                                : 'hover:bg-[#121826] border border-transparent'
-                            }`}
-                          >
-                            {/* GAUCHE : Vignette carrée noire arrondie avec NOTE DE MUSIQUE BLANCHE (Image 4) */}
-                            <div className="flex items-center gap-3 min-w-0">
-                              <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-2xl bg-black border border-white/10 relative overflow-hidden flex items-center justify-center shrink-0 shadow-sm group-hover:border-amber-400/50 transition-colors">
-                                {track.previewUrl && (
-                                  <img
-                                    src={track.previewUrl}
-                                    alt={track.name}
-                                    className="absolute inset-0 w-full h-full object-cover opacity-40 group-hover:scale-110 transition-transform"
-                                  />
-                                )}
-                                <div className="absolute inset-0 bg-black/40" />
-                                <Music className="w-6 h-6 text-white stroke-[2.2] relative z-10 drop-shadow-md" />
-                              </div>
-
-                              {/* TITRE ET MÉTADONNÉES : "Nom de la piste" + "3,61 Mo • 19 août" (Image 4) */}
-                              <div className="min-w-0">
-                                <h3 className="text-xs sm:text-sm font-bold text-white truncate tracking-tight group-hover:text-amber-400 transition-colors">
-                                  {track.name}
-                                </h3>
-                                <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5">
-                                  {track.size} • {track.date}
-                                </p>
-                              </div>
+                          <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white p-2 relative shadow-inner border border-white/20 flex flex-col justify-between">
+                            <div className="flex items-center justify-between border-b border-stone-200 pb-1">
+                              <span className="text-[9px] font-black text-red-600 tracking-tighter">cme</span>
+                              <span className="text-[7px] font-bold bg-stone-900 text-white px-1 py-0.2 rounded">StudyCloud</span>
                             </div>
+                            <div className="my-1">
+                              <p className="text-[7px] sm:text-[8px] font-black text-stone-800 leading-tight uppercase line-clamp-2">
+                                AMPLIFICATEUR OPERATIONNEL EN REGIME LINEAIRE : MONTAGES DE BASE
+                              </p>
+                              <p className="text-[6px] text-stone-500 font-semibold mt-0.5">1. Définition</p>
+                            </div>
+                            <div className="w-full h-12 flex items-center justify-center bg-stone-50 rounded border border-stone-200/80 my-0.5">
+                              <svg className="w-full h-full max-h-11" viewBox="0 0 100 45" fill="none" xmlns="http://www.w3.org/2000/svg">
+                                <polygon points="35,5 35,40 70,22.5" fill="#FFFFFF" stroke="#1c1917" strokeWidth="1.5" />
+                                <line x1="15" y1="14" x2="35" y2="14" stroke="#1c1917" strokeWidth="1.2" />
+                                <line x1="15" y1="31" x2="35" y2="31" stroke="#1c1917" strokeWidth="1.2" />
+                                <text x="38" y="16" fontSize="7" fontWeight="bold" fill="#1c1917">-</text>
+                                <text x="38" y="33" fontSize="7" fontWeight="bold" fill="#1c1917">+</text>
+                                <line x1="70" y1="22.5" x2="90" y2="22.5" stroke="#1c1917" strokeWidth="1.2" />
+                                <text x="91" y="24" fontSize="6" fontWeight="bold" fill="#1c1917">Vs</text>
+                              </svg>
+                            </div>
+                            <div className="space-y-0.5 opacity-60">
+                              <div className="h-0.5 bg-stone-400 rounded-full w-full"></div>
+                              <div className="h-0.5 bg-stone-400 rounded-full w-5/6"></div>
+                            </div>
+                          </div>
 
-                            {/* DROITE : Menu 3 petits points verticaux (Image 4) */}
-                            <div className="flex items-center gap-1 shrink-0">
+                          <div className="px-0.5 mb-1 flex flex-col gap-0.5">
+                            <p className="text-[8.5px] sm:text-[9px] font-semibold text-white truncate drop-shadow-sm" title={doc.name}>{doc.name}</p>
+                            <p className="text-[9.5px] sm:text-[10px] font-black text-white truncate drop-shadow-md">{doc.name.replace(/\.[^/.]+$/, '').toUpperCase()}</p>
+                          </div>
+
+                          <div className="flex items-center justify-between pt-1 border-t border-white/20 gap-1">
+                            <div className="flex items-center gap-0.5 text-[7.5px] sm:text-[8.5px] font-bold text-white truncate drop-shadow-sm">
+                              <Download className="w-2.5 h-2.5 text-white shrink-0" />
+                              <span>{doc.downloadsCount || 0}</span>
+                            </div>
+                            <span className={`text-[7px] sm:text-[8px] font-black px-1.5 py-0.5 rounded uppercase tracking-wider shrink-0 border ${theme.badge}`}>
+                              {theme.typeBadge}
+                            </span>
+                            <div className="flex items-center gap-1">
                               <button
                                 type="button"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setMenuOpenId(menuOpenId === track.id ? null : track.id);
-                                }}
-                                className="w-8 h-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition-colors cursor-pointer"
-                                title="Options de la piste"
+                                onClick={(e) => { e.stopPropagation(); handleDownloadFile(doc); }}
+                                className="p-1 sm:p-1.2 bg-orange-500 hover:bg-orange-600 text-white rounded border border-stone-900 shadow-[1px_1px_0px_0px_#1c1917] transition-all cursor-pointer active:scale-95"
+                                title="Télécharger"
                               >
-                                <MoreVertical className="w-4 h-4" />
+                                <Download className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                               </button>
-
-                              {/* Menu contextuel 3 points */}
-                              {menuOpenId === track.id && (
-                                <div 
-                                  onClick={(e) => e.stopPropagation()}
-                                  className="absolute right-6 mt-20 z-30 w-40 bg-[#1A2234] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs font-semibold text-slate-200 animate-in fade-in"
-                                >
-                                  <button
-                                    onClick={() => {
-                                      handlePlayAudio(track);
-                                      setMenuOpenId(null);
-                                    }}
-                                    className="w-full px-3 py-1.5 text-left hover:bg-slate-700/50 flex items-center gap-2 cursor-pointer text-white"
-                                  >
-                                    <Play className="w-3.5 h-3.5" /> Lire la piste
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      handleDownloadFile(track);
-                                      setMenuOpenId(null);
-                                    }}
-                                    className="w-full px-3 py-1.5 text-left hover:bg-slate-700/50 flex items-center gap-2 cursor-pointer text-white"
-                                  >
-                                    <Download className="w-3.5 h-3.5" /> Télécharger
-                                  </button>
-                                  <button
-                                    onClick={() => {
-                                      handleShareFile(track);
-                                      setMenuOpenId(null);
-                                    }}
-                                    className="w-full px-3 py-1.5 text-left hover:bg-slate-700/50 flex items-center gap-2 cursor-pointer text-white"
-                                  >
-                                    <Share2 className="w-3.5 h-3.5" /> Partager
-                                  </button>
-                                </div>
-                              )}
                             </div>
-
                           </div>
-                        );
-                      })}
-                    </div>
-
-                  </div>
-                ))}
-              </div>
-
-            </div>
-          )}
-
-          {/* ========================================================================= */}
-          {/* 5. MENU TÉLÉCHARGEMENTS : PREND TOUT TYPE DE FICHIER TÉLÉCHARGÉ           */}
-          {/* Synchronisé automatiquement avec les téléchargements de l'application    */}
-          {/* ========================================================================= */}
-          {currentSubView.id === 'studycloud-category-downloads' && (
-            <div className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-3 sm:py-4 space-y-3 sm:space-y-4">
-              
-              {/* Filtres par type de fichier téléchargé */}
-              <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
-                {(['TOUS', 'DOCUMENTS', 'IMAGES', 'VIDEOS', 'AUDIO', 'AUTRES'] as const).map(filter => (
-                  <button
-                    key={filter}
-                    type="button"
-                    onClick={() => setSelectedDownloadFilter(filter)}
-                    className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer shadow-xs border ${
-                      selectedDownloadFilter === filter
-                        ? 'bg-sky-500 text-white border-sky-400 scale-105'
-                        : 'bg-[#04060A] hover:bg-[#121826] text-slate-300 border-white/10'
-                    }`}
-                  >
-                    {filter}
-                  </button>
-                ))}
-              </div>
-
-              <div className="flex items-center justify-between">
-                <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                  {filteredDownloads.length} fichier{filteredDownloads.length > 1 ? 's' : ''} téléchargé{filteredDownloads.length > 1 ? 's' : ''} (tous types inclus)
-                </span>
-              </div>
-
-              {filteredDownloads.length > 0 ? (
-                <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
-                  {filteredDownloads.map(item => (
-                    <div
-                      key={item.id}
-                      onClick={() => handleSelectFile(item as any)}
-                      className="group bg-[#151C2C] hover:bg-[#1A2338] border border-slate-800 hover:border-sky-400/50 rounded-2xl p-3 sm:p-3.5 flex items-center justify-between gap-3 shadow-md transition-all cursor-pointer"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <div className="w-11 h-11 rounded-xl bg-black border border-white/10 flex items-center justify-center shrink-0">
-                          {item.category === 'documents' && <FileText className="w-5 h-5 text-blue-400" />}
-                          {item.category === 'images' && <ImageIcon className="w-5 h-5 text-emerald-400" />}
-                          {item.category === 'videos' && <Film className="w-5 h-5 text-purple-400" />}
-                          {item.category === 'audio' && <Music className="w-5 h-5 text-amber-400" />}
-                          {['downloads', 'apps'].includes(item.category) && <Archive className="w-5 h-5 text-sky-400" />}
                         </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
 
-                        <div className="min-w-0">
-                          <h4 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-sky-400 transition-colors">
-                            {item.name}
-                          </h4>
-                          <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
-                            <span className="font-bold text-sky-300 uppercase">{item.extension || 'FICHIER'}</span>
-                            <span>•</span>
-                            <span>{item.size}</span>
-                            <span>•</span>
-                            <span>{item.date}</span>
+              {/* 2. IMAGES (IMAGE 2) */}
+              {currentSubView.id === 'studycloud-category-images' && (
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
+                      {filteredImages.length} image{filteredImages.length > 1 ? 's' : ''} disponible{filteredImages.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  <div className={`grid gap-2 sm:gap-3 ${
+                    splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                  }`}>
+                    {filteredImages.map(img => {
+                      const isSelected = splitSelectedFile?.id === img.id;
+                      return (
+                        <div
+                          key={img.id}
+                          onClick={() => handleSelectFile(img)}
+                          className={`group relative aspect-square sm:aspect-[4/5] rounded-2xl overflow-hidden bg-[#151C2C] border transition-all duration-200 cursor-pointer ${
+                            isSelected 
+                              ? 'border-blue-500 ring-4 ring-blue-500/50 shadow-2xl scale-[1.02]' 
+                              : 'border-white/10 hover:border-blue-400/50 shadow-md'
+                          }`}
+                        >
+                          <img
+                            src={img.previewUrl}
+                            alt={img.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                          />
+                          <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/75 to-transparent pointer-events-none" />
+                          <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
+                            <span className="text-[10px] sm:text-xs md:text-sm font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+                              {img.size}
+                            </span>
                           </div>
+                          <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/90 via-black/50 to-transparent opacity-0 group-hover:opacity-100 transition-opacity">
+                            <p className="text-[10px] sm:text-xs font-bold text-white truncate">{img.name}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 3. VIDÉOS (IMAGE 3) */}
+              {currentSubView.id === 'studycloud-category-videos' && (
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
+                      {filteredVideos.length} vidéo{filteredVideos.length > 1 ? 's' : ''} disponible{filteredVideos.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  <div className={`grid gap-2 sm:gap-3 ${
+                    splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                  }`}>
+                    {filteredVideos.map(vid => {
+                      const isSelected = splitSelectedFile?.id === vid.id;
+                      return (
+                        <div
+                          key={vid.id}
+                          onClick={() => handleSelectFile(vid)}
+                          className={`group relative aspect-[4/5] rounded-2xl overflow-hidden bg-[#0A0E18] border transition-all duration-200 cursor-pointer ${
+                            isSelected 
+                              ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02]' 
+                              : 'border-white/10 hover:border-purple-400/50 shadow-md'
+                          }`}
+                        >
+                          <img
+                            src={vid.previewUrl}
+                            alt={vid.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                          />
+                          <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors pointer-events-none" />
+                          <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
+                            <span className="text-[10px] sm:text-xs md:text-sm font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+                              {vid.size}
+                            </span>
+                          </div>
+                          <div className="absolute inset-0 flex items-center justify-center z-10">
+                            <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-2xl group-hover:scale-115 transition-transform duration-200">
+                              <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-stone-950 translate-x-0.5" />
+                            </div>
+                          </div>
+                          <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
+                            <p className="text-[9px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">{vid.name}</p>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 4. AUDIO (IMAGE 4) */}
+              {currentSubView.id === 'studycloud-category-audio' && (
+                <div className="space-y-4">
+                  <div className="space-y-4 sm:space-y-6">
+                    {Object.entries(groupedAudio).map(([dateGroup, items]) => (
+                      <div key={dateGroup} className="space-y-2">
+                        <div className="flex items-center justify-between px-2 pt-2">
+                          <span className="text-xs sm:text-sm font-bold text-slate-400">{dateGroup}</span>
+                          <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 hover:text-white transition-colors cursor-pointer" />
+                        </div>
+                        <div className="space-y-1">
+                          {items.map(track => {
+                            const isSelected = splitSelectedFile?.id === track.id;
+                            return (
+                              <div
+                                key={track.id}
+                                onClick={() => handleSelectFile(track)}
+                                className={`group flex items-center justify-between gap-3 p-2 sm:p-2.5 rounded-2xl transition-all cursor-pointer select-none ${
+                                  isSelected 
+                                    ? 'bg-[#182236] border border-amber-400/60 shadow-md ring-2 ring-amber-400/40' 
+                                    : 'hover:bg-[#121826] border border-transparent'
+                                }`}
+                              >
+                                <div className="flex items-center gap-3 min-w-0">
+                                  <div className="w-12 h-12 rounded-2xl bg-black border border-white/10 relative overflow-hidden flex items-center justify-center shrink-0 shadow-sm">
+                                    {track.previewUrl && (
+                                      <img src={track.previewUrl} alt={track.name} className="absolute inset-0 w-full h-full object-cover opacity-40" />
+                                    )}
+                                    <div className="absolute inset-0 bg-black/40" />
+                                    <Music className="w-6 h-6 text-white stroke-[2.2] relative z-10 drop-shadow-md" />
+                                  </div>
+                                  <div className="min-w-0">
+                                    <h3 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-amber-400 transition-colors">{track.name}</h3>
+                                    <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5">{track.size} • {track.date}</p>
+                                  </div>
+                                </div>
+                                <button
+                                  type="button"
+                                  onClick={(e) => { e.stopPropagation(); handleDownloadFile(track); }}
+                                  className="w-8 h-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
+                                >
+                                  <Download className="w-4 h-4" />
+                                </button>
+                              </div>
+                            );
+                          })}
                         </div>
                       </div>
-
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          handleDownloadFile(item);
-                        }}
-                        className="w-8 h-8 rounded-xl bg-black hover:bg-sky-600 text-white flex items-center justify-center transition-colors cursor-pointer border border-white/10 shrink-0"
-                        title="Re-télécharger"
-                      >
-                        <Download className="w-3.5 h-3.5" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              ) : (
-                <div className="flex flex-col items-center justify-center p-12 text-center">
-                  <div className="w-14 h-14 rounded-2xl bg-black border border-white/10 flex items-center justify-center text-sky-400 mb-3 shadow-lg">
-                    <Download className="w-7 h-7" />
+                    ))}
                   </div>
-                  <h3 className="text-base font-black text-white">Aucun fichier téléchargé</h3>
-                  <p className="text-xs text-slate-400 mt-1 max-w-sm">
-                    Tous les fichiers que vous téléchargez dans StudyCloud apparaîtront automatiquement ici.
-                  </p>
+                </div>
+              )}
+
+              {/* 5. TÉLÉCHARGEMENTS */}
+              {currentSubView.id === 'studycloud-category-downloads' && (
+                <div className="space-y-3 sm:space-y-4">
+                  <div className="flex items-center gap-2 overflow-x-auto pb-1 no-scrollbar">
+                    {(['TOUS', 'DOCUMENTS', 'IMAGES', 'VIDEOS', 'AUDIO', 'AUTRES'] as const).map(filter => (
+                      <button
+                        key={filter}
+                        type="button"
+                        onClick={() => setSelectedDownloadFilter(filter)}
+                        className={`px-3 py-1 rounded-full text-xs font-black transition-all cursor-pointer shadow-xs border ${
+                          selectedDownloadFilter === filter
+                            ? 'bg-sky-500 text-white border-sky-400 scale-105'
+                            : 'bg-[#04060A] hover:bg-[#121826] text-slate-300 border-white/10'
+                        }`}
+                      >
+                        {filter}
+                      </button>
+                    ))}
+                  </div>
+
+                  <div className="flex items-center justify-between">
+                    <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
+                      {filteredDownloads.length} fichier{filteredDownloads.length > 1 ? 's' : ''} téléchargé{filteredDownloads.length > 1 ? 's' : ''}
+                    </span>
+                  </div>
+
+                  <div className="space-y-2">
+                    {filteredDownloads.map(item => {
+                      const isSelected = splitSelectedFile?.id === item.id;
+                      return (
+                        <div
+                          key={item.id}
+                          onClick={() => handleSelectFile(item as any)}
+                          className={`group bg-[#151C2C] hover:bg-[#1A2338] border rounded-2xl p-3 flex items-center justify-between gap-3 shadow-md transition-all cursor-pointer ${
+                            isSelected ? 'border-sky-400 ring-2 ring-sky-400/40' : 'border-slate-800 hover:border-sky-400/50'
+                          }`}
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="w-10 h-10 rounded-xl bg-black border border-white/10 flex items-center justify-center shrink-0">
+                              {item.category === 'documents' && <FileText className="w-5 h-5 text-blue-400" />}
+                              {item.category === 'images' && <ImageIcon className="w-5 h-5 text-emerald-400" />}
+                              {item.category === 'videos' && <Film className="w-5 h-5 text-purple-400" />}
+                              {item.category === 'audio' && <Music className="w-5 h-5 text-amber-400" />}
+                              {['downloads', 'apps'].includes(item.category) && <Archive className="w-5 h-5 text-sky-400" />}
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-sky-400 transition-colors">{item.name}</h4>
+                              <div className="flex items-center gap-2 text-[10px] text-slate-400 mt-0.5">
+                                <span className="font-bold text-sky-300 uppercase">{item.extension || 'FICHIER'}</span>
+                                <span>•</span>
+                                <span>{item.size}</span>
+                              </div>
+                            </div>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={(e) => { e.stopPropagation(); handleDownloadFile(item); }}
+                            className="w-8 h-8 rounded-xl bg-black hover:bg-sky-600 text-white flex items-center justify-center transition-colors border border-white/10 shrink-0"
+                          >
+                            <Download className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              )}
+
+              {/* 6. APPLICATIONS : "Ce menu n'est pas disponible pour le moment." */}
+              {currentSubView.id === 'studycloud-category-apps' && (
+                <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center select-none min-h-[60vh]">
+                  <div className="w-full max-w-md mx-auto p-8 rounded-3xl border border-stone-300/80 dark:border-white/10 bg-[#04060A] text-white shadow-2xl flex flex-col items-center justify-center space-y-4">
+                    <div className="p-4 rounded-2xl bg-black border border-pink-500/30 text-pink-400 shadow-lg">
+                      <LayoutGrid className="w-12 h-12 stroke-[1.8]" />
+                    </div>
+                    <div className="space-y-2">
+                      <div className="inline-block px-3 py-1 rounded-full bg-pink-500/10 border border-pink-500/30 text-pink-400 text-[11px] font-black uppercase tracking-wider mb-1">
+                        Information
+                      </div>
+                      <h2 className="text-base sm:text-lg md:text-xl font-black text-white tracking-tight leading-snug">
+                        Ce menu n'est pas disponible pour le moment.
+                      </h2>
+                      <p className="text-xs sm:text-sm font-medium text-slate-400 max-w-xs leading-relaxed mx-auto">
+                        Le catalogue et gestionnaire des applications StudyCloud sera activé lors d'une prochaine mise à jour.
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setCurrentSubView(null)}
+                      className="mt-2 px-6 py-2.5 rounded-full bg-[#151C2C] hover:bg-[#1E293B] text-white font-bold text-xs border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm"
+                    >
+                      Retour aux catégories
+                    </button>
+                  </div>
                 </div>
               )}
 
             </div>
-          )}
 
-          {/* ========================================================================= */}
-          {/* 6. MENU APPLICATIONS : "Ce menu n'est pas disponible pour le moment."     */}
-          {/* Message demandé explicitement par l'utilisateur                          */}
-          {/* ========================================================================= */}
-          {currentSubView.id === 'studycloud-category-apps' && (
-            <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12 text-center select-none min-h-[60vh]">
-              <div className="w-full max-w-md mx-auto p-8 sm:p-10 rounded-3xl border border-stone-300/80 dark:border-white/10 bg-[#04060A] text-white shadow-2xl flex flex-col items-center justify-center space-y-4 animate-in zoom-in-95">
-                <div className="p-4 rounded-2xl bg-black border border-pink-500/30 text-pink-400 shadow-lg">
-                  <LayoutGrid className="w-12 h-12 stroke-[1.8]" />
-                </div>
+            {/* --------------------------------------------------------------------- */}
+            {/* PANNEAU DE DROITE : L'ÉLÉMENT SÉLECTIONNÉ AFFICHÉ BIEN GRAND         */}
+            {/* Avec barre de boutons supérieurs (zoom, agrandir, fermer, nav...)     */}
+            {/* --------------------------------------------------------------------- */}
+            {splitSelectedFile && (
+              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] border-t md:border-t-0 md:border-l border-white/10 ${
+                isViewerMaximized 
+                  ? 'fixed inset-0 z-50 w-screen h-screen' 
+                  : 'w-full md:w-1/2 lg:w-1/2 xl:w-7/12 min-h-[500px]'
+              }`}>
+                
+                {/* BARRE SUPÉRIEURE DE BOUTONS DU LECTEUR GRAND FORMAT (Images 2 et 3) */}
+                <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md">
+                  
+                  {/* GAUCHE : Flèches de navigation < > et titre */}
+                  <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                    <button
+                      type="button"
+                      onClick={() => handleNavigateSplit('prev')}
+                      className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                      title="Élément précédent"
+                    >
+                      <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleNavigateSplit('next')}
+                      className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                      title="Élément suivant"
+                    >
+                      <ChevronRight className="w-4 h-4 stroke-[2.2]" />
+                    </button>
 
-                <div className="space-y-2">
-                  <div className="inline-block px-3 py-1 rounded-full bg-pink-500/10 border border-pink-500/30 text-pink-400 text-[11px] font-black uppercase tracking-wider mb-1">
-                    Information
+                    <div className="min-w-0 ml-1">
+                      <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[220px]" title={splitSelectedFile.name}>
+                        {splitSelectedFile.name}
+                      </p>
+                      <p className="text-[10px] text-slate-400 font-semibold truncate">
+                        {splitSelectedFile.size} • {splitSelectedFile.source}
+                      </p>
+                    </div>
                   </div>
-                  
-                  {/* MESSAGE DEMANDÉ PAR L'UTILISATEUR */}
-                  <h2 className="text-base sm:text-lg md:text-xl font-black text-white tracking-tight leading-snug">
-                    Ce menu n'est pas disponible pour le moment.
-                  </h2>
-                  
-                  <p className="text-xs sm:text-sm font-medium text-slate-400 max-w-xs leading-relaxed mx-auto">
-                    Le catalogue et gestionnaire des applications StudyCloud sera activé lors d'une prochaine mise à jour.
-                  </p>
+
+                  {/* DROITE : PETITS BOUTONS D'ACTIONS (Zoom, Rotation, Partage, Agrandir, Fermer) */}
+                  <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                    
+                    {/* Zoom & Rotation (pour images et documents) */}
+                    {(splitSelectedFile.category === 'images' || splitSelectedFile.isImage || splitSelectedFile.category === 'documents') && (
+                      <>
+                        <button
+                          type="button"
+                          onClick={() => setViewerZoom(prev => Math.max(0.5, prev - 0.25))}
+                          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                          title="Zoom arrière (-)"
+                        >
+                          <ZoomOut className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setViewerZoom(prev => Math.min(3, prev + 0.25))}
+                          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                          title="Zoom avant (+)"
+                        >
+                          <ZoomIn className="w-3.5 h-3.5" />
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setViewerRotation(prev => (prev + 90) % 360)}
+                          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                          title="Faire pivoter"
+                        >
+                          <RotateCw className="w-3.5 h-3.5" />
+                        </button>
+                      </>
+                    )}
+
+                    {/* Partager */}
+                    <button
+                      type="button"
+                      onClick={() => handleShareFile(splitSelectedFile)}
+                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                      title="Partager le fichier"
+                    >
+                      <Share2 className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* Télécharger */}
+                    <button
+                      type="button"
+                      onClick={() => handleDownloadFile(splitSelectedFile)}
+                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-black/60 hover:bg-orange-600 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                      title="Télécharger"
+                    >
+                      <Download className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* BOUTON POUR AGRANDIR (PLEIN ÉCRAN DU LECTEUR) - DEMANDÉ PAR L'UTILISATEUR */}
+                    <button
+                      type="button"
+                      onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                        isViewerMaximized 
+                          ? 'bg-blue-600 text-white border-blue-400' 
+                          : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                      }`}
+                      title={isViewerMaximized ? "Réduire la vue" : "Agrandir en plein écran"}
+                    >
+                      {isViewerMaximized ? (
+                        <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" />
+                      ) : (
+                        <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />
+                      )}
+                    </button>
+
+                    {/* BOUTON POUR FERMER CETTE VUE - DEMANDÉ PAR L'UTILISATEUR */}
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSplitSelectedFile(null);
+                        setIsViewerMaximized(false);
+                      }}
+                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
+                      title="Fermer la vue grand format"
+                    >
+                      <X className="w-4 h-4 stroke-[2.5]" />
+                    </button>
+
+                  </div>
+
                 </div>
 
-                <button
-                  type="button"
-                  onClick={() => setCurrentSubView(null)}
-                  className="mt-2 px-6 py-2.5 rounded-full bg-[#151C2C] hover:bg-[#1E293B] text-white font-bold text-xs border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm"
-                >
-                  Retour aux catégories
-                </button>
+                {/* CORPS DU LECTEUR GRAND FORMAT SELON LE TYPE DE MÉDIA */}
+                <div className="flex-1 flex flex-col items-center justify-center p-3 sm:p-6 overflow-y-auto relative min-h-[420px]">
+
+                  {/* 1. LECTEUR IMAGE GRAND FORMAT (Avec Zoom & Pan) */}
+                  {(splitSelectedFile.category === 'images' || splitSelectedFile.isImage) && (
+                    <div className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden rounded-2xl bg-black/40 border border-white/5 p-2">
+                      <div 
+                        className="transition-transform duration-200 flex items-center justify-center max-w-full max-h-full"
+                        style={{
+                          transform: `scale(${viewerZoom}) rotate(${viewerRotation}deg)`
+                        }}
+                      >
+                        <img
+                          src={splitSelectedFile.previewUrl}
+                          alt={splitSelectedFile.name}
+                          className="max-w-full max-h-[72vh] object-contain rounded-xl shadow-2xl select-none"
+                        />
+                      </div>
+                      <div className="absolute bottom-3 left-4 bg-black/70 backdrop-blur-xs px-2.5 py-1 rounded-full text-[10px] text-slate-300 font-bold border border-white/10">
+                        Zoom : {Math.round(viewerZoom * 100)}% {viewerRotation > 0 && `• ${viewerRotation}°`}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 2. LECTEUR VIDÉO GRAND FORMAT INTERACTIF (Capable de lire tout type vidéo) */}
+                  {splitSelectedFile.category === 'videos' && (
+                    <div className="w-full max-w-3xl flex flex-col items-center justify-center space-y-3">
+                      <div className="w-full aspect-video rounded-2xl overflow-hidden bg-black border border-white/15 relative shadow-2xl flex items-center justify-center group">
+                        <video
+                          ref={videoRef}
+                          src={splitSelectedFile.videoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
+                          poster={splitSelectedFile.previewUrl}
+                          className="w-full h-full object-contain"
+                          controls
+                          autoPlay
+                          loop
+                        />
+                      </div>
+                      <div className="w-full bg-[#121826] border border-white/10 rounded-2xl p-3 flex items-center justify-between text-xs text-slate-300">
+                        <span className="font-bold text-purple-400">Lecteur Vidéo HD StudyCloud</span>
+                        <span>{splitSelectedFile.size} • Format MP4/WebM/MKV</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 3. LECTEUR AUDIO GRAND FORMAT INTERACTIF (Capable de lire tout son) */}
+                  {splitSelectedFile.category === 'audio' && (
+                    <div className="w-full max-w-lg bg-[#0C1220] border border-amber-500/30 rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col items-center text-center space-y-5 animate-in zoom-in-95">
+                      
+                      {/* Élément audio natif */}
+                      <audio
+                        ref={audioRef}
+                        src={splitSelectedFile.audioUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'}
+                        autoPlay={isAudioPlaying}
+                        loop
+                      />
+
+                      {/* Vignette disque album avec animation */}
+                      <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-full bg-black border-4 border-amber-400/40 p-1 shadow-2xl flex items-center justify-center">
+                        <div className={`w-full h-full rounded-full overflow-hidden relative flex items-center justify-center ${
+                          isAudioPlaying ? 'animate-spin' : ''
+                        }`} style={{ animationDuration: '8s' }}>
+                          {splitSelectedFile.previewUrl ? (
+                            <img src={splitSelectedFile.previewUrl} alt="Album" className="w-full h-full object-cover" />
+                          ) : (
+                            <div className="w-full h-full bg-gradient-to-br from-amber-600 via-stone-900 to-black flex items-center justify-center" />
+                          )}
+                          <div className="absolute w-10 h-10 rounded-full bg-stone-950 border-2 border-white/30 flex items-center justify-center">
+                            <div className="w-3 h-3 rounded-full bg-amber-400" />
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Titre et artiste */}
+                      <div className="space-y-1">
+                        <h3 className="text-base sm:text-lg font-black text-white tracking-tight">
+                          {splitSelectedFile.name}
+                        </h3>
+                        <p className="text-xs text-amber-400 font-bold">
+                          {splitSelectedFile.size} • Piste Audio Haute Définition
+                        </p>
+                      </div>
+
+                      {/* Barres d'ondes audio animées */}
+                      <div className="flex items-center justify-center gap-1.5 h-8 w-full max-w-xs">
+                        {[40, 75, 55, 90, 65, 80, 45, 95, 70, 85, 50, 60, 90, 40, 75].map((h, i) => (
+                          <div
+                            key={i}
+                            className={`w-1 rounded-full bg-gradient-to-t from-amber-500 to-yellow-300 transition-all duration-150 ${
+                              isAudioPlaying ? 'animate-pulse' : 'opacity-30'
+                            }`}
+                            style={{ 
+                              height: isAudioPlaying ? `${h}%` : '20%',
+                              animationDelay: `${i * 0.08}s`
+                            }}
+                          />
+                        ))}
+                      </div>
+
+                      {/* Curseur de progression (Seek bar) */}
+                      <div className="w-full space-y-1">
+                        <input
+                          type="range"
+                          min="0"
+                          max={audioDuration}
+                          value={audioCurrentTime}
+                          onChange={(e) => setAudioCurrentTime(Number(e.target.value))}
+                          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
+                        />
+                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 px-1">
+                          <span>{formatTime(audioCurrentTime)}</span>
+                          <span>{formatTime(audioDuration)}</span>
+                        </div>
+                      </div>
+
+                      {/* Commandes audio interactives */}
+                      <div className="flex items-center justify-center gap-4 pt-1">
+                        <button
+                          type="button"
+                          onClick={() => setAudioCurrentTime(prev => Math.max(0, prev - 10))}
+                          className="w-9 h-9 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center transition-colors border border-white/10"
+                          title="Reculer de 10s"
+                        >
+                          <RotateCcw className="w-4 h-4" />
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setIsAudioPlaying(!isAudioPlaying)}
+                          className="w-14 h-14 rounded-full bg-amber-500 hover:bg-amber-400 text-stone-950 flex items-center justify-center shadow-xl font-bold transition-all active:scale-95"
+                          title={isAudioPlaying ? "Mettre en pause" : "Lire"}
+                        >
+                          {isAudioPlaying ? (
+                            <Pause className="w-6 h-6 fill-stone-950" />
+                          ) : (
+                            <Play className="w-6 h-6 fill-stone-950 translate-x-0.5" />
+                          )}
+                        </button>
+
+                        <button
+                          type="button"
+                          onClick={() => setAudioCurrentTime(prev => Math.min(audioDuration, prev + 10))}
+                          className="w-9 h-9 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center transition-colors border border-white/10"
+                          title="Avancer de 10s"
+                        >
+                          <RotateCw className="w-4 h-4" />
+                        </button>
+                      </div>
+
+                    </div>
+                  )}
+
+                  {/* 4. LECTEUR DOCUMENT GRAND FORMAT (Page par page avec schéma AOP haute résolution) */}
+                  {splitSelectedFile.category === 'documents' && (
+                    <div className="w-full max-w-2xl flex flex-col items-center space-y-3">
+                      
+                      {/* Contrôle des pages */}
+                      <div className="w-full bg-[#121826] border border-white/10 rounded-xl px-4 py-2 flex items-center justify-between text-xs text-white">
+                        <span className="font-bold flex items-center gap-2">
+                          <BookOpen className="w-4 h-4 text-blue-400" /> Page {docCurrentPage} sur {totalDocPages}
+                        </span>
+                        <div className="flex items-center gap-1.5">
+                          <button
+                            type="button"
+                            disabled={docCurrentPage <= 1}
+                            onClick={() => setDocCurrentPage(prev => Math.max(1, prev - 1))}
+                            className="px-2.5 py-1 rounded-lg bg-black hover:bg-slate-800 disabled:opacity-40 text-xs font-bold border border-white/10"
+                          >
+                            Précédent
+                          </button>
+                          <button
+                            type="button"
+                            disabled={docCurrentPage >= totalDocPages}
+                            onClick={() => setDocCurrentPage(prev => Math.min(totalDocPages, prev + 1))}
+                            className="px-2.5 py-1 rounded-lg bg-black hover:bg-slate-800 disabled:opacity-40 text-xs font-bold border border-white/10"
+                          >
+                            Suivant
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Feuille de document haute définition format A4 réaliste */}
+                      <div 
+                        className="w-full bg-white text-stone-900 rounded-2xl shadow-2xl p-6 sm:p-8 space-y-4 border border-stone-300 transition-transform duration-200"
+                        style={{
+                          transform: `scale(${viewerZoom})`
+                        }}
+                      >
+                        {/* En-tête officiel CME & StudyCloud */}
+                        <div className="flex items-center justify-between border-b-2 border-stone-900 pb-3">
+                          <div className="flex items-center gap-2">
+                            <span className="text-xl font-black text-red-600 tracking-tight">cme</span>
+                            <span className="text-xs text-stone-500 font-bold">Électronique Fondamentale</span>
+                          </div>
+                          <span className="px-2.5 py-1 bg-stone-900 text-white rounded-md text-[10px] font-black uppercase">
+                            StudyCloud Drive
+                          </span>
+                        </div>
+
+                        {/* Titre du chapitre */}
+                        <div className="space-y-1 pt-1">
+                          <h2 className="text-sm sm:text-base font-black text-stone-900 uppercase tracking-tight">
+                            AMPLIFICATEUR OPERATIONNEL EN REGIME LINEAIRE : MONTAGES DE BASE
+                          </h2>
+                          <p className="text-xs text-stone-600 font-bold">
+                            Fascicule de Travaux Dirigés & Cours Magistral • {splitSelectedFile.documentCategory || 'COURS'}
+                          </p>
+                        </div>
+
+                        {/* Schéma électronique AOP Grand Format */}
+                        <div className="w-full bg-stone-50 rounded-xl p-4 border border-stone-200 flex flex-col items-center justify-center">
+                          <p className="text-[11px] font-black text-stone-700 self-start mb-2">
+                            Schéma 1 : Montage Amplificateur Inverseur de Tension (AOP Idéal)
+                          </p>
+                          <svg className="w-full max-w-md h-36" viewBox="0 0 160 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+                            {/* Triangle AOP */}
+                            <polygon points="60,10 60,60 115,35" fill="#FFFFFF" stroke="#1c1917" strokeWidth="2" />
+                            {/* Entrées */}
+                            <line x1="20" y1="23" x2="60" y2="23" stroke="#1c1917" strokeWidth="1.8" />
+                            <line x1="20" y1="47" x2="60" y2="47" stroke="#1c1917" strokeWidth="1.8" />
+                            {/* Résistance d'entrée R1 */}
+                            <rect x="30" y="19" width="16" height="8" fill="#F5F5F4" stroke="#1c1917" strokeWidth="1.5" />
+                            <text x="34" y="25" fontSize="6" fontWeight="bold" fill="#1c1917">R1</text>
+                            {/* Signes - et + */}
+                            <text x="64" y="26" fontSize="10" fontWeight="bold" fill="#1c1917">-</text>
+                            <text x="64" y="50" fontSize="10" fontWeight="bold" fill="#1c1917">+</text>
+                            {/* Sortie */}
+                            <line x1="115" y1="35" x2="150" y2="35" stroke="#1c1917" strokeWidth="1.8" />
+                            <text x="152" y="38" fontSize="9" fontWeight="bold" fill="#dc2626">Vs</text>
+                            {/* Boucle de contre-réaction R2 */}
+                            <line x1="50" y1="23" x2="50" y2="7" stroke="#1c1917" strokeWidth="1.5" />
+                            <line x1="50" y1="7" x2="130" y2="7" stroke="#1c1917" strokeWidth="1.5" />
+                            <line x1="130" y1="7" x2="130" y2="35" stroke="#1c1917" strokeWidth="1.5" />
+                            <rect x="80" y="3" width="20" height="8" fill="#F5F5F4" stroke="#1c1917" strokeWidth="1.5" />
+                            <text x="86" y="9.5" fontSize="6" fontWeight="bold" fill="#1c1917">R2</text>
+                            {/* Masse non inverseuse */}
+                            <line x1="20" y1="47" x2="20" y2="58" stroke="#1c1917" strokeWidth="1.5" />
+                            <line x1="14" y1="58" x2="26" y2="58" stroke="#1c1917" strokeWidth="1.5" />
+                            <line x1="17" y1="61" x2="23" y2="61" stroke="#1c1917" strokeWidth="1.5" />
+                          </svg>
+                          <div className="w-full flex items-center justify-between text-[11px] font-bold text-stone-700 mt-2 px-2">
+                            <span>Formule de transfert : <strong className="text-red-700">Vs = -(R2 / R1) · Ve</strong></span>
+                            <span>Gain en tension : <strong className="text-red-700">Av = -R2 / R1</strong></span>
+                          </div>
+                        </div>
+
+                        {/* Paragraphes explicatifs */}
+                        <div className="space-y-1.5 text-xs text-stone-700 leading-relaxed">
+                          <p className="font-bold text-stone-900">1. Définition et principe de fonctionnement :</p>
+                          <p>
+                            Un amplificateur opérationnel idéal possède un gain infini en boucle ouverte et une impédance d'entrée infinie.
+                            En régime linéaire, la tension différentielle d'entrée ε = V+ - V- est nulle (court-circuit virtuel).
+                          </p>
+                        </div>
+                      </div>
+
+                    </div>
+                  )}
+
+                  {/* 5. FICHIERS DIVERS / ARCHIVES */}
+                  {!['images', 'videos', 'audio', 'documents'].includes(splitSelectedFile.category) && !splitSelectedFile.isImage && (
+                    <div className="w-full max-w-md bg-[#121826] border border-white/10 rounded-3xl p-6 text-center space-y-4">
+                      <div className="w-16 h-16 rounded-2xl bg-black border border-sky-400/40 text-sky-400 flex items-center justify-center mx-auto shadow-xl">
+                        <Archive className="w-8 h-8" />
+                      </div>
+                      <div>
+                        <h3 className="text-base font-bold text-white">{splitSelectedFile.name}</h3>
+                        <p className="text-xs text-slate-400 mt-1">{splitSelectedFile.size} • Archive / Paquet StudyCloud</p>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => handleDownloadFile(splitSelectedFile)}
+                        className="px-6 py-2.5 rounded-xl bg-sky-500 hover:bg-sky-400 text-stone-950 font-bold text-xs flex items-center justify-center gap-2 mx-auto shadow-md"
+                      >
+                        <Download className="w-4 h-4" /> Télécharger le fichier
+                      </button>
+                    </div>
+                  )}
+
+                </div>
+
               </div>
-            </div>
-          )}
+            )}
 
-          {/* Autres sous-menus (Collections / Classeur) */}
-          {!['studycloud-category-documents', 'studycloud-category-images', 'studycloud-category-videos', 'studycloud-category-audio', 'studycloud-category-downloads', 'studycloud-category-apps'].includes(currentSubView.id) && (
-            <div className="flex-1 flex flex-col items-center justify-center p-6 sm:p-12 text-center select-none min-h-[60vh]">
-              <div className="w-full max-w-md mx-auto p-8 sm:p-10 rounded-3xl border border-stone-300/80 dark:border-white/10 bg-[#04060A] text-white shadow-2xl flex flex-col items-center justify-center space-y-4">
-                <div className={`p-4 rounded-2xl bg-black border border-white/10 ${currentSubView.color} shadow-lg`}>
-                  <currentSubView.icon className="w-12 h-12 stroke-[1.8]" />
-                </div>
-
-                <div className="space-y-1.5">
-                  <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
-                    Votre espace {currentSubView.name} est vide
-                  </h2>
-                  <p className="text-xs sm:text-sm font-medium text-slate-100 max-w-xs leading-relaxed">
-                    Aucun fichier dans {currentSubView.name} pour le moment.
-                  </p>
-                </div>
-              </div>
-            </div>
-          )}
+          </div>
 
         </div>
       ) : (
@@ -1871,132 +2194,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
           </div>
         </>
-      )}
-
-      {/* ========================================================================= */}
-      {/* MODALE D'APERÇU RAPIDE D'UN FICHIER AU CLIC                               */}
-      {/* ========================================================================= */}
-      {activeFilePreview && (
-        <div 
-          onClick={() => setActiveFilePreview(null)}
-          className="fixed inset-0 z-50 bg-black/85 backdrop-blur-sm flex items-center justify-center p-4 animate-in fade-in duration-200"
-        >
-          <div 
-            onClick={(e) => e.stopPropagation()}
-            className="w-full max-w-lg bg-[#04060A] border border-white/15 rounded-3xl p-5 sm:p-6 space-y-4 shadow-2xl animate-in zoom-in-95"
-          >
-            <div className="flex items-center justify-between border-b border-white/10 pb-3">
-              <h3 className="text-sm sm:text-base font-black text-white truncate max-w-[280px]">
-                {activeFilePreview.name}
-              </h3>
-              <button 
-                type="button"
-                onClick={() => setActiveFilePreview(null)}
-                className="w-8 h-8 rounded-full bg-black hover:bg-slate-900 text-white border border-white/10 flex items-center justify-center transition-colors cursor-pointer"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Contenu d'aperçu dynamique selon le type */}
-            {activeFilePreview.isImage && activeFilePreview.previewUrl ? (
-              <div className="w-full h-64 rounded-2xl overflow-hidden bg-black flex items-center justify-center border border-white/10">
-                <img 
-                  src={activeFilePreview.previewUrl} 
-                  alt={activeFilePreview.name}
-                  className="max-w-full max-h-full object-contain"
-                />
-              </div>
-            ) : activeFilePreview.category === 'videos' ? (
-              <div className="w-full h-64 rounded-2xl overflow-hidden bg-black flex flex-col items-center justify-center border border-white/10 relative">
-                {activeFilePreview.previewUrl && (
-                  <img
-                    src={activeFilePreview.previewUrl}
-                    alt={activeFilePreview.name}
-                    className="w-full h-full object-cover opacity-60"
-                  />
-                )}
-                <div className="absolute inset-0 flex items-center justify-center bg-black/30">
-                  <div className="w-14 h-14 rounded-full bg-white text-stone-900 flex items-center justify-center shadow-xl">
-                    <Play className="w-6 h-6 fill-stone-900 translate-x-0.5" />
-                  </div>
-                </div>
-              </div>
-            ) : activeFilePreview.category === 'audio' ? (
-              <div className="w-full h-44 rounded-2xl bg-[#121826] border border-amber-400/30 flex flex-col items-center justify-center p-4 text-center space-y-3">
-                <div className="w-14 h-14 rounded-2xl bg-black border border-white/10 flex items-center justify-center text-amber-400 shadow-md">
-                  <Music className="w-7 h-7 stroke-[2.2]" />
-                </div>
-                <div>
-                  <p className="text-sm font-bold text-white truncate max-w-xs">{activeFilePreview.name}</p>
-                  <p className="text-xs text-amber-400 font-semibold mt-0.5">Piste Audio StudyCloud</p>
-                </div>
-              </div>
-            ) : (
-              <div className="w-full h-44 rounded-2xl bg-black border border-white/10 flex flex-col items-center justify-center p-4 text-center">
-                <FileText className="w-10 h-10 text-blue-400 mb-2 stroke-[1.5]" />
-                <p className="text-xs font-semibold text-slate-200">Aperçu direct du document disponible au téléchargement</p>
-              </div>
-            )}
-
-            <div className="grid grid-cols-2 gap-2.5 text-xs bg-black p-3 rounded-xl border border-white/10">
-              <div>
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Emplacement</span>
-                <span className="text-white font-bold">{activeFilePreview.source}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Taille</span>
-                <span className="text-white font-bold">{activeFilePreview.size}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Date</span>
-                <span className="text-white font-bold">{activeFilePreview.date}</span>
-              </div>
-              <div>
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Catégorie</span>
-                <span className="text-white font-bold capitalize">{activeFilePreview.category}</span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-1">
-              <button
-                type="button"
-                onClick={() => {
-                  showToast(`Ouverture de ${activeFilePreview.name}...`);
-                  setActiveFilePreview(null);
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer shadow-md"
-              >
-                <Eye className="w-4 h-4" />
-                <span>Ouvrir</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  handleDownloadFile(activeFilePreview);
-                  setActiveFilePreview(null);
-                }}
-                className="flex-1 py-2.5 rounded-xl bg-black hover:bg-slate-900 text-white font-black text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-white/20"
-              >
-                <Download className="w-4 h-4" />
-                <span>Télécharger</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => {
-                  handleShareFile(activeFilePreview);
-                  setActiveFilePreview(null);
-                }}
-                className="p-2.5 rounded-xl bg-black hover:bg-slate-900 text-white font-black text-xs flex items-center justify-center transition-colors cursor-pointer border border-white/20"
-                title="Partager"
-              >
-                <Share2 className="w-4 h-4" />
-              </button>
-            </div>
-          </div>
-        </div>
       )}
 
     </div>
