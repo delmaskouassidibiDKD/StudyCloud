@@ -1442,44 +1442,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
       {viewMode === 'home' && (
         <div className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-2 relative">
-          {/* Ligne supérieure : Flèche gauche < (angle gauche) | Titre de l'écran | Flèche droite > (angle droit) */}
-          <div className="flex items-center justify-between mb-3 px-2 sm:px-4 w-full">
-            {/* Flèche gauche en haut dans l'angle gauche (<) - Masqué sur mobile */}
-            <button
-              type="button"
-              onClick={() => handleGoToPage(0)}
-              disabled={activePageIndex === 0}
-              className={`hidden md:flex items-center justify-center w-8 h-8 rounded-full border-2 transition-all duration-200 select-none ${
-                activePageIndex === 0
-                  ? 'opacity-20 cursor-not-allowed border-stone-400/30 text-stone-400 dark:border-slate-800 dark:text-slate-600'
-                  : 'cursor-pointer hover:scale-110 active:scale-95 border-stone-800 dark:border-slate-600 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
-              }`}
-              title={activePageIndex === 0 ? "Début atteint" : "Glisser vers la gauche (Page libre)"}
-              aria-label="Page précédente"
-            >
-              <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
-            </button>
-
-            {/* Titre selon la page active */}
+          {/* Titre de l'écran actif */}
+          <div className="flex items-center justify-between mb-3 px-2">
             <span className="text-xs font-bold text-stone-500 dark:text-stone-400 select-none">
               {activePageIndex === 0 ? "Espace libre • Page 1" : "Écran d'accueil • Page 2"}
             </span>
-
-            {/* Flèche droite en haut dans l'angle droit (>) - Masqué sur mobile */}
-            <button
-              type="button"
-              onClick={() => handleGoToPage(1)}
-              disabled={activePageIndex === 1}
-              className={`hidden md:flex items-center justify-center w-8 h-8 rounded-full border-2 transition-all duration-200 select-none ${
-                activePageIndex === 1
-                  ? 'opacity-20 cursor-not-allowed border-stone-400/30 text-stone-400 dark:border-slate-800 dark:text-slate-600'
-                  : 'cursor-pointer hover:scale-110 active:scale-95 border-stone-800 dark:border-slate-600 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
-              }`}
-              title={activePageIndex === 1 ? "Fin atteinte" : "Revenir à l'écran d'accueil (droite)"}
-              aria-label="Page suivante"
-            >
-              <ChevronRight className="w-4 h-4 stroke-[2.5]" />
-            </button>
           </div>
 
           {/* Conteneur Carrousel / Glissement fluide (Swipe phone & Desktop) */}
@@ -1570,6 +1537,43 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             }`}
           />
         </div>
+      )}
+
+      {/* Flèches de navigation d'angle : Extrême gauche (sous le menu hamburger) et Extrême droite de l'écran */}
+      {viewMode === 'home' && (
+        <>
+          {/* Flèche gauche (<) - Extrêmement dans l'angle gauche, sous le menu hamburger */}
+          <button
+            type="button"
+            onClick={() => handleGoToPage(0)}
+            disabled={activePageIndex === 0}
+            className={`hidden md:flex items-center justify-center fixed top-[74px] md:top-[78px] left-3 md:left-[calc(16rem+1.5rem)] z-30 w-8 h-8 rounded-full border-2 transition-all duration-200 select-none ${
+              activePageIndex === 0
+                ? 'opacity-20 cursor-not-allowed border-stone-400/30 text-stone-400 dark:border-slate-800 dark:text-slate-600'
+                : 'cursor-pointer hover:scale-110 active:scale-95 border-stone-800 dark:border-slate-600 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
+            }`}
+            title={activePageIndex === 0 ? "Début atteint" : "Glisser vers la gauche (Page libre)"}
+            aria-label="Page précédente"
+          >
+            <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+          </button>
+
+          {/* Flèche droite (>) - Extrêmement dans l'angle droit de l'écran */}
+          <button
+            type="button"
+            onClick={() => handleGoToPage(1)}
+            disabled={activePageIndex === 1}
+            className={`hidden md:flex items-center justify-center fixed top-[74px] md:top-[78px] right-3 md:right-6 z-30 w-8 h-8 rounded-full border-2 transition-all duration-200 select-none ${
+              activePageIndex === 1
+                ? 'opacity-20 cursor-not-allowed border-stone-400/30 text-stone-400 dark:border-slate-800 dark:text-slate-600'
+                : 'cursor-pointer hover:scale-110 active:scale-95 border-stone-800 dark:border-slate-600 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
+            }`}
+            title={activePageIndex === 1 ? "Fin atteinte" : "Revenir à l'écran d'accueil (droite)"}
+            aria-label="Page suivante"
+          >
+            <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+          </button>
+        </>
       )}
     </div>
   );
