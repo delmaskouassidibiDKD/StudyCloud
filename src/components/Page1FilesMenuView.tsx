@@ -1053,7 +1053,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         <div className="flex-1 flex flex-col w-full animate-in fade-in duration-200 min-h-screen">
           
           {/* EN-TÊTE DU SOUS-MENU */}
-          <div className="sticky top-0 z-30 w-full bg-[#F4F6F8]/95 dark:bg-[#0C111D]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-300/70 dark:border-slate-800/60 shadow-xs">
+          <div className={`sticky top-0 z-30 w-full bg-[#F4F6F8]/95 dark:bg-[#0C111D]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-300/70 dark:border-slate-800/60 shadow-xs ${
+            isViewerMaximized ? 'hidden' : ''
+          }`}>
             <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
               
               {/* GAUCHE : Bouton Retour et Titre */}
@@ -1135,7 +1137,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
           {/* ========================================================================= */}
           {/* ZONE PRINCIPALE : VUE DIVISÉE EN DEUX (SPLIT SCREEN) OU PLEINE LARGEUR    */}
           {/* ========================================================================= */}
-          <div className="flex-1 flex flex-col md:flex-row w-full overflow-hidden min-h-[calc(100vh-120px)] relative">
+          <div className={`flex-1 flex flex-col md:flex-row w-full overflow-hidden relative ${
+            isViewerMaximized ? 'min-h-[calc(100vh-68px)] h-[calc(100vh-68px)]' : 'min-h-[calc(100vh-120px)]'
+          }`}>
             
             {/* --------------------------------------------------------------------- */}
             {/* PANNEAU DE GAUCHE : LE RESTE DES FICHIERS                            */}
@@ -1515,7 +1519,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             {splitSelectedFile && (
               <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
                 isViewerMaximized 
-                  ? 'fixed inset-0 z-[100000] w-screen h-screen overflow-hidden' 
+                  ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
                   : 'w-full md:w-1/2 lg:w-1/2 xl:w-7/12 min-h-[500px] border-t md:border-t-0 md:border-l border-white/10'
               }`}>
                 
@@ -1613,7 +1617,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                           ? 'bg-blue-600 text-white border-blue-400' 
                           : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
                       }`}
-                      title={isViewerMaximized ? "Réduire la vue" : "Agrandir en plein écran"}
+                      title={isViewerMaximized ? "Réduire la vue" : "Agrandir dans l'espace"}
                     >
                       {isViewerMaximized ? (
                         <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" />
@@ -1656,8 +1660,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                           alt={splitSelectedFile.name}
                           className={`w-full h-full object-contain rounded-xl shadow-2xl select-none transition-all ${
                             isViewerMaximized 
-                              ? 'max-h-[calc(100vh-70px)]' 
-                              : 'max-h-[calc(100vh-140px)]'
+                              ? 'max-h-[calc(100vh-125px)]' 
+                              : 'max-h-[calc(100vh-180px)]'
                           }`}
                         />
                       </div>
@@ -1676,8 +1680,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                         poster={splitSelectedFile.previewUrl}
                         className={`w-full h-full object-contain rounded-xl select-none bg-black transition-all ${
                           isViewerMaximized 
-                            ? 'max-h-[calc(100vh-70px)]' 
-                            : 'max-h-[calc(100vh-140px)]'
+                            ? 'max-h-[calc(100vh-125px)]' 
+                            : 'max-h-[calc(100vh-180px)]'
                         }`}
                         controls
                         autoPlay
