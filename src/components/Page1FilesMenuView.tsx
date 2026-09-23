@@ -131,6 +131,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     return () => window.removeEventListener('studycloud_download_updated', handleUpdate);
   }, []);
 
+  // Écoute de la touche Échap pour réduire le mode plein écran / agrandi
+  useEffect(() => {
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.key === 'Escape' && isViewerMaximized) {
+        setIsViewerMaximized(false);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [isViewerMaximized]);
+
   // Référence pour l'import de fichier
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -1502,14 +1513,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             {/* Avec barre de boutons supérieurs (zoom, agrandir, fermer, nav...)     */}
             {/* --------------------------------------------------------------------- */}
             {splitSelectedFile && (
-              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] border-t md:border-t-0 md:border-l border-white/10 ${
+              <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
                 isViewerMaximized 
-                  ? 'fixed inset-0 z-50 w-screen h-screen' 
-                  : 'w-full md:w-1/2 lg:w-1/2 xl:w-7/12 min-h-[500px]'
+                  ? 'fixed inset-0 z-[100000] w-screen h-screen overflow-hidden' 
+                  : 'w-full md:w-1/2 lg:w-1/2 xl:w-7/12 min-h-[500px] border-t md:border-t-0 md:border-l border-white/10'
               }`}>
                 
                 {/* BARRE SUPÉRIEURE DE BOUTONS DU LECTEUR GRAND FORMAT (Images 2 et 3) */}
-                <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md">
+                <div className="sticky top-0 z-20 w-full bg-[#04060A]/95 backdrop-blur-md px-3 sm:px-4 py-2 sm:py-2.5 border-b border-white/10 flex items-center justify-between gap-2 shadow-md shrink-0">
                   
                   {/* GAUCHE : Flèches de navigation < > et titre */}
                   <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
@@ -1628,59 +1639,64 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
                 </div>
 
-                {/* CORPS DU LECTEUR GRAND FORMAT SELON LE TYPE DE MÉDIA */}
-                <div className="flex-1 flex flex-col items-center justify-center p-3 sm:p-6 overflow-y-auto relative min-h-[420px]">
+                {/* CORPS DU LECTEUR GRAND FORMAT SELON LE TYPE DE MÉDIA (Prend tout l'espace disponible) */}
+                <div className="flex-1 w-full h-full flex flex-col items-center justify-center p-1 sm:p-2 sm:px-4 overflow-hidden relative">
 
-                  {/* 1. LECTEUR IMAGE GRAND FORMAT (Avec Zoom & Pan) */}
+                  {/* 1. LECTEUR IMAGE GRAND FORMAT (Prend tout l'espace avec Zoom & Rotation) */}
                   {(splitSelectedFile.category === 'images' || splitSelectedFile.isImage) && (
-                    <div className="w-full h-full flex flex-col items-center justify-center relative overflow-hidden rounded-2xl bg-black/40 border border-white/5 p-2">
+                    <div className="w-full h-full flex-1 flex flex-col items-center justify-center relative overflow-hidden rounded-2xl bg-black/80 border border-white/10 p-1 sm:p-2 shadow-2xl">
                       <div 
-                        className="transition-transform duration-200 flex items-center justify-center max-w-full max-h-full"
+                        className="transition-transform duration-200 flex items-center justify-center w-full h-full"
                         style={{
                           transform: `scale(${viewerZoom}) rotate(${viewerRotation}deg)`
                         }}
                       >
                         <img
-                          src={splitSelectedFile.previewUrl}
+                          src={splitSelectedFile.previewUrl || (splitSelectedFile as any).url}
                           alt={splitSelectedFile.name}
-                          className="max-w-full max-h-[72vh] object-contain rounded-xl shadow-2xl select-none"
+                          className={`w-full h-full object-contain rounded-xl shadow-2xl select-none transition-all ${
+                            isViewerMaximized 
+                              ? 'max-h-[calc(100vh-70px)]' 
+                              : 'max-h-[calc(100vh-140px)]'
+                          }`}
                         />
                       </div>
-                      <div className="absolute bottom-3 left-4 bg-black/70 backdrop-blur-xs px-2.5 py-1 rounded-full text-[10px] text-slate-300 font-bold border border-white/10">
+                      <div className="absolute bottom-3 left-4 bg-black/80 backdrop-blur-xs px-2.5 py-1 rounded-full text-[10px] text-slate-300 font-bold border border-white/10">
                         Zoom : {Math.round(viewerZoom * 100)}% {viewerRotation > 0 && `• ${viewerRotation}°`}
                       </div>
                     </div>
                   )}
 
-                  {/* 2. LECTEUR VIDÉO GRAND FORMAT INTERACTIF (Capable de lire tout type vidéo) */}
+                  {/* 2. LECTEUR VIDÉO GRAND FORMAT INTERACTIF (Prend tout l'espace de l'écran, tout format vidéo) */}
                   {splitSelectedFile.category === 'videos' && (
-                    <div className="w-full max-w-3xl flex flex-col items-center justify-center space-y-3">
-                      <div className="w-full aspect-video rounded-2xl overflow-hidden bg-black border border-white/15 relative shadow-2xl flex items-center justify-center group">
-                        <video
-                          ref={videoRef}
-                          src={splitSelectedFile.videoUrl || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
-                          poster={splitSelectedFile.previewUrl}
-                          className="w-full h-full object-contain"
-                          controls
-                          autoPlay
-                          loop
-                        />
-                      </div>
-                      <div className="w-full bg-[#121826] border border-white/10 rounded-2xl p-3 flex items-center justify-between text-xs text-slate-300">
-                        <span className="font-bold text-purple-400">Lecteur Vidéo HD StudyCloud</span>
-                        <span>{splitSelectedFile.size} • Format MP4/WebM/MKV</span>
-                      </div>
+                    <div className="w-full h-full flex-1 flex items-center justify-center relative p-1 sm:p-2 overflow-hidden bg-black/80 rounded-2xl border border-white/10 shadow-2xl">
+                      <video
+                        ref={videoRef}
+                        src={splitSelectedFile.videoUrl || (splitSelectedFile as any).url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
+                        poster={splitSelectedFile.previewUrl}
+                        className={`w-full h-full object-contain rounded-xl select-none bg-black transition-all ${
+                          isViewerMaximized 
+                            ? 'max-h-[calc(100vh-70px)]' 
+                            : 'max-h-[calc(100vh-140px)]'
+                        }`}
+                        controls
+                        autoPlay
+                        loop
+                        playsInline
+                      />
                     </div>
                   )}
 
                   {/* 3. LECTEUR AUDIO GRAND FORMAT INTERACTIF (Capable de lire tout son) */}
                   {splitSelectedFile.category === 'audio' && (
-                    <div className="w-full max-w-lg bg-[#0C1220] border border-amber-500/30 rounded-3xl p-5 sm:p-7 shadow-2xl flex flex-col items-center text-center space-y-5 animate-in zoom-in-95">
+                    <div className={`w-full bg-[#0C1220] border border-amber-500/30 rounded-3xl p-6 sm:p-10 shadow-2xl flex flex-col items-center text-center space-y-6 animate-in zoom-in-95 ${
+                      isViewerMaximized ? 'max-w-2xl my-auto' : 'max-w-lg my-auto'
+                    }`}>
                       
                       {/* Élément audio natif */}
                       <audio
                         ref={audioRef}
-                        src={splitSelectedFile.audioUrl || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'}
+                        src={splitSelectedFile.audioUrl || (splitSelectedFile as any).url || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'}
                         autoPlay={isAudioPlaying}
                         loop
                       />
@@ -1780,12 +1796,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     </div>
                   )}
 
-                  {/* 4. LECTEUR DOCUMENT GRAND FORMAT (Page par page avec schéma AOP haute résolution) */}
+                  {/* 4. LECTEUR DOCUMENT GRAND FORMAT (Prend tout l'espace) */}
                   {splitSelectedFile.category === 'documents' && (
-                    <div className="w-full max-w-2xl flex flex-col items-center space-y-3">
+                    <div className={`w-full h-full flex-1 flex flex-col items-center space-y-3 overflow-y-auto px-1 sm:px-4 py-2 ${
+                      isViewerMaximized ? 'max-w-6xl' : 'max-w-4xl'
+                    }`}>
                       
                       {/* Contrôle des pages */}
-                      <div className="w-full bg-[#121826] border border-white/10 rounded-xl px-4 py-2 flex items-center justify-between text-xs text-white">
+                      <div className="w-full bg-[#121826] border border-white/10 rounded-xl px-4 py-2 flex items-center justify-between text-xs text-white shrink-0 shadow-md">
                         <span className="font-bold flex items-center gap-2">
                           <BookOpen className="w-4 h-4 text-blue-400" /> Page {docCurrentPage} sur {totalDocPages}
                         </span>
@@ -1794,7 +1812,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                             type="button"
                             disabled={docCurrentPage <= 1}
                             onClick={() => setDocCurrentPage(prev => Math.max(1, prev - 1))}
-                            className="px-2.5 py-1 rounded-lg bg-black hover:bg-slate-800 disabled:opacity-40 text-xs font-bold border border-white/10"
+                            className="px-2.5 py-1 rounded-lg bg-black hover:bg-slate-800 disabled:opacity-40 text-xs font-bold border border-white/10 transition-colors"
                           >
                             Précédent
                           </button>
@@ -1802,7 +1820,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                             type="button"
                             disabled={docCurrentPage >= totalDocPages}
                             onClick={() => setDocCurrentPage(prev => Math.min(totalDocPages, prev + 1))}
-                            className="px-2.5 py-1 rounded-lg bg-black hover:bg-slate-800 disabled:opacity-40 text-xs font-bold border border-white/10"
+                            className="px-2.5 py-1 rounded-lg bg-black hover:bg-slate-800 disabled:opacity-40 text-xs font-bold border border-white/10 transition-colors"
                           >
                             Suivant
                           </button>
@@ -1811,7 +1829,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
                       {/* Feuille de document haute définition format A4 réaliste */}
                       <div 
-                        className="w-full bg-white text-stone-900 rounded-2xl shadow-2xl p-6 sm:p-8 space-y-4 border border-stone-300 transition-transform duration-200"
+                        className="w-full flex-1 bg-white text-stone-900 rounded-2xl shadow-2xl p-6 sm:p-10 md:p-12 space-y-6 border border-stone-300 transition-transform duration-200"
                         style={{
                           transform: `scale(${viewerZoom})`
                         }}
@@ -1889,7 +1907,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
                   {/* 5. FICHIERS DIVERS / ARCHIVES */}
                   {!['images', 'videos', 'audio', 'documents'].includes(splitSelectedFile.category) && !splitSelectedFile.isImage && (
-                    <div className="w-full max-w-md bg-[#121826] border border-white/10 rounded-3xl p-6 text-center space-y-4">
+                    <div className={`w-full bg-[#121826] border border-white/10 rounded-3xl p-8 text-center space-y-5 ${
+                      isViewerMaximized ? 'max-w-xl my-auto' : 'max-w-md my-auto'
+                    }`}>
                       <div className="w-16 h-16 rounded-2xl bg-black border border-sky-400/40 text-sky-400 flex items-center justify-center mx-auto shadow-xl">
                         <Archive className="w-8 h-8" />
                       </div>
