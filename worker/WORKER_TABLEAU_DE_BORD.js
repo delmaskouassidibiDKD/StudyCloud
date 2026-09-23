@@ -1699,7 +1699,7 @@ function renderDashboardHtml(data) {
       <button 
         type="button"
         id="btn-hamburger"
-        onclick="toggleSidebar(true)"
+        onclick="toggleSidebar()"
         class="w-9 h-9 rounded-lg bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center justify-center transition-all cursor-pointer shadow-sm active:scale-95 z-30"
         title="Ouvrir le menu latéral"
       >
@@ -7768,7 +7768,7 @@ function renderDashboardHtml(data) {
       const modal = document.getElementById('confirm-delete-sub-plan-modal');
       const textEl = document.getElementById('confirm-delete-sub-plan-text');
       if (textEl) {
-        textEl.innerHTML = 'Êtes-vous sûr de vouloir supprimer définitivement la carte d\'abonnement <strong>« ' + escapeHtml(planName || 'Forfait') + ' »</strong> ? Cette action est irréversible et la carte sera immédiatement retirée de l\'application.';
+        textEl.innerHTML = "Êtes-vous sûr de vouloir supprimer définitivement la carte d&apos;abonnement <strong>« " + escapeHtml(planName || "Forfait") + " »</strong> ? Cette action est irréversible et la carte sera immédiatement retirée de l&apos;application.";
       }
       if (modal) {
         modal.classList.remove('hidden');
