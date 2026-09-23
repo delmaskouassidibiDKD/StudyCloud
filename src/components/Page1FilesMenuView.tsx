@@ -59,7 +59,9 @@ import {
   ListPlus,
   Timer,
   Shuffle,
-  AlignLeft
+  AlignLeft,
+  CheckSquare,
+  Square
 } from 'lucide-react';
 import { getDownloadedFiles, recordDownloadedFile, DownloadedItem } from '../services/downloadsManager';
 
@@ -127,6 +129,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
   const [showLyricsModal, setShowLyricsModal] = useState(false);
   const [audioMenuSongId, setAudioMenuSongId] = useState<string | null>(null);
+  const [isPlayerMenuOpen, setIsPlayerMenuOpen] = useState(false);
+  const [isAudioSelectionMode, setIsAudioSelectionMode] = useState(false);
+  const [selectedAudioIds, setSelectedAudioIds] = useState<string[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Lecteur Vidéo
@@ -573,7 +578,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   ];
 
   // IMAGE 3 & IMAGE 2 : AUDIO / MUSIQUE (LISTE IMAGE 3 AVEC VIGNETTES, ARTISTES, DATES ET LECTEUR IMAGE 2)
-  const sampleAudioList: FileItem[] = [
+  const [audioList, setAudioList] = useState<FileItem[]>([
     {
       id: 'aud-img3-1',
       name: 'Another Love X Memories (Lyrics)',
@@ -699,7 +704,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         "Je demande juste une nouvelle chance"
       ]
     }
-  ];
+  ]);
 
   // FICHIERS RÉCENTS : STUDYCLOUD (Strictement 6 éléments maximum, 1 seule ligne, FIFO)
   const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>([
@@ -1021,9 +1026,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
     // En Audio, division permanente avec morceau par défaut (Raindance Image 2 & 3)
     if (id === 'audio') {
-      const defaultTrack = sampleAudioList.find(s => s.name.includes('Raindance')) || sampleAudioList[0];
+      const defaultTrack = audioList.find(s => s.name.includes('Raindance')) || audioList[0];
       setSplitSelectedFile(defaultTrack);
-      setAudioDuration(defaultTrack.durationSec || 219);
+      setAudioDuration(defaultTrack?.durationSec || 219);
       setAudioCurrentTime(11);
       setIsAudioPlaying(false);
     } else {
@@ -1065,11 +1070,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
   // Liste audio pour le sous-menu Audio (Image 4)
   const filteredAudio = useMemo(() => {
-    const list = [...sampleAudioList, ...cloudRecentFiles.filter(f => f.category === 'audio' && !sampleAudioList.some(s => s.name === f.name))];
+    const list = [...audioList, ...cloudRecentFiles.filter(f => f.category === 'audio' && !audioList.some(s => s.name === f.name))];
     return list.filter(aud => {
       return subSearchQuery.trim() === '' || aud.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
-  }, [sampleAudioList, cloudRecentFiles, subSearchQuery]);
+  }, [audioList, cloudRecentFiles, subSearchQuery]);
 
   // Groupement des fichiers audio par date comme dans Image 4
   const groupedAudio = useMemo(() => {
@@ -1087,39 +1092,150 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     return groups;
   }, [filteredAudio]);
 
-  // Navigation Audio (Suivant, Précédent)
+  // Navigation Audio (Suivant, Précédent avec support Aléatoire)
   const handleAudioNext = () => {
     const list = filteredAudio;
     if (list.length === 0) return;
     const currentIdx = list.findIndex(a => a.id === splitSelectedFile?.id);
-    if (isAudioShuffle) {
-      const randIdx = Math.floor(Math.random() * list.length);
+    if (isAudioShuffle && list.length > 1) {
+      let randIdx = Math.floor(Math.random() * list.length);
+      while (randIdx === currentIdx && list.length > 1) {
+        randIdx = Math.floor(Math.random() * list.length);
+      }
       handleSelectFile(list[randIdx]);
+      setIsAudioPlaying(true);
       return;
     }
     const nextIdx = (currentIdx + 1) % list.length;
     handleSelectFile(list[nextIdx]);
+    setIsAudioPlaying(true);
   };
 
   const handleAudioPrev = () => {
     const list = filteredAudio;
     if (list.length === 0) return;
     const currentIdx = list.findIndex(a => a.id === splitSelectedFile?.id);
+    if (isAudioShuffle && list.length > 1) {
+      let randIdx = Math.floor(Math.random() * list.length);
+      while (randIdx === currentIdx && list.length > 1) {
+        randIdx = Math.floor(Math.random() * list.length);
+      }
+      handleSelectFile(list[randIdx]);
+      setIsAudioPlaying(true);
+      return;
+    }
     const prevIdx = (currentIdx - 1 + list.length) % list.length;
     handleSelectFile(list[prevIdx]);
+    setIsAudioPlaying(true);
+  };
+
+  // Saut de 10 secondes en avant ou en arrière (-10s / +10s)
+  const handleSeekDelta = (delta: number) => {
+    if (audioRef.current) {
+      const cur = audioRef.current.currentTime ?? audioCurrentTime;
+      const next = Math.max(0, Math.min(audioDuration, cur + delta));
+      audioRef.current.currentTime = next;
+      setAudioCurrentTime(Math.floor(next));
+    } else {
+      setAudioCurrentTime(prev => Math.max(0, Math.min(audioDuration, prev + delta)));
+    }
+  };
+
+  // Bascule de la lecture en boucle
+  const toggleAudioRepeat = () => {
+    setIsAudioRepeat(prev => {
+      const next = prev === 'off' ? 'one' : 'off';
+      showToast(next === 'one' ? "Lecture en boucle activée (le son reprend seul)" : "Lecture en boucle désactivée");
+      return next;
+    });
+  };
+
+  // Suppression d'un son spécifique
+  const handleDeleteAudio = (track: FileItem) => {
+    setAudioList(prev => prev.filter(a => a.id !== track.id));
+    if (splitSelectedFile?.id === track.id) {
+      const remaining = audioList.filter(a => a.id !== track.id);
+      if (remaining.length > 0) {
+        setSplitSelectedFile(remaining[0]);
+        setAudioDuration(remaining[0].durationSec || 219);
+        setAudioCurrentTime(0);
+      } else {
+        setSplitSelectedFile(null);
+      }
+    }
+    showToast(`"${track.name}" supprimé`);
+  };
+
+  // Gestion du mode sélection multiple pour les sons
+  const toggleAudioSelection = (id: string) => {
+    setSelectedAudioIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleDeleteSelectedAudio = () => {
+    if (selectedAudioIds.length === 0) {
+      showToast("Aucun son sélectionné");
+      return;
+    }
+    const count = selectedAudioIds.length;
+    setAudioList(prev => prev.filter(a => !selectedAudioIds.includes(a.id)));
+    if (splitSelectedFile && selectedAudioIds.includes(splitSelectedFile.id)) {
+      const remaining = audioList.filter(a => !selectedAudioIds.includes(a.id));
+      if (remaining.length > 0) {
+        setSplitSelectedFile(remaining[0]);
+        setAudioDuration(remaining[0].durationSec || 219);
+        setAudioCurrentTime(0);
+      } else {
+        setSplitSelectedFile(null);
+      }
+    }
+    setSelectedAudioIds([]);
+    setIsAudioSelectionMode(false);
+    showToast(`${count} son(s) supprimé(s)`);
+  };
+
+  const handleDownloadSelectedAudio = () => {
+    if (selectedAudioIds.length === 0) {
+      showToast("Aucun son sélectionné");
+      return;
+    }
+    const count = selectedAudioIds.length;
+    selectedAudioIds.forEach(id => {
+      const item = audioList.find(a => a.id === id);
+      if (item) handleDownloadFile(item);
+    });
+    showToast(`${count} son(s) en cours de téléchargement`);
+    setIsAudioSelectionMode(false);
+    setSelectedAudioIds([]);
+  };
+
+  const handleCreateLinkSelectedAudio = () => {
+    if (selectedAudioIds.length === 0) {
+      showToast("Aucun son sélectionné");
+      return;
+    }
+    const count = selectedAudioIds.length;
+    const url = `${window.location.origin}/share/audio?ids=${selectedAudioIds.join(',')}`;
+    navigator.clipboard?.writeText(url);
+    showToast(`${count} son(s) : lien copié dans le presse-papiers !`);
+    setIsAudioSelectionMode(false);
+    setSelectedAudioIds([]);
   };
 
   // Maintien permanent de la vue divisée en mode Audio sur Desktop
   useEffect(() => {
     if (currentSubView?.id === 'studycloud-category-audio') {
       if (!splitSelectedFile || splitSelectedFile.category !== 'audio') {
-        const raindance = sampleAudioList.find(s => s.name.includes('Raindance')) || sampleAudioList[0];
-        setSplitSelectedFile(raindance);
-        setAudioDuration(raindance.durationSec || 219);
-        setAudioCurrentTime(11);
+        const raindance = audioList.find(s => s.name.includes('Raindance')) || audioList[0];
+        if (raindance) {
+          setSplitSelectedFile(raindance);
+          setAudioDuration(raindance.durationSec || 219);
+          setAudioCurrentTime(11);
+        }
       }
     }
-  }, [currentSubView, splitSelectedFile]);
+  }, [currentSubView, splitSelectedFile, audioList]);
 
   // Intervalle de lecture audio et synchronisation temporelle
   useEffect(() => {
@@ -1129,10 +1245,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         setAudioCurrentTime(prev => {
           if (prev >= audioDuration) {
             if (isAudioRepeat === 'one') {
-              if (audioRef.current) audioRef.current.currentTime = 0;
+              if (audioRef.current) {
+                audioRef.current.currentTime = 0;
+                audioRef.current.play().catch(() => {});
+              }
               return 0;
             }
-            if (isAudioRepeat === 'all') {
+            if (isAudioRepeat === 'all' || isAudioShuffle) {
               handleAudioNext();
               return 0;
             }
@@ -1846,42 +1965,127 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 </div>
               )}
 
-              {/* 4. AUDIO / MUSIQUE (IMAGE 3 : LISTE SOMBRE, ARTISTES, DATES ET ÉGALISEUR ANIMÉ) */}
+              {/* 4. AUDIO / MUSIQUE (LISTE SÉPARÉE VERTICALEMENT SUR LE FOND DE PAGE AVEC DÉTAILS, BOUTON PAUSE ET ACTIONS 3 TRAITS) */}
               {currentSubView.id === 'studycloud-category-audio' && (
-                <div className="w-full bg-[#070B16] rounded-3xl p-3 sm:p-4 text-white border border-white/10 shadow-2xl space-y-3">
+                <div className="w-full space-y-3">
                   {/* En-tête de la liste */}
-                  <div className="flex items-center justify-between px-2 pt-1 pb-2 border-b border-white/10">
+                  <div className="flex items-center justify-between px-1 py-0.5">
                     <div className="flex items-center gap-2">
-                      <Music className="w-4 h-4 text-amber-400 stroke-[2.2]" />
-                      <span className="text-xs sm:text-sm font-bold text-white tracking-wide">
+                      <Music className="w-4 h-4 text-amber-500 dark:text-amber-400 stroke-[2.2]" />
+                      <span className="text-xs sm:text-sm font-bold text-stone-900 dark:text-white tracking-wide">
                         Tous les sons ({filteredAudio.length})
                       </span>
                     </div>
-                    <span className="text-[10px] text-amber-400/80 font-bold uppercase tracking-wider">
+                    <span className="text-[10px] text-amber-600 dark:text-amber-400 font-bold uppercase tracking-wider">
                       StudyCloud Audio
                     </span>
                   </div>
 
-                  {/* Liste des pistes (Image 3) */}
-                  <div className="space-y-1.5">
+                  {/* Bandeau d'action de sélection multiple si activé */}
+                  {isAudioSelectionMode && (
+                    <div className="w-full p-2.5 sm:p-3 rounded-2xl bg-amber-500/10 dark:bg-slate-900 border border-amber-400/40 dark:border-amber-500/30 shadow-md flex items-center justify-between gap-2 flex-wrap animate-in fade-in slide-in-from-top-2 duration-150">
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-stone-900 dark:text-stone-100">
+                          {selectedAudioIds.length === filteredAudio.length
+                            ? 'Tous les sons sélectionnés'
+                            : `${selectedAudioIds.length} son(s) sélectionné(s)`}
+                        </span>
+                      </div>
+
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {/* Supprimer / Tout supprimer */}
+                        <button
+                          type="button"
+                          onClick={handleDeleteSelectedAudio}
+                          className="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                          title={selectedAudioIds.length === filteredAudio.length ? "Tout supprimer" : "Supprimer"}
+                        >
+                          <Trash2 className="w-3.5 h-3.5" />
+                          <span>{selectedAudioIds.length === filteredAudio.length ? 'Tout supprimer' : 'Supprimer'}</span>
+                        </button>
+
+                        {/* Télécharger / Tout télécharger */}
+                        <button
+                          type="button"
+                          onClick={handleDownloadSelectedAudio}
+                          className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                          title={selectedAudioIds.length === filteredAudio.length ? "Tout télécharger" : "Télécharger"}
+                        >
+                          <Download className="w-3.5 h-3.5" />
+                          <span>{selectedAudioIds.length === filteredAudio.length ? 'Tout télécharger' : 'Télécharger'}</span>
+                        </button>
+
+                        {/* Créer un lien */}
+                        <button
+                          type="button"
+                          onClick={handleCreateLinkSelectedAudio}
+                          className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                          title="Créer un lien"
+                        >
+                          <Link className="w-3.5 h-3.5" />
+                          <span>Créer un lien</span>
+                        </button>
+
+                        {/* Annuler la sélection */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAudioSelectionMode(false);
+                            setSelectedAudioIds([]);
+                          }}
+                          className="p-1.5 rounded-xl hover:bg-stone-200 dark:hover:bg-slate-800 text-stone-600 dark:text-slate-300 transition-colors cursor-pointer"
+                          title="Fermer le mode sélection"
+                        >
+                          <X className="w-4 h-4" />
+                        </button>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Liste des pistes : Séparées verticalement sur le fond de page avec détails et espace entre elles */}
+                  <div className="space-y-2">
                     {filteredAudio.map((track) => {
                       const isSelected = splitSelectedFile?.id === track.id;
+                      const isChecked = selectedAudioIds.includes(track.id);
+
                       return (
                         <div
                           key={track.id}
                           onClick={() => {
-                            handleSelectFile(track);
-                            setIsMobilePlayerOpen(true);
+                            if (isAudioSelectionMode) {
+                              toggleAudioSelection(track.id);
+                            } else {
+                              handleSelectFile(track);
+                              setIsMobilePlayerOpen(true);
+                            }
                           }}
-                          className={`group flex items-center justify-between gap-3 p-2.5 rounded-2xl transition-all cursor-pointer select-none ${
+                          className={`group flex items-center justify-between gap-3 p-3 rounded-2xl transition-all cursor-pointer select-none border ${
                             isSelected 
-                              ? 'bg-white/12 border border-white/20 shadow-md ring-1 ring-amber-400/30' 
-                              : 'hover:bg-white/5 border border-transparent'
+                              ? 'bg-amber-500/10 dark:bg-amber-950/30 border-amber-400 dark:border-amber-500 shadow-sm ring-1 ring-amber-400/30' 
+                              : 'bg-white dark:bg-slate-900/80 border-stone-200/90 dark:border-slate-800 hover:border-amber-400/60 hover:shadow-md'
                           }`}
                         >
-                          {/* Gauche : Vignette album carrée + Titre + Artiste */}
+                          {/* Case à cocher en mode sélection */}
+                          {isAudioSelectionMode && (
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                toggleAudioSelection(track.id);
+                              }}
+                              className="p-1 text-amber-500 hover:text-amber-600 cursor-pointer shrink-0"
+                            >
+                              {isChecked ? (
+                                <CheckSquare className="w-5 h-5 fill-amber-500/20 text-amber-500" />
+                              ) : (
+                                <Square className="w-5 h-5 text-stone-400 dark:text-slate-500" />
+                              )}
+                            </button>
+                          )}
+
+                          {/* Gauche : Vignette album carrée + Titre + Artiste + Détails */}
                           <div className="flex items-center gap-3 min-w-0 flex-1">
-                            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-black border border-white/15 relative shadow-md">
+                            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-stone-900 border border-stone-200 dark:border-white/10 relative shadow-sm">
                               {track.previewUrl ? (
                                 <img 
                                   src={track.previewUrl} 
@@ -1897,61 +2101,103 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
                             <div className="min-w-0 flex-1">
                               <h4 className={`text-xs sm:text-sm font-bold truncate leading-tight ${
-                                isSelected ? 'text-amber-300 font-black' : 'text-white group-hover:text-amber-300 transition-colors'
+                                isSelected ? 'text-amber-600 dark:text-amber-300 font-black' : 'text-stone-900 dark:text-white group-hover:text-amber-600 dark:group-hover:text-amber-300 transition-colors'
                               }`}>
                                 {track.name}
                               </h4>
-                              <p className="text-[11px] sm:text-xs text-slate-400 font-medium truncate mt-0.5">
+                              <p className="text-[11px] sm:text-xs text-stone-500 dark:text-slate-400 font-medium truncate mt-0.5">
                                 {track.artist || track.source}
                               </p>
+                              <div className="flex items-center gap-2 mt-0.5 text-[10px] text-stone-400 dark:text-slate-500 font-medium">
+                                <span>{track.size}</span>
+                                <span>•</span>
+                                <span>{formatTime(track.durationSec || 0)}</span>
+                              </div>
                             </div>
                           </div>
 
-                          {/* Droite : Bâtons animés (si sélectionné) + Date + 3 petits points (Image 3) */}
-                          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
-                            {/* Les 4 bâtons qui bougent quand la musique est en cours, et en pause s'arrêtent */}
+                          {/* Droite : Bouton Play/Pause + Bâtons animés + Date + Bouton 3 traits */}
+                          <div className="flex items-center gap-2 sm:gap-2.5 shrink-0">
+                            {/* Si morceau sélectionné : bâtons animés ET bouton Play/Pause juste à côté */}
                             {isSelected && (
-                              <div 
-                                className="flex items-end gap-1 h-5 px-1 py-0.5 shrink-0" 
-                                title={isAudioPlaying ? "Lecture en cours" : "En pause"}
-                              >
-                                <span 
-                                  className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-1' : ''}`}
-                                  style={{ 
-                                    height: isAudioPlaying ? undefined : '5px',
-                                    animationPlayState: isAudioPlaying ? 'running' : 'paused' 
-                                  }} 
-                                />
-                                <span 
-                                  className={`w-1 rounded-full bg-amber-300 ${isAudioPlaying ? 'music-bar-2' : ''}`}
-                                  style={{ 
-                                    height: isAudioPlaying ? undefined : '14px',
-                                    animationPlayState: isAudioPlaying ? 'running' : 'paused' 
-                                  }} 
-                                />
-                                <span 
-                                  className={`w-1 rounded-full bg-yellow-400 ${isAudioPlaying ? 'music-bar-3' : ''}`}
-                                  style={{ 
-                                    height: isAudioPlaying ? undefined : '9px',
-                                    animationPlayState: isAudioPlaying ? 'running' : 'paused' 
-                                  }} 
-                                />
-                                <span 
-                                  className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`}
-                                  style={{ 
-                                    height: isAudioPlaying ? undefined : '4px',
-                                    animationPlayState: isAudioPlaying ? 'running' : 'paused' 
-                                  }} 
-                                />
+                              <div className="flex items-center gap-2 shrink-0">
+                                {/* Les 4 bâtons qui bougent quand la musique chante, et s'arrêtent en pause */}
+                                <div 
+                                  className="flex items-end gap-1 h-5 px-1 py-0.5 shrink-0" 
+                                  title={isAudioPlaying ? "Lecture en cours" : "En pause"}
+                                >
+                                  <span 
+                                    className={`w-1 rounded-full bg-amber-500 dark:bg-amber-400 ${isAudioPlaying ? 'music-bar-1' : ''}`}
+                                    style={{ 
+                                      height: isAudioPlaying ? undefined : '5px',
+                                      animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                                    }} 
+                                  />
+                                  <span 
+                                    className={`w-1 rounded-full bg-amber-400 dark:bg-amber-300 ${isAudioPlaying ? 'music-bar-2' : ''}`}
+                                    style={{ 
+                                      height: isAudioPlaying ? undefined : '14px',
+                                      animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                                    }} 
+                                  />
+                                  <span 
+                                    className={`w-1 rounded-full bg-yellow-500 dark:bg-yellow-400 ${isAudioPlaying ? 'music-bar-3' : ''}`}
+                                    style={{ 
+                                      height: isAudioPlaying ? undefined : '9px',
+                                      animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                                    }} 
+                                  />
+                                  <span 
+                                    className={`w-1 rounded-full bg-amber-500 dark:bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`}
+                                    style={{ 
+                                      height: isAudioPlaying ? undefined : '4px',
+                                      animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                                    }} 
+                                  />
+                                </div>
+
+                                {/* BOUTON POUR METTRE PAUSE / PLAY A CÔTÉ DU BÂTON QUI BOUGE */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setIsAudioPlaying(!isAudioPlaying);
+                                  }}
+                                  className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-amber-500 hover:bg-amber-600 text-stone-950 flex items-center justify-center transition-transform active:scale-95 shadow-sm cursor-pointer"
+                                  title={isAudioPlaying ? "Mettre en pause" : "Reprendre la lecture"}
+                                >
+                                  {isAudioPlaying ? (
+                                    <Pause className="w-3.5 h-3.5 fill-current" />
+                                  ) : (
+                                    <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                                  )}
+                                </button>
                               </div>
                             )}
 
-                            {/* Date Image 3 (ex: 09-16, 08-26, 08-24) */}
-                            <span className="text-xs font-semibold text-slate-400 shrink-0">
+                            {/* Si morceau non sélectionné : bouton lecture directe au survol */}
+                            {!isSelected && (
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleSelectFile(track);
+                                  setIsAudioPlaying(true);
+                                  setIsMobilePlayerOpen(true);
+                                }}
+                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full text-stone-400 hover:text-amber-500 hover:bg-amber-50 dark:hover:bg-slate-800 flex items-center justify-center transition-all cursor-pointer opacity-70 group-hover:opacity-100"
+                                title="Lire ce son"
+                              >
+                                <Play className="w-3.5 h-3.5 fill-current ml-0.5" />
+                              </button>
+                            )}
+
+                            {/* Date */}
+                            <span className="text-xs font-semibold text-stone-400 dark:text-slate-400 shrink-0 hidden sm:inline-block">
                               {track.date}
                             </span>
 
-                            {/* Bouton 3 petits points verticaux (Image 3) */}
+                            {/* Bouton 3 traits sur chaque musique */}
                             <div className="relative shrink-0">
                               <button
                                 type="button"
@@ -1959,10 +2205,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                                   e.stopPropagation();
                                   setAudioMenuSongId(audioMenuSongId === track.id ? null : track.id);
                                 }}
-                                className="w-7 h-7 rounded-full text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center transition-colors cursor-pointer"
-                                title="Options du son"
+                                className="w-7 h-7 sm:w-8 sm:h-8 rounded-full text-stone-500 hover:text-stone-900 dark:text-slate-400 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-white/10 flex items-center justify-center transition-colors cursor-pointer"
+                                title="Options de la musique (3 traits)"
                               >
-                                <MoreVertical className="w-4 h-4" />
+                                <Menu className="w-4 h-4 stroke-[2.2]" />
                               </button>
 
                               {audioMenuSongId === track.id && (
@@ -1972,32 +2218,71 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                                     onClick={(e) => { e.stopPropagation(); setAudioMenuSongId(null); }} 
                                   />
                                   <div 
-                                    className="absolute right-0 top-8 z-50 w-48 bg-[#0D1527] border border-slate-700 rounded-xl shadow-2xl py-1 text-xs text-white divide-y divide-white/10 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100"
+                                    className="absolute right-0 top-8 z-50 w-52 bg-white dark:bg-[#0D1527] border border-stone-200 dark:border-slate-700 rounded-xl shadow-2xl py-1 text-xs text-stone-800 dark:text-white divide-y divide-stone-100 dark:divide-white/10 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100"
                                     onClick={(e) => e.stopPropagation()}
                                   >
-                                    <button 
-                                      type="button" 
-                                      onClick={() => { handleShareFile(track); setAudioMenuSongId(null); }} 
-                                      className="w-full px-3 py-2 text-left hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
-                                    >
-                                      <Share2 className="w-3.5 h-3.5 text-blue-400" /> Partager le son
-                                    </button>
-                                    <button 
-                                      type="button" 
-                                      onClick={() => { handleDownloadFile(track); setAudioMenuSongId(null); }} 
-                                      className="w-full px-3 py-2 text-left hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
-                                    >
-                                      <Download className="w-3.5 h-3.5 text-emerald-400" /> Télécharger
-                                    </button>
+                                    {/* 1. Supprimer */}
                                     <button 
                                       type="button" 
                                       onClick={() => {
-                                        showToast(`"${track.name}" ajouté aux favoris !`);
+                                        handleDeleteAudio(track);
                                         setAudioMenuSongId(null);
                                       }} 
-                                      className="w-full px-3 py-2 text-left hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
+                                      className="w-full px-3 py-2 text-left hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2 transition-colors cursor-pointer"
                                     >
-                                      <Heart className="w-3.5 h-3.5 text-rose-400" /> Ajouter aux favoris
+                                      <Trash2 className="w-3.5 h-3.5" /> Supprimer
+                                    </button>
+
+                                    {/* 2. Télécharger */}
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        handleDownloadFile(track);
+                                        setAudioMenuSongId(null);
+                                      }} 
+                                      className="w-full px-3 py-2 text-left hover:bg-stone-100 dark:hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                      <Download className="w-3.5 h-3.5 text-blue-500" /> Télécharger
+                                    </button>
+
+                                    {/* 3. Sélectionner */}
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        setIsAudioSelectionMode(true);
+                                        setSelectedAudioIds([track.id]);
+                                        setAudioMenuSongId(null);
+                                      }} 
+                                      className="w-full px-3 py-2 text-left hover:bg-stone-100 dark:hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                      <CheckSquare className="w-3.5 h-3.5 text-amber-500" /> Sélectionner
+                                    </button>
+
+                                    {/* 4. Tout sélectionner */}
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        setIsAudioSelectionMode(true);
+                                        setSelectedAudioIds(filteredAudio.map(t => t.id));
+                                        setAudioMenuSongId(null);
+                                      }} 
+                                      className="w-full px-3 py-2 text-left hover:bg-stone-100 dark:hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                      <CheckSquare className="w-3.5 h-3.5 text-amber-600" /> Tout sélectionner
+                                    </button>
+
+                                    {/* 5. Créer un lien */}
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        const url = `${window.location.origin}/share/audio/${track.id}`;
+                                        navigator.clipboard?.writeText(url);
+                                        showToast("Lien copié dans le presse-papiers !");
+                                        setAudioMenuSongId(null);
+                                      }} 
+                                      className="w-full px-3 py-2 text-left hover:bg-stone-100 dark:hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                      <Link className="w-3.5 h-3.5 text-emerald-500" /> Créer un lien
                                     </button>
                                   </div>
                                 </>
@@ -2242,23 +2527,109 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                       <Download className="w-3.5 h-3.5" />
                     </button>
 
-                    {/* BOUTON POUR AGRANDIR (PLEIN ÉCRAN DU LECTEUR) - DEMANDÉ PAR L'UTILISATEUR */}
-                    <button
-                      type="button"
-                      onClick={() => setIsViewerMaximized(!isViewerMaximized)}
-                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
-                        isViewerMaximized 
-                          ? 'bg-blue-600 text-white border-blue-400' 
-                          : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
-                      }`}
-                      title={isViewerMaximized ? "Réduire la vue" : "Agrandir dans l'espace"}
-                    >
-                      {isViewerMaximized ? (
-                        <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" />
-                      ) : (
-                        <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />
-                      )}
-                    </button>
+                    {/* BOUTON 3 TRAITS D'OPTIONS AUDIO OU AGRANDIR POUR AUTRES FORMATS */}
+                    {splitSelectedFile.category === 'audio' ? (
+                      <div className="relative">
+                        <button
+                          type="button"
+                          onClick={() => setIsPlayerMenuOpen(!isPlayerMenuOpen)}
+                          className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center bg-black/60 hover:bg-white/20 text-white border border-white/15 transition-all cursor-pointer shadow-sm active:scale-95"
+                          title="Options de lecture (3 traits)"
+                        >
+                          <Menu className="w-4 h-4 stroke-[2.2]" />
+                        </button>
+
+                        {isPlayerMenuOpen && (
+                          <>
+                            <div 
+                              className="fixed inset-0 z-40" 
+                              onClick={() => setIsPlayerMenuOpen(false)} 
+                            />
+                            <div 
+                              className="absolute right-0 top-9 z-50 w-52 bg-[#0D1527] border border-slate-700/80 rounded-xl shadow-2xl py-1 text-xs text-white divide-y divide-white/10 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100"
+                              onClick={(e) => e.stopPropagation()}
+                            >
+                              <button 
+                                type="button" 
+                                onClick={() => { handleDownloadFile(splitSelectedFile); setIsPlayerMenuOpen(false); }} 
+                                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                              >
+                                <Download className="w-4 h-4 text-blue-400" /> Télécharger ce son
+                              </button>
+                              <button 
+                                type="button" 
+                                onClick={() => { handleShareFile(splitSelectedFile); setIsPlayerMenuOpen(false); }} 
+                                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                              >
+                                <Share2 className="w-4 h-4 text-emerald-400" /> Partager
+                              </button>
+                              <button 
+                                type="button" 
+                                onClick={() => {
+                                  const url = `${window.location.origin}/share/audio/${splitSelectedFile.id}`;
+                                  navigator.clipboard?.writeText(url);
+                                  showToast("Lien copié dans le presse-papiers !");
+                                  setIsPlayerMenuOpen(false);
+                                }} 
+                                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                              >
+                                <Link className="w-4 h-4 text-purple-400" /> Créer un lien
+                              </button>
+                              <button 
+                                type="button" 
+                                onClick={() => {
+                                  toggleAudioRepeat();
+                                  setIsPlayerMenuOpen(false);
+                                }} 
+                                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                              >
+                                <Repeat className="w-4 h-4 text-amber-400" />
+                                <span>{isAudioRepeat === 'one' ? "Désactiver la boucle" : "Lire en boucle"}</span>
+                              </button>
+                              <button 
+                                type="button" 
+                                onClick={() => {
+                                  setIsAudioShuffle(!isAudioShuffle);
+                                  showToast(!isAudioShuffle ? "Lecture aléatoire activée" : "Lecture aléatoire désactivée");
+                                  setIsPlayerMenuOpen(false);
+                                }} 
+                                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
+                              >
+                                <Shuffle className="w-4 h-4 text-amber-400" />
+                                <span>{isAudioShuffle ? "Désactiver mode aléatoire" : "Mode aléatoire"}</span>
+                              </button>
+                              <button 
+                                type="button" 
+                                onClick={() => {
+                                  handleDeleteAudio(splitSelectedFile);
+                                  setIsPlayerMenuOpen(false);
+                                }} 
+                                className="w-full px-3.5 py-2.5 text-left hover:bg-rose-950/40 text-rose-400 flex items-center gap-2.5 transition-colors cursor-pointer"
+                              >
+                                <Trash2 className="w-4 h-4 text-rose-500" /> Supprimer ce son
+                              </button>
+                            </div>
+                          </>
+                        )}
+                      </div>
+                    ) : (
+                      <button
+                        type="button"
+                        onClick={() => setIsViewerMaximized(!isViewerMaximized)}
+                        className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                          isViewerMaximized 
+                            ? 'bg-blue-600 text-white border-blue-400' 
+                            : 'bg-black/60 hover:bg-blue-600/80 text-white border-white/10'
+                        }`}
+                        title={isViewerMaximized ? "Réduire la vue" : "Agrandir dans l'espace"}
+                      >
+                        {isViewerMaximized ? (
+                          <Minimize2 className="w-3.5 h-3.5 stroke-[2.2]" />
+                        ) : (
+                          <Maximize2 className="w-3.5 h-3.5 stroke-[2.2]" />
+                        )}
+                      </button>
+                    )}
 
                     {/* BOUTON POUR FERMER CETTE VUE - DEMANDÉ PAR L'UTILISATEUR */}
                     <button
@@ -2341,7 +2712,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                         ref={audioRef}
                         src={splitSelectedFile.audioUrl || (splitSelectedFile as any).url || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'}
                         autoPlay={isAudioPlaying}
-                        onEnded={handleAudioNext}
+                        loop={isAudioRepeat === 'one'}
+                        onEnded={() => {
+                          if (isAudioRepeat === 'one') {
+                            if (audioRef.current) {
+                              audioRef.current.currentTime = 0;
+                              audioRef.current.play().catch(() => {});
+                            }
+                            setAudioCurrentTime(0);
+                          } else {
+                            handleAudioNext();
+                          }
+                        }}
+                        onTimeUpdate={() => {
+                          if (audioRef.current && isAudioPlaying) {
+                            setAudioCurrentTime(Math.floor(audioRef.current.currentTime));
+                            if (audioRef.current.duration && !isNaN(audioRef.current.duration)) {
+                              setAudioDuration(Math.floor(audioRef.current.duration));
+                            }
+                          }
+                        }}
                       />
 
                       {/* Halo lumineux d'ambiance dorée / ambrée chaleureuse (Image 2) */}
@@ -2365,43 +2755,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                         <span className="text-[11px] font-bold text-amber-300">En cours de lecture</span>
                       </div>
 
-                      {/* PARTIE SUPÉRIEURE : Carte Album + Paroles synchronisées (Image 2) */}
-                      <div className="relative z-10 w-full flex flex-col sm:flex-row items-center sm:items-stretch gap-4 sm:gap-6 max-w-xl mx-auto my-auto pt-1 sm:pt-2">
-                        
-                        {/* Gauche : Pochette album carrée avec badge Parental Advisory */}
-                        <div className="relative w-40 sm:w-48 md:w-52 aspect-square rounded-2xl overflow-hidden shrink-0 shadow-[0_15px_35px_rgba(0,0,0,0.85)] border border-white/20 bg-black">
+                      {/* PARTIE SUPÉRIEURE : Pochette album centrée (paroles supprimées comme entouré en rouge) */}
+                      <div className="relative z-10 w-full flex items-center justify-center max-w-sm mx-auto my-auto pt-2 sm:pt-4">
+                        <div className="relative w-44 sm:w-56 md:w-64 aspect-square rounded-2xl overflow-hidden shrink-0 shadow-[0_20px_45px_rgba(0,0,0,0.85)] border border-white/20 bg-black group">
                           {splitSelectedFile.previewUrl ? (
                             <img 
                               src={splitSelectedFile.previewUrl} 
                               alt={splitSelectedFile.name} 
-                              className="w-full h-full object-cover" 
+                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" 
                             />
                           ) : (
                             <div className="w-full h-full bg-gradient-to-br from-amber-600 via-stone-900 to-black flex items-center justify-center">
-                              <Music className="w-12 h-12 text-amber-300" />
+                              <Music className="w-14 h-14 text-amber-300" />
                             </div>
                           )}
 
-                          {/* Badge Parental Advisory (Image 2) */}
+                          {/* Badge Parental Advisory */}
                           <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/85 border border-white/25 rounded text-[7px] font-black uppercase tracking-wider text-white">
                             Parental Advisory
                           </div>
-                        </div>
-
-                        {/* Droite : Bloc de paroles synchronisées (Image 2) */}
-                        <div className="flex-1 w-full flex flex-col justify-center rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 p-4 sm:p-5 text-left shadow-lg">
-                          <p className="text-sm sm:text-base font-extrabold text-white leading-relaxed tracking-tight drop-shadow-sm">
-                            "And really when I think of it
-                          </p>
-                          <p className="text-xs sm:text-sm font-semibold text-white/80 leading-relaxed mt-2">
-                            Growing up, I didn't ever see marriages
-                          </p>
-                          <p className="text-xs sm:text-sm font-medium text-white/50 leading-relaxed mt-2">
-                            No weddings, no horse, no carriages
-                          </p>
-                          <p className="text-xs sm:text-sm font-medium text-white/40 leading-relaxed mt-2 truncate">
-                            I wanna do things different and right...
-                          </p>
                         </div>
                       </div>
 
@@ -2415,84 +2787,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                         </p>
                       </div>
 
-                      {/* BARRE D'ACTIONS : 5 ICÔNES (Image 2 : Coeur, Playlist, Égaliseur avec badge ON, Minuteur, Paroles) */}
-                      <div className="relative z-10 w-full max-w-sm mx-auto flex items-center justify-between px-3 sm:px-6 py-1.5 sm:py-2">
-                        {/* 1. Coeur (Favoris / J'aime) */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAudioLiked(!isAudioLiked);
-                            showToast(isAudioLiked ? "Retiré des favoris" : "Ajouté aux favoris !");
-                          }}
-                          className="p-2 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-all active:scale-90 cursor-pointer"
-                          title="J'aime ce son"
-                        >
-                          <Heart className={`w-5 h-5 ${isAudioLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
-                        </button>
-
-                        {/* 2. Ajouter à une playlist */}
-                        <button
-                          type="button"
-                          onClick={() => showToast("Ajouté à la playlist StudyCloud !")}
-                          className="p-2 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-all active:scale-90 cursor-pointer"
-                          title="Ajouter à la playlist"
-                        >
-                          <ListPlus className="w-5 h-5" />
-                        </button>
-
-                        {/* 3. Égaliseur avec badge ON (Image 2) */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsEqualizerOn(!isEqualizerOn);
-                            showToast(isEqualizerOn ? "Égaliseur désactivé" : "Égaliseur activé (Profil Studio)");
-                          }}
-                          className="relative p-2 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-all active:scale-90 cursor-pointer"
-                          title="Égaliseur audio"
-                        >
-                          {isEqualizerOn && (
-                            <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 px-1 py-0.2 rounded bg-amber-400 text-stone-950 text-[8px] font-black leading-none shadow-xs">
-                              ON
-                            </span>
-                          )}
-                          <SlidersHorizontal className={`w-5 h-5 ${isEqualizerOn ? 'text-amber-300' : ''}`} />
-                        </button>
-
-                        {/* 4. Minuteur de mise en veille (Sleep timer) */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            const nextTimer = sleepTimerMinutes === null ? 15 : sleepTimerMinutes === 15 ? 30 : sleepTimerMinutes === 30 ? 60 : null;
-                            setSleepTimerMinutes(nextTimer);
-                            showToast(nextTimer ? `Minuteur réglé sur ${nextTimer} min` : "Minuteur de veille désactivé");
-                          }}
-                          className="relative p-2 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-all active:scale-90 cursor-pointer"
-                          title="Minuteur de veille"
-                        >
-                          {sleepTimerMinutes !== null && (
-                            <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 px-1 py-0.2 rounded bg-blue-500 text-white text-[8px] font-black leading-none">
-                              {sleepTimerMinutes}m
-                            </span>
-                          )}
-                          <Timer className={`w-5 h-5 ${sleepTimerMinutes !== null ? 'text-blue-400' : ''}`} />
-                        </button>
-
-                        {/* 5. Paroles complètes */}
-                        <button
-                          type="button"
-                          onClick={() => setShowLyricsModal(!showLyricsModal)}
-                          className="p-2 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-all active:scale-90 cursor-pointer"
-                          title="Afficher les paroles"
-                        >
-                          <AlignLeft className="w-5 h-5" />
-                        </button>
-                      </div>
-
                       {/* SECTION TEMPORELLE : -10s, Pillule de temps 0:11 / 3:39, +10s et Barre de progression (Image 2) */}
                       <div className="relative z-10 w-full max-w-md mx-auto space-y-1.5 py-1">
                         {/* Ligne avec boutons -10, Badge temps au centre, et +10 */}
                         <div className="flex items-center justify-between px-3">
-                          {/* Bouton -10s */}
+                          {/* Bouton -10s fonctionnel */}
                           <button
                             type="button"
                             onClick={() => handleSeekDelta(-10)}
@@ -2503,12 +2802,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                             <span className="absolute text-[8px] font-black text-white">10</span>
                           </button>
 
-                          {/* Pillule blanche avec temps exact (Image 2 : 0:11 / 3:39) */}
+                          {/* Pillule blanche avec temps exact (ex: 0:11 / 3:39) */}
                           <div className="px-3.5 py-1 rounded-full bg-white text-stone-950 font-black text-xs shadow-md tracking-wider">
                             {formatTime(audioCurrentTime)} / {formatTime(audioDuration)}
                           </div>
 
-                          {/* Bouton +10s */}
+                          {/* Bouton +10s fonctionnel */}
                           <button
                             type="button"
                             onClick={() => handleSeekDelta(10)}
@@ -2525,7 +2824,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                           <input
                             type="range"
                             min="0"
-                            max={audioDuration}
+                            max={audioDuration || 1}
                             value={audioCurrentTime}
                             onChange={(e) => {
                               const val = Number(e.target.value);
@@ -2539,17 +2838,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
                       {/* CONTRÔLES PRINCIPAUX : Aléatoire, Précédent, Grand Bouton Rond Blanc Play/Pause, Suivant, Répéter (Image 2) */}
                       <div className="relative z-10 w-full max-w-sm mx-auto flex items-center justify-between px-2 pt-1 pb-2 sm:pb-3">
-                        {/* Lecture Aléatoire (Shuffle) */}
+                        {/* Lecture Aléatoire (Shuffle fonctionnel) */}
                         <button
                           type="button"
                           onClick={() => {
                             setIsAudioShuffle(!isAudioShuffle);
-                            showToast(isAudioShuffle ? "Lecture aléatoire désactivée" : "Lecture aléatoire activée");
+                            showToast(!isAudioShuffle ? "Lecture aléatoire activée" : "Lecture aléatoire désactivée");
                           }}
                           className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ${
-                            isAudioShuffle ? 'text-amber-400' : 'text-white/60 hover:text-white'
+                            isAudioShuffle ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
                           }`}
-                          title="Lecture aléatoire"
+                          title={isAudioShuffle ? "Désactiver mode aléatoire" : "Mode aléatoire"}
                         >
                           <Shuffle className="w-5 h-5" />
                         </button>
@@ -2588,24 +2887,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                           <SkipForward className="w-6 h-6 fill-white" />
                         </button>
 
-                        {/* Répéter */}
+                        {/* Répéter en boucle (Boucle continue fonctionnelle) */}
                         <button
                           type="button"
-                          onClick={() => {
-                            const nextRepeat = isAudioRepeat === 'off' ? 'all' : isAudioRepeat === 'all' ? 'one' : 'off';
-                            setIsAudioRepeat(nextRepeat);
-                            showToast(
-                              nextRepeat === 'all' 
-                                ? "Répétition de la liste activée" 
-                                : nextRepeat === 'one' 
-                                  ? "Répétition de ce son activée" 
-                                  : "Répétition désactivée"
-                            );
-                          }}
+                          onClick={toggleAudioRepeat}
                           className={`relative p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ${
-                            isAudioRepeat !== 'off' ? 'text-amber-400' : 'text-white/60 hover:text-white'
+                            isAudioRepeat !== 'off' ? 'text-amber-400 ring-1 ring-amber-400/40 bg-amber-400/10' : 'text-white/60 hover:text-white'
                           }`}
-                          title="Répéter"
+                          title={isAudioRepeat !== 'off' ? "Désactiver la boucle" : "Lire en boucle (reprend seul)"}
                         >
                           <Repeat className="w-5 h-5" />
                           {isAudioRepeat === 'one' && (
