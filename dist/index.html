@@ -1,0 +1,158 @@
+<!doctype html>
+<html lang="fr" translate="no" class="notranslate">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, minimum-scale=1.0, user-scalable=no, shrink-to-fit=no, viewport-fit=cover, interactive-widget=resizes-content" />
+    <title>StudyCloud - Stockage & Partage Sécurisé</title>
+    
+    <!-- PWA Web App Manifest & Balises Mobiles -->
+    <link rel="manifest" href="/manifest.json" />
+    <meta name="theme-color" content="#1e40af" />
+    <meta name="mobile-web-app-capable" content="yes" />
+    <meta name="application-name" content="StudyCloud" />
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <meta name="apple-mobile-web-app-title" content="StudyCloud" />
+    <link rel="apple-touch-icon" href="/icons/icon-180x180.png" />
+    <link rel="apple-touch-icon" sizes="152x152" href="/icons/icon-152x152.png" />
+    <link rel="apple-touch-icon" sizes="180x180" href="/icons/icon-180x180.png" />
+    <link rel="apple-touch-icon" sizes="192x192" href="/icons/icon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="192x192" href="/icons/icon-192x192.png" />
+    <link rel="icon" type="image/png" sizes="32x32" href="/icons/icon-72x72.png" />
+
+    <meta name="description" content="StudyCloud : Plateforme cloud de stockage sécurisé de données importantes, cours et documents professionnels pour les élèves, les étudiants, les entreprises et les professionnels. Conçu par DKD Technologies." />
+    <meta name="google" content="notranslate" />
+    <meta name="googlebot" content="notranslate" />
+    <meta http-equiv="content-language" content="fr" />
+    <meta property="og:site_name" content="StudyCloud" />
+    <meta property="og:title" content="StudyCloud - Stockage & Partage Sécurisé" />
+    <meta property="og:description" content="StudyCloud : Plateforme cloud de stockage sécurisé de données importantes, cours et documents professionnels pour les élèves, les étudiants, les entreprises et les professionnels. Conçu par DKD Technologies." />
+    <meta property="og:type" content="website" />
+    <meta property="og:image" content="https://studycloud.dkd-technologies.com/assets/studycloud-brand-logo.png" />
+    <meta property="og:image:width" content="600" />
+    <meta property="og:image:height" content="600" />
+    <meta name="twitter:card" content="summary" />
+    <meta name="twitter:title" content="StudyCloud - Stockage & Partage Sécurisé" />
+    <meta name="twitter:description" content="StudyCloud : Solution cloud de stockage sécurisé de données importantes pour élèves, étudiants, professionnels et entreprises. Téléchargez les fichiers en cliquant sur le lien." />
+    <meta name="twitter:image" content="https://studycloud.dkd-technologies.com/assets/studycloud-brand-logo.png" />
+    <style>
+      /* Hide Google Translate Banner and Tooltip aggressively */
+      .goog-te-banner-frame.skiptranslate, 
+      iframe.goog-te-banner-frame { display: none !important; } 
+      body { top: 0px !important; position: static !important; }
+      .VIpgJd-ZVi9od-ORHb-OEVmcd { display: none !important; }
+      #goog-gt-tt { display: none !important; }
+      .goog-tooltip { display: none !important; }
+      .goog-tooltip:hover { display: none !important; }
+      .goog-text-highlight { background-color: transparent !important; border: none !important; box-shadow: none !important; }
+    </style>
+    <script>
+      try {
+        if (localStorage.getItem('unifolder_dark_mode') === 'true') {
+          document.documentElement.classList.add('dark');
+        }
+      } catch (e) {}
+    </script>
+    <script type="text/javascript">
+      function googleTranslateElementInit() {
+        new google.translate.TranslateElement({pageLanguage: 'fr', autoDisplay: false}, 'google_translate_element');
+      }
+    </script>
+    <script type="text/javascript" src="https://translate.google.com/translate_a/element.js?cb=googleTranslateElementInit"></script>
+    <script type="module" crossorigin src="/assets/index-D6O1AU19.js"></script>
+    <link rel="stylesheet" crossorigin href="/assets/index-COTDWky3.css">
+  </head>
+  <body class="notranslate" translate="no">
+    <div id="google_translate_element" style="display:none;"></div>
+    <div id="root"></div>
+    <script>
+      // Enregistrement automatique et prioritaire du Service Worker PWA
+      if ('serviceWorker' in navigator) {
+        window.addEventListener('load', function() {
+          navigator.serviceWorker.register('/sw.js', { scope: '/' })
+            .then(function(reg) {
+              console.log('[StudyCloud PWA] Service Worker actif et prêt pour le hors-ligne.');
+            })
+            .catch(function(err) {
+              console.warn('[StudyCloud PWA] Erreur enregistrement Service Worker:', err);
+            });
+        });
+      }
+    </script>
+    <script>
+      // 1. Force block text selection and copying everywhere except inputs
+      ['selectstart', 'copy', 'contextmenu'].forEach(eventType => {
+        document.addEventListener(eventType, function(e) {
+          const tag = e.target.tagName;
+          const isContentEditable = e.target.isContentEditable || e.target.getAttribute('contenteditable') === 'true';
+          if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !isContentEditable) {
+            e.preventDefault();
+          }
+        });
+      });
+
+      // 2. Gestion intelligente du zoom : adapter le zoom au document/contenu sans déformer l'interface
+      window.addEventListener('keydown', function(e) {
+        if ((e.ctrlKey || e.metaKey) && (
+          e.key === '+' || e.key === '-' || e.key === '=' || e.key === '0' ||
+          e.code === 'NumpadAdd' || e.code === 'NumpadSubtract' || e.code === 'Equal' || e.code === 'Minus' || e.code === 'Digit0'
+        )) {
+          var delta = (e.key === '-' || e.code === 'NumpadSubtract' || e.code === 'Minus') ? -15 : (e.key === '0' || e.code === 'Digit0') ? 0 : 15;
+          window.dispatchEvent(new CustomEvent('studycloud:doc-zoom', { detail: { delta: delta, reset: delta === 0 } }));
+          e.preventDefault();
+        }
+      }, { passive: false });
+
+      // 3. Zoom molette de souris sur document sans déformer l'application
+      window.addEventListener('wheel', function(e) {
+        if (e.ctrlKey) {
+          var delta = e.deltaY < 0 ? 15 : -15;
+          window.dispatchEvent(new CustomEvent('studycloud:doc-zoom', { detail: { delta: delta, reset: false } }));
+          e.preventDefault();
+        }
+      }, { passive: false });
+
+      // 4. Bloquer le zoom par pincement tactile multi-touch (iOS, Android, Écrans tactiles)
+      window.addEventListener('touchstart', function(e) {
+        if (e.touches && e.touches.length > 1) {
+          e.preventDefault();
+        }
+      }, { passive: false });
+
+      // 5. Bloquer les gestes de zoom spécifiques Safari / WebKit
+      ['gesturestart', 'gesturechange', 'gestureend'].forEach(function(event) {
+        window.addEventListener(event, function(e) {
+          e.preventDefault();
+        }, { passive: false });
+      });
+
+      // 6. Bloquer le double-tap to zoom sur mobile
+      var lastTouchEnd = 0;
+      document.addEventListener('touchend', function(e) {
+        var now = Date.now();
+        if (now - lastTouchEnd <= 300) {
+          var tag = e.target.tagName;
+          var isContentEditable = e.target.isContentEditable || (e.target.getAttribute && e.target.getAttribute('contenteditable') === 'true');
+          if (tag !== 'INPUT' && tag !== 'TEXTAREA' && !isContentEditable) {
+            e.preventDefault();
+          }
+        }
+        lastTouchEnd = now;
+      }, { passive: false });
+
+      if (window.visualViewport) {
+        const initialHeight = window.visualViewport.height;
+        window.visualViewport.addEventListener('resize', () => {
+          const bottomNav = document.querySelector('.bottom-nav');
+          if (!bottomNav) return;
+          if (window.visualViewport.height < initialHeight * 0.8) {
+            bottomNav.style.display = 'none';
+          } else {
+            bottomNav.style.display = 'flex';
+          }
+        });
+      }
+    </script>
+  </body>
+</html>
+
