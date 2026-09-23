@@ -50,6 +50,89 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
   const [currentLang, setCurrentLang] = useState('fr');
 
+  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('unifolder_dark_mode') === 'true' || document.documentElement.classList.contains('dark');
+    } catch (e) {
+      return false;
+    }
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('unifolder_dark_mode', isDarkMode ? 'true' : 'false');
+      if (isDarkMode) {
+        document.documentElement.classList.add('dark');
+        document.body.classList.add('dark');
+      } else {
+        document.documentElement.classList.remove('dark');
+        document.body.classList.remove('dark');
+      }
+    } catch (e) {}
+  }, [isDarkMode]);
+
+  useEffect(() => {
+    const match = document.cookie.match(/(?:^|; )googtrans=([^;]*)/);
+    if (match) {
+      const parts = match[1].split('/');
+      if (parts.length === 3 && parts[2] && parts[2] !== 'fr') {
+        setCurrentLang(parts[2]);
+        document.documentElement.removeAttribute('translate');
+        document.documentElement.classList.remove('notranslate');
+        document.body.removeAttribute('translate');
+        document.body.classList.remove('notranslate');
+        return;
+      }
+    }
+    // Langue par défaut = Français
+    setCurrentLang('fr');
+    document.documentElement.setAttribute('lang', 'fr');
+    document.documentElement.setAttribute('translate', 'no');
+    document.documentElement.classList.add('notranslate');
+    document.body.setAttribute('translate', 'no');
+    document.body.classList.add('notranslate');
+  }, []);
+
+  const handleLanguageChange = (langCode: string) => {
+    const hostname = window.location.hostname;
+    const hostParts = hostname.split('.');
+
+    if (langCode === 'fr') {
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${hostname};`;
+      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${hostname};`;
+      if (hostParts.length > 2) {
+        const rootDomain = hostParts.slice(-2).join('.');
+        document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${rootDomain};`;
+      }
+      document.documentElement.setAttribute('lang', 'fr');
+      document.documentElement.setAttribute('translate', 'no');
+      document.documentElement.classList.add('notranslate');
+      document.body.setAttribute('translate', 'no');
+      document.body.classList.add('notranslate');
+    } else {
+      document.cookie = `googtrans=/fr/${langCode}; path=/;`;
+      document.cookie = `googtrans=/fr/${langCode}; path=/; domain=${hostname};`;
+      document.cookie = `googtrans=/fr/${langCode}; path=/; domain=.${hostname};`;
+      document.documentElement.removeAttribute('translate');
+      document.documentElement.classList.remove('notranslate');
+      document.body.removeAttribute('translate');
+      document.body.classList.remove('notranslate');
+    }
+    window.location.reload();
+  };
+  const [activeNotification, setActiveNotification] = useState<string | null>(null);
+  const [pricingInitialTab, setPricingInitialTab] = useState<'storage' | 'ai' | 'renewal'>('storage');
+  const [previousViewMode, setPreviousViewMode] = useState<string>('home');
+  const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'storage-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | string>(() => {
+    const saved = localStorage.getItem('unifolder_view_mode');
+    return saved || 'home';
+  });
+
+  useEffect(() => {
+    localStorage.setItem('unifolder_view_mode', viewMode);
+  }, [viewMode]);
+
   // État et gestion du carrousel de l'écran d'accueil (Page 0 = Page vide, Page 1 = Écran d'accueil principal)
   const [activePageIndex, setActivePageIndex] = useState<number>(1);
   const [dragOffset, setDragOffset] = useState<number>(0);
@@ -204,88 +287,6 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     }, 60);
   };
 
-  const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
-    try {
-      return localStorage.getItem('unifolder_dark_mode') === 'true' || document.documentElement.classList.contains('dark');
-    } catch (e) {
-      return false;
-    }
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('unifolder_dark_mode', isDarkMode ? 'true' : 'false');
-      if (isDarkMode) {
-        document.documentElement.classList.add('dark');
-        document.body.classList.add('dark');
-      } else {
-        document.documentElement.classList.remove('dark');
-        document.body.classList.remove('dark');
-      }
-    } catch (e) {}
-  }, [isDarkMode]);
-
-  useEffect(() => {
-    const match = document.cookie.match(/(?:^|; )googtrans=([^;]*)/);
-    if (match) {
-      const parts = match[1].split('/');
-      if (parts.length === 3 && parts[2] && parts[2] !== 'fr') {
-        setCurrentLang(parts[2]);
-        document.documentElement.removeAttribute('translate');
-        document.documentElement.classList.remove('notranslate');
-        document.body.removeAttribute('translate');
-        document.body.classList.remove('notranslate');
-        return;
-      }
-    }
-    // Langue par défaut = Français
-    setCurrentLang('fr');
-    document.documentElement.setAttribute('lang', 'fr');
-    document.documentElement.setAttribute('translate', 'no');
-    document.documentElement.classList.add('notranslate');
-    document.body.setAttribute('translate', 'no');
-    document.body.classList.add('notranslate');
-  }, []);
-
-  const handleLanguageChange = (langCode: string) => {
-    const hostname = window.location.hostname;
-    const hostParts = hostname.split('.');
-
-    if (langCode === 'fr') {
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/;`;
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=${hostname};`;
-      document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${hostname};`;
-      if (hostParts.length > 2) {
-        const rootDomain = hostParts.slice(-2).join('.');
-        document.cookie = `googtrans=; expires=Thu, 01 Jan 1970 00:00:00 UTC; path=/; domain=.${rootDomain};`;
-      }
-      document.documentElement.setAttribute('lang', 'fr');
-      document.documentElement.setAttribute('translate', 'no');
-      document.documentElement.classList.add('notranslate');
-      document.body.setAttribute('translate', 'no');
-      document.body.classList.add('notranslate');
-    } else {
-      document.cookie = `googtrans=/fr/${langCode}; path=/;`;
-      document.cookie = `googtrans=/fr/${langCode}; path=/; domain=${hostname};`;
-      document.cookie = `googtrans=/fr/${langCode}; path=/; domain=.${hostname};`;
-      document.documentElement.removeAttribute('translate');
-      document.documentElement.classList.remove('notranslate');
-      document.body.removeAttribute('translate');
-      document.body.classList.remove('notranslate');
-    }
-    window.location.reload();
-  };
-  const [activeNotification, setActiveNotification] = useState<string | null>(null);
-  const [pricingInitialTab, setPricingInitialTab] = useState<'storage' | 'ai' | 'renewal'>('storage');
-  const [previousViewMode, setPreviousViewMode] = useState<string>('home');
-  const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'storage-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | string>(() => {
-    const saved = localStorage.getItem('unifolder_view_mode');
-    return saved || 'home';
-  });
-
-  useEffect(() => {
-    localStorage.setItem('unifolder_view_mode', viewMode);
-  }, [viewMode]);
   const [isMatiereMenuOpen, setIsMatiereMenuOpen] = useState(false);
   const [showEmptyError, setShowEmptyError] = useState(false);
   const [editingMatiere, setEditingMatiere] = useState<{ index: number; name: string; coefficient: string } | null>(null);
