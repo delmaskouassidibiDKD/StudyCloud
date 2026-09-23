@@ -27,16 +27,19 @@ import {
   ShieldCheck,
   FolderCheck,
   Plus,
-  Play
+  Play,
+  RefreshCw,
+  FolderOpen,
+  Sparkles
 } from 'lucide-react';
 import { 
   StoredDeviceFile, 
-  getStoredDeviceFiles, 
-  saveDeviceFiles, 
-  deleteStoredDeviceFile, 
-  promptDeviceFilePicker 
+  autoLoadLiveDeviceFiles,
+  requestDirectDeviceFolderAccess,
+  refreshLiveDeviceFiles,
+  clearSavedDirectoryHandle
 } from '../services/deviceStorageService';
-import { formatFileSize, getFileBlobUrl } from '../services/localFileStorage';
+import { formatFileSize } from '../services/localFileStorage';
 
 interface Page1FilesMenuViewProps {
   onBack: () => void;
@@ -52,6 +55,7 @@ interface FileItem {
   date: string;
   previewUrl?: string;
   isImage?: boolean;
+  liveFile?: File;
 }
 
 interface SubMenuView {
@@ -73,9 +77,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Vrais fichiers du stockage local de l'appareil (IndexedDB + PWA)
+  // Fichiers réels de l'appareil lus en direct (pas de données mockées, pas de stockage en dur dans le code)
   const [deviceFiles, setDeviceFiles] = useState<StoredDeviceFile[]>([]);
-  const [isLoadingDeviceFiles, setIsLoadingDeviceFiles] = useState(true);
+  const [deviceFolderName, setDeviceFolderName] = useState<string>('Stockage Appareil');
+  const [isScanningDevice, setIsScanningDevice] = useState<boolean>(false);
+  const [hasAuthorizedDevice, setHasAuthorizedDevice] = useState<boolean>(false);
 
   // Sous-page ouverte (chaque bouton catégorie et collection possède son propre menu indépendant)
   const [currentSubView, setCurrentSubView] = useState<SubMenuView | null>(null);
@@ -85,21 +91,59 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     setTimeout(() => setToastMessage(null), 2500);
   };
 
-  // Chargement des vrais fichiers locaux de l'appareil au montage
+  // Chargement automatique au démarrage des fichiers déjà autorisés
   useEffect(() => {
-    getStoredDeviceFiles()
-      .then((files) => {
-        setDeviceFiles(files);
-      })
-      .catch((err) => {
-        console.warn('Erreur chargement fichiers locaux:', err);
-      })
-      .finally(() => {
-        setIsLoadingDeviceFiles(false);
-      });
+    autoLoadLiveDeviceFiles().then((res) => {
+      if (res.files && res.files.length > 0) {
+        setDeviceFiles(res.files);
+        setDeviceFolderName(res.folderName);
+        setHasAuthorizedDevice(true);
+      }
+    }).catch((err) => {
+      console.warn('Erreur chargement automatique direct:', err);
+    });
   }, []);
 
-  // 1. FICHIERS RÉCENTS : STUDYCLOUD DRIVE (Strictement 6 éléments maximum, 1 seule ligne)
+  // Déclencheur : Autoriser la lecture directe du stockage de l'appareil
+  const handleAuthorizeDirectAccess = async () => {
+    try {
+      setIsScanningDevice(true);
+      const res = await requestDirectDeviceFolderAccess();
+      setDeviceFiles(res.files);
+      setDeviceFolderName(res.folderName);
+      setHasAuthorizedDevice(true);
+      showToast(`Lecture en direct activée : ${res.files.length} fichiers trouvés dans ${res.folderName}`);
+    } catch (err: any) {
+      if (err.message !== 'Sélection annulée') {
+        console.warn('Erreur autorisation stockage:', err);
+        showToast("Impossible d'accéder au dossier sélectionné.");
+      }
+    } finally {
+      setIsScanningDevice(false);
+    }
+  };
+
+  // Déclencheur : Réactualiser la lecture directe du stockage
+  const handleRefreshLiveAccess = async () => {
+    try {
+      setIsScanningDevice(true);
+      const res = await refreshLiveDeviceFiles();
+      if (res) {
+        setDeviceFiles(res.files);
+        setDeviceFolderName(res.folderName);
+        showToast(`Lecture en direct synchronisée (${res.files.length} fichiers)`);
+      } else {
+        // Si besoin de redemander l'accès
+        await handleAuthorizeDirectAccess();
+      }
+    } catch (err) {
+      console.warn('Erreur rafraîchissement direct:', err);
+    } finally {
+      setIsScanningDevice(false);
+    }
+  };
+
+  // 1. FICHIERS DU CLOUD : STUDYCLOUD DRIVE (Strictement 6 éléments maximum, 1 seule ligne)
   const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>([
     {
       id: 'rec-cld-1',
@@ -157,47 +201,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     }
   ]);
 
-  // Import réel de fichiers depuis l'appareil
-  const handleImportDeviceFiles = async (forcedCategory?: 'images' | 'videos' | 'audio' | 'documents' | 'downloads' | 'apps') => {
-    try {
-      const selected = await promptDeviceFilePicker({
-        category: forcedCategory,
-        multiple: true
-      });
-
-      if (selected && selected.length > 0) {
-        const updated = await saveDeviceFiles(selected, forcedCategory);
-        setDeviceFiles(updated);
-        showToast(`${selected.length} fichier(s) importé(s) de votre appareil !`);
-      }
-    } catch (err) {
-      console.error('Erreur import appareil:', err);
-      showToast("Erreur lors de l'accès aux fichiers.");
-    }
-  };
-
-  // Suppression d'un vrai fichier de l'appareil
-  const handleDeleteDeviceFile = async (id: string, e?: React.MouseEvent) => {
-    if (e) e.stopPropagation();
-    try {
-      const updated = await deleteStoredDeviceFile(id);
-      setDeviceFiles(updated);
-      if (activeFilePreview?.id === id) {
-        setActiveFilePreview(null);
-      }
-      setMenuOpenId(null);
-      showToast("Fichier supprimé de l'appareil");
-    } catch (err) {
-      console.error('Erreur suppression fichier appareil:', err);
-    }
-  };
-
-  // Téléchargement d'un fichier
+  // Téléchargement / Extraction directe d'un fichier
   const handleDownloadFile = async (file: FileItem) => {
     try {
       let url = file.previewUrl;
-      if (!url && file.id.startsWith('dev-file-')) {
-        url = (await getFileBlobUrl(file.id)) || undefined;
+      if (!url && file.liveFile) {
+        url = URL.createObjectURL(file.liveFile);
       }
       if (url) {
         const a = document.createElement('a');
@@ -208,7 +217,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         document.body.removeChild(a);
         showToast(`Téléchargement de ${file.name}`);
       } else {
-        showToast(`Téléchargement de ${file.name}...`);
+        showToast(`Ouverture de ${file.name}...`);
       }
     } catch (e) {
       showToast('Erreur lors du téléchargement');
@@ -221,7 +230,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       try {
         await navigator.share({
           title: file.name,
-          text: `Fichier partagé via StudyCloud: ${file.name}`
+          text: `Fichier de l'appareil: ${file.name}`
         });
         showToast('Partage réussi !');
         return;
@@ -235,27 +244,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     }
   };
 
-  // Gestion de la sélection d'un fichier (récent FIFO)
+  // Sélection d'un fichier pour aperçu
   const handleSelectFile = async (file: FileItem) => {
     let previewToUse = file.previewUrl;
-    if (!previewToUse && file.id.startsWith('dev-file-')) {
-      const blobUrl = await getFileBlobUrl(file.id);
-      if (blobUrl) {
-        previewToUse = blobUrl;
-      }
+    if (!previewToUse && file.liveFile) {
+      try {
+        previewToUse = URL.createObjectURL(file.liveFile);
+      } catch (e) {}
     }
     setActiveFilePreview({ ...file, previewUrl: previewToUse });
 
-    if (activeDriveSource === 'device') {
-      setDeviceFiles(prev => {
-        const withoutCurrent = prev.filter(f => f.id !== file.id);
-        const updated = [{ ...file, previewUrl: previewToUse } as StoredDeviceFile, ...withoutCurrent];
-        try {
-          localStorage.setItem('studycloud_device_files', JSON.stringify(updated));
-        } catch (e) {}
-        return updated;
-      });
-    } else {
+    // En mode Cloud, mettre en tête de liste
+    if (activeDriveSource === 'cloud') {
       setCloudRecentFiles(prev => {
         const withoutCurrent = prev.filter(f => f.id !== file.id);
         return [file, ...withoutCurrent].slice(0, 6);
@@ -263,7 +263,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     }
   };
 
-  // Calcul dynamique des statistiques par catégorie pour "Cet Appareil"
+  // Calcul dynamique des statistiques de l'appareil en direct
   const deviceCategoryStats = useMemo(() => {
     const stats: Record<string, { count: number; totalBytes: number }> = {
       downloads: { count: 0, totalBytes: 0 },
@@ -284,7 +284,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     return stats;
   }, [deviceFiles]);
 
-  // Catégories pour "Cet Appareil" basées sur les vrais fichiers réels
+  // Catégories dynamiques reflétant les vrais fichiers de l'appareil
   const deviceCategories = useMemo(() => {
     const formatStat = (catKey: string) => {
       const st = deviceCategoryStats[catKey];
@@ -386,7 +386,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
   const currentCategories = activeDriveSource === 'cloud' ? cloudCategories : deviceCategories;
 
-  // Collections (Les mêmes boutons ont des codes distincts selon Drive vs Appareil)
+  // Collections
   const collections = [
     {
       id: 'favorites',
@@ -414,7 +414,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     }
   ];
 
-  // Liste active selon la source choisie (Drive Cloud ou Cet Appareil), strictement plafonnée à 6
+  // Liste active selon la source choisie (Drive Cloud ou Cet Appareil), strictement plafonnée à 6 (FIFO sur les dates réelles de modification)
   const activeRecentList = useMemo(() => {
     const list = activeDriveSource === 'cloud' ? cloudRecentFiles : deviceFiles;
     return list.slice(0, 6);
@@ -475,7 +475,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         : 'absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-[calc(100vh-66px)]'
     }`}>
       
-      {/* Toast Notification (pour actions fichiers uniquement, jamais au changement d'onglet) */}
+      {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-20 right-6 z-50 bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-xl border border-blue-400/30 animate-in fade-in slide-in-from-top-2">
           {toastMessage}
@@ -510,22 +510,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     {currentSubView.name}
                   </h1>
                   <p className="text-[10px] sm:text-[11px] font-semibold text-stone-500 dark:text-slate-400 leading-tight">
-                    {currentSubView.source === 'cloud' ? 'StudyCloud Drive • En ligne' : 'Cet Appareil • Stockage local'}
+                    {currentSubView.source === 'cloud' ? 'StudyCloud Drive • En ligne' : `Cet Appareil • ${deviceFolderName}`}
                   </p>
                 </div>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              {currentSubView.source === 'device' && currentSubViewCategoryKey && (
+              {currentSubView.source === 'device' && (
                 <button
                   type="button"
-                  onClick={() => handleImportDeviceFiles(currentSubViewCategoryKey)}
-                  className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-full bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs transition-all cursor-pointer shadow-sm active:scale-95 border border-emerald-400/30"
-                  title={`Ajouter des ${currentSubView.name} depuis cet appareil`}
+                  onClick={handleRefreshLiveAccess}
+                  disabled={isScanningDevice}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white text-xs font-bold transition-all cursor-pointer active:scale-95 border border-white/10"
+                  title="Actualiser les fichiers en direct"
                 >
-                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                  <span>+ Ajouter</span>
+                  <RefreshCw className={`w-3.5 h-3.5 text-blue-400 stroke-[2.2] ${isScanningDevice ? 'animate-spin' : ''}`} />
+                  <span>Actualiser</span>
                 </button>
               )}
               <span className="text-[11px] font-bold text-slate-100 bg-[#04060A] border border-white/10 px-3 py-1 rounded-full hidden sm:inline-block shadow-sm">
@@ -534,12 +535,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             </div>
           </div>
 
-          {/* Corps de la page du sous-menu : Affichage des vrais fichiers ou écran vide personnalisé */}
+          {/* Corps de la page du sous-menu : Affichage direct des vrais fichiers */}
           {currentSubViewFiles.length > 0 ? (
             <div className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-4 space-y-4">
               <div className="flex items-center justify-between">
                 <p className="text-xs font-bold text-stone-600 dark:text-slate-400">
-                  {currentSubViewFiles.length} fichier{currentSubViewFiles.length > 1 ? 's' : ''} disponible{currentSubViewFiles.length > 1 ? 's' : ''}
+                  {currentSubViewFiles.length} fichier{currentSubViewFiles.length > 1 ? 's' : ''} en direct sur votre appareil
                 </p>
               </div>
 
@@ -569,18 +570,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                           {file.category === 'apps' && <LayoutGrid className="w-9 h-9 text-pink-400 stroke-[1.8]" />}
                         </div>
                       )}
-
-                      {/* Suppression rapide sur l'appareil */}
-                      {currentSubView.source === 'device' && (
-                        <button
-                          type="button"
-                          onClick={(e) => handleDeleteDeviceFile(file.id, e)}
-                          className="absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/70 hover:bg-rose-900/90 flex items-center justify-center text-white transition-colors cursor-pointer shadow-sm z-10"
-                          title="Supprimer de l'appareil"
-                        >
-                          <Trash2 className="w-3.5 h-3.5 text-rose-400" />
-                        </button>
-                      )}
                     </div>
 
                     <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-[#151C2C]">
@@ -605,31 +594,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
                 <div className="space-y-1.5">
                   <h2 className="text-base sm:text-lg font-black text-white tracking-tight">
-                    Votre espace {currentSubView.name} est vide
+                    Aucun élément dans {currentSubView.name}
                   </h2>
                   <p className="text-xs sm:text-sm font-medium text-slate-100 max-w-xs leading-relaxed">
                     {currentSubView.source === 'cloud'
                       ? `Aucun fichier en ligne dans ${currentSubView.name} pour le moment.`
-                      : `Aucun fichier local détecté dans ${currentSubView.name}.`}
+                      : `Aucun fichier ${currentSubView.name.toLowerCase()} détecté en lecture directe sur cet appareil.`}
                   </p>
                 </div>
 
-                <div className="pt-2 w-full flex items-center justify-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (currentSubView.source === 'device') {
-                        handleImportDeviceFiles(currentSubViewCategoryKey || undefined);
-                      } else {
-                        showToast(`Ajout bientôt disponible pour ${currentSubView.name}`);
-                      }
-                    }}
-                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs transition-all cursor-pointer shadow-md active:scale-95 flex items-center gap-2"
-                  >
-                    <Plus className="w-4 h-4 stroke-[2.5]" />
-                    <span>+ Ajouter {currentSubView.name}</span>
-                  </button>
-                </div>
+                {currentSubView.source === 'device' && (
+                  <div className="pt-2 w-full flex items-center justify-center gap-3">
+                    <button
+                      type="button"
+                      onClick={handleAuthorizeDirectAccess}
+                      disabled={isScanningDevice}
+                      className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs transition-all cursor-pointer shadow-md active:scale-95 flex items-center gap-2"
+                    >
+                      <FolderOpen className="w-4 h-4 stroke-[2.2]" />
+                      <span>Lire un autre dossier de l'appareil</span>
+                    </button>
+                  </div>
+                )}
               </div>
             </div>
           )}
@@ -759,34 +745,59 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     Cet Appareil
                   </span>
                   <span className="text-[10px] sm:text-[11px] font-semibold text-slate-100 block leading-tight truncate mt-0.5">
-                    Stockage local
+                    Lecture directe
                   </span>
                 </div>
               </button>
 
             </div>
 
-            {/* SECTION 1 : RÉCENTS (DESIGN CONSERVÉ TEL QUEL, STRICTEMENT 6 SUR 1 LIGNE) */}
+            {/* SECTION 1 : RÉCENTS (STRICTEMENT 6 ÉLÉMENTS SUR 1 LIGNE, BASÉS SUR LES DATES RÉELLES DE L'APPAREIL) */}
             <section className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
-                  Récents
-                </h2>
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <div className="flex items-center gap-2">
+                  <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
+                    Récents
+                  </h2>
+
+                  {activeDriveSource === 'device' && hasAuthorizedDevice && (
+                    <span className="inline-flex items-center gap-1.5 text-[10px] sm:text-[11px] font-bold text-emerald-400 bg-emerald-950/40 border border-emerald-500/30 px-2.5 py-0.5 rounded-full">
+                      <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+                      <span>{deviceFolderName} ({deviceFiles.length} fichiers)</span>
+                    </span>
+                  )}
+                </div>
 
                 {activeDriveSource === 'device' && (
-                  <button
-                    type="button"
-                    onClick={() => handleImportDeviceFiles()}
-                    className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 text-[11px] font-black cursor-pointer active:scale-95 shadow-xs"
-                    title="Choisir et importer des fichiers depuis cet appareil"
-                  >
-                    <Plus className="w-3.5 h-3.5 text-emerald-400 stroke-[2.5]" />
-                    <span>+ Importer</span>
-                  </button>
+                  <div className="flex items-center gap-2">
+                    {hasAuthorizedDevice && (
+                      <button
+                        type="button"
+                        onClick={handleRefreshLiveAccess}
+                        disabled={isScanningDevice}
+                        className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 text-[11px] font-bold cursor-pointer active:scale-95 shadow-xs"
+                        title="Réactualiser la lecture directe du stockage"
+                      >
+                        <RefreshCw className={`w-3.5 h-3.5 text-blue-400 stroke-[2.2] ${isScanningDevice ? 'animate-spin' : ''}`} />
+                        <span>{isScanningDevice ? 'Lecture...' : 'Actualiser'}</span>
+                      </button>
+                    )}
+
+                    <button
+                      type="button"
+                      onClick={handleAuthorizeDirectAccess}
+                      disabled={isScanningDevice}
+                      className="flex items-center gap-1.5 px-3 py-1 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 text-[11px] font-bold cursor-pointer active:scale-95 shadow-xs"
+                      title="Lire un dossier / stockage de l'appareil"
+                    >
+                      <FolderOpen className="w-3.5 h-3.5 text-emerald-400 stroke-[2.2]" />
+                      <span>{hasAuthorizedDevice ? 'Changer de dossier' : 'Explorer stockage'}</span>
+                    </button>
+                  </div>
                 )}
               </div>
 
-              {/* Si appareil et aucun fichier réel encore sélectionné : Carte interactive d'action */}
+              {/* Si appareil et aucun dossier encore autorisé : Bannière claire de lecture directe */}
               {activeDriveSource === 'device' && displayedFiles.length === 0 ? (
                 <div className="w-full rounded-2xl bg-[#04060A] border border-white/10 p-5 sm:p-6 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-xl">
                   <div className="flex items-center gap-3.5 text-center sm:text-left">
@@ -795,20 +806,30 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     </div>
                     <div>
                       <h3 className="text-xs sm:text-sm font-black text-white">
-                        Aucun fichier récent sur cet appareil
+                        Lecture directe du stockage de votre appareil
                       </h3>
                       <p className="text-[11px] font-semibold text-slate-300 mt-0.5">
-                        Sélectionnez vos photos, documents, sons ou vidéos pour les afficher ici et dans leurs catégories.
+                        Autorisez l'accès à un dossier de votre appareil pour lire directement vos photos, vidéos, documents et musiques en temps réel sans aucun téléversement.
                       </p>
                     </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => handleImportDeviceFiles()}
-                    className="px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-md shrink-0 border border-emerald-400/30"
+                    onClick={handleAuthorizeDirectAccess}
+                    disabled={isScanningDevice}
+                    className="px-5 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white font-black text-xs flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-md shrink-0 border border-emerald-400/30"
                   >
-                    <Plus className="w-4 h-4 stroke-[2.5]" />
-                    <span>Choisir des fichiers de l'appareil</span>
+                    {isScanningDevice ? (
+                      <>
+                        <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                        <span>Lecture en cours...</span>
+                      </>
+                    ) : (
+                      <>
+                        <HardDrive className="w-4 h-4 stroke-[2.5]" />
+                        <span>⚡ Autoriser la lecture directe</span>
+                      </>
+                    )}
                   </button>
                 </div>
               ) : (
@@ -884,16 +905,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                               }}
                               className="w-full px-3 py-1.5 text-left hover:bg-slate-700/50 flex items-center gap-2 cursor-pointer text-white"
                             >
-                              <Download className="w-3.5 h-3.5" /> Télécharger
+                              <Download className="w-3.5 h-3.5" /> Enregistrer
                             </button>
-                            {activeDriveSource === 'device' && (
-                              <button
-                                onClick={(e) => handleDeleteDeviceFile(file.id, e)}
-                                className="w-full px-3 py-1.5 text-left hover:bg-rose-900/40 text-rose-400 flex items-center gap-2 cursor-pointer border-t border-slate-700/50"
-                              >
-                                <Trash2 className="w-3.5 h-3.5" /> Supprimer
-                              </button>
-                            )}
                           </div>
                         )}
                       </div>
@@ -1032,7 +1045,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             ) : (
               <div className="w-full h-40 rounded-2xl bg-black border border-white/10 flex flex-col items-center justify-center p-4 text-center">
                 <FileText className="w-10 h-10 text-blue-400 mb-2 stroke-[1.5]" />
-                <p className="text-xs font-semibold text-slate-200">Aperçu direct du document disponible au téléchargement</p>
+                <p className="text-xs font-semibold text-slate-200">Aperçu direct du document sur l'appareil</p>
               </div>
             )}
 
@@ -1046,7 +1059,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 <span className="text-white font-bold">{activeFilePreview.size}</span>
               </div>
               <div>
-                <span className="text-slate-400 block text-[10px] uppercase font-bold">Date</span>
+                <span className="text-slate-400 block text-[10px] uppercase font-bold">Date de modification</span>
                 <span className="text-white font-bold">{activeFilePreview.date}</span>
               </div>
               <div>
@@ -1081,7 +1094,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 className="flex-1 py-2.5 rounded-xl bg-black hover:bg-slate-900 text-white font-black text-xs flex items-center justify-center gap-1.5 transition-colors cursor-pointer border border-white/20"
               >
                 <Download className="w-4 h-4" />
-                <span>Télécharger</span>
+                <span>Enregistrer</span>
               </button>
 
               <button
@@ -1095,17 +1108,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
               >
                 <Share2 className="w-4 h-4" />
               </button>
-
-              {activeFilePreview.id.startsWith('dev-file-') && (
-                <button
-                  type="button"
-                  onClick={() => handleDeleteDeviceFile(activeFilePreview.id)}
-                  className="p-2.5 rounded-xl bg-rose-950/70 hover:bg-rose-900 text-rose-400 font-black text-xs flex items-center justify-center transition-colors cursor-pointer border border-rose-500/30"
-                  title="Supprimer de l'appareil"
-                >
-                  <Trash2 className="w-4 h-4" />
-                </button>
-              )}
             </div>
           </div>
         </div>
