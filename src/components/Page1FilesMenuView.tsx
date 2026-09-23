@@ -21,7 +21,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
           <span>Retour</span>
         </button>
 
-        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-stone-900 bg-amber-400 dark:bg-amber-500 px-3.5 py-1.5 rounded-xl border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] select-none">
+        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-stone-900 bg-sky-400 dark:bg-sky-500 px-3.5 py-1.5 rounded-xl border-2 border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] select-none">
           Fichiers
         </h1>
 
@@ -33,30 +33,33 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       <div className="flex-1 flex flex-col items-center justify-center min-h-[60vh] py-12 px-4 text-center mt-10 select-none">
         <div className="w-full max-w-md mx-auto p-8 sm:p-10 rounded-3xl border-2 border-dashed border-stone-400/40 dark:border-stone-700/60 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xs flex flex-col items-center justify-center text-center space-y-4 shadow-sm transition-all">
           
-          {/* Icône du dossier jaune 3D identique à l'application sans bloc noir */}
-          <div className="w-28 h-24 sm:w-36 sm:h-30 filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.15)] dark:drop-shadow-[0_12px_24px_rgba(0,0,0,0.5)]">
+          {/* Icône du dossier 3D teinté bleu doux avec bord orange et contour fin, sans badge SUPPLY CHAIN */}
+          <div className="w-26 h-22 sm:w-32 sm:h-28 filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.15)] dark:drop-shadow-[0_12px_24px_rgba(0,0,0,0.5)]">
             <svg className="w-full h-full" viewBox="0 0 100 90" fill="none" xmlns="http://www.w3.org/2000/svg">
               <defs>
+                {/* Dégradé Orange pour le bord / onglet arrière */}
                 <linearGradient id="menuFolderBackGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#FDE047" />
-                  <stop offset="100%" stopColor="#EAB308" />
+                  <stop offset="0%" stopColor="#FB923C" />
+                  <stop offset="100%" stopColor="#EA580C" />
                 </linearGradient>
+                {/* Dégradé Bleu doux non-pur pour la face avant du dossier */}
                 <linearGradient id="menuFolderFrontGrad" x1="0" y1="0" x2="0" y2="1">
-                  <stop offset="0%" stopColor="#FEF9C3" />
-                  <stop offset="100%" stopColor="#FDE047" />
+                  <stop offset="0%" stopColor="#BAE6FD" />
+                  <stop offset="50%" stopColor="#60A5FA" />
+                  <stop offset="100%" stopColor="#38BDF8" />
                 </linearGradient>
               </defs>
 
-              {/* Dos du dossier avec l'onglet supérieur droit visible */}
+              {/* Dos du dossier avec l'onglet supérieur droit visible teinté orange */}
               <path 
                 d="M 44 14 L 86 14 C 91 14 94 17 94 22 L 94 40 L 44 40 Z" 
                 fill="url(#menuFolderBackGrad)" 
                 stroke="#18181B" 
-                strokeWidth="3.6" 
+                strokeWidth="1.3" 
                 strokeLinejoin="round" 
               />
 
-              {/* Corps principal avant du dossier avec onglet supérieur gauche */}
+              {/* Corps principal avant du dossier en bleu élégant avec contour fin */}
               <path 
                 d="
                   M 16 14
@@ -75,36 +78,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 " 
                 fill="url(#menuFolderFrontGrad)" 
                 stroke="#18181B" 
-                strokeWidth="3.6" 
+                strokeWidth="1.3" 
                 strokeLinejoin="round" 
                 strokeLinecap="round" 
               />
 
-              {/* Badge SUPPLY CHAIN en bas à gauche */}
-              <rect 
-                x="12" 
-                y="58" 
-                width="48" 
-                height="18" 
-                rx="5" 
-                fill="#FACC15" 
-                stroke="#18181B" 
-                strokeWidth="2.4" 
+              {/* Liseré fin orange sur le pli supérieur du rabat */}
+              <path
+                d="M 16 16 L 43 16 C 47 16 49 18 51 21 C 53 24 55 26 59 26 L 85 26"
+                stroke="#EA580C"
+                strokeWidth="1.5"
+                strokeLinecap="round"
               />
-
-              {/* Texte SUPPLY CHAIN à l'intérieur du badge */}
-              <text 
-                x="36" 
-                y="70" 
-                fill="#18181B" 
-                fontSize="6.8" 
-                fontWeight="900" 
-                fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
-                textAnchor="middle" 
-                letterSpacing="0.4"
-              >
-                SUPPLY CHAIN
-              </text>
             </svg>
           </div>
 

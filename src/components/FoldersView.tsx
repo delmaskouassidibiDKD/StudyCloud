@@ -1472,10 +1472,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 transition: isDragging ? 'none' : 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)'
               }}
             >
-              {/* PAGE 0 : Page 1 à gauche avec l'application Fichiers 3D (sans bloc noir) */}
-              <div className="w-1/2 shrink-0 px-2 sm:px-6 py-4">
-                <div className="flex flex-wrap items-start justify-start gap-8 max-w-5xl mx-auto pt-2 pl-2 sm:pl-6">
-                  {/* Application Fichiers 3D (l'icône est le dossier lui-même en 3D, sans bloc noir, plus gros comme sur l'image) */}
+              {/* PAGE 0 : Page 1 à gauche avec l'application Fichiers 3D (sans bloc noir, poussée à gauche) */}
+              <div className="w-1/2 shrink-0 px-2 sm:px-4 py-2">
+                <div className="flex items-start justify-start w-full pt-1 pl-1 sm:pl-3 md:pl-5">
+                  {/* Application Fichiers 3D - Poussée à gauche où se trouvait la marque rouge */}
                   <div 
                     onClick={(e) => {
                       if (hasMovedRef.current) {
@@ -1487,30 +1487,33 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                     }}
                     className="group flex flex-col items-center cursor-pointer select-none transition-all duration-300 hover:scale-105 active:scale-95"
                   >
-                    {/* Dossier 3D flottant - SANS AUCUN BLOC NOIR */}
-                    <div className="w-36 h-32 sm:w-44 sm:h-38 md:w-52 md:h-44 transition-all duration-300 filter drop-shadow-[0_12px_20px_rgba(0,0,0,0.18)] dark:drop-shadow-[0_14px_28px_rgba(0,0,0,0.55)] group-hover:drop-shadow-[0_18px_30px_rgba(234,179,8,0.35)]">
+                    {/* Dossier 3D affiné, taille un peu réduite, teinté bleu doux avec bord orange et contour fin */}
+                    <div className="w-24 h-21 sm:w-28 sm:h-24 md:w-32 md:h-28 transition-all duration-300 filter drop-shadow-[0_8px_16px_rgba(0,0,0,0.15)] dark:drop-shadow-[0_10px_22px_rgba(0,0,0,0.45)] group-hover:drop-shadow-[0_14px_24px_rgba(56,189,248,0.35)]">
                       <svg className="w-full h-full" viewBox="0 0 100 90" fill="none" xmlns="http://www.w3.org/2000/svg">
                         <defs>
+                          {/* Dégradé Orange pour le bord / onglet arrière */}
                           <linearGradient id="p1FolderBackGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#FDE047" />
-                            <stop offset="100%" stopColor="#EAB308" />
+                            <stop offset="0%" stopColor="#FB923C" />
+                            <stop offset="100%" stopColor="#EA580C" />
                           </linearGradient>
+                          {/* Dégradé Bleu doux non-pur pour la face avant du dossier */}
                           <linearGradient id="p1FolderFrontGrad" x1="0" y1="0" x2="0" y2="1">
-                            <stop offset="0%" stopColor="#FEF9C3" />
-                            <stop offset="100%" stopColor="#FDE047" />
+                            <stop offset="0%" stopColor="#BAE6FD" />
+                            <stop offset="50%" stopColor="#60A5FA" />
+                            <stop offset="100%" stopColor="#38BDF8" />
                           </linearGradient>
                         </defs>
 
-                        {/* Dos du dossier avec l'onglet supérieur droit visible */}
+                        {/* Dos du dossier avec bordure supérieure Orange bien visible */}
                         <path 
                           d="M 44 14 L 86 14 C 91 14 94 17 94 22 L 94 40 L 44 40 Z" 
                           fill="url(#p1FolderBackGrad)" 
                           stroke="#18181B" 
-                          strokeWidth="3.6" 
+                          strokeWidth="1.3" 
                           strokeLinejoin="round" 
                         />
 
-                        {/* Corps principal avant du dossier avec onglet supérieur gauche */}
+                        {/* Corps principal avant du dossier en bleu élégant avec contour fin */}
                         <path 
                           d="
                             M 16 14
@@ -1527,38 +1530,20 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                             C 6 17 9 14 14 14
                             Z
                           " 
-                          fill="url(#p1FolderFrontGrad)" 
+                            fill="url(#p1FolderFrontGrad)" 
                           stroke="#18181B" 
-                          strokeWidth="3.6" 
+                          strokeWidth="1.3" 
                           strokeLinejoin="round" 
                           strokeLinecap="round" 
                         />
 
-                        {/* Badge SUPPLY CHAIN en bas à gauche */}
-                        <rect 
-                          x="12" 
-                          y="58" 
-                          width="48" 
-                          height="18" 
-                          rx="5" 
-                          fill="#FACC15" 
-                          stroke="#18181B" 
-                          strokeWidth="2.4" 
+                        {/* Liseré fin orange sur le pli supérieur du rabat */}
+                        <path
+                          d="M 16 16 L 43 16 C 47 16 49 18 51 21 C 53 24 55 26 59 26 L 85 26"
+                          stroke="#EA580C"
+                          strokeWidth="1.5"
+                          strokeLinecap="round"
                         />
-
-                        {/* Texte SUPPLY CHAIN à l'intérieur du badge */}
-                        <text 
-                          x="36" 
-                          y="70" 
-                          fill="#18181B" 
-                          fontSize="6.8" 
-                          fontWeight="900" 
-                          fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
-                          textAnchor="middle" 
-                          letterSpacing="0.4"
-                        >
-                          SUPPLY CHAIN
-                        </text>
                       </svg>
                     </div>
 
