@@ -128,10 +128,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   const [isEqualizerOn, setIsEqualizerOn] = useState(true);
   const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
   const [showLyricsModal, setShowLyricsModal] = useState(false);
+  const [activeMenuFileId, setActiveMenuFileId] = useState<string | null>(null);
   const [audioMenuSongId, setAudioMenuSongId] = useState<string | null>(null);
   const [isPlayerMenuOpen, setIsPlayerMenuOpen] = useState(false);
-  const [isAudioSelectionMode, setIsAudioSelectionMode] = useState(false);
-  const [selectedAudioIds, setSelectedAudioIds] = useState<string[]>([]);
+  const [isSelectionMode, setIsSelectionMode] = useState(false);
+  const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
+  // Aliases de compatibilité pour la sélection audio existante
+  const isAudioSelectionMode = isSelectionMode;
+  const setIsAudioSelectionMode = setIsSelectionMode;
+  const selectedAudioIds = selectedItemIds;
+  const setSelectedAudioIds = setSelectedItemIds;
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Lecteur Vidéo
@@ -284,7 +290,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   ]);
 
   // IMAGE 2 : IMAGES (GRILLE 3 COLONNES AVEC TAILLES EXACTES EN HAUT À DROITE)
-  const sampleImages: FileItem[] = [
+  const [imagesList, setImagesList] = useState<FileItem[]>([
     {
       id: 'img-1',
       name: 'Capture_ecran_Dashboard.png',
@@ -406,10 +412,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       isImage: true,
       previewUrl: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=1200&q=85'
     }
-  ];
+  ]);
 
   // IMAGE 3 : VIDÉOS (GRILLE 3 COLONNES AVEC BOUTON PLAY BLANC AU CENTRE ET TAILLES EXACTES)
-  const sampleVideos: FileItem[] = [
+  const [videosList, setVideosList] = useState<FileItem[]>([
     {
       id: 'vid-1',
       name: 'Labyrinthe_Psychologie_Societe.mp4',
@@ -575,7 +581,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       previewUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&q=80',
       videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
     }
-  ];
+  ]);
 
   // IMAGE 3 & IMAGE 2 : AUDIO / MUSIQUE (LISTE IMAGE 3 AVEC VIGNETTES, ARTISTES, DATES ET LECTEUR IMAGE 2)
   const [audioList, setAudioList] = useState<FileItem[]>([
@@ -834,66 +840,208 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     }
   };
 
-  // Actions du menu document (3 traits) :
-  // Supprimer le fichier, Partager, Crée un lien, Le déplacer, Dupliquer, Ajouter au favoris, Épinglez, Modifier le nom
-  const handleDocAction = (action: string, doc: FileItem) => {
+  // Actions du menu universel (3 traits) pour tous les fichiers :
+  // Cocher, Tout cocher, Télécharger, Supprimer, Partager, Créer un lien, Déplacer, Dupliquer, Favoris, Épingler, Renommer
+  const handleGenericFileAction = (action: string, file: FileItem, currentCategoryList: FileItem[]) => {
+    setActiveMenuFileId(null);
     setDocMenuOpenId(null);
+    setAudioMenuSongId(null);
+
     switch (action) {
+      case 'check':
+        setIsSelectionMode(true);
+        setSelectedItemIds([file.id]);
+        showToast(`"${file.name}" coché`);
+        break;
+
+      case 'check_all': {
+        setIsSelectionMode(true);
+        const allIds = currentCategoryList.map(f => f.id);
+        setSelectedItemIds(allIds);
+        showToast(`Tous les ${currentCategoryList.length} éléments cochés`);
+        break;
+      }
+
+      case 'download':
+        handleDownloadFile(file);
+        break;
+
       case 'delete':
-        setDocumentsList(prev => prev.filter(d => d.id !== doc.id));
-        if (splitSelectedFile?.id === doc.id) {
+        // Supprime de la liste adéquate
+        setDocumentsList(prev => prev.filter(d => d.id !== file.id));
+        setImagesList(prev => prev.filter(img => img.id !== file.id));
+        setVideosList(prev => prev.filter(vid => vid.id !== file.id));
+        setAudioList(prev => prev.filter(aud => aud.id !== file.id));
+        setDownloadedItems(prev => prev.filter(dl => dl.id !== file.id));
+        if (splitSelectedFile?.id === file.id) {
           setSplitSelectedFile(null);
         }
-        showToast(`Document "${doc.name}" supprimé !`);
+        showToast(`"${file.name}" supprimé !`);
         break;
+
       case 'share':
-        handleShareFile(doc);
+        handleShareFile(file);
         break;
+
       case 'create_link': {
-        const link = `${window.location.origin}${window.location.pathname}#doc-${doc.id}`;
+        const link = `${window.location.origin}${window.location.pathname}#${file.category || 'file'}-${file.id}`;
         try {
           navigator.clipboard?.writeText(link);
-          showToast('Lien copié dans le presse-papier !');
+          showToast('Lien copié dans le presse-papiers !');
         } catch {
-          showToast(`Lien créé pour "${doc.name}"`);
+          showToast(`Lien créé pour "${file.name}"`);
         }
         break;
       }
+
       case 'move':
-        showToast(`Fichier "${doc.name}" déplacé dans Dossier Sécurisé !`);
+        showToast(`Fichier "${file.name}" déplacé dans Dossier Sécurisé !`);
         break;
+
       case 'duplicate': {
-        const ext = doc.extension || 'pdf';
-        const nameWithoutExt = doc.name.replace(/\.[^/.]+$/, '');
-        const newDoc: FileItem = {
-          ...doc,
-          id: `doc-dup-${Date.now()}`,
+        const ext = file.extension || (file.name.includes('.') ? file.name.split('.').pop() : 'fichier');
+        const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+        const newFile: FileItem = {
+          ...file,
+          id: `${file.category || 'item'}-dup-${Date.now()}`,
           name: `${nameWithoutExt} (Copie).${ext}`,
           date: "Aujourd'hui, " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
         };
-        setDocumentsList(prev => [newDoc, ...prev]);
-        showToast(`Document dupliqué : "${newDoc.name}" !`);
+        if (file.category === 'documents') {
+          setDocumentsList(prev => [newFile, ...prev]);
+        } else if (file.category === 'images') {
+          setImagesList(prev => [newFile, ...prev]);
+        } else if (file.category === 'videos') {
+          setVideosList(prev => [newFile, ...prev]);
+        } else if (file.category === 'audio') {
+          setAudioList(prev => [newFile, ...prev]);
+        }
+        showToast(`Fichier dupliqué : "${newFile.name}" !`);
         break;
       }
-      case 'favorite':
-        setDocumentsList(prev => prev.map(d => d.id === doc.id ? { ...d, isFavorite: !d.isFavorite } : d));
-        showToast(doc.isFavorite ? 'Retiré des favoris' : 'Ajouté aux favoris !');
+
+      case 'favorite': {
+        const toggleFav = (list: FileItem[]) =>
+          list.map(f => f.id === file.id ? { ...f, isFavorite: !f.isFavorite } : f);
+        if (file.category === 'documents') setDocumentsList(toggleFav);
+        else if (file.category === 'images') setImagesList(toggleFav);
+        else if (file.category === 'videos') setVideosList(toggleFav);
+        else if (file.category === 'audio') setAudioList(toggleFav);
+        showToast(file.isFavorite ? 'Retiré des favoris' : 'Ajouté aux favoris !');
         break;
-      case 'pin':
-        setDocumentsList(prev => [doc, ...prev.filter(d => d.id !== doc.id)]);
-        showToast(`Document "${doc.name}" épinglé !`);
+      }
+
+      case 'pin': {
+        const pinToTop = (list: FileItem[]) => [file, ...list.filter(f => f.id !== file.id)];
+        if (file.category === 'documents') setDocumentsList(pinToTop);
+        else if (file.category === 'images') setImagesList(pinToTop);
+        else if (file.category === 'videos') setVideosList(pinToTop);
+        else if (file.category === 'audio') setAudioList(pinToTop);
+        showToast(`"${file.name}" épinglé !`);
         break;
+      }
+
       case 'rename': {
-        const newName = window.prompt('Modifier le nom du fichier :', doc.name);
-        if (newName && newName.trim() && newName.trim() !== doc.name) {
-          setDocumentsList(prev => prev.map(d => d.id === doc.id ? { ...d, name: newName.trim() } : d));
+        const newName = window.prompt('Modifier le nom du fichier :', file.name);
+        if (newName && newName.trim() && newName.trim() !== file.name) {
+          const renameIn = (list: FileItem[]) =>
+            list.map(f => f.id === file.id ? { ...f, name: newName.trim() } : f);
+          if (file.category === 'documents') setDocumentsList(renameIn);
+          else if (file.category === 'images') setImagesList(renameIn);
+          else if (file.category === 'videos') setVideosList(renameIn);
+          else if (file.category === 'audio') setAudioList(renameIn);
           showToast(`Fichier renommé en "${newName.trim()}" !`);
         }
         break;
       }
+
       default:
         break;
     }
+  };
+
+  const handleDocAction = (action: string, doc: FileItem) => {
+    handleGenericFileAction(action, doc, filteredDocuments);
+  };
+
+  // Gestion de la sélection d'éléments
+  const toggleItemSelection = (id: string) => {
+    setSelectedItemIds(prev => 
+      prev.includes(id) ? prev.filter(item => item !== id) : [...prev, id]
+    );
+  };
+
+  const handleDeleteSelected = (list: FileItem[]) => {
+    const idsToDelete = selectedItemIds;
+    if (idsToDelete.length === 0) {
+      showToast("Aucun élément sélectionné");
+      return;
+    }
+    const count = idsToDelete.length;
+    setDocumentsList(prev => prev.filter(d => !idsToDelete.includes(d.id)));
+    setImagesList(prev => prev.filter(img => !idsToDelete.includes(img.id)));
+    setVideosList(prev => prev.filter(vid => !idsToDelete.includes(vid.id)));
+    setAudioList(prev => {
+      const remaining = prev.filter(aud => !idsToDelete.includes(aud.id));
+      if (splitSelectedFile && idsToDelete.includes(splitSelectedFile.id) && splitSelectedFile.category === 'audio') {
+        if (remaining.length > 0) {
+          setSplitSelectedFile(remaining[0]);
+          setAudioDuration(remaining[0].durationSec || 219);
+          setAudioCurrentTime(0);
+        } else {
+          setSplitSelectedFile(null);
+        }
+      }
+      return remaining;
+    });
+    setDownloadedItems(prev => prev.filter(dl => !idsToDelete.includes(dl.id)));
+    if (splitSelectedFile && idsToDelete.includes(splitSelectedFile.id) && splitSelectedFile.category !== 'audio') {
+      setSplitSelectedFile(null);
+    }
+    setSelectedItemIds([]);
+    setIsSelectionMode(false);
+    showToast(`${count} élément(s) supprimé(s)`);
+  };
+
+  const handleDownloadSelected = (list: FileItem[]) => {
+    if (selectedItemIds.length === 0) {
+      showToast("Aucun élément sélectionné");
+      return;
+    }
+    const count = selectedItemIds.length;
+    selectedItemIds.forEach(id => {
+      const item = list.find(f => f.id === id) ||
+        documentsList.find(f => f.id === id) ||
+        imagesList.find(f => f.id === id) ||
+        videosList.find(f => f.id === id) ||
+        audioList.find(f => f.id === id);
+      if (item) handleDownloadFile(item);
+    });
+    showToast(`${count} fichier(s) en cours de téléchargement`);
+    setIsSelectionMode(false);
+    setSelectedItemIds([]);
+  };
+
+  const handleCreateLinkSelected = (list: FileItem[]) => {
+    if (selectedItemIds.length === 0) {
+      showToast("Aucun élément sélectionné");
+      return;
+    }
+    const count = selectedItemIds.length;
+    const url = `${window.location.origin}/share?ids=${selectedItemIds.join(',')}`;
+    try {
+      navigator.clipboard?.writeText(url);
+      showToast(`${count} élément(s) : lien copié dans le presse-papiers !`);
+    } catch {
+      showToast(`${count} élément(s) : lien créé !`);
+    }
+    setIsSelectionMode(false);
+    setSelectedItemIds([]);
+  };
+
+  const handleCancelSelection = () => {
+    setIsSelectionMode(false);
+    setSelectedItemIds([]);
   };
 
   // SÉLECTION D'UN ÉLÉMENT : DÉCLENCHE LA DIVISION EN DEUX (SPLIT SCREEN)
@@ -1054,19 +1202,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
   // Liste des images pour le sous-menu Images (Image 2)
   const filteredImages = useMemo(() => {
-    const list = [...sampleImages, ...cloudRecentFiles.filter(f => f.category === 'images' && !sampleImages.some(s => s.name === f.name))];
+    const list = [...imagesList, ...cloudRecentFiles.filter(f => f.category === 'images' && !imagesList.some(s => s.name === f.name))];
     return list.filter(img => {
       return subSearchQuery.trim() === '' || img.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
-  }, [sampleImages, cloudRecentFiles, subSearchQuery]);
+  }, [imagesList, cloudRecentFiles, subSearchQuery]);
 
   // Liste des vidéos pour le sous-menu Vidéos (Image 3)
   const filteredVideos = useMemo(() => {
-    const list = [...sampleVideos, ...cloudRecentFiles.filter(f => f.category === 'videos' && !sampleVideos.some(s => s.name === f.name))];
+    const list = [...videosList, ...cloudRecentFiles.filter(f => f.category === 'videos' && !videosList.some(s => s.name === f.name))];
     return list.filter(vid => {
       return subSearchQuery.trim() === '' || vid.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
-  }, [sampleVideos, cloudRecentFiles, subSearchQuery]);
+  }, [videosList, cloudRecentFiles, subSearchQuery]);
 
   // Liste audio pour le sous-menu Audio (Image 4)
   const filteredAudio = useMemo(() => {
@@ -1415,120 +1563,283 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   };
 
   // =========================================================================
+  // BANDEAU DE SÉLECTION MULTIPLE UNIVERSEL (PROPOSITIONS D'ACTIONS)
+  // Apparaît dès que l'on clique sur "Cocher" ou "Tout cocher" dans le menu à 3 traits
+  // Propose : Supprimer / Tout supprimer, Télécharger / Tout télécharger, Créer un lien, Annuler
+  // =========================================================================
+  const renderSelectionBanner = (currentCategoryList: FileItem[]) => {
+    if (!isSelectionMode) return null;
+    const isAllSelected = currentCategoryList.length > 0 && selectedItemIds.length >= currentCategoryList.length;
+
+    return (
+      <div className="w-full p-2.5 sm:p-3 rounded-2xl bg-amber-500/10 dark:bg-slate-900 border border-amber-400/40 dark:border-amber-500/30 shadow-md flex items-center justify-between gap-2 flex-wrap animate-in fade-in slide-in-from-top-2 duration-150 my-2">
+        <div className="flex items-center gap-2">
+          <button
+            type="button"
+            onClick={() => {
+              if (isAllSelected) {
+                setSelectedItemIds([]);
+              } else {
+                setSelectedItemIds(currentCategoryList.map(f => f.id));
+              }
+            }}
+            className="p-1 text-amber-500 hover:text-amber-600 cursor-pointer flex items-center gap-1.5"
+            title={isAllSelected ? "Tout décocher" : "Tout cocher"}
+          >
+            {isAllSelected ? (
+              <CheckSquare className="w-5 h-5 fill-amber-500/20 text-amber-500" />
+            ) : (
+              <Square className="w-5 h-5 text-stone-400 dark:text-slate-400" />
+            )}
+            <span className="text-xs font-bold text-stone-900 dark:text-stone-100">
+              {isAllSelected
+                ? `Tous les ${currentCategoryList.length} éléments cochés`
+                : `${selectedItemIds.length} élément${selectedItemIds.length > 1 ? 's' : ''} coché${selectedItemIds.length > 1 ? 's' : ''}`}
+            </span>
+          </button>
+        </div>
+
+        <div className="flex items-center gap-1.5 flex-wrap">
+          {/* Supprimer ou Tout supprimer */}
+          <button
+            type="button"
+            onClick={() => handleDeleteSelected(currentCategoryList)}
+            className="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+            title={isAllSelected ? "Tout supprimer" : "Supprimer"}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+            <span>{isAllSelected ? 'Tout supprimer' : 'Supprimer'}</span>
+          </button>
+
+          {/* Tout télécharger ou Télécharger */}
+          <button
+            type="button"
+            onClick={() => handleDownloadSelected(currentCategoryList)}
+            className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+            title={isAllSelected ? "Tout télécharger" : "Télécharger"}
+          >
+            <Download className="w-3.5 h-3.5" />
+            <span>{isAllSelected ? 'Tout télécharger' : 'Télécharger'}</span>
+          </button>
+
+          {/* Créer un lien */}
+          <button
+            type="button"
+            onClick={() => handleCreateLinkSelected(currentCategoryList)}
+            className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+            title="Créer un lien"
+          >
+            <Link className="w-3.5 h-3.5" />
+            <span>Créer un lien</span>
+          </button>
+
+          {/* Annuler la sélection */}
+          <button
+            type="button"
+            onClick={handleCancelSelection}
+            className="p-1.5 rounded-xl hover:bg-stone-200 dark:hover:bg-slate-800 text-stone-600 dark:text-slate-300 transition-colors cursor-pointer"
+            title="Fermer le mode sélection"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // MENU UNIVERSEL À 3 TRAITS (MENU DÉROULANT COMPLET POUR TOUS LES FICHIERS)
+  // Options : Cocher, Tout cocher, Télécharger, Supprimer, Partager, Créer un lien,
+  // Le déplacer, Dupliquer, Favoris, Épingler, Modifier le nom
+  // =========================================================================
+  const renderFileOptionsMenu = (file: FileItem, currentCategoryList: FileItem[], align: 'left' | 'right' = 'left') => {
+    const isMenuOpen = activeMenuFileId === file.id || docMenuOpenId === file.id || audioMenuSongId === file.id;
+    if (!isMenuOpen) return null;
+
+    return (
+      <>
+        <div 
+          className="fixed inset-0 z-40" 
+          onClick={(e) => { 
+            e.stopPropagation(); 
+            setActiveMenuFileId(null); 
+            setDocMenuOpenId(null); 
+            setAudioMenuSongId(null); 
+          }} 
+        />
+        <div 
+          className={`absolute ${align === 'right' ? 'right-0' : 'left-0'} top-8 z-50 w-52 bg-[#0D1527] border border-slate-700/90 rounded-xl shadow-[0_12px_30px_rgba(0,0,0,0.85)] py-1 text-slate-200 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 divide-y divide-white/5`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Section 1 : Sélection (Cocher, Tout cocher, Télécharger) */}
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => handleGenericFileAction('check', file, currentCategoryList)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+            >
+              <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+              <span>Cocher</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleGenericFileAction('check_all', file, currentCategoryList)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+            >
+              <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+              <span>Tout cocher</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleGenericFileAction('download', file, currentCategoryList)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-blue-400 hover:bg-blue-500/15 transition-colors cursor-pointer text-left"
+            >
+              <Download className="w-3.5 h-3.5 shrink-0" />
+              <span>Télécharger</span>
+            </button>
+          </div>
+
+          {/* Section 2 : Actions principales de gestion */}
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => handleGenericFileAction('delete', file, currentCategoryList)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+            >
+              <Trash2 className="w-3.5 h-3.5 shrink-0" />
+              <span>Supprimer le fichier</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleGenericFileAction('share', file, currentCategoryList)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Share2 className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+              <span>Partager</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleGenericFileAction('create_link', file, currentCategoryList)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Link className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+              <span>Créer un lien</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleGenericFileAction('move', file, currentCategoryList)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <FolderInput className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+              <span>Le déplacer</span>
+            </button>
+          </div>
+
+          {/* Section 3 : Organisation & Édition */}
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => handleGenericFileAction('duplicate', file, currentCategoryList)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Copy className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+              <span>Dupliquer</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleGenericFileAction('favorite', file, currentCategoryList)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Star className={`w-3.5 h-3.5 shrink-0 ${file.isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-yellow-400'}`} />
+              <span>{file.isFavorite ? 'Retirer des favoris' : 'Ajouter au favoris'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleGenericFileAction('pin', file, currentCategoryList)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Pin className="w-3.5 h-3.5 shrink-0 text-purple-400" />
+              <span>Épinglez</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleGenericFileAction('rename', file, currentCategoryList)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Pencil className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
+              <span>Modifier le nom</span>
+            </button>
+          </div>
+        </div>
+      </>
+    );
+  };
+
+  // =========================================================================
   // FONCTIONS DE RENDU DES CARTES MULTIMÉDIA (RÉUTILISÉES DANS DOCUMENTS & TÉLÉCHARGEMENTS)
   // =========================================================================
 
-  // Rendu Carte Document (Image 1 : bouton 3 traits, suppression téléchargements, un seul titre)
+  // Rendu Carte Document (Image 1 : bouton 3 traits, case à cocher en mode sélection, un seul titre)
   const renderDocumentCard = (doc: FileItem) => {
     const theme = getDocumentTheme(doc.extension || 'PDF');
     const isSelected = splitSelectedFile?.id === doc.id;
-    const isMenuOpen = docMenuOpenId === doc.id;
+    const isMenuOpen = activeMenuFileId === doc.id || docMenuOpenId === doc.id;
+    const isChecked = selectedItemIds.includes(doc.id);
 
     return (
       <div
         key={doc.id}
         style={{ background: theme.bg }}
         className={`aspect-[3/4] ${theme.border} ${isSelected ? 'ring-4 ring-white shadow-2xl scale-[1.02]' : ''} ${
+          isChecked ? 'ring-4 ring-amber-400 shadow-2xl' : ''
+        } ${
           isMenuOpen ? 'z-40' : 'z-10'
         } rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none cursor-pointer active:scale-98`}
-        onClick={() => handleSelectFile(doc)}
+        onClick={() => {
+          if (isSelectionMode) {
+            toggleItemSelection(doc.id);
+          } else {
+            handleSelectFile(doc);
+          }
+        }}
       >
-        {/* Barre supérieure : Bouton 3 traits & Taille */}
+        {/* Barre supérieure : Bouton 3 traits, Checkbox (en mode sélection) & Taille */}
         <div className="flex items-center justify-between gap-1 z-20 relative">
-          <div className="relative">
-            <button
-              type="button"
-              onClick={(e) => {
-                e.stopPropagation();
-                setDocMenuOpenId(isMenuOpen ? null : doc.id);
-              }}
-              className="p-1 sm:p-1.2 rounded-lg bg-black/40 hover:bg-black/70 text-white border border-white/20 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-sm"
-              title="Options du fichier"
-            >
-              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-            </button>
+          <div className="flex items-center gap-1.5">
+            <div className="relative">
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  setActiveMenuFileId(isMenuOpen ? null : doc.id);
+                  setDocMenuOpenId(isMenuOpen ? null : doc.id);
+                }}
+                className="p-1 sm:p-1.2 rounded-lg bg-black/40 hover:bg-black/70 text-white border border-white/20 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-sm"
+                title="Options du fichier (3 traits)"
+              >
+                <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+              </button>
 
-            {/* Menu déroulant à côté avec les 8 options demandées */}
-            {isMenuOpen && (
-              <>
-                <div 
-                  className="fixed inset-0 z-40" 
-                  onClick={(e) => { e.stopPropagation(); setDocMenuOpenId(null); }} 
-                />
-                <div 
-                  className="absolute left-0 top-7 z-50 w-48 bg-[#0D1527] border border-slate-700/90 rounded-xl shadow-[0_12px_30px_rgba(0,0,0,0.85)] py-1 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-150 divide-y divide-white/5"
-                  onClick={(e) => e.stopPropagation()}
-                >
-                  <div className="py-1">
-                    <button
-                      type="button"
-                      onClick={() => handleDocAction('delete', doc)}
-                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
-                    >
-                      <Trash2 className="w-3.5 h-3.5 shrink-0" />
-                      <span>Supprimer le fichier</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDocAction('share', doc)}
-                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-                    >
-                      <Share2 className="w-3.5 h-3.5 shrink-0 text-blue-400" />
-                      <span>Partager</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDocAction('create_link', doc)}
-                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-                    >
-                      <Link className="w-3.5 h-3.5 shrink-0 text-sky-400" />
-                      <span>Crée un lien</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDocAction('move', doc)}
-                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-                    >
-                      <FolderInput className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-                      <span>Le déplacer</span>
-                    </button>
-                  </div>
-                  <div className="py-1">
-                    <button
-                      type="button"
-                      onClick={() => handleDocAction('duplicate', doc)}
-                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-                    >
-                      <Copy className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-                      <span>Dupliquer</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDocAction('favorite', doc)}
-                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-                    >
-                      <Star className={`w-3.5 h-3.5 shrink-0 ${doc.isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-yellow-400'}`} />
-                      <span>{doc.isFavorite ? 'Retirer des favoris' : 'Ajouter au favoris'}</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDocAction('pin', doc)}
-                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-                    >
-                      <Pin className="w-3.5 h-3.5 shrink-0 text-purple-400" />
-                      <span>Épinglez</span>
-                    </button>
-                    <button
-                      type="button"
-                      onClick={() => handleDocAction('rename', doc)}
-                      className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-200 hover:bg-white/10 transition-colors cursor-pointer text-left"
-                    >
-                      <Pencil className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
-                      <span>Modifier le nom</span>
-                    </button>
-                  </div>
-                </div>
-              </>
+              {renderFileOptionsMenu(doc, filteredDocuments, 'left')}
+            </div>
+
+            {/* Case à cocher visible en mode sélection */}
+            {isSelectionMode && (
+              <button
+                type="button"
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleItemSelection(doc.id);
+                }}
+                className="p-0.5 text-white hover:scale-110 transition-transform cursor-pointer"
+                title={isChecked ? "Décocher" : "Cocher"}
+              >
+                {isChecked ? (
+                  <CheckSquare className="w-4 h-4 fill-amber-400 text-stone-950" />
+                ) : (
+                  <Square className="w-4 h-4 text-white/90" />
+                )}
+              </button>
             )}
           </div>
 
@@ -1591,18 +1902,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     );
   };
 
-  // Rendu Carte Image (Image 3 : titre directement sur l'image avec dégradé comme les vidéos)
+  // Rendu Carte Image (Image 3 : titre directement sur l'image avec dégradé comme les vidéos, bouton 3 traits & case à cocher)
   const renderImageCard = (img: FileItem) => {
     const isSelected = splitSelectedFile?.id === img.id;
+    const isMenuOpen = activeMenuFileId === img.id;
+    const isChecked = selectedItemIds.includes(img.id);
+
     return (
       <div
         key={img.id}
-        onClick={() => handleSelectFile(img)}
+        onClick={() => {
+          if (isSelectionMode) {
+            toggleItemSelection(img.id);
+          } else {
+            handleSelectFile(img);
+          }
+        }}
         className={`group relative aspect-square sm:aspect-[4/5] rounded-2xl overflow-hidden bg-[#151C2C] border transition-all duration-200 cursor-pointer ${
-          isSelected 
-            ? 'border-blue-500 ring-4 ring-blue-500/50 shadow-2xl scale-[1.02]' 
-            : 'border-white/10 hover:border-blue-400/50 shadow-md'
-        }`}
+          isChecked
+            ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
+            : isSelected 
+              ? 'border-blue-500 ring-4 ring-blue-500/50 shadow-2xl scale-[1.02]' 
+              : 'border-white/10 hover:border-blue-400/50 shadow-md'
+        } ${isMenuOpen ? 'z-40' : 'z-10'}`}
       >
         <img
           src={img.previewUrl}
@@ -1610,13 +1932,53 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
           className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
           loading="lazy"
         />
-        <div className="absolute inset-x-0 top-0 h-10 bg-gradient-to-b from-black/75 to-transparent pointer-events-none" />
+        <div className="absolute inset-x-0 top-0 h-12 bg-gradient-to-b from-black/80 via-black/40 to-transparent pointer-events-none" />
+
+        {/* Haut gauche : Bouton 3 traits & Checkbox */}
+        <div className="absolute top-1.5 sm:top-2 left-1.5 sm:left-2 z-20 flex items-center gap-1.5">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFileId(isMenuOpen ? null : img.id);
+              }}
+              className="p-1 sm:p-1.2 rounded-lg bg-black/60 hover:bg-black/85 text-white border border-white/20 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-md backdrop-blur-sm"
+              title="Options de l'image (3 traits)"
+            >
+              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+
+            {renderFileOptionsMenu(img, filteredImages, 'left')}
+          </div>
+
+          {isSelectionMode && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleItemSelection(img.id);
+              }}
+              className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
+              title={isChecked ? "Décocher" : "Cocher"}
+            >
+              {isChecked ? (
+                <CheckSquare className="w-4 h-4 fill-amber-400 text-stone-950" />
+              ) : (
+                <Square className="w-4 h-4 text-white" />
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Haut droit : Taille */}
         <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
-          <span className="text-[10px] sm:text-xs md:text-sm font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+          <span className="text-[10px] sm:text-xs font-black text-white bg-black/40 px-1.5 py-0.5 rounded border border-white/10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
             {img.size}
           </span>
         </div>
-        {/* Titre sur l'image avec dégradé identique aux vidéos, pas en noir uni */}
+
+        {/* Titre sur l'image avec dégradé identique aux vidéos */}
         <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
           <p className="text-[9px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">{img.name}</p>
         </div>
@@ -1624,18 +1986,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     );
   };
 
-  // Rendu Carte Vidéo (Bouton lecture central, taille en haut à droite, titre en bas)
+  // Rendu Carte Vidéo (Bouton lecture central, taille en haut à droite, bouton 3 traits & case à cocher, titre en bas)
   const renderVideoCard = (vid: FileItem) => {
     const isSelected = splitSelectedFile?.id === vid.id;
+    const isMenuOpen = activeMenuFileId === vid.id;
+    const isChecked = selectedItemIds.includes(vid.id);
+
     return (
       <div
         key={vid.id}
-        onClick={() => handleSelectFile(vid)}
+        onClick={() => {
+          if (isSelectionMode) {
+            toggleItemSelection(vid.id);
+          } else {
+            handleSelectFile(vid);
+          }
+        }}
         className={`group relative aspect-[4/5] rounded-2xl overflow-hidden bg-[#0A0E18] border transition-all duration-200 cursor-pointer ${
-          isSelected 
-            ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02]' 
-            : 'border-white/10 hover:border-purple-400/50 shadow-md'
-        }`}
+          isChecked
+            ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
+            : isSelected 
+              ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02]' 
+              : 'border-white/10 hover:border-purple-400/50 shadow-md'
+        } ${isMenuOpen ? 'z-40' : 'z-10'}`}
       >
         <img
           src={vid.previewUrl}
@@ -1644,16 +2017,59 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
           loading="lazy"
         />
         <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors pointer-events-none" />
+
+        {/* Haut gauche : Bouton 3 traits & Checkbox */}
+        <div className="absolute top-1.5 sm:top-2 left-1.5 sm:left-2 z-20 flex items-center gap-1.5">
+          <div className="relative">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFileId(isMenuOpen ? null : vid.id);
+              }}
+              className="p-1 sm:p-1.2 rounded-lg bg-black/60 hover:bg-black/85 text-white border border-white/20 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-md backdrop-blur-sm"
+              title="Options de la vidéo (3 traits)"
+            >
+              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+
+            {renderFileOptionsMenu(vid, filteredVideos, 'left')}
+          </div>
+
+          {isSelectionMode && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleItemSelection(vid.id);
+              }}
+              className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
+              title={isChecked ? "Décocher" : "Cocher"}
+            >
+              {isChecked ? (
+                <CheckSquare className="w-4 h-4 fill-amber-400 text-stone-950" />
+              ) : (
+                <Square className="w-4 h-4 text-white" />
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Haut droit : Taille */}
         <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
-          <span className="text-[10px] sm:text-xs md:text-sm font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+          <span className="text-[10px] sm:text-xs font-black text-white bg-black/40 px-1.5 py-0.5 rounded border border-white/10 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
             {vid.size}
           </span>
         </div>
-        <div className="absolute inset-0 flex items-center justify-center z-10">
+
+        {/* Centre : Bouton Play */}
+        <div className="absolute inset-0 flex items-center justify-center z-10 pointer-events-none">
           <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-2xl group-hover:scale-115 transition-transform duration-200">
             <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-stone-950 translate-x-0.5" />
           </div>
         </div>
+
+        {/* Titre en bas */}
         <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
           <p className="text-[9px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">{vid.name}</p>
         </div>
@@ -1661,20 +2077,49 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     );
   };
 
-  // Rendu Élément Audio
+  // Rendu Élément Audio (utilisé dans téléchargements & listes globales)
   const renderAudioItem = (track: FileItem) => {
     const isSelected = splitSelectedFile?.id === track.id;
+    const isMenuOpen = activeMenuFileId === track.id || audioMenuSongId === track.id;
+    const isChecked = selectedItemIds.includes(track.id);
+
     return (
       <div
         key={track.id}
-        onClick={() => handleSelectFile(track)}
+        onClick={() => {
+          if (isSelectionMode) {
+            toggleItemSelection(track.id);
+          } else {
+            handleSelectFile(track);
+          }
+        }}
         className={`group flex items-center justify-between gap-3 p-2 sm:p-2.5 rounded-2xl transition-all cursor-pointer select-none ${
-          isSelected 
-            ? 'bg-[#182236] border border-amber-400/60 shadow-md ring-2 ring-amber-400/40' 
-            : 'hover:bg-[#121826] border border-transparent'
+          isChecked
+            ? 'bg-amber-500/15 border border-amber-400 ring-2 ring-amber-400/40'
+            : isSelected 
+              ? 'bg-[#182236] border border-amber-400/60 shadow-md ring-2 ring-amber-400/40' 
+              : 'hover:bg-[#121826] border border-transparent'
         }`}
       >
         <div className="flex items-center gap-3 min-w-0">
+          {/* Checkbox en mode sélection */}
+          {isSelectionMode && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleItemSelection(track.id);
+              }}
+              className="p-1 text-amber-500 hover:text-amber-400 cursor-pointer shrink-0"
+            >
+              {isChecked ? (
+                <CheckSquare className="w-5 h-5 fill-amber-500/20 text-amber-500" />
+              ) : (
+                <Square className="w-5 h-5 text-stone-400 dark:text-slate-500" />
+              )}
+            </button>
+          )}
+
           <div className="w-12 h-12 rounded-2xl bg-black border border-white/10 relative overflow-hidden flex items-center justify-center shrink-0 shadow-sm">
             {track.previewUrl && (
               <img src={track.previewUrl} alt={track.name} className="absolute inset-0 w-full h-full object-cover opacity-40" />
@@ -1687,6 +2132,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5">{track.size} • {track.date}</p>
           </div>
         </div>
+
         <div className="flex items-center gap-2 shrink-0">
           {isSelected && (
             <div 
@@ -1699,10 +2145,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
               <span className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`} style={{ height: isAudioPlaying ? undefined : '4px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
             </div>
           )}
+
+          {/* Bouton 3 traits */}
+          <div className="relative shrink-0">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFileId(isMenuOpen ? null : track.id);
+                setAudioMenuSongId(isMenuOpen ? null : track.id);
+              }}
+              className="w-8 h-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition-colors cursor-pointer"
+              title="Options de la musique (3 traits)"
+            >
+              <Menu className="w-4 h-4 stroke-[2.2]" />
+            </button>
+            {renderFileOptionsMenu(track, filteredAudio, 'right')}
+          </div>
+
           <button
             type="button"
             onClick={(e) => { e.stopPropagation(); handleDownloadFile(track); }}
             className="w-8 h-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition-colors cursor-pointer"
+            title="Télécharger"
           >
             <Download className="w-4 h-4" />
           </button>
@@ -1714,15 +2179,43 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   // Rendu Autre Fichier (Archive, App, etc.)
   const renderOtherFileCard = (item: FileItem) => {
     const isSelected = splitSelectedFile?.id === item.id;
+    const isMenuOpen = activeMenuFileId === item.id;
+    const isChecked = selectedItemIds.includes(item.id);
+
     return (
       <div
         key={item.id}
-        onClick={() => handleSelectFile(item)}
+        onClick={() => {
+          if (isSelectionMode) {
+            toggleItemSelection(item.id);
+          } else {
+            handleSelectFile(item);
+          }
+        }}
         className={`group bg-[#151C2C] hover:bg-[#1A2338] border rounded-2xl p-3 flex items-center justify-between gap-3 shadow-md transition-all cursor-pointer ${
-          isSelected ? 'border-sky-400 ring-2 ring-sky-400/40' : 'border-slate-800 hover:border-sky-400/50'
+          isChecked
+            ? 'border-amber-400 ring-2 ring-amber-400/40'
+            : isSelected ? 'border-sky-400 ring-2 ring-sky-400/40' : 'border-slate-800 hover:border-sky-400/50'
         }`}
       >
         <div className="flex items-center gap-3 min-w-0">
+          {isSelectionMode && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleItemSelection(item.id);
+              }}
+              className="p-1 text-amber-500 hover:text-amber-400 cursor-pointer shrink-0"
+            >
+              {isChecked ? (
+                <CheckSquare className="w-5 h-5 fill-amber-500/20 text-amber-500" />
+              ) : (
+                <Square className="w-5 h-5 text-slate-500" />
+              )}
+            </button>
+          )}
+
           <div className="w-10 h-10 rounded-xl bg-black border border-white/10 flex items-center justify-center shrink-0">
             <Archive className="w-5 h-5 text-sky-400" />
           </div>
@@ -1735,13 +2228,33 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             </div>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); handleDownloadFile(item); }}
-          className="w-8 h-8 rounded-xl bg-black hover:bg-sky-600 text-white flex items-center justify-center transition-colors border border-white/10 shrink-0"
-        >
-          <Download className="w-3.5 h-3.5" />
-        </button>
+
+        <div className="flex items-center gap-1.5 shrink-0">
+          {/* Bouton 3 traits */}
+          <div className="relative">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFileId(isMenuOpen ? null : item.id);
+              }}
+              className="w-8 h-8 rounded-xl bg-black hover:bg-slate-700 text-slate-300 hover:text-white flex items-center justify-center transition-colors border border-white/10"
+              title="Options (3 traits)"
+            >
+              <Menu className="w-3.5 h-3.5" />
+            </button>
+            {renderFileOptionsMenu(item, downloadOthers, 'right')}
+          </div>
+
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleDownloadFile(item); }}
+            className="w-8 h-8 rounded-xl bg-black hover:bg-sky-600 text-white flex items-center justify-center transition-colors border border-white/10"
+            title="Télécharger"
+          >
+            <Download className="w-3.5 h-3.5" />
+          </button>
+        </div>
       </div>
     );
   };
@@ -1888,6 +2401,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     </span>
                   </div>
 
+                  {/* Bandeau d'action de sélection multiple si activé */}
+                  {renderSelectionBanner(filteredDocuments)}
+
                   {/* Grille : s'adapte en 2 colonnes en mode divisé ou 5-6 en pleine largeur */}
                   <div className={`grid gap-2.5 sm:gap-3.5 ${
                     splitSelectedFile ? 'grid-cols-2 lg:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
@@ -1906,6 +2422,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     </span>
                   </div>
 
+                  {/* Bandeau d'action de sélection multiple si activé */}
+                  {renderSelectionBanner(filteredImages)}
+
                   <div className={`grid gap-2 sm:gap-3 ${
                     splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
@@ -1923,44 +2442,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     </span>
                   </div>
 
+                  {/* Bandeau d'action de sélection multiple si activé */}
+                  {renderSelectionBanner(filteredVideos)}
+
                   <div className={`grid gap-2 sm:gap-3 ${
                     splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
-                    {filteredVideos.map(vid => {
-                      const isSelected = splitSelectedFile?.id === vid.id;
-                      return (
-                        <div
-                          key={vid.id}
-                          onClick={() => handleSelectFile(vid)}
-                          className={`group relative aspect-[4/5] rounded-2xl overflow-hidden bg-[#0A0E18] border transition-all duration-200 cursor-pointer ${
-                            isSelected 
-                              ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02]' 
-                              : 'border-white/10 hover:border-purple-400/50 shadow-md'
-                          }`}
-                        >
-                          <img
-                            src={vid.previewUrl}
-                            alt={vid.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            loading="lazy"
-                          />
-                          <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors pointer-events-none" />
-                          <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
-                            <span className="text-[10px] sm:text-xs md:text-sm font-black text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
-                              {vid.size}
-                            </span>
-                          </div>
-                          <div className="absolute inset-0 flex items-center justify-center z-10">
-                            <div className="w-8 h-8 sm:w-11 sm:h-11 rounded-full bg-white/95 text-stone-950 flex items-center justify-center shadow-2xl group-hover:scale-115 transition-transform duration-200">
-                              <Play className="w-4 h-4 sm:w-5 sm:h-5 fill-stone-950 translate-x-0.5" />
-                            </div>
-                          </div>
-                          <div className="absolute inset-x-0 bottom-0 p-1.5 sm:p-2 bg-gradient-to-t from-black/90 via-black/40 to-transparent">
-                            <p className="text-[9px] sm:text-[11px] font-bold text-white truncate drop-shadow-sm">{vid.name}</p>
-                          </div>
-                        </div>
-                      );
-                    })}
+                    {filteredVideos.map(vid => renderVideoCard(vid))}
                   </div>
                 </div>
               )}
@@ -1982,96 +2470,40 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                   </div>
 
                   {/* Bandeau d'action de sélection multiple si activé */}
-                  {isAudioSelectionMode && (
-                    <div className="w-full p-2.5 sm:p-3 rounded-2xl bg-amber-500/10 dark:bg-slate-900 border border-amber-400/40 dark:border-amber-500/30 shadow-md flex items-center justify-between gap-2 flex-wrap animate-in fade-in slide-in-from-top-2 duration-150">
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-bold text-stone-900 dark:text-stone-100">
-                          {selectedAudioIds.length === filteredAudio.length
-                            ? 'Tous les sons sélectionnés'
-                            : `${selectedAudioIds.length} son(s) sélectionné(s)`}
-                        </span>
-                      </div>
-
-                      <div className="flex items-center gap-1.5 flex-wrap">
-                        {/* Supprimer / Tout supprimer */}
-                        <button
-                          type="button"
-                          onClick={handleDeleteSelectedAudio}
-                          className="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                          title={selectedAudioIds.length === filteredAudio.length ? "Tout supprimer" : "Supprimer"}
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                          <span>{selectedAudioIds.length === filteredAudio.length ? 'Tout supprimer' : 'Supprimer'}</span>
-                        </button>
-
-                        {/* Télécharger / Tout télécharger */}
-                        <button
-                          type="button"
-                          onClick={handleDownloadSelectedAudio}
-                          className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                          title={selectedAudioIds.length === filteredAudio.length ? "Tout télécharger" : "Télécharger"}
-                        >
-                          <Download className="w-3.5 h-3.5" />
-                          <span>{selectedAudioIds.length === filteredAudio.length ? 'Tout télécharger' : 'Télécharger'}</span>
-                        </button>
-
-                        {/* Créer un lien */}
-                        <button
-                          type="button"
-                          onClick={handleCreateLinkSelectedAudio}
-                          className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                          title="Créer un lien"
-                        >
-                          <Link className="w-3.5 h-3.5" />
-                          <span>Créer un lien</span>
-                        </button>
-
-                        {/* Annuler la sélection */}
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setIsAudioSelectionMode(false);
-                            setSelectedAudioIds([]);
-                          }}
-                          className="p-1.5 rounded-xl hover:bg-stone-200 dark:hover:bg-slate-800 text-stone-600 dark:text-slate-300 transition-colors cursor-pointer"
-                          title="Fermer le mode sélection"
-                        >
-                          <X className="w-4 h-4" />
-                        </button>
-                      </div>
-                    </div>
-                  )}
+                  {renderSelectionBanner(filteredAudio)}
 
                   {/* Liste des pistes : Séparées verticalement sur le fond de page avec détails et espace entre elles */}
                   <div className="space-y-2">
                     {filteredAudio.map((track) => {
                       const isSelected = splitSelectedFile?.id === track.id;
-                      const isChecked = selectedAudioIds.includes(track.id);
+                      const isChecked = selectedItemIds.includes(track.id);
 
                       return (
                         <div
                           key={track.id}
                           onClick={() => {
-                            if (isAudioSelectionMode) {
-                              toggleAudioSelection(track.id);
+                            if (isSelectionMode) {
+                              toggleItemSelection(track.id);
                             } else {
                               handleSelectFile(track);
                               setIsMobilePlayerOpen(true);
                             }
                           }}
                           className={`group flex items-center justify-between gap-3 p-3 rounded-2xl transition-all cursor-pointer select-none border ${
-                            isSelected 
-                              ? 'bg-amber-500/10 dark:bg-amber-950/30 border-amber-400 dark:border-amber-500 shadow-sm ring-1 ring-amber-400/30' 
-                              : 'bg-white dark:bg-slate-900/80 border-stone-200/90 dark:border-slate-800 hover:border-amber-400/60 hover:shadow-md'
+                            isChecked
+                              ? 'bg-amber-500/15 border-amber-400 ring-2 ring-amber-400/40 shadow-sm'
+                              : isSelected 
+                                ? 'bg-amber-500/10 dark:bg-amber-950/30 border-amber-400 dark:border-amber-500 shadow-sm ring-1 ring-amber-400/30' 
+                                : 'bg-white dark:bg-slate-900/80 border-stone-200/90 dark:border-slate-800 hover:border-amber-400/60 hover:shadow-md'
                           }`}
                         >
                           {/* Case à cocher en mode sélection */}
-                          {isAudioSelectionMode && (
+                          {isSelectionMode && (
                             <button
                               type="button"
                               onClick={(e) => {
                                 e.stopPropagation();
-                                toggleAudioSelection(track.id);
+                                toggleItemSelection(track.id);
                               }}
                               className="p-1 text-amber-500 hover:text-amber-600 cursor-pointer shrink-0"
                             >
@@ -2197,12 +2629,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                               {track.date}
                             </span>
 
-                            {/* Bouton 3 traits sur chaque musique */}
+                            {/* Bouton 3 traits sur chaque musique avec toutes les propositions */}
                             <div className="relative shrink-0">
                               <button
                                 type="button"
                                 onClick={(e) => {
                                   e.stopPropagation();
+                                  setActiveMenuFileId(activeMenuFileId === track.id ? null : track.id);
                                   setAudioMenuSongId(audioMenuSongId === track.id ? null : track.id);
                                 }}
                                 className="w-7 h-7 sm:w-8 sm:h-8 rounded-full text-stone-500 hover:text-stone-900 dark:text-slate-400 dark:hover:text-white hover:bg-stone-100 dark:hover:bg-white/10 flex items-center justify-center transition-colors cursor-pointer"
@@ -2211,82 +2644,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                                 <Menu className="w-4 h-4 stroke-[2.2]" />
                               </button>
 
-                              {audioMenuSongId === track.id && (
-                                <>
-                                  <div 
-                                    className="fixed inset-0 z-40" 
-                                    onClick={(e) => { e.stopPropagation(); setAudioMenuSongId(null); }} 
-                                  />
-                                  <div 
-                                    className="absolute right-0 top-8 z-50 w-52 bg-white dark:bg-[#0D1527] border border-stone-200 dark:border-slate-700 rounded-xl shadow-2xl py-1 text-xs text-stone-800 dark:text-white divide-y divide-stone-100 dark:divide-white/10 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100"
-                                    onClick={(e) => e.stopPropagation()}
-                                  >
-                                    {/* 1. Supprimer */}
-                                    <button 
-                                      type="button" 
-                                      onClick={() => {
-                                        handleDeleteAudio(track);
-                                        setAudioMenuSongId(null);
-                                      }} 
-                                      className="w-full px-3 py-2 text-left hover:bg-rose-50 dark:hover:bg-rose-950/40 text-rose-600 dark:text-rose-400 flex items-center gap-2 transition-colors cursor-pointer"
-                                    >
-                                      <Trash2 className="w-3.5 h-3.5" /> Supprimer
-                                    </button>
-
-                                    {/* 2. Télécharger */}
-                                    <button 
-                                      type="button" 
-                                      onClick={() => {
-                                        handleDownloadFile(track);
-                                        setAudioMenuSongId(null);
-                                      }} 
-                                      className="w-full px-3 py-2 text-left hover:bg-stone-100 dark:hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
-                                    >
-                                      <Download className="w-3.5 h-3.5 text-blue-500" /> Télécharger
-                                    </button>
-
-                                    {/* 3. Sélectionner */}
-                                    <button 
-                                      type="button" 
-                                      onClick={() => {
-                                        setIsAudioSelectionMode(true);
-                                        setSelectedAudioIds([track.id]);
-                                        setAudioMenuSongId(null);
-                                      }} 
-                                      className="w-full px-3 py-2 text-left hover:bg-stone-100 dark:hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
-                                    >
-                                      <CheckSquare className="w-3.5 h-3.5 text-amber-500" /> Sélectionner
-                                    </button>
-
-                                    {/* 4. Tout sélectionner */}
-                                    <button 
-                                      type="button" 
-                                      onClick={() => {
-                                        setIsAudioSelectionMode(true);
-                                        setSelectedAudioIds(filteredAudio.map(t => t.id));
-                                        setAudioMenuSongId(null);
-                                      }} 
-                                      className="w-full px-3 py-2 text-left hover:bg-stone-100 dark:hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
-                                    >
-                                      <CheckSquare className="w-3.5 h-3.5 text-amber-600" /> Tout sélectionner
-                                    </button>
-
-                                    {/* 5. Créer un lien */}
-                                    <button 
-                                      type="button" 
-                                      onClick={() => {
-                                        const url = `${window.location.origin}/share/audio/${track.id}`;
-                                        navigator.clipboard?.writeText(url);
-                                        showToast("Lien copié dans le presse-papiers !");
-                                        setAudioMenuSongId(null);
-                                      }} 
-                                      className="w-full px-3 py-2 text-left hover:bg-stone-100 dark:hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
-                                    >
-                                      <Link className="w-3.5 h-3.5 text-emerald-500" /> Créer un lien
-                                    </button>
-                                  </div>
-                                </>
-                              )}
+                              {renderFileOptionsMenu(track, filteredAudio, 'right')}
                             </div>
                           </div>
                         </div>
@@ -2304,6 +2662,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                       {filteredDownloads.length} fichier{filteredDownloads.length > 1 ? 's' : ''} téléchargé{filteredDownloads.length > 1 ? 's' : ''}
                     </span>
                   </div>
+
+                  {/* Bandeau d'action de sélection multiple si activé */}
+                  {renderSelectionBanner(filteredDownloads.map(toFileItem))}
 
                   {filteredDownloads.length === 0 ? (
                     <div className="py-16 text-center text-stone-500 dark:text-slate-400">
