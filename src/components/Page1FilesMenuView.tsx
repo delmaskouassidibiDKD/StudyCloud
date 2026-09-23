@@ -85,6 +85,7 @@ export interface FileItem {
   extension?: string;
   downloadsCount?: number;
   isFavorite?: boolean;
+  isSecure?: boolean;
   artist?: string;
   lyricsSnippet?: string;
   fullLyrics?: string[];
@@ -851,6 +852,64 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
+  // DOSSIER SÉCURISÉ (Fichiers protégés par coffre-fort et isolés)
+  const [secureFolderFiles, setSecureFolderFiles] = useState<FileItem[]>([
+    {
+      id: 'sec-doc-1',
+      name: 'Diplome_Baccalaureat_Authentifie.pdf',
+      category: 'documents',
+      documentCategory: 'COURS',
+      source: 'Dossier Sécurisé',
+      size: '1.4 Mo',
+      sizeBytes: 1468006,
+      date: 'Hier, 16:30',
+      extension: 'PDF',
+      isSecure: true
+    },
+    {
+      id: 'sec-doc-2',
+      name: 'Releve_Notes_Semestre_Confidentiel.pdf',
+      category: 'documents',
+      documentCategory: 'DEVOIRS',
+      source: 'Dossier Sécurisé',
+      size: '890 Ko',
+      sizeBytes: 911360,
+      date: '18 Sept',
+      extension: 'PDF',
+      isSecure: true
+    }
+  ]);
+
+  // Transporter les éléments sélectionnés vers le dossier sécurisé
+  const handleSecureSelected = (currentCategoryList: FileItem[]) => {
+    if (selectedItemIds.length === 0) return;
+    const itemsToSecure = currentCategoryList.filter(f => selectedItemIds.includes(f.id));
+    if (itemsToSecure.length === 0) return;
+
+    const securedItems: FileItem[] = itemsToSecure.map(f => ({
+      ...f,
+      isSecure: true,
+      source: 'Dossier Sécurisé'
+    }));
+
+    setSecureFolderFiles(prev => [...securedItems, ...prev]);
+
+    // Retirer des listes actives
+    setDocumentsList(prev => prev.filter(d => !selectedItemIds.includes(d.id)));
+    setImagesList(prev => prev.filter(img => !selectedItemIds.includes(img.id)));
+    setVideosList(prev => prev.filter(vid => !selectedItemIds.includes(vid.id)));
+    setAudioList(prev => prev.filter(aud => !selectedItemIds.includes(aud.id)));
+    setCloudRecentFiles(prev => prev.filter(f => !selectedItemIds.includes(f.id)));
+
+    if (splitSelectedFile && selectedItemIds.includes(splitSelectedFile.id)) {
+      setSplitSelectedFile(null);
+    }
+
+    showToast(`${itemsToSecure.length} élément(s) transporté(s) vers le dossier sécurisé !`);
+    setIsSelectionMode(false);
+    setSelectedItemIds([]);
+  };
+
   // Téléchargement d'un fichier avec enregistrement dans le menu téléchargement
   const handleDownloadFile = (file: { name: string; size?: string; sizeBytes?: number; category?: any }) => {
     recordDownloadedFile({
@@ -937,8 +996,50 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       }
 
       case 'move':
-        showToast(`Fichier "${file.name}" déplacé dans Dossier Sécurisé !`);
+        showToast(`Fichier "${file.name}" prêt à être déplacé !`);
         break;
+
+      case 'secure_folder': {
+        const securedFile: FileItem = {
+          ...file,
+          isSecure: true,
+          source: 'Dossier Sécurisé'
+        };
+        setSecureFolderFiles(prev => [securedFile, ...prev]);
+
+        // Retirer de sa liste d'origine pour isolation
+        setDocumentsList(prev => prev.filter(d => d.id !== file.id));
+        setImagesList(prev => prev.filter(img => img.id !== file.id));
+        setVideosList(prev => prev.filter(vid => vid.id !== file.id));
+        setAudioList(prev => prev.filter(aud => aud.id !== file.id));
+        setCloudRecentFiles(prev => prev.filter(f => f.id !== file.id));
+
+        if (splitSelectedFile?.id === file.id) {
+          setSplitSelectedFile(null);
+        }
+        showToast(`"${file.name}" transporté vers le dossier sécurisé !`);
+        break;
+      }
+
+      case 'restore_from_secure': {
+        const restoredFile: FileItem = {
+          ...file,
+          isSecure: false,
+          source: 'StudyCloud'
+        };
+        setSecureFolderFiles(prev => prev.filter(f => f.id !== file.id));
+
+        if (file.category === 'documents') setDocumentsList(prev => [restoredFile, ...prev]);
+        else if (file.category === 'images') setImagesList(prev => [restoredFile, ...prev]);
+        else if (file.category === 'videos') setVideosList(prev => [restoredFile, ...prev]);
+        else if (file.category === 'audio') setAudioList(prev => [restoredFile, ...prev]);
+
+        if (splitSelectedFile?.id === file.id) {
+          setSplitSelectedFile(null);
+        }
+        showToast(`"${file.name}" restauré hors du dossier sécurisé !`);
+        break;
+      }
 
       case 'duplicate': {
         const ext = file.extension || (file.name.includes('.') ? file.name.split('.').pop() : 'fichier');
@@ -1265,6 +1366,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       return subSearchQuery.trim() === '' || aud.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
   }, [audioList, cloudRecentFiles, subSearchQuery]);
+
+  // Liste des fichiers du dossier sécurisé (filtrés par recherche)
+  const filteredSecureFiles = useMemo(() => {
+    return secureFolderFiles.filter(item => {
+      return subSearchQuery.trim() === '' || item.name.toLowerCase().includes(subSearchQuery.toLowerCase());
+    });
+  }, [secureFolderFiles, subSearchQuery]);
 
   // Groupement des fichiers audio par date comme dans Image 4
   const groupedAudio = useMemo(() => {
@@ -1675,6 +1783,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             <span>Créer un lien</span>
           </button>
 
+          {/* Transporter vers le dossier sécurisé */}
+          <button
+            type="button"
+            onClick={() => handleSecureSelected(currentCategoryList)}
+            className="px-2.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+            title="Transporter vers le dossier sécurisé"
+          >
+            <Lock className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">Dossier sécurisé</span>
+          </button>
+
           {/* Annuler la sélection */}
           <button
             type="button"
@@ -1692,7 +1811,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   // =========================================================================
   // MENU UNIVERSEL À 3 TRAITS (MENU DÉROULANT COMPLET POUR TOUS LES FICHIERS)
   // Options : Cocher, Tout cocher, Télécharger, Supprimer, Partager, Créer un lien,
-  // Le déplacer, Dupliquer, Favoris, Épingler, Modifier le nom
+  // Transporter vers le dossier sécurisé, Le déplacer, Dupliquer, Favoris, Épingler, Modifier le nom
   // =========================================================================
   const renderFileOptionsMenu = (file: FileItem, currentCategoryList: FileItem[], align: 'left' | 'right' = 'left') => {
     const isMenuOpen = activeMenuFileId === file.id || docMenuOpenId === file.id || audioMenuSongId === file.id;
@@ -1700,7 +1819,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
     return (
       <div 
-        className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-50 w-56 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
+        className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-50 w-60 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
         onClick={(e) => e.stopPropagation()}
       >
           {/* En-tête de menu dédié avec nom du fichier et bouton fermeture */}
@@ -1728,7 +1847,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             </button>
           </div>
 
-          {/* Liste déroulante des 11 options avec défilement fluide garanti */}
+          {/* Liste déroulante des options avec défilement fluide garanti */}
           <div className="max-h-[min(380px,calc(100vh-140px))] overflow-y-auto no-scrollbar py-1 divide-y divide-white/5">
             {/* Section 1 : Sélection (Cocher, Tout cocher, Télécharger) */}
             <div className="py-1">
@@ -1784,6 +1903,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 <Link className="w-3.5 h-3.5 shrink-0 text-sky-400" />
                 <span>Créer un lien</span>
               </button>
+              {file.isSecure ? (
+                <button
+                  type="button"
+                  onClick={() => handleGenericFileAction('restore_from_secure', file, currentCategoryList)}
+                  className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-emerald-400 hover:bg-emerald-500/15 transition-colors cursor-pointer text-left"
+                >
+                  <FolderCheck className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                  <span>Sortir du dossier sécurisé</span>
+                </button>
+              ) : (
+                <button
+                  type="button"
+                  onClick={() => handleGenericFileAction('secure_folder', file, currentCategoryList)}
+                  className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-300 hover:bg-amber-400/15 transition-colors cursor-pointer text-left"
+                >
+                  <Lock className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                  <span>Transporter vers le dossier sécurisé</span>
+                </button>
+              )}
               <button
                 type="button"
                 onClick={() => handleGenericFileAction('move', file, currentCategoryList)}
@@ -2868,6 +3006,52 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 </div>
               )}
 
+              {/* 7. DOSSIER SÉCURISÉ (COLLECTION) */}
+              {currentSubView.id === 'studycloud-collection-secure-folder' && (
+                <div className="space-y-4">
+                  {/* En-tête sécurisé */}
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-blue-500/10 to-transparent border border-amber-500/30 flex items-center justify-between gap-3 shadow-md">
+                    <div className="flex items-center gap-3">
+                      <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 shrink-0">
+                        <Lock className="w-6 h-6 stroke-[2.2]" />
+                      </div>
+                      <div>
+                        <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white">
+                          Dossier Sécurisé StudyCloud
+                        </h2>
+                        <p className="text-xs text-stone-500 dark:text-slate-400">
+                          {filteredSecureFiles.length} fichier{filteredSecureFiles.length > 1 ? 's' : ''} protégé{filteredSecureFiles.length > 1 ? 's' : ''} par coffre-fort crypté.
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Bandeau d'action de sélection multiple si activé */}
+                  {renderSelectionBanner(filteredSecureFiles)}
+
+                  {filteredSecureFiles.length === 0 ? (
+                    <div className="py-16 text-center text-stone-500 dark:text-slate-400">
+                      <Lock className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
+                      <p className="text-sm font-semibold">Le dossier sécurisé est vide</p>
+                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                        Pour sécuriser un fichier, ouvrez le menu 3 traits sur un document, une photo, une vidéo ou une musique et choisissez "Transporter vers le dossier sécurisé".
+                      </p>
+                    </div>
+                  ) : (
+                    <div className={`grid gap-2.5 sm:gap-3.5 ${
+                      splitSelectedFile ? 'grid-cols-2 lg:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
+                      {filteredSecureFiles.map((file, idx) => {
+                        if (file.category === 'images') return renderImageCard(file, idx);
+                        if (file.category === 'videos') return renderVideoCard(file, idx);
+                        if (file.category === 'audio') return renderAudioItem(file, false);
+                        return renderDocumentCard(file);
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
+
             </div>
 
             {/* --------------------------------------------------------------------- */}
@@ -3010,6 +3194,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                                 className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer"
                               >
                                 <Link className="w-4 h-4 text-purple-400" /> Créer un lien
+                              </button>
+                              <button 
+                                type="button" 
+                                onClick={() => {
+                                  handleGenericFileAction('secure_folder', splitSelectedFile, audioList);
+                                  setIsPlayerMenuOpen(false);
+                                }} 
+                                className="w-full px-3.5 py-2.5 text-left hover:bg-slate-800 flex items-center gap-2.5 transition-colors cursor-pointer text-amber-300"
+                              >
+                                <Lock className="w-4 h-4 text-amber-400" /> Transporter vers le dossier sécurisé
                               </button>
                               <button 
                                 type="button" 
@@ -3695,6 +3889,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                             className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
                           >
                             <Download className="w-3.5 h-3.5 text-amber-400" /> Télécharger
+                          </button>
+                          <button
+                            onClick={() => {
+                              handleGenericFileAction('secure_folder', file, cloudRecentFiles);
+                              setMenuOpenId(null);
+                            }}
+                            className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-amber-300 transition-colors"
+                          >
+                            <Lock className="w-3.5 h-3.5 text-amber-400" /> Dossier sécurisé
                           </button>
                         </div>
                       )}
