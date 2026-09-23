@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from 'react';
-import { ArrowLeft, Check, HardDrive, Bot, RotateCw, Sparkles, CreditCard, Lock } from 'lucide-react';
+import { ArrowLeft, Check, HardDrive, Bot, RotateCw } from 'lucide-react';
 import { SubscriptionFormView, SelectedPlan } from './SubscriptionFormView';
 import { RenewalFormView } from './RenewalFormView';
 import { RenewalSectionView } from './RenewalSectionView';
@@ -9,6 +9,7 @@ interface PricingViewProps {
   onBack: () => void;
   onSelectPlan: (planName: string) => void;
   initialTab?: 'storage' | 'ai' | 'renewal';
+  isEmbeddedInSettings?: boolean;
 }
 
 const DEFAULT_STORAGE_PLANS: SubscriptionPlan[] = [
@@ -39,7 +40,7 @@ const DEFAULT_STORAGE_PLANS: SubscriptionPlan[] = [
   {
     id: 'storage_plan_pro',
     name: 'Pro',
-    badge: 'Populaire',
+    badge: 'POPULAIRE',
     description: 'Pour les professionnels et étudiants avancés.',
     storage_amount: '50 Go',
     storage_mb: 51200,
@@ -244,11 +245,11 @@ function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean)
       const finalVal = isAnnual ? Math.round(rawVal * annualRatio) : rawVal;
 
       if (curr === 'XOF') {
-        secondaryParts.push(`≈ ${finalVal.toLocaleString('fr-FR')} FCFA`);
+        secondaryParts.push(`= ${finalVal.toLocaleString('fr-FR')} FCFA`);
       } else if (curr === 'USD') {
-        secondaryParts.push(`≈ ${finalVal} $`);
+        secondaryParts.push(`= ${finalVal} $`);
       } else if (curr === 'EUR') {
-        secondaryParts.push(`≈ ${finalVal} €`);
+        secondaryParts.push(`= ${finalVal} €`);
       }
     }
   }
@@ -272,9 +273,15 @@ function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean)
   };
 }
 
-export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, initialTab = 'storage' }) => {
+export const PricingView: React.FC<PricingViewProps> = ({ 
+  onBack, 
+  onSelectPlan, 
+  initialTab = 'storage',
+  isEmbeddedInSettings = false 
+}) => {
   const [activeTab, setActiveTab] = useState<'storage' | 'ai' | 'renewal'>(initialTab);
-  const [billingCycle, setBillingCycle] = useState<'annual' | 'monthly'>('annual');
+  // Présentation par MOIS par défaut demandée par l'utilisateur
+  const [billingCycle, setBillingCycle] = useState<'annual' | 'monthly'>('monthly');
 
   const [dbStoragePlans, setDbStoragePlans] = useState<SubscriptionPlan[]>(DEFAULT_STORAGE_PLANS);
   const [dbAiPlans, setDbAiPlans] = useState<SubscriptionPlan[]>(DEFAULT_AI_PLANS);
@@ -308,10 +315,9 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
       })
       .finally(() => {
         if (isMounted) {
-          // Petit délai fluide pour un rendu agréable de l'animation de chargement
           setTimeout(() => {
             if (isMounted) setLoadingPlans(false);
-          }, 250);
+          }, 300);
         }
       });
 
@@ -323,7 +329,7 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
   // Si l'utilisateur clique sur "Commencer" ou choisit un plan, on affiche le formulaire de souscription
   if (selectedPlanForSubscription) {
     return (
-      <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto animate-fadeIn pb-24 transition-colors duration-300">
+      <div className={`fixed inset-x-0 bottom-0 ${isEmbeddedInSettings ? 'top-0 md:top-0' : 'top-[64px] md:top-[68px]'} left-0 md:left-64 z-50 w-full md:w-[calc(100%-16rem)] h-full bg-[#F5F0E8] text-[#2D4A3E] overflow-y-auto animate-fadeIn pb-24 transition-colors duration-300`}>
         <SubscriptionFormView
           plan={selectedPlanForSubscription}
           onBack={() => setSelectedPlanForSubscription(null)}
@@ -340,7 +346,7 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
   // Si l'utilisateur clique sur "Renouveler l'abonnement", on affiche le formulaire de renouvellement
   if (selectedPlanForRenewal) {
     return (
-      <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto animate-fadeIn pb-24 transition-colors duration-300">
+      <div className={`fixed inset-x-0 bottom-0 ${isEmbeddedInSettings ? 'top-0 md:top-0' : 'top-[64px] md:top-[68px]'} left-0 md:left-64 z-50 w-full md:w-[calc(100%-16rem)] h-full bg-[#F5F0E8] text-[#2D4A3E] overflow-y-auto animate-fadeIn pb-24 transition-colors duration-300`}>
         <RenewalFormView
           subscription={selectedPlanForRenewal}
           onBack={() => {
@@ -357,76 +363,77 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
     );
   }
 
-  // Rendu des cartes squelettes avec animation de pulsation / chargement
+  // Animation de chargement avec cartes squelettes aux couleurs du thème
   const renderSkeletonCards = () => (
     <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
-      {[1, 2, 3].map((i) => (
-        <div
-          key={i}
-          className="rounded-2xl p-6 bg-[#0d1424] border border-slate-800 relative overflow-hidden shadow-2xl animate-pulse flex flex-col justify-between min-h-[510px]"
-        >
-          <div className="space-y-4">
-            <div className="flex items-center justify-between">
-              <div className="h-6 w-28 bg-slate-800 rounded-lg"></div>
-              {i === 2 && <div className="h-5 w-20 bg-amber-500/20 rounded-full border border-amber-500/30"></div>}
+      {[1, 2, 3].map((i) => {
+        const isMiddle = i === 2;
+        return (
+          <div
+            key={i}
+            className={`rounded-2xl p-6 sm:p-7 flex flex-col justify-between relative max-w-[380px] w-full mx-auto shadow-md animate-pulse min-h-[520px] ${
+              isMiddle
+                ? 'bg-[#2D4A3E] border-2 border-[#2D4A3E]'
+                : 'bg-[#E8DFD0] border border-[#D4C9B5]'
+            }`}
+          >
+            <div className="space-y-4">
+              <div className="flex items-center justify-between">
+                <div className={`h-8 w-28 rounded-lg ${isMiddle ? 'bg-[#E8DFD0]/30' : 'bg-[#D4C9B5]'}`}></div>
+                {isMiddle && <div className="h-6 w-20 rounded-full bg-[#C9B896]/60"></div>}
+              </div>
+
+              <div className="space-y-1.5 pt-1">
+                <div className={`h-3.5 w-4/5 rounded ${isMiddle ? 'bg-[#E8DFD0]/20' : 'bg-[#D4C9B5]/80'}`}></div>
+                <div className={`h-3.5 w-3/5 rounded ${isMiddle ? 'bg-[#E8DFD0]/15' : 'bg-[#D4C9B5]/60'}`}></div>
+              </div>
+
+              {/* Prix squelette */}
+              <div className="space-y-2 pt-2">
+                <div className={`h-12 w-36 rounded ${isMiddle ? 'bg-[#E8DFD0]/30' : 'bg-[#D4C9B5]'}`}></div>
+                <div className={`h-3 w-48 rounded ${isMiddle ? 'bg-[#E8DFD0]/20' : 'bg-[#D4C9B5]/70'}`}></div>
+              </div>
+
+              <div className={`h-0.5 w-full my-4 ${isMiddle ? 'bg-[#E8DFD0]/20' : 'bg-[#D4C9B5]'}`}></div>
+
+              {/* Lignes d'avantages squelettes */}
+              <div className="space-y-3 pt-1">
+                {[1, 2, 3, 4, 5, 6].map((j) => (
+                  <div key={j} className="flex items-center gap-2.5">
+                    <div className={`w-4 h-4 rounded-full shrink-0 ${isMiddle ? 'bg-[#C9B896]' : 'bg-[#5C6B5A]'}`}></div>
+                    <div className={`h-3 rounded ${isMiddle ? 'bg-[#E8DFD0]/25' : 'bg-[#D4C9B5]'}`} style={{ width: `${55 + (j * 7)}%` }}></div>
+                  </div>
+                ))}
+              </div>
             </div>
 
-            <div className="space-y-1.5 pt-1">
-              <div className="h-3 w-4/5 bg-slate-800/80 rounded"></div>
-              <div className="h-3 w-3/5 bg-slate-800/60 rounded"></div>
-            </div>
-
-            {/* Boîte de prix factice */}
-            <div className="p-3.5 rounded-xl bg-slate-900 border border-slate-800/90 space-y-2">
-              <div className="h-8 w-36 bg-slate-800 rounded"></div>
-              <div className="h-3 w-48 bg-amber-500/20 rounded"></div>
-            </div>
-
-            {/* Ligne verrouillée factice */}
-            <div className="p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/20 flex items-center gap-2">
-              <div className="w-4 h-4 bg-orange-500/40 rounded-full shrink-0"></div>
-              <div className="h-3.5 w-44 bg-orange-500/30 rounded"></div>
-            </div>
-
-            {/* Avantages factices */}
-            <div className="space-y-2.5 pt-2">
-              {[1, 2, 3, 4].map((j) => (
-                <div key={j} className="flex items-center gap-2.5">
-                  <div className="w-4 h-4 rounded-full bg-slate-800 shrink-0"></div>
-                  <div className="h-3 bg-slate-800 rounded" style={{ width: `${55 + (j * 10)}%` }}></div>
-                </div>
-              ))}
-            </div>
+            {/* Bouton squelette */}
+            <div className={`h-11 w-full rounded-lg mt-6 ${isMiddle ? 'bg-[#C9B896]/70' : 'bg-[#C9B896]/80'}`}></div>
           </div>
-
-          {/* Bouton factice */}
-          <div className="h-12 w-full bg-slate-800 rounded-xl mt-6"></div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 
-  // Rendu fidèle et identique aux cartes du tableau de bord
+  // Rendu des cartes avec les couleurs authentiques du thème (Beige, Vert Forêt & Or)
   const renderCard = (plan: SubscriptionPlan, type: 'storage' | 'ai') => {
     const isPopular = !!(plan.badge && plan.badge.trim());
     const isAnnual = billingCycle === 'annual';
     const pricing = getCardPricingAndConversions(plan, isAnnual);
 
     // Première ligne verrouillée (stockage ou IA)
-    const lockedPerk = type === 'ai'
+    const lockedPerkText = type === 'ai'
       ? (plan.credits_or_words || `${(plan.credits_count || 100000).toLocaleString('fr-FR')} mots IA / mois`)
-      : (plan.storage_amount 
-          ? (plan.storage_mb && plan.storage_mb > 0 
-              ? `${plan.storage_amount} supplémentaires (+ ${plan.storage_mb.toLocaleString('fr-FR')} Mo)` 
-              : `${plan.storage_amount} supplémentaires`)
-          : `${plan.storage_mb ? (plan.storage_mb / 1024) : 10} Go supplémentaires`);
+      : (plan.storage_amount || (plan.storage_mb ? `${plan.storage_mb / 1024} Go` : '10 Go'));
 
     // Autres avantages filtrés
     const allFeatures = parsePlanFeatures(plan.features);
     const activeFeatures = allFeatures.filter(f => {
       if (f.enabled === false) return false;
       const t = (f.text || '').toLowerCase().trim();
-      if (type === 'storage' && (t === '10 go' || t === '50 go' || t === '200 go')) return false;
+      const lockedLower = lockedPerkText.toLowerCase().trim();
+      if (t === lockedLower) return false;
+      if (type === 'ai' && (t.includes('mots ia') || t.includes('mots générés'))) return false;
       return true;
     });
 
@@ -435,145 +442,139 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
     return (
       <div 
         key={plan.id}
-        className={`relative flex flex-col justify-between rounded-2xl p-6 border shadow-2xl transition-all duration-300 transform hover:-translate-y-1 animate-in fade-in zoom-in-95 duration-200 ${
+        className={`rounded-2xl p-6 sm:p-7 flex flex-col justify-between relative max-w-[380px] w-full mx-auto shadow-md transition-all duration-300 transform hover:-translate-y-1 animate-in fade-in zoom-in-95 duration-200 ${
           isPopular
-            ? 'border-orange-500/80 bg-[#111927] shadow-[0_0_30px_rgba(249,115,22,0.2)]'
-            : 'border-slate-800 bg-[#0d1424]'
+            ? 'bg-[#2D4A3E] border-2 border-[#2D4A3E] text-[#F5F0E8]'
+            : 'bg-[#E8DFD0] border border-[#D4C9B5] text-[#2D4A3E]'
         }`}
       >
-        <div className="space-y-3.5">
-          {/* En-tête : Titre & Badge */}
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <h5 className="text-xl font-black text-white tracking-wide">
+        <div>
+          {/* En-tête : Titre & Badge POPULAIRE */}
+          <div className="flex items-center justify-between mb-2">
+            <h3 className={`text-2xl sm:text-3xl font-serif font-normal ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E]'}`}>
               {plan.name}
-            </h5>
+            </h3>
             {isPopular && (
-              <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/40 shadow-xs flex items-center gap-1">
-                <Sparkles className="w-3 h-3 text-amber-300" />
-                <span>{plan.badge}</span>
+              <span className="bg-[#C9B896] text-[#2D4A3E] text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-xs">
+                {plan.badge}
               </span>
             )}
           </div>
 
           {/* Description */}
           {plan.description && (
-            <p className="text-xs text-slate-400 leading-relaxed min-h-[32px]">
+            <p className={`text-xs sm:text-sm font-sans mb-4 sm:mb-6 leading-relaxed ${isPopular ? 'text-[#E8DFD0]/90' : 'text-[#5C6B5A]'}`}>
               {plan.description}
             </p>
           )}
 
-          {/* Boîte de prix & devises secondaires */}
-          <div className="p-3.5 rounded-xl bg-slate-900/95 border border-slate-800 space-y-1.5">
-            <div className="flex items-baseline gap-1.5 flex-wrap">
-              <span className="text-3xl sm:text-4xl font-black text-white font-mono tracking-tight">
+          {/* Bloc Prix Principal & Conversions secondaires */}
+          <div className="mb-4 sm:mb-6">
+            <div className={`flex items-baseline ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E]'}`}>
+              <span className="text-5xl sm:text-6xl font-serif font-normal">
                 {getCurrencySymbol(pricing.primaryCurr)} {pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice}
               </span>
-              <span className="text-xs text-slate-400 font-bold">
-                {isAnnual ? '/ an' : '/ mois'}
+              <span className="text-lg sm:text-xl font-sans ml-1 opacity-90">
+                {isAnnual ? '/an' : '/mois'}
               </span>
-              {isAnnual && pricing.discountPct > 0 && (
-                <span className="ml-1 px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-bold border border-emerald-500/30">
-                  -{pricing.discountPct}%
-                </span>
-              )}
             </div>
 
-            {/* Devises secondaires en petit */}
+            {/* Conversions secondaires en petit en dessous (= 58 500 FCFA • = 82.8 €) */}
             {pricing.secondaryString && (
-              <div className="text-[11px] font-semibold text-amber-400/90 pt-0.5">
+              <div className={`text-xs font-semibold mt-1.5 ${isPopular ? 'text-[#E8DFD0]/90' : 'text-[#5C6B5A]'}`}>
                 {pricing.secondaryString}
               </div>
             )}
           </div>
 
-          {/* Liste des avantages */}
-          <div className="space-y-2 pt-1">
-            <p className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
-              Ce qui est inclus :
-            </p>
+          {/* Ligne de séparation */}
+          <div className={`h-0.5 w-full mb-4 sm:mb-6 ${isPopular ? 'bg-[#E8DFD0]/20' : 'bg-[#D4C9B5]'}`}></div>
 
-            {/* 1ère ligne verrouillée (stockage ou IA avec 🔒) */}
-            <div className="flex items-center gap-2 p-2.5 rounded-xl bg-orange-500/10 border border-orange-500/25 text-orange-200 text-xs font-bold shadow-xs">
-              <Lock className="w-3.5 h-3.5 text-orange-400 shrink-0" />
-              <span>{lockedPerk}</span>
-            </div>
+          {/* Avantages inclus */}
+          <p className={`text-xs sm:text-sm font-semibold mb-3 sm:mb-4 ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E]'}`}>
+            Ce qui est inclus :
+          </p>
 
-            {/* Autres avantages de la carte */}
-            <div className="space-y-2 pt-1">
-              {activeFeatures.map((f, i) => (
-                <div key={i} className="flex items-start gap-2 text-xs text-slate-300 leading-snug">
-                  <span className="text-emerald-400 font-bold shrink-0 mt-0.5">✓</span>
-                  <span>{f.text}</span>
+          <ul className="space-y-2.5 sm:space-y-3 mb-6 sm:mb-8">
+            {/* Première ligne verrouillée et mise en valeur */}
+            <li className="flex items-start gap-2.5 sm:gap-3">
+              <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                isPopular ? 'bg-[#C9B896] text-[#2D4A3E]' : 'bg-[#5C6B5A] text-[#F5F0E8]'
+              }`}>
+                <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
+              </div>
+              <span className={`text-xs sm:text-sm font-bold ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E]'}`}>
+                {lockedPerkText}
+              </span>
+            </li>
+
+            {/* Autres avantages de la formule */}
+            {activeFeatures.map((feature, i) => (
+              <li key={i} className="flex items-start gap-2.5 sm:gap-3">
+                <div className={`w-4 h-4 sm:w-5 sm:h-5 rounded-full flex items-center justify-center shrink-0 mt-0.5 ${
+                  isPopular ? 'bg-[#C9B896] text-[#2D4A3E]' : 'bg-[#5C6B5A] text-[#F5F0E8]'
+                }`}>
+                  <Check className="w-2.5 h-2.5 sm:w-3 sm:h-3" />
                 </div>
-              ))}
-            </div>
-          </div>
+                <span className={`text-xs sm:text-sm ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E]'}`}>
+                  {feature.text}
+                </span>
+              </li>
+            ))}
+          </ul>
         </div>
 
         {/* Bouton d'action : Commencer (Paiement Manuel) OU S'abonner (Abonnement Automatique) */}
-        <div className="pt-5 mt-4 border-t border-slate-800">
-          <button
-            type="button"
-            onClick={() => setSelectedPlanForSubscription({
-              name: `${plan.name} ${type === 'ai' ? 'IA' : 'Stockage'}`,
-              type: type,
-              storageDisplay: lockedPerk,
-              priceDisplay: `${getCurrencySymbol(pricing.primaryCurr)} ${pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice} / ${isAnnual ? 'an' : 'mois'} ${pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''}`,
-              price: pricing.activePrice,
-              priceFcfa: pricing.priceFcfa,
-              currency: getCurrencySymbol(pricing.primaryCurr),
-              billingCycle: billingCycle,
-              mb: plan.storage_mb,
-              words: plan.credits_count
-            })}
-            className={`w-full py-3.5 px-4 font-extrabold text-sm rounded-xl shadow-lg transition-all duration-200 flex items-center justify-center gap-2 cursor-pointer active:scale-[0.98] ${
-              isAuto
-                ? 'bg-gradient-to-r from-cyan-600 via-blue-600 to-indigo-600 hover:from-cyan-500 hover:to-indigo-500 text-white shadow-cyan-950/40'
-                : 'bg-gradient-to-r from-orange-600 via-amber-600 to-amber-500 hover:from-orange-500 hover:to-amber-400 text-white shadow-orange-950/40'
-            }`}
-          >
-            {isAuto ? (
-              <>
-                <Sparkles className="w-4 h-4 text-white" />
-                <span>S'abonner</span>
-              </>
-            ) : (
-              <>
-                <CreditCard className="w-4 h-4 text-white" />
-                <span>Commencer</span>
-              </>
-            )}
-          </button>
-        </div>
+        <button
+          onClick={() => setSelectedPlanForSubscription({
+            name: `${plan.name} ${type === 'ai' ? 'IA' : 'Stockage'}`,
+            type: type,
+            storageDisplay: lockedPerkText,
+            priceDisplay: `${getCurrencySymbol(pricing.primaryCurr)} ${pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice} / ${isAnnual ? 'an' : 'mois'} ${pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''}`,
+            price: pricing.activePrice,
+            priceFcfa: pricing.priceFcfa,
+            currency: getCurrencySymbol(pricing.primaryCurr),
+            billingCycle: billingCycle,
+            mb: plan.storage_mb,
+            words: plan.credits_count
+          })}
+          className={`w-full py-3 font-semibold text-sm rounded-lg transition-all cursor-pointer shadow-sm text-center active:scale-[0.98] ${
+            isPopular
+              ? 'bg-[#C9B896] hover:bg-[#B8A785] text-[#2D4A3E] font-bold shadow-md'
+              : 'bg-[#C9B896] hover:bg-[#B8A785] text-[#2D4A3E] font-bold border border-[#B8A785]'
+          }`}
+        >
+          {isAuto ? "S'abonner" : "Commencer"}
+        </button>
       </div>
     );
   };
 
   return (
-    <div className="absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-screen bg-[#F5F0E8] dark:bg-[#0b0f19] text-[#2D4A3E] dark:text-slate-100 overflow-y-auto animate-fadeIn pb-24 transition-colors duration-300">
+    <div className={`fixed inset-x-0 bottom-0 ${isEmbeddedInSettings ? 'top-0 md:top-0' : 'top-[64px] md:top-[68px]'} left-0 md:left-64 z-40 w-full md:w-[calc(100%-16rem)] ${isEmbeddedInSettings ? 'h-screen' : 'h-[calc(100dvh-64px)] md:h-[calc(100dvh-68px)]'} flex flex-col bg-[#F5F0E8] text-[#2D4A3E] overflow-hidden select-none transition-colors duration-300`}>
       
       {/* ========================================================================= */}
-      {/* BARRE SUPÉRIEURE FIXE / COLLÉE AU HAUT : RETOUR, MENUS ET FACTURATION     */}
+      {/* 1. BARRE FIXE IMMOBILE (Ne bouge JAMAIS quand on fait défiler la page)     */}
       {/* ========================================================================= */}
-      <div className="sticky top-0 z-40 bg-[#F5F0E8]/95 dark:bg-[#0b0f19]/95 backdrop-blur-md px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2 sm:gap-4 border-b-2 border-[#2D4A3E]/15 dark:border-[#1e293b] shadow-xs">
+      <div className="flex-shrink-0 z-50 sticky top-0 bg-[#F5F0E8] px-3 sm:px-6 py-2.5 flex items-center justify-between gap-2 sm:gap-4 border-b-2 border-[#2D4A3E]/15 shadow-xs">
         
         {/* Bouton Retour (Gauche) */}
         <button
           onClick={onBack}
-          className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-xs rounded-xl border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 shrink-0"
+          className="flex items-center gap-1.5 px-3 py-1.5 sm:py-2 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] font-bold text-xs rounded-xl border-2 border-[#2D4A3E] shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5 shrink-0"
         >
-          <ArrowLeft className="w-4 h-4 text-[#2D4A3E] dark:text-white" />
+          <ArrowLeft className="w-4 h-4 text-[#2D4A3E]" />
           <span className="hidden sm:inline">Retour</span>
         </button>
 
         {/* Boutons pour changer de menu au centre */}
-        <div className="bg-[#E8DFD0] dark:bg-[#111a2e] p-1 rounded-2xl border-2 border-[#D4C9B5] dark:border-[#1e293b] flex items-center gap-1 shadow-sm overflow-x-auto no-scrollbar max-w-full">
+        <div className="bg-[#E8DFD0] p-1 rounded-2xl border-2 border-[#D4C9B5] flex items-center gap-1 shadow-sm overflow-x-auto no-scrollbar max-w-full">
           <button
             onClick={() => setActiveTab('storage')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
               activeTab === 'storage'
-                ? 'bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white shadow-sm'
-                : 'text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white hover:bg-[#D4C9B5]/40 dark:hover:bg-slate-800'
+                ? 'bg-[#2D4A3E] text-[#F5F0E8] shadow-sm'
+                : 'text-[#5C6B5A] hover:text-[#2D4A3E] hover:bg-[#D4C9B5]/40'
             }`}
           >
             <HardDrive className="w-3.5 h-3.5" />
@@ -585,8 +586,8 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
             onClick={() => setActiveTab('ai')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
               activeTab === 'ai'
-                ? 'bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white shadow-sm'
-                : 'text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white hover:bg-[#D4C9B5]/40 dark:hover:bg-slate-800'
+                ? 'bg-[#2D4A3E] text-[#F5F0E8] shadow-sm'
+                : 'text-[#5C6B5A] hover:text-[#2D4A3E] hover:bg-[#D4C9B5]/40'
             }`}
           >
             <Bot className="w-3.5 h-3.5" />
@@ -598,8 +599,8 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
             onClick={() => setActiveTab('renewal')}
             className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-extrabold transition-all cursor-pointer shrink-0 ${
               activeTab === 'renewal'
-                ? 'bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white shadow-sm'
-                : 'text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white hover:bg-[#D4C9B5]/40 dark:hover:bg-slate-800'
+                ? 'bg-[#2D4A3E] text-[#F5F0E8] shadow-sm'
+                : 'text-[#5C6B5A] hover:text-[#2D4A3E] hover:bg-[#D4C9B5]/40'
             }`}
           >
             <RotateCw className="w-3.5 h-3.5" />
@@ -608,20 +609,20 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
           </button>
         </div>
 
-        {/* Toggle Facturation Ans / Mois (Droite) */}
+        {/* Toggle Facturation Ans / Mois (Droite) : Mois sélectionné par défaut */}
         <div className="shrink-0">
           {activeTab !== 'renewal' ? (
-            <div className="bg-[#E8DFD0] dark:bg-[#1e293b] rounded-full p-1 flex items-center shadow-xs border-2 border-[#1c1917] dark:border-[#334155]">
+            <div className="bg-[#E8DFD0] rounded-full p-1 flex items-center shadow-xs border-2 border-[#1c1917]">
               <button
                 onClick={() => setBillingCycle('annual')}
                 className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
                   billingCycle === 'annual'
-                    ? 'bg-[#F5F0E8] dark:bg-[#283852] text-[#2D4A3E] dark:text-white shadow-xs'
-                    : 'bg-transparent text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white'
+                    ? 'bg-[#2D4A3E] text-[#F5F0E8] shadow-xs'
+                    : 'bg-transparent text-[#5C6B5A] hover:text-[#2D4A3E]'
                 }`}
               >
                 <span>Ans</span>
-                <span className="bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] text-[9px] font-bold uppercase px-1.5 py-0.5 rounded">
+                <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${billingCycle === 'annual' ? 'bg-[#C9B896] text-[#2D4A3E]' : 'bg-[#2D4A3E] text-[#F5F0E8]'}`}>
                   -10%
                 </span>
               </button>
@@ -629,8 +630,8 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
                 onClick={() => setBillingCycle('monthly')}
                 className={`flex items-center gap-1 px-2.5 sm:px-3 py-1 rounded-full text-xs font-bold transition-all cursor-pointer ${
                   billingCycle === 'monthly'
-                    ? 'bg-[#F5F0E8] dark:bg-[#283852] text-[#2D4A3E] dark:text-white shadow-xs'
-                    : 'bg-transparent text-[#5C6B5A] dark:text-slate-400 hover:text-[#2D4A3E] dark:hover:text-white'
+                    ? 'bg-[#2D4A3E] text-[#F5F0E8] shadow-xs'
+                    : 'bg-transparent text-[#5C6B5A] hover:text-[#2D4A3E]'
                 }`}
               >
                 <span>Mois</span>
@@ -642,54 +643,56 @@ export const PricingView: React.FC<PricingViewProps> = ({ onBack, onSelectPlan, 
         </div>
       </div>
 
-      <div className="w-full max-w-[1250px] mx-auto px-4 pt-6 sm:pt-8">
-        {/* Header Section (Uniquement sur Stockage et IA) */}
-        {activeTab !== 'renewal' && (
-          <div className="text-center pb-8 max-w-5xl mx-auto">
-            <h1 className="text-3xl sm:text-5xl md:text-6xl font-sans font-black text-[#2D4A3E] dark:text-white mb-3 leading-tight tracking-tight">
-              Choisissez votre formule
-            </h1>
-            <p className="text-sm sm:text-base font-sans font-medium text-[#5C6B5A] dark:text-slate-400 max-w-xl mx-auto leading-relaxed px-2">
-              Des tarifs flexibles synchronisés en direct avec votre plateforme d'apprentissage StudyCloud.
-            </p>
-          </div>
-        )}
+      {/* ========================================================================= */}
+      {/* 2. ZONE DE CONTENU QUI DÉFILE (Seule cette partie scroll)                 */}
+      {/* ========================================================================= */}
+      <div className="flex-1 overflow-y-auto px-4 pt-6 sm:pt-8 pb-32">
+        <div className="w-full max-w-[1250px] mx-auto">
+          {/* Header Section (Uniquement sur Stockage et IA) */}
+          {activeTab !== 'renewal' && (
+            <div className="text-center pb-8 max-w-5xl mx-auto">
+              <h1 className="text-3xl sm:text-5xl md:text-6xl font-serif font-normal text-[#2D4A3E] mb-3 leading-tight">
+                Choisissez votre formule
+              </h1>
+              <p className="text-sm sm:text-lg md:text-xl font-sans text-[#5C6B5A] max-w-xl mx-auto leading-relaxed px-2">
+                Des tarifs abordables et adaptés à vos objectifs.
+              </p>
+            </div>
+          )}
 
-        {/* ========================================================================= */}
-        {/* ANIMATION DE CHARGEMENT OU GRILLE DES FORFAITS SYNCHRONISÉE               */}
-        {/* ========================================================================= */}
-        {loadingPlans ? (
-          renderSkeletonCards()
-        ) : (
-          <>
-            {/* 1. SECTION : ABONNEMENTS STOCKAGE (DYNAMIQUES DEPUIS LA BASE DE DONNÉES)  */}
-            {activeTab === 'storage' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
-                {dbStoragePlans.map(plan => renderCard(plan, 'storage'))}
-              </div>
-            )}
+          {/* Animation de chargement squelette ou affichage des cartes */}
+          {loadingPlans ? (
+            renderSkeletonCards()
+          ) : (
+            <>
+              {/* 1. SECTION : ABONNEMENTS STOCKAGE (DYNAMIQUES DEPUIS LA BASE DE DONNÉES)  */}
+              {activeTab === 'storage' && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
+                  {dbStoragePlans.map(plan => renderCard(plan, 'storage'))}
+                </div>
+              )}
 
-            {/* 2. SECTION : ASSISTANTE STUDYCLOUD (DYNAMIQUES DEPUIS LA BASE DE DONNÉES) */}
-            {activeTab === 'ai' && (
-              <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
-                {dbAiPlans.map(plan => renderCard(plan, 'ai'))}
-              </div>
-            )}
-          </>
-        )}
+              {/* 2. SECTION : ASSISTANTE STUDYCLOUD (DYNAMIQUES DEPUIS LA BASE DE DONNÉES) */}
+              {activeTab === 'ai' && (
+                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
+                  {dbAiPlans.map(plan => renderCard(plan, 'ai'))}
+                </div>
+              )}
+            </>
+          )}
 
-        {/* ========================================================================= */}
-        {/* 3. SECTION : RENOUVELER MON ABONNEMENT (DIVISÉE EN 2 VOLETS)               */}
-        {/* ========================================================================= */}
-        {activeTab === 'renewal' && (
-          <RenewalSectionView
-            key={renewalRefreshKey}
-            onGoToStorage={() => setActiveTab('storage')}
-            onSelectPlan={onSelectPlan}
-            onStartRenewal={(sub) => setSelectedPlanForRenewal(sub)}
-          />
-        )}
+          {/* 3. SECTION : RENOUVELER MON ABONNEMENT */}
+          {activeTab === 'renewal' && (
+            <RenewalSectionView
+              key={renewalRefreshKey}
+              onGoToStorage={() => setActiveTab('storage')}
+              onSelectPlan={onSelectPlan}
+              onStartRenewal={(sub) => setSelectedPlanForRenewal(sub)}
+            />
+          )}
+        </div>
       </div>
+
     </div>
   );
 };
