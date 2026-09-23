@@ -1,4 +1,4 @@
-import React, { useState, useMemo } from 'react';
+import React, { useState, useMemo, useRef } from 'react';
 import { 
   ArrowLeft, 
   Search, 
@@ -25,7 +25,8 @@ import {
   Menu,
   ShieldCheck,
   FolderCheck,
-  Plus
+  Plus,
+  FolderArchive
 } from 'lucide-react';
 
 interface Page1FilesMenuViewProps {
@@ -46,7 +47,7 @@ interface FileItem {
 
 interface SubMenuView {
   id: string;
-  type: 'category' | 'collection';
+  type: 'category' | 'collection' | 'classeur';
   name: string;
   icon: any;
   color: string;
@@ -60,7 +61,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   const [toastMessage, setToastMessage] = useState<string | null>(null);
   const [isFullscreen, setIsFullscreen] = useState(false);
 
-  // Sous-page ouverte (chaque bouton catégorie et collection possède son propre menu indépendant)
+  // Référence pour l'import de fichier
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  // Sous-page ouverte (chaque bouton catégorie, collection et classeur possède son propre menu indépendant)
   const [currentSubView, setCurrentSubView] = useState<SubMenuView | null>(null);
 
   const showToast = (msg: string) => {
@@ -125,6 +129,41 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       date: '20 Sept, 11:20'
     }
   ]);
+
+  // Déclencher le sélecteur de fichier
+  const handleTriggerImport = () => {
+    fileInputRef.current?.click();
+  };
+
+  // Traiter les fichiers importés
+  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const files = e.target.files;
+    if (!files || files.length === 0) return;
+
+    const newItems: FileItem[] = Array.from(files).map((file, idx) => {
+      const isImg = file.type.startsWith('image/');
+      let category: FileItem['category'] = 'documents';
+      if (isImg) category = 'images';
+      else if (file.type.startsWith('audio/')) category = 'audio';
+      else if (file.type.startsWith('video/')) category = 'videos';
+
+      return {
+        id: `rec-imp-${Date.now()}-${idx}`,
+        name: file.name,
+        category,
+        source: 'StudyCloud Drive',
+        size: `${(file.size / (1024 * 1024)).toFixed(1)} Mo`,
+        sizeBytes: file.size,
+        date: "Aujourd'hui, " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+        previewUrl: isImg ? URL.createObjectURL(file) : undefined,
+        isImage: isImg
+      };
+    });
+
+    setCloudRecentFiles(prev => [...newItems, ...prev].slice(0, 6));
+    showToast(`${files.length} fichier(s) importé(s) dans StudyCloud Drive !`);
+    if (fileInputRef.current) fileInputRef.current.value = '';
+  };
 
   // Téléchargement d'un fichier
   const handleDownloadFile = (file: FileItem) => {
@@ -248,7 +287,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
   // Ouverture d'un sous-menu indépendant
   const handleOpenSubMenu = (
-    type: 'category' | 'collection',
+    type: 'category' | 'collection' | 'classeur',
     id: string,
     name: string,
     icon: any,
@@ -279,6 +318,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         : 'absolute inset-x-0 bottom-0 top-[62px] md:top-[66px] md:left-64 z-30 w-full md:w-[calc(100%-16rem)] min-h-[calc(100vh-66px)]'
     }`}>
       
+      {/* Input de sélection de fichier caché */}
+      <input
+        type="file"
+        ref={fileInputRef}
+        onChange={handleFileSelected}
+        multiple
+        className="hidden"
+      />
+
       {/* Toast Notification */}
       {toastMessage && (
         <div className="fixed top-20 right-6 z-50 bg-blue-600 text-white text-xs font-bold px-4 py-2 rounded-xl shadow-xl border border-blue-400/30 animate-in fade-in slide-in-from-top-2">
@@ -314,7 +362,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     {currentSubView.name}
                   </h1>
                   <p className="text-[10px] sm:text-[11px] font-semibold text-stone-500 dark:text-slate-400 leading-tight">
-                    StudyCloud Drive • En ligne
+                    StudyCloud Drive
                   </p>
                 </div>
               </div>
@@ -374,19 +422,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     Votre espace {currentSubView.name} est vide
                   </h2>
                   <p className="text-xs sm:text-sm font-medium text-slate-100 max-w-xs leading-relaxed">
-                    Aucun fichier en ligne dans {currentSubView.name} pour le moment.
+                    Aucun fichier dans {currentSubView.name} pour le moment.
                   </p>
-                </div>
-
-                <div className="pt-2 w-full flex items-center justify-center gap-3">
-                  <button
-                    type="button"
-                    onClick={() => showToast(`Ajout bientôt disponible pour ${currentSubView.name}`)}
-                    className="px-5 py-2.5 rounded-xl bg-blue-600 hover:bg-blue-500 text-white font-black text-xs transition-all cursor-pointer shadow-md active:scale-95 flex items-center gap-2"
-                  >
-                    <Plus className="w-4 h-4 stroke-[2.5]" />
-                    <span>+ Ajouter un élément</span>
-                  </button>
                 </div>
               </div>
             </div>
@@ -398,68 +435,85 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         /* VUE PRINCIPALE DIRECTE : GESTIONNAIRE STUDYCLOUD SANS LES DEUX BOUTONS    */
         /* ========================================================================= */
         <>
-          {/* EN-TÊTE FIXE / STICKY : Barre de recherche pilule */}
+          {/* EN-TÊTE FIXE / STICKY : Barre de recherche réduite vers la gauche + Bouton Importer */}
           <div className="sticky top-0 z-30 w-full bg-[#F4F6F8]/95 dark:bg-[#0C111D]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 pt-2.5 pb-2.5 border-b border-stone-300/70 dark:border-slate-800/60 shadow-xs">
-            <div className="w-full flex items-center gap-2 sm:gap-3">
+            <div className="w-full flex items-center justify-between gap-2 sm:gap-3">
               
-              {/* Bouton Retour rapide vers l'accueil */}
-              <button
-                type="button"
-                onClick={onBack}
-                className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
-                title="Retour au Tableau de bord"
-                aria-label="Retour"
-              >
-                <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
-              </button>
+              <div className="flex items-center gap-2 sm:gap-3 flex-1 min-w-0">
+                {/* Bouton Retour rapide vers l'accueil */}
+                <button
+                  type="button"
+                  onClick={onBack}
+                  className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                  title="Retour au Tableau de bord"
+                  aria-label="Retour"
+                >
+                  <ArrowLeft className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+                </button>
 
-              {/* Barre de Recherche Pilule (fond noir profond avec texte blanc) */}
-              <div className="flex-1 relative flex items-center">
-                <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 sm:py-2 transition-all shadow-inner gap-2.5">
-                  
-                  {/* Icône Menu hamburger intégrée à gauche */}
-                  <div className="text-white shrink-0">
-                    <Menu className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
-                  </div>
-
-                  <input
-                    type="text"
-                    value={searchQuery}
-                    onChange={(e) => setSearchQuery(e.target.value)}
-                    placeholder='Recherchez photos, cours, documents...'
-                    className="w-full bg-transparent text-xs sm:text-sm md:text-base text-white placeholder:text-slate-400 focus:outline-none"
-                  />
-
-                  {searchQuery ? (
-                    <button
-                      type="button"
-                      onClick={() => setSearchQuery('')}
-                      className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
-                      title="Effacer la recherche"
-                    >
-                      <X className="w-3.5 h-3.5" />
-                    </button>
-                  ) : (
-                    <div className="p-1 text-slate-300 shrink-0">
-                      <Search className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+                {/* Barre de Recherche Pilule RÉDUITE VERS LA GAUCHE (fond noir profond avec texte blanc) */}
+                <div className="w-full max-w-[210px] xs:max-w-[260px] sm:max-w-xs md:max-w-sm relative flex items-center">
+                  <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 sm:py-2 transition-all shadow-inner gap-2">
+                    
+                    {/* Icône Menu hamburger intégrée à gauche */}
+                    <div className="text-white shrink-0">
+                      <Menu className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.2]" />
                     </div>
-                  )}
+
+                    <input
+                      type="text"
+                      value={searchQuery}
+                      onChange={(e) => setSearchQuery(e.target.value)}
+                      placeholder='Recherchez photos, cours...'
+                      className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
+                    />
+
+                    {searchQuery ? (
+                      <button
+                        type="button"
+                        onClick={() => setSearchQuery('')}
+                        className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
+                        title="Effacer la recherche"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    ) : (
+                      <div className="p-1 text-slate-300 shrink-0">
+                        <Search className="w-4 h-4 stroke-[2.2]" />
+                      </div>
+                    )}
+                  </div>
                 </div>
               </div>
 
-              {/* Bouton Plein Écran (Spécifique Ordinateur pour prendre 100% de l'écran) */}
-              <button
-                type="button"
-                onClick={() => setIsFullscreen(!isFullscreen)}
-                className="hidden md:flex items-center justify-center w-10 h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
-                title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet (Prendre tout l'écran)"}
-              >
-                {isFullscreen ? (
-                  <Minimize2 className="w-4 h-4 stroke-[2.2]" />
-                ) : (
-                  <Maximize2 className="w-4 h-4 stroke-[2.2]" />
-                )}
-              </button>
+              {/* SECTION DROITE : Bouton + Importer un fichier et Plein écran */}
+              <div className="flex items-center gap-2 shrink-0">
+                {/* Bouton + Importer un fichier */}
+                <button
+                  type="button"
+                  onClick={handleTriggerImport}
+                  className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-blue-400/40 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black"
+                  title="Importer un fichier dans StudyCloud Drive"
+                >
+                  <Plus className="w-4 h-4 text-blue-400 stroke-[2.5]" />
+                  <span className="hidden xs:inline">Importer un fichier</span>
+                  <span className="xs:hidden">Importer</span>
+                </button>
+
+                {/* Bouton Plein Écran (Spécifique Ordinateur pour prendre 100% de l'écran) */}
+                <button
+                  type="button"
+                  onClick={() => setIsFullscreen(!isFullscreen)}
+                  className="hidden md:flex items-center justify-center w-10 h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                  title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet (Prendre tout l'écran)"}
+                >
+                  {isFullscreen ? (
+                    <Minimize2 className="w-4 h-4 stroke-[2.2]" />
+                  ) : (
+                    <Maximize2 className="w-4 h-4 stroke-[2.2]" />
+                  )}
+                </button>
+              </div>
 
             </div>
           </div>
@@ -567,6 +621,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 ))}
               </div>
             </section>
+
+            {/* ========================================================================= */}
+            {/* BOUTON CLASSEUR : BIEN AU MILIEU, UN PEU GROS, COULEUR ORANGE PAS TROP PURE */}
+            {/* ========================================================================= */}
+            <div className="w-full flex items-center justify-center py-2 sm:py-3">
+              <button
+                type="button"
+                onClick={() => handleOpenSubMenu('classeur', 'classeur', 'Classeur', FolderArchive, 'text-orange-400')}
+                className="group relative flex items-center justify-center gap-3 px-8 sm:px-14 py-3 sm:py-3.5 rounded-2xl bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] hover:from-[#D15C1B] hover:via-[#C55010] hover:to-[#AC430A] text-white border border-orange-500/40 shadow-[0_6px_25px_rgba(184,72,12,0.35)] hover:shadow-[0_8px_30px_rgba(184,72,12,0.5)] transition-all duration-200 cursor-pointer active:scale-95 select-none"
+                title="Ouvrir le Classeur"
+              >
+                <div className="p-2 sm:p-2.5 rounded-xl bg-black/40 border border-white/20 shrink-0 group-hover:scale-110 transition-transform">
+                  <FolderArchive className="w-5 h-5 sm:w-6 sm:h-6 text-white stroke-[2.2]" />
+                </div>
+                <span className="text-base sm:text-lg md:text-xl font-black text-white tracking-wide drop-shadow-sm">
+                  Classeur
+                </span>
+              </button>
+            </div>
 
             {/* SECTION 2 : CATÉGORIES (Chaque bouton ouvre son propre menu indépendant) */}
             <section className="space-y-2">
