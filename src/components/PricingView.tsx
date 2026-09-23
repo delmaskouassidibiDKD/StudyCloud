@@ -216,6 +216,7 @@ function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean)
   const primaryCurr = plan.primary_currency || 'USD';
   const monthlyPrice = Number(plan.price) || 0;
   const discountPct = Number(plan.yearly_discount_pct) || 10;
+  const fullYearlyPrice = monthlyPrice * 12;
   const yearlyPrice = Number(plan.yearly_price) > 0
     ? Number(plan.yearly_price)
     : Math.round(monthlyPrice * 12 * (1 - (discountPct / 100)) * 100) / 100;
@@ -233,7 +234,7 @@ function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean)
   }
 
   const enabledCurrs = parsePlanCurrencies(plan.currencies_enabled);
-  const secondaryParts: string[] = [];
+  const secondaryParts: { curr: string; fullVal?: number; finalVal: number; formatted: string; fullFormatted?: string }[] = [];
 
   for (const curr of ['XOF', 'USD', 'EUR']) {
     if (enabledCurrs.includes(curr) && curr !== primaryCurr) {
@@ -243,14 +244,23 @@ function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean)
         rawVal = fallback[curr as keyof typeof fallback];
       }
       const finalVal = isAnnual ? Math.round(rawVal * annualRatio) : rawVal;
+      const fullVal = isAnnual ? Math.round(rawVal * 12) : rawVal;
 
-      if (curr === 'XOF') {
-        secondaryParts.push(`= ${finalVal.toLocaleString('fr-FR')} FCFA`);
-      } else if (curr === 'USD') {
-        secondaryParts.push(`= ${finalVal} $`);
-      } else if (curr === 'EUR') {
-        secondaryParts.push(`= ${finalVal} €`);
-      }
+      let suffix = '';
+      if (curr === 'XOF') suffix = 'FCFA';
+      else if (curr === 'USD') suffix = '$';
+      else if (curr === 'EUR') suffix = '€';
+
+      const formatted = curr === 'XOF' ? `${finalVal.toLocaleString('fr-FR')} ${suffix}` : `${finalVal} ${suffix}`;
+      const fullFormatted = curr === 'XOF' ? `${fullVal.toLocaleString('fr-FR')} ${suffix}` : `${fullVal} ${suffix}`;
+
+      secondaryParts.push({
+        curr,
+        fullVal,
+        finalVal,
+        formatted,
+        fullFormatted
+      });
     }
   }
 
@@ -264,11 +274,13 @@ function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean)
 
   return {
     activePrice,
+    fullYearlyPrice,
     yearlyPrice,
     monthlyPrice,
     discountPct,
     primaryCurr,
-    secondaryString: secondaryParts.join(' • '),
+    secondaryParts,
+    secondaryString: secondaryParts.map(s => `= ${s.formatted}`).join(' • '),
     priceFcfa: finalPriceFcfa
   };
 }
@@ -470,19 +482,38 @@ export const PricingView: React.FC<PricingViewProps> = ({
 
           {/* Bloc Prix Principal & Conversions secondaires */}
           <div className="mb-4 sm:mb-6">
-            <div className={`flex items-baseline ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E]'}`}>
+            <div className={`flex items-baseline flex-wrap gap-x-2.5 gap-y-1 ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E]'}`}>
+              {/* Vrai prix annuel barré si paiement par an avec réduction */}
+              {isAnnual && pricing.fullYearlyPrice > pricing.activePrice && (
+                <span className={`text-2xl sm:text-3xl font-serif font-normal line-through opacity-55 ${isPopular ? 'text-[#E8DFD0]' : 'text-[#5C6B5A]'}`}>
+                  {getCurrencySymbol(pricing.primaryCurr)} {pricing.primaryCurr === 'XOF' ? pricing.fullYearlyPrice.toLocaleString('fr-FR') : pricing.fullYearlyPrice}
+                </span>
+              )}
               <span className="text-5xl sm:text-6xl font-serif font-normal">
                 {getCurrencySymbol(pricing.primaryCurr)} {pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice}
               </span>
               <span className="text-lg sm:text-xl font-sans ml-1 opacity-90">
                 {isAnnual ? '/an' : '/mois'}
               </span>
+              {isAnnual && pricing.discountPct > 0 && (
+                <span className={`ml-1 text-xs font-black px-2 py-0.5 rounded-full ${isPopular ? 'bg-[#C9B896] text-[#2D4A3E]' : 'bg-[#2D4A3E] text-[#F5F0E8]'}`}>
+                  -{pricing.discountPct}%
+                </span>
+              )}
             </div>
 
-            {/* Conversions secondaires en petit en dessous (= 58 500 FCFA • = 82.8 €) */}
-            {pricing.secondaryString && (
-              <div className={`text-xs font-semibold mt-1.5 ${isPopular ? 'text-[#E8DFD0]/90' : 'text-[#5C6B5A]'}`}>
-                {pricing.secondaryString}
+            {/* Conversions secondaires en petit en dessous (= 58 500 FCFA • = 82.8 €) avec vrai prix barré si annuel */}
+            {pricing.secondaryParts && pricing.secondaryParts.length > 0 && (
+              <div className={`text-xs font-semibold mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 ${isPopular ? 'text-[#E8DFD0]/90' : 'text-[#5C6B5A]'}`}>
+                {pricing.secondaryParts.map((sec, idx) => (
+                  <span key={sec.curr} className="inline-flex items-center gap-1">
+                    {idx > 0 && <span className="opacity-40">•</span>}
+                    {isAnnual && sec.fullVal && sec.fullVal > sec.finalVal && (
+                      <span className="line-through opacity-50">{sec.fullFormatted}</span>
+                    )}
+                    <span>= {sec.formatted}</span>
+                  </span>
+                ))}
               </div>
             )}
           </div>
@@ -668,14 +699,14 @@ export const PricingView: React.FC<PricingViewProps> = ({
               {/* 1. SECTION : ABONNEMENTS STOCKAGE (DYNAMIQUES DEPUIS LA BASE DE DONNÉES)  */}
               {activeTab === 'storage' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
-                  {dbStoragePlans.map(plan => renderCard(plan, 'storage'))}
+                  {dbStoragePlans.filter(plan => plan.is_active !== 0).map(plan => renderCard(plan, 'storage'))}
                 </div>
               )}
 
               {/* 2. SECTION : ASSISTANTE STUDYCLOUD (DYNAMIQUES DEPUIS LA BASE DE DONNÉES) */}
               {activeTab === 'ai' && (
                 <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
-                  {dbAiPlans.map(plan => renderCard(plan, 'ai'))}
+                  {dbAiPlans.filter(plan => plan.is_active !== 0).map(plan => renderCard(plan, 'ai'))}
                 </div>
               )}
             </>

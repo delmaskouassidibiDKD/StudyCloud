@@ -8136,7 +8136,12 @@ Lien vers le produit : ${productShareUrl}`;
         const planId = String(body.id || "").trim();
         const tableName = category === "ai" ? "ai_subscription_plans" : "storage_subscription_plans";
 
-        await env.DB.prepare(`UPDATE ${tableName} SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        if (body.is_active !== undefined) {
+          const newVal = body.is_active ? 1 : 0;
+          await env.DB.prepare(`UPDATE ${tableName} SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(newVal, planId).run();
+        } else {
+          await env.DB.prepare(`UPDATE ${tableName} SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        }
         const row = await env.DB.prepare(`SELECT is_active FROM ${tableName} WHERE id = ?`).bind(planId).first();
         return jsonResponse({ success: true, is_active: row ? row.is_active : 1 }, 200, origin);
       }
@@ -8154,9 +8159,32 @@ Lien vers le produit : ${productShareUrl}`;
         const planId = String(body.id || "").trim();
         const tableName = category === "ai" ? "ai_subscription_plans" : "storage_subscription_plans";
 
-        await env.DB.prepare(`UPDATE ${tableName} SET is_auto_billing = CASE WHEN is_auto_billing = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        if (body.is_auto_billing !== undefined) {
+          const newVal = body.is_auto_billing ? 1 : 0;
+          await env.DB.prepare(`UPDATE ${tableName} SET is_auto_billing = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(newVal, planId).run();
+        } else {
+          await env.DB.prepare(`UPDATE ${tableName} SET is_auto_billing = CASE WHEN is_auto_billing = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        }
         const row = await env.DB.prepare(`SELECT is_auto_billing FROM ${tableName} WHERE id = ?`).bind(planId).first();
         return jsonResponse({ success: true, is_auto_billing: row ? row.is_auto_billing : 0 }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/update-badge
+      // ----------------------------------------------------------------------
+      if (path === "/api/subscription-plans/update-badge" && method === "POST") {
+        if (!env.DB) {
+          return errorResponse("Base de données D1 indisponible", 500, origin);
+        }
+        await ensureStorageTables(env.DB);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === "ai" ? "ai" : "storage";
+        const planId = String(body.id || "").trim();
+        const badge = String(body.badge || "").trim();
+        const tableName = category === "ai" ? "ai_subscription_plans" : "storage_subscription_plans";
+
+        await env.DB.prepare(`UPDATE ${tableName} SET badge = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(badge, planId).run();
+        return jsonResponse({ success: true, id: planId, badge }, 200, origin);
       }
 
       return errorResponse(`Route non trouv\xE9e : ${method} ${path}`, 404, origin);

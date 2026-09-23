@@ -3473,6 +3473,27 @@ function renderDashboardHtml(data) {
     </div>
   </div>
 
+  <!-- MODALE DE CONFIRMATION DE SUPPRESSION D'UNE CARTE D'ABONNEMENT -->
+  <div id="confirm-delete-sub-plan-modal" class="fixed inset-0 z-50 bg-black/80 backdrop-blur-md hidden flex flex-col items-center justify-center p-3 sm:p-4" onclick="closeDeleteConfirmModal(event)">
+    <div class="relative max-w-md w-full bg-[#0f172a] border border-rose-500/40 rounded-2xl overflow-hidden shadow-2xl p-6 text-center animate-in fade-in zoom-in-95 duration-150" onclick="event.stopPropagation()">
+      <div class="w-14 h-14 rounded-2xl bg-rose-500/20 border border-rose-500/40 text-rose-400 mx-auto flex items-center justify-center text-2xl mb-4 select-none">
+        🗑️
+      </div>
+      <h3 class="text-base font-black text-white mb-2">Confirmer la suppression</h3>
+      <p class="text-xs text-slate-300 leading-relaxed mb-6" id="confirm-delete-sub-plan-text">
+        Êtes-vous sûr de vouloir supprimer définitivement cette carte d'abonnement ? Cette action est irréversible et la carte sera immédiatement retirée de l'application.
+      </p>
+      <div class="flex items-center justify-center gap-3">
+        <button type="button" onclick="closeDeleteConfirmModal()" class="px-5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs transition cursor-pointer">
+          Annuler
+        </button>
+        <button type="button" id="btn-confirm-delete-sub-plan" onclick="confirmDeleteSubscriptionPlan()" class="px-5 py-2.5 rounded-xl bg-rose-600 hover:bg-rose-500 text-white font-black text-xs transition cursor-pointer shadow-lg shadow-rose-900/40">
+          Confirmer la suppression
+        </button>
+      </div>
+    </div>
+  </div>
+
   <!-- TOAST DE NOTIFICATION FLOTTANT -->
   <div id="toast" class="fixed bottom-5 right-5 z-50 bg-emerald-600 text-white font-bold text-xs px-4 py-2.5 rounded-xl shadow-2xl border border-emerald-400/40 hidden transition-opacity animate-bounce">
     Notification
@@ -7084,15 +7105,131 @@ function renderDashboardHtml(data) {
         const card = document.createElement('div');
         const isActive = plan.is_active !== 0;
         const isAuto = plan.is_auto_billing === 1;
+        const hasBadge = !!(plan.badge && plan.badge.trim());
 
-        card.className = 'relative flex flex-col justify-between rounded-2xl p-5 border ' + 
-          (isActive ? (plan.badge ? 'border-orange-500/60 bg-[#111927]' : 'border-slate-800 bg-[#0d1424]') : 'border-slate-800/60 bg-slate-950/60 opacity-60') + 
-          ' shadow-xl transition-all';
+        card.className = 'relative flex flex-col justify-between rounded-2xl p-5 border transition-all duration-200 ' + 
+          (isActive 
+            ? (hasBadge ? 'border-amber-500/60 bg-[#111927] shadow-amber-950/20' : 'border-slate-800 bg-[#0d1424]') 
+            : 'border-slate-800/60 bg-slate-950/70 opacity-65') + 
+          ' shadow-xl';
 
         // En-tête de la carte
         const headerDiv = document.createElement('div');
         headerDiv.className = 'space-y-3';
 
+        // =========================================================================
+        // DEUX CASES À COCHER : VISIBILITÉ DANS L'APP & BADGE PERSONNALISÉ
+        // =========================================================================
+        const controlsBox = document.createElement('div');
+        controlsBox.className = 'p-3 rounded-xl bg-slate-900/90 border border-slate-700/80 space-y-2.5 mb-2 shadow-inner';
+
+        // --- CASE 1 : Visibilité dans l'application ---
+        const cb1Wrap = document.createElement('div');
+        cb1Wrap.className = 'flex items-center justify-between gap-2';
+
+        const cb1Label = document.createElement('label');
+        cb1Label.className = 'flex items-center gap-2 text-xs font-bold text-slate-200 cursor-pointer select-none';
+
+        const cb1Input = document.createElement('input');
+        cb1Input.type = 'checkbox';
+        cb1Input.checked = isActive;
+        cb1Input.className = 'w-4 h-4 rounded text-emerald-500 bg-slate-950 border-slate-700 focus:ring-emerald-500 cursor-pointer';
+        cb1Input.onchange = function() {
+          toggleSubscriptionPlanActive(targetCat, plan.id, cb1Input.checked);
+        };
+
+        const cb1Text = document.createElement('span');
+        cb1Text.textContent = "Visible dans l'application";
+        cb1Label.appendChild(cb1Input);
+        cb1Label.appendChild(cb1Text);
+
+        const cb1Badge = document.createElement('span');
+        cb1Badge.className = 'px-2 py-0.5 rounded-md text-[10px] font-black uppercase ' + 
+          (isActive ? 'bg-emerald-500/20 text-emerald-400 border border-emerald-500/40' : 'bg-slate-800 text-slate-400 border border-slate-700');
+        cb1Badge.textContent = isActive ? "✓ Actif" : "Masqué";
+
+        cb1Wrap.appendChild(cb1Label);
+        cb1Wrap.appendChild(cb1Badge);
+        controlsBox.appendChild(cb1Wrap);
+
+        // --- CASE 2 : Badge personnalisé (Populaire / Recommandé) ---
+        const cb2Wrap = document.createElement('div');
+        cb2Wrap.className = 'pt-2 border-t border-slate-800 space-y-2';
+
+        const cb2Header = document.createElement('div');
+        cb2Header.className = 'flex items-center justify-between gap-2';
+
+        const cb2Label = document.createElement('label');
+        cb2Label.className = 'flex items-center gap-2 text-xs font-bold text-slate-200 cursor-pointer select-none';
+
+        const cb2Input = document.createElement('input');
+        cb2Input.type = 'checkbox';
+        cb2Input.checked = hasBadge;
+        cb2Input.className = 'w-4 h-4 rounded text-amber-500 bg-slate-950 border-slate-700 focus:ring-amber-500 cursor-pointer';
+
+        const cb2Text = document.createElement('span');
+        cb2Text.textContent = "Badge mis en avant";
+        cb2Label.appendChild(cb2Input);
+        cb2Label.appendChild(cb2Text);
+
+        const cb2Badge = document.createElement('span');
+        cb2Badge.className = 'px-2 py-0.5 rounded-md text-[10px] font-black uppercase ' + 
+          (hasBadge ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : 'bg-slate-800 text-slate-400 border border-slate-700');
+        cb2Badge.textContent = hasBadge ? (plan.badge || 'POPULAIRE') : "Aucun";
+
+        cb2Header.appendChild(cb2Label);
+        cb2Header.appendChild(cb2Badge);
+        cb2Wrap.appendChild(cb2Header);
+
+        // Champ texte qui apparaît à côté/dessous quand la case 2 est cochée
+        const badgeInputRow = document.createElement('div');
+        badgeInputRow.className = (hasBadge ? 'flex' : 'hidden') + ' items-center gap-1.5 pt-1';
+
+        const badgeTextInput = document.createElement('input');
+        badgeTextInput.type = 'text';
+        badgeTextInput.value = plan.badge || 'POPULAIRE';
+        badgeTextInput.placeholder = 'Ex: POPULAIRE, RECOMMANDÉ...';
+        badgeTextInput.className = 'flex-1 bg-slate-950 border border-amber-500/60 rounded-lg px-2.5 py-1 text-white font-extrabold text-xs uppercase focus:border-amber-400 outline-none';
+
+        const badgeSaveBtn = document.createElement('button');
+        badgeSaveBtn.type = 'button';
+        badgeSaveBtn.className = 'px-3 py-1 bg-amber-500 hover:bg-amber-400 text-slate-950 font-black rounded-lg text-xs transition cursor-pointer shadow-md shrink-0';
+        badgeSaveBtn.textContent = 'Enregistrer';
+
+        badgeSaveBtn.onclick = function() {
+          const val = badgeTextInput.value.trim() || 'POPULAIRE';
+          saveSubscriptionPlanBadge(targetCat, plan.id, val);
+        };
+        badgeTextInput.onkeydown = function(e) {
+          if (e.key === 'Enter') {
+            e.preventDefault();
+            badgeSaveBtn.click();
+          }
+        };
+
+        cb2Input.onchange = function() {
+          if (cb2Input.checked) {
+            badgeInputRow.classList.remove('hidden');
+            badgeInputRow.classList.add('flex');
+            const initialVal = badgeTextInput.value.trim() || 'POPULAIRE';
+            badgeTextInput.value = initialVal;
+            saveSubscriptionPlanBadge(targetCat, plan.id, initialVal);
+            badgeTextInput.focus();
+          } else {
+            badgeInputRow.classList.add('hidden');
+            badgeInputRow.classList.remove('flex');
+            saveSubscriptionPlanBadge(targetCat, plan.id, '');
+          }
+        };
+
+        badgeInputRow.appendChild(badgeTextInput);
+        badgeInputRow.appendChild(badgeSaveBtn);
+        cb2Wrap.appendChild(badgeInputRow);
+        controlsBox.appendChild(cb2Wrap);
+
+        headerDiv.appendChild(controlsBox);
+
+        // Ligne Titre & Badge
         const topRow = document.createElement('div');
         topRow.className = 'flex items-center justify-between gap-2';
 
@@ -7100,23 +7237,17 @@ function renderDashboardHtml(data) {
         titleDiv.className = 'flex items-center gap-2 flex-wrap';
 
         const titleSpan = document.createElement('h5');
-        titleSpan.className = 'text-base font-black text-white';
+        titleSpan.className = 'text-lg font-black text-white';
         titleSpan.textContent = plan.name || 'Forfait';
         titleDiv.appendChild(titleSpan);
 
-        if (plan.badge) {
+        if (hasBadge) {
           const badgeSpan = document.createElement('span');
           badgeSpan.className = 'px-2 py-0.5 rounded-full text-[10px] font-extrabold uppercase bg-amber-500/20 text-amber-300 border border-amber-500/30';
           badgeSpan.textContent = plan.badge;
           titleDiv.appendChild(badgeSpan);
         }
         topRow.appendChild(titleDiv);
-
-        // Badge visibilité
-        const visSpan = document.createElement('span');
-        visSpan.className = 'px-2 py-0.5 rounded-md text-[10px] font-bold ' + (isActive ? 'bg-emerald-500/15 text-emerald-400 border border-emerald-500/30' : 'bg-slate-800 text-slate-400');
-        visSpan.textContent = isActive ? "Actif dans l'app" : "Masqué";
-        topRow.appendChild(visSpan);
         headerDiv.appendChild(topRow);
 
         if (plan.description) {
@@ -7126,7 +7257,9 @@ function renderDashboardHtml(data) {
           headerDiv.appendChild(descP);
         }
 
-        // Prix & devises
+        // =========================================================================
+        // PRIX, DEVISES SECONDAIRES & VRAI PRIX ANNUEL BARRÉ
+        // =========================================================================
         const priceBox = document.createElement('div');
         priceBox.className = 'p-3 rounded-xl bg-slate-900/90 border border-slate-800 space-y-1';
 
@@ -7145,7 +7278,7 @@ function renderDashboardHtml(data) {
         priceRow.appendChild(perMonth);
         priceBox.appendChild(priceRow);
 
-        // Devises secondaires
+        // Devises secondaires mensuelles
         let convObj = {};
         try {
           convObj = typeof plan.currency_conversions === 'string' ? JSON.parse(plan.currency_conversions) : (plan.currency_conversions || {});
@@ -7171,15 +7304,51 @@ function renderDashboardHtml(data) {
           priceBox.appendChild(secDiv);
         }
 
-        // Réduction annuelle
+        // VRAI PRIX ANNUEL BARRÉ & RÉDUCTION ANNUELLE
+        const monthlyP = Number(plan.price) || 0;
         const yearlyP = Number(plan.yearly_price) || 0;
         const discPct = Number(plan.yearly_discount_pct) || 0;
-        if (yearlyP > 0) {
+        const fullYearly = monthlyP * 12;
+
+        if (yearlyP > 0 || discPct > 0) {
+          const activeYearly = yearlyP > 0 ? yearlyP : Math.round(fullYearly * (1 - (discPct / 100)) * 100) / 100;
           const yrRow = document.createElement('div');
-          yrRow.className = 'flex items-center justify-between pt-1 mt-1 border-t border-slate-800 text-[11px]';
-          yrRow.innerHTML = '<span class="text-slate-400">Annuel (12 mois) :</span>' +
-            '<span class="font-bold text-emerald-400 font-mono">' + getCurrencySymbol(primaryCurr) + ' ' + (primaryCurr === 'XOF' ? yearlyP.toLocaleString() : yearlyP) + ' / an ' +
-            (discPct > 0 ? '<span class="px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 text-[9px] font-bold">-' + discPct + '%</span>' : '') + '</span>';
+          yrRow.className = 'pt-2 mt-2 border-t border-slate-800 space-y-1';
+          
+          const yrTop = document.createElement('div');
+          yrTop.className = 'flex items-center justify-between text-xs';
+          yrTop.innerHTML = '<span class="text-slate-400 font-bold">Annuel (12 mois) :</span>' +
+            '<div class="flex items-center gap-1.5">' +
+              (fullYearly > activeYearly ? '<span class="line-through text-slate-500 font-mono text-xs">' + getCurrencySymbol(primaryCurr) + ' ' + (primaryCurr === 'XOF' ? fullYearly.toLocaleString() : fullYearly) + '</span>' : '') +
+              '<span class="font-black text-emerald-400 font-mono text-sm">' + getCurrencySymbol(primaryCurr) + ' ' + (primaryCurr === 'XOF' ? activeYearly.toLocaleString() : activeYearly) + ' / an</span>' +
+              (discPct > 0 ? '<span class="px-1.5 py-0.5 rounded bg-emerald-500/20 text-emerald-300 text-[10px] font-extrabold border border-emerald-500/30">-' + discPct + '%</span>' : '') +
+            '</div>';
+          yrRow.appendChild(yrTop);
+
+          // Conversions secondaires annuelles avec vrai prix barré
+          const yrSecParts = [];
+          const annualRatio = monthlyP > 0 ? (activeYearly / monthlyP) : (12 * (1 - (discPct / 100)));
+          if (currEnabled.includes('XOF') && primaryCurr !== 'XOF' && convObj.XOF) {
+            const fullSec = Math.round(convObj.XOF * 12);
+            const discSec = Math.round(convObj.XOF * annualRatio);
+            yrSecParts.push('≈ ' + (fullSec > discSec ? '<span class="line-through text-slate-500">' + fullSec.toLocaleString() + '</span> ' : '') + '<span class="text-amber-400 font-bold">' + discSec.toLocaleString() + ' FCFA</span>');
+          }
+          if (currEnabled.includes('USD') && primaryCurr !== 'USD' && convObj.USD) {
+            const fullSec = Math.round(convObj.USD * 12 * 100) / 100;
+            const discSec = Math.round(convObj.USD * annualRatio * 100) / 100;
+            yrSecParts.push('≈ ' + (fullSec > discSec ? '<span class="line-through text-slate-500">' + fullSec + '</span> ' : '') + '<span class="text-amber-400 font-bold">' + discSec + ' $</span>');
+          }
+          if (currEnabled.includes('EUR') && primaryCurr !== 'EUR' && convObj.EUR) {
+            const fullSec = Math.round(convObj.EUR * 12 * 100) / 100;
+            const discSec = Math.round(convObj.EUR * annualRatio * 100) / 100;
+            yrSecParts.push('≈ ' + (fullSec > discSec ? '<span class="line-through text-slate-500">' + fullSec + '</span> ' : '') + '<span class="text-amber-400 font-bold">' + discSec + ' €</span>');
+          }
+          if (yrSecParts.length > 0) {
+            const yrSecDiv = document.createElement('div');
+            yrSecDiv.className = 'text-[11px] text-slate-400 text-right';
+            yrSecDiv.innerHTML = yrSecParts.join(' • ');
+            yrRow.appendChild(yrSecDiv);
+          }
           priceBox.appendChild(yrRow);
         }
         headerDiv.appendChild(priceBox);
@@ -7215,54 +7384,57 @@ function renderDashboardHtml(data) {
         headerDiv.appendChild(featBox);
         card.appendChild(headerDiv);
 
-        // Mode bouton étudiant + Actions d'administration
+        // =========================================================================
+        // BOUTON DE MODE (AUTOMATIQUE VS MANUEL) & ACTIONS ADMIN (MODIFIER / SUPPRIMER)
+        // =========================================================================
         const footerDiv = document.createElement('div');
         footerDiv.className = 'pt-4 mt-3 border-t border-slate-800 space-y-2.5';
 
-        // Badge du bouton dans l'application
-        const buttonBadge = document.createElement('div');
-        buttonBadge.className = 'flex items-center justify-between p-2 rounded-xl ' + 
-          (isAuto ? 'bg-cyan-950/40 border border-cyan-500/30 text-cyan-300' : 'bg-slate-900 border border-slate-700 text-slate-300') + ' text-[11px]';
+        // VRAI BOUTON ERGONOMIQUE DE BASCULE AUTOMATIQUE / MANUEL
+        const autoBillingBtn = document.createElement('button');
+        autoBillingBtn.type = 'button';
+        autoBillingBtn.className = 'w-full py-2.5 px-3 rounded-xl font-bold text-xs flex items-center justify-between transition-all duration-200 cursor-pointer shadow-md ' +
+          (isAuto 
+            ? 'bg-cyan-950/80 hover:bg-cyan-900/90 text-cyan-200 border-2 border-cyan-500/50 hover:border-cyan-400' 
+            : 'bg-slate-900 hover:bg-slate-800 text-slate-200 border-2 border-slate-700 hover:border-slate-500');
+        autoBillingBtn.innerHTML = 
+          '<div class="flex items-center gap-2.5 text-left">' +
+            '<span class="text-base select-none">' + (isAuto ? '⚡' : '🔄') + '</span>' +
+            '<div>' +
+              '<div class="text-[10px] text-slate-400 uppercase font-black tracking-wider">Mode bouton étudiant :</div>' +
+              '<div class="text-xs font-black ' + (isAuto ? 'text-cyan-300' : 'text-amber-300') + '">' +
+                (isAuto ? '« S’abonner » (Paiement Auto)' : '« Commencer » (Paiement Manuel)') +
+              '</div>' +
+            '</div>' +
+          '</div>' +
+          '<span class="px-2.5 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all shadow-sm shrink-0 ' +
+            (isAuto ? 'bg-cyan-500 text-slate-950 hover:bg-cyan-400' : 'bg-amber-500 text-slate-950 hover:bg-amber-400') + '">' +
+            (isAuto ? 'Passer en Manuel ➔' : 'Passer en Auto ➔') +
+          '</span>';
         
-        const badgeLabel = document.createElement('span');
-        badgeLabel.innerHTML = 'Bouton étudiant : <strong>' + (isAuto ? '« S&apos;abonner »' : '« Commencer »') + '</strong>';
-        
-        const badgeToggleBtn = document.createElement('button');
-        badgeToggleBtn.type = 'button';
-        badgeToggleBtn.className = 'text-[10px] font-bold underline cursor-pointer';
-        badgeToggleBtn.textContent = isAuto ? 'Passer en Manuel' : 'Passer en Auto';
-        badgeToggleBtn.onclick = function() { toggleSubscriptionPlanAutoBilling(targetCat, plan.id); };
-        
-        buttonBadge.appendChild(badgeLabel);
-        buttonBadge.appendChild(badgeToggleBtn);
-        footerDiv.appendChild(buttonBadge);
+        autoBillingBtn.onclick = function() {
+          toggleSubscriptionPlanAutoBilling(targetCat, plan.id);
+        };
+        footerDiv.appendChild(autoBillingBtn);
 
-        // Boutons d'action
+        // Boutons d'action : Modifier et Supprimer
         const actionRow = document.createElement('div');
-        actionRow.className = 'flex items-center gap-1.5';
+        actionRow.className = 'flex items-center gap-2 pt-1';
 
         const btnEdit = document.createElement('button');
         btnEdit.type = 'button';
-        btnEdit.className = 'flex-1 py-1.5 bg-slate-800 hover:bg-slate-700 text-white rounded-lg text-xs font-bold transition flex items-center justify-center gap-1 cursor-pointer';
-        btnEdit.innerHTML = '<span>✏️</span><span>Modifier</span>';
+        btnEdit.className = 'flex-1 py-2 bg-slate-800 hover:bg-slate-700 text-white rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow';
+        btnEdit.innerHTML = '<span>✏️</span><span>Modifier la carte</span>';
         btnEdit.onclick = function() { openSubscriptionPlanModal(targetCat, plan.id); };
-
-        const btnToggleVis = document.createElement('button');
-        btnToggleVis.type = 'button';
-        btnToggleVis.className = 'px-2.5 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-300 rounded-lg text-xs font-bold transition cursor-pointer';
-        btnToggleVis.title = isActive ? 'Masquer cette carte' : 'Activer cette carte';
-        btnToggleVis.innerHTML = isActive ? '👁️' : '🚫';
-        btnToggleVis.onclick = function() { toggleSubscriptionPlanActive(targetCat, plan.id); };
 
         const btnDel = document.createElement('button');
         btnDel.type = 'button';
-        btnDel.className = 'px-2.5 py-1.5 bg-rose-950/40 hover:bg-rose-900 text-rose-300 border border-rose-800/40 rounded-lg text-xs font-bold transition cursor-pointer';
+        btnDel.className = 'px-3 py-2 bg-rose-950/40 hover:bg-rose-900/80 text-rose-300 border border-rose-800/50 rounded-xl text-xs font-black transition flex items-center gap-1.5 cursor-pointer shadow';
         btnDel.title = 'Supprimer définitivement';
-        btnDel.innerHTML = '🗑️';
-        btnDel.onclick = function() { deleteSubscriptionPlan(targetCat, plan.id); };
+        btnDel.innerHTML = '<span>🗑️</span><span>Supprimer</span>';
+        btnDel.onclick = function() { openDeleteConfirmModal(targetCat, plan.id, plan.name); };
 
         actionRow.appendChild(btnEdit);
-        actionRow.appendChild(btnToggleVis);
         actionRow.appendChild(btnDel);
         footerDiv.appendChild(actionRow);
 
@@ -7499,12 +7671,7 @@ function renderDashboardHtml(data) {
       }
 
       try {
-        const resp = await fetch('/api/subscription-plans/save', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ category, plan: planData })
-        });
-        const res = await resp.json();
+        const res = await safeSubPlansApi('/api/subscription-plans/save', { category, plan: planData });
         if (res && res.success && res.plan) {
           if (category === 'ai') {
             const idx = (allAiPlans || []).findIndex(p => p.id === res.plan.id);
@@ -7538,47 +7705,139 @@ function renderDashboardHtml(data) {
     }
     window.saveSubscriptionPlanModal = saveSubscriptionPlanModal;
 
-    async function deleteSubscriptionPlan(category, id) {
-      if (!confirm("Êtes-vous sûr de vouloir supprimer définitivement cette carte d'abonnement ?")) return;
+    function escapeHtml(str) {
+      if (!str) return '';
+      return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+    }
+    window.escapeHtml = escapeHtml;
+
+    async function safeSubPlansApi(endpoint, body) {
+      let text = '';
       try {
-        const resp = await fetch('/api/subscription-plans/delete', {
+        const resp = await fetch(endpoint, {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ category, id })
+          body: JSON.stringify(body)
         });
-        const res = await resp.json();
+        text = await resp.text();
+        if (text && !text.trim().startsWith('<')) {
+          const data = JSON.parse(text);
+          if (data && data.success) return data;
+          if (data && data.error) throw new Error(data.error);
+        }
+      } catch (err) {
+        console.warn('[SubPlans API] Local endpoint échoué, essai du fallback:', err);
+      }
+
+      // Fallback vers le worker principal API en cas d'erreur ou de page HTML accidentelle
+      try {
+        const fallbackUrl = 'https://api-worker.dkd-technologies.com' + endpoint;
+        const resp2 = await fetch(fallbackUrl, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(body)
+        });
+        const text2 = await resp2.text();
+        if (text2 && !text2.trim().startsWith('<')) {
+          const data2 = JSON.parse(text2);
+          if (data2 && data2.success) return data2;
+          if (data2 && data2.error) throw new Error(data2.error);
+        }
+      } catch (err2) {
+        console.error('[SubPlans API] Fallback endpoint échoué:', err2);
+      }
+
+      if (text && text.trim().startsWith('<')) {
+        throw new Error("Réponse HTML inattendue du serveur. La route API n'a pas répondu en JSON.");
+      }
+      throw new Error("Impossible de communiquer avec le serveur ou la base de données");
+    }
+    window.safeSubPlansApi = safeSubPlansApi;
+
+    let pendingDeleteCategory = null;
+    let pendingDeletePlanId = null;
+
+    function openDeleteConfirmModal(category, id, planName) {
+      pendingDeleteCategory = category;
+      pendingDeletePlanId = id;
+      const modal = document.getElementById('confirm-delete-sub-plan-modal');
+      const textEl = document.getElementById('confirm-delete-sub-plan-text');
+      if (textEl) {
+        textEl.innerHTML = 'Êtes-vous sûr de vouloir supprimer définitivement la carte d\'abonnement <strong>« ' + escapeHtml(planName || 'Forfait') + ' »</strong> ? Cette action est irréversible et la carte sera immédiatement retirée de l\'application.';
+      }
+      if (modal) {
+        modal.classList.remove('hidden');
+        modal.style.display = 'flex';
+      }
+    }
+    window.openDeleteConfirmModal = openDeleteConfirmModal;
+
+    function closeDeleteConfirmModal(event) {
+      if (event && event.target && event.target.closest && event.target.closest('#confirm-delete-sub-plan-modal > div')) return;
+      const modal = document.getElementById('confirm-delete-sub-plan-modal');
+      if (modal) {
+        modal.classList.add('hidden');
+        modal.style.display = 'none';
+      }
+      pendingDeleteCategory = null;
+      pendingDeletePlanId = null;
+    }
+    window.closeDeleteConfirmModal = closeDeleteConfirmModal;
+
+    async function confirmDeleteSubscriptionPlan() {
+      if (!pendingDeleteCategory || !pendingDeletePlanId) return;
+      const cat = pendingDeleteCategory;
+      const id = pendingDeletePlanId;
+      const btn = document.getElementById('btn-confirm-delete-sub-plan');
+      if (btn) {
+        btn.disabled = true;
+        btn.textContent = 'Suppression en cours...';
+      }
+      try {
+        const res = await safeSubPlansApi('/api/subscription-plans/delete', { category: cat, id });
         if (res && res.success) {
-          if (category === 'ai') {
+          if (cat === 'ai') {
             allAiPlans = (allAiPlans || []).filter(p => p.id !== id);
           } else {
             allStoragePlans = (allStoragePlans || []).filter(p => p.id !== id);
           }
           renderSubscriptionPlansCards(currentSubPlanTab);
-          showToast("✓ Carte d'abonnement supprimée avec succès.");
+          closeDeleteConfirmModal();
+          showToast("✓ Carte d'abonnement supprimée définitivement avec succès !");
         } else {
           throw new Error(res?.error || "Échec de la suppression");
         }
       } catch (err) {
         console.error('Erreur suppression forfait:', err);
         showToast('⚠️ Erreur: ' + err.message);
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.textContent = 'Confirmer la suppression';
+        }
       }
     }
-    window.deleteSubscriptionPlan = deleteSubscriptionPlan;
+    window.confirmDeleteSubscriptionPlan = confirmDeleteSubscriptionPlan;
 
-    async function toggleSubscriptionPlanActive(category, id) {
+    async function toggleSubscriptionPlanActive(category, id, explicitState) {
       try {
-        const resp = await fetch('/api/subscription-plans/toggle-active', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ category, id })
+        const isChecked = explicitState !== undefined ? !!explicitState : undefined;
+        const res = await safeSubPlansApi('/api/subscription-plans/toggle-active', {
+          category,
+          id,
+          is_active: isChecked !== undefined ? (isChecked ? 1 : 0) : undefined
         });
-        const res = await resp.json();
         if (res && res.success) {
           const list = category === 'ai' ? allAiPlans : allStoragePlans;
           const p = (list || []).find(item => item.id === id);
           if (p) p.is_active = res.is_active;
           renderSubscriptionPlansCards(currentSubPlanTab);
-          showToast(res.is_active === 1 ? "✓ Carte visible pour les étudiants" : "✓ Carte masquée dans l'application");
+          showToast(res.is_active === 1 ? "✓ Carte désormais visible pour les étudiants dans l'application" : "✓ Carte masquée de l'application");
         }
       } catch (err) {
         console.error('Erreur toggle actif:', err);
@@ -7587,14 +7846,31 @@ function renderDashboardHtml(data) {
     }
     window.toggleSubscriptionPlanActive = toggleSubscriptionPlanActive;
 
+    async function saveSubscriptionPlanBadge(category, id, explicitBadge) {
+      try {
+        const badge = String(explicitBadge || '').trim();
+        const res = await safeSubPlansApi('/api/subscription-plans/update-badge', {
+          category,
+          id,
+          badge
+        });
+        if (res && res.success) {
+          const list = category === 'ai' ? allAiPlans : allStoragePlans;
+          const p = (list || []).find(item => item.id === id);
+          if (p) p.badge = res.badge;
+          renderSubscriptionPlansCards(currentSubPlanTab);
+          showToast(res.badge ? '✓ Badge « ' + res.badge + ' » activé et enregistré !' : "✓ Badge retiré de la carte");
+        }
+      } catch (err) {
+        console.error('Erreur mise à jour badge:', err);
+        showToast('⚠️ Erreur: ' + err.message);
+      }
+    }
+    window.saveSubscriptionPlanBadge = saveSubscriptionPlanBadge;
+
     async function toggleSubscriptionPlanAutoBilling(category, id) {
       try {
-        const resp = await fetch('/api/subscription-plans/toggle-auto-billing', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ category, id })
-        });
-        const res = await resp.json();
+        const res = await safeSubPlansApi('/api/subscription-plans/toggle-auto-billing', { category, id });
         if (res && res.success) {
           const list = category === 'ai' ? allAiPlans : allStoragePlans;
           const p = (list || []).find(item => item.id === id);
@@ -7751,7 +8027,8 @@ function renderDashboardHtml(data) {
 export default {
   async fetch(request, env) {
     const url = new URL(request.url);
-    const path = url.pathname;
+    const rawPath = url.pathname || '/';
+    const path = rawPath.length > 1 ? rawPath.replace(/\/+$/, '') : rawPath;
     const origin = request.headers.get('Origin') || '*';
 
     // Gestion du Preflight CORS
@@ -8971,7 +9248,12 @@ export default {
         const planId = String(body.id || '').trim();
         const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
 
-        await db.prepare(`UPDATE ${tableName} SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        if (body.is_active !== undefined) {
+          const newVal = body.is_active ? 1 : 0;
+          await db.prepare(`UPDATE ${tableName} SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(newVal, planId).run();
+        } else {
+          await db.prepare(`UPDATE ${tableName} SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        }
         const row = await db.prepare(`SELECT is_active FROM ${tableName} WHERE id = ?`).bind(planId).first();
         return new Response(JSON.stringify({ success: true, is_active: row ? row.is_active : 1 }), {
           status: 200,
@@ -8995,9 +9277,38 @@ export default {
         const planId = String(body.id || '').trim();
         const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
 
-        await db.prepare(`UPDATE ${tableName} SET is_auto_billing = CASE WHEN is_auto_billing = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        if (body.is_auto_billing !== undefined) {
+          const newVal = body.is_auto_billing ? 1 : 0;
+          await db.prepare(`UPDATE ${tableName} SET is_auto_billing = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(newVal, planId).run();
+        } else {
+          await db.prepare(`UPDATE ${tableName} SET is_auto_billing = CASE WHEN is_auto_billing = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        }
         const row = await db.prepare(`SELECT is_auto_billing FROM ${tableName} WHERE id = ?`).bind(planId).first();
         return new Response(JSON.stringify({ success: true, is_auto_billing: row ? row.is_auto_billing : 0 }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/subscription-plans/update-badge
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/subscription-plans/update-badge') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        await ensureStorageTables(db);
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const planId = String(body.id || '').trim();
+        const badge = String(body.badge || '').trim();
+        const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+
+        await db.prepare(`UPDATE ${tableName} SET badge = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(badge, planId).run();
+        return new Response(JSON.stringify({ success: true, id: planId, badge }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });
@@ -9084,6 +9395,16 @@ export default {
       try {
         aiPlansRes = await db.prepare("SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC").all();
       } catch (e) {}
+
+      // ----------------------------------------------------------------------
+      // GARDE 404 JSON : TOUTE REQUÊTE /api/* NON RECONNUE DOIT RENVOYER DU JSON ET JAMAIS DU HTML
+      // ----------------------------------------------------------------------
+      if (path.startsWith('/api/')) {
+        return new Response(JSON.stringify({ success: false, error: `Route API introuvable: ${request.method} ${path}` }), {
+          status: 404,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
 
       // ----------------------------------------------------------------------
       // ROUTE PAR DÉFAUT : Page Web Tableau de Bord (HTML)
