@@ -54,7 +54,12 @@ import {
   FolderInput,
   Copy,
   Pin,
-  Pencil
+  Pencil,
+  Heart,
+  ListPlus,
+  Timer,
+  Shuffle,
+  AlignLeft
 } from 'lucide-react';
 import { getDownloadedFiles, recordDownloadedFile, DownloadedItem } from '../services/downloadsManager';
 
@@ -78,6 +83,10 @@ export interface FileItem {
   extension?: string;
   downloadsCount?: number;
   isFavorite?: boolean;
+  artist?: string;
+  lyricsSnippet?: string;
+  fullLyrics?: string[];
+  durationSec?: number;
 }
 
 interface SubMenuView {
@@ -106,10 +115,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
   // Lecteur Audio
   const [isAudioPlaying, setIsAudioPlaying] = useState(false);
-  const [audioCurrentTime, setAudioCurrentTime] = useState(18);
-  const [audioDuration, setAudioDuration] = useState(215);
+  const [audioCurrentTime, setAudioCurrentTime] = useState(11);
+  const [audioDuration, setAudioDuration] = useState(219);
   const [audioVolume, setAudioVolume] = useState(0.85);
   const [isAudioMuted, setIsAudioMuted] = useState(false);
+  const [isMobilePlayerOpen, setIsMobilePlayerOpen] = useState(false);
+  const [isAudioShuffle, setIsAudioShuffle] = useState(false);
+  const [isAudioRepeat, setIsAudioRepeat] = useState<'off' | 'all' | 'one'>('off');
+  const [isAudioLiked, setIsAudioLiked] = useState(false);
+  const [isEqualizerOn, setIsEqualizerOn] = useState(true);
+  const [sleepTimerMinutes, setSleepTimerMinutes] = useState<number | null>(null);
+  const [showLyricsModal, setShowLyricsModal] = useState(false);
+  const [audioMenuSongId, setAudioMenuSongId] = useState<string | null>(null);
   const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Lecteur Vidéo
@@ -555,73 +572,132 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     }
   ];
 
-  // IMAGE 4 : AUDIO / SON (LISTE SOMBRE AVEC VIGNETTE NOIRE + NOTE DE MUSIQUE BLANCHE ET GROUPÉE PAR DATE)
+  // IMAGE 3 & IMAGE 2 : AUDIO / MUSIQUE (LISTE IMAGE 3 AVEC VIGNETTES, ARTISTES, DATES ET LECTEUR IMAGE 2)
   const sampleAudioList: FileItem[] = [
     {
-      id: 'aud-1',
-      name: 'Himra _ Ciel paroles.m4a',
+      id: 'aud-img3-1',
+      name: 'Another Love X Memories (Lyrics)',
+      artist: '<unknown> - Another Love X Memories...',
       category: 'audio',
       source: 'StudyCloud Audio',
-      size: '3,61 Mo',
-      sizeBytes: 3785359,
-      date: '19 août',
-      previewUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80',
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'
+      size: '4,12 Mo',
+      sizeBytes: 4320140,
+      date: '09-16',
+      durationSec: 225,
+      previewUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80',
+      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
+      lyricsSnippet: "I wanna take you somewhere so you know I care / But it's so cold and I don't know where to go...",
+      fullLyrics: [
+        "I wanna take you somewhere so you know I care",
+        "But it's so cold and I don't know where to go",
+        "I brought you daffodils in a pretty string",
+        "But they won't flower like they did last spring",
+        "And all my tears have been used up",
+        "On another love, another love"
+      ]
     },
     {
-      id: 'aud-2',
-      name: 'Esther Smith - Yesu Wo Mafa (Official...',
+      id: 'aud-img3-2',
+      name: 'Raindance (Lyrics)',
+      artist: 'Dave & Tems - Dave & Tems',
       category: 'audio',
       source: 'StudyCloud Audio',
-      size: '5,81 Mo',
-      sizeBytes: 6092226,
-      date: '19 août',
-      previewUrl: 'https://images.unsplash.com/photo-1470225620780-dba8ba36b745?auto=format&fit=crop&w=400&q=80',
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'
+      size: '5,80 Mo',
+      sizeBytes: 6081740,
+      date: '09-16',
+      durationSec: 219,
+      previewUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=400&q=80',
+      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
+      lyricsSnippet: "And really when I think of it / Growing up, I didn't ever see marriages / No weddings, no horse, no carriages / I wanna do things different...",
+      fullLyrics: [
+        "And really when I think of it",
+        "Growing up, I didn't ever see marriages",
+        "No weddings, no horse, no carriages",
+        "I wanna do things different and right",
+        "Pray for me through the day and the night",
+        "When the rain falls on our souls",
+        "We will dance and we will heal..."
+      ]
     },
     {
-      id: 'aud-3',
-      name: 'Esther Smith ft Morris Babyface...',
+      id: 'aud-img3-3',
+      name: 'Davy One (Paroles)',
+      artist: "T'es Une Étoile - T'es Une Étoile",
       category: 'audio',
       source: 'StudyCloud Audio',
-      size: '3,58 Mo',
-      sizeBytes: 3753902,
-      date: '19 août',
+      size: '3,84 Mo',
+      sizeBytes: 4026531,
+      date: '09-16',
+      durationSec: 192,
       previewUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80',
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3'
+      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
+      lyricsSnippet: "Prends soin de vous, prends soin de toi... T'es une étoile qui brille dans le noir...",
+      fullLyrics: [
+        "Prends soin de vous, prends soin de toi",
+        "T'es une étoile qui brille dans la nuit",
+        "Ne laisse personne éteindre ta flamme",
+        "Garde la foi, même sous la pluie"
+      ]
     },
     {
-      id: 'aud-4',
-      name: 'Esther Smith - Ma Won San (Official...',
+      id: 'aud-img3-4',
+      name: "On s'fait du mal (Clip officiel)",
+      artist: 'Black M - Black M',
       category: 'audio',
       source: 'StudyCloud Audio',
-      size: '5,47 Mo',
-      sizeBytes: 5735710,
-      date: '19 août',
+      size: '4,56 Mo',
+      sizeBytes: 4781506,
+      date: '09-16',
+      durationSec: 214,
+      previewUrl: 'https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?auto=format&fit=crop&w=400&q=80',
+      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3',
+      lyricsSnippet: "On s'fait du mal, pourquoi on se déchire encore quand on s'aime au fond...",
+      fullLyrics: [
+        "On s'fait du mal, pourquoi on se déchire",
+        "Quand on s'aime au fond de nos cœurs",
+        "Les regrets ne font que grandir",
+        "Mais on cherche encore le bonheur"
+      ]
+    },
+    {
+      id: 'aud-img3-5',
+      name: 'RUN (Paroles/Lyrics)',
+      artist: "Rim'K x SDM - Rim'K x SDM",
+      category: 'audio',
+      source: 'StudyCloud Audio',
+      size: '3,45 Mo',
+      sizeBytes: 3617587,
+      date: '08-26',
+      durationSec: 178,
+      previewUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80',
+      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3',
+      lyricsSnippet: "Moi qui t'ai tant donné derrière le rideau... J'ai pas changé pour les tales...",
+      fullLyrics: [
+        "Moi qui t'ai tant donné derrière le rideau",
+        "J'laisse des gens derrière, j'ai juste peur de m'égarer",
+        "J'ai pas changé pour les tales, j'fais des tales étape par étape",
+        "Mais l'État veut me voir éteindre, j'fais des tales..."
+      ]
+    },
+    {
+      id: 'aud-img3-6',
+      name: "Je M'Excuse (Lyrics Video Official)",
+      artist: "Blam'S - Blam'S",
+      category: 'audio',
+      source: 'StudyCloud Audio',
+      size: '4,10 Mo',
+      sizeBytes: 4299161,
+      date: '08-24',
+      durationSec: 200,
       previewUrl: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=400&q=80',
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3'
-    },
-    {
-      id: 'aud-5',
-      name: 'Esther Smith - Me Da Wase (Official...',
-      category: 'audio',
-      source: 'StudyCloud Audio',
-      size: '4,37 Mo',
-      sizeBytes: 4582277,
-      date: '19 août',
-      previewUrl: 'https://images.unsplash.com/photo-1459749411175-04bf5292ceea?auto=format&fit=crop&w=400&q=80',
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3'
-    },
-    {
-      id: 'aud-6',
-      name: 'Esther Smith - Nipa (Official Video...',
-      category: 'audio',
-      source: 'StudyCloud Audio',
-      size: '4,87 Mo',
-      sizeBytes: 5106565,
-      date: '14 août',
-      previewUrl: 'https://images.unsplash.com/photo-1508700115892-45ecd05ae2ad?auto=format&fit=crop&w=400&q=80',
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3'
+      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3',
+      lyricsSnippet: "Car non jamais je ne te laisserai tomber, pardonne mes erreurs...",
+      fullLyrics: [
+        "Car non jamais je ne te laisserai tomber",
+        "Pardonne mes erreurs et mes silences",
+        "Si j'ai fait mal à tes pensées",
+        "Je demande juste une nouvelle chance"
+      ]
     }
   ];
 
@@ -822,10 +898,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     setViewerRotation(0);
     setDocCurrentPage(1);
 
-    // Si audio, démarrer l'écouteur
+    // Si audio, démarrer l'écouteur et ouvrir le lecteur mobile si sur téléphone
     if (file.category === 'audio') {
       setIsAudioPlaying(true);
       setAudioCurrentTime(0);
+      setAudioDuration(file.durationSec || 219);
+      setIsMobilePlayerOpen(true);
     } else {
       setIsAudioPlaying(false);
     }
@@ -938,8 +1016,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     color: string
   ) => {
     setSubSearchQuery('');
-    setSplitSelectedFile(null); // Réinitialiser le split lors du changement de menu
     setIsViewerMaximized(false);
+    setIsMobilePlayerOpen(false);
+
+    // En Audio, division permanente avec morceau par défaut (Raindance Image 2 & 3)
+    if (id === 'audio') {
+      const defaultTrack = sampleAudioList.find(s => s.name.includes('Raindance')) || sampleAudioList[0];
+      setSplitSelectedFile(defaultTrack);
+      setAudioDuration(defaultTrack.durationSec || 219);
+      setAudioCurrentTime(11);
+      setIsAudioPlaying(false);
+    } else {
+      setSplitSelectedFile(null); // Réinitialiser le split lors du changement de menu
+    }
+
     setCurrentSubView({
       id: `studycloud-${type}-${id}`,
       type,
@@ -996,6 +1086,78 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     });
     return groups;
   }, [filteredAudio]);
+
+  // Navigation Audio (Suivant, Précédent)
+  const handleAudioNext = () => {
+    const list = filteredAudio;
+    if (list.length === 0) return;
+    const currentIdx = list.findIndex(a => a.id === splitSelectedFile?.id);
+    if (isAudioShuffle) {
+      const randIdx = Math.floor(Math.random() * list.length);
+      handleSelectFile(list[randIdx]);
+      return;
+    }
+    const nextIdx = (currentIdx + 1) % list.length;
+    handleSelectFile(list[nextIdx]);
+  };
+
+  const handleAudioPrev = () => {
+    const list = filteredAudio;
+    if (list.length === 0) return;
+    const currentIdx = list.findIndex(a => a.id === splitSelectedFile?.id);
+    const prevIdx = (currentIdx - 1 + list.length) % list.length;
+    handleSelectFile(list[prevIdx]);
+  };
+
+  // Maintien permanent de la vue divisée en mode Audio sur Desktop
+  useEffect(() => {
+    if (currentSubView?.id === 'studycloud-category-audio') {
+      if (!splitSelectedFile || splitSelectedFile.category !== 'audio') {
+        const raindance = sampleAudioList.find(s => s.name.includes('Raindance')) || sampleAudioList[0];
+        setSplitSelectedFile(raindance);
+        setAudioDuration(raindance.durationSec || 219);
+        setAudioCurrentTime(11);
+      }
+    }
+  }, [currentSubView, splitSelectedFile]);
+
+  // Intervalle de lecture audio et synchronisation temporelle
+  useEffect(() => {
+    let interval: any = null;
+    if (isAudioPlaying) {
+      interval = setInterval(() => {
+        setAudioCurrentTime(prev => {
+          if (prev >= audioDuration) {
+            if (isAudioRepeat === 'one') {
+              if (audioRef.current) audioRef.current.currentTime = 0;
+              return 0;
+            }
+            if (isAudioRepeat === 'all') {
+              handleAudioNext();
+              return 0;
+            }
+            setIsAudioPlaying(false);
+            return 0;
+          }
+          return prev + 1;
+        });
+      }, 1000);
+    }
+    return () => {
+      if (interval) clearInterval(interval);
+    };
+  }, [isAudioPlaying, audioDuration, isAudioRepeat, isAudioShuffle, filteredAudio, splitSelectedFile]);
+
+  // Synchronisation de l'élément audio natif
+  useEffect(() => {
+    if (audioRef.current) {
+      if (isAudioPlaying) {
+        audioRef.current.play().catch(() => {});
+      } else {
+        audioRef.current.pause();
+      }
+    }
+  }, [isAudioPlaying, splitSelectedFile]);
 
   // Liste des téléchargements pour le sous-menu Téléchargements (Prend tout type de fichier)
   const filteredDownloads = useMemo(() => {
@@ -1406,13 +1568,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5">{track.size} • {track.date}</p>
           </div>
         </div>
-        <button
-          type="button"
-          onClick={(e) => { e.stopPropagation(); handleDownloadFile(track); }}
-          className="w-8 h-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
-        >
-          <Download className="w-4 h-4" />
-        </button>
+        <div className="flex items-center gap-2 shrink-0">
+          {isSelected && (
+            <div 
+              className="flex items-end gap-1 h-5 px-1 py-0.5 shrink-0" 
+              title={isAudioPlaying ? "Lecture en cours" : "En pause"}
+            >
+              <span className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-1' : ''}`} style={{ height: isAudioPlaying ? undefined : '5px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
+              <span className={`w-1 rounded-full bg-amber-300 ${isAudioPlaying ? 'music-bar-2' : ''}`} style={{ height: isAudioPlaying ? undefined : '14px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
+              <span className={`w-1 rounded-full bg-yellow-400 ${isAudioPlaying ? 'music-bar-3' : ''}`} style={{ height: isAudioPlaying ? undefined : '9px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
+              <span className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`} style={{ height: isAudioPlaying ? undefined : '4px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
+            </div>
+          )}
+          <button
+            type="button"
+            onClick={(e) => { e.stopPropagation(); handleDownloadFile(track); }}
+            className="w-8 h-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition-colors cursor-pointer"
+          >
+            <Download className="w-4 h-4" />
+          </button>
+        </div>
       </div>
     );
   };
@@ -1577,9 +1752,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 ${
               isViewerMaximized 
                 ? 'hidden' 
-                : splitSelectedFile 
-                  ? 'w-full md:w-1/2 lg:w-1/2 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
-                  : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
+                : currentSubView.id === 'studycloud-category-audio'
+                  ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
+                  : splitSelectedFile 
+                    ? 'w-full md:w-1/2 lg:w-1/2 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
+                    : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
             }`}>
 
               {/* 1. DOCUMENTS (IMAGE 1) */}
@@ -1669,55 +1846,167 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 </div>
               )}
 
-              {/* 4. AUDIO (IMAGE 4) */}
+              {/* 4. AUDIO / MUSIQUE (IMAGE 3 : LISTE SOMBRE, ARTISTES, DATES ET ÉGALISEUR ANIMÉ) */}
               {currentSubView.id === 'studycloud-category-audio' && (
-                <div className="space-y-4">
-                  <div className="space-y-4 sm:space-y-6">
-                    {Object.entries(groupedAudio).map(([dateGroup, items]) => (
-                      <div key={dateGroup} className="space-y-2">
-                        <div className="flex items-center justify-between px-2 pt-2">
-                          <span className="text-xs sm:text-sm font-bold text-slate-400">{dateGroup}</span>
-                          <CheckCircle2 className="w-4 h-4 sm:w-5 sm:h-5 text-slate-400 hover:text-white transition-colors cursor-pointer" />
-                        </div>
-                        <div className="space-y-1">
-                          {items.map(track => {
-                            const isSelected = splitSelectedFile?.id === track.id;
-                            return (
-                              <div
-                                key={track.id}
-                                onClick={() => handleSelectFile(track)}
-                                className={`group flex items-center justify-between gap-3 p-2 sm:p-2.5 rounded-2xl transition-all cursor-pointer select-none ${
-                                  isSelected 
-                                    ? 'bg-[#182236] border border-amber-400/60 shadow-md ring-2 ring-amber-400/40' 
-                                    : 'hover:bg-[#121826] border border-transparent'
-                                }`}
-                              >
-                                <div className="flex items-center gap-3 min-w-0">
-                                  <div className="w-12 h-12 rounded-2xl bg-black border border-white/10 relative overflow-hidden flex items-center justify-center shrink-0 shadow-sm">
-                                    {track.previewUrl && (
-                                      <img src={track.previewUrl} alt={track.name} className="absolute inset-0 w-full h-full object-cover opacity-40" />
-                                    )}
-                                    <div className="absolute inset-0 bg-black/40" />
-                                    <Music className="w-6 h-6 text-white stroke-[2.2] relative z-10 drop-shadow-md" />
-                                  </div>
-                                  <div className="min-w-0">
-                                    <h3 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-amber-400 transition-colors">{track.name}</h3>
-                                    <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5">{track.size} • {track.date}</p>
-                                  </div>
+                <div className="w-full bg-[#070B16] rounded-3xl p-3 sm:p-4 text-white border border-white/10 shadow-2xl space-y-3">
+                  {/* En-tête de la liste */}
+                  <div className="flex items-center justify-between px-2 pt-1 pb-2 border-b border-white/10">
+                    <div className="flex items-center gap-2">
+                      <Music className="w-4 h-4 text-amber-400 stroke-[2.2]" />
+                      <span className="text-xs sm:text-sm font-bold text-white tracking-wide">
+                        Tous les sons ({filteredAudio.length})
+                      </span>
+                    </div>
+                    <span className="text-[10px] text-amber-400/80 font-bold uppercase tracking-wider">
+                      StudyCloud Audio
+                    </span>
+                  </div>
+
+                  {/* Liste des pistes (Image 3) */}
+                  <div className="space-y-1.5">
+                    {filteredAudio.map((track) => {
+                      const isSelected = splitSelectedFile?.id === track.id;
+                      return (
+                        <div
+                          key={track.id}
+                          onClick={() => {
+                            handleSelectFile(track);
+                            setIsMobilePlayerOpen(true);
+                          }}
+                          className={`group flex items-center justify-between gap-3 p-2.5 rounded-2xl transition-all cursor-pointer select-none ${
+                            isSelected 
+                              ? 'bg-white/12 border border-white/20 shadow-md ring-1 ring-amber-400/30' 
+                              : 'hover:bg-white/5 border border-transparent'
+                          }`}
+                        >
+                          {/* Gauche : Vignette album carrée + Titre + Artiste */}
+                          <div className="flex items-center gap-3 min-w-0 flex-1">
+                            <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-black border border-white/15 relative shadow-md">
+                              {track.previewUrl ? (
+                                <img 
+                                  src={track.previewUrl} 
+                                  alt={track.name} 
+                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" 
+                                />
+                              ) : (
+                                <div className="w-full h-full bg-gradient-to-br from-amber-600 via-stone-900 to-black flex items-center justify-center">
+                                  <Music className="w-5 h-5 text-amber-300" />
                                 </div>
-                                <button
-                                  type="button"
-                                  onClick={(e) => { e.stopPropagation(); handleDownloadFile(track); }}
-                                  className="w-8 h-8 rounded-full hover:bg-slate-800 flex items-center justify-center text-slate-400 hover:text-white transition-colors"
-                                >
-                                  <Download className="w-4 h-4" />
-                                </button>
+                              )}
+                            </div>
+
+                            <div className="min-w-0 flex-1">
+                              <h4 className={`text-xs sm:text-sm font-bold truncate leading-tight ${
+                                isSelected ? 'text-amber-300 font-black' : 'text-white group-hover:text-amber-300 transition-colors'
+                              }`}>
+                                {track.name}
+                              </h4>
+                              <p className="text-[11px] sm:text-xs text-slate-400 font-medium truncate mt-0.5">
+                                {track.artist || track.source}
+                              </p>
+                            </div>
+                          </div>
+
+                          {/* Droite : Bâtons animés (si sélectionné) + Date + 3 petits points (Image 3) */}
+                          <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+                            {/* Les 4 bâtons qui bougent quand la musique est en cours, et en pause s'arrêtent */}
+                            {isSelected && (
+                              <div 
+                                className="flex items-end gap-1 h-5 px-1 py-0.5 shrink-0" 
+                                title={isAudioPlaying ? "Lecture en cours" : "En pause"}
+                              >
+                                <span 
+                                  className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-1' : ''}`}
+                                  style={{ 
+                                    height: isAudioPlaying ? undefined : '5px',
+                                    animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                                  }} 
+                                />
+                                <span 
+                                  className={`w-1 rounded-full bg-amber-300 ${isAudioPlaying ? 'music-bar-2' : ''}`}
+                                  style={{ 
+                                    height: isAudioPlaying ? undefined : '14px',
+                                    animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                                  }} 
+                                />
+                                <span 
+                                  className={`w-1 rounded-full bg-yellow-400 ${isAudioPlaying ? 'music-bar-3' : ''}`}
+                                  style={{ 
+                                    height: isAudioPlaying ? undefined : '9px',
+                                    animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                                  }} 
+                                />
+                                <span 
+                                  className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`}
+                                  style={{ 
+                                    height: isAudioPlaying ? undefined : '4px',
+                                    animationPlayState: isAudioPlaying ? 'running' : 'paused' 
+                                  }} 
+                                />
                               </div>
-                            );
-                          })}
+                            )}
+
+                            {/* Date Image 3 (ex: 09-16, 08-26, 08-24) */}
+                            <span className="text-xs font-semibold text-slate-400 shrink-0">
+                              {track.date}
+                            </span>
+
+                            {/* Bouton 3 petits points verticaux (Image 3) */}
+                            <div className="relative shrink-0">
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setAudioMenuSongId(audioMenuSongId === track.id ? null : track.id);
+                                }}
+                                className="w-7 h-7 rounded-full text-slate-400 hover:text-white hover:bg-white/10 flex items-center justify-center transition-colors cursor-pointer"
+                                title="Options du son"
+                              >
+                                <MoreVertical className="w-4 h-4" />
+                              </button>
+
+                              {audioMenuSongId === track.id && (
+                                <>
+                                  <div 
+                                    className="fixed inset-0 z-40" 
+                                    onClick={(e) => { e.stopPropagation(); setAudioMenuSongId(null); }} 
+                                  />
+                                  <div 
+                                    className="absolute right-0 top-8 z-50 w-48 bg-[#0D1527] border border-slate-700 rounded-xl shadow-2xl py-1 text-xs text-white divide-y divide-white/10 backdrop-blur-xl animate-in fade-in zoom-in-95 duration-100"
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <button 
+                                      type="button" 
+                                      onClick={() => { handleShareFile(track); setAudioMenuSongId(null); }} 
+                                      className="w-full px-3 py-2 text-left hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                      <Share2 className="w-3.5 h-3.5 text-blue-400" /> Partager le son
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => { handleDownloadFile(track); setAudioMenuSongId(null); }} 
+                                      className="w-full px-3 py-2 text-left hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                      <Download className="w-3.5 h-3.5 text-emerald-400" /> Télécharger
+                                    </button>
+                                    <button 
+                                      type="button" 
+                                      onClick={() => {
+                                        showToast(`"${track.name}" ajouté aux favoris !`);
+                                        setAudioMenuSongId(null);
+                                      }} 
+                                      className="w-full px-3 py-2 text-left hover:bg-slate-800 flex items-center gap-2 transition-colors cursor-pointer"
+                                    >
+                                      <Heart className="w-3.5 h-3.5 text-rose-400" /> Ajouter aux favoris
+                                    </button>
+                                  </div>
+                                </>
+                              )}
+                            </div>
+                          </div>
                         </div>
-                      </div>
-                    ))}
+                      );
+                    })}
                   </div>
                 </div>
               )}
@@ -1863,7 +2152,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
               <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
                 isViewerMaximized 
                   ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
-                  : 'w-full md:w-1/2 lg:w-1/2 xl:w-7/12 min-h-[500px] border-t md:border-t-0 md:border-l border-white/10'
+                  : currentSubView.id === 'studycloud-category-audio'
+                    ? `${isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'} md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10`
+                    : 'w-full md:w-1/2 lg:w-1/2 xl:w-7/12 min-h-[500px] border-t md:border-t-0 md:border-l border-white/10'
               }`}>
                 
                 {/* BARRE SUPÉRIEURE DE BOUTONS DU LECTEUR GRAND FORMAT (Images 2 et 3) */}
@@ -1973,10 +2264,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     <button
                       type="button"
                       onClick={() => {
-                        setSplitSelectedFile(null);
-                        setIsViewerMaximized(false);
+                        if (currentSubView.id === 'studycloud-category-audio') {
+                          setIsMobilePlayerOpen(false);
+                          setIsAudioPlaying(false);
+                        } else {
+                          setSplitSelectedFile(null);
+                          setIsViewerMaximized(false);
+                        }
                       }}
-                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
+                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95 ${
+                        currentSubView.id === 'studycloud-category-audio' ? 'md:hidden' : ''
+                      }`}
                       title="Fermer la vue grand format"
                     >
                       <X className="w-4 h-4 stroke-[2.5]" />
@@ -2034,111 +2332,328 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     </div>
                   )}
 
-                  {/* 3. LECTEUR AUDIO GRAND FORMAT INTERACTIF (Capable de lire tout son) */}
+                  {/* 3. LECTEUR AUDIO GRAND FORMAT INTERACTIF (IMAGE 2 : LECTEUR MUSICAL DESIGN PREMIUM) */}
                   {splitSelectedFile.category === 'audio' && (
-                    <div className={`w-full bg-[#0C1220] border border-amber-500/30 rounded-3xl p-6 sm:p-10 shadow-2xl flex flex-col items-center text-center space-y-6 animate-in zoom-in-95 ${
-                      isViewerMaximized ? 'max-w-2xl my-auto' : 'max-w-lg my-auto'
-                    }`}>
+                    <div className="relative w-full h-full flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 bg-[#090D1A] text-white overflow-hidden select-none rounded-2xl">
                       
-                      {/* Élément audio natif */}
+                      {/* Élément audio HTML5 natif invisible pour la lecture réelle */}
                       <audio
                         ref={audioRef}
-                        src={splitSelectedFile.audioUrl || (splitSelectedFile as any).url || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3'}
+                        src={splitSelectedFile.audioUrl || (splitSelectedFile as any).url || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'}
                         autoPlay={isAudioPlaying}
-                        loop
+                        onEnded={handleAudioNext}
                       />
 
-                      {/* Vignette disque album avec animation */}
-                      <div className="relative w-36 h-36 sm:w-44 sm:h-44 rounded-full bg-black border-4 border-amber-400/40 p-1 shadow-2xl flex items-center justify-center">
-                        <div className={`w-full h-full rounded-full overflow-hidden relative flex items-center justify-center ${
-                          isAudioPlaying ? 'animate-spin' : ''
-                        }`} style={{ animationDuration: '8s' }}>
+                      {/* Halo lumineux d'ambiance dorée / ambrée chaleureuse (Image 2) */}
+                      <div 
+                        className="absolute inset-0 pointer-events-none opacity-35"
+                        style={{
+                          background: 'radial-gradient(circle at 45% 30%, rgba(245, 158, 11, 0.45) 0%, rgba(217, 119, 6, 0.18) 40%, transparent 75%)'
+                        }}
+                      />
+
+                      {/* Bouton retour mobile (< md) : Permet de revenir à la liste sur téléphone */}
+                      <div className="md:hidden flex items-center justify-between pb-2 relative z-10 shrink-0">
+                        <button
+                          type="button"
+                          onClick={() => setIsMobilePlayerOpen(false)}
+                          className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs backdrop-blur-md border border-white/15 transition-all active:scale-95 cursor-pointer shadow-sm"
+                        >
+                          <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
+                          <span>Retour à la liste</span>
+                        </button>
+                        <span className="text-[11px] font-bold text-amber-300">En cours de lecture</span>
+                      </div>
+
+                      {/* PARTIE SUPÉRIEURE : Carte Album + Paroles synchronisées (Image 2) */}
+                      <div className="relative z-10 w-full flex flex-col sm:flex-row items-center sm:items-stretch gap-4 sm:gap-6 max-w-xl mx-auto my-auto pt-1 sm:pt-2">
+                        
+                        {/* Gauche : Pochette album carrée avec badge Parental Advisory */}
+                        <div className="relative w-40 sm:w-48 md:w-52 aspect-square rounded-2xl overflow-hidden shrink-0 shadow-[0_15px_35px_rgba(0,0,0,0.85)] border border-white/20 bg-black">
                           {splitSelectedFile.previewUrl ? (
-                            <img src={splitSelectedFile.previewUrl} alt="Album" className="w-full h-full object-cover" />
+                            <img 
+                              src={splitSelectedFile.previewUrl} 
+                              alt={splitSelectedFile.name} 
+                              className="w-full h-full object-cover" 
+                            />
                           ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-amber-600 via-stone-900 to-black flex items-center justify-center" />
+                            <div className="w-full h-full bg-gradient-to-br from-amber-600 via-stone-900 to-black flex items-center justify-center">
+                              <Music className="w-12 h-12 text-amber-300" />
+                            </div>
                           )}
-                          <div className="absolute w-10 h-10 rounded-full bg-stone-950 border-2 border-white/30 flex items-center justify-center">
-                            <div className="w-3 h-3 rounded-full bg-amber-400" />
+
+                          {/* Badge Parental Advisory (Image 2) */}
+                          <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/85 border border-white/25 rounded text-[7px] font-black uppercase tracking-wider text-white">
+                            Parental Advisory
                           </div>
+                        </div>
+
+                        {/* Droite : Bloc de paroles synchronisées (Image 2) */}
+                        <div className="flex-1 w-full flex flex-col justify-center rounded-2xl bg-black/35 backdrop-blur-md border border-white/10 p-4 sm:p-5 text-left shadow-lg">
+                          <p className="text-sm sm:text-base font-extrabold text-white leading-relaxed tracking-tight drop-shadow-sm">
+                            "And really when I think of it
+                          </p>
+                          <p className="text-xs sm:text-sm font-semibold text-white/80 leading-relaxed mt-2">
+                            Growing up, I didn't ever see marriages
+                          </p>
+                          <p className="text-xs sm:text-sm font-medium text-white/50 leading-relaxed mt-2">
+                            No weddings, no horse, no carriages
+                          </p>
+                          <p className="text-xs sm:text-sm font-medium text-white/40 leading-relaxed mt-2 truncate">
+                            I wanna do things different and right...
+                          </p>
                         </div>
                       </div>
 
-                      {/* Titre et artiste */}
-                      <div className="space-y-1">
-                        <h3 className="text-base sm:text-lg font-black text-white tracking-tight">
+                      {/* MILIEU : Titre et Artiste (Image 2) */}
+                      <div className="relative z-10 w-full text-center space-y-1 my-2 sm:my-3">
+                        <h2 className="text-lg sm:text-2xl md:text-3xl font-black text-white tracking-tight drop-shadow-md truncate px-2">
                           {splitSelectedFile.name}
-                        </h3>
-                        <p className="text-xs text-amber-400 font-bold">
-                          {splitSelectedFile.size} • Piste Audio Haute Définition
+                        </h2>
+                        <p className="text-xs sm:text-sm font-semibold text-slate-300 truncate px-2">
+                          {splitSelectedFile.artist || splitSelectedFile.source || 'Dave & Tems'}
                         </p>
                       </div>
 
-                      {/* Barres d'ondes audio animées */}
-                      <div className="flex items-center justify-center gap-1.5 h-8 w-full max-w-xs">
-                        {[40, 75, 55, 90, 65, 80, 45, 95, 70, 85, 50, 60, 90, 40, 75].map((h, i) => (
-                          <div
-                            key={i}
-                            className={`w-1 rounded-full bg-gradient-to-t from-amber-500 to-yellow-300 transition-all duration-150 ${
-                              isAudioPlaying ? 'animate-pulse' : 'opacity-30'
-                            }`}
-                            style={{ 
-                              height: isAudioPlaying ? `${h}%` : '20%',
-                              animationDelay: `${i * 0.08}s`
-                            }}
-                          />
-                        ))}
+                      {/* BARRE D'ACTIONS : 5 ICÔNES (Image 2 : Coeur, Playlist, Égaliseur avec badge ON, Minuteur, Paroles) */}
+                      <div className="relative z-10 w-full max-w-sm mx-auto flex items-center justify-between px-3 sm:px-6 py-1.5 sm:py-2">
+                        {/* 1. Coeur (Favoris / J'aime) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsAudioLiked(!isAudioLiked);
+                            showToast(isAudioLiked ? "Retiré des favoris" : "Ajouté aux favoris !");
+                          }}
+                          className="p-2 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-all active:scale-90 cursor-pointer"
+                          title="J'aime ce son"
+                        >
+                          <Heart className={`w-5 h-5 ${isAudioLiked ? 'fill-rose-500 text-rose-500' : ''}`} />
+                        </button>
+
+                        {/* 2. Ajouter à une playlist */}
+                        <button
+                          type="button"
+                          onClick={() => showToast("Ajouté à la playlist StudyCloud !")}
+                          className="p-2 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-all active:scale-90 cursor-pointer"
+                          title="Ajouter à la playlist"
+                        >
+                          <ListPlus className="w-5 h-5" />
+                        </button>
+
+                        {/* 3. Égaliseur avec badge ON (Image 2) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setIsEqualizerOn(!isEqualizerOn);
+                            showToast(isEqualizerOn ? "Égaliseur désactivé" : "Égaliseur activé (Profil Studio)");
+                          }}
+                          className="relative p-2 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-all active:scale-90 cursor-pointer"
+                          title="Égaliseur audio"
+                        >
+                          {isEqualizerOn && (
+                            <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 px-1 py-0.2 rounded bg-amber-400 text-stone-950 text-[8px] font-black leading-none shadow-xs">
+                              ON
+                            </span>
+                          )}
+                          <SlidersHorizontal className={`w-5 h-5 ${isEqualizerOn ? 'text-amber-300' : ''}`} />
+                        </button>
+
+                        {/* 4. Minuteur de mise en veille (Sleep timer) */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextTimer = sleepTimerMinutes === null ? 15 : sleepTimerMinutes === 15 ? 30 : sleepTimerMinutes === 30 ? 60 : null;
+                            setSleepTimerMinutes(nextTimer);
+                            showToast(nextTimer ? `Minuteur réglé sur ${nextTimer} min` : "Minuteur de veille désactivé");
+                          }}
+                          className="relative p-2 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-all active:scale-90 cursor-pointer"
+                          title="Minuteur de veille"
+                        >
+                          {sleepTimerMinutes !== null && (
+                            <span className="absolute -top-1.5 left-1/2 -translate-x-1/2 px-1 py-0.2 rounded bg-blue-500 text-white text-[8px] font-black leading-none">
+                              {sleepTimerMinutes}m
+                            </span>
+                          )}
+                          <Timer className={`w-5 h-5 ${sleepTimerMinutes !== null ? 'text-blue-400' : ''}`} />
+                        </button>
+
+                        {/* 5. Paroles complètes */}
+                        <button
+                          type="button"
+                          onClick={() => setShowLyricsModal(!showLyricsModal)}
+                          className="p-2 rounded-full hover:bg-white/10 text-white/80 hover:text-white transition-all active:scale-90 cursor-pointer"
+                          title="Afficher les paroles"
+                        >
+                          <AlignLeft className="w-5 h-5" />
+                        </button>
                       </div>
 
-                      {/* Curseur de progression (Seek bar) */}
-                      <div className="w-full space-y-1">
-                        <input
-                          type="range"
-                          min="0"
-                          max={audioDuration}
-                          value={audioCurrentTime}
-                          onChange={(e) => setAudioCurrentTime(Number(e.target.value))}
-                          className="w-full h-1.5 bg-slate-800 rounded-lg appearance-none cursor-pointer accent-amber-400"
-                        />
-                        <div className="flex items-center justify-between text-[11px] font-bold text-slate-400 px-1">
-                          <span>{formatTime(audioCurrentTime)}</span>
-                          <span>{formatTime(audioDuration)}</span>
+                      {/* SECTION TEMPORELLE : -10s, Pillule de temps 0:11 / 3:39, +10s et Barre de progression (Image 2) */}
+                      <div className="relative z-10 w-full max-w-md mx-auto space-y-1.5 py-1">
+                        {/* Ligne avec boutons -10, Badge temps au centre, et +10 */}
+                        <div className="flex items-center justify-between px-3">
+                          {/* Bouton -10s */}
+                          <button
+                            type="button"
+                            onClick={() => handleSeekDelta(-10)}
+                            className="relative w-8 h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
+                            title="Reculer de 10s"
+                          >
+                            <RotateCcw className="w-5 h-5 stroke-[2]" />
+                            <span className="absolute text-[8px] font-black text-white">10</span>
+                          </button>
+
+                          {/* Pillule blanche avec temps exact (Image 2 : 0:11 / 3:39) */}
+                          <div className="px-3.5 py-1 rounded-full bg-white text-stone-950 font-black text-xs shadow-md tracking-wider">
+                            {formatTime(audioCurrentTime)} / {formatTime(audioDuration)}
+                          </div>
+
+                          {/* Bouton +10s */}
+                          <button
+                            type="button"
+                            onClick={() => handleSeekDelta(10)}
+                            className="relative w-8 h-8 rounded-full flex items-center justify-center text-white/90 hover:text-white hover:bg-white/10 transition-all active:scale-90 cursor-pointer"
+                            title="Avancer de 10s"
+                          >
+                            <RotateCw className="w-5 h-5 stroke-[2]" />
+                            <span className="absolute text-[8px] font-black text-white">10</span>
+                          </button>
+                        </div>
+
+                        {/* Slider interactif */}
+                        <div className="w-full px-2">
+                          <input
+                            type="range"
+                            min="0"
+                            max={audioDuration}
+                            value={audioCurrentTime}
+                            onChange={(e) => {
+                              const val = Number(e.target.value);
+                              setAudioCurrentTime(val);
+                              if (audioRef.current) audioRef.current.currentTime = val;
+                            }}
+                            className="w-full h-1 bg-white/20 rounded-full appearance-none cursor-pointer accent-white hover:accent-amber-400 transition-all"
+                          />
                         </div>
                       </div>
 
-                      {/* Commandes audio interactives */}
-                      <div className="flex items-center justify-center gap-4 pt-1">
+                      {/* CONTRÔLES PRINCIPAUX : Aléatoire, Précédent, Grand Bouton Rond Blanc Play/Pause, Suivant, Répéter (Image 2) */}
+                      <div className="relative z-10 w-full max-w-sm mx-auto flex items-center justify-between px-2 pt-1 pb-2 sm:pb-3">
+                        {/* Lecture Aléatoire (Shuffle) */}
                         <button
                           type="button"
-                          onClick={() => setAudioCurrentTime(prev => Math.max(0, prev - 10))}
-                          className="w-9 h-9 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center transition-colors border border-white/10"
-                          title="Reculer de 10s"
+                          onClick={() => {
+                            setIsAudioShuffle(!isAudioShuffle);
+                            showToast(isAudioShuffle ? "Lecture aléatoire désactivée" : "Lecture aléatoire activée");
+                          }}
+                          className={`p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ${
+                            isAudioShuffle ? 'text-amber-400' : 'text-white/60 hover:text-white'
+                          }`}
+                          title="Lecture aléatoire"
                         >
-                          <RotateCcw className="w-4 h-4" />
+                          <Shuffle className="w-5 h-5" />
                         </button>
 
+                        {/* Morceau précédent */}
+                        <button
+                          type="button"
+                          onClick={handleAudioPrev}
+                          className="p-2 rounded-full hover:bg-white/10 text-white hover:scale-110 active:scale-90 transition-all cursor-pointer"
+                          title="Son précédent"
+                        >
+                          <SkipBack className="w-6 h-6 fill-white" />
+                        </button>
+
+                        {/* GRAND BOUTON ROND BLANC PLAY / PAUSE (Image 2) */}
                         <button
                           type="button"
                           onClick={() => setIsAudioPlaying(!isAudioPlaying)}
-                          className="w-14 h-14 rounded-full bg-amber-500 hover:bg-amber-400 text-stone-950 flex items-center justify-center shadow-xl font-bold transition-all active:scale-95"
-                          title={isAudioPlaying ? "Mettre en pause" : "Lire"}
+                          className="w-16 h-16 rounded-full bg-white text-stone-950 flex items-center justify-center shadow-[0_6px_25px_rgba(255,255,255,0.35)] hover:scale-105 active:scale-95 transition-all cursor-pointer"
+                          title={isAudioPlaying ? "Mettre en pause" : "Lancer la lecture"}
                         >
                           {isAudioPlaying ? (
-                            <Pause className="w-6 h-6 fill-stone-950" />
+                            <Pause className="w-7 h-7 fill-stone-950 stroke-stone-950" />
                           ) : (
-                            <Play className="w-6 h-6 fill-stone-950 translate-x-0.5" />
+                            <Play className="w-7 h-7 fill-stone-950 stroke-stone-950 translate-x-0.5" />
                           )}
                         </button>
 
+                        {/* Morceau suivant */}
                         <button
                           type="button"
-                          onClick={() => setAudioCurrentTime(prev => Math.min(audioDuration, prev + 10))}
-                          className="w-9 h-9 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center transition-colors border border-white/10"
-                          title="Avancer de 10s"
+                          onClick={handleAudioNext}
+                          className="p-2 rounded-full hover:bg-white/10 text-white hover:scale-110 active:scale-90 transition-all cursor-pointer"
+                          title="Son suivant"
                         >
-                          <RotateCw className="w-4 h-4" />
+                          <SkipForward className="w-6 h-6 fill-white" />
+                        </button>
+
+                        {/* Répéter */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            const nextRepeat = isAudioRepeat === 'off' ? 'all' : isAudioRepeat === 'all' ? 'one' : 'off';
+                            setIsAudioRepeat(nextRepeat);
+                            showToast(
+                              nextRepeat === 'all' 
+                                ? "Répétition de la liste activée" 
+                                : nextRepeat === 'one' 
+                                  ? "Répétition de ce son activée" 
+                                  : "Répétition désactivée"
+                            );
+                          }}
+                          className={`relative p-2 rounded-full hover:bg-white/10 transition-all active:scale-90 cursor-pointer ${
+                            isAudioRepeat !== 'off' ? 'text-amber-400' : 'text-white/60 hover:text-white'
+                          }`}
+                          title="Répéter"
+                        >
+                          <Repeat className="w-5 h-5" />
+                          {isAudioRepeat === 'one' && (
+                            <span className="absolute bottom-1 right-1 text-[8px] font-black text-amber-400">1</span>
+                          )}
                         </button>
                       </div>
+
+                      {/* Modal Paroles Complètes si activé */}
+                      {showLyricsModal && (
+                        <div className="absolute inset-0 z-40 bg-[#070B16]/95 backdrop-blur-xl p-5 sm:p-6 flex flex-col justify-between animate-in fade-in duration-200">
+                          <div className="flex items-center justify-between border-b border-white/10 pb-3">
+                            <div>
+                              <h3 className="text-sm sm:text-base font-black text-white">{splitSelectedFile.name}</h3>
+                              <p className="text-xs text-amber-300 font-semibold">{splitSelectedFile.artist || 'Paroles complètes'}</p>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => setShowLyricsModal(false)}
+                              className="w-8 h-8 rounded-full bg-white/10 hover:bg-white/20 text-white flex items-center justify-center transition-colors cursor-pointer"
+                            >
+                              <X className="w-4 h-4" />
+                            </button>
+                          </div>
+                          <div className="flex-1 overflow-y-auto py-6 space-y-4 text-center">
+                            {(splitSelectedFile.fullLyrics || [
+                              "And really when I think of it",
+                              "Growing up, I didn't ever see marriages",
+                              "No weddings, no horse, no carriages",
+                              "I wanna do things different and right",
+                              "Pray for me through the day and the night",
+                              "When the rain falls on our souls",
+                              "We will dance and we will heal..."
+                            ]).map((line, idx) => (
+                              <p key={idx} className={`text-sm sm:text-base font-bold leading-relaxed ${idx === 0 ? 'text-amber-300 scale-105 font-black' : 'text-white/70'}`}>
+                                {line}
+                              </p>
+                            ))}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => setShowLyricsModal(false)}
+                            className="w-full py-2.5 rounded-full bg-white/10 hover:bg-white/20 text-white font-bold text-xs transition-colors cursor-pointer"
+                          >
+                            Fermer les paroles
+                          </button>
+                        </div>
+                      )}
 
                     </div>
                   )}
