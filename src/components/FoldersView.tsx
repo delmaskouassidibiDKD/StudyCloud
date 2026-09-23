@@ -16,6 +16,7 @@ import { LevelMenuView } from './LevelMenuView';
 import { CalculatorMenuView } from './CalculatorMenuView';
 import { MatiereMenuView } from './MatiereMenuView';
 import { StorageMenuView } from './StorageMenuView';
+import { Page1FilesMenuView } from './Page1FilesMenuView';
 import { NavigationTab } from '../types';
 import { triggerDebouncedCloudBackup } from '../services/userSync';
 import { StudyCloudAPI } from '../services/api';
@@ -1439,6 +1440,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           }}
         />
       )}
+      {viewMode === 'page1-files-menu' && (
+        <Page1FilesMenuView onBack={() => setViewMode('home')} />
+      )}
 
       {viewMode === 'home' && (
         <div className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-2 relative">
@@ -1468,28 +1472,73 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 transition: isDragging ? 'none' : 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)'
               }}
             >
-              {/* PAGE 0 : Page vide à gauche */}
-              <div className="w-1/2 shrink-0 px-2 sm:px-6 flex flex-col items-center justify-center min-h-[300px] sm:min-h-[380px] py-6">
-                <div className="w-full max-w-md mx-auto p-6 sm:p-8 rounded-3xl border-2 border-dashed border-stone-400/40 dark:border-stone-700/60 bg-stone-500/5 dark:bg-white/[0.02] flex flex-col items-center justify-center text-center space-y-4 transition-all">
-                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-stone-200/80 dark:bg-slate-800/80 border-2 border-stone-300 dark:border-slate-700 flex items-center justify-center shadow-inner">
-                    <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-amber-500/80 dark:text-amber-400" />
-                  </div>
-                  <div className="space-y-1.5">
-                    <h3 className="text-base sm:text-lg font-black text-stone-800 dark:text-slate-200 tracking-tight">
-                      Espace libre
-                    </h3>
-                    <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400 max-w-xs leading-relaxed">
-                      Cette page est libre pour vos futurs éléments. Glissez vers la droite ou cliquez ci-dessous pour retrouver vos applications.
-                    </p>
-                  </div>
-                  <button
-                    type="button"
-                    onClick={() => handleGoToPage(1)}
-                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black border-2 border-stone-800 dark:border-slate-600 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none hover:bg-stone-200 dark:hover:bg-[#283852] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+              {/* PAGE 0 : Page 1 à gauche avec l'application Fichiers et espace libre */}
+              <div className="w-1/2 shrink-0 px-1 sm:px-4">
+                <div className="grid grid-cols-3 md:grid-cols-9 gap-y-6 gap-x-2 sm:gap-x-4 md:gap-4 lg:gap-6 justify-items-center w-fit max-w-full mx-auto md:overflow-x-auto md:pb-4 md:pt-1 md:no-scrollbar">
+                  {/* Application Fichiers (Supply Chain) */}
+                  <div 
+                    onClick={(e) => {
+                      if (hasMovedRef.current) {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        return;
+                      }
+                      setViewMode('page1-files-menu');
+                    }}
+                    className="group flex flex-col items-center cursor-pointer w-full max-w-[94px] sm:max-w-[102px] md:w-24 lg:w-26 md:shrink-0 transition-all duration-200 hover:scale-105"
                   >
-                    <span>Écran d'accueil</span>
-                    <ChevronRight className="w-4 h-4 stroke-[2.5]" />
-                  </button>
+                    <div className="w-full aspect-square bg-stone-900 dark:bg-slate-800/80 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/15 rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[0_8px_25px_rgba(0,0,0,0.45)] dark:hover:border-amber-400/40 dark:hover:shadow-[0_12px_30px_rgba(245,158,11,0.25)] flex items-center justify-center group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all relative">
+                      <div className="w-full h-full p-2 flex items-center justify-center">
+                        <svg className="w-full h-full drop-shadow-md" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+                          {/* Onglet supérieur droit du dossier */}
+                          <path 
+                            d="M 46 22 L 86 22 C 90 22 93 25 93 29 L 93 42 L 46 42 Z" 
+                            fill="#FACC15" 
+                            stroke="#1C1917" 
+                            strokeWidth="3.2" 
+                            strokeLinejoin="round" 
+                          />
+                          {/* Corps principal du dossier */}
+                          <rect 
+                            x="7" 
+                            y="22" 
+                            width="86" 
+                            height="66" 
+                            rx="10" 
+                            fill="#FEF08A" 
+                            stroke="#1C1917" 
+                            strokeWidth="3.2" 
+                          />
+                          {/* Badge SUPPLY CHAIN en bas à gauche */}
+                          <rect 
+                            x="14" 
+                            y="62" 
+                            width="46" 
+                            height="18" 
+                            rx="5" 
+                            fill="#FACC15" 
+                            stroke="#1C1917" 
+                            strokeWidth="2.2" 
+                          />
+                          <text 
+                            x="37" 
+                            y="74" 
+                            fill="#1C1917" 
+                            fontSize="6.8" 
+                            fontWeight="900" 
+                            fontFamily="system-ui, -apple-system, sans-serif" 
+                            textAnchor="middle" 
+                            letterSpacing="0.3"
+                          >
+                            SUPPLY CHAIN
+                          </text>
+                        </svg>
+                      </div>
+                    </div>
+                    <span className="text-[11px] sm:text-xs md:text-sm font-extrabold text-stone-950 dark:text-blue-400 mt-1.5 sm:mt-2 text-center px-0.5 leading-snug tracking-wide w-full line-clamp-2 transition-colors">
+                      Fichiers
+                    </span>
+                  </div>
                 </div>
               </div>
 
