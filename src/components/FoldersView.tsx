@@ -1,5 +1,5 @@
-import React, { useState, useEffect } from 'react';
-import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, X, Search, Globe, Sun, Moon, BookOpen } from 'lucide-react';
+import React, { useState, useEffect, useRef } from 'react';
+import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, X, Search, Globe, Sun, Moon, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MenuDrawer } from './MenuDrawer';
 import { DelmasRobot } from './DelmasRobot';
 import { DelmasChat } from './DelmasChat';
@@ -49,6 +49,160 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
   const [isLanguageMenuOpen, setIsLanguageMenuOpen] = useState(false);
   const [currentLang, setCurrentLang] = useState('fr');
+
+  // État et gestion du carrousel de l'écran d'accueil (Page 0 = Page vide, Page 1 = Écran d'accueil principal)
+  const [activePageIndex, setActivePageIndex] = useState<number>(1);
+  const [dragOffset, setDragOffset] = useState<number>(0);
+  const [isDragging, setIsDragging] = useState<boolean>(false);
+
+  const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const isHorizontalDragRef = useRef<boolean>(false);
+  const hasMovedRef = useRef<boolean>(false);
+
+  const handleGoToPage = (targetIndex: number) => {
+    setActivePageIndex(Math.max(0, Math.min(1, targetIndex)));
+  };
+
+  // Navigation fluide au clavier (Flèches gauche / droite)
+  useEffect(() => {
+    if (viewMode !== 'home') return;
+    const handleKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'ArrowLeft') {
+        setActivePageIndex(0);
+      } else if (e.key === 'ArrowRight') {
+        setActivePageIndex(1);
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [viewMode]);
+
+  // Gestion tactile fluide pour téléphone et tablette
+  const handleTouchStart = (e: React.TouchEvent) => {
+    const touch = e.touches[0];
+    dragStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: Date.now()
+    };
+    isHorizontalDragRef.current = false;
+    hasMovedRef.current = false;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    if (!dragStartRef.current) return;
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - dragStartRef.current.x;
+    const deltaY = touch.clientY - dragStartRef.current.y;
+
+    if (!isHorizontalDragRef.current) {
+      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
+        dragStartRef.current = null;
+        return;
+      }
+      if (Math.abs(deltaX) > 8) {
+        isHorizontalDragRef.current = true;
+        setIsDragging(true);
+        hasMovedRef.current = true;
+      }
+    }
+
+    if (isHorizontalDragRef.current) {
+      let adjustedDelta = deltaX;
+      if (activePageIndex === 0 && deltaX > 0) {
+        adjustedDelta = deltaX * 0.25;
+      } else if (activePageIndex === 1 && deltaX < 0) {
+        adjustedDelta = deltaX * 0.25;
+      }
+      setDragOffset(adjustedDelta);
+    }
+  };
+
+  const handleTouchEnd = () => {
+    if (!dragStartRef.current) {
+      setIsDragging(false);
+      setDragOffset(0);
+      return;
+    }
+    const deltaX = dragOffset;
+    const elapsed = Date.now() - dragStartRef.current.time;
+    const velocity = Math.abs(deltaX) / (elapsed || 1);
+
+    setIsDragging(false);
+    setDragOffset(0);
+    dragStartRef.current = null;
+    isHorizontalDragRef.current = false;
+
+    const threshold = 35;
+    const fastFlick = velocity > 0.3 && Math.abs(deltaX) > 15;
+
+    if (deltaX > threshold || (deltaX > 15 && fastFlick)) {
+      setActivePageIndex(0);
+    } else if (deltaX < -threshold || (deltaX < -15 && fastFlick)) {
+      setActivePageIndex(1);
+    }
+
+    setTimeout(() => {
+      hasMovedRef.current = false;
+    }, 60);
+  };
+
+  // Gestion souris pour desktop
+  const handleMouseDown = (e: React.MouseEvent) => {
+    if (e.button !== 0) return;
+    dragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      time: Date.now()
+    };
+    isHorizontalDragRef.current = false;
+    hasMovedRef.current = false;
+  };
+
+  const handleMouseMove = (e: React.MouseEvent) => {
+    if (!dragStartRef.current) return;
+    const deltaX = e.clientX - dragStartRef.current.x;
+    if (!isHorizontalDragRef.current && Math.abs(deltaX) > 8) {
+      isHorizontalDragRef.current = true;
+      setIsDragging(true);
+      hasMovedRef.current = true;
+    }
+    if (isHorizontalDragRef.current) {
+      let adjustedDelta = deltaX;
+      if (activePageIndex === 0 && deltaX > 0) {
+        adjustedDelta = deltaX * 0.25;
+      } else if (activePageIndex === 1 && deltaX < 0) {
+        adjustedDelta = deltaX * 0.25;
+      }
+      setDragOffset(adjustedDelta);
+    }
+  };
+
+  const handleMouseUp = () => {
+    if (!dragStartRef.current) return;
+    const deltaX = dragOffset;
+    const elapsed = Date.now() - dragStartRef.current.time;
+    const velocity = Math.abs(deltaX) / (elapsed || 1);
+
+    setIsDragging(false);
+    setDragOffset(0);
+    dragStartRef.current = null;
+    isHorizontalDragRef.current = false;
+
+    const threshold = 35;
+    const fastFlick = velocity > 0.3 && Math.abs(deltaX) > 15;
+
+    if (deltaX > threshold || (deltaX > 15 && fastFlick)) {
+      setActivePageIndex(0);
+    } else if (deltaX < -threshold || (deltaX < -15 && fastFlick)) {
+      setActivePageIndex(1);
+    }
+
+    setTimeout(() => {
+      hasMovedRef.current = false;
+    }, 60);
+  };
 
   const [isDarkMode, setIsDarkMode] = useState<boolean>(() => {
     try {
@@ -510,7 +664,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     return (
       <div 
         key={id}
-        onClick={defaultAction}
+        onClick={(e) => {
+          if (hasMovedRef.current) {
+            e.preventDefault();
+            e.stopPropagation();
+            return;
+          }
+          defaultAction();
+        }}
         className="group flex flex-col items-center cursor-pointer w-full max-w-[94px] sm:max-w-[102px] md:w-24 lg:w-26 md:shrink-0 transition-all duration-200 hover:scale-105"
       >
         <div className="w-full aspect-square bg-stone-900 dark:bg-slate-800/80 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/15 rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[0_8px_25px_rgba(0,0,0,0.45)] dark:hover:border-blue-400/40 dark:hover:shadow-[0_12px_30px_rgba(37,99,235,0.25)] flex items-center justify-center group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all relative">
@@ -1279,14 +1440,134 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       )}
 
       {viewMode === 'home' && (
-        <div className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-2">
-          <div className="flex items-center justify-between mb-3 px-2">
-            <span className="text-xs font-bold text-stone-500 dark:text-stone-400">Écran d'accueil</span>
+        <div className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-2 relative">
+          {/* Ligne supérieure : Flèche gauche < (angle gauche) | Titre de l'écran | Flèche droite > (angle droit) */}
+          <div className="flex items-center justify-between mb-3 px-2 sm:px-4 w-full">
+            {/* Flèche gauche en haut dans l'angle gauche (<) - Masqué sur mobile */}
+            <button
+              type="button"
+              onClick={() => handleGoToPage(0)}
+              disabled={activePageIndex === 0}
+              className={`hidden md:flex items-center justify-center w-8 h-8 rounded-full border-2 transition-all duration-200 select-none ${
+                activePageIndex === 0
+                  ? 'opacity-20 cursor-not-allowed border-stone-400/30 text-stone-400 dark:border-slate-800 dark:text-slate-600'
+                  : 'cursor-pointer hover:scale-110 active:scale-95 border-stone-800 dark:border-slate-600 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
+              }`}
+              title={activePageIndex === 0 ? "Début atteint" : "Glisser vers la gauche (Page libre)"}
+              aria-label="Page précédente"
+            >
+              <ChevronLeft className="w-4 h-4 stroke-[2.5]" />
+            </button>
+
+            {/* Titre selon la page active */}
+            <span className="text-xs font-bold text-stone-500 dark:text-stone-400 select-none">
+              {activePageIndex === 0 ? "Espace libre • Page 1" : "Écran d'accueil • Page 2"}
+            </span>
+
+            {/* Flèche droite en haut dans l'angle droit (>) - Masqué sur mobile */}
+            <button
+              type="button"
+              onClick={() => handleGoToPage(1)}
+              disabled={activePageIndex === 1}
+              className={`hidden md:flex items-center justify-center w-8 h-8 rounded-full border-2 transition-all duration-200 select-none ${
+                activePageIndex === 1
+                  ? 'opacity-20 cursor-not-allowed border-stone-400/30 text-stone-400 dark:border-slate-800 dark:text-slate-600'
+                  : 'cursor-pointer hover:scale-110 active:scale-95 border-stone-800 dark:border-slate-600 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none'
+              }`}
+              title={activePageIndex === 1 ? "Fin atteinte" : "Revenir à l'écran d'accueil (droite)"}
+              aria-label="Page suivante"
+            >
+              <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+            </button>
           </div>
-          {/* Sur mobile : 3 blocs par ligne | Sur desktop : 9 colonnes centrées avec la 2ème ligne commençant sous "Mes fichiers" */}
-          <div className="grid grid-cols-3 md:grid-cols-9 gap-y-6 gap-x-2 sm:gap-x-4 md:gap-4 lg:gap-6 justify-items-center w-fit max-w-full mx-auto md:overflow-x-auto md:pb-4 md:pt-1 md:no-scrollbar">
-            {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage'].map((id, index) => renderBlock(id, index))}
+
+          {/* Conteneur Carrousel / Glissement fluide (Swipe phone & Desktop) */}
+          <div 
+            className="w-full overflow-hidden select-none touch-pan-y relative"
+            onTouchStart={handleTouchStart}
+            onTouchMove={handleTouchMove}
+            onTouchEnd={handleTouchEnd}
+            onTouchCancel={handleTouchEnd}
+            onMouseDown={handleMouseDown}
+            onMouseMove={handleMouseMove}
+            onMouseUp={handleMouseUp}
+            onMouseLeave={handleMouseUp}
+          >
+            <div 
+              className="flex w-[200%] will-change-transform"
+              style={{
+                transform: `translate3d(calc(-${activePageIndex * 50}% + ${dragOffset}px), 0, 0)`,
+                transition: isDragging ? 'none' : 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)'
+              }}
+            >
+              {/* PAGE 0 : Page vide à gauche */}
+              <div className="w-1/2 shrink-0 px-2 sm:px-6 flex flex-col items-center justify-center min-h-[300px] sm:min-h-[380px] py-6">
+                <div className="w-full max-w-md mx-auto p-6 sm:p-8 rounded-3xl border-2 border-dashed border-stone-400/40 dark:border-stone-700/60 bg-stone-500/5 dark:bg-white/[0.02] flex flex-col items-center justify-center text-center space-y-4 transition-all">
+                  <div className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-stone-200/80 dark:bg-slate-800/80 border-2 border-stone-300 dark:border-slate-700 flex items-center justify-center shadow-inner">
+                    <Sparkles className="w-7 h-7 sm:w-8 sm:h-8 text-amber-500/80 dark:text-amber-400" />
+                  </div>
+                  <div className="space-y-1.5">
+                    <h3 className="text-base sm:text-lg font-black text-stone-800 dark:text-slate-200 tracking-tight">
+                      Espace libre
+                    </h3>
+                    <p className="text-xs sm:text-sm text-stone-500 dark:text-stone-400 max-w-xs leading-relaxed">
+                      Cette page est libre pour vos futurs éléments. Glissez vers la droite ou cliquez ci-dessous pour retrouver vos applications.
+                    </p>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => handleGoToPage(1)}
+                    className="inline-flex items-center gap-2 px-4 py-2 rounded-xl text-xs font-black border-2 border-stone-800 dark:border-slate-600 bg-[#F5F1E9] dark:bg-[#1e293b] text-stone-900 dark:text-white shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none hover:bg-stone-200 dark:hover:bg-[#283852] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+                  >
+                    <span>Écran d'accueil</span>
+                    <ChevronRight className="w-4 h-4 stroke-[2.5]" />
+                  </button>
+                </div>
+              </div>
+
+              {/* PAGE 1 : Écran d'accueil principal à droite */}
+              <div className="w-1/2 shrink-0 px-1 sm:px-4">
+                {/* Sur mobile : 3 blocs par ligne | Sur desktop : 9 colonnes centrées avec la 2ème ligne commençant sous "Mes fichiers" */}
+                <div className="grid grid-cols-3 md:grid-cols-9 gap-y-6 gap-x-2 sm:gap-x-4 md:gap-4 lg:gap-6 justify-items-center w-fit max-w-full mx-auto md:overflow-x-auto md:pb-4 md:pt-1 md:no-scrollbar">
+                  {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage'].map((id, index) => renderBlock(id, index))}
+                </div>
+              </div>
+            </div>
           </div>
+        </div>
+      )}
+
+      {/* Pagination dots (Pointillés de navigation des pages) - Presque collé à la limite en bas de l'écran et au milieu */}
+      {viewMode === 'home' && (
+        <div 
+          className="fixed bottom-16 md:bottom-2.5 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-[calc(50%+8rem)] md:-translate-x-1/2 z-30 flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-stone-900/10 dark:bg-black/50 backdrop-blur-md border border-stone-800/15 dark:border-white/10 shadow-[0_2px_10px_rgba(0,0,0,0.08)] transition-all select-none"
+          role="navigation"
+          aria-label="Pagination des menus"
+        >
+          {/* Point 1 (Page vide - index 0) */}
+          <button
+            type="button"
+            onClick={() => handleGoToPage(0)}
+            aria-label="Page 1 : Espace libre"
+            title="Page 1 (Espace libre)"
+            className={`transition-all duration-300 rounded-full cursor-pointer focus:outline-none ${
+              activePageIndex === 0
+                ? 'w-6 h-2 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]'
+                : 'w-2 h-2 bg-stone-400/60 dark:bg-stone-500/50 hover:bg-stone-600 dark:hover:bg-stone-300'
+            }`}
+          />
+          {/* Point 2 (Écran d'accueil principal - index 1) */}
+          <button
+            type="button"
+            onClick={() => handleGoToPage(1)}
+            aria-label="Page 2 : Écran d'accueil"
+            title="Page 2 (Écran d'accueil)"
+            className={`transition-all duration-300 rounded-full cursor-pointer focus:outline-none ${
+              activePageIndex === 1
+                ? 'w-6 h-2 bg-orange-500 shadow-[0_0_10px_rgba(249,115,22,0.8)]'
+                : 'w-2 h-2 bg-stone-400/60 dark:bg-stone-500/50 hover:bg-stone-600 dark:hover:bg-stone-300'
+            }`}
+          />
         </div>
       )}
     </div>
