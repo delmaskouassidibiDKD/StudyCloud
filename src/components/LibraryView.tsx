@@ -8,6 +8,7 @@ import { DownloadDestinationModal, DownloadDestinationChoice } from './DownloadD
 import { importFilesToMesFichiers } from '../services/userSync';
 import { storeFileBlob } from '../services/localFileStorage';
 import { rankAndShuffleCategories, isCategoryMatch, canonicalizeCategory } from '../utils/spellingCorrector';
+import { recordDownloadedFile } from '../services/downloadsManager';
 import studentLogo from '../assets/student-logo.jpg';
 
 if (typeof window !== 'undefined' && !(pdfjsLib as any).GlobalWorkerOptions?.workerSrc) {
@@ -143,7 +144,7 @@ export function getDocTypeInfo(doc: any): DocTypeInfo {
 }
 
 // Composant miniature intelligent (rendu 1ère page PDF haute qualité / image / cadrage de l'en-tête vers le bas)
-const DocumentCardThumbnail: React.FC<{ doc: any; onClick?: () => void }> = ({ doc, onClick }) => {
+export const DocumentCardThumbnail: React.FC<{ doc: any; onClick?: () => void }> = ({ doc, onClick }) => {
   const cacheKey = doc.id || doc.file_url || '';
   const fileName = (doc.file_name || doc.title || '').toLowerCase();
   const fileUrl = doc.file_url;
@@ -467,6 +468,14 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
     const uid = localStorage.getItem('unifolder_user_id') || 'default-user';
     setPublishedDocs(prev => prev.map(d => d.id === doc.id ? { ...d, downloads_count: (d.downloads_count || 0) + 1 } : d));
     StudyCloudAPI.trackDocumentInteraction(doc.id, uid, 'download').catch(() => {});
+    
+    recordDownloadedFile({
+      name: doc.file_name || doc.title || 'Document.pdf',
+      sizeBytes: doc.file_size,
+      category: 'documents',
+      url: doc.file_url,
+      extension: 'PDF'
+    });
     
     try {
       const res = await fetch(doc.file_url);
