@@ -33,45 +33,75 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       <div className="flex-1 flex flex-col items-center justify-center min-h-[60vh] py-12 px-4 text-center mt-10 select-none">
         <div className="w-full max-w-md mx-auto p-8 sm:p-10 rounded-3xl border-2 border-dashed border-stone-400/40 dark:border-stone-700/60 bg-white/40 dark:bg-slate-900/40 backdrop-blur-xs flex flex-col items-center justify-center text-center space-y-4 shadow-sm transition-all">
           
-          {/* Icône du dossier jaune identique à l'application */}
-          <div className="w-20 h-20 sm:w-24 sm:h-24 p-2 rounded-2xl bg-amber-50 dark:bg-amber-950/20 border-2 border-amber-300 dark:border-amber-700/40 flex items-center justify-center shadow-inner">
-            <svg className="w-full h-full drop-shadow-sm" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+          {/* Icône du dossier jaune 3D identique à l'application sans bloc noir */}
+          <div className="w-28 h-24 sm:w-36 sm:h-30 filter drop-shadow-[0_10px_20px_rgba(0,0,0,0.15)] dark:drop-shadow-[0_12px_24px_rgba(0,0,0,0.5)]">
+            <svg className="w-full h-full" viewBox="0 0 100 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <defs>
+                <linearGradient id="menuFolderBackGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#FDE047" />
+                  <stop offset="100%" stopColor="#EAB308" />
+                </linearGradient>
+                <linearGradient id="menuFolderFrontGrad" x1="0" y1="0" x2="0" y2="1">
+                  <stop offset="0%" stopColor="#FEF9C3" />
+                  <stop offset="100%" stopColor="#FDE047" />
+                </linearGradient>
+              </defs>
+
+              {/* Dos du dossier avec l'onglet supérieur droit visible */}
               <path 
-                d="M 46 22 L 86 22 C 90 22 93 25 93 29 L 93 42 L 46 42 Z" 
-                fill="#FACC15" 
-                stroke="#1C1917" 
-                strokeWidth="3.2" 
+                d="M 44 14 L 86 14 C 91 14 94 17 94 22 L 94 40 L 44 40 Z" 
+                fill="url(#menuFolderBackGrad)" 
+                stroke="#18181B" 
+                strokeWidth="3.6" 
                 strokeLinejoin="round" 
               />
-              <rect 
-                x="7" 
-                y="22" 
-                width="86" 
-                height="66" 
-                rx="10" 
-                fill="#FEF08A" 
-                stroke="#1C1917" 
-                strokeWidth="3.2" 
+
+              {/* Corps principal avant du dossier avec onglet supérieur gauche */}
+              <path 
+                d="
+                  M 16 14
+                  L 44 14
+                  C 48 14 50 17 52 20
+                  C 54 23 56 25 60 25
+                  L 86 25
+                  C 91 25 94 28 94 33
+                  L 94 76
+                  C 94 81 91 84 86 84
+                  L 14 84
+                  C 9 84 6 81 6 76
+                  L 6 22
+                  C 6 17 9 14 14 14
+                  Z
+                " 
+                fill="url(#menuFolderFrontGrad)" 
+                stroke="#18181B" 
+                strokeWidth="3.6" 
+                strokeLinejoin="round" 
+                strokeLinecap="round" 
               />
+
+              {/* Badge SUPPLY CHAIN en bas à gauche */}
               <rect 
-                x="14" 
-                y="62" 
-                width="46" 
+                x="12" 
+                y="58" 
+                width="48" 
                 height="18" 
                 rx="5" 
                 fill="#FACC15" 
-                stroke="#1C1917" 
-                strokeWidth="2.2" 
+                stroke="#18181B" 
+                strokeWidth="2.4" 
               />
+
+              {/* Texte SUPPLY CHAIN à l'intérieur du badge */}
               <text 
-                x="37" 
-                y="74" 
-                fill="#1C1917" 
+                x="36" 
+                y="70" 
+                fill="#18181B" 
                 fontSize="6.8" 
                 fontWeight="900" 
-                fontFamily="system-ui, -apple-system, sans-serif" 
+                fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
                 textAnchor="middle" 
-                letterSpacing="0.3"
+                letterSpacing="0.4"
               >
                 SUPPLY CHAIN
               </text>

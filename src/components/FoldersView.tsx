@@ -1472,10 +1472,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 transition: isDragging ? 'none' : 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)'
               }}
             >
-              {/* PAGE 0 : Page 1 à gauche avec l'application Fichiers et espace libre */}
-              <div className="w-1/2 shrink-0 px-1 sm:px-4">
-                <div className="grid grid-cols-3 md:grid-cols-9 gap-y-6 gap-x-2 sm:gap-x-4 md:gap-4 lg:gap-6 justify-items-center w-fit max-w-full mx-auto md:overflow-x-auto md:pb-4 md:pt-1 md:no-scrollbar">
-                  {/* Application Fichiers (Supply Chain) */}
+              {/* PAGE 0 : Page 1 à gauche avec l'application Fichiers 3D (sans bloc noir) */}
+              <div className="w-1/2 shrink-0 px-2 sm:px-6 py-4">
+                <div className="flex flex-wrap items-start justify-start gap-8 max-w-5xl mx-auto pt-2 pl-2 sm:pl-6">
+                  {/* Application Fichiers 3D (l'icône est le dossier lui-même en 3D, sans bloc noir, plus gros comme sur l'image) */}
                   <div 
                     onClick={(e) => {
                       if (hasMovedRef.current) {
@@ -1485,57 +1485,84 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       }
                       setViewMode('page1-files-menu');
                     }}
-                    className="group flex flex-col items-center cursor-pointer w-full max-w-[94px] sm:max-w-[102px] md:w-24 lg:w-26 md:shrink-0 transition-all duration-200 hover:scale-105"
+                    className="group flex flex-col items-center cursor-pointer select-none transition-all duration-300 hover:scale-105 active:scale-95"
                   >
-                    <div className="w-full aspect-square bg-stone-900 dark:bg-slate-800/80 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/15 rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[0_8px_25px_rgba(0,0,0,0.45)] dark:hover:border-amber-400/40 dark:hover:shadow-[0_12px_30px_rgba(245,158,11,0.25)] flex items-center justify-center group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all relative">
-                      <div className="w-full h-full p-2 flex items-center justify-center">
-                        <svg className="w-full h-full drop-shadow-md" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
-                          {/* Onglet supérieur droit du dossier */}
-                          <path 
-                            d="M 46 22 L 86 22 C 90 22 93 25 93 29 L 93 42 L 46 42 Z" 
-                            fill="#FACC15" 
-                            stroke="#1C1917" 
-                            strokeWidth="3.2" 
-                            strokeLinejoin="round" 
-                          />
-                          {/* Corps principal du dossier */}
-                          <rect 
-                            x="7" 
-                            y="22" 
-                            width="86" 
-                            height="66" 
-                            rx="10" 
-                            fill="#FEF08A" 
-                            stroke="#1C1917" 
-                            strokeWidth="3.2" 
-                          />
-                          {/* Badge SUPPLY CHAIN en bas à gauche */}
-                          <rect 
-                            x="14" 
-                            y="62" 
-                            width="46" 
-                            height="18" 
-                            rx="5" 
-                            fill="#FACC15" 
-                            stroke="#1C1917" 
-                            strokeWidth="2.2" 
-                          />
-                          <text 
-                            x="37" 
-                            y="74" 
-                            fill="#1C1917" 
-                            fontSize="6.8" 
-                            fontWeight="900" 
-                            fontFamily="system-ui, -apple-system, sans-serif" 
-                            textAnchor="middle" 
-                            letterSpacing="0.3"
-                          >
-                            SUPPLY CHAIN
-                          </text>
-                        </svg>
-                      </div>
+                    {/* Dossier 3D flottant - SANS AUCUN BLOC NOIR */}
+                    <div className="w-36 h-32 sm:w-44 sm:h-38 md:w-52 md:h-44 transition-all duration-300 filter drop-shadow-[0_12px_20px_rgba(0,0,0,0.18)] dark:drop-shadow-[0_14px_28px_rgba(0,0,0,0.55)] group-hover:drop-shadow-[0_18px_30px_rgba(234,179,8,0.35)]">
+                      <svg className="w-full h-full" viewBox="0 0 100 90" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <defs>
+                          <linearGradient id="p1FolderBackGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#FDE047" />
+                            <stop offset="100%" stopColor="#EAB308" />
+                          </linearGradient>
+                          <linearGradient id="p1FolderFrontGrad" x1="0" y1="0" x2="0" y2="1">
+                            <stop offset="0%" stopColor="#FEF9C3" />
+                            <stop offset="100%" stopColor="#FDE047" />
+                          </linearGradient>
+                        </defs>
+
+                        {/* Dos du dossier avec l'onglet supérieur droit visible */}
+                        <path 
+                          d="M 44 14 L 86 14 C 91 14 94 17 94 22 L 94 40 L 44 40 Z" 
+                          fill="url(#p1FolderBackGrad)" 
+                          stroke="#18181B" 
+                          strokeWidth="3.6" 
+                          strokeLinejoin="round" 
+                        />
+
+                        {/* Corps principal avant du dossier avec onglet supérieur gauche */}
+                        <path 
+                          d="
+                            M 16 14
+                            L 44 14
+                            C 48 14 50 17 52 20
+                            C 54 23 56 25 60 25
+                            L 86 25
+                            C 91 25 94 28 94 33
+                            L 94 76
+                            C 94 81 91 84 86 84
+                            L 14 84
+                            C 9 84 6 81 6 76
+                            L 6 22
+                            C 6 17 9 14 14 14
+                            Z
+                          " 
+                          fill="url(#p1FolderFrontGrad)" 
+                          stroke="#18181B" 
+                          strokeWidth="3.6" 
+                          strokeLinejoin="round" 
+                          strokeLinecap="round" 
+                        />
+
+                        {/* Badge SUPPLY CHAIN en bas à gauche */}
+                        <rect 
+                          x="12" 
+                          y="58" 
+                          width="48" 
+                          height="18" 
+                          rx="5" 
+                          fill="#FACC15" 
+                          stroke="#18181B" 
+                          strokeWidth="2.4" 
+                        />
+
+                        {/* Texte SUPPLY CHAIN à l'intérieur du badge */}
+                        <text 
+                          x="36" 
+                          y="70" 
+                          fill="#18181B" 
+                          fontSize="6.8" 
+                          fontWeight="900" 
+                          fontFamily="system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" 
+                          textAnchor="middle" 
+                          letterSpacing="0.4"
+                        >
+                          SUPPLY CHAIN
+                        </text>
+                      </svg>
                     </div>
-                    <span className="text-[11px] sm:text-xs md:text-sm font-extrabold text-stone-950 dark:text-blue-400 mt-1.5 sm:mt-2 text-center px-0.5 leading-snug tracking-wide w-full line-clamp-2 transition-colors">
+
+                    <span className="text-xs sm:text-sm font-black text-stone-900 dark:text-stone-100 mt-2 text-center tracking-tight transition-colors">
                       Fichiers
                     </span>
                   </div>
