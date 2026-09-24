@@ -445,7 +445,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
   };
 
-  const isCloudView = currentSubView?.id === 'studycloud-collection-cloud-storage' || currentSubView?.id === 'studycloud-classeur-classeur';
+  const isCloudView = currentSubView?.id === 'studycloud-collection-cloud-storage';
 
   // Fiches et dossiers pédagogiques pour le Classeur
   const classeurFolders = [
@@ -1746,19 +1746,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setIsViewerMaximized(false);
     setIsMobilePlayerOpen(false);
 
-    // Par défaut, pour l'Espace Cloud et le Classeur, sélectionner le Classeur et réinitialiser la sélection
-    if (id === 'cloud-storage' || id === 'classeur' || type === 'classeur') {
+    // Par défaut pour l'Espace Cloud : sélectionner l'onglet Classeur et réinitialiser
+    if (id === 'cloud-storage') {
       setCloudActiveTab('classeur');
       setSplitSelectedFile(null);
       setSelectedClasseurFolder(null);
-    } else if (id === 'audio') {
-      const defaultTrack = audioList.find(s => s.name.includes('Raindance')) || audioList[0];
-      setSplitSelectedFile(defaultTrack);
-      setAudioDuration(defaultTrack?.durationSec || 219);
-      setAudioCurrentTime(11);
-      setIsAudioPlaying(false);
     } else {
-      setSplitSelectedFile(null); // Réinitialiser le split lors du changement de menu
+      setSplitSelectedFile(null);
+      if (id === 'audio') {
+        setIsAudioPlaying(false);
+      }
     }
 
     setCurrentSubView({
@@ -2076,19 +2073,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setSelectedAudioIds([]);
   };
 
-  // Maintien permanent de la vue divisée en mode Audio sur Desktop
-  useEffect(() => {
-    if (currentSubView?.id === 'studycloud-category-audio') {
-      if (!splitSelectedFile || splitSelectedFile.category !== 'audio') {
-        const raindance = audioList.find(s => s.name.includes('Raindance')) || audioList[0];
-        if (raindance) {
-          setSplitSelectedFile(raindance);
-          setAudioDuration(raindance.durationSec || 219);
-          setAudioCurrentTime(11);
-        }
-      }
-    }
-  }, [currentSubView, splitSelectedFile, audioList]);
+  // Gestion de la sélection audio manuelle : aucun son sélectionné par défaut
+  // pour permettre l'affichage de l'état d'attente avec logo mélodie et "Aucun son sélectionné"
 
   // Intervalle de lecture audio et synchronisation temporelle
   useEffect(() => {
@@ -3976,43 +3962,24 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     ? 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
             }`}>
+              {/* 0. CLASSEUR PRINCIPAL (BOUTON DE LA PAGE 1 : SOUS-MENU VIDE) */}
+              {currentSubView.id === 'studycloud-classeur-classeur' && (
+                <div className="py-28 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400">
+                  <div className="w-16 h-16 rounded-3xl bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center justify-center mb-4 shadow-sm">
+                    <FolderArchive className="w-8 h-8 stroke-[1.8]" />
+                  </div>
+                  <h3 className="text-base sm:text-lg font-bold text-stone-800 dark:text-stone-200">
+                    Le classeur est vide
+                  </h3>
+                  <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+                    Aucun document ou cours n'a été ajouté dans ce classeur pour le moment.
+                  </p>
+                </div>
+              )}
 
               {/* 0. CLASSEUR (SÉLECTIONNÉ PAR DÉFAUT DANS ESPACE CLOUD) */}
               {isCloudView && cloudActiveTab === 'classeur' && (
                 <div className="space-y-5 animate-in fade-in duration-200">
-                  {/* Bandeau d'en-tête du Classeur */}
-                  <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-orange-500/15 via-amber-500/10 to-transparent border border-orange-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
-                    <div className="flex items-center gap-3">
-                      <div className="p-3 rounded-2xl bg-gradient-to-br from-[#C25416] to-[#A03D07] text-white border border-orange-400/40 shadow-md shrink-0">
-                        <FolderArchive className="w-6 h-6 stroke-[2.2]" />
-                      </div>
-                      <div>
-                        <div className="flex items-center gap-2">
-                          <h2 className="text-base sm:text-lg font-black text-stone-900 dark:text-white">
-                            Classeur Pédagogique
-                          </h2>
-                          <span className="px-2.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-[10px] font-black uppercase tracking-wider border border-orange-500/30">
-                            Actif
-                          </span>
-                        </div>
-                        <p className="text-xs text-stone-500 dark:text-slate-400 mt-0.5">
-                          Dossiers de matières, fascicules complets et fiches de révision StudyCloud
-                        </p>
-                      </div>
-                    </div>
-                    
-                    {selectedClasseurFolder && (
-                      <button
-                        type="button"
-                        onClick={() => setSelectedClasseurFolder(null)}
-                        className="self-start sm:self-auto px-3 py-1.5 rounded-full bg-[#04060A] text-white text-xs font-bold border border-white/10 hover:border-orange-400/50 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
-                      >
-                        <X className="w-3.5 h-3.5 text-orange-400" />
-                        <span>Voir tous les classeurs</span>
-                      </button>
-                    )}
-                  </div>
-
                   {/* Dossiers / Matières du classeur */}
                   <div className="space-y-2.5">
                     <div className="flex items-center justify-between">
@@ -4020,6 +3987,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         <span>Dossiers & Matières du Classeur</span>
                         <span className="text-[11px] font-bold text-stone-400">({classeurFolders.length})</span>
                       </h3>
+                      {selectedClasseurFolder && (
+                        <button
+                          type="button"
+                          onClick={() => setSelectedClasseurFolder(null)}
+                          className="px-2.5 py-1 rounded-full bg-[#04060A] text-white text-[11px] font-bold border border-white/10 hover:border-orange-400/50 flex items-center gap-1 cursor-pointer transition-all active:scale-95"
+                        >
+                          <X className="w-3 h-3 text-orange-400" />
+                          <span>Voir tout</span>
+                        </button>
+                      )}
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
                       {classeurFolders.map(folder => {
@@ -4067,13 +4044,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
                     {renderSelectionBanner(displayedClasseurDocuments)}
 
-                    <div className={`grid gap-2.5 sm:gap-3.5 ${
-                      splitSelectedFile 
-                        ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' 
-                        : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                    }`}>
-                      {displayedClasseurDocuments.map(doc => renderDocumentCard(doc))}
-                    </div>
+                    {displayedClasseurDocuments.length === 0 ? (
+                      <div className="py-16 text-center text-stone-500 dark:text-slate-400">
+                        <FolderArchive className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-orange-400" />
+                        <p className="text-sm font-semibold">Aucun document dans le classeur</p>
+                        <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                          Ce dossier ne contient aucun document pour le moment.
+                        </p>
+                      </div>
+                    ) : (
+                      <div className={`grid gap-2.5 sm:gap-3.5 ${
+                        splitSelectedFile 
+                          ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' 
+                          : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      }`}>
+                        {displayedClasseurDocuments.map(doc => renderDocumentCard(doc))}
+                      </div>
+                    )}
                   </div>
                 </div>
               )}
@@ -4091,12 +4078,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {/* Bandeau d'action de sélection multiple si activé */}
                   {renderSelectionBanner(filteredDocuments)}
 
-                  {/* Grille : conserve sa taille compacte même en mode divisé */}
-                  <div className={`grid gap-2.5 sm:gap-3.5 ${
-                    splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                  }`}>
-                    {filteredDocuments.map(doc => renderDocumentCard(doc))}
-                  </div>
+                  {filteredDocuments.length === 0 ? (
+                    <div className="py-20 text-center text-stone-500 dark:text-slate-400">
+                      <FileText className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-blue-400" />
+                      <p className="text-sm font-semibold">Aucun document disponible</p>
+                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                        Ce dossier ne contient aucun document pour le moment.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className={`grid gap-2.5 sm:gap-3.5 ${
+                      splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
+                      {filteredDocuments.map(doc => renderDocumentCard(doc))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -4112,11 +4108,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {/* Bandeau d'action de sélection multiple si activé */}
                   {renderSelectionBanner(filteredImages)}
 
-                  <div className={`grid gap-2 sm:gap-3 ${
-                    splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                  }`}>
-                    {filteredImages.map((img, idx) => renderImageCard(img, idx))}
-                  </div>
+                  {filteredImages.length === 0 ? (
+                    <div className="py-20 text-center text-stone-500 dark:text-slate-400">
+                      <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-emerald-400" />
+                      <p className="text-sm font-semibold">Aucune image disponible</p>
+                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                        Ce dossier ne contient aucune image pour le moment.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className={`grid gap-2 sm:gap-3 ${
+                      splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
+                      {filteredImages.map((img, idx) => renderImageCard(img, idx))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -4132,11 +4138,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {/* Bandeau d'action de sélection multiple si activé */}
                   {renderSelectionBanner(filteredVideos)}
 
-                  <div className={`grid gap-2 sm:gap-3 ${
-                    splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                  }`}>
-                    {filteredVideos.map((vid, idx) => renderVideoCard(vid, idx))}
-                  </div>
+                  {filteredVideos.length === 0 ? (
+                    <div className="py-20 text-center text-stone-500 dark:text-slate-400">
+                      <Film className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-purple-400" />
+                      <p className="text-sm font-semibold">Aucune vidéo disponible</p>
+                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                        Ce dossier ne contient aucune vidéo pour le moment.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className={`grid gap-2 sm:gap-3 ${
+                      splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
+                      {filteredVideos.map((vid, idx) => renderVideoCard(vid, idx))}
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -4159,8 +4175,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {/* Bandeau d'action de sélection multiple si activé */}
                   {renderSelectionBanner(filteredAudio)}
 
-                  {/* Liste des pistes : Séparées verticalement sur le fond de page avec détails et espace entre elles */}
-                  <div className="space-y-2">
+                  {/* Liste des pistes ou état vide */}
+                  {filteredAudio.length === 0 ? (
+                    <div className="py-20 text-center text-stone-500 dark:text-slate-400">
+                      <Music className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
+                      <p className="text-sm font-semibold">Aucun son disponible</p>
+                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                        Ce dossier ne contient aucun fichier audio pour le moment.
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="space-y-2">
                     {filteredAudio.map((track) => {
                       const isSelected = splitSelectedFile?.id === track.id;
                       const isChecked = selectedItemIds.includes(track.id);
@@ -4341,8 +4366,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       );
                     })}
                   </div>
-                </div>
-              )}
+                )}
+              </div>
+            )}
 
               {/* 5. TÉLÉCHARGEMENTS */}
               {(currentSubView.id === 'studycloud-category-downloads' || (isCloudView && cloudActiveTab === 'downloads')) && (
@@ -4665,11 +4691,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             {/* PANNEAU DE DROITE : L'ÉLÉMENT SÉLECTIONNÉ AFFICHÉ BIEN GRAND         */}
             {/* Avec barre de boutons supérieurs (zoom, agrandir, fermer, nav...)     */}
             {/* --------------------------------------------------------------------- */}
-            {splitSelectedFile && (
+            {splitSelectedFile ? (
               <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
                 isViewerMaximized 
                   ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
-                  : (currentSubView.id === 'studycloud-category-audio' || splitSelectedFile?.category === 'audio')
+                  : (currentSubView.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio') || splitSelectedFile?.category === 'audio')
                     ? `${isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'} md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10`
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[500px] border-t md:border-t-0 md:border-l border-white/10'
               }`}>
@@ -4946,17 +4972,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     <button
                       type="button"
                       onClick={() => {
-                        if (currentSubView.id === 'studycloud-category-audio') {
-                          setIsMobilePlayerOpen(false);
-                          setIsAudioPlaying(false);
-                        } else {
-                          setSplitSelectedFile(null);
-                          setIsViewerMaximized(false);
-                        }
+                        setSplitSelectedFile(null);
+                        setIsAudioPlaying(false);
+                        setIsMobilePlayerOpen(false);
+                        setIsViewerMaximized(false);
                       }}
-                      className={`w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95 ${
-                        currentSubView.id === 'studycloud-category-audio' ? 'md:hidden' : ''
-                      }`}
+                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white flex items-center justify-center border border-rose-400/40 transition-colors cursor-pointer shadow-sm active:scale-95"
                       title="Fermer la vue grand format"
                     >
                       <X className="w-4 h-4 stroke-[2.5]" />
@@ -5412,6 +5433,38 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
 
               </div>
+            ) : (
+              (currentSubView.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio')) && (
+                <div className="hidden md:flex flex-1 flex-col items-center justify-center md:w-7/12 lg:w-7/12 xl:w-7/12 min-h-[550px] p-8 text-center select-none bg-[#111622] dark:bg-[#0c101b] border-t md:border-t-0 md:border-l border-white/10 animate-in fade-in duration-200">
+                  {/* Logo de mélodie très détaillé : double croche avec notes blanches illuminées, stems et ondes sonores */}
+                  <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-full bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 flex items-center justify-center shadow-[0_8px_30px_rgba(245,158,11,0.45)] border-2 border-white/30 ring-4 ring-black/40 relative mb-4">
+                    {/* Cercle vinyle intérieur discret */}
+                    <div className="absolute inset-2 rounded-full border border-white/20 pointer-events-none" />
+                    
+                    <svg className="w-10 h-10 sm:w-12 sm:h-12 text-white filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] relative z-10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                      {/* Ondes de mélodie acoustique fines */}
+                      <path d="M2.5 10.5C2.5 7.8 4.2 5.5 6.5 4.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />
+                      <path d="M21.5 10.5C21.5 7.8 19.8 5.5 17.5 4.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />
+                      
+                      {/* Tiges et double liaison musicale */}
+                      <path d="M9 16.5V5.5L20 3.5V14.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                      <path d="M9 9.5L20 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                      
+                      {/* Tête de note 1 (gauche) blanche avec contour net */}
+                      <ellipse cx="6" cy="16.5" rx="3" ry="2.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.8" transform="rotate(-15 6 16.5)" />
+                      {/* Tête de note 2 (droite) blanche avec contour net */}
+                      <ellipse cx="17" cy="14.5" rx="3" ry="2.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.8" transform="rotate(-15 17 14.5)" />
+                    </svg>
+                  </div>
+
+                  <h3 className="text-base sm:text-lg font-bold text-slate-200">
+                    Aucun son sélectionné
+                  </h3>
+                  <p className="text-xs text-slate-400 mt-1 max-w-xs">
+                    Sélectionnez une piste musicale dans la liste de gauche pour lancer la lecture.
+                  </p>
+                </div>
+              )
             )}
 
           </div>
