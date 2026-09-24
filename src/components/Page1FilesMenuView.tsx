@@ -35,6 +35,7 @@ import {
   FolderPlus,
   Box,
   Plus,
+  Upload,
   FolderArchive,
   ArrowRight,
   BarChart3,
@@ -224,6 +225,115 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     localStorage.setItem('studycloud_classeur_3d_folders', JSON.stringify(classeur3DFolders));
   }, [classeur3DFolders]);
 
+  // Dossier 3D du Classeur actuellement ouvert pour afficher son menu dédié et ses fichiers
+  const [opened3DFolder, setOpened3DFolder] = useState<ClasseurCreatedFolder | null>(null);
+
+  // Table des fichiers par dossier 3D créé (chaque dossier possède son propre menu et ses fichiers indépendants)
+  const [folderFilesMap, setFolderFilesMap] = useState<Record<string, FileItem[]>>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_folder_files_map');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (typeof parsed === 'object' && parsed !== null) return parsed;
+      }
+    } catch (e) {}
+    return {};
+  });
+
+  const folderFileInputRef = useRef<HTMLInputElement>(null);
+  const [isDraggingOverFolder, setIsDraggingOverFolder] = useState<boolean>(false);
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_folder_files_map', JSON.stringify(folderFilesMap));
+    } catch (e) {}
+  }, [folderFilesMap]);
+
+  // Importer des fichiers dans le dossier ouvert
+  const handleFolderFileUpload = (e: React.ChangeEvent<HTMLInputElement>, folderId: string) => {
+    if (!e.target.files || e.target.files.length === 0) return;
+    const files = Array.from(e.target.files);
+    const targetFolder = classeur3DFolders.find(f => f.id === folderId);
+    const folderName = targetFolder ? targetFolder.name : 'Dossier';
+
+    const newFiles: FileItem[] = files.map((f, idx) => {
+      const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || '' : '';
+      let category: FileItem['category'] = 'documents';
+      if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) category = 'images';
+      else if (['mp4', 'webm', 'mkv', 'avi', 'mov'].includes(ext)) category = 'videos';
+      else if (['mp3', 'wav', 'ogg', 'm4a', 'flac'].includes(ext)) category = 'audio';
+
+      const k = 1024;
+      const sizes = ['o', 'Ko', 'Mo', 'Go'];
+      const i = f.size > 0 ? Math.floor(Math.log(f.size) / Math.log(k)) : 0;
+      const sizeStr = f.size > 0 ? parseFloat((f.size / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i] : '0 o';
+
+      return {
+        id: `cf-${folderId}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+        name: f.name,
+        category,
+        source: folderName,
+        size: sizeStr,
+        sizeBytes: f.size,
+        date: getDynamicCurrentDate().full,
+        previewUrl: category === 'images' ? URL.createObjectURL(f) : undefined
+      };
+    });
+
+    setFolderFilesMap(prev => ({
+      ...prev,
+      [folderId]: [...newFiles, ...(prev[folderId] || [])]
+    }));
+
+    showToast(`${newFiles.length} fichier(s) importé(s) dans "${folderName}" !`);
+    e.target.value = '';
+  };
+
+  const handleDirectFilesImportToFolder = (fileList: FileList, folderId: string) => {
+    const files = Array.from(fileList);
+    const targetFolder = classeur3DFolders.find(f => f.id === folderId);
+    const folderName = targetFolder ? targetFolder.name : 'Dossier';
+
+    const newFiles: FileItem[] = files.map((f, idx) => {
+      const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || '' : '';
+      let category: FileItem['category'] = 'documents';
+      if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) category = 'images';
+      else if (['mp4', 'webm', 'mkv', 'avi', 'mov'].includes(ext)) category = 'videos';
+      else if (['mp3', 'wav', 'ogg', 'm4a', 'flac'].includes(ext)) category = 'audio';
+
+      const k = 1024;
+      const sizes = ['o', 'Ko', 'Mo', 'Go'];
+      const i = f.size > 0 ? Math.floor(Math.log(f.size) / Math.log(k)) : 0;
+      const sizeStr = f.size > 0 ? parseFloat((f.size / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i] : '0 o';
+
+      return {
+        id: `cf-${folderId}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+        name: f.name,
+        category,
+        source: folderName,
+        size: sizeStr,
+        sizeBytes: f.size,
+        date: getDynamicCurrentDate().full,
+        previewUrl: category === 'images' ? URL.createObjectURL(f) : undefined
+      };
+    });
+
+    setFolderFilesMap(prev => ({
+      ...prev,
+      [folderId]: [...newFiles, ...(prev[folderId] || [])]
+    }));
+
+    showToast(`${newFiles.length} fichier(s) importé(s) dans "${folderName}" !`);
+  };
+
+  const handleDeleteFileFromFolder = (folderId: string, fileId: string) => {
+    setFolderFilesMap(prev => ({
+      ...prev,
+      [folderId]: (prev[folderId] || []).filter(f => f.id !== fileId)
+    }));
+    showToast('Fichier supprimé du dossier');
+  };
+
   // État et refs de Drag & Drop pour réordonner les dossiers 3D dans le Classeur
   interface FolderDragState {
     folder: ClasseurCreatedFolder;
@@ -312,10 +422,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
     };
 
-    const handleGlobalPointerUp = () => {
+    const handleGlobalPointerUp = (e: PointerEvent) => {
       if (folderLongPressTimerRef.current) {
         clearTimeout(folderLongPressTimerRef.current);
         folderLongPressTimerRef.current = null;
+      }
+      const p = folderPointerDownRef.current;
+      if (p && !p.isDragging) {
+        const deltaX = Math.abs(e.clientX - p.x);
+        const deltaY = Math.abs(e.clientY - p.y);
+        if (deltaX < 8 && deltaY < 8) {
+          // Clic / tap sans déplacement : ouvrir le menu dédié du dossier
+          setOpened3DFolder(p.folder);
+        }
       }
       folderPointerDownRef.current = null;
       setFolderDragState(null);
@@ -3125,6 +3244,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
       case 'delete':
         handleDeleteCreatedFolder(folder.id);
+        if (opened3DFolder?.id === folder.id) {
+          setOpened3DFolder(null);
+        }
+        setFolderFilesMap(prev => {
+          const next = { ...prev };
+          delete next[folder.id];
+          return next;
+        });
         showToast(`Dossier "${folder.name}" supprimé !`);
         break;
 
@@ -3171,6 +3298,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         setSecureFolderFiles(prev => [securedFile, ...prev]);
         setClasseur3DFolders(prev => prev.filter(f => f.id !== folder.id));
         setClasseurFolders(prev => prev.filter(f => f.name !== folder.name));
+        if (opened3DFolder?.id === folder.id) {
+          setOpened3DFolder(null);
+        }
         showToast(`Dossier "${folder.name}" verrouillé dans le dossier sécurisé !`);
         break;
       }
@@ -3183,6 +3313,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           createdAt: Date.now(),
         };
         setClasseur3DFolders(prev => [duplicatedFolder, ...prev]);
+        if (folderFilesMap[folder.id]) {
+          setFolderFilesMap(prev => ({
+            ...prev,
+            [duplicatedFolder.id]: [...(prev[folder.id] || [])]
+          }));
+        }
         showToast(`Dossier dupliqué : "${duplicatedFolder.name}" !`);
         break;
       }
@@ -3223,6 +3359,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           setClasseurFolders(prev =>
             prev.map(f => f.name === folder.name ? { ...f, name: trimmed } : f)
           );
+          if (opened3DFolder?.id === folder.id) {
+            setOpened3DFolder(prev => prev ? { ...prev, name: trimmed } : null);
+          }
           showToast(`Dossier renommé en "${trimmed}" !`);
         }
         break;
@@ -3231,6 +3370,226 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       default:
         break;
     }
+  };
+
+  // =========================================================================
+  // VUE DU CONTENU D'UN DOSSIER 3D DU CLASSEUR (MENU PROPRE À CHAQUE DOSSIER)
+  // Conforme à l'en-tête de l'écran 1 (Bouton Retour + Importer, Nom au milieu collé à l'en-tête sur la ligne horizontale)
+  // =========================================================================
+  const renderOpened3DFolderView = (folder: ClasseurCreatedFolder) => {
+    const files = (folderFilesMap[folder.id] || []).filter(f =>
+      !subSearchQuery.trim() || f.name.toLowerCase().includes(subSearchQuery.toLowerCase().trim())
+    );
+
+    return (
+      <div 
+        className="w-full relative pb-32 animate-in fade-in duration-200"
+        onDragOver={(e) => {
+          e.preventDefault();
+          setIsDraggingOverFolder(true);
+        }}
+        onDragLeave={(e) => {
+          e.preventDefault();
+          setIsDraggingOverFolder(false);
+        }}
+        onDrop={(e) => {
+          e.preventDefault();
+          setIsDraggingOverFolder(false);
+          if (e.dataTransfer.files && e.dataTransfer.files.length > 0) {
+            handleDirectFilesImportToFolder(e.dataTransfer.files, folder.id);
+          }
+        }}
+      >
+        {/* Overlay Drag & Drop pour déposer des fichiers directement dans ce dossier */}
+        {isDraggingOverFolder && (
+          <div className="fixed inset-0 z-50 bg-[#2D4A3E]/85 backdrop-blur-sm border-4 border-dashed border-emerald-400 flex flex-col items-center justify-center p-6 text-center animate-in fade-in duration-150 pointer-events-none">
+            <div className="w-20 h-20 rounded-3xl bg-white/20 border-2 border-white text-white flex items-center justify-center mb-4 shadow-xl animate-bounce">
+              <Upload className="w-10 h-10 stroke-[2.5]" />
+            </div>
+            <h2 className="text-2xl font-black text-white drop-shadow-md">Déposez vos fichiers ici</h2>
+            <p className="text-sm font-bold text-emerald-100 mt-1">Ils seront importés et enregistrés dans « {folder.name} »</p>
+          </div>
+        )}
+
+        {/* Input d'upload caché pour importer via le bouton de l'en-tête ou de la vue */}
+        <input 
+          type="file" 
+          ref={folderFileInputRef} 
+          className="hidden" 
+          multiple 
+          onChange={(e) => handleFolderFileUpload(e, folder.id)} 
+        />
+
+        {/* Bannière récapitulative du dossier */}
+        <div className="mb-5 p-4 rounded-2xl bg-[#0E1526]/80 border border-white/10 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-md">
+          <div className="flex items-center gap-3">
+            <div 
+              className="w-12 h-12 rounded-xl flex items-center justify-center shrink-0 border border-white/20 shadow-inner"
+              style={{ backgroundColor: folder.primaryColor }}
+            >
+              <FolderArchive className={`w-6 h-6 stroke-[2.2] ${folder.textDark ? 'text-stone-900' : 'text-white'}`} />
+            </div>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm sm:text-base font-black text-white truncate">
+                  {folder.name}
+                </h2>
+                <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 shrink-0">
+                  Modèle {folder.model}
+                </span>
+              </div>
+              <p className="text-xs text-slate-400 mt-0.5 flex items-center gap-2">
+                <span>Créé le {folder.dateText}</span>
+                <span>•</span>
+                <span className="text-orange-400 font-bold">{files.length} fichier{files.length > 1 ? 's' : ''}</span>
+              </p>
+            </div>
+          </div>
+
+          <div className="flex items-center gap-2 self-stretch sm:self-auto justify-end">
+            <button
+              type="button"
+              onClick={() => folderFileInputRef.current?.click()}
+              className="flex items-center gap-2 px-3.5 py-1.5 rounded-xl bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs shadow-md transition-all active:scale-95 cursor-pointer shrink-0"
+              title="Ajouter des fichiers dans ce dossier"
+            >
+              <Upload className="w-3.5 h-3.5 stroke-[2.2]" />
+              <span>Ajouter des fichiers</span>
+            </button>
+          </div>
+        </div>
+
+        {/* Fichiers du dossier ou État vide */}
+        {files.length === 0 ? (
+          <div className="py-20 sm:py-28 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400 rounded-2xl border-2 border-dashed border-white/10 p-6 bg-black/20">
+            <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center justify-center mb-4 shadow-sm">
+              <FolderPlus className="w-8 h-8 sm:w-10 sm:h-10 stroke-[1.8]" />
+            </div>
+            <h3 className="text-base sm:text-lg font-bold text-stone-800 dark:text-stone-200">
+              Ce dossier est vide
+            </h3>
+            <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+              Glissez-déposez des fichiers ici ou cliquez sur le bouton ci-dessous pour importer des documents dans ce dossier.
+            </p>
+            <button
+              type="button"
+              onClick={() => folderFileInputRef.current?.click()}
+              className="mt-6 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] text-white text-xs sm:text-sm font-bold shadow-[0_4px_16px_rgba(194,84,22,0.4)] hover:brightness-110 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
+            >
+              <Upload className="w-4 h-4 stroke-[2.2]" />
+              <span>Importer un fichier</span>
+            </button>
+          </div>
+        ) : (
+          <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-6 gap-3 sm:gap-4">
+            {files.map((file) => (
+              <div
+                key={file.id}
+                onClick={() => handleSelectFile(file)}
+                className={`group relative bg-[#151C2C] hover:bg-[#1A2338] border border-slate-800 hover:border-orange-500/50 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-200 cursor-pointer flex flex-col ${
+                  menuOpenId === file.id ? 'z-50 relative' : 'z-10'
+                }`}
+              >
+                {/* Vignette compacte */}
+                <div className="w-full h-24 sm:h-28 md:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center overflow-hidden">
+                  {file.previewUrl ? (
+                    <img 
+                      src={file.previewUrl} 
+                      alt={file.name}
+                      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                      loading="lazy"
+                    />
+                  ) : (
+                    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-3">
+                      {file.category === 'documents' && <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-blue-400/85 stroke-[1.8]" />}
+                      {file.category === 'audio' && <Music className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400/85 stroke-[1.8]" />}
+                      {file.category === 'videos' && <Film className="w-8 h-8 sm:w-10 sm:h-10 text-purple-400/85 stroke-[1.8]" />}
+                      {file.category === 'downloads' && <Download className="w-8 h-8 sm:w-10 sm:h-10 text-sky-400/85 stroke-[1.8]" />}
+                      {file.category === 'images' && <ImageIcon className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-400/85 stroke-[1.8]" />}
+                      {file.category === 'apps' && <LayoutGrid className="w-8 h-8 sm:w-10 sm:h-10 text-pink-400/85 stroke-[1.8]" />}
+                    </div>
+                  )}
+
+                  {/* Bouton 3 petits points verticaux en haut à droite */}
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setMenuOpenId(menuOpenId === file.id ? null : file.id);
+                    }}
+                    className="studycloud-menu-trigger absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/75 hover:bg-black flex items-center justify-center text-white transition-colors cursor-pointer shadow-md z-20 border border-white/20"
+                    title="Options du fichier"
+                  >
+                    <MoreVertical className="w-3.5 h-3.5" />
+                  </button>
+
+                  {/* Menu contextuel 3 points */}
+                  {menuOpenId === file.id && (
+                    <div 
+                      onClick={(e) => e.stopPropagation()}
+                      className="studycloud-file-menu-panel absolute top-9 right-1.5 z-50 w-44 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.15)] py-1.5 text-xs font-semibold text-white animate-in fade-in zoom-in-95 overflow-hidden divide-y divide-white/10"
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          handleDeleteFileFromFolder(folder.id, file.id);
+                          setMenuOpenId(null);
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-rose-500/20 flex items-center gap-2 cursor-pointer text-rose-400 hover:text-rose-300 transition-colors"
+                        title="Supprimer ce fichier du dossier"
+                      >
+                        <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Supprimer
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleShareFile(file);
+                          setMenuOpenId(null);
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
+                      >
+                        <Share2 className="w-3.5 h-3.5 text-emerald-400" /> Partager
+                      </button>
+                      <button
+                        onClick={() => {
+                          handleDownloadFile(file);
+                          setMenuOpenId(null);
+                        }}
+                        className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
+                      >
+                        <Download className="w-3.5 h-3.5 text-amber-400" /> Télécharger
+                      </button>
+                      {onOpenStudySpace && (
+                        <button
+                          onClick={() => {
+                            onOpenStudySpace(file, folder.name, files);
+                            setMenuOpenId(null);
+                          }}
+                          className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-emerald-300 transition-colors"
+                        >
+                          <BookOpen className="w-3.5 h-3.5 text-emerald-400" /> Espace d'étude
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+
+                {/* Bas de carte avec Nom et Emplacement */}
+                <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-[#151C2C] rounded-b-2xl">
+                  <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-orange-400 transition-colors" title={file.name}>
+                    {file.name}
+                  </p>
+                  <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                    <span className="truncate max-w-[85px]">{file.source}</span>
+                    <span className="shrink-0 font-medium">{file.size}</span>
+                  </div>
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    );
   };
 
   // =========================================================================
@@ -5298,130 +5657,205 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className={`sticky top-0 z-30 w-full bg-[#F4F6F8]/95 dark:bg-[#0C111D]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-300/70 dark:border-slate-800/60 shadow-xs ${
             isViewerMaximized ? 'hidden' : ''
           }`}>
-            <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
-              
-              {/* GAUCHE : Bouton Retour et Titre */}
-              <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
-                <button
-                  type="button"
-                  onClick={() => {
-                    setCurrentSubView(null);
-                    setSubSearchQuery('');
-                    setSplitSelectedFile(null);
-                    setIsSecureFolderUnlocked(false);
-                    setSecurePinInput('');
-                    setSecurePinError(null);
-                  }}
-                  className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
-                  title="Retour au gestionnaire de fichiers"
-                >
-                  <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
-                  <span className="hidden xs:inline">Retour</span>
-                </button>
+            {opened3DFolder ? (
+              /* EN-TÊTE DU DOSSIER 3D OUVERT (Conforme à l'écran 1 : Retour + Importer à gauche, Nom au milieu collé à l'en-tête sur la ligne horizontale) */
+              <div className="w-full flex items-center justify-between gap-2 sm:gap-4 animate-in fade-in duration-150">
+                {/* GAUCHE : Bouton Retour et Bouton Importer (style exact de Mes dossiers / Mes fichiers de l'écran 1) */}
+                <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setOpened3DFolder(null);
+                      setSubSearchQuery('');
+                    }}
+                    className="flex items-center gap-1 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[11px] sm:text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                    title="Retour aux dossiers du classeur"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
+                    <span>Retour</span>
+                  </button>
 
-                <div className="flex items-center gap-2">
-                  <div className={`p-1.5 rounded-xl bg-black border border-white/10 ${currentSubView.color}`}>
-                    <currentSubView.icon className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+                  <button
+                    type="button"
+                    onClick={() => folderFileInputRef.current?.click()}
+                    className="flex items-center gap-1 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[11px] sm:text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                    title="Importer des fichiers dans ce dossier"
+                  >
+                    <Upload className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
+                    <span>Importer</span>
+                  </button>
+                </div>
+
+                {/* MILIEU : Nom du dossier au milieu collé à l'en-tête sur la ligne horizontale (exactement comme dans Mes dossiers de l'écran 1) */}
+                <div className="flex-1 flex justify-center items-center px-1 min-w-0">
+                  <h1 
+                    className="font-sans text-xs sm:text-sm font-bold text-stone-900 bg-amber-400 dark:bg-amber-500 px-3.5 py-1 rounded-lg border-2 border-stone-800 dark:border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] truncate max-w-[180px] sm:max-w-xs md:max-w-md text-center"
+                    title={opened3DFolder.name}
+                  >
+                    {opened3DFolder.name}
+                  </h1>
+                </div>
+
+                {/* DROITE : Champ de recherche et Plein écran */}
+                <div className="shrink-0 flex items-center gap-2">
+                  <div className="hidden sm:flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3 py-1.5 transition-all shadow-inner gap-1.5 max-w-[180px]">
+                    <Search className="w-3.5 h-3.5 text-slate-300 shrink-0" />
+                    <input
+                      type="text"
+                      value={subSearchQuery}
+                      onChange={(e) => setSubSearchQuery(e.target.value)}
+                      placeholder="Rechercher..."
+                      className="w-full bg-transparent text-xs text-white placeholder:text-slate-400 focus:outline-none"
+                    />
+                    {subSearchQuery && (
+                      <button type="button" onClick={() => setSubSearchQuery('')} className="p-0.5 text-slate-300 hover:text-white">
+                        <X className="w-3 h-3" />
+                      </button>
+                    )}
                   </div>
-                  <div>
-                    <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 dark:text-white leading-tight">
-                      {currentSubView.name}
-                    </h1>
-                    <p className="text-[10px] sm:text-[11px] font-semibold text-stone-500 dark:text-slate-400 leading-tight">
-                      StudyCloud
-                    </p>
-                  </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setIsFullscreen(!isFullscreen)}
+                    className="flex items-center justify-center w-8 h-8 sm:w-9 sm:h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                    title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet"}
+                  >
+                    {isFullscreen ? (
+                      <Minimize2 className="w-4 h-4 stroke-[2.2]" />
+                    ) : (
+                      <Maximize2 className="w-4 h-4 stroke-[2.2]" />
+                    )}
+                  </button>
                 </div>
               </div>
+            ) : (
+              <div className="w-full flex items-center justify-between gap-2 sm:gap-4">
+                
+                {/* GAUCHE : Bouton Retour et Titre */}
+                <div className="flex items-center gap-2.5 sm:gap-3 shrink-0">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setCurrentSubView(null);
+                      setOpened3DFolder(null);
+                      setSubSearchQuery('');
+                      setSplitSelectedFile(null);
+                      setIsSecureFolderUnlocked(false);
+                      setSecurePinInput('');
+                      setSecurePinError(null);
+                    }}
+                    className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
+                    title="Retour au gestionnaire de fichiers"
+                  >
+                    <ArrowLeft className="w-4 h-4 stroke-[2.2]" />
+                    <span className="hidden xs:inline">Retour</span>
+                  </button>
 
-              {/* MILIEU : Champ de recherche */}
-              <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-1 sm:px-2">
-                <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
-                  <div className="text-white shrink-0">
-                    <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+                  <div className="flex items-center gap-2">
+                    <div className={`p-1.5 rounded-xl bg-black border border-white/10 ${currentSubView.color}`}>
+                      <currentSubView.icon className="w-4 h-4 sm:w-5 sm:h-5 stroke-[2.2]" />
+                    </div>
+                    <div>
+                      <h1 className="text-xs sm:text-sm md:text-base font-black text-stone-900 dark:text-white leading-tight">
+                        {currentSubView.name}
+                      </h1>
+                      <p className="text-[10px] sm:text-[11px] font-semibold text-stone-500 dark:text-slate-400 leading-tight">
+                        StudyCloud
+                      </p>
+                    </div>
                   </div>
-                  <input
-                    type="text"
-                    value={subSearchQuery}
-                    onChange={(e) => setSubSearchQuery(e.target.value)}
-                    placeholder={`Rechercher dans ${currentSubView.name}...`}
-                    className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
-                  />
-                  {subSearchQuery && (
+                </div>
+
+                {/* MILIEU : Champ de recherche */}
+                <div className="flex-1 max-w-xs sm:max-w-sm md:max-w-md mx-auto relative flex items-center px-1 sm:px-2">
+                  <div className="w-full flex items-center bg-[#04060A] hover:bg-[#0A0E18] focus-within:bg-[#0A0E18] focus-within:ring-2 focus-within:ring-blue-500/50 border border-white/10 rounded-full px-3.5 sm:px-4 py-1.5 transition-all shadow-inner gap-2">
+                    <div className="text-white shrink-0">
+                      <Search className="w-3.5 h-3.5 sm:w-4 sm:h-4 stroke-[2.2]" />
+                    </div>
+                    <input
+                      type="text"
+                      value={subSearchQuery}
+                      onChange={(e) => setSubSearchQuery(e.target.value)}
+                      placeholder={`Rechercher dans ${currentSubView.name}...`}
+                      className="w-full bg-transparent text-xs sm:text-sm text-white placeholder:text-slate-400 focus:outline-none"
+                    />
+                    {subSearchQuery && (
+                      <button
+                        type="button"
+                        onClick={() => setSubSearchQuery('')}
+                        className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
+                        title="Effacer"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
+                    )}
+                  </div>
+                </div>
+
+                {/* DROITE : Bouton Espace d'étude, Plein écran général & Bouton 3 traits d'en-tête */}
+                <div className="shrink-0 flex items-center gap-2">
+                  {/* BOUTON ESPACE D'ÉTUDE DEVANT LE BOUTON ZOOM (uniquement si un élément est sélectionné comme demandé) */}
+                  {Boolean(splitSelectedFile || selectedItemIds.length > 0) && (
                     <button
                       type="button"
-                      onClick={() => setSubSearchQuery('')}
-                      className="p-1 text-slate-300 hover:text-white rounded-full hover:bg-slate-800 transition-colors cursor-pointer"
-                      title="Effacer"
+                      onClick={() => handleOpenStudySpaceForCurrentMenu(false)}
+                      className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 hover:border-emerald-500/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black group animate-in fade-in duration-150"
+                      title="Ouvrir l'Espace d'étude"
                     >
-                      <X className="w-3.5 h-3.5" />
+                      <BookOpen className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                      <span className="hidden sm:inline">Espace d'étude</span>
                     </button>
                   )}
-                </div>
-              </div>
 
-              {/* DROITE : Bouton Espace d'étude, Plein écran général & Bouton 3 traits d'en-tête */}
-              <div className="shrink-0 flex items-center gap-2">
-                {/* BOUTON ESPACE D'ÉTUDE DEVANT LE BOUTON ZOOM (uniquement si un élément est sélectionné comme demandé) */}
-                {Boolean(splitSelectedFile || selectedItemIds.length > 0) && (
-                  <button
-                    type="button"
-                    onClick={() => handleOpenStudySpaceForCurrentMenu(false)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 hover:border-emerald-500/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black group animate-in fade-in duration-150"
-                    title="Ouvrir l'Espace d'étude"
-                  >
-                    <BookOpen className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
-                    <span className="hidden sm:inline">Espace d'étude</span>
-                  </button>
-                )}
-
-                {/* BOUTON CRÉER UN DOSSIER EN ORANGE DEVANT LE BOUTON ZOOM (Dans le menu Classeur, Image 2) */}
-                {(currentSubView.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur') || currentSubView.type === 'classeur') && (
-                  <button
-                    type="button"
-                    onClick={() => setIsCreateFolderModalOpen(true)}
-                    className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] hover:from-[#D15C1B] hover:via-[#C55010] hover:to-[#AC430A] text-white border border-orange-500/50 shadow-[0_2px_12px_rgba(194,84,22,0.45)] hover:shadow-[0_4px_18px_rgba(194,84,22,0.6)] transition-all cursor-pointer shrink-0 active:scale-95 text-xs sm:text-sm font-bold group select-none animate-in fade-in duration-150"
-                    title="Créer un nouveau dossier"
-                  >
-                    <FolderPlus className="w-4 h-4 stroke-[2.4] group-hover:scale-110 transition-transform text-white shrink-0" />
-                    <span className="whitespace-nowrap">Créer un dossier</span>
-                  </button>
-                )}
-
-                <button
-                  type="button"
-                  onClick={() => setIsFullscreen(!isFullscreen)}
-                  className="hidden md:flex items-center justify-center w-9 h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
-                  title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet"}
-                >
-                  {isFullscreen ? (
-                    <Minimize2 className="w-4 h-4 stroke-[2.2]" />
-                  ) : (
-                    <Maximize2 className="w-4 h-4 stroke-[2.2]" />
+                  {/* BOUTON CRÉER UN DOSSIER EN ORANGE DEVANT LE BOUTON ZOOM (Dans le menu Classeur, Image 2) */}
+                  {(currentSubView.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur') || currentSubView.type === 'classeur') && (
+                    <button
+                      type="button"
+                      onClick={() => setIsCreateFolderModalOpen(true)}
+                      className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] hover:from-[#D15C1B] hover:via-[#C55010] hover:to-[#AC430A] text-white border border-orange-500/50 shadow-[0_2px_12px_rgba(194,84,22,0.45)] hover:shadow-[0_4px_18px_rgba(194,84,22,0.6)] transition-all cursor-pointer shrink-0 active:scale-95 text-xs sm:text-sm font-bold group select-none animate-in fade-in duration-150"
+                      title="Créer un nouveau dossier"
+                    >
+                      <FolderPlus className="w-4 h-4 stroke-[2.4] group-hover:scale-110 transition-transform text-white shrink-0" />
+                      <span className="whitespace-nowrap">Créer un dossier</span>
+                    </button>
                   )}
-                </button>
 
-                {/* Bouton 3 traits d'en-tête derrière le bouton zoom (Image 1) */}
-                <div className="relative studycloud-menu-trigger">
                   <button
                     type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsHeaderMenuOpen(!isHeaderMenuOpen);
-                    }}
-                    className={`flex items-center justify-center w-9 h-9 rounded-full ${
-                      isHeaderMenuOpen ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
-                    } border transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm`}
-                    title="Options d'affichage et de tri (3 traits)"
+                    onClick={() => setIsFullscreen(!isFullscreen)}
+                    className="hidden md:flex items-center justify-center w-9 h-9 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                    title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet"}
                   >
-                    <Menu className="w-4 h-4 stroke-[2.2]" />
+                    {isFullscreen ? (
+                      <Minimize2 className="w-4 h-4 stroke-[2.2]" />
+                    ) : (
+                      <Maximize2 className="w-4 h-4 stroke-[2.2]" />
+                    )}
                   </button>
 
-                  {renderHeaderOptionsMenu()}
-                </div>
-              </div>
+                  {/* Bouton 3 traits d'en-tête derrière le bouton zoom (Image 1) */}
+                  <div className="relative studycloud-menu-trigger">
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setIsHeaderMenuOpen(!isHeaderMenuOpen);
+                      }}
+                      className={`flex items-center justify-center w-9 h-9 rounded-full ${
+                        isHeaderMenuOpen ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
+                      } border transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm`}
+                      title="Options d'affichage et de tri (3 traits)"
+                    >
+                      <Menu className="w-4 h-4 stroke-[2.2]" />
+                    </button>
 
-            </div>
+                    {renderHeaderOptionsMenu()}
+                  </div>
+                </div>
+
+              </div>
+            )}
+
           </div>
 
           {/* ========================================================================= */}
@@ -5569,7 +6003,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* 0. CLASSEUR PRINCIPAL (BOUTON DE LA PAGE 1 : SOUS-MENU CLASSEUR 3D) */}
               {currentSubView.id === 'studycloud-classeur-classeur' && (
                 <div className="w-full">
-                  {classeur3DFolders.length === 0 ? (
+                  {opened3DFolder ? (
+                    renderOpened3DFolderView(opened3DFolder)
+                  ) : classeur3DFolders.length === 0 ? (
                     <div className="py-24 sm:py-32 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400">
                       <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center justify-center mb-4 shadow-sm">
                         <FolderArchive className="w-8 h-8 sm:w-10 sm:h-10 stroke-[1.8]" />
@@ -5601,7 +6037,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           </span>
                         </div>
                         <div className="text-[11px] text-stone-400 font-medium hidden sm:flex items-center gap-1.5">
-                          <span>Maintenez et glissez pour déplacer</span>
+                          <span>Cliquez pour ouvrir • Maintenez pour déplacer</span>
                         </div>
                       </div>
 
@@ -5618,6 +6054,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                 transition={{ type: 'spring', stiffness: 350, damping: 25 }}
                                 data-classeur-folder-id={folder.id}
                                 onPointerDown={(e) => handleFolderPointerDown(e, folder)}
+                                onClick={(e) => {
+                                  if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('.studycloud-file-menu-panel') || (e.target as HTMLElement).closest('.studycloud-menu-trigger')) return;
+                                  if (!folderDragState) {
+                                    setOpened3DFolder(folder);
+                                  }
+                                }}
                                 className={`group relative p-3 sm:p-4 rounded-3xl cursor-grab active:cursor-grabbing transition-all select-none touch-none border ${
                                   isBeingDragged
                                     ? 'opacity-20 scale-95 border-dashed border-orange-500/60 bg-orange-500/5'
@@ -5648,7 +6090,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                   {renderFolder3DOptionsMenu(folder)}
                                 </div>
 
-                                <Classeur3DFolderCard folder={folder} isDragging={isBeingDragged} />
+                                {/* Le dossier 3D lui-même glissé un peu vers le bas sur l'espace noir sans bouger l'espace noir pour que le bouton 3 traits ne chevauche plus la date */}
+                                <div className="pt-6 sm:pt-7 pb-1 w-full">
+                                  <Classeur3DFolderCard folder={folder} isDragging={isBeingDragged} />
+                                </div>
                               </motion.div>
                             );
                           })}
@@ -7489,7 +7934,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           }}
           className="rounded-3xl p-3 sm:p-4 border-2 border-orange-400 ring-4 ring-orange-500/50 bg-[#0E1526] shadow-[0_25px_60px_rgba(0,0,0,0.85)] scale-105 rotate-1 select-none overflow-hidden"
         >
-          <Classeur3DFolderCard folder={folderDragState.folder} />
+          <div className="pt-6 sm:pt-7 pb-1 w-full">
+            <Classeur3DFolderCard folder={folderDragState.folder} />
+          </div>
         </div>,
         document.body
       )}
