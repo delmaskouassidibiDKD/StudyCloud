@@ -742,7 +742,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [newGradeCoeff, setNewGradeCoeff] = useState('');
 
   return (
-    <div className={`flex flex-col items-center justify-start min-h-[75vh] px-2 sm:px-4 text-center pt-12 md:pt-14 pb-24 transition-colors duration-200 relative ${
+    <div className={`flex flex-col items-center justify-start min-h-[75vh] px-2 sm:px-4 text-center pt-12 md:pt-14 pb-24 transition-colors duration-200 ${
       dashboardWallpaper && viewMode === 'home'
         ? 'bg-transparent text-white'
         : 'bg-[#E9D7C9] dark:bg-[#0b0f19]'
