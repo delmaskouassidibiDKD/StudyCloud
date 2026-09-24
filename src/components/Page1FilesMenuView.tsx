@@ -50,6 +50,7 @@ import {
   SlidersHorizontal,
   ChevronDown,
   Layers,
+  BookOpen,
   Link,
   FolderInput,
   Copy,
@@ -407,64 +408,165 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Sous-page ouverte
   const [currentSubView, setCurrentSubView] = useState<SubMenuView | null>(null);
 
-  // État de l'onglet actif dans Espace Cloud (sélectionné par défaut : 'classeur')
-  const [cloudActiveTab, setCloudActiveTab] = useState<string>('classeur');
-  const [classeurSubjectFilter, setClasseurSubjectFilter] = useState<string>('all');
-  const cloudTabsScrollRef = useRef<HTMLDivElement | null>(null);
-  const [isCloudTabsDragging, setIsCloudTabsDragging] = useState<boolean>(false);
-  const cloudTabsDragStartRef = useRef<{ startX: number; scrollLeft: number } | null>(null);
-  const cloudTabsMovedRef = useRef<boolean>(false);
+  // État de l'onglet actif dans l'Espace Cloud (Classeur sélectionné par défaut comme demandé)
+  const [cloudActiveTab, setCloudActiveTab] = useState<'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'apps' | 'favorites' | 'secure-folder' | 'trash'>('classeur');
+  const [selectedClasseurFolder, setSelectedClasseurFolder] = useState<string | null>(null);
+  const [trashFiles, setTrashFiles] = useState<FileItem[]>([]);
 
-  // Corbeille StudyCloud
-  const [trashFiles, setTrashFiles] = useState<FileItem[]>([
+  // Défilement et glissement horizontal de la barre de l'Espace Cloud (souris et tactile)
+  const cloudNavScrollRef = useRef<HTMLDivElement>(null);
+  const [isNavDragging, setIsNavDragging] = useState(false);
+  const [navStartX, setNavStartX] = useState(0);
+  const [navScrollLeft, setNavScrollLeft] = useState(0);
+
+  const handleNavMouseDown = (e: React.MouseEvent) => {
+    if (!cloudNavScrollRef.current) return;
+    setIsNavDragging(true);
+    setNavStartX(e.pageX - cloudNavScrollRef.current.offsetLeft);
+    setNavScrollLeft(cloudNavScrollRef.current.scrollLeft);
+  };
+
+  const handleNavMouseMove = (e: React.MouseEvent) => {
+    if (!isNavDragging || !cloudNavScrollRef.current) return;
+    e.preventDefault();
+    const x = e.pageX - cloudNavScrollRef.current.offsetLeft;
+    const walk = (x - navStartX) * 1.5;
+    cloudNavScrollRef.current.scrollLeft = navScrollLeft - walk;
+  };
+
+  const handleNavMouseUpOrLeave = () => {
+    setIsNavDragging(false);
+  };
+
+  const scrollCloudNav = (direction: 'left' | 'right') => {
+    if (cloudNavScrollRef.current) {
+      const scrollAmount = direction === 'left' ? -260 : 260;
+      cloudNavScrollRef.current.scrollBy({ left: scrollAmount, behavior: 'smooth' });
+    }
+  };
+
+  const isCloudView = currentSubView?.id === 'studycloud-collection-cloud-storage' || currentSubView?.id === 'studycloud-classeur-classeur';
+
+  // Fiches et dossiers pédagogiques pour le Classeur
+  const classeurFolders = [
     {
-      id: 'trash-1',
-      name: 'Brouillon_TP_Optique_2MIT.pdf',
-      category: 'documents',
-      documentCategory: 'TD',
-      source: 'Corbeille StudyCloud',
-      size: '240.0 Ko',
-      sizeBytes: 245760,
-      date: 'Supprimé il y a 2 jours',
-      extension: 'PDF'
+      id: 'folder-elec',
+      name: 'Électronique & Circuits',
+      count: '4 modules • 18 cours',
+      iconColor: 'text-orange-400',
+      badge: 'Sciences'
     },
     {
-      id: 'trash-2',
-      name: 'Capture_Ecran_Ancienne.jpg',
-      category: 'images',
-      source: 'Corbeille StudyCloud',
-      size: '1.2 Mo',
-      sizeBytes: 1258291,
-      date: 'Supprimé la semaine dernière',
-      extension: 'JPG',
-      isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1516321318423-f06f85e504b3?w=600&auto=format&fit=crop&q=80'
+      id: 'folder-math',
+      name: 'Mathématiques Avancées',
+      count: '6 modules • 24 fiches',
+      iconColor: 'text-blue-400',
+      badge: 'Analyse'
+    },
+    {
+      id: 'folder-eco',
+      name: 'Économie & Gestion',
+      count: '3 modules • 12 synthèses',
+      iconColor: 'text-emerald-400',
+      badge: 'Gestion'
+    },
+    {
+      id: 'folder-tp',
+      name: 'Fascicules & Travaux Pratiques',
+      count: '5 fascicules complets',
+      iconColor: 'text-rose-400',
+      badge: 'Pratique'
+    }
+  ];
+
+  const [classeurExtraDocs] = useState<FileItem[]>([
+    {
+      id: 'classeur-doc-1',
+      name: 'Fascicule complet - Circuits Électroniques & Lois de Kirchhoff.pdf',
+      category: 'documents',
+      documentCategory: 'COURS',
+      source: 'Classeur StudyCloud',
+      size: '1.8 Mo',
+      sizeBytes: 1887436,
+      date: "Aujourd'hui, 09:30",
+      extension: 'PDF',
+      downloadsCount: 4,
+      isPinned: true
+    },
+    {
+      id: 'classeur-doc-2',
+      name: 'Cahier de Révision - Mathématiques & Algèbre Linéaire.pdf',
+      category: 'documents',
+      documentCategory: 'COURS',
+      source: 'Classeur StudyCloud',
+      size: '2.4 Mo',
+      sizeBytes: 2516582,
+      date: "Aujourd'hui, 08:15",
+      extension: 'PDF',
+      downloadsCount: 2,
+      isPinned: false
+    },
+    {
+      id: 'classeur-doc-3',
+      name: 'Synthèse Pédagogique - Macroéconomie & Marchés Financiers.pdf',
+      category: 'documents',
+      documentCategory: 'COURS',
+      source: 'Classeur StudyCloud',
+      size: '980 Ko',
+      sizeBytes: 1003520,
+      date: 'Hier, 16:40',
+      extension: 'PDF',
+      downloadsCount: 5,
+      isPinned: false
+    },
+    {
+      id: 'classeur-doc-4',
+      name: 'Guide d\'Étude & Travaux Pratiques - Électronique Appliquée.pdf',
+      category: 'documents',
+      documentCategory: 'COURS',
+      source: 'Classeur StudyCloud',
+      size: '3.1 Mo',
+      sizeBytes: 3250585,
+      date: 'Hier, 11:10',
+      extension: 'PDF',
+      downloadsCount: 1,
+      isPinned: true
     }
   ]);
 
-  const handleCloudTabsMouseDown = (e: React.MouseEvent) => {
-    if (!cloudTabsScrollRef.current) return;
-    cloudTabsDragStartRef.current = {
-      startX: e.pageX - cloudTabsScrollRef.current.offsetLeft,
-      scrollLeft: cloudTabsScrollRef.current.scrollLeft
-    };
-    cloudTabsMovedRef.current = false;
+  // Applications éducatives disponibles
+  const studyAppsList = [
+    { id: 'app-calc', name: 'Calculatrice Scientifique', category: 'Outils', icon: LayoutGrid, color: 'text-pink-400', desc: 'Calcul formel, trigonométrie et matrices' },
+    { id: 'app-board', name: 'Tableau Blanc Interactif', category: 'Étude', icon: Sparkles, color: 'text-cyan-400', desc: 'Dessin vectoriel et schémas scientifiques' },
+    { id: 'app-latex', name: 'Éditeur de Formules LaTeX', category: 'Maths', icon: FileCode, color: 'text-emerald-400', desc: 'Rendu d\'équations et export PDF' },
+    { id: 'app-pomo', name: 'Chronomètre & Pomodoro', category: 'Focus', icon: Clock, color: 'text-amber-400', desc: 'Gestion des sessions de travail et pauses' },
+    { id: 'app-dict', name: 'Dictionnaire Académique', category: 'Langues', icon: BookOpen, color: 'text-blue-400', desc: 'Définitions et terminologie scientifique' },
+    { id: 'app-quiz', name: 'Générateur de Quiz IA', category: 'Révision', icon: Sparkles, color: 'text-purple-400', desc: 'Auto-évaluation instantanée par cours' },
+    { id: 'app-notes', name: 'Bloc-Notes Express', category: 'Notes', icon: Pencil, color: 'text-rose-400', desc: 'Prise de notes rapides et brouillon' },
+    { id: 'app-flash', name: 'Flashcards de Mémorisation', category: 'Mémoire', icon: Layers, color: 'text-orange-400', desc: 'Cartes mémo avec répétition espacée' },
+    { id: 'app-sync', name: 'Cloud Drive Synchroniseur', category: 'Système', icon: Cloud, color: 'text-sky-400', desc: 'Sauvegarde automatique des cours' },
+    { id: 'app-pdf', name: 'Convertisseur PDF & Scan', category: 'Docs', icon: FileText, color: 'text-indigo-400', desc: 'Compression et fusion de documents' },
+    { id: 'app-audio', name: 'Studio Audio & Dictaphone', category: 'Médias', icon: Music, color: 'text-yellow-400', desc: 'Enregistrement de cours et podcasts' },
+    { id: 'app-planner', name: 'Planificateur de Devoirs', category: 'Planning', icon: CheckCircle2, color: 'text-teal-400', desc: 'Calendrier des examens et rendus' },
+  ];
+
+  const handleRestoreFromTrash = (file: FileItem) => {
+    setTrashFiles(prev => prev.filter(f => f.id !== file.id));
+    if (file.category === 'images') setImagesList(prev => [file, ...prev]);
+    else if (file.category === 'videos') setVideosList(prev => [file, ...prev]);
+    else if (file.category === 'audio') setAudioList(prev => [file, ...prev]);
+    else setDocumentsList(prev => [file, ...prev]);
+    showToast(`"${file.name}" restauré !`);
   };
 
-  const handleCloudTabsMouseMove = (e: React.MouseEvent) => {
-    if (!cloudTabsDragStartRef.current || !cloudTabsScrollRef.current) return;
-    const x = e.pageX - cloudTabsScrollRef.current.offsetLeft;
-    const walk = (x - cloudTabsDragStartRef.current.startX) * 1.5;
-    if (Math.abs(walk) > 4) {
-      cloudTabsMovedRef.current = true;
-      setIsCloudTabsDragging(true);
-    }
-    cloudTabsScrollRef.current.scrollLeft = cloudTabsDragStartRef.current.scrollLeft - walk;
+  const handlePermanentDelete = (id: string) => {
+    setTrashFiles(prev => prev.filter(f => f.id !== id));
+    showToast('Fichier définitivement supprimé.');
   };
 
-  const handleCloudTabsMouseUp = () => {
-    cloudTabsDragStartRef.current = null;
-    setTimeout(() => setIsCloudTabsDragging(false), 50);
+  const handleEmptyTrash = () => {
+    setTrashFiles([]);
+    showToast('Corbeille vidée.');
   };
 
   const showToast = (_msg?: string) => {
@@ -1281,17 +1383,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         break;
 
       case 'delete':
-        // Supprime de la liste adéquate et déplace dans la corbeille
+        // Supprime de la liste adéquate et archive dans la corbeille
+        setTrashFiles(prev => [file, ...prev.filter(f => f.id !== file.id)]);
         setDocumentsList(prev => prev.filter(d => d.id !== file.id));
         setImagesList(prev => prev.filter(img => img.id !== file.id));
         setVideosList(prev => prev.filter(vid => vid.id !== file.id));
         setAudioList(prev => prev.filter(aud => aud.id !== file.id));
         setDownloadedItems(prev => prev.filter(dl => dl.id !== file.id));
-        setTrashFiles(prev => [{ ...file, date: "Supprimé à l'instant" }, ...prev.filter(t => t.id !== file.id)]);
         if (splitSelectedFile?.id === file.id) {
           setSplitSelectedFile(null);
         }
-        showToast(`"${file.name}" déplacé dans la corbeille !`);
+        showToast(`"${file.name}" supprimé !`);
         break;
 
       case 'share':
@@ -1644,8 +1746,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setIsViewerMaximized(false);
     setIsMobilePlayerOpen(false);
 
-    // En Audio, division permanente avec morceau par défaut (Raindance Image 2 & 3)
-    if (id === 'audio') {
+    // Par défaut, pour l'Espace Cloud et le Classeur, sélectionner le Classeur et réinitialiser la sélection
+    if (id === 'cloud-storage' || id === 'classeur' || type === 'classeur') {
+      setCloudActiveTab('classeur');
+      setSplitSelectedFile(null);
+      setSelectedClasseurFolder(null);
+    } else if (id === 'audio') {
       const defaultTrack = audioList.find(s => s.name.includes('Raindance')) || audioList[0];
       setSplitSelectedFile(defaultTrack);
       setAudioDuration(defaultTrack?.durationSec || 219);
@@ -1653,15 +1759,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setIsAudioPlaying(false);
     } else {
       setSplitSelectedFile(null); // Réinitialiser le split lors du changement de menu
-    }
-
-    if (id === 'cloud-storage' || id === 'classeur') {
-      setCloudActiveTab('classeur');
-      setClasseurSubjectFilter('all');
-    } else if (id === 'favorites') {
-      setCloudActiveTab('favorites');
-    } else if (id === 'trash') {
-      setCloudActiveTab('trash');
     }
 
     setCurrentSubView({
@@ -1732,54 +1829,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return applySorting(list);
   }, [secureFolderFiles, subSearchQuery, sortOption]);
 
-  // Liste des favoris (Cloud Favorites)
-  const cloudFavoriteFiles = useMemo(() => {
-    const all = [...documentsList, ...imagesList, ...videosList, ...audioList];
-    const favs = all.filter(f => f.isFavorite);
-    if (favs.length > 0) return favs;
-    return [
-      documentsList[0],
-      imagesList[0],
-      audioList[0]
-    ].filter(Boolean).map(f => ({ ...f, isFavorite: true }));
-  }, [documentsList, imagesList, videosList, audioList]);
-
-  const filteredFavorites = useMemo(() => {
-    const list = cloudFavoriteFiles.filter(item => {
-      return subSearchQuery.trim() === '' || item.name.toLowerCase().includes(subSearchQuery.toLowerCase());
-    });
-    return applySorting(list);
-  }, [cloudFavoriteFiles, subSearchQuery, sortOption]);
-
-  // Liste des fichiers de la corbeille
-  const filteredTrashFiles = useMemo(() => {
-    const list = trashFiles.filter(item => {
-      return subSearchQuery.trim() === '' || item.name.toLowerCase().includes(subSearchQuery.toLowerCase());
-    });
-    return applySorting(list);
-  }, [trashFiles, subSearchQuery, sortOption]);
-
-  // Matières & filtres du Classeur
-  const classeurSubjects = [
-    { id: 'all', name: 'Tous les classeurs' },
-    { id: 'maths', name: 'Mathématiques & Analyse' },
-    { id: 'physique', name: 'Physique & Électronique' },
-    { id: 'info', name: 'Informatique & Algorithmique' },
-    { id: 'gestion', name: 'Supply Chain & Management' }
-  ];
-
-  const filteredClasseurDocuments = useMemo(() => {
-    return filteredDocuments.filter(doc => {
-      if (classeurSubjectFilter === 'all') return true;
-      const name = doc.name.toLowerCase();
-      if (classeurSubjectFilter === 'maths') return name.includes('ana') || name.includes('math') || name.includes('td');
-      if (classeurSubjectFilter === 'physique') return name.includes('aop') || name.includes('chi') || name.includes('phys');
-      if (classeurSubjectFilter === 'info') return name.includes('algo') || name.includes('info') || name.includes('dev');
-      if (classeurSubjectFilter === 'gestion') return name.includes('supply') || name.includes('chain') || name.includes('synthese');
-      return true;
-    });
-  }, [filteredDocuments, classeurSubjectFilter]);
-
   // Groupement des fichiers audio par date comme dans Image 4
   const groupedAudio = useMemo(() => {
     const groups: { [key: string]: FileItem[] } = {};
@@ -1795,6 +1844,99 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     });
     return groups;
   }, [filteredAudio]);
+
+  // Documents du classeur filtrés par dossier de matière et recherche
+  const displayedClasseurDocuments = useMemo(() => {
+    let docs = [...classeurExtraDocs, ...filteredDocuments];
+    if (selectedClasseurFolder === 'folder-elec') {
+      docs = docs.filter(d => d.name.toLowerCase().includes('circuits') || d.name.toLowerCase().includes('aop') || d.name.toLowerCase().includes('électronique'));
+    } else if (selectedClasseurFolder === 'folder-math') {
+      docs = docs.filter(d => d.name.toLowerCase().includes('math') || d.name.toLowerCase().includes('algèbre') || d.name.toLowerCase().includes('ana'));
+    } else if (selectedClasseurFolder === 'folder-eco') {
+      docs = docs.filter(d => d.name.toLowerCase().includes('éco') || d.name.toLowerCase().includes('gestion') || d.name.toLowerCase().includes('financ'));
+    } else if (selectedClasseurFolder === 'folder-tp') {
+      docs = docs.filter(d => d.name.toLowerCase().includes('tp') || d.name.toLowerCase().includes('pratique') || d.name.toLowerCase().includes('exercic'));
+    }
+    if (subSearchQuery.trim() !== '') {
+      docs = docs.filter(d => d.name.toLowerCase().includes(subSearchQuery.toLowerCase()));
+    }
+    return applySorting(docs);
+  }, [classeurExtraDocs, filteredDocuments, selectedClasseurFolder, subSearchQuery, sortOption]);
+
+  // Fichiers favoris
+  const favoriteFiles = useMemo(() => {
+    const all = [...documentsList, ...imagesList, ...videosList, ...audioList, ...classeurExtraDocs];
+    const unique = all.filter((f, idx, arr) => arr.findIndex(x => x.id === f.id) === idx);
+    const favs = unique.filter(f => f.isFavorite || f.isPinned);
+    if (subSearchQuery.trim() !== '') {
+      return applySorting(favs.filter(f => f.name.toLowerCase().includes(subSearchQuery.toLowerCase())));
+    }
+    return applySorting(favs);
+  }, [documentsList, imagesList, videosList, audioList, classeurExtraDocs, subSearchQuery, sortOption]);
+
+  // Éléments de la barre horizontale de navigation Espace Cloud (Image 2 + Classeur Image 3, SANS Espace Cloud)
+  const cloudNavItems = useMemo(() => [
+    {
+      id: 'downloads' as const,
+      name: 'Téléchargements',
+      subtitle: `${filteredDownloads.length || 7} fichiers`,
+      icon: Download,
+      color: 'text-cyan-400'
+    },
+    {
+      id: 'images' as const,
+      name: 'Images',
+      subtitle: '7,5 Go',
+      icon: ImageIcon,
+      color: 'text-emerald-400'
+    },
+    {
+      id: 'videos' as const,
+      name: 'Vidéos',
+      subtitle: '20 Go',
+      icon: Film,
+      color: 'text-purple-400'
+    },
+    {
+      id: 'audio' as const,
+      name: 'Audio',
+      subtitle: '4,8 Go',
+      icon: Music,
+      color: 'text-amber-400'
+    },
+    {
+      id: 'documents' as const,
+      name: 'Documents',
+      subtitle: '3,5 Go',
+      icon: FileText,
+      color: 'text-blue-400'
+    },
+    {
+      id: 'apps' as const,
+      name: 'Applications',
+      subtitle: '12 installées',
+      icon: LayoutGrid,
+      color: 'text-pink-400'
+    },
+    {
+      id: 'favorites' as const,
+      name: 'Favoris',
+      icon: Star,
+      color: 'text-amber-400'
+    },
+    {
+      id: 'secure-folder' as const,
+      name: 'Dossier sécurisé',
+      icon: Lock,
+      color: 'text-blue-400'
+    },
+    {
+      id: 'trash' as const,
+      name: 'Corbeille',
+      icon: Trash2,
+      color: 'text-rose-400'
+    }
+  ], [filteredDownloads]);
 
   // Navigation Audio (Suivant, Précédent avec support Aléatoire)
   const handleAudioNext = () => {
@@ -2058,6 +2200,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     else if (currentSubView?.id === 'studycloud-category-documents') list = filteredDocuments;
     else if (currentSubView?.id === 'studycloud-category-downloads') {
       list = [...downloadDocs, ...downloadImages, ...downloadVideos, ...downloadAudio];
+    } else if (isCloudView) {
+      if (cloudActiveTab === 'classeur') list = displayedClasseurDocuments;
+      else if (cloudActiveTab === 'documents') list = filteredDocuments;
+      else if (cloudActiveTab === 'images') list = filteredImages;
+      else if (cloudActiveTab === 'videos') list = filteredVideos;
+      else if (cloudActiveTab === 'audio') list = filteredAudio;
+      else if (cloudActiveTab === 'downloads') list = [...downloadDocs, ...downloadImages, ...downloadVideos, ...downloadAudio];
+      else if (cloudActiveTab === 'secure-folder') list = filteredSecureFiles;
+      else if (cloudActiveTab === 'favorites') list = favoriteFiles;
+      else list = displayedClasseurDocuments;
     } else {
       list = displayedFiles;
     }
@@ -3652,12 +3804,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
               {/* DROITE : Bouton Espace d'étude, Plein écran général & Bouton 3 traits d'en-tête */}
               <div className="shrink-0 flex items-center gap-2">
-                {/* BOUTON ESPACE D'ÉTUDE DEVANT LE BOUTON ZOOM (Masqué si rien n'est sélectionné) */}
-                {splitSelectedFile && (
+                {/* BOUTON ESPACE D'ÉTUDE DEVANT LE BOUTON ZOOM (uniquement si un élément est sélectionné comme demandé) */}
+                {Boolean(splitSelectedFile || selectedItemIds.length > 0) && (
                   <button
                     type="button"
                     onClick={() => handleOpenStudySpaceForCurrentMenu(false)}
-                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 hover:border-emerald-500/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black group"
+                    className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 hover:border-emerald-500/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black group animate-in fade-in duration-150"
                     title="Ouvrir l'Espace d'étude"
                   >
                     <BookOpen className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
@@ -3702,160 +3854,89 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           </div>
 
           {/* ========================================================================= */}
-          {/* BARRE HORIZONTALE DÉFILANTE : CATÉGORIES & COLLECTIONS (ESPACE CLOUD)     */}
+          {/* BARRE HORIZONTALE DES CATÉGORIES & COLLECTIONS ESPACE CLOUD               */}
+          {/* (Exactement sur la ligne rouge tracée par l'utilisateur sous l'en-tête)    */}
+          {/* Défilable horizontalement avec la souris ou au doigt (tactile)             */}
           {/* ========================================================================= */}
-          {(currentSubView.id === 'studycloud-collection-cloud-storage' || currentSubView.id === 'studycloud-classeur-classeur') && (
-            <div className="w-full bg-[#04060A]/95 backdrop-blur-md border-b border-stone-300/80 dark:border-white/10 px-2 sm:px-4 py-2 sm:py-2.5 relative select-none z-20">
-              <div className="relative flex items-center group">
+          {isCloudView && (
+            <div className={`w-full bg-[#EAECEF] dark:bg-[#070B14] border-b border-stone-300/80 dark:border-white/10 px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 sm:py-3 select-none ${
+              isViewerMaximized ? 'hidden' : ''
+            }`}>
+              <div className="relative flex items-center">
                 {/* Flèche gauche pour défilement rapide sur grand écran */}
                 <button
                   type="button"
-                  onClick={() => cloudTabsScrollRef.current?.scrollBy({ left: -260, behavior: 'smooth' })}
-                  className="hidden md:flex absolute left-0 z-30 w-7 h-7 rounded-full bg-black/80 hover:bg-slate-800 text-white items-center justify-center border border-white/15 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer -translate-x-1"
+                  onClick={() => scrollCloudNav('left')}
+                  className="hidden md:flex absolute -left-3 z-10 w-7 h-7 rounded-full bg-black/80 hover:bg-black text-white items-center justify-center border border-white/20 shadow-md cursor-pointer transition-all active:scale-90"
                   title="Défiler vers la gauche"
                 >
                   <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
                 </button>
 
-                {/* Conteneur défilant et glissable avec la souris / tactile */}
+                {/* Conteneur défilable et glissable horizontalement */}
                 <div
-                  ref={cloudTabsScrollRef}
-                  onMouseDown={handleCloudTabsMouseDown}
-                  onMouseMove={handleCloudTabsMouseMove}
-                  onMouseUp={handleCloudTabsMouseUp}
-                  onMouseLeave={handleCloudTabsMouseUp}
-                  onWheel={(e) => {
-                    if (cloudTabsScrollRef.current && e.deltaY !== 0) {
-                      cloudTabsScrollRef.current.scrollLeft += e.deltaY;
-                    }
-                  }}
-                  className="w-full overflow-x-auto no-scrollbar scroll-smooth flex items-center gap-2 sm:gap-2.5 py-1 px-1 cursor-grab active:cursor-grabbing"
-                  style={{ scrollbarWidth: 'none', msOverflowStyle: 'none' }}
+                  ref={cloudNavScrollRef}
+                  onMouseDown={handleNavMouseDown}
+                  onMouseMove={handleNavMouseMove}
+                  onMouseUp={handleNavMouseUpOrLeave}
+                  onMouseLeave={handleNavMouseUpOrLeave}
+                  className="w-full flex items-center gap-2.5 sm:gap-3 overflow-x-auto scrollbar-none py-1 cursor-grab active:cursor-grabbing touch-pan-x px-1"
                 >
-                  {/* 1. BOUTON CLASSEUR : EN ORANGE DOUCE COMME SUR L'ACCUEIL & SÉLECTIONNÉ PAR DÉFAUT */}
+                  {/* 1. BOUTON CLASSEUR (Style Image 3, sélectionné par défaut) */}
                   <button
                     type="button"
                     onClick={() => {
-                      if (isCloudTabsDragging || cloudTabsMovedRef.current) return;
                       setCloudActiveTab('classeur');
                       setSplitSelectedFile(null);
                     }}
-                    className={`group relative flex items-center gap-2.5 px-4 sm:px-5 py-2 sm:py-2.5 rounded-2xl bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] hover:from-[#D15C1B] hover:via-[#C55010] hover:to-[#AC430A] text-white border transition-all duration-200 cursor-pointer active:scale-95 shrink-0 ${
+                    className={`shrink-0 flex items-center gap-2.5 px-4 sm:px-5 py-2.5 rounded-2xl bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] hover:from-[#D15C1B] hover:via-[#C55010] hover:to-[#AC430A] text-white border border-orange-500/40 transition-all duration-200 cursor-pointer active:scale-95 shadow-md ${
                       cloudActiveTab === 'classeur'
-                        ? 'border-orange-300 ring-2 ring-orange-400/60 shadow-[0_4px_22px_rgba(184,72,12,0.65)] scale-[1.02]'
-                        : 'border-orange-500/40 shadow-[0_4px_16px_rgba(184,72,12,0.35)] opacity-90 hover:opacity-100'
+                        ? 'ring-2 ring-orange-300 ring-offset-2 ring-offset-[#070B14] shadow-[0_4px_20px_rgba(194,84,22,0.55)] scale-[1.02]'
+                        : 'opacity-85 hover:opacity-100'
                     }`}
-                    title="Ouvrir le Classeur"
+                    title="Classeur"
                   >
-                    <div className="p-1.5 sm:p-2 rounded-xl bg-black/40 border border-white/20 shrink-0 group-hover:scale-110 transition-transform">
+                    <div className="p-1.5 sm:p-2 rounded-xl bg-black/40 border border-white/20 shrink-0">
                       <FolderArchive className="w-4 h-4 sm:w-5 sm:h-5 text-white stroke-[2.2]" />
                     </div>
-                    <div className="text-left">
-                      <span className="text-xs sm:text-sm font-black text-white tracking-wide block leading-tight">
-                        Classeur
-                      </span>
-                      <span className="text-[10px] sm:text-[11px] text-orange-200 font-bold block leading-tight">
-                        {filteredClasseurDocuments.length} docs
-                      </span>
-                    </div>
+                    <span className="text-xs sm:text-sm font-black text-white tracking-wide">
+                      Classeur
+                    </span>
                   </button>
 
-                  {/* 2 à 10 : AUTRES CATÉGORIES & COLLECTIONS (CONFORMÉMENT À L'IMAGE 2, SANS LE BOUTON ESPACE CLOUD) */}
-                  {[
-                    {
-                      id: 'downloads',
-                      name: 'Téléchargements',
-                      icon: Download,
-                      color: 'text-cyan-400',
-                      count: `${filteredDownloads.length > 0 ? filteredDownloads.length : 7} fichiers`
-                    },
-                    {
-                      id: 'images',
-                      name: 'Images',
-                      icon: ImageIcon,
-                      color: 'text-emerald-400',
-                      count: '7,5 Go'
-                    },
-                    {
-                      id: 'videos',
-                      name: 'Vidéos',
-                      icon: Film,
-                      color: 'text-purple-400',
-                      count: '20 Go'
-                    },
-                    {
-                      id: 'audio',
-                      name: 'Audio',
-                      icon: Music,
-                      color: 'text-amber-400',
-                      count: '4,8 Go'
-                    },
-                    {
-                      id: 'documents',
-                      name: 'Documents',
-                      icon: FileText,
-                      color: 'text-blue-400',
-                      count: '3,5 Go'
-                    },
-                    {
-                      id: 'apps',
-                      name: 'Applications',
-                      icon: LayoutGrid,
-                      color: 'text-pink-400',
-                      count: '12 installées'
-                    },
-                    {
-                      id: 'favorites',
-                      name: 'Favoris',
-                      icon: Star,
-                      color: 'text-amber-400',
-                      count: `${cloudFavoriteFiles.length} favoris`
-                    },
-                    {
-                      id: 'secure-folder',
-                      name: 'Dossier sécurisé',
-                      icon: Lock,
-                      color: 'text-blue-400',
-                      count: `${filteredSecureFiles.length} fichiers`
-                    },
-                    {
-                      id: 'trash',
-                      name: 'Corbeille',
-                      icon: Trash2,
-                      color: 'text-rose-400',
-                      count: `${trashFiles.length} éléments`
-                    }
-                  ].map((tab) => {
-                    const IconC = tab.icon;
-                    const isActive = cloudActiveTab === tab.id;
+                  {/* 2. BOUTONS CATÉGORIES & COLLECTIONS (Image 2, SANS le bouton Espace Cloud) */}
+                  {cloudNavItems.map(item => {
+                    const isSelected = cloudActiveTab === item.id;
+                    const Icon = item.icon;
                     return (
                       <button
-                        key={tab.id}
+                        key={item.id}
                         type="button"
                         onClick={() => {
-                          if (isCloudTabsDragging || cloudTabsMovedRef.current) return;
-                          setCloudActiveTab(tab.id);
+                          setCloudActiveTab(item.id);
                           setSplitSelectedFile(null);
                         }}
-                        className={`group flex items-center gap-2.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl border transition-all duration-200 cursor-pointer active:scale-95 shrink-0 ${
-                          isActive
-                            ? 'bg-[#0E172A] border-blue-400 ring-2 ring-blue-500/40 shadow-[0_4px_20px_rgba(59,130,246,0.35)] text-white scale-[1.02]'
-                            : 'bg-[#04060A] hover:bg-[#0A0E18] border-white/10 hover:border-blue-400/40 text-slate-300 hover:text-white shadow-sm'
+                        className={`shrink-0 flex items-center gap-2.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all duration-200 cursor-pointer select-none active:scale-95 border ${
+                          isSelected
+                            ? 'bg-[#0E1726] border-sky-400 text-white ring-2 ring-sky-400/80 shadow-[0_0_15px_rgba(56,189,248,0.35)] scale-[1.02]'
+                            : 'bg-[#04060A] hover:bg-[#0A0E18] border-white/10 text-white hover:border-white/25 shadow-sm'
                         }`}
-                        title={tab.name}
+                        title={item.name}
                       >
-                        <div className={`p-1.5 sm:p-2 rounded-xl bg-black border border-white/10 shrink-0 group-hover:scale-110 transition-transform ${tab.color}`}>
-                          <IconC className="w-4 h-4 stroke-[2.2]" />
+                        <div className={`p-1.5 sm:p-2 rounded-xl bg-black border border-white/10 shrink-0 ${item.color}`}>
+                          <Icon className="w-4 h-4 sm:w-4.5 sm:h-4.5 stroke-[2.2]" />
                         </div>
-                        <div className="text-left min-w-[70px]">
-                          <span className={`text-xs sm:text-sm font-black block leading-tight truncate ${
-                            isActive ? 'text-blue-400' : 'text-white'
+                        <div className="text-left min-w-0">
+                          <div className={`text-xs sm:text-sm font-black whitespace-nowrap transition-colors ${
+                            isSelected ? 'text-sky-300' : 'text-white'
                           }`}>
-                            {tab.name}
-                          </span>
-                          <span className="text-[10px] text-slate-400 font-bold block truncate">
-                            {tab.count}
-                          </span>
+                            {item.name}
+                          </div>
+                          {item.subtitle && (
+                            <div className="text-[10px] sm:text-[11px] font-bold text-slate-400 whitespace-nowrap mt-0.5">
+                              {item.subtitle}
+                            </div>
+                          )}
                         </div>
                       </button>
                     );
@@ -3865,8 +3946,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 {/* Flèche droite pour défilement rapide sur grand écran */}
                 <button
                   type="button"
-                  onClick={() => cloudTabsScrollRef.current?.scrollBy({ left: 260, behavior: 'smooth' })}
-                  className="hidden md:flex absolute right-0 z-30 w-7 h-7 rounded-full bg-black/80 hover:bg-slate-800 text-white items-center justify-center border border-white/15 shadow-lg opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer translate-x-1"
+                  onClick={() => scrollCloudNav('right')}
+                  className="hidden md:flex absolute -right-3 z-10 w-7 h-7 rounded-full bg-black/80 hover:bg-black text-white items-center justify-center border border-white/20 shadow-md cursor-pointer transition-all active:scale-90"
                   title="Défiler vers la droite"
                 >
                   <ChevronRight className="w-4 h-4 stroke-[2.2]" />
@@ -3889,15 +3970,116 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
               isViewerMaximized 
                 ? 'hidden' 
-                : (currentSubView.id === 'studycloud-category-audio' || splitSelectedFile?.category === 'audio')
+                : (currentSubView.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio') || splitSelectedFile?.category === 'audio')
                   ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
                   : splitSelectedFile 
                     ? 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
             }`}>
 
+              {/* 0. CLASSEUR (SÉLECTIONNÉ PAR DÉFAUT DANS ESPACE CLOUD) */}
+              {isCloudView && cloudActiveTab === 'classeur' && (
+                <div className="space-y-5 animate-in fade-in duration-200">
+                  {/* Bandeau d'en-tête du Classeur */}
+                  <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-orange-500/15 via-amber-500/10 to-transparent border border-orange-500/30 flex flex-col sm:flex-row sm:items-center justify-between gap-3 shadow-md">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 rounded-2xl bg-gradient-to-br from-[#C25416] to-[#A03D07] text-white border border-orange-400/40 shadow-md shrink-0">
+                        <FolderArchive className="w-6 h-6 stroke-[2.2]" />
+                      </div>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-base sm:text-lg font-black text-stone-900 dark:text-white">
+                            Classeur Pédagogique
+                          </h2>
+                          <span className="px-2.5 py-0.5 rounded-full bg-orange-500/20 text-orange-400 text-[10px] font-black uppercase tracking-wider border border-orange-500/30">
+                            Actif
+                          </span>
+                        </div>
+                        <p className="text-xs text-stone-500 dark:text-slate-400 mt-0.5">
+                          Dossiers de matières, fascicules complets et fiches de révision StudyCloud
+                        </p>
+                      </div>
+                    </div>
+                    
+                    {selectedClasseurFolder && (
+                      <button
+                        type="button"
+                        onClick={() => setSelectedClasseurFolder(null)}
+                        className="self-start sm:self-auto px-3 py-1.5 rounded-full bg-[#04060A] text-white text-xs font-bold border border-white/10 hover:border-orange-400/50 flex items-center gap-1.5 cursor-pointer transition-all active:scale-95"
+                      >
+                        <X className="w-3.5 h-3.5 text-orange-400" />
+                        <span>Voir tous les classeurs</span>
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Dossiers / Matières du classeur */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-xs sm:text-sm font-black text-stone-900 dark:text-white tracking-wide flex items-center gap-2">
+                        <span>Dossiers & Matières du Classeur</span>
+                        <span className="text-[11px] font-bold text-stone-400">({classeurFolders.length})</span>
+                      </h3>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
+                      {classeurFolders.map(folder => {
+                        const isFolderActive = selectedClasseurFolder === folder.id;
+                        return (
+                          <div
+                            key={folder.id}
+                            onClick={() => setSelectedClasseurFolder(isFolderActive ? null : folder.id)}
+                            className={`p-3.5 rounded-2xl border transition-all duration-200 cursor-pointer select-none relative group ${
+                              isFolderActive
+                                ? 'bg-gradient-to-br from-orange-500/20 to-black border-orange-400 ring-2 ring-orange-400/50 shadow-lg scale-[1.01]'
+                                : 'bg-[#04060A] hover:bg-[#0A0E18] border-white/10 hover:border-orange-400/40 shadow-sm'
+                            }`}
+                          >
+                            <div className="flex items-start justify-between gap-2">
+                              <div className={`p-2 rounded-xl bg-black border border-white/10 ${folder.iconColor} group-hover:scale-110 transition-transform`}>
+                                <FolderArchive className="w-5 h-5 stroke-[2.2]" />
+                              </div>
+                              <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-300">
+                                {folder.badge}
+                              </span>
+                            </div>
+                            <div className="mt-2.5">
+                              <h4 className="text-xs sm:text-sm font-black text-white group-hover:text-orange-400 transition-colors truncate">
+                                {folder.name}
+                              </h4>
+                              <p className="text-[11px] font-medium text-slate-400 mt-0.5">
+                                {folder.count}
+                              </p>
+                            </div>
+                          </div>
+                        );
+                      })}
+                    </div>
+                  </div>
+
+                  {/* Documents et fiches de cours du classeur */}
+                  <div className="space-y-3">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
+                        {displayedClasseurDocuments.length} document{displayedClasseurDocuments.length > 1 ? 's' : ''} dans le classeur
+                        {selectedClasseurFolder && ` • Filtré par matière`}
+                      </span>
+                    </div>
+
+                    {renderSelectionBanner(displayedClasseurDocuments)}
+
+                    <div className={`grid gap-2.5 sm:gap-3.5 ${
+                      splitSelectedFile 
+                        ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' 
+                        : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
+                      {displayedClasseurDocuments.map(doc => renderDocumentCard(doc))}
+                    </div>
+                  </div>
+                </div>
+              )}
+
               {/* 1. DOCUMENTS (IMAGE 1) */}
-              {currentSubView.id === 'studycloud-category-documents' && (
+              {(currentSubView.id === 'studycloud-category-documents' || (isCloudView && cloudActiveTab === 'documents')) && (
                 <div className="space-y-3 sm:space-y-4">
                   {/* Compteur */}
                   <div className="flex items-center justify-between">
@@ -3919,7 +4101,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               )}
 
               {/* 2. IMAGES (IMAGE 2) */}
-              {currentSubView.id === 'studycloud-category-images' && (
+              {(currentSubView.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && (
                 <div className="space-y-3 sm:space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
@@ -3939,7 +4121,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               )}
 
               {/* 3. VIDÉOS (IMAGE 3) */}
-              {currentSubView.id === 'studycloud-category-videos' && (
+              {(currentSubView.id === 'studycloud-category-videos' || (isCloudView && cloudActiveTab === 'videos')) && (
                 <div className="space-y-3 sm:space-y-4">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
@@ -3958,8 +4140,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
               )}
 
-              {/* 4. AUDIO / MUSIQUE (LISTE SÉPARÉE VERTICALEMENT SUR LE FOND DE PAGE AVEC DÉTAILS, BOUTON PAUSE ET ACTIONS 3 TRAITS) */}
-              {currentSubView.id === 'studycloud-category-audio' && (
+              {/* 4. AUDIO / MUSIQUE */}
+              {(currentSubView.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio')) && (
                 <div className="w-full space-y-3">
                   {/* En-tête de la liste */}
                   <div className="flex items-center justify-between px-1 py-0.5">
@@ -4163,7 +4345,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               )}
 
               {/* 5. TÉLÉCHARGEMENTS */}
-              {currentSubView.id === 'studycloud-category-downloads' && (
+              {(currentSubView.id === 'studycloud-category-downloads' || (isCloudView && cloudActiveTab === 'downloads')) && (
                 <div className="space-y-6">
                   <div className="flex items-center justify-between">
                     <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
@@ -4233,7 +4415,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         </div>
                       )}
 
-                      {/* Audio téléchargé (Carré comme pour les vidéos, logo musique au centre, bouton 3 traits) */}
+                      {/* Audio téléchargé */}
                       {downloadAudio.length > 0 && (
                         <div className="space-y-2.5">
                           <div className="flex items-center gap-2">
@@ -4254,37 +4436,63 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
               )}
 
-              {/* 6. APPLICATIONS : "Ce menu n'est pas disponible pour le moment." */}
-              {currentSubView.id === 'studycloud-category-apps' && (
-                <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center select-none min-h-[60vh]">
-                  <div className="w-full max-w-md mx-auto p-8 rounded-3xl border border-stone-300/80 dark:border-white/10 bg-[#04060A] text-white shadow-2xl flex flex-col items-center justify-center space-y-4">
-                    <div className="p-4 rounded-2xl bg-black border border-pink-500/30 text-pink-400 shadow-lg">
-                      <LayoutGrid className="w-12 h-12 stroke-[1.8]" />
-                    </div>
-                    <div className="space-y-2">
-                      <div className="inline-block px-3 py-1 rounded-full bg-pink-500/10 border border-pink-500/30 text-pink-400 text-[11px] font-black uppercase tracking-wider mb-1">
-                        Information
+              {/* 6. APPLICATIONS (Image 2: 12 installées) */}
+              {(currentSubView.id === 'studycloud-category-apps' || (isCloudView && cloudActiveTab === 'apps')) && (
+                <div className="space-y-5 animate-in fade-in duration-200">
+                  <div className="p-4 sm:p-5 rounded-3xl bg-gradient-to-r from-pink-500/15 via-purple-500/10 to-transparent border border-pink-500/30 flex items-center justify-between gap-3 shadow-md">
+                    <div className="flex items-center gap-3">
+                      <div className="p-3 rounded-2xl bg-black border border-pink-500/40 text-pink-400 shadow-md shrink-0">
+                        <LayoutGrid className="w-6 h-6 stroke-[2]" />
                       </div>
-                      <h2 className="text-base sm:text-lg md:text-xl font-black text-white tracking-tight leading-snug">
-                        Ce menu n'est pas disponible pour le moment.
-                      </h2>
-                      <p className="text-xs sm:text-sm font-medium text-slate-400 max-w-xs leading-relaxed mx-auto">
-                        Le catalogue et gestionnaire des applications StudyCloud sera activé lors d'une prochaine mise à jour.
-                      </p>
+                      <div>
+                        <div className="flex items-center gap-2">
+                          <h2 className="text-base sm:text-lg font-black text-stone-900 dark:text-white">
+                            Applications StudyCloud
+                          </h2>
+                          <span className="px-2.5 py-0.5 rounded-full bg-pink-500/20 text-pink-400 text-[10px] font-black uppercase tracking-wider border border-pink-500/30">
+                            12 installées
+                          </span>
+                        </div>
+                        <p className="text-xs text-stone-500 dark:text-slate-400 mt-0.5">
+                          Outils pédagogiques, calculatrices, éditeurs et utilitaires d'étude intégrés
+                        </p>
+                      </div>
                     </div>
-                    <button
-                      type="button"
-                      onClick={() => setCurrentSubView(null)}
-                      className="mt-2 px-6 py-2.5 rounded-full bg-[#151C2C] hover:bg-[#1E293B] text-white font-bold text-xs border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm"
-                    >
-                      Retour aux catégories
-                    </button>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+                    {studyAppsList.map(app => {
+                      const IconComp = app.icon;
+                      return (
+                        <div
+                          key={app.id}
+                          className="p-3.5 rounded-2xl bg-[#04060A] hover:bg-[#0A0E18] border border-white/10 hover:border-pink-500/40 transition-all duration-200 shadow-md flex items-start gap-3 group cursor-pointer"
+                        >
+                          <div className={`p-2.5 rounded-xl bg-black border border-white/10 shrink-0 ${app.color} group-hover:scale-110 transition-transform`}>
+                            <IconComp className="w-5 h-5 stroke-[2.2]" />
+                          </div>
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center justify-between gap-1">
+                              <h4 className="text-xs sm:text-sm font-black text-white group-hover:text-pink-400 transition-colors truncate">
+                                {app.name}
+                              </h4>
+                            </div>
+                            <p className="text-[11px] text-slate-400 mt-0.5 line-clamp-2">
+                              {app.desc}
+                            </p>
+                            <span className="inline-block mt-2 px-2 py-0.5 rounded-md bg-white/5 border border-white/10 text-[10px] font-bold text-slate-300">
+                              {app.category}
+                            </span>
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
                 </div>
               )}
 
               {/* 7. DOSSIER SÉCURISÉ (COLLECTION) */}
-              {currentSubView.id === 'studycloud-collection-secure-folder' && (
+              {(currentSubView.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) && (
                 <div className="space-y-4">
                   {/* En-tête sécurisé */}
                   <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-blue-500/10 to-transparent border border-amber-500/30 flex items-center justify-between gap-3 shadow-md">
@@ -4329,420 +4537,40 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
               )}
 
-              {/* 8. ESPACE CLOUD & CLASSEUR : CONTENU DYNAMIQUE SELON L'ONGLET SÉLECTIONNÉ */}
-              {(currentSubView.id === 'studycloud-collection-cloud-storage' || currentSubView.id === 'studycloud-classeur-classeur') && (
-                <div className="space-y-4">
-                  {/* ONGLET CLASSEUR (Sélectionné par défaut à l'ouverture) */}
-                  {cloudActiveTab === 'classeur' && (
-                    <div className="space-y-4">
-                      {/* En-tête Classeur */}
-                      <div className="p-4 rounded-2xl bg-gradient-to-r from-orange-500/15 via-amber-500/10 to-transparent border border-orange-500/30 flex items-center justify-between gap-3 shadow-md">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2.5 rounded-xl bg-orange-500/20 text-orange-400 border border-orange-500/40 shrink-0">
-                            <FolderArchive className="w-6 h-6 stroke-[2.2]" />
-                          </div>
-                          <div>
-                            <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white">
-                              Classeur d'études StudyCloud
-                            </h2>
-                            <p className="text-xs text-stone-500 dark:text-slate-400">
-                              {filteredClasseurDocuments.length} document{filteredClasseurDocuments.length > 1 ? 's' : ''} et fascicules d'étude synchronisés.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* Filtres rapides par matière */}
-                      <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
-                        {classeurSubjects.map(sub => (
-                          <button
-                            key={sub.id}
-                            type="button"
-                            onClick={() => setClasseurSubjectFilter(sub.id)}
-                            className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer ${
-                              classeurSubjectFilter === sub.id
-                                ? 'bg-orange-600 text-white shadow-sm'
-                                : 'bg-[#04060A] text-slate-300 hover:text-white border border-white/10'
-                            }`}
-                          >
-                            {sub.name}
-                          </button>
-                        ))}
-                      </div>
-
-                      {/* Bandeau d'action de sélection multiple si activé */}
-                      {renderSelectionBanner(filteredClasseurDocuments)}
-
-                      {/* Grille des documents du classeur */}
-                      {filteredClasseurDocuments.length === 0 ? (
-                        <div className="py-16 text-center text-stone-500 dark:text-slate-400">
-                          <FolderArchive className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-orange-400" />
-                          <p className="text-sm font-semibold">Aucun document trouvé dans cette matière</p>
-                        </div>
-                      ) : (
-                        <div className={`grid gap-2.5 sm:gap-3.5 ${
-                          splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                        }`}>
-                          {filteredClasseurDocuments.map(doc => renderDocumentCard(doc))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ONGLET TÉLÉCHARGEMENTS */}
-                  {cloudActiveTab === 'downloads' && (
-                    <div className="space-y-6">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                          {filteredDownloads.length} fichier{filteredDownloads.length > 1 ? 's' : ''} téléchargé{filteredDownloads.length > 1 ? 's' : ''}
-                        </span>
-                      </div>
-                      {renderSelectionBanner(filteredDownloads.map(toFileItem))}
-                      {filteredDownloads.length === 0 ? (
-                        <div className="py-16 text-center text-stone-500 dark:text-slate-400">
-                          <Download className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5]" />
-                          <p className="text-sm font-semibold">Aucun fichier téléchargé</p>
-                        </div>
-                      ) : (
-                        <div className="space-y-6">
-                          {downloadDocs.length > 0 && (
-                            <div className="space-y-2.5">
-                              <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200 flex items-center gap-2">
-                                <FileText className="w-4 h-4 text-blue-400" /> Documents ({downloadDocs.length})
-                              </h3>
-                              <div className={`grid gap-2.5 sm:gap-3.5 ${splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'}`}>
-                                {downloadDocs.map(doc => renderDocumentCard(doc))}
-                              </div>
-                            </div>
-                          )}
-                          {downloadImages.length > 0 && (
-                            <div className="space-y-2.5">
-                              <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200 flex items-center gap-2">
-                                <ImageIcon className="w-4 h-4 text-emerald-400" /> Images ({downloadImages.length})
-                              </h3>
-                              <div className={`grid gap-2 sm:gap-3 ${splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'}`}>
-                                {downloadImages.map((img, idx) => renderImageCard(img, idx))}
-                              </div>
-                            </div>
-                          )}
-                          {downloadVideos.length > 0 && (
-                            <div className="space-y-2.5">
-                              <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200 flex items-center gap-2">
-                                <Film className="w-4 h-4 text-purple-400" /> Vidéos ({downloadVideos.length})
-                              </h3>
-                              <div className={`grid gap-2 sm:gap-3 ${splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'}`}>
-                                {downloadVideos.map((vid, idx) => renderVideoCard(vid, idx))}
-                              </div>
-                            </div>
-                          )}
-                          {downloadAudio.length > 0 && (
-                            <div className="space-y-2.5">
-                              <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200 flex items-center gap-2">
-                                <Music className="w-4 h-4 text-amber-400" /> Audio ({downloadAudio.length})
-                              </h3>
-                              <div className={`grid gap-2 sm:gap-3 ${splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'}`}>
-                                {downloadAudio.map((aud, idx) => renderAudioSquareCard(aud, idx))}
-                              </div>
-                            </div>
-                          )}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ONGLET IMAGES */}
-                  {cloudActiveTab === 'images' && (
-                    <div className="space-y-3 sm:space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                          {filteredImages.length} image{filteredImages.length > 1 ? 's' : ''} disponible{filteredImages.length > 1 ? 's' : ''}
-                        </span>
-                      </div>
-                      {renderSelectionBanner(filteredImages)}
-                      <div className={`grid gap-2 sm:gap-3 ${splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'}`}>
-                        {filteredImages.map((img, idx) => renderImageCard(img, idx))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ONGLET VIDÉOS */}
-                  {cloudActiveTab === 'videos' && (
-                    <div className="space-y-3 sm:space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                          {filteredVideos.length} vidéo{filteredVideos.length > 1 ? 's' : ''} disponible{filteredVideos.length > 1 ? 's' : ''}
-                        </span>
-                      </div>
-                      {renderSelectionBanner(filteredVideos)}
-                      <div className={`grid gap-2 sm:gap-3 ${splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'}`}>
-                        {filteredVideos.map((vid, idx) => renderVideoCard(vid, idx))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ONGLET AUDIO */}
-                  {cloudActiveTab === 'audio' && (
-                    <div className="w-full space-y-3">
-                      <div className="flex items-center justify-between px-1 py-0.5">
-                        <div className="flex items-center gap-2">
-                          <Music className="w-4 h-4 text-amber-500 dark:text-amber-400 stroke-[2.2]" />
-                          <span className="text-xs sm:text-sm font-bold text-stone-900 dark:text-white">
-                            Tous les sons ({filteredAudio.length})
-                          </span>
-                        </div>
-                      </div>
-                      {renderSelectionBanner(filteredAudio)}
-                      <div className="space-y-2">
-                        {filteredAudio.map(track => {
-                          const isSelected = splitSelectedFile?.id === track.id;
-                          return (
-                            <div
-                              key={track.id}
-                              onClick={() => {
-                                handleSelectFile(track);
-                                setIsMobilePlayerOpen(true);
-                              }}
-                              className={`flex items-center justify-between gap-3 p-3 rounded-2xl cursor-pointer border transition-all ${
-                                isSelected
-                                  ? 'bg-amber-500/10 dark:bg-amber-950/30 border-amber-400 shadow-sm'
-                                  : 'bg-white dark:bg-slate-900/80 border-stone-200/90 dark:border-slate-800 hover:border-amber-400/60'
-                              }`}
-                            >
-                              <div className="flex items-center gap-3 min-w-0 flex-1">
-                                <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-stone-900 border border-stone-200 dark:border-white/10 flex items-center justify-center">
-                                  {track.previewUrl ? (
-                                    <img src={track.previewUrl} alt={track.name} className="w-full h-full object-cover" />
-                                  ) : (
-                                    <Music className="w-5 h-5 text-amber-300" />
-                                  )}
-                                </div>
-                                <div className="min-w-0 flex-1">
-                                  <h4 className="text-xs sm:text-sm font-bold truncate text-stone-900 dark:text-white">
-                                    {track.name}
-                                  </h4>
-                                  <p className="text-[11px] text-stone-500 dark:text-slate-400 truncate">
-                                    {track.artist || track.source}
-                                  </p>
-                                </div>
-                              </div>
-                              <span className="text-xs font-semibold text-stone-400">
-                                {formatTime(track.durationSec || 219)}
-                              </span>
-                            </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ONGLET DOCUMENTS */}
-                  {cloudActiveTab === 'documents' && (
-                    <div className="space-y-3 sm:space-y-4">
-                      <div className="flex items-center justify-between">
-                        <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                          {filteredDocuments.length} document{filteredDocuments.length > 1 ? 's' : ''} disponible{filteredDocuments.length > 1 ? 's' : ''}
-                        </span>
-                      </div>
-                      {renderSelectionBanner(filteredDocuments)}
-                      <div className={`grid gap-2.5 sm:gap-3.5 ${splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'}`}>
-                        {filteredDocuments.map(doc => renderDocumentCard(doc))}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ONGLET APPLICATIONS */}
-                  {cloudActiveTab === 'apps' && (
-                    <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center select-none min-h-[50vh]">
-                      <div className="w-full max-w-md mx-auto p-8 rounded-3xl border border-stone-300/80 dark:border-white/10 bg-[#04060A] text-white shadow-2xl flex flex-col items-center justify-center space-y-4">
-                        <div className="p-4 rounded-2xl bg-black border border-pink-500/30 text-pink-400 shadow-lg">
-                          <LayoutGrid className="w-12 h-12 stroke-[1.8]" />
-                        </div>
-                        <div className="space-y-2">
-                          <div className="inline-block px-3 py-1 rounded-full bg-pink-500/10 border border-pink-500/30 text-pink-400 text-[11px] font-black uppercase tracking-wider mb-1">
-                            Information
-                          </div>
-                          <h2 className="text-base sm:text-lg font-black text-white">
-                            Ce menu n'est pas disponible pour le moment.
-                          </h2>
-                          <p className="text-xs sm:text-sm text-slate-400 max-w-xs mx-auto">
-                            Le catalogue et gestionnaire des applications StudyCloud sera activé lors d'une prochaine mise à jour.
-                          </p>
-                        </div>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ONGLET FAVORIS */}
-                  {cloudActiveTab === 'favorites' && (
-                    <div className="space-y-4">
-                      <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-transparent border border-amber-500/30 flex items-center justify-between gap-3 shadow-md">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 shrink-0">
-                            <Star className="w-6 h-6 stroke-[2.2] fill-amber-400" />
-                          </div>
-                          <div>
-                            <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white">
-                              Mes Favoris
-                            </h2>
-                            <p className="text-xs text-stone-500 dark:text-slate-400">
-                              {filteredFavorites.length} fichier{filteredFavorites.length > 1 ? 's' : ''} marqués d'une étoile.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      {renderSelectionBanner(filteredFavorites)}
-                      {filteredFavorites.length === 0 ? (
-                        <div className="py-16 text-center text-stone-500 dark:text-slate-400">
-                          <Star className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
-                          <p className="text-sm font-semibold">Aucun favori pour le moment</p>
-                          <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                            Ouvrez le menu 3 traits sur un fichier et choisissez "Ajouter aux favoris".
-                          </p>
-                        </div>
-                      ) : (
-                        <div className={`grid gap-2.5 sm:gap-3.5 ${splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'}`}>
-                          {filteredFavorites.map((file, idx) => {
-                            if (file.category === 'images') return renderImageCard(file, idx);
-                            if (file.category === 'videos') return renderVideoCard(file, idx);
-                            if (file.category === 'audio') return renderAudioItem(file, false);
-                            return renderDocumentCard(file);
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ONGLET DOSSIER SÉCURISÉ */}
-                  {cloudActiveTab === 'secure-folder' && (
-                    <div className="space-y-4">
-                      <div className="p-4 rounded-2xl bg-gradient-to-r from-blue-500/15 via-indigo-500/10 to-transparent border border-blue-500/30 flex items-center justify-between gap-3 shadow-md">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2.5 rounded-xl bg-blue-500/20 text-blue-400 border border-blue-500/40 shrink-0">
-                            <Lock className="w-6 h-6 stroke-[2.2]" />
-                          </div>
-                          <div>
-                            <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white">
-                              Dossier Sécurisé StudyCloud
-                            </h2>
-                            <p className="text-xs text-stone-500 dark:text-slate-400">
-                              {filteredSecureFiles.length} fichier{filteredSecureFiles.length > 1 ? 's' : ''} sous protection cryptée.
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-                      {renderSelectionBanner(filteredSecureFiles)}
-                      {filteredSecureFiles.length === 0 ? (
-                        <div className="py-16 text-center text-stone-500 dark:text-slate-400">
-                          <Lock className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-blue-400" />
-                          <p className="text-sm font-semibold">Le dossier sécurisé est vide</p>
-                        </div>
-                      ) : (
-                        <div className={`grid gap-2.5 sm:gap-3.5 ${splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'}`}>
-                          {filteredSecureFiles.map((file, idx) => {
-                            if (file.category === 'images') return renderImageCard(file, idx);
-                            if (file.category === 'videos') return renderVideoCard(file, idx);
-                            if (file.category === 'audio') return renderAudioItem(file, false);
-                            return renderDocumentCard(file);
-                          })}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  {/* ONGLET CORBEILLE */}
-                  {cloudActiveTab === 'trash' && (
-                    <div className="space-y-4">
-                      <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-500/15 via-red-500/10 to-transparent border border-rose-500/30 flex items-center justify-between gap-3 shadow-md">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/40 shrink-0">
-                            <Trash2 className="w-6 h-6 stroke-[2.2]" />
-                          </div>
-                          <div>
-                            <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white">
-                              Corbeille
-                            </h2>
-                            <p className="text-xs text-stone-500 dark:text-slate-400">
-                              {filteredTrashFiles.length} élément{filteredTrashFiles.length > 1 ? 's' : ''} supprimé{filteredTrashFiles.length > 1 ? 's' : ''}.
-                            </p>
-                          </div>
-                        </div>
-                        {filteredTrashFiles.length > 0 && (
-                          <button
-                            type="button"
-                            onClick={() => {
-                              setTrashFiles([]);
-                              showToast('Corbeille vidée !');
-                            }}
-                            className="px-3.5 py-1.5 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white font-bold text-xs border border-rose-400/40 transition-all cursor-pointer active:scale-95 shadow-sm"
-                          >
-                            Vider la corbeille
-                          </button>
-                        )}
-                      </div>
-                      {filteredTrashFiles.length === 0 ? (
-                        <div className="py-16 text-center text-stone-500 dark:text-slate-400">
-                          <Trash2 className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-rose-400" />
-                          <p className="text-sm font-semibold">La corbeille est vide</p>
-                        </div>
-                      ) : (
-                        <div className={`grid gap-2.5 sm:gap-3.5 ${splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'}`}>
-                          {filteredTrashFiles.map((file, idx) => (
-                            <div key={file.id} className="relative group">
-                              {file.category === 'images' ? renderImageCard(file, idx) : (file.category === 'videos' ? renderVideoCard(file, idx) : renderDocumentCard(file))}
-                              <div className="absolute top-2 left-2 z-20">
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setTrashFiles(prev => prev.filter(t => t.id !== file.id));
-                                    if (file.category === 'documents') setDocumentsList(prev => [file, ...prev]);
-                                    else if (file.category === 'images') setImagesList(prev => [file, ...prev]);
-                                    else if (file.category === 'videos') setVideosList(prev => [file, ...prev]);
-                                    else if (file.category === 'audio') setAudioList(prev => [file, ...prev]);
-                                    showToast(`"${file.name}" restauré !`);
-                                  }}
-                                  className="px-2 py-1 rounded-lg bg-emerald-600/90 hover:bg-emerald-600 text-white text-[10px] font-bold shadow-md cursor-pointer"
-                                  title="Restaurer le fichier"
-                                >
-                                  Restaurer
-                                </button>
-                              </div>
-                            </div>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-                </div>
-              )}
-
-              {/* 9. COLLECTIONS : FAVORIS (Ouvert directement depuis l'accueil) */}
-              {currentSubView.id === 'studycloud-collection-favorites' && (
-                <div className="space-y-4">
-                  <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-orange-500/10 to-transparent border border-amber-500/30 flex items-center justify-between gap-3 shadow-md">
+              {/* 8. FAVORIS (COLLECTION) */}
+              {isCloudView && cloudActiveTab === 'favorites' && (
+                <div className="space-y-4 animate-in fade-in duration-200">
+                  <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-yellow-500/10 to-transparent border border-amber-500/30 flex items-center justify-between gap-3 shadow-md">
                     <div className="flex items-center gap-3">
                       <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 shrink-0">
-                        <Star className="w-6 h-6 stroke-[2.2] fill-amber-400" />
+                        <Star className="w-6 h-6 stroke-[2.2]" />
                       </div>
                       <div>
                         <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white">
-                          Mes Favoris
+                          Fichiers Favoris StudyCloud
                         </h2>
                         <p className="text-xs text-stone-500 dark:text-slate-400">
-                          {filteredFavorites.length} fichier{filteredFavorites.length > 1 ? 's' : ''} marqués d'une étoile.
+                          {favoriteFiles.length} fichier{favoriteFiles.length > 1 ? 's' : ''} marqué{favoriteFiles.length > 1 ? 's' : ''} comme favori ou épinglé.
                         </p>
                       </div>
                     </div>
                   </div>
-                  {renderSelectionBanner(filteredFavorites)}
-                  {filteredFavorites.length === 0 ? (
+
+                  {renderSelectionBanner(favoriteFiles)}
+
+                  {favoriteFiles.length === 0 ? (
                     <div className="py-16 text-center text-stone-500 dark:text-slate-400">
                       <Star className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
                       <p className="text-sm font-semibold">Aucun favori pour le moment</p>
+                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                        Cliquez sur le menu 3 traits d'un document, d'une photo, vidéo ou musique pour l'ajouter à vos favoris.
+                      </p>
                     </div>
                   ) : (
-                    <div className={`grid gap-2.5 sm:gap-3.5 ${splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'}`}>
-                      {filteredFavorites.map((file, idx) => {
+                    <div className={`grid gap-2.5 sm:gap-3.5 ${
+                      splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    }`}>
+                      {favoriteFiles.map((file, idx) => {
                         if (file.category === 'images') return renderImageCard(file, idx);
                         if (file.category === 'videos') return renderVideoCard(file, idx);
                         if (file.category === 'audio') return renderAudioItem(file, false);
@@ -4753,9 +4581,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
               )}
 
-              {/* 10. COLLECTIONS : CORBEILLE (Ouvert directement depuis l'accueil) */}
-              {currentSubView.id === 'studycloud-collection-trash' && (
-                <div className="space-y-4">
+              {/* 9. CORBEILLE (COLLECTION) */}
+              {isCloudView && cloudActiveTab === 'trash' && (
+                <div className="space-y-4 animate-in fade-in duration-200">
                   <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-500/15 via-red-500/10 to-transparent border border-rose-500/30 flex items-center justify-between gap-3 shadow-md">
                     <div className="flex items-center gap-3">
                       <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/40 shrink-0">
@@ -4763,52 +4591,65 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       </div>
                       <div>
                         <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white">
-                          Corbeille
+                          Corbeille StudyCloud
                         </h2>
                         <p className="text-xs text-stone-500 dark:text-slate-400">
-                          {filteredTrashFiles.length} élément{filteredTrashFiles.length > 1 ? 's' : ''} supprimé{filteredTrashFiles.length > 1 ? 's' : ''}.
+                          {trashFiles.length} élément{trashFiles.length > 1 ? 's' : ''} dans la corbeille.
                         </p>
                       </div>
                     </div>
-                    {filteredTrashFiles.length > 0 && (
+                    {trashFiles.length > 0 && (
                       <button
                         type="button"
-                        onClick={() => {
-                          setTrashFiles([]);
-                          showToast('Corbeille vidée !');
-                        }}
-                        className="px-3.5 py-1.5 rounded-full bg-rose-600/80 hover:bg-rose-600 text-white font-bold text-xs border border-rose-400/40 transition-all cursor-pointer active:scale-95 shadow-sm"
+                        onClick={handleEmptyTrash}
+                        className="px-3.5 py-1.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-black transition-all cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5"
                       >
-                        Vider la corbeille
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Vider la corbeille</span>
                       </button>
                     )}
                   </div>
-                  {filteredTrashFiles.length === 0 ? (
+
+                  {trashFiles.length === 0 ? (
                     <div className="py-16 text-center text-stone-500 dark:text-slate-400">
                       <Trash2 className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-rose-400" />
                       <p className="text-sm font-semibold">La corbeille est vide</p>
+                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                        Les fichiers supprimés apparaîtront ici avec possibilité de restauration.
+                      </p>
                     </div>
                   ) : (
-                    <div className={`grid gap-2.5 sm:gap-3.5 ${splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'}`}>
-                      {filteredTrashFiles.map((file, idx) => (
-                        <div key={file.id} className="relative group">
-                          {file.category === 'images' ? renderImageCard(file, idx) : (file.category === 'videos' ? renderVideoCard(file, idx) : renderDocumentCard(file))}
-                          <div className="absolute top-2 left-2 z-20">
+                    <div className="space-y-2">
+                      {trashFiles.map((file) => (
+                        <div
+                          key={file.id}
+                          className="p-3 rounded-2xl bg-[#04060A] border border-white/10 flex items-center justify-between gap-3 shadow-md hover:border-white/20 transition-all"
+                        >
+                          <div className="flex items-center gap-3 min-w-0">
+                            <div className="p-2 rounded-xl bg-black border border-white/10 text-rose-400 shrink-0">
+                              <Trash2 className="w-4 h-4 stroke-[2.2]" />
+                            </div>
+                            <div className="min-w-0">
+                              <h4 className="text-xs sm:text-sm font-black text-white truncate">{file.name}</h4>
+                              <p className="text-[11px] text-slate-400">{file.size} • {file.date}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2 shrink-0">
                             <button
                               type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setTrashFiles(prev => prev.filter(t => t.id !== file.id));
-                                if (file.category === 'documents') setDocumentsList(prev => [file, ...prev]);
-                                else if (file.category === 'images') setImagesList(prev => [file, ...prev]);
-                                else if (file.category === 'videos') setVideosList(prev => [file, ...prev]);
-                                else if (file.category === 'audio') setAudioList(prev => [file, ...prev]);
-                                showToast(`"${file.name}" restauré !`);
-                              }}
-                              className="px-2 py-1 rounded-lg bg-emerald-600/90 hover:bg-emerald-600 text-white text-[10px] font-bold shadow-md cursor-pointer"
-                              title="Restaurer le fichier"
+                              onClick={() => handleRestoreFromTrash(file)}
+                              className="px-3 py-1.5 rounded-full bg-slate-800 hover:bg-slate-700 text-emerald-400 text-xs font-bold border border-emerald-500/30 transition-all cursor-pointer active:scale-95"
+                              title="Restaurer"
                             >
                               Restaurer
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => handlePermanentDelete(file.id)}
+                              className="p-1.5 rounded-full bg-slate-800 hover:bg-rose-900/60 text-rose-400 text-xs transition-all cursor-pointer active:scale-95"
+                              title="Supprimer définitivement"
+                            >
+                              <X className="w-4 h-4" />
                             </button>
                           </div>
                         </div>
