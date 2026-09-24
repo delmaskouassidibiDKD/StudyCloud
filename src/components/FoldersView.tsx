@@ -139,6 +139,22 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [dragOffset, setDragOffset] = useState<number>(0);
   const [isDragging, setIsDragging] = useState<boolean>(false);
 
+  // Fond d'écran personnalisé du tableau de bord (Page 1 et Page 2)
+  const [dashboardWallpaper, setDashboardWallpaper] = useState<string | null>(() => {
+    return localStorage.getItem('studycloud_dashboard_wallpaper');
+  });
+
+  useEffect(() => {
+    const handleWallpaperChange = (e: any) => {
+      const wp = e?.detail?.wallpaper !== undefined 
+        ? e.detail.wallpaper 
+        : localStorage.getItem('studycloud_dashboard_wallpaper');
+      setDashboardWallpaper(wp);
+    };
+    window.addEventListener('studycloud_wallpaper_updated', handleWallpaperChange);
+    return () => window.removeEventListener('studycloud_wallpaper_updated', handleWallpaperChange);
+  }, []);
+
   const dragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
   const isHorizontalDragRef = useRef<boolean>(false);
   const hasMovedRef = useRef<boolean>(false);
@@ -678,7 +694,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         <div className="w-full aspect-square bg-stone-900 dark:bg-slate-800/80 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/15 rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[0_8px_25px_rgba(0,0,0,0.45)] dark:hover:border-blue-400/40 dark:hover:shadow-[0_12px_30px_rgba(37,99,235,0.25)] flex items-center justify-center group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all relative">
           {iconContent}
         </div>
-        <span className="text-[11px] sm:text-xs md:text-sm font-extrabold text-stone-950 dark:text-blue-400 mt-1.5 sm:mt-2 text-center px-0.5 leading-snug tracking-wide w-full line-clamp-2 transition-colors">{label}</span>
+        <span className={`text-[11px] sm:text-xs md:text-sm font-extrabold mt-1.5 sm:mt-2 text-center px-0.5 leading-snug tracking-wide w-full line-clamp-2 transition-colors ${
+          dashboardWallpaper && viewMode === 'home'
+            ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.95)]'
+            : 'text-stone-950 dark:text-blue-400'
+        }`}>{label}</span>
       </div>
     );
   };
@@ -722,12 +742,31 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [newGradeCoeff, setNewGradeCoeff] = useState('');
 
   return (
-    <div className="flex flex-col items-center justify-start min-h-[75vh] px-2 sm:px-4 text-center pt-12 md:pt-14 pb-24 bg-[#E9D7C9] dark:bg-[#0b0f19] transition-colors duration-200">
+    <div className={`flex flex-col items-center justify-start min-h-[75vh] px-2 sm:px-4 text-center pt-12 md:pt-14 pb-24 transition-colors duration-200 relative ${
+      dashboardWallpaper && viewMode === 'home'
+        ? 'bg-transparent text-white'
+        : 'bg-[#E9D7C9] dark:bg-[#0b0f19]'
+    }`}>
+      {/* Fond d'écran personnalisé du tableau de bord (Visible sur la Page 1 et la Page 2) */}
+      {dashboardWallpaper && viewMode === 'home' && (
+        <div className="fixed inset-0 md:left-64 z-[1] pointer-events-none overflow-hidden transition-opacity duration-300">
+          <img 
+            src={dashboardWallpaper} 
+            alt="Fond d'écran Tableau de Bord" 
+            className="w-full h-full object-cover select-none filter brightness-[0.75] contrast-[1.05]" 
+          />
+          {/* Voile sombre pour lisibilité optimale des icônes d'applications */}
+          <div className="absolute inset-0 bg-gradient-to-b from-black/45 via-black/25 to-black/65 backdrop-blur-[0.5px]" />
+        </div>
+      )}
+
       {/* Fixed Header bar with action buttons - Solid Dark #070a13 */}
       <div className={`fixed top-0 left-0 right-0 md:left-64 z-40 px-3 md:px-6 py-2 h-[64px] md:h-[68px] flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${
-        isDarkMode 
-          ? 'bg-[#070a13] border-b border-[#1e293b] shadow-md' 
-          : 'bg-[#E9D7C9] border-b-2 border-stone-800 shadow-sm'
+        dashboardWallpaper && viewMode === 'home'
+          ? 'bg-stone-950/85 backdrop-blur-md border-b border-white/10 text-white shadow-md'
+          : isDarkMode 
+            ? 'bg-[#070a13] border-b border-[#1e293b] shadow-md' 
+            : 'bg-[#E9D7C9] border-b-2 border-stone-800 shadow-sm'
       }`}>
         <div className="flex items-center gap-2">
           <MenuDrawer
@@ -1444,12 +1483,31 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       )}
 
       {viewMode === 'home' && (
-        <div className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-2 relative">
+        <div className="w-full max-w-[1400px] mx-auto px-1 sm:px-4 py-2 relative z-10">
           {/* Titre de l'écran actif */}
           <div className="flex items-center justify-between mb-3 px-2">
-            <span className="text-xs font-bold text-stone-500 dark:text-stone-400 select-none">
+            <span className={`text-xs font-black select-none ${
+              dashboardWallpaper 
+                ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.8)] bg-black/45 px-3 py-1 rounded-full border border-white/10' 
+                : 'text-stone-500 dark:text-stone-400'
+            }`}>
               {activePageIndex === 0 ? "Espace libre • Page 1" : "Écran d'accueil • Page 2"}
             </span>
+
+            {dashboardWallpaper && (
+              <button
+                type="button"
+                onClick={() => {
+                  localStorage.removeItem('studycloud_dashboard_wallpaper');
+                  setDashboardWallpaper(null);
+                  window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: null } }));
+                }}
+                className="text-[10px] font-black text-rose-300 hover:text-white bg-black/60 hover:bg-rose-950/80 px-2.5 py-1 rounded-full border border-white/15 transition-all cursor-pointer shadow-md active:scale-95"
+                title="Rétablir le fond d'écran par défaut"
+              >
+                Rétablir fond par défaut
+              </button>
+            )}
           </div>
 
           {/* Conteneur Carrousel / Glissement fluide (Swipe phone & Desktop) */}
@@ -1547,7 +1605,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                       </svg>
                     </div>
 
-                    <span className="text-xs sm:text-sm font-black text-stone-900 dark:text-stone-100 mt-2 text-center tracking-tight transition-colors">
+                    <span className={`text-xs sm:text-sm font-black mt-2 text-center tracking-tight transition-colors ${
+                      dashboardWallpaper 
+                        ? 'text-white drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] bg-black/50 px-2.5 py-0.5 rounded-full border border-white/10' 
+                        : 'text-stone-900 dark:text-stone-100'
+                    }`}>
                       Fichiers
                     </span>
                   </div>
@@ -1569,7 +1631,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {/* Pagination dots (Pointillés de navigation des pages) - Presque collé à la limite en bas de l'écran et au milieu */}
       {viewMode === 'home' && (
         <div 
-          className="fixed bottom-16 md:bottom-2.5 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-[calc(50%+8rem)] md:-translate-x-1/2 z-30 flex items-center gap-2.5 px-3.5 py-1.5 rounded-full bg-stone-900/10 dark:bg-black/50 backdrop-blur-md border border-stone-800/15 dark:border-white/10 shadow-[0_2px_10px_rgba(0,0,0,0.08)] transition-all select-none"
+          className={`fixed bottom-16 md:bottom-2.5 left-1/2 -translate-x-1/2 md:translate-x-0 md:left-[calc(50%+8rem)] md:-translate-x-1/2 z-30 flex items-center gap-2.5 px-3.5 py-1.5 rounded-full ${
+            dashboardWallpaper 
+              ? 'bg-black/60 border-white/20 shadow-xl' 
+              : 'bg-stone-900/10 dark:bg-black/50 border-stone-800/15 dark:border-white/10'
+          } backdrop-blur-md border shadow-[0_2px_10px_rgba(0,0,0,0.08)] transition-all select-none`}
           role="navigation"
           aria-label="Pagination des menus"
         >

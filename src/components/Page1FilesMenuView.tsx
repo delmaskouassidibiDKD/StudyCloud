@@ -62,7 +62,8 @@ import {
   Shuffle,
   AlignLeft,
   CheckSquare,
-  Square
+  Square,
+  UserCheck
 } from 'lucide-react';
 import { getDownloadedFiles, recordDownloadedFile, DownloadedItem } from '../services/downloadsManager';
 import { 
@@ -1194,6 +1195,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         break;
       }
 
+      case 'set_as_profile_and_wallpaper': {
+        const imageUrl = file.previewUrl || '';
+        if (!imageUrl) {
+          showToast("Aperçu de l'image indisponible.");
+          break;
+        }
+        localStorage.setItem('studycloud_dashboard_wallpaper', imageUrl);
+        localStorage.setItem('unifolder_user_avatar', imageUrl);
+        window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: imageUrl } }));
+        window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: imageUrl } }));
+        showToast(`Photo de profil et fond du tableau de bord mis à jour !`);
+        break;
+      }
+
       default:
         break;
     }
@@ -2214,6 +2229,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <Pencil className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
                 <span>Modifier le nom</span>
               </button>
+
+              {/* Bouton Définir comme photo de profil (et fond du tableau de bord Pages 1 et 2) pour les images */}
+              {(file.category === 'images' || file.isImage || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name)) && (
+                <button
+                  type="button"
+                  onClick={() => handleGenericFileAction('set_as_profile_and_wallpaper', file, currentCategoryList)}
+                  className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-emerald-400 hover:bg-emerald-500/15 transition-colors cursor-pointer text-left border-t border-white/10 mt-1 pt-1.5"
+                  title="Définir comme photo de profil et fond d'écran du tableau de bord pour la page 1 et 2"
+                >
+                  <UserCheck className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                  <span>Définir comme photo de profil</span>
+                </button>
+              )}
             </div>
           </div>
         </div>
@@ -2699,10 +2727,27 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           )}
           <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
 
-          {/* AU MILIEU : LE LOGO DE MUSIQUE / MÉLODIE DEMANDÉ PAR L'UTILISATEUR */}
+          {/* AU MILIEU : LE LOGO DE MUSIQUE / MÉLODIE DÉTAILLÉ & NET (SANS SILHOUETTE NOIRE BLOQUANTE) */}
           <div className="absolute inset-0 flex items-center justify-center">
-            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 text-stone-950 flex items-center justify-center shadow-[0_8px_25px_rgba(245,158,11,0.45)] group-hover:scale-110 transition-transform duration-200 border-2 border-white/20">
-              <Music className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.3] fill-stone-950 text-stone-950" />
+            <div className="w-13 h-13 sm:w-15 sm:h-15 rounded-full bg-gradient-to-br from-amber-500 via-orange-500 to-amber-600 flex items-center justify-center shadow-[0_8px_25px_rgba(245,158,11,0.55)] group-hover:scale-110 transition-all duration-300 border-2 border-white/30 ring-2 ring-black/40 relative">
+              {/* Cercle vinyle intérieur discret */}
+              <div className="absolute inset-1.5 rounded-full border border-white/20 pointer-events-none" />
+              
+              {/* Logo de mélodie très détaillé : double croche avec notes blanches illuminées, stems et ondes sonores */}
+              <svg className="w-7 h-7 sm:w-8 sm:h-8 text-white filter drop-shadow-[0_2px_4px_rgba(0,0,0,0.85)] relative z-10" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
+                {/* Ondes de mélodie acoustique fines */}
+                <path d="M2.5 10.5C2.5 7.8 4.2 5.5 6.5 4.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />
+                <path d="M21.5 10.5C21.5 7.8 19.8 5.5 17.5 4.8" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" opacity="0.8" />
+                
+                {/* Tiges et double liaison musicale */}
+                <path d="M9 16.5V5.5L20 3.5V14.5" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round" />
+                <path d="M9 9.5L20 7.5" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+                
+                {/* Tête de note 1 (gauche) blanche avec contour net */}
+                <ellipse cx="6" cy="16.5" rx="3" ry="2.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.8" transform="rotate(-15 6 16.5)" />
+                {/* Tête de note 2 (droite) blanche avec contour net */}
+                <ellipse cx="17" cy="14.5" rx="3" ry="2.2" fill="#FFFFFF" stroke="currentColor" strokeWidth="1.8" transform="rotate(-15 17 14.5)" />
+              </svg>
             </div>
           </div>
 
