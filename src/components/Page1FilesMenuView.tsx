@@ -4191,74 +4191,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   // =========================================================================
-  // MODAL GRAND FORMAT : PROPOSITIONS DE DESIGNS DE DOSSIERS (MODÈLES 3D)
+  // MODAL GRAND FORMAT : CRÉER UN DOSSIER (VIDE & ÉTIRÉ HORIZONTALEMENT)
   // Sans fond flou ni sombre (comme expressément demandé par l'utilisateur)
   // =========================================================================
   const renderCreateFolderModal = () => {
     if (!isCreateFolderModalOpen) return null;
-
-    const folder3DProposals = [
-      {
-        id: 'model-3d-1',
-        title: 'Classeur Cuir & Dorure 3D',
-        badge: 'Modèle 3D #1',
-        style: 'Texture Cuir Luxe',
-        color: 'from-amber-600 via-yellow-700 to-amber-900',
-        borderColor: 'border-amber-500/40',
-        textColor: 'text-amber-400',
-        desc: 'Finition cuir grainé avec coutures apparentes et ferronnerie dorée 3D.'
-      },
-      {
-        id: 'model-3d-2',
-        title: 'Dossier Isométrique Néon 3D',
-        badge: 'Modèle 3D #2',
-        style: 'Cyber Neon Glow',
-        color: 'from-cyan-600 via-blue-700 to-indigo-950',
-        borderColor: 'border-cyan-500/40',
-        textColor: 'text-cyan-400',
-        desc: 'Contours néon lumineux avec perspective isométrique futuriste.'
-      },
-      {
-        id: 'model-3d-3',
-        title: 'Classeur Glassmorphism Crystal',
-        badge: 'Modèle 3D #3',
-        style: 'Verre Givré & Reflets',
-        color: 'from-emerald-600 via-teal-700 to-slate-900',
-        borderColor: 'border-emerald-500/40',
-        textColor: 'text-emerald-400',
-        desc: 'Plaques de verre acrylique translucide avec reflets spéculaires dynamiques.'
-      },
-      {
-        id: 'model-3d-4',
-        title: 'Dossier Titane & Carbone 3D',
-        badge: 'Modèle 3D #4',
-        style: 'Métal Brossé Aéro',
-        color: 'from-slate-600 via-zinc-700 to-neutral-900',
-        borderColor: 'border-slate-400/40',
-        textColor: 'text-slate-300',
-        desc: 'Texture aluminium brossé renforcée de fibres de carbone texturées.'
-      },
-      {
-        id: 'model-3d-5',
-        title: 'Dossier Holographique Énergie',
-        badge: 'Modèle 3D #5',
-        style: 'Hologramme Prisme',
-        color: 'from-purple-600 via-fuchsia-700 to-violet-950',
-        borderColor: 'border-purple-500/40',
-        textColor: 'text-purple-400',
-        desc: 'Spectre chromatique irisé avec pulsation lumineuse tridimensionnelle.'
-      },
-      {
-        id: 'model-3d-6',
-        title: 'Classeur Carton Kraft Vintage',
-        badge: 'Modèle 3D #6',
-        style: 'Kraft & Anneaux Métal',
-        color: 'from-[#C25416] via-[#B8480C] to-[#5C2303]',
-        borderColor: 'border-orange-500/40',
-        textColor: 'text-orange-400',
-        desc: 'Carton dense naturel avec anneaux métalliques chromés et élastique de serrage.'
-      }
-    ];
 
     const content = (
       <div 
@@ -4266,26 +4203,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         onClick={() => setIsCreateFolderModalOpen(false)}
       >
         <div 
-          className="relative w-full max-w-5xl max-h-[88vh] bg-[#0A0F1D] border-2 border-orange-500/40 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden text-white animate-in zoom-in-95 duration-200"
+          className="relative w-[96%] max-w-6xl min-h-[520px] max-h-[88vh] bg-[#0A0F1D] border-2 border-orange-500/40 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden text-white animate-in zoom-in-95 duration-200"
           onClick={(e) => e.stopPropagation()}
         >
-          {/* En-tête du grand menu */}
+          {/* En-tête : uniquement "Créer un dossier" et la croix de fermeture */}
           <div className="px-5 sm:px-7 py-4 border-b border-white/10 flex items-center justify-between gap-3 bg-[#070B14]">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] text-white flex items-center justify-center shadow-[0_2px_12px_rgba(194,84,22,0.4)] border border-orange-400/40">
                 <FolderPlus className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.2]" />
               </div>
-              <div>
-                <h3 className="text-base sm:text-lg font-black text-white flex items-center gap-2">
-                  <span>Créer un dossier • Modèles 3D</span>
-                  <span className="text-[10px] sm:text-xs font-bold px-2 py-0.5 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/40">
-                    Propositions
-                  </span>
-                </h3>
-                <p className="text-[11px] sm:text-xs text-slate-400 mt-0.5">
-                  Sélectionnez un style de design 3D pour la présentation de votre dossier
-                </p>
-              </div>
+              <h3 className="text-base sm:text-lg font-black text-white">
+                Créer un dossier
+              </h3>
             </div>
 
             <button
@@ -4298,84 +4227,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </button>
           </div>
 
-          {/* Bandeau d'information : en attente des modèles */}
-          <div className="mx-4 sm:mx-6 mt-4 p-3 sm:p-4 rounded-2xl bg-orange-500/10 border border-orange-500/30 flex items-start gap-3 text-orange-200 text-xs sm:text-sm">
-            <Sparkles className="w-5 h-5 text-orange-400 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-bold text-orange-300">Page de propositions de modèles 3D prête</p>
-              <p className="text-orange-200/90 text-xs mt-0.5 leading-relaxed">
-                Comme demandé, aucun fichier ni dossier n'est créé pour l'instant. Donnez-moi vos modèles de fichiers et de dossiers 3D pour que nous les intégrions exactement selon vos souhaits !
-              </p>
-            </div>
-          </div>
-
-          {/* Corps : Grille des propositions de designs 3D */}
-          <div className="flex-1 overflow-y-auto p-4 sm:p-6 grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-3.5 sm:gap-4">
-            {folder3DProposals.map((item) => (
-              <div
-                key={item.id}
-                className={`group relative rounded-2xl p-4 sm:p-5 bg-[#0F172A] border ${item.borderColor} hover:border-orange-400/80 transition-all duration-300 hover:-translate-y-1 shadow-lg hover:shadow-2xl flex flex-col justify-between cursor-pointer select-none`}
-              >
-                <div>
-                  {/* Visuel 3D immersif stylisé */}
-                  <div className={`w-full h-32 rounded-xl bg-gradient-to-br ${item.color} p-4 flex flex-col items-center justify-center relative overflow-hidden shadow-inner border border-white/10 group-hover:scale-[1.02] transition-transform`}>
-                    {/* Effet reflet lumineux 3D */}
-                    <div className="absolute -top-12 -left-12 w-28 h-28 bg-white/20 rounded-full blur-xl pointer-events-none" />
-                    
-                    {/* Icône 3D avec ombre portée */}
-                    <div className="relative flex items-center justify-center drop-shadow-[0_15px_15px_rgba(0,0,0,0.6)]">
-                      <FolderArchive className="w-16 h-16 text-white stroke-[1.8]" />
-                      <Box className="w-7 h-7 text-white/90 absolute -bottom-1 -right-1 stroke-[2.2] drop-shadow-md" />
-                    </div>
-
-                    <span className="absolute bottom-2 right-2 text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-black/60 text-white/90 border border-white/20 backdrop-blur-none">
-                      {item.style}
-                    </span>
-                  </div>
-
-                  {/* Titre et détails */}
-                  <div className="mt-3.5 flex items-center justify-between gap-2">
-                    <span className={`text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-md bg-white/5 border border-white/10 ${item.textColor}`}>
-                      {item.badge}
-                    </span>
-                    <span className="text-[10px] font-bold text-slate-400">
-                      Modèle 3D
-                    </span>
-                  </div>
-
-                  <h4 className="text-sm sm:text-base font-black text-white mt-1.5 group-hover:text-orange-400 transition-colors">
-                    {item.title}
-                  </h4>
-
-                  <p className="text-xs text-slate-300 mt-1 leading-relaxed">
-                    {item.desc}
-                  </p>
-                </div>
-
-                {/* Pied de carte */}
-                <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between text-xs">
-                  <span className="text-[11px] font-semibold text-slate-400">
-                    Emplacement prêt
-                  </span>
-                  <div className="flex items-center gap-1.5 text-orange-400 font-bold text-xs group-hover:translate-x-1 transition-transform">
-                    <span>Aperçu 3D</span>
-                    <ChevronRight className="w-3.5 h-3.5" />
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-
-          {/* Pied de page du modal */}
-          <div className="px-5 sm:px-7 py-3.5 border-t border-white/10 bg-[#070B14] flex items-center justify-between text-xs text-slate-400">
-            <span>En attente de vos modèles de fichiers 3D pour la création</span>
-            <button
-              type="button"
-              onClick={() => setIsCreateFolderModalOpen(false)}
-              className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-white font-bold transition-all cursor-pointer"
-            >
-              Fermer
-            </button>
+          {/* Corps de la page : entièrement vidé comme demandé, prêt pour accueillir vos modèles */}
+          <div className="flex-1 overflow-y-auto p-6 sm:p-8">
+            {/* Espace vierge prêt pour accueillir les modèles de l'utilisateur */}
           </div>
         </div>
       </div>
