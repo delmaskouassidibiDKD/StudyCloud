@@ -1,4 +1,5 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { createPortal } from 'react-dom';
 import { 
   ArrowLeft, 
   Search, 
@@ -17,6 +18,7 @@ import {
   Check, 
   ExternalLink, 
   Share2, 
+  ChevronLeft,
   ChevronRight, 
   Eye,
   EyeOff,
@@ -52,7 +54,6 @@ import {
   SlidersHorizontal,
   ChevronDown,
   Layers,
-  BookOpen,
   Link,
   FolderInput,
   Copy,
@@ -159,6 +160,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // État de verrouillage du Dossier Sécurisé & code PIN (> 4 caractères)
   const [isSecureFolderUnlocked, setIsSecureFolderUnlocked] = useState(false);
+  const [isPinModalOpen, setIsPinModalOpen] = useState(false);
+  const [pinTargetDestination, setPinTargetDestination] = useState<'collection' | 'cloud-tab' | null>(null);
   const [securePinInput, setSecurePinInput] = useState('');
   const [securePinConfirmInput, setSecurePinConfirmInput] = useState('');
   const [securePinError, setSecurePinError] = useState<string | null>(null);
@@ -1349,18 +1352,55 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
       localStorage.setItem('studycloud_secure_folder_pin', trimmed);
       setIsSecureFolderUnlocked(true);
+      setIsPinModalOpen(false);
       setSecurePinInput('');
       setSecurePinConfirmInput('');
       setSecurePinError(null);
+
+      // Redirection automatique à l'intérieur du menu
+      if (pinTargetDestination === 'cloud-tab') {
+        setCloudActiveTab('secure-folder');
+        setSplitSelectedFile(null);
+      } else {
+        handleOpenSubMenu('collection', 'secure-folder', 'Dossier sécurisé', Lock, 'text-blue-400');
+      }
+      setPinTargetDestination(null);
     } else {
       // Code déjà existant : vérification
       if (securePinInput.trim() === stored.trim()) {
         setIsSecureFolderUnlocked(true);
+        setIsPinModalOpen(false);
         setSecurePinInput('');
         setSecurePinError(null);
+
+        // Redirection automatique à l'intérieur du menu
+        if (pinTargetDestination === 'cloud-tab') {
+          setCloudActiveTab('secure-folder');
+          setSplitSelectedFile(null);
+        } else {
+          handleOpenSubMenu('collection', 'secure-folder', 'Dossier sécurisé', Lock, 'text-blue-400');
+        }
+        setPinTargetDestination(null);
       } else {
         setSecurePinError("Code incorrect. Veuillez réessayer.");
       }
+    }
+  };
+
+  // Fermeture / Annulation du modal de code de sécurité
+  const handleCloseSecureFolderPinModal = () => {
+    setIsPinModalOpen(false);
+    setPinTargetDestination(null);
+    setSecurePinInput('');
+    setSecurePinConfirmInput('');
+    setSecurePinError(null);
+
+    // Si on est déjà sur l'écran du dossier sécurisé alors qu'il est verrouillé, on quitte vers l'écran précédent
+    if (currentSubView?.id === 'studycloud-collection-secure-folder') {
+      setCurrentSubView(null);
+    }
+    if (isCloudView && cloudActiveTab === 'secure-folder') {
+      setCloudActiveTab('classeur');
     }
   };
 
@@ -3910,90 +3950,113 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   // =========================================================================
-  // ÉCRAN DE VERROUILLAGE / CODE PIN DU DOSSIER SÉCURISÉ (Demandé : > 4 caractères)
+  // MODAL DE VERROUILLAGE / CODE PIN DU DOSSIER SÉCURISÉ (Demandé : > 4 caractères)
   // =========================================================================
   const renderSecureFolderLockScreen = () => {
+    const isInsideSecureView = (currentSubView?.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder'));
+    if (!isPinModalOpen && (!isInsideSecureView || isSecureFolderUnlocked)) return null;
+
     const hasPin = Boolean(localStorage.getItem('studycloud_secure_folder_pin'));
 
-    return (
-      <div className="w-full max-w-md mx-auto my-12 p-6 sm:p-8 rounded-3xl bg-[#090D16] border border-amber-500/30 shadow-[0_20px_60px_rgba(0,0,0,0.8),0_0_40px_rgba(245,158,11,0.15)] flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
-        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-amber-500/25 via-amber-600/15 to-transparent border border-amber-500/40 text-amber-400 flex items-center justify-center mb-5 shadow-[0_0_25px_rgba(245,158,11,0.25)]">
-          <Lock className="w-8 h-8 sm:w-10 sm:h-10 stroke-[2.2]" />
-        </div>
+    const content = (
+      <div 
+        className="fixed inset-0 z-[2500] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+        onClick={handleCloseSecureFolderPinModal}
+      >
+        <div 
+          className="relative w-full max-w-md p-6 sm:p-8 rounded-3xl bg-[#090D16] border border-amber-500/30 shadow-[0_20px_60px_rgba(0,0,0,0.8),0_0_40px_rgba(245,158,11,0.15)] flex flex-col items-center text-center animate-in zoom-in-95 duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* Bouton Croix (X) pour fermer/annuler comme expressément demandé */}
+          <button
+            type="button"
+            onClick={handleCloseSecureFolderPinModal}
+            className="absolute top-4 right-4 p-2 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            title="Fermer"
+          >
+            <X className="w-5 h-5 stroke-[2.2]" />
+          </button>
 
-        <h3 className="text-lg sm:text-xl font-black text-white tracking-tight">
-          {hasPin ? "Dossier Sécurisé Verrouillé" : "Définir votre code de sécurité"}
-        </h3>
-
-        <p className="text-xs sm:text-sm text-slate-400 mt-2 max-w-xs">
-          {hasPin 
-            ? "Veuillez saisir votre code secret pour accéder à vos fichiers protégés." 
-            : "Pour sécuriser vos fichiers, définissez un code secret. Le code doit comporter plus de 4 caractères."}
-        </p>
-
-        <form onSubmit={handleUnlockSecureFolder} className="w-full mt-6 space-y-4">
-          <div className="w-full text-left">
-            <label className="text-[11px] font-bold text-slate-300 block mb-1">
-              {hasPin ? "Code secret" : "Nouveau code (supérieur à 4 caractères)"}
-            </label>
-            <div className="relative flex items-center">
-              <input
-                type={showPinPassword ? "text" : "password"}
-                value={securePinInput}
-                onChange={(e) => {
-                  setSecurePinInput(e.target.value);
-                  setSecurePinError(null);
-                }}
-                placeholder={hasPin ? "Entrez votre code..." : "Au moins 5 caractères..."}
-                autoFocus
-                className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-sm tracking-wider"
-              />
-              <button
-                type="button"
-                onClick={() => setShowPinPassword(!showPinPassword)}
-                className="absolute right-3 p-1 text-slate-400 hover:text-white transition-colors cursor-pointer"
-                title={showPinPassword ? "Masquer le code" : "Afficher le code"}
-              >
-                {showPinPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-              </button>
-            </div>
+          <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-amber-500/25 via-amber-600/15 to-transparent border border-amber-500/40 text-amber-400 flex items-center justify-center mb-5 shadow-[0_0_25px_rgba(245,158,11,0.25)]">
+            <Lock className="w-8 h-8 sm:w-10 sm:h-10 stroke-[2.2]" />
           </div>
 
-          {!hasPin && (
+          <h3 className="text-lg sm:text-xl font-black text-white tracking-tight">
+            {hasPin ? "Dossier Sécurisé Verrouillé" : "Définir votre code de sécurité"}
+          </h3>
+
+          <p className="text-xs sm:text-sm text-slate-400 mt-2 max-w-xs">
+            {hasPin 
+              ? "Veuillez saisir votre code secret pour accéder à vos fichiers protégés." 
+              : "Pour sécuriser vos fichiers, définissez un code secret. Le code doit comporter plus de 4 caractères."}
+          </p>
+
+          <form onSubmit={handleUnlockSecureFolder} className="w-full mt-6 space-y-4">
             <div className="w-full text-left">
               <label className="text-[11px] font-bold text-slate-300 block mb-1">
-                Confirmer le code
+                {hasPin ? "Code secret" : "Nouveau code (supérieur à 4 caractères)"}
               </label>
-              <input
-                type={showPinPassword ? "text" : "password"}
-                value={securePinConfirmInput}
-                onChange={(e) => {
-                  setSecurePinConfirmInput(e.target.value);
-                  setSecurePinError(null);
-                }}
-                placeholder="Retapez le code..."
-                className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-sm tracking-wider"
-              />
+              <div className="relative flex items-center">
+                <input
+                  type={showPinPassword ? "text" : "password"}
+                  value={securePinInput}
+                  onChange={(e) => {
+                    setSecurePinInput(e.target.value);
+                    setSecurePinError(null);
+                  }}
+                  placeholder={hasPin ? "Entrez votre code..." : "Au moins 5 caractères..."}
+                  autoFocus
+                  className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-sm tracking-wider"
+                />
+                <button
+                  type="button"
+                  onClick={() => setShowPinPassword(!showPinPassword)}
+                  className="absolute right-3 p-1 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                  title={showPinPassword ? "Masquer le code" : "Afficher le code"}
+                >
+                  {showPinPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                </button>
+              </div>
             </div>
-          )}
 
-          {securePinError && (
-            <div className="flex items-center gap-1.5 p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold text-left">
-              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
-              <span>{securePinError}</span>
-            </div>
-          )}
+            {!hasPin && (
+              <div className="w-full text-left">
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  Confirmer le code
+                </label>
+                <input
+                  type={showPinPassword ? "text" : "password"}
+                  value={securePinConfirmInput}
+                  onChange={(e) => {
+                    setSecurePinConfirmInput(e.target.value);
+                    setSecurePinError(null);
+                  }}
+                  placeholder="Retapez le code..."
+                  className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-sm tracking-wider"
+                />
+              </div>
+            )}
 
-          <button
-            type="submit"
-            className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:from-amber-400 hover:via-amber-500 hover:to-orange-500 text-black font-black text-xs sm:text-sm tracking-wide shadow-[0_4px_20px_rgba(245,158,11,0.4)] transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
-          >
-            <Lock className="w-4 h-4" />
-            <span>{hasPin ? "Déverrouiller le dossier" : "Enregistrer et déverrouiller"}</span>
-          </button>
-        </form>
+            {securePinError && (
+              <div className="flex items-center gap-1.5 p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold text-left">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{securePinError}</span>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:from-amber-400 hover:via-amber-500 hover:to-orange-500 text-black font-black text-xs sm:text-sm tracking-wide shadow-[0_4px_20px_rgba(245,158,11,0.4)] transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+            >
+              <Lock className="w-4 h-4" />
+              <span>{hasPin ? "Déverrouiller le dossier" : "Enregistrer et déverrouiller"}</span>
+            </button>
+          </form>
+        </div>
       </div>
     );
+
+    return createPortal(content, document.body);
   };
 
   // =========================================================================
@@ -4324,11 +4387,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         key={item.id}
                         type="button"
                         onClick={() => {
+                          if (item.id === 'secure-folder') {
+                            if (isSecureFolderUnlocked) {
+                              setCloudActiveTab(item.id);
+                              setSplitSelectedFile(null);
+                            } else {
+                              setPinTargetDestination('cloud-tab');
+                              setIsPinModalOpen(true);
+                              setSecurePinInput('');
+                              setSecurePinConfirmInput('');
+                              setSecurePinError(null);
+                            }
+                            return;
+                          }
                           setCloudActiveTab(item.id);
                           setSplitSelectedFile(null);
-                          if (item.id !== 'secure-folder') {
-                            setIsSecureFolderUnlocked(false);
-                          }
+                          setIsSecureFolderUnlocked(false);
                           setSecurePinInput('');
                           setSecurePinError(null);
                         }}
@@ -4951,7 +5025,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {(currentSubView.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) && (
                 <div className="space-y-4">
                   {!isSecureFolderUnlocked ? (
-                    renderSecureFolderLockScreen()
+                    <div className="py-20 text-center text-stone-500 dark:text-slate-400">
+                      <Lock className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
+                      <p className="text-sm font-semibold">Dossier sécurisé verrouillé</p>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setPinTargetDestination(isCloudView ? 'cloud-tab' : 'collection');
+                          setIsPinModalOpen(true);
+                        }}
+                        className="mt-4 px-4 py-2 rounded-xl bg-amber-500 hover:bg-amber-400 text-black font-bold text-xs cursor-pointer shadow-md active:scale-95 transition-all"
+                      >
+                        Déverrouiller le dossier
+                      </button>
+                    </div>
                   ) : (
                     <>
                       {/* Bandeau d'action de sélection multiple si activé */}
@@ -6166,7 +6253,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   return (
                     <div
                       key={col.id}
-                      onClick={() => handleOpenSubMenu('collection', col.id, col.name, col.icon, col.color)}
+                      onClick={() => {
+                        if (col.id === 'secure-folder') {
+                          if (isSecureFolderUnlocked) {
+                            handleOpenSubMenu('collection', col.id, col.name, col.icon, col.color);
+                          } else {
+                            setPinTargetDestination('collection');
+                            setIsPinModalOpen(true);
+                            setSecurePinInput('');
+                            setSecurePinConfirmInput('');
+                            setSecurePinError(null);
+                          }
+                        } else {
+                          handleOpenSubMenu('collection', col.id, col.name, col.icon, col.color);
+                        }
+                      }}
                       className="group rounded-2xl p-2.5 sm:p-3 flex items-center gap-2.5 bg-[#04060A] hover:bg-[#0A0E18] border border-white/10 hover:border-blue-400/50 transition-all duration-200 cursor-pointer select-none shadow-md active:scale-95"
                     >
                       <div className={`p-2 rounded-xl bg-black border border-white/10 shrink-0 group-hover:scale-110 transition-transform ${col.color}`}>
@@ -6191,12 +6292,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       {/* Modal de changement de code PIN (Image 2) */}
       {renderChangePinModal()}
 
-      {/* Toast Notification sobre sans logo étoiles ou autre */}
-      {profileToastMessage && (
-        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[300000] max-w-md w-[92%] sm:w-auto px-5 py-3 rounded-2xl bg-[#0B132B]/95 border-2 border-emerald-500/80 text-white shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex items-center justify-between gap-3 backdrop-blur-md animate-in fade-in slide-in-from-top-3 duration-200">
+      {/* Modal de déverrouillage / code PIN du Dossier Sécurisé avec bouton croix */}
+      {renderSecureFolderLockScreen()}
+
+      {/* Toast Notification sans 3D, au-dessus de tous les éléments via Portal */}
+      {profileToastMessage && createPortal(
+        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999999] pointer-events-auto max-w-md w-[92%] sm:w-auto px-4 py-2.5 rounded-xl bg-[#0f172a] border border-emerald-500/50 text-white shadow-xl flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
           <div className="flex items-center gap-2.5">
-            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
-            <span className="text-xs sm:text-sm font-bold text-white tracking-wide">
+            <Check className="w-4 h-4 text-emerald-400 shrink-0 stroke-[2.5]" />
+            <span className="text-xs sm:text-sm font-semibold text-white tracking-wide">
               {profileToastMessage}
             </span>
           </div>
@@ -6208,7 +6312,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           >
             <X className="w-3.5 h-3.5" />
           </button>
-        </div>
+        </div>,
+        document.body
       )}
 
     </div>
