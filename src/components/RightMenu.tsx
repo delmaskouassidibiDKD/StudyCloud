@@ -21,7 +21,8 @@ import {
   Sparkles,
   AlertCircle,
   RotateCcw,
-  ExternalLink
+  ExternalLink,
+  ArrowLeftRight
 } from 'lucide-react';
 import { StudyCloudAPI, generateDirectAiCreation } from '../services/api';
 import { extractDocumentText } from '../services/documentTextExtractor';
@@ -48,6 +49,7 @@ interface RightMenuProps {
   mobilePreviewTab: number;
   activePreviewItem?: any;
   isMobileScreen?: boolean;
+  setIsResizingRight?: (v: boolean) => void;
 }
 
 export interface ModuleDefinition {
@@ -198,7 +200,8 @@ export function RightMenu({
   isCenterFullscreen, 
   mobilePreviewTab,
   activePreviewItem,
-  isMobileScreen
+  isMobileScreen,
+  setIsResizingRight
 }: RightMenuProps) {
   const [isRightSidebarOpen, setIsRightSidebarOpen] = useState(false);
   const [activeCreation, setActiveCreation] = useState<AiCreation | null>(null);
@@ -930,6 +933,21 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
 
   return (
     <div className={`w-full h-full pointer-events-auto relative bg-[#1e2024] flex flex-col overflow-hidden ${isCenterFullscreen ? 'hidden' : (isMobileScreen ? (mobilePreviewTab === 2 || isRightFullscreen ? 'flex' : 'hidden') : 'flex')}`}>
+      {/* Poignée de redimensionnement entre CenterMenu et RightMenu */}
+      {setIsResizingRight && (
+        <div 
+          className="hidden md:flex absolute -left-[9px] top-0 bottom-0 w-[18px] cursor-col-resize z-50 justify-center items-center group select-none"
+          onMouseDown={(e) => { e.preventDefault(); e.stopPropagation(); setIsResizingRight(true); }}
+          onTouchStart={(e) => { e.stopPropagation(); setIsResizingRight(true); }}
+          title="Glisser pour redimensionner l'espace création"
+        >
+          <div className="w-[3px] h-full bg-transparent group-hover:bg-orange-500 group-active:bg-orange-500 transition-colors" />
+          <div className="absolute top-1/2 -translate-y-1/2 w-4 h-8 bg-white dark:bg-stone-800 border border-stone-400 dark:border-stone-600 rounded-full shadow-md flex items-center justify-center opacity-0 group-hover:opacity-100 group-active:opacity-100 transition-opacity pointer-events-none">
+            <ArrowLeftRight className="w-2.5 h-2.5 text-stone-600 dark:text-stone-300" />
+          </div>
+        </div>
+      )}
+
       {/* Barre supérieure en haut dans le creux : Bouton Zoom (jaune) + Bouton + (Retour aux 12 boutons) + Bouton Historique (horloge) */}
       <div className="w-full flex items-center justify-between px-3 py-2 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-50 shadow-sm">
         <div className="flex items-center gap-2">
@@ -1082,7 +1100,7 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
               className={`grid gap-3 w-full ${
                 isRightFullscreen
                   ? 'grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4'
-                  : 'grid-cols-1 min-[520px]:grid-cols-2'
+                  : 'grid-cols-1 min-[400px]:grid-cols-2'
               }`}
             >
               {(selectedCategory === 'all' ? MODULES : MODULES.filter(m => m.category === selectedCategory)).map((mod, idx) => {

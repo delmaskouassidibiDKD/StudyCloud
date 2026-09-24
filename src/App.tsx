@@ -562,10 +562,23 @@ export default function App() {
     window.addEventListener('switch-mobile-tab', handleSwitchMobileTab as any);
     return () => window.removeEventListener('switch-mobile-tab', handleSwitchMobileTab as any);
   }, []);
-  const [previewLeftWidth, setPreviewLeftWidth] = useState(33.33);
-  const [previewRightWidth, setPreviewRightWidth] = useState(33.33);
+  const [previewLeftWidth, setPreviewLeftWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_preview_left_width');
+      if (saved) return Math.min(28, Math.max(18, parseFloat(saved)));
+    } catch (e) {}
+    return 22;
+  });
+  const [previewRightWidth, setPreviewRightWidth] = useState(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_preview_right_width');
+      if (saved) return Math.min(48, Math.max(28, parseFloat(saved)));
+    } catch (e) {}
+    return 38;
+  });
   const previewContainerRef = useRef<HTMLDivElement>(null);
   const [isResizingLeft, setIsResizingLeft] = useState(false);
+  const [isResizingRight, setIsResizingRight] = useState(false);
   const [isCenterFullscreen, setIsCenterFullscreen] = useState<boolean>(() => {
     try {
       const saved = localStorage.getItem('studycloud_active_preview_item');
@@ -748,13 +761,12 @@ export default function App() {
       const x = clientX - rect.left;
       const percentage = (x / rect.width) * 100;
 
-      // Bloque le panneau gauche au niveau optimal (~260px / ~22%) pour préserver LeftMenu
-      const minLeft = Math.max(22, (260 / rect.width) * 100);
-      // Bloque également quand le menu central (document) atteint sa taille minimale (~440px / ~38%) pour ne pas trop le réduire
-      const minCenter = Math.max(38, (440 / rect.width) * 100);
+      const minLeft = Math.max(18, (220 / rect.width) * 100);
+      const minCenter = Math.max(28, (320 / rect.width) * 100);
       const maxLeft = Math.max(minLeft, 100 - previewRightWidth - minCenter);
       const newWidth = Math.min(Math.max(minLeft, percentage), maxLeft);
       setPreviewLeftWidth(newWidth);
+      try { localStorage.setItem('studycloud_preview_left_width', newWidth.toString()); } catch (err) {}
     };
 
     const handleMouseUp = () => {
@@ -780,6 +792,48 @@ export default function App() {
       window.removeEventListener('touchend', handleMouseUp);
     };
   }, [isResizingLeft, previewLeftWidth, previewRightWidth]);
+
+  useEffect(() => {
+    if (!isResizingRight) return;
+
+    const handleMouseMove = (e: MouseEvent | TouchEvent) => {
+      if (!previewContainerRef.current) return;
+      const rect = previewContainerRef.current.getBoundingClientRect();
+      const clientX = 'touches' in e ? e.touches[0].clientX : e.clientX;
+      const distanceFromRight = rect.right - clientX;
+      const percentage = (distanceFromRight / rect.width) * 100;
+
+      const minRight = Math.max(25, (300 / rect.width) * 100);
+      const minCenter = Math.max(28, (320 / rect.width) * 100);
+      const maxRight = Math.max(minRight, 100 - previewLeftWidth - minCenter);
+      const newWidth = Math.min(Math.max(minRight, percentage), maxRight);
+      setPreviewRightWidth(newWidth);
+      try { localStorage.setItem('studycloud_preview_right_width', newWidth.toString()); } catch (err) {}
+    };
+
+    const handleMouseUp = () => {
+      setIsResizingRight(false);
+      document.body.style.removeProperty('cursor');
+      document.body.style.removeProperty('user-select');
+    };
+
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+
+    window.addEventListener('mousemove', handleMouseMove, { passive: false });
+    window.addEventListener('touchmove', handleMouseMove, { passive: false });
+    window.addEventListener('mouseup', handleMouseUp);
+    window.addEventListener('touchend', handleMouseUp);
+
+    return () => {
+      document.body.style.removeProperty('cursor');
+      document.body.style.removeProperty('user-select');
+      window.removeEventListener('mousemove', handleMouseMove);
+      window.removeEventListener('touchmove', handleMouseMove);
+      window.removeEventListener('mouseup', handleMouseUp);
+      window.removeEventListener('touchend', handleMouseUp);
+    };
+  }, [isResizingRight, previewLeftWidth, previewRightWidth]);
 
 
   const handleReplaceFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -1649,9 +1703,9 @@ export default function App() {
       )}
 
       {(isStudySpaceOpen || activePreviewItem) && (previewOwnerTab ? previewOwnerTab === currentTab : currentTab === 'folders') && (
-        <div className={`fixed inset-0 ${isStudySpaceFullscreen ? 'left-0' : 'md:left-64'} z-[99999] bg-[#FDFBF7] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-hidden`}>
+        <div className="fixed inset-0 left-0 right-0 z-[99999] bg-[#FDFBF7] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-hidden">
           {/* Top Header Bar - Solid Dark #070a13 */}
-          <div className={`fixed top-0 left-0 right-0 ${isStudySpaceFullscreen ? 'left-0' : 'md:left-64'} z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[44px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2`}>
+          <div className="fixed top-0 left-0 right-0 z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[44px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
             {/* Left: Bouton Retour & badge du dossier/matière */}
             <div className="flex items-center gap-1.5 shrink-0">
               <button
@@ -1694,26 +1748,6 @@ export default function App() {
                 </span>
               ) : null}
               <div className="flex items-center gap-1.5 sm:gap-2">
-                {/* Bouton Plein écran / Normal de l'espace d'étude (Desktop) */}
-                <button
-                  type="button"
-                  onClick={() => setIsStudySpaceFullscreen(prev => !prev)}
-                  className="hidden md:flex items-center justify-center p-1 sm:px-2 sm:py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white rounded-lg border-2 border-stone-800 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer gap-1 shrink-0"
-                  title={isStudySpaceFullscreen ? "Afficher le menu latéral (Réduire)" : "Plein écran complet (Prendre tout l'écran)"}
-                >
-                  {isStudySpaceFullscreen ? (
-                    <>
-                      <Minimize className="w-3.5 h-3.5 shrink-0 text-stone-900 dark:text-white" />
-                      <span className="text-[7.5px] sm:text-xs font-bold leading-none">Réduire</span>
-                    </>
-                  ) : (
-                    <>
-                      <Maximize className="w-3.5 h-3.5 shrink-0 text-stone-900 dark:text-white" />
-                      <span className="text-[7.5px] sm:text-xs font-bold leading-none">Plein écran</span>
-                    </>
-                  )}
-                </button>
-
                 {/* Clock / Study Timer Button */}
                 <button
                   onClick={() => setShowStudyTimer(true)}
@@ -1787,7 +1821,7 @@ export default function App() {
           <div className="flex-1 w-full h-dvh relative">
             
             {/* Transparent blocker during resize so iframes (PDF/Viewer) never swallow mouse events */}
-            {isResizingLeft && (
+            {(isResizingLeft || isResizingRight) && (
               <div 
                 className="fixed inset-0 z-[999999] cursor-col-resize select-none bg-transparent"
                 style={{ cursor: 'col-resize' }}
@@ -1870,6 +1904,7 @@ export default function App() {
                   mobilePreviewTab={mobilePreviewTab}
                   activePreviewItem={activePreviewItem}
                   isMobileScreen={isMobileScreen}
+                  setIsResizingRight={setIsResizingRight}
                 />
 
             </div>
