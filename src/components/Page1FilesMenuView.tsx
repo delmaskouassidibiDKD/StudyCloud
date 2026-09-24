@@ -217,6 +217,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return [];
   });
 
+  // État d'ouverture du menu d'options 3 traits pour les dossiers 3D du Classeur
+  const [activeFolderMenuId, setActiveFolderMenuId] = useState<string | null>(null);
+
   useEffect(() => {
     localStorage.setItem('studycloud_classeur_3d_folders', JSON.stringify(classeur3DFolders));
   }, [classeur3DFolders]);
@@ -343,7 +346,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   }, []);
 
   const handleFolderPointerDown = (e: React.PointerEvent, folder: ClasseurCreatedFolder) => {
-    if ((e.target as HTMLElement).closest('button')) return;
+    if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('.studycloud-file-menu-panel') || (e.target as HTMLElement).closest('.studycloud-menu-trigger')) return;
 
     const cardElement = (e.currentTarget as HTMLElement);
     const rect = cardElement.getBoundingClientRect();
@@ -588,7 +591,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Fermer les menus déroulants lors d'un clic extérieur ou touche Échap SANS jamais bloquer le défilement de la page
   useEffect(() => {
-    if (!activeMenuFileId && !docMenuOpenId && !audioMenuSongId && !menuOpenId && !isPlayerMenuOpen && !isHeaderMenuOpen) {
+    if (!activeMenuFileId && !docMenuOpenId && !audioMenuSongId && !menuOpenId && !isPlayerMenuOpen && !isHeaderMenuOpen && !activeFolderMenuId) {
       return;
     }
 
@@ -604,6 +607,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setMenuOpenId(null);
       setIsPlayerMenuOpen(false);
       setIsHeaderMenuOpen(false);
+      setActiveFolderMenuId(null);
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -614,6 +618,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         setMenuOpenId(null);
         setIsPlayerMenuOpen(false);
         setIsHeaderMenuOpen(false);
+        setActiveFolderMenuId(null);
       }
     };
 
@@ -628,7 +633,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       document.removeEventListener('click', handleClickOutside);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeMenuFileId, docMenuOpenId, audioMenuSongId, menuOpenId, isPlayerMenuOpen, isHeaderMenuOpen]);
+  }, [activeMenuFileId, docMenuOpenId, audioMenuSongId, menuOpenId, isPlayerMenuOpen, isHeaderMenuOpen, activeFolderMenuId]);
 
   // Référence pour l'import de fichier
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -3079,6 +3084,300 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   // =========================================================================
+  // ACTIONS DU MENU 3 TRAITS POUR LES DOSSIERS 3D DU CLASSEUR
+  // =========================================================================
+  const handleFolderAction = (action: string, folder: ClasseurCreatedFolder) => {
+    setActiveFolderMenuId(null);
+
+    switch (action) {
+      case 'check':
+        setIsSelectionMode(true);
+        setSelectedItemIds([folder.id]);
+        showToast(`Dossier "${folder.name}" coché`);
+        break;
+
+      case 'check_all': {
+        setIsSelectionMode(true);
+        const allIds = classeur3DFolders.map(f => f.id);
+        setSelectedItemIds(allIds);
+        showToast(`Tous les ${classeur3DFolders.length} dossiers cochés`);
+        break;
+      }
+
+      case 'download': {
+        try {
+          const exportData = JSON.stringify(folder, null, 2);
+          const blob = new Blob([exportData], { type: 'application/json' });
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = `${folder.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_dossier.json`;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+          showToast(`Dossier "${folder.name}" téléchargé !`);
+        } catch {
+          showToast(`Dossier "${folder.name}" téléchargé !`);
+        }
+        break;
+      }
+
+      case 'delete':
+        handleDeleteCreatedFolder(folder.id);
+        showToast(`Dossier "${folder.name}" supprimé !`);
+        break;
+
+      case 'share': {
+        if (navigator.share) {
+          navigator.share({
+            title: folder.name,
+            text: `Dossier StudyCloud : ${folder.name}`,
+            url: window.location.href,
+          }).catch(() => {});
+        } else {
+          try {
+            navigator.clipboard?.writeText(`${window.location.origin}${window.location.pathname}#classeur-${folder.id}`);
+            showToast('Lien du dossier copié dans le presse-papiers !');
+          } catch {
+            showToast(`Partage du dossier "${folder.name}"`);
+          }
+        }
+        break;
+      }
+
+      case 'create_link': {
+        const link = `${window.location.origin}${window.location.pathname}#classeur-${folder.id}`;
+        try {
+          navigator.clipboard?.writeText(link);
+          showToast('Lien copié dans le presse-papiers !');
+        } catch {
+          showToast(`Lien créé pour "${folder.name}"`);
+        }
+        break;
+      }
+
+      case 'lock_folder': {
+        const securedFile: FileItem = {
+          id: folder.id,
+          name: folder.name,
+          category: 'documents',
+          source: 'Dossier Sécurisé',
+          size: '1 dossier 3D',
+          sizeBytes: 2048,
+          date: folder.dateText,
+          isSecure: true,
+        };
+        setSecureFolderFiles(prev => [securedFile, ...prev]);
+        setClasseur3DFolders(prev => prev.filter(f => f.id !== folder.id));
+        setClasseurFolders(prev => prev.filter(f => f.name !== folder.name));
+        showToast(`Dossier "${folder.name}" verrouillé dans le dossier sécurisé !`);
+        break;
+      }
+
+      case 'duplicate': {
+        const duplicatedFolder: ClasseurCreatedFolder = {
+          ...folder,
+          id: `c3d-dup-${Date.now()}`,
+          name: `${folder.name} (Copie)`,
+          createdAt: Date.now(),
+        };
+        setClasseur3DFolders(prev => [duplicatedFolder, ...prev]);
+        showToast(`Dossier dupliqué : "${duplicatedFolder.name}" !`);
+        break;
+      }
+
+      case 'favorite': {
+        const newFav = !folder.isFavorite;
+        setClasseur3DFolders(prev =>
+          prev.map(f => f.id === folder.id ? { ...f, isFavorite: newFav } : f)
+        );
+        showToast(newFav ? 'Ajouté aux favoris !' : 'Retiré des favoris');
+        break;
+      }
+
+      case 'pin': {
+        const newPin = !folder.isPinned;
+        setClasseur3DFolders(prev => {
+          const updated = prev.map(f => f.id === folder.id ? { ...f, isPinned: newPin } : f);
+          if (newPin) {
+            const item = updated.find(f => f.id === folder.id);
+            if (item) {
+              const rest = updated.filter(f => f.id !== folder.id);
+              return [item, ...rest];
+            }
+          }
+          return updated;
+        });
+        showToast(newPin ? `"${folder.name}" épinglé au début !` : `"${folder.name}" désépinglé`);
+        break;
+      }
+
+      case 'rename': {
+        const newName = window.prompt('Modifier le nom du dossier :', folder.name);
+        if (newName && newName.trim() && newName.trim() !== folder.name) {
+          const trimmed = newName.trim();
+          setClasseur3DFolders(prev =>
+            prev.map(f => f.id === folder.id ? { ...f, name: trimmed } : f)
+          );
+          setClasseurFolders(prev =>
+            prev.map(f => f.name === folder.name ? { ...f, name: trimmed } : f)
+          );
+          showToast(`Dossier renommé en "${trimmed}" !`);
+        }
+        break;
+      }
+
+      default:
+        break;
+    }
+  };
+
+  // =========================================================================
+  // MENU D'OPTIONS 3 TRAITS POUR LES DOSSIERS 3D DU CLASSEUR
+  // Conforme à l'Image 2 (sans "Définir comme photo de profil" ni "Le déplacer")
+  // =========================================================================
+  const renderFolder3DOptionsMenu = (folder: ClasseurCreatedFolder) => {
+    if (activeFolderMenuId !== folder.id) return null;
+
+    return (
+      <div 
+        className="studycloud-file-menu-panel absolute right-0 top-9 z-50 w-60 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* En-tête de menu dédié avec nom du dossier et bouton fermeture (Image 2) */}
+        <div className="px-3 py-2 bg-slate-900 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
+          <div className="min-w-0">
+            <p className="text-[11px] font-black text-white truncate" title={folder.name}>
+              {folder.name}
+            </p>
+            <p className="text-[9px] font-semibold text-slate-400">
+              {folder.dateText} • <span className="uppercase text-amber-400">MODÈLE {folder.model}</span>
+            </p>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setActiveFolderMenuId(null);
+            }}
+            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+            title="Fermer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Liste déroulante des options identiques à l'Image 2 */}
+        <div className="max-h-[min(380px,calc(100vh-140px))] overflow-y-auto no-scrollbar py-1 divide-y divide-white/5">
+          {/* Section 1 : Sélection (Cocher, Tout cocher, Télécharger) */}
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => handleFolderAction('check', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+            >
+              <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+              <span>Cocher</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFolderAction('check_all', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+            >
+              <CheckSquare className="w-3.5 h-3.5 shrink-0" />
+              <span>Tout cocher</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFolderAction('download', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-blue-400 hover:bg-blue-500/15 transition-colors cursor-pointer text-left"
+            >
+              <Download className="w-3.5 h-3.5 shrink-0" />
+              <span>Télécharger</span>
+            </button>
+          </div>
+
+          {/* Section 2 : Gestion principale (Supprimer, Partager, Lien, Verrouiller) */}
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => handleFolderAction('delete', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+            >
+              <Trash2 className="w-3.5 h-3.5 shrink-0" />
+              <span>Supprimer le fichier</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFolderAction('share', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Share2 className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+              <span>Partager</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFolderAction('create_link', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Link className="w-3.5 h-3.5 shrink-0 text-sky-400" />
+              <span>Créer un lien</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFolderAction('lock_folder', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-300 hover:bg-amber-400/15 transition-colors cursor-pointer text-left"
+              title="Verrouiller ce dossier dans le dossier sécurisé"
+            >
+              <Lock className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+              <span>Verrouiller</span>
+            </button>
+            {/* OMITTED: 'Le déplacer' comme expressément demandé par l'utilisateur */}
+          </div>
+
+          {/* Section 3 : Organisation & Édition (Dupliquer, Favoris, Épingler, Modifier le nom) */}
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => handleFolderAction('duplicate', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Copy className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+              <span>Dupliquer</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFolderAction('favorite', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Star className={`w-3.5 h-3.5 shrink-0 ${folder.isFavorite ? 'fill-yellow-400 text-yellow-400' : 'text-yellow-400'}`} />
+              <span>{folder.isFavorite ? 'Retirer des favoris' : 'Ajouter au favoris'}</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFolderAction('pin', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Pin className="w-3.5 h-3.5 shrink-0 text-purple-400" />
+              <span>Épinglez</span>
+            </button>
+            <button
+              type="button"
+              onClick={() => handleFolderAction('rename', folder)}
+              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
+            >
+              <Pencil className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
+              <span>Modifier le nom</span>
+            </button>
+            {/* OMITTED: 'Définir comme photo de profil' comme expressément demandé par l'utilisateur */}
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
   // MENU D'EN-TÊTE À 3 TRAITS (OPTIONS DE TRI & BOUTON ŒIL)
   // Demandé : trié par plus récent, plus ancien, ce qui sont épinglez, et bouton œil
   // =========================================================================
@@ -5325,18 +5624,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                     : 'bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1'
                                 }`}
                               >
-                                {/* Bouton de suppression discret au survol */}
-                                <button
-                                  type="button"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    handleDeleteCreatedFolder(folder.id);
-                                  }}
-                                  className="absolute top-2.5 right-2.5 z-20 w-7 h-7 rounded-xl bg-black/60 hover:bg-red-500 text-white/70 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all cursor-pointer backdrop-blur-sm shadow-md"
-                                  title="Supprimer ce dossier"
+                                {/* Haut droite : Bouton 3 traits & Menu d'options (Image 1 & 2) */}
+                                <div 
+                                  className="absolute top-2.5 right-2.5 z-30 studycloud-menu-trigger"
+                                  onPointerDown={(e) => e.stopPropagation()}
                                 >
-                                  <Trash2 className="w-3.5 h-3.5" />
-                                </button>
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setActiveFolderMenuId(activeFolderMenuId === folder.id ? null : folder.id);
+                                    }}
+                                    className={`p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                                      activeFolderMenuId === folder.id 
+                                        ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black' 
+                                        : 'border-white/30 opacity-90 group-hover:opacity-100'
+                                    }`}
+                                    title="Options du dossier (3 traits)"
+                                  >
+                                    <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+                                  </button>
+
+                                  {renderFolder3DOptionsMenu(folder)}
+                                </div>
 
                                 <Classeur3DFolderCard folder={folder} isDragging={isBeingDragged} />
                               </motion.div>
