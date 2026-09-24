@@ -89,8 +89,86 @@ export const getFileTimestamp = (item: any): number => {
   return 0;
 };
 
+export const isGalleryOrDemoFile = (f: any): boolean => {
+  if (!f) return false;
+  const id = String(f.id || '');
+  if (/^(img|vid|aud|doc|dl|cat-img|cat-vid|cat-aud|cat-doc)-\d+/i.test(id) || id.startsWith('default-')) {
+    return true;
+  }
+  const name = String(f.name || '');
+  const galleryImageNames = [
+    'Capture_ecran_Dashboard.png',
+    'Architecture_Cloud_Diagramme.png',
+    'Schema_Reseau_Entreprise.png',
+    'Citation_Bague_Promesse.png',
+    'Interface_StudyCloud_Dark.png',
+    'Fond_Ecran_Paysage_Nature.png',
+    'IMG-20260923-WA0012.jpg',
+    'Dossier_Roblox_Projet.png',
+    'Menu_Applications_Grille.png',
+    'Dossier_Supply_Chain_Jaune.png',
+    'Dashboard_Navigation_Home.png',
+    'Labyrinthe_Psychologie_Societe.mp4',
+    'CHI_AOP_LINEAIRE_MONT_BASE (1) (1).pdf',
+    'CHI_AOP_LINEAIRE_MONT_BASE (1).pdf',
+    'TD_PREPA_ANA_2MIT.pdf',
+    'CHI_AOP_LINEAIRE_APPLICATIONS.pdf',
+    'Synthese_Cours_Semestre_1.docx',
+    'Devoir_Economie_Appliquee.pdf',
+    'TD_Mathematiques_Algebre.pdf',
+    'Tableau_Budget_Gestion_Projet.xlsx',
+    'Cours_Supply_Chain_Logistique.pdf',
+    'Notes_Revision_Semestre_1.pdf',
+    'Fiche_TD_Mathematiques.pdf'
+  ];
+  if (galleryImageNames.includes(name)) return true;
+  if (f.source === 'WhatsApp Images' || f.source === 'Classeur StudyCloud' || f.source === 'StudyCloud Classeur') return true;
+
+  const cat = String(f.category || '').toLowerCase();
+  const folder = String(f.folderName || f.matiere || '').toLowerCase();
+  const isPage1Category = ['images', 'videos', 'vidéos', 'audio', 'musique'].includes(cat) ||
+                          ['images', 'videos', 'vidéos', 'audio', 'musique'].includes(folder);
+  if (isPage1Category && !f.r2Key && !id.startsWith('file-') && !f.userId && !f.file_url) {
+    return true;
+  }
+  return false;
+};
+
 export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFile, setActivePreviewItem, onOpenCreateShareLink, onPublishFiles }) => {
   const loadAllUserFiles = (): ImportedItem[] => {
+    // 0. Purger activement et immédiatement les clés et entrées parasites de galeries Page 1 dans le localStorage
+    const galleryKeysToRemove = [
+      'unifolder_matiere_files_Images',
+      'unifolder_matiere_files_images',
+      'unifolder_matiere_files_Documents',
+      'unifolder_matiere_files_documents',
+      'unifolder_matiere_files_Vidéos',
+      'unifolder_matiere_files_videos',
+      'unifolder_matiere_files_Videos',
+      'unifolder_matiere_files_Musique',
+      'unifolder_matiere_files_musique',
+      'unifolder_matiere_files_Audio',
+      'unifolder_matiere_files_audio'
+    ];
+    galleryKeysToRemove.forEach(k => {
+      try { localStorage.removeItem(k); } catch (e) {}
+    });
+
+    ['unifolder_files_menu_items', 'unifolder_imported_files', 'unifolder_matiere_files'].forEach(k => {
+      try {
+        const raw = localStorage.getItem(k);
+        if (raw) {
+          const parsed = JSON.parse(raw);
+          if (Array.isArray(parsed)) {
+            const cleaned = parsed.filter((item: any) => !isGalleryOrDemoFile(item));
+            if (cleaned.length !== parsed.length) {
+              localStorage.setItem(k, JSON.stringify(cleaned));
+            }
+          }
+        }
+      } catch (e) {}
+    });
+
     const allFilesMap = new Map<string, ImportedItem>();
     let orderCounter = 0;
 
@@ -103,6 +181,8 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
             if (f && f.id) {
               // Ne JAMAIS inclure les fichiers d'étude dans Mes fichiers / Mes dossiers (ils sont totalement indépendants)
               if (f.isLeftMenuImport || f.isStudyImport || f.is_study_session) return;
+              // Ne JAMAIS inclure les éléments de la galerie d'images / Page 1 dans Mes fichiers
+              if (isGalleryOrDemoFile(f)) return;
 
               orderCounter++;
               const existing = allFilesMap.get(f.id);
@@ -135,36 +215,20 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
     addFiles(localStorage.getItem('unifolder_imported_files'));
     addFiles(localStorage.getItem('unifolder_matiere_files'));
 
-    // 4. Charger les fichiers de toutes les matières enregistrées
+    // 4. Charger les fichiers de toutes les matières réelles enregistrées
     try {
       const savedMat = localStorage.getItem('unifolder_saved_matieres');
       if (savedMat) {
         const parsedMat = JSON.parse(savedMat);
         if (Array.isArray(parsedMat)) {
           parsedMat.forEach((m: any) => {
-            if (m && m.name) {
+            if (m && m.name && !['Images', 'Documents', 'Vidéos', 'Videos', 'Musique', 'Audio'].some(ex => ex.toLowerCase() === String(m.name).toLowerCase())) {
               addFiles(localStorage.getItem(`unifolder_matiere_files_${m.name}`), m.name);
             }
           });
         }
       }
     } catch (e) {}
-
-    // 5. Parcourir toutes les clés de matières existantes dans localStorage (en ignorant les catégories internes Page 1 comme Images, Documents, Vidéos, Audio)
-    try {
-      const excludedCategories = ['Images', 'Documents', 'Vidéos', 'Videos', 'Audio', 'Musique', 'Corbeille'];
-      for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith('unifolder_matiere_files_')) {
-          const matName = key.replace('unifolder_matiere_files_', '');
-          if (!excludedCategories.includes(matName) && !matName.startsWith('menu-')) {
-            addFiles(localStorage.getItem(key), matName);
-          }
-        }
-      }
-    } catch (e) {
-      console.error(e);
-    }
 
     return Array.from(allFilesMap.values());
   };

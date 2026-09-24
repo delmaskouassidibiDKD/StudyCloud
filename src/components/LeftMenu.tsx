@@ -7,6 +7,7 @@ import { StudyCloudAPI } from '../services/api';
 import { buildAiStudyKey } from '../services/storageUtils';
 import { storeFileBlob, deleteFileBlob, getFileBlobUrl, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
 import { getGalleryFilesForCategory } from '../data/categoryFilesData';
+import { isGalleryOrDemoFile } from './FilesMenuView';
 
 interface LeftMenuProps {
   isCenterFullscreen: boolean;
@@ -187,7 +188,9 @@ export function LeftMenu({
           filesWithUrls.forEach(f => mergedMap.set(f.id, f));
           localList.forEach(f => {
             if (f && f.id && !mergedMap.has(f.id)) {
-              mergedMap.set(f.id, f);
+              if (!isGalleryOrDemoFile(f)) {
+                mergedMap.set(f.id, f);
+              }
             }
           });
           const merged = Array.from(mergedMap.values());
@@ -827,7 +830,7 @@ export function LeftMenu({
           const parsed = JSON.parse(raw);
           if (Array.isArray(parsed)) {
             parsed.forEach((f: any) => {
-              if (f && f.id && !f.isLeftMenuImport && !f.isStudyImport && !importedIds.includes(f.id)) {
+              if (f && f.id && !f.isLeftMenuImport && !f.isStudyImport && !importedIds.includes(f.id) && !isGalleryOrDemoFile(f)) {
                 directMap.set(f.id, {
                   ...f,
                   matiere: f.matiere || 'Mes fichiers',
