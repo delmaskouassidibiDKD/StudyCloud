@@ -339,9 +339,8 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     return () => window.removeEventListener('unifolder_data_restored', handleDataRestored);
   }, []);
 
-  const notify = (msg: string) => {
-    setActiveNotification(msg);
-    setTimeout(() => setActiveNotification(null), 2000);
+  const notify = (_msg: string) => {
+    // Supprimé selon la demande utilisateur
   };
 
   const handleDeleteMatiere = (index: number) => {
@@ -1376,12 +1375,6 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               </div>
             </div>
           </div>
-        </div>
-      )}
-
-      {activeNotification && (
-        <div className="fixed top-16 right-4 z-50 bg-stone-900 text-white px-3 py-1.5 rounded-xl text-xs font-bold shadow-lg border border-stone-700 animate-fadeIn">
-          {activeNotification}
         </div>
       )}
 

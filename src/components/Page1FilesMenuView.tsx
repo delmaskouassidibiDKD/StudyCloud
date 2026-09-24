@@ -230,9 +230,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   // Sous-page ouverte
   const [currentSubView, setCurrentSubView] = useState<SubMenuView | null>(null);
 
-  const showToast = (msg: string) => {
-    setToastMessage(msg);
-    setTimeout(() => setToastMessage(null), 2500);
+  const showToast = (_msg?: string) => {
+    // Désactivé : aucun message lors des clics sur les boutons
   };
 
   // =========================================================================
@@ -2048,7 +2047,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
               onClick={() => {
                 setSortOption('recent');
                 setIsHeaderMenuOpen(false);
-                showToast("Trié par plus récent");
               }}
               className={`w-full px-3 py-2 flex items-center justify-between text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer text-left ${
                 sortOption === 'recent'
@@ -2069,7 +2067,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
               onClick={() => {
                 setSortOption('oldest');
                 setIsHeaderMenuOpen(false);
-                showToast("Trié par plus ancien");
               }}
               className={`w-full px-3 py-2 flex items-center justify-between text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer text-left ${
                 sortOption === 'oldest'
@@ -2090,7 +2087,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
               onClick={() => {
                 setSortOption('pinned');
                 setIsHeaderMenuOpen(false);
-                showToast("Ceux qui sont épinglés en premier");
               }}
               className={`w-full px-3 py-2 flex items-center justify-between text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer text-left ${
                 sortOption === 'pinned'
@@ -2113,7 +2109,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
               onClick={() => {
                 setIsEyeViewActive(!isEyeViewActive);
                 setIsHeaderMenuOpen(false);
-                showToast(!isEyeViewActive ? "Bouton œil activé" : "Bouton œil désactivé");
               }}
               className={`w-full px-3 py-2 flex items-center justify-between text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer text-left ${
                 isEyeViewActive
@@ -2754,13 +2749,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         multiple
         className="hidden"
       />
-
-      {/* Toast Notification */}
-      {toastMessage && (
-        <div className="fixed top-20 right-6 z-50 bg-blue-600 text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-xl border border-blue-400/30 animate-in fade-in slide-in-from-top-2">
-          {toastMessage}
-        </div>
-      )}
 
       {/* ========================================================================= */}
       {/* SI UN SOUS-MENU EST OUVERT : NAVIGATION & AFFICHAGE                       */}

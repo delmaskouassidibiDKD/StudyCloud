@@ -781,14 +781,6 @@ export const ScheduleMenuView: React.FC<ScheduleMenuViewProps> = ({ onBack }) =>
         </div>
       )}
 
-      {/* Success Toast Notification */}
-      {successMessage && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] bg-[#2D4A3E] text-white px-5 py-3 rounded-2xl shadow-xl border-2 border-white flex items-center gap-2.5 animate-in fade-in slide-in-from-top-4 duration-300">
-          <Check className="w-5 h-5 text-emerald-400" />
-          <span className="text-xs sm:text-sm font-bold">{successMessage}</span>
-        </div>
-      )}
-
       {/* Error Toast Notification */}
       {errorMessage && (
         <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[70] bg-rose-600 text-white px-5 py-3 rounded-2xl shadow-xl border-2 border-white flex items-center gap-2.5 animate-in fade-in slide-in-from-top-4 duration-300">

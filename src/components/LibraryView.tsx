@@ -833,9 +833,8 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
   const [isLoadingMoreProducts, setIsLoadingMoreProducts] = useState(false);
   const infiniteProductsSentinelRef = useRef<HTMLDivElement>(null);
 
-  const triggerToast = (msg: string) => {
-    setToastMsg(msg);
-    setTimeout(() => setToastMsg(null), 3000);
+  const triggerToast = (_msg: string) => {
+    // Supprimé selon demande utilisateur
   };
 
   const handleOrderProduct = async (product: { id: string; title: string }) => {
@@ -2568,14 +2567,6 @@ export const LibraryView: React.FC<LibraryViewProps> = ({
           );
         })()}
       </div>
-
-      {/* Toast Notification Top (Fixed, Green, Top position without bouncing) */}
-      {toastMsg && (
-        <div className="fixed top-2.5 sm:top-3 left-1/2 -translate-x-1/2 z-[300000] bg-emerald-600 text-white font-extrabold text-xs sm:text-sm px-5 py-2.5 rounded-2xl border-2 border-stone-900 shadow-[0_6px_20px_rgba(0,0,0,0.25)] flex items-center gap-2 max-w-[92vw] text-center transition-all animate-fadeIn">
-          <span>🛒</span>
-          <span>{toastMsg}</span>
-        </div>
-      )}
 
       {/* Product Detail Full Screen View */}
       {selectedDetailProduct && (

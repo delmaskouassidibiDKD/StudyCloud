@@ -1259,13 +1259,6 @@ export const MatiereMenuView: React.FC<MatiereMenuViewProps> = ({ matiereName, o
         </div>
       )}
 
-      {successMessage && (
-        <div className="fixed top-20 left-1/2 -translate-x-1/2 z-[99999] bg-[#2D4A3E] text-white text-xs font-bold px-4 py-2.5 rounded-xl shadow-md border border-stone-700 animate-fadeIn flex items-center gap-2">
-          <span>✨</span>
-          <span>{successMessage}</span>
-        </div>
-      )}
-
             {/* Classification Modal */}
       {classifyFileIds && (
         <div className="fixed inset-0 z-50 bg-black/50 backdrop-blur-xs overflow-y-auto p-4 flex items-start sm:items-center justify-center animate-fadeIn">
