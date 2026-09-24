@@ -128,7 +128,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [previousViewMode, setPreviousViewMode] = useState<string>('home');
   const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'storage-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | string>(() => {
     const saved = localStorage.getItem('unifolder_view_mode');
-    return saved || 'home';
+    // Ne pas restaurer 'page1-files-menu' depuis localStorage pour éviter le clignotement
+    if (!saved || saved === 'page1-files-menu') return 'home';
+    return saved;
   });
 
   useEffect(() => {
@@ -979,11 +981,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
       {/* Delmas IA Overlay Modal - Isolé hors du header avec createPortal vers document.body (ne subit aucune déformation ni creux) */}
       {isAssistantOpen && typeof document !== 'undefined' && createPortal(
         <div 
-          className="fixed inset-0 z-[200000] flex items-center justify-center bg-black/75 backdrop-blur-md p-0 sm:p-4 md:p-6 animate-fadeIn"
-          onClick={() => setIsAssistantOpen(false)}
+          className="fixed inset-0 z-[200000] flex items-end sm:items-center justify-center sm:justify-end p-0 sm:p-4 sm:pr-6 pointer-events-none"
         >
           <div 
-            className="w-full h-full sm:max-w-3xl sm:h-[88vh] sm:max-h-[820px] bg-[#16181d] sm:rounded-3xl sm:border sm:border-zinc-700/70 shadow-2xl flex flex-col overflow-hidden relative text-left"
+            className="pointer-events-auto w-full sm:w-[420px] md:w-[480px] h-[85vh] sm:h-[82vh] sm:max-h-[820px] bg-[#16181d]/96 backdrop-blur-xl sm:rounded-3xl rounded-t-3xl border border-zinc-700/70 shadow-2xl flex flex-col overflow-hidden relative text-left"
             onClick={(e) => e.stopPropagation()}
           >
             <DelmasChat 
