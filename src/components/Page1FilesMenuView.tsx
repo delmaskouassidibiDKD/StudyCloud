@@ -18,8 +18,10 @@ import {
   ExternalLink, 
   Share2, 
   ChevronRight, 
-  ChevronLeft,
-  Eye, 
+  Eye,
+  EyeOff,
+  Unlock,
+  KeyRound, 
   Info, 
   Maximize2, 
   Minimize2, 
@@ -154,6 +156,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const selectedAudioIds = selectedItemIds;
   const setSelectedAudioIds = setSelectedItemIds;
   const audioRef = useRef<HTMLAudioElement | null>(null);
+
+  // État de verrouillage du Dossier Sécurisé & code PIN (> 4 caractères)
+  const [isSecureFolderUnlocked, setIsSecureFolderUnlocked] = useState(false);
+  const [securePinInput, setSecurePinInput] = useState('');
+  const [securePinConfirmInput, setSecurePinConfirmInput] = useState('');
+  const [securePinError, setSecurePinError] = useState<string | null>(null);
+  const [showPinPassword, setShowPinPassword] = useState(false);
+  const [isChangePinModalOpen, setIsChangePinModalOpen] = useState(false);
+  const [oldPinInput, setOldPinInput] = useState('');
+  const [newPinInput, setNewPinInput] = useState('');
+  const [newPinConfirmInput, setNewPinConfirmInput] = useState('');
+  const [changePinError, setChangePinError] = useState<string | null>(null);
+  const [changePinSuccess, setChangePinSuccess] = useState<string | null>(null);
 
   // Lecteur Vidéo
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
@@ -1295,35 +1310,139 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
   ]);
 
-  // Transporter les éléments sélectionnés vers le dossier sécurisé
-  const handleSecureSelected = (currentCategoryList: FileItem[]) => {
-    if (selectedItemIds.length === 0) return;
-    const itemsToSecure = currentCategoryList.filter(f => selectedItemIds.includes(f.id));
-    if (itemsToSecure.length === 0) return;
+  const getStoredPin = () => localStorage.getItem('studycloud_secure_folder_pin');
 
-    const securedItems: FileItem[] = itemsToSecure.map(f => ({
+  // Déverrouillage ou définition initiale du code secret du Dossier Sécurisé
+  const handleUnlockSecureFolder = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const stored = getStoredPin();
+
+    if (!stored) {
+      // Première configuration : le code doit être supérieur à 4 caractères
+      const trimmed = securePinInput.trim();
+      if (trimmed.length <= 4) {
+        setSecurePinError("Le code secret doit comporter plus de 4 caractères.");
+        return;
+      }
+      if (trimmed !== securePinConfirmInput.trim()) {
+        setSecurePinError("La confirmation ne correspond pas au code saisi.");
+        return;
+      }
+      localStorage.setItem('studycloud_secure_folder_pin', trimmed);
+      setIsSecureFolderUnlocked(true);
+      setSecurePinInput('');
+      setSecurePinConfirmInput('');
+      setSecurePinError(null);
+    } else {
+      // Code déjà existant : vérification
+      if (securePinInput.trim() === stored.trim()) {
+        setIsSecureFolderUnlocked(true);
+        setSecurePinInput('');
+        setSecurePinError(null);
+      } else {
+        setSecurePinError("Code incorrect. Veuillez réessayer.");
+      }
+    }
+  };
+
+  // Modification du code secret depuis le menu 3 traits
+  const handleChangePin = (e?: React.FormEvent) => {
+    if (e) e.preventDefault();
+    const stored = getStoredPin();
+
+    if (stored && oldPinInput.trim() !== stored.trim()) {
+      setChangePinError("L'ancien code est incorrect.");
+      return;
+    }
+    const newTrimmed = newPinInput.trim();
+    if (newTrimmed.length <= 4) {
+      setChangePinError("Le nouveau code doit comporter plus de 4 caractères.");
+      return;
+    }
+    if (newTrimmed !== newPinConfirmInput.trim()) {
+      setChangePinError("La confirmation ne correspond pas au nouveau code.");
+      return;
+    }
+
+    localStorage.setItem('studycloud_secure_folder_pin', newTrimmed);
+    setChangePinSuccess("Code secret mis à jour avec succès !");
+    setChangePinError(null);
+    setTimeout(() => {
+      setIsChangePinModalOpen(false);
+      setOldPinInput('');
+      setNewPinInput('');
+      setNewPinConfirmInput('');
+      setChangePinSuccess(null);
+    }, 1200);
+  };
+
+  // Verrouiller les éléments sélectionnés vers le dossier sécurisé
+  const handleLockSelected = (currentCategoryList: FileItem[]) => {
+    if (selectedItemIds.length === 0) return;
+    const itemsToLock = currentCategoryList.filter(f => selectedItemIds.includes(f.id));
+    if (itemsToLock.length === 0) return;
+
+    const lockedItems: FileItem[] = itemsToLock.map(f => ({
       ...f,
       isSecure: true,
+      originalCategory: (f as any).originalCategory || f.category,
+      originalSource: (f as any).originalSource || f.source,
       source: 'Dossier Sécurisé'
     }));
 
-    setSecureFolderFiles(prev => [...securedItems, ...prev]);
+    setSecureFolderFiles(prev => [...lockedItems, ...prev]);
 
-    // Retirer des listes actives
+    // Retirer des listes d'origine pour isolation
     setDocumentsList(prev => prev.filter(d => !selectedItemIds.includes(d.id)));
     setImagesList(prev => prev.filter(img => !selectedItemIds.includes(img.id)));
     setVideosList(prev => prev.filter(vid => !selectedItemIds.includes(vid.id)));
     setAudioList(prev => prev.filter(aud => !selectedItemIds.includes(aud.id)));
+    setDownloadedItems(prev => prev.filter(dl => !selectedItemIds.includes(dl.id)));
     setCloudRecentFiles(prev => prev.filter(f => !selectedItemIds.includes(f.id)));
 
     if (splitSelectedFile && selectedItemIds.includes(splitSelectedFile.id)) {
       setSplitSelectedFile(null);
     }
 
-    showToast(`${itemsToSecure.length} élément(s) transporté(s) vers le dossier sécurisé !`);
     setIsSelectionMode(false);
     setSelectedItemIds([]);
   };
+
+  // Déverrouiller les éléments sélectionnés et les renvoyer à leur emplacement d'origine
+  const handleUnlockSelected = () => {
+    if (selectedItemIds.length === 0) return;
+    const itemsToUnlock = secureFolderFiles.filter(f => selectedItemIds.includes(f.id));
+    if (itemsToUnlock.length === 0) return;
+
+    itemsToUnlock.forEach(file => {
+      const origCat = (file as any).originalCategory || file.category;
+      const origSource = (file as any).originalSource || 'StudyCloud';
+      const restored: FileItem = {
+        ...file,
+        isSecure: false,
+        category: origCat,
+        source: origSource
+      };
+
+      if (origCat === 'documents') setDocumentsList(prev => [restored, ...prev]);
+      else if (origCat === 'images') setImagesList(prev => [restored, ...prev]);
+      else if (origCat === 'videos') setVideosList(prev => [restored, ...prev]);
+      else if (origCat === 'audio') setAudioList(prev => [restored, ...prev]);
+      else if (origCat === 'downloads') setDownloadedItems(prev => [restored, ...prev]);
+      else setDocumentsList(prev => [restored, ...prev]);
+    });
+
+    setSecureFolderFiles(prev => prev.filter(f => !selectedItemIds.includes(f.id)));
+
+    if (splitSelectedFile && selectedItemIds.includes(splitSelectedFile.id)) {
+      setSplitSelectedFile(null);
+    }
+
+    setIsSelectionMode(false);
+    setSelectedItemIds([]);
+  };
+
+  const handleSecureSelected = handleLockSelected;
 
   // Téléchargement d'un fichier avec enregistrement dans le menu téléchargement
   const handleDownloadFile = (file: { name: string; size?: string; sizeBytes?: number; category?: any }) => {
@@ -1415,10 +1534,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         showToast(`Fichier "${file.name}" prêt à être déplacé !`);
         break;
 
+      case 'lock_file':
       case 'secure_folder': {
         const securedFile: FileItem = {
           ...file,
           isSecure: true,
+          originalCategory: (file as any).originalCategory || file.category,
+          originalSource: (file as any).originalSource || file.source,
           source: 'Dossier Sécurisé'
         };
         setSecureFolderFiles(prev => [securedFile, ...prev]);
@@ -1428,32 +1550,39 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         setImagesList(prev => prev.filter(img => img.id !== file.id));
         setVideosList(prev => prev.filter(vid => vid.id !== file.id));
         setAudioList(prev => prev.filter(aud => aud.id !== file.id));
+        setDownloadedItems(prev => prev.filter(dl => dl.id !== file.id));
         setCloudRecentFiles(prev => prev.filter(f => f.id !== file.id));
 
         if (splitSelectedFile?.id === file.id) {
           setSplitSelectedFile(null);
         }
-        showToast(`"${file.name}" transporté vers le dossier sécurisé !`);
+        showToast(`"${file.name}" verrouillé dans le dossier sécurisé !`);
         break;
       }
 
+      case 'unlock_file':
       case 'restore_from_secure': {
+        const origCat = (file as any).originalCategory || file.category;
+        const origSource = (file as any).originalSource || 'StudyCloud';
         const restoredFile: FileItem = {
           ...file,
           isSecure: false,
-          source: 'StudyCloud'
+          category: origCat,
+          source: origSource
         };
         setSecureFolderFiles(prev => prev.filter(f => f.id !== file.id));
 
-        if (file.category === 'documents') setDocumentsList(prev => [restoredFile, ...prev]);
-        else if (file.category === 'images') setImagesList(prev => [restoredFile, ...prev]);
-        else if (file.category === 'videos') setVideosList(prev => [restoredFile, ...prev]);
-        else if (file.category === 'audio') setAudioList(prev => [restoredFile, ...prev]);
+        if (origCat === 'documents') setDocumentsList(prev => [restoredFile, ...prev]);
+        else if (origCat === 'images') setImagesList(prev => [restoredFile, ...prev]);
+        else if (origCat === 'videos') setVideosList(prev => [restoredFile, ...prev]);
+        else if (origCat === 'audio') setAudioList(prev => [restoredFile, ...prev]);
+        else if (origCat === 'downloads') setDownloadedItems(prev => [restoredFile, ...prev]);
+        else setDocumentsList(prev => [restoredFile, ...prev]);
 
         if (splitSelectedFile?.id === file.id) {
           setSplitSelectedFile(null);
         }
-        showToast(`"${file.name}" restauré hors du dossier sécurisé !`);
+        showToast(`"${file.name}" déverrouillé !`);
         break;
       }
 
@@ -1756,6 +1885,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       if (id === 'audio') {
         setIsAudioPlaying(false);
       }
+      if (id !== 'secure-folder') {
+        setIsSecureFolderUnlocked(false);
+      }
+      setSecurePinInput('');
+      setSecurePinError(null);
     }
 
     setCurrentSubView({
@@ -2459,16 +2593,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <span>Créer un lien</span>
           </button>
 
-          {/* Transporter vers le dossier sécurisé */}
-          <button
-            type="button"
-            onClick={() => handleSecureSelected(currentCategoryList)}
-            className="px-2.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-            title="Transporter vers le dossier sécurisé"
-          >
-            <Lock className="w-3.5 h-3.5" />
-            <span className="hidden sm:inline">Dossier sécurisé</span>
-          </button>
+          {/* Si dans dossier sécurisé : Déverrouiller / Tout déverrouiller. Sinon : Verrouiller / Tout verrouiller */}
+          {(currentSubView?.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) ? (
+            <button
+              type="button"
+              onClick={handleUnlockSelected}
+              className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+              title={isAllSelected ? "Tout déverrouiller" : "Déverrouiller"}
+            >
+              <Unlock className="w-3.5 h-3.5" />
+              <span>{isAllSelected ? 'Tout déverrouiller' : 'Déverrouiller'}</span>
+            </button>
+          ) : (
+            <button
+              type="button"
+              onClick={() => handleLockSelected(currentCategoryList)}
+              className="px-2.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+              title={isAllSelected ? "Tout verrouiller" : "Verrouiller"}
+            >
+              <Lock className="w-3.5 h-3.5" />
+              <span>{isAllSelected ? 'Tout verrouiller' : 'Verrouiller'}</span>
+            </button>
+          )}
 
           {/* Annuler la sélection */}
           <button
@@ -2579,23 +2725,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <Link className="w-3.5 h-3.5 shrink-0 text-sky-400" />
                 <span>Créer un lien</span>
               </button>
-              {file.isSecure ? (
+              {(file.isSecure || currentSubView?.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) ? (
                 <button
                   type="button"
-                  onClick={() => handleGenericFileAction('restore_from_secure', file, currentCategoryList)}
+                  onClick={() => handleGenericFileAction('unlock_file', file, currentCategoryList)}
                   className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-emerald-400 hover:bg-emerald-500/15 transition-colors cursor-pointer text-left"
+                  title="Déverrouiller le fichier et le renvoyer à son emplacement d'origine"
                 >
-                  <FolderCheck className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
-                  <span>Sortir du dossier sécurisé</span>
+                  <Unlock className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                  <span>Déverrouiller</span>
                 </button>
               ) : (
                 <button
                   type="button"
-                  onClick={() => handleGenericFileAction('secure_folder', file, currentCategoryList)}
+                  onClick={() => handleGenericFileAction('lock_file', file, currentCategoryList)}
                   className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-300 hover:bg-amber-400/15 transition-colors cursor-pointer text-left"
+                  title="Verrouiller ce fichier dans le dossier sécurisé"
                 >
                   <Lock className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-                  <span>Transporter vers le dossier sécurisé</span>
+                  <span>Verrouiller</span>
                 </button>
               )}
               <button
@@ -2777,6 +2925,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {isEyeViewActive && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
             </button>
           </div>
+
+          {/* Option Changer de code pour le dossier sécurisé (Image 2) */}
+          {(currentSubView?.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) && (
+            <div className="py-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsHeaderMenuOpen(false);
+                  setIsChangePinModalOpen(true);
+                  setOldPinInput('');
+                  setNewPinInput('');
+                  setNewPinConfirmInput('');
+                  setChangePinError(null);
+                  setChangePinSuccess(null);
+                }}
+                className="w-full px-3 py-2 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+              >
+                <KeyRound className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                <span>Changer de code</span>
+              </button>
+            </div>
+          )}
         </div>
       </div>
     );
@@ -3703,6 +3873,219 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     );
   };
 
+  // =========================================================================
+  // ÉCRAN DE VERROUILLAGE / CODE PIN DU DOSSIER SÉCURISÉ (Demandé : > 4 caractères)
+  // =========================================================================
+  const renderSecureFolderLockScreen = () => {
+    const hasPin = Boolean(localStorage.getItem('studycloud_secure_folder_pin'));
+
+    return (
+      <div className="w-full max-w-md mx-auto my-12 p-6 sm:p-8 rounded-3xl bg-[#090D16] border border-amber-500/30 shadow-[0_20px_60px_rgba(0,0,0,0.8),0_0_40px_rgba(245,158,11,0.15)] flex flex-col items-center text-center animate-in fade-in zoom-in-95 duration-200">
+        <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-2xl bg-gradient-to-br from-amber-500/25 via-amber-600/15 to-transparent border border-amber-500/40 text-amber-400 flex items-center justify-center mb-5 shadow-[0_0_25px_rgba(245,158,11,0.25)]">
+          <Lock className="w-8 h-8 sm:w-10 sm:h-10 stroke-[2.2]" />
+        </div>
+
+        <h3 className="text-lg sm:text-xl font-black text-white tracking-tight">
+          {hasPin ? "Dossier Sécurisé Verrouillé" : "Définir votre code de sécurité"}
+        </h3>
+
+        <p className="text-xs sm:text-sm text-slate-400 mt-2 max-w-xs">
+          {hasPin 
+            ? "Veuillez saisir votre code secret pour accéder à vos fichiers protégés." 
+            : "Pour sécuriser vos fichiers, définissez un code secret. Le code doit comporter plus de 4 caractères."}
+        </p>
+
+        <form onSubmit={handleUnlockSecureFolder} className="w-full mt-6 space-y-4">
+          <div className="w-full text-left">
+            <label className="text-[11px] font-bold text-slate-300 block mb-1">
+              {hasPin ? "Code secret" : "Nouveau code (supérieur à 4 caractères)"}
+            </label>
+            <div className="relative flex items-center">
+              <input
+                type={showPinPassword ? "text" : "password"}
+                value={securePinInput}
+                onChange={(e) => {
+                  setSecurePinInput(e.target.value);
+                  setSecurePinError(null);
+                }}
+                placeholder={hasPin ? "Entrez votre code..." : "Au moins 5 caractères..."}
+                autoFocus
+                className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-sm tracking-wider"
+              />
+              <button
+                type="button"
+                onClick={() => setShowPinPassword(!showPinPassword)}
+                className="absolute right-3 p-1 text-slate-400 hover:text-white transition-colors cursor-pointer"
+                title={showPinPassword ? "Masquer le code" : "Afficher le code"}
+              >
+                {showPinPassword ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+              </button>
+            </div>
+          </div>
+
+          {!hasPin && (
+            <div className="w-full text-left">
+              <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                Confirmer le code
+              </label>
+              <input
+                type={showPinPassword ? "text" : "password"}
+                value={securePinConfirmInput}
+                onChange={(e) => {
+                  setSecurePinConfirmInput(e.target.value);
+                  setSecurePinError(null);
+                }}
+                placeholder="Retapez le code..."
+                className="w-full px-4 py-3 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-sm tracking-wider"
+              />
+            </div>
+          )}
+
+          {securePinError && (
+            <div className="flex items-center gap-1.5 p-2.5 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold text-left">
+              <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+              <span>{securePinError}</span>
+            </div>
+          )}
+
+          <button
+            type="submit"
+            className="w-full py-3 rounded-xl bg-gradient-to-r from-amber-500 via-amber-600 to-orange-600 hover:from-amber-400 hover:via-amber-500 hover:to-orange-500 text-black font-black text-xs sm:text-sm tracking-wide shadow-[0_4px_20px_rgba(245,158,11,0.4)] transition-all active:scale-95 cursor-pointer flex items-center justify-center gap-2"
+          >
+            <Lock className="w-4 h-4" />
+            <span>{hasPin ? "Déverrouiller le dossier" : "Enregistrer et déverrouiller"}</span>
+          </button>
+        </form>
+      </div>
+    );
+  };
+
+  // =========================================================================
+  // MODAL DE CHANGEMENT DE CODE PIN (Image 2)
+  // =========================================================================
+  const renderChangePinModal = () => {
+    if (!isChangePinModalOpen) return null;
+    const hasPin = Boolean(localStorage.getItem('studycloud_secure_folder_pin'));
+
+    return (
+      <div 
+        className="fixed inset-0 z-[1200] bg-black/80 backdrop-blur-md flex items-center justify-center p-4 animate-in fade-in duration-200"
+        onClick={() => setIsChangePinModalOpen(false)}
+      >
+        <div 
+          className="w-full max-w-md bg-[#090D16] border border-amber-500/40 rounded-3xl p-6 sm:p-7 shadow-2xl flex flex-col text-left text-white"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* En-tête */}
+          <div className="flex items-center justify-between pb-3 border-b border-white/10">
+            <div className="flex items-center gap-2.5">
+              <div className="p-2 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40">
+                <KeyRound className="w-5 h-5 stroke-[2.2]" />
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base font-black text-white">Changer de code</h3>
+                <p className="text-[10px] text-slate-400 font-semibold">Dossier Sécurisé StudyCloud</p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsChangePinModalOpen(false)}
+              className="p-1.5 rounded-full hover:bg-white/10 text-slate-400 hover:text-white transition-colors cursor-pointer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          <form onSubmit={handleChangePin} className="mt-4 space-y-3.5">
+            {hasPin && (
+              <div>
+                <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                  Ancien code
+                </label>
+                <input
+                  type="password"
+                  value={oldPinInput}
+                  onChange={(e) => {
+                    setOldPinInput(e.target.value);
+                    setChangePinError(null);
+                  }}
+                  placeholder="Entrez votre code actuel..."
+                  autoFocus
+                  className="w-full px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-xs sm:text-sm"
+                />
+              </div>
+            )}
+
+            <div>
+              <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                Nouveau code (supérieur à 4 caractères)
+              </label>
+              <input
+                type="password"
+                value={newPinInput}
+                onChange={(e) => {
+                  setNewPinInput(e.target.value);
+                  setChangePinError(null);
+                }}
+                placeholder="Au moins 5 caractères..."
+                className="w-full px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-xs sm:text-sm"
+              />
+              <p className="text-[10px] text-slate-400 mt-1">
+                Le code doit comporter plus de 4 caractères (ex. 5 chiffres, lettres ou symboles).
+              </p>
+            </div>
+
+            <div>
+              <label className="text-[11px] font-bold text-slate-300 block mb-1">
+                Confirmer le nouveau code
+              </label>
+              <input
+                type="password"
+                value={newPinConfirmInput}
+                onChange={(e) => {
+                  setNewPinConfirmInput(e.target.value);
+                  setChangePinError(null);
+                }}
+                placeholder="Retapez le nouveau code..."
+                className="w-full px-3.5 py-2.5 rounded-xl bg-black/60 border border-white/15 text-white placeholder:text-slate-500 focus:outline-none focus:border-amber-400 focus:ring-2 focus:ring-amber-400/30 text-xs sm:text-sm"
+              />
+            </div>
+
+            {changePinError && (
+              <div className="flex items-center gap-1.5 p-2 rounded-xl bg-rose-500/15 border border-rose-500/30 text-rose-300 text-xs font-semibold">
+                <AlertCircle className="w-4 h-4 shrink-0 text-rose-400" />
+                <span>{changePinError}</span>
+              </div>
+            )}
+
+            {changePinSuccess && (
+              <div className="flex items-center gap-1.5 p-2 rounded-xl bg-emerald-500/15 border border-emerald-500/30 text-emerald-300 text-xs font-semibold">
+                <Check className="w-4 h-4 shrink-0 text-emerald-400" />
+                <span>{changePinSuccess}</span>
+              </div>
+            )}
+
+            <div className="pt-2 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setIsChangePinModalOpen(false)}
+                className="px-4 py-2 rounded-xl bg-white/10 hover:bg-white/15 text-slate-300 font-bold text-xs transition-colors cursor-pointer"
+              >
+                Annuler
+              </button>
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-400 hover:to-orange-400 text-black font-black text-xs shadow-md transition-all active:scale-95 cursor-pointer"
+              >
+                Enregistrer le nouveau code
+              </button>
+            </div>
+          </form>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={`transition-colors duration-300 bg-[#F4F6F8] dark:bg-[#0C111D] text-stone-900 dark:text-slate-100 flex flex-col overflow-y-auto selection:bg-blue-600 selection:text-white ${
       isFullscreen
@@ -3739,6 +4122,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     setCurrentSubView(null);
                     setSubSearchQuery('');
                     setSplitSelectedFile(null);
+                    setIsSecureFolderUnlocked(false);
+                    setSecurePinInput('');
+                    setSecurePinError(null);
                   }}
                   className="flex items-center gap-1.5 px-3 sm:px-3.5 py-1.5 rounded-full bg-[#04060A] hover:bg-[#121826] text-white border border-white/10 transition-all cursor-pointer active:scale-95 shadow-sm font-bold text-xs"
                   title="Retour au gestionnaire de fichiers"
@@ -3874,6 +4260,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     onClick={() => {
                       setCloudActiveTab('classeur');
                       setSplitSelectedFile(null);
+                      setIsSecureFolderUnlocked(false);
+                      setSecurePinInput('');
+                      setSecurePinError(null);
                     }}
                     className={`shrink-0 flex items-center gap-2.5 px-4 sm:px-5 py-2.5 rounded-2xl bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] hover:from-[#D15C1B] hover:via-[#C55010] hover:to-[#AC430A] text-white border border-orange-500/40 transition-all duration-200 cursor-pointer active:scale-95 shadow-md ${
                       cloudActiveTab === 'classeur'
@@ -3901,6 +4290,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         onClick={() => {
                           setCloudActiveTab(item.id);
                           setSplitSelectedFile(null);
+                          if (item.id !== 'secure-folder') {
+                            setIsSecureFolderUnlocked(false);
+                          }
+                          setSecurePinInput('');
+                          setSecurePinError(null);
                         }}
                         className={`shrink-0 flex items-center gap-2.5 px-3.5 sm:px-4 py-2 sm:py-2.5 rounded-2xl transition-all duration-200 cursor-pointer select-none active:scale-95 border ${
                           isSelected
@@ -4520,45 +4914,34 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* 7. DOSSIER SÉCURISÉ (COLLECTION) */}
               {(currentSubView.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) && (
                 <div className="space-y-4">
-                  {/* En-tête sécurisé */}
-                  <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-blue-500/10 to-transparent border border-amber-500/30 flex items-center justify-between gap-3 shadow-md">
-                    <div className="flex items-center gap-3">
-                      <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 shrink-0">
-                        <Lock className="w-6 h-6 stroke-[2.2]" />
-                      </div>
-                      <div>
-                        <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white">
-                          Dossier Sécurisé StudyCloud
-                        </h2>
-                        <p className="text-xs text-stone-500 dark:text-slate-400">
-                          {filteredSecureFiles.length} fichier{filteredSecureFiles.length > 1 ? 's' : ''} protégé{filteredSecureFiles.length > 1 ? 's' : ''} par coffre-fort crypté.
-                        </p>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Bandeau d'action de sélection multiple si activé */}
-                  {renderSelectionBanner(filteredSecureFiles)}
-
-                  {filteredSecureFiles.length === 0 ? (
-                    <div className="py-16 text-center text-stone-500 dark:text-slate-400">
-                      <Lock className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
-                      <p className="text-sm font-semibold">Le dossier sécurisé est vide</p>
-                      <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                        Pour sécuriser un fichier, ouvrez le menu 3 traits sur un document, une photo, une vidéo ou une musique et choisissez "Transporter vers le dossier sécurisé".
-                      </p>
-                    </div>
+                  {!isSecureFolderUnlocked ? (
+                    renderSecureFolderLockScreen()
                   ) : (
-                    <div className={`grid gap-2.5 sm:gap-3.5 ${
-                      splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                    }`}>
-                      {filteredSecureFiles.map((file, idx) => {
-                        if (file.category === 'images') return renderImageCard(file, idx);
-                        if (file.category === 'videos') return renderVideoCard(file, idx);
-                        if (file.category === 'audio') return renderAudioItem(file, false);
-                        return renderDocumentCard(file);
-                      })}
-                    </div>
+                    <>
+                      {/* Bandeau d'action de sélection multiple si activé */}
+                      {renderSelectionBanner(filteredSecureFiles)}
+
+                      {filteredSecureFiles.length === 0 ? (
+                        <div className="py-20 text-center text-stone-500 dark:text-slate-400">
+                          <Lock className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
+                          <p className="text-sm font-semibold">Le dossier sécurisé est vide</p>
+                          <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
+                            Pour sécuriser un fichier, utilisez l'option « Verrouiller » dans le menu à 3 traits d'une photo, vidéo, musique ou document.
+                          </p>
+                        </div>
+                      ) : (
+                        <div className={`grid gap-2.5 sm:gap-3.5 ${
+                          splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                        }`}>
+                          {filteredSecureFiles.map((file, idx) => {
+                            if (file.category === 'images') return renderImageCard(file, idx);
+                            if (file.category === 'videos') return renderVideoCard(file, idx);
+                            if (file.category === 'audio') return renderAudioItem(file, false);
+                            return renderDocumentCard(file);
+                          })}
+                        </div>
+                      )}
+                    </>
                   )}
                 </div>
               )}
@@ -5651,12 +6034,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             </button>
                             <button
                               onClick={() => {
-                                handleGenericFileAction('secure_folder', file, cloudRecentFiles);
+                                handleGenericFileAction('lock_file', file, cloudRecentFiles);
                                 setMenuOpenId(null);
                               }}
                               className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-amber-300 transition-colors"
                             >
-                              <Lock className="w-3.5 h-3.5 text-amber-400" /> Dossier sécurisé
+                              <Lock className="w-3.5 h-3.5 text-amber-400" /> Verrouiller
                             </button>
                           </div>
                         )}
@@ -5768,6 +6151,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           </div>
         </>
       )}
+
+      {/* Modal de changement de code PIN (Image 2) */}
+      {renderChangePinModal()}
 
     </div>
   );
