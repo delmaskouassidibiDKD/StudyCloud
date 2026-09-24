@@ -2404,7 +2404,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isChecked = selectedItemIds.includes(img.id);
 
     // Déterminer alignement du menu (inverser si carte sur la droite pour ne pas déborder de l'écran)
-    const isRightCol = typeof index === 'number' && ((index + 1) % (splitSelectedFile ? 2 : 3) === 0);
+    const isRightCol = typeof index === 'number' && ((index + 1) % (splitSelectedFile ? 3 : 5) === 0 || (index + 1) % (splitSelectedFile ? 3 : 6) === 0);
     const menuAlign: 'left' | 'right' = isRightCol ? 'right' : 'left';
 
     return (
@@ -2495,7 +2495,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isChecked = selectedItemIds.includes(vid.id);
 
     // Déterminer alignement du menu
-    const isRightCol = typeof index === 'number' && ((index + 1) % (splitSelectedFile ? 2 : 3) === 0);
+    const isRightCol = typeof index === 'number' && ((index + 1) % (splitSelectedFile ? 3 : 5) === 0 || (index + 1) % (splitSelectedFile ? 3 : 6) === 0);
     const menuAlign: 'left' | 'right' = isRightCol ? 'right' : 'left';
 
     return (
@@ -2593,7 +2593,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isChecked = selectedItemIds.includes(aud.id);
 
     // Déterminer alignement du menu
-    const isRightCol = typeof index === 'number' && ((index + 1) % (splitSelectedFile ? 2 : 3) === 0);
+    const isRightCol = typeof index === 'number' && ((index + 1) % (splitSelectedFile ? 3 : 5) === 0 || (index + 1) % (splitSelectedFile ? 3 : 6) === 0);
     const menuAlign: 'left' | 'right' = isRightCol ? 'right' : 'left';
 
     return (
@@ -3027,7 +3027,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 : (currentSubView.id === 'studycloud-category-audio' || splitSelectedFile?.category === 'audio')
                   ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
                   : splitSelectedFile 
-                    ? 'w-full md:w-1/2 lg:w-1/2 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
+                    ? 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
             }`}>
 
@@ -3044,9 +3044,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {/* Bandeau d'action de sélection multiple si activé */}
                   {renderSelectionBanner(filteredDocuments)}
 
-                  {/* Grille : s'adapte en 2 colonnes en mode divisé ou 5-6 en pleine largeur */}
+                  {/* Grille : conserve sa taille compacte même en mode divisé */}
                   <div className={`grid gap-2.5 sm:gap-3.5 ${
-                    splitSelectedFile ? 'grid-cols-2 lg:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
                     {filteredDocuments.map(doc => renderDocumentCard(doc))}
                   </div>
@@ -3066,7 +3066,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {renderSelectionBanner(filteredImages)}
 
                   <div className={`grid gap-2 sm:gap-3 ${
-                    splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
                     {filteredImages.map((img, idx) => renderImageCard(img, idx))}
                   </div>
@@ -3086,7 +3086,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {renderSelectionBanner(filteredVideos)}
 
                   <div className={`grid gap-2 sm:gap-3 ${
-                    splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                    splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                   }`}>
                     {filteredVideos.map((vid, idx) => renderVideoCard(vid, idx))}
                   </div>
@@ -3327,7 +3327,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             </h3>
                           </div>
                           <div className={`grid gap-2.5 sm:gap-3.5 ${
-                            splitSelectedFile ? 'grid-cols-2 lg:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                            splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                           }`}>
                             {downloadDocs.map(doc => renderDocumentCard(doc))}
                           </div>
@@ -3344,7 +3344,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             </h3>
                           </div>
                           <div className={`grid gap-2 sm:gap-3 ${
-                            splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                            splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                           }`}>
                             {downloadImages.map((img, idx) => renderImageCard(img, idx))}
                           </div>
@@ -3361,7 +3361,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             </h3>
                           </div>
                           <div className={`grid gap-2 sm:gap-3 ${
-                            splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                            splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                           }`}>
                             {downloadVideos.map((vid, idx) => renderVideoCard(vid, idx))}
                           </div>
@@ -3378,7 +3378,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             </h3>
                           </div>
                           <div className={`grid gap-2 sm:gap-3 ${
-                            splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                            splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                           }`}>
                             {downloadAudio.map((aud, idx) => renderAudioSquareCard(aud, idx))}
                           </div>
@@ -3451,7 +3451,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   ) : (
                     <div className={`grid gap-2.5 sm:gap-3.5 ${
-                      splitSelectedFile ? 'grid-cols-2 lg:grid-cols-2' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                      splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                     }`}>
                       {filteredSecureFiles.map((file, idx) => {
                         if (file.category === 'images') return renderImageCard(file, idx);
@@ -3476,7 +3476,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
                   : (currentSubView.id === 'studycloud-category-audio' || splitSelectedFile?.category === 'audio')
                     ? `${isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'} md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10`
-                    : 'w-full md:w-1/2 lg:w-1/2 xl:w-7/12 min-h-[500px] border-t md:border-t-0 md:border-l border-white/10'
+                    : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[500px] border-t md:border-t-0 md:border-l border-white/10'
               }`}>
                 
                 {/* BARRE SUPÉRIEURE DE BOUTONS DU LECTEUR GRAND FORMAT (Images 2 et 3) */}
