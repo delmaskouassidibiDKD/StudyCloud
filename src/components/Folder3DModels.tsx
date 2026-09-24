@@ -2,6 +2,57 @@ import React from 'react';
 import { Check, ArrowRight, Sparkles, ChevronDown } from 'lucide-react';
 
 // ============================================================================
+// UTILITAIRES DE DATE DYNAMIQUE & GESTION DES COULEURS
+// ============================================================================
+
+// Obtenir la vraie date du jour dynamique avec jour, mois, année et heure
+export const getDynamicCurrentDate = () => {
+  const now = new Date();
+  const day = now.getDate();
+  const monthsShort = ['Jan', 'Fév', 'Mar', 'Avr', 'Mai', 'Juin', 'Juil', 'Août', 'Sep', 'Oct', 'Nov', 'Déc'];
+  const monthsUpper = ['JAN', 'FEB', 'MAR', 'APR', 'MAY', 'JUN', 'JUL', 'AUG', 'SEP', 'OCT', 'NOV', 'DEC'];
+  const month = monthsShort[now.getMonth()];
+  const monthUpper = monthsUpper[now.getMonth()];
+  const year = now.getFullYear();
+  const hours = String(now.getHours()).padStart(2, '0');
+  const minutes = String(now.getMinutes()).padStart(2, '0');
+
+  return {
+    day,
+    month,
+    year,
+    time: `${hours}:${minutes}`,
+    // Formats adaptés pour chaque modèle
+    model1: `${monthUpper} ${day}, ${year}`,
+    model2: `${day} ${monthUpper} ${year} • ${hours}:${minutes}`,
+    model3: `${day} ${month} ${year} at ${hours}:${minutes}`,
+    model4: `${day} ${month} ${year} • ${hours}:${minutes}`,
+    full: `${day} ${month} ${year} à ${hours}:${minutes}`
+  };
+};
+
+// Éclaircit une couleur hexadécimale pour la couche secondaire du Modèle 2
+export const lightenColor = (hex: string, factor: number = 0.45): string => {
+  try {
+    let cleanHex = hex.replace('#', '');
+    if (cleanHex.length === 3) {
+      cleanHex = cleanHex.split('').map(c => c + c).join('');
+    }
+    const r = parseInt(cleanHex.substring(0, 2), 16);
+    const g = parseInt(cleanHex.substring(2, 4), 16);
+    const b = parseInt(cleanHex.substring(4, 6), 16);
+    
+    const newR = Math.min(255, Math.round(r + (255 - r) * factor));
+    const newG = Math.min(255, Math.round(g + (255 - g) * factor));
+    const newB = Math.min(255, Math.round(b + (255 - b) * factor));
+    
+    return `#${newR.toString(16).padStart(2, '0')}${newG.toString(16).padStart(2, '0')}${newB.toString(16).padStart(2, '0')}`;
+  } catch {
+    return hex;
+  }
+};
+
+// ============================================================================
 // DONNÉES DES 4 MODÈLES (1, 2, 3, 4) CONFORMES AUX IMAGES FOURNIES
 // ============================================================================
 
@@ -11,7 +62,6 @@ export interface FolderModelItem {
   title: string;
   subtitle?: string;
   badge?: string;
-  hex?: string;
   primaryColor: string;
   secondaryColor?: string;
   iconType?: string;
@@ -20,18 +70,18 @@ export interface FolderModelItem {
 
 // MODÈLE 1 : Onglets Index Pastel (Image 1 - 12 dossiers)
 export const MODEL_1_FOLDERS: FolderModelItem[] = [
-  { id: 'm1-1', model: 1, title: 'Daily Notes', subtitle: 'APR 8, 2025', primaryColor: '#E76239', textDark: false },
-  { id: 'm1-2', model: 1, title: 'Journal', subtitle: 'JAN 14, 2023', primaryColor: '#3E9B66', textDark: false },
-  { id: 'm1-3', model: 1, title: 'Milestones', subtitle: 'DEC 12, 2024', primaryColor: '#BE9EB3', textDark: true },
-  { id: 'm1-4', model: 1, title: 'Music', subtitle: 'FEB 18, 2025', primaryColor: '#E8B84B', textDark: true },
-  { id: 'm1-5', model: 1, title: 'Wellness Tracker', subtitle: 'JUN 22, 2024', primaryColor: '#E88C50', textDark: false },
-  { id: 'm1-6', model: 1, title: 'Client Notes', subtitle: 'APR 7, 2023', primaryColor: '#CEE3EB', textDark: true },
-  { id: 'm1-7', model: 1, title: 'Courses', subtitle: 'MAR 21, 2025', primaryColor: '#479AA6', textDark: false },
-  { id: 'm1-8', model: 1, title: 'Art Ideas', subtitle: 'JUL 19, 2024', primaryColor: '#D7CFE3', textDark: true },
-  { id: 'm1-9', model: 1, title: 'Content Planning', subtitle: 'SEP 2, 2023', primaryColor: '#F5CAA0', textDark: true },
-  { id: 'm1-10', model: 1, title: 'Portfolio', subtitle: 'NOV 23, 2023', primaryColor: '#E6B7B3', textDark: true },
-  { id: 'm1-11', model: 1, title: 'Books', subtitle: 'AUG 19, 2025', primaryColor: '#B5872A', textDark: false },
-  { id: 'm1-12', model: 1, title: 'Trip Itinerary', subtitle: 'FEB 14, 2024', primaryColor: '#D7E6C5', textDark: true },
+  { id: 'm1-1', model: 1, title: 'Daily Notes', primaryColor: '#E76239', textDark: false },
+  { id: 'm1-2', model: 1, title: 'Journal', primaryColor: '#3E9B66', textDark: false },
+  { id: 'm1-3', model: 1, title: 'Milestones', primaryColor: '#BE9EB3', textDark: true },
+  { id: 'm1-4', model: 1, title: 'Music', primaryColor: '#E8B84B', textDark: true },
+  { id: 'm1-5', model: 1, title: 'Wellness Tracker', primaryColor: '#E88C50', textDark: false },
+  { id: 'm1-6', model: 1, title: 'Client Notes', primaryColor: '#CEE3EB', textDark: true },
+  { id: 'm1-7', model: 1, title: 'Courses', primaryColor: '#479AA6', textDark: false },
+  { id: 'm1-8', model: 1, title: 'Art Ideas', primaryColor: '#D7CFE3', textDark: true },
+  { id: 'm1-9', model: 1, title: 'Content Planning', primaryColor: '#F5CAA0', textDark: true },
+  { id: 'm1-10', model: 1, title: 'Portfolio', primaryColor: '#E6B7B3', textDark: true },
+  { id: 'm1-11', model: 1, title: 'Books', primaryColor: '#B5872A', textDark: false },
+  { id: 'm1-12', model: 1, title: 'Trip Itinerary', primaryColor: '#D7E6C5', textDark: true },
 ];
 
 // MODÈLE 2 : Bicolore Écolier & Badges (Image 2 - 6 dossiers)
@@ -46,26 +96,26 @@ export const MODEL_2_FOLDERS: FolderModelItem[] = [
 
 // MODÈLE 3 : Luminous Glow Néon 3D (Image 3 - 8 dossiers)
 export const MODEL_3_FOLDERS: FolderModelItem[] = [
-  { id: 'm3-1', model: 3, title: 'Advanced Experim...al Physics', subtitle: '16 Jan 2026 at 4:33 AM', primaryColor: '#18B2DC', iconType: 'chart', textDark: false },
-  { id: 'm3-2', model: 3, title: 'Atomic & Molecular Spectrum', subtitle: '16 Jan 2026 at 4:31 AM', primaryColor: '#FFC400', iconType: 'atom', textDark: true },
-  { id: 'm3-3', model: 3, title: 'History & Civilizati...di Arabia', subtitle: '16 Jan 2026 at 4:38 AM', primaryColor: '#7E57C2', iconType: 'moon', textDark: false },
-  { id: 'm3-4', model: 3, title: 'Oral Skills For Scientific English', subtitle: '16 Jan 2026 at 4:36 AM', primaryColor: '#9575CD', iconType: 'book', textDark: false },
-  { id: 'm3-5', model: 3, title: 'Quantum Physics', subtitle: '16 Jan 2026 at 4:34 AM', primaryColor: '#374151', iconType: 'quantum', textDark: false },
-  { id: 'm3-6', model: 3, title: 'Solid State Physics 1', subtitle: '16 Jan 2026 at 4:35 AM', primaryColor: '#00C88C', iconType: 'flask', textDark: false },
-  { id: 'm3-7', model: 3, title: 'Thermodynamics', subtitle: '16 Jan 2026 at 4:32 AM', primaryColor: '#FF6D00', iconType: 'gear', textDark: false },
-  { id: 'm3-8', model: 3, title: 'Z.Lvl5', subtitle: '16 Jan 2026 at 4:38 AM', primaryColor: '#788292', iconType: 'orbital', textDark: false },
+  { id: 'm3-1', model: 3, title: 'Advanced Experim...al Physics', primaryColor: '#18B2DC', iconType: 'chart', textDark: false },
+  { id: 'm3-2', model: 3, title: 'Atomic & Molecular Spectrum', primaryColor: '#FFC400', iconType: 'atom', textDark: true },
+  { id: 'm3-3', model: 3, title: 'History & Civilizati...di Arabia', primaryColor: '#7E57C2', iconType: 'moon', textDark: false },
+  { id: 'm3-4', model: 3, title: 'Oral Skills For Scientific English', primaryColor: '#9575CD', iconType: 'book', textDark: false },
+  { id: 'm3-5', model: 3, title: 'Quantum Physics', primaryColor: '#374151', iconType: 'quantum', textDark: false },
+  { id: 'm3-6', model: 3, title: 'Solid State Physics 1', primaryColor: '#00C88C', iconType: 'flask', textDark: false },
+  { id: 'm3-7', model: 3, title: 'Thermodynamics', primaryColor: '#FF6D00', iconType: 'gear', textDark: false },
+  { id: 'm3-8', model: 3, title: 'Z.Lvl5', primaryColor: '#788292', iconType: 'orbital', textDark: false },
 ];
 
-// MODÈLE 4 : Nuancier Designer & Hex Codes (Image 4 - 8 dossiers)
+// MODÈLE 4 : Nuancier Designer, Typographie Serif & Date (Image 4 - 8 dossiers)
 export const MODEL_4_FOLDERS: FolderModelItem[] = [
-  { id: 'm4-1', model: 4, title: 'Mauve', hex: '#63555F', primaryColor: '#63555F', textDark: false },
-  { id: 'm4-2', model: 4, title: 'Plum', hex: '#7D6575', primaryColor: '#7D6575', textDark: false },
-  { id: 'm4-3', model: 4, title: 'Lavender', hex: '#D0C4F6', primaryColor: '#D0C4F6', textDark: true },
-  { id: 'm4-4', model: 4, title: 'Clay', hex: '#786F64', primaryColor: '#786F64', textDark: false },
-  { id: 'm4-5', model: 4, title: 'Taupe', hex: '#A19182', primaryColor: '#A19182', textDark: false },
-  { id: 'm4-6', model: 4, title: 'Oatmeal', hex: '#FFFFE3', primaryColor: '#FFFFE3', textDark: true },
-  { id: 'm4-7', model: 4, title: 'Midnight', hex: '#293B49', primaryColor: '#293B49', textDark: false },
-  { id: 'm4-8', model: 4, title: 'Sky', hex: '#8DC9F6', primaryColor: '#8DC9F6', textDark: true },
+  { id: 'm4-1', model: 4, title: 'Mauve', primaryColor: '#63555F', textDark: false },
+  { id: 'm4-2', model: 4, title: 'Plum', primaryColor: '#7D6575', textDark: false },
+  { id: 'm4-3', model: 4, title: 'Lavender', primaryColor: '#D0C4F6', textDark: true },
+  { id: 'm4-4', model: 4, title: 'Clay', primaryColor: '#786F64', textDark: false },
+  { id: 'm4-5', model: 4, title: 'Taupe', primaryColor: '#A19182', textDark: false },
+  { id: 'm4-6', model: 4, title: 'Oatmeal', primaryColor: '#FFFFE3', textDark: true },
+  { id: 'm4-7', model: 4, title: 'Midnight', primaryColor: '#293B49', textDark: false },
+  { id: 'm4-8', model: 4, title: 'Sky', primaryColor: '#8DC9F6', textDark: true },
 ];
 
 // ============================================================================
@@ -74,9 +124,11 @@ export const MODEL_4_FOLDERS: FolderModelItem[] = [
 export const FolderModel1SVG: React.FC<{
   item: FolderModelItem;
   isSelected?: boolean;
-}> = ({ item, isSelected }) => {
+  dateText?: string;
+}> = ({ item, isSelected, dateText }) => {
   const bg = item.primaryColor;
   const safeId = `m1-${item.id}-${bg.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const displayDate = dateText || item.subtitle || getDynamicCurrentDate().model1;
 
   return (
     <div className="relative w-full aspect-[220/150] select-none transition-transform duration-300 group-hover:-translate-y-1.5 group-hover:scale-[1.02]">
@@ -208,7 +260,7 @@ export const FolderModel1SVG: React.FC<{
           fontFamily="system-ui, -apple-system, sans-serif"
           letterSpacing="0.08em"
         >
-          {item.subtitle}
+          {displayDate}
         </text>
 
         {/* Flèche droite → en bas à droite */}
@@ -226,17 +278,19 @@ export const FolderModel1SVG: React.FC<{
 };
 
 // ============================================================================
-// COMPOSANT 3D : MODÈLE 2 (Bicolore Écolier, Rabat courbé & Badge étiquette)
+// COMPOSANT 3D : MODÈLE 2 (Bicolore Écolier, Rabat courbé, Date & Badge étiquette)
 // ============================================================================
 export const FolderModel2SVG: React.FC<{
   item: FolderModelItem;
   isSelected?: boolean;
-}> = ({ item, isSelected }) => {
+  dateText?: string;
+}> = ({ item, isSelected, dateText }) => {
   const backBg = item.primaryColor;
   const frontBg = item.secondaryColor || '#FFFFFF';
   const label = item.badge || item.title.toUpperCase();
   const safeId = `m2-${item.id}-${backBg.replace(/[^a-zA-Z0-9]/g, '')}`;
   const badgeWidth = Math.max(90, Math.min(190, label.length * 7.5 + 24));
+  const displayDate = dateText || item.subtitle || getDynamicCurrentDate().model2;
 
   return (
     <div className="relative w-full aspect-[220/154] select-none transition-transform duration-300 group-hover:-translate-y-1.5 group-hover:scale-[1.02]">
@@ -265,14 +319,14 @@ export const FolderModel2SVG: React.FC<{
           </linearGradient>
         </defs>
 
-        {/* 1. Couche Arrière avec onglet arrondi à droite */}
+        {/* 1. Couche Arrière avec onglet supérieur droit étendu */}
         <path
           d="M 12 18 
-             L 115 18 
-             Q 122 18 127 12 
-             L 132 4 
-             Q 136 0 144 0 
-             L 208 0 
+             L 112 18 
+             Q 120 18 125 12 
+             L 130 4 
+             Q 134 0 142 0 
+             L 210 0 
              Q 218 0 218 10 
              L 218 142 
              Q 218 152 208 152 
@@ -285,6 +339,28 @@ export const FolderModel2SVG: React.FC<{
           strokeWidth="2.4"
           strokeLinejoin="round"
         />
+
+        {/* Date dans l'onglet arrière supérieur droit (exactement où l'utilisateur a tracé le rouge sur image 2) */}
+        <rect
+          x="134"
+          y="3"
+          width="76"
+          height="13.5"
+          rx="3.5"
+          fill="rgba(0,0,0,0.13)"
+        />
+        <text
+          x="172"
+          y="12.5"
+          fill="#1E1E24"
+          fontSize="7.4"
+          fontWeight="900"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          letterSpacing="0.02em"
+          textAnchor="middle"
+        >
+          {displayDate}
+        </text>
 
         {/* 2. Ombre portée sous le rabat avant sur la feuille arrière */}
         <path
@@ -398,11 +474,13 @@ export const FolderModel2SVG: React.FC<{
 export const FolderModel3SVG: React.FC<{
   item: FolderModelItem;
   isSelected?: boolean;
-}> = ({ item, isSelected }) => {
+  dateText?: string;
+}> = ({ item, isSelected, dateText }) => {
   const color = item.primaryColor;
   const safeId = `m3-${item.id}-${color.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const displayDate = dateText || item.subtitle || getDynamicCurrentDate().model3;
 
-  // Rendu vectoriel ultra précis des icônes de l'image 3
+  // Rendu vectoriel précis des icônes scientifiques de l'image 3 (toujours éclatant)
   const renderSubjectIcon = () => {
     const strokeColor = item.textDark ? '#1F2937' : '#FFFFFF';
     const fillColor = item.textDark ? '#1F2937' : '#FFFFFF';
@@ -580,26 +658,25 @@ export const FolderModel3SVG: React.FC<{
           </span>
           <ChevronDown className="w-3.5 h-3.5 text-blue-400 shrink-0 opacity-70 group-hover:opacity-100" />
         </div>
-        {item.subtitle && (
-          <p className="text-[10px] text-slate-400 font-medium mt-0.5">
-            {item.subtitle}
-          </p>
-        )}
+        <p className="text-[10px] text-slate-400 font-medium mt-0.5">
+          {displayDate}
+        </p>
       </div>
     </div>
   );
 };
 
 // ============================================================================
-// COMPOSANT 3D : MODÈLE 4 (Nuancier Designer, Hex Code & Typographie Serif)
+// COMPOSANT 3D : MODÈLE 4 (Nuancier Designer, Typographie Serif & Date)
 // ============================================================================
 export const FolderModel4SVG: React.FC<{
   item: FolderModelItem;
   isSelected?: boolean;
-}> = ({ item, isSelected }) => {
+  dateText?: string;
+}> = ({ item, isSelected, dateText }) => {
   const color = item.primaryColor;
-  const hex = item.hex || color.toUpperCase();
   const safeId = `m4-${item.id}-${color.replace(/[^a-zA-Z0-9]/g, '')}`;
+  const displayDate = dateText || item.subtitle || getDynamicCurrentDate().model4;
 
   return (
     <div className="relative w-full aspect-[220/150] select-none transition-transform duration-300 group-hover:-translate-y-1.5 group-hover:scale-[1.02]">
@@ -627,10 +704,10 @@ export const FolderModel4SVG: React.FC<{
         {/* Découpe 3D du nuancier avec onglet en haut à gauche */}
         <path
           d="M 10 0 
-             L 76 0 
-             Q 84 0 89 5 
-             L 102 20 
-             Q 107 24 116 24 
+             L 88 0 
+             Q 96 0 101 5 
+             L 112 20 
+             Q 117 24 126 24 
              L 212 24 
              Q 220 24 220 32 
              L 220 142 
@@ -645,10 +722,10 @@ export const FolderModel4SVG: React.FC<{
         {/* Texture satinée de papier haut de gamme */}
         <path
           d="M 10 0 
-             L 76 0 
-             Q 84 0 89 5 
-             L 102 20 
-             Q 107 24 116 24 
+             L 88 0 
+             Q 96 0 101 5 
+             L 112 20 
+             Q 117 24 126 24 
              L 212 24 
              Q 220 24 220 32 
              L 220 142 
@@ -663,10 +740,10 @@ export const FolderModel4SVG: React.FC<{
         {/* Ligne de biseau lumineuse en bordure supérieure & gauche */}
         <path
           d="M 10 1 
-             L 76 1 
-             Q 84 1 88 5 
-             L 101 21 
-             Q 106 25 115 25 
+             L 88 1 
+             Q 96 1 100 5 
+             L 111 21 
+             Q 116 25 125 25 
              L 212 25"
           fill="none"
           stroke="rgba(255,255,255,0.5)"
@@ -674,27 +751,26 @@ export const FolderModel4SVG: React.FC<{
           strokeLinecap="round"
         />
 
-        {/* Étiquette / Pastille du Code Hexadécimal dans l'onglet */}
+        {/* Pastille de la date (jour, mois, année, heure) remplaçant les codes hexadécimaux de l'image 1 */}
         <rect
-          x="10"
-          y="5"
-          width="48"
-          height="13"
-          rx="3"
-          fill={item.textDark ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.18)'}
+          x="8"
+          y="4.5"
+          width="82"
+          height="14"
+          rx="4"
+          fill={item.textDark ? 'rgba(0,0,0,0.12)' : 'rgba(255,255,255,0.22)'}
         />
         <text
-          x="34"
-          y="15"
+          x="49"
+          y="14.5"
           fill={item.textDark ? '#2D3748' : '#FFFFFF'}
-          fontSize="8.5"
-          fontWeight="700"
-          fontFamily="ui-monospace, monospace"
-          letterSpacing="0.05em"
+          fontSize="7.6"
+          fontWeight="800"
+          fontFamily="system-ui, -apple-system, sans-serif"
+          letterSpacing="0.02em"
           textAnchor="middle"
-          opacity="0.9"
         >
-          {hex}
+          {displayDate}
         </text>
 
         {/* Nom du coloris en typographie Serif élégante au centre */}
@@ -721,8 +797,23 @@ export const FolderModel4SVG: React.FC<{
 export const Folder3DCard: React.FC<{
   item: FolderModelItem;
   isSelected: boolean;
+  customColor?: string | null;
   onSelect: (item: FolderModelItem) => void;
-}> = ({ item, isSelected, onSelect }) => {
+}> = ({ item, isSelected, customColor, onSelect }) => {
+  const dynamicDates = getDynamicCurrentDate();
+
+  // Si l'élément est sélectionné et qu'une couleur personnalisée a été choisie
+  const effectivePrimaryColor = (isSelected && customColor) ? customColor : item.primaryColor;
+  const effectiveSecondaryColor = (isSelected && customColor && item.model === 2)
+    ? lightenColor(customColor, 0.45)
+    : item.secondaryColor;
+
+  const effectiveItem: FolderModelItem = {
+    ...item,
+    primaryColor: effectivePrimaryColor,
+    secondaryColor: effectiveSecondaryColor,
+  };
+
   return (
     <div
       onClick={() => onSelect(item)}
@@ -732,7 +823,7 @@ export const Folder3DCard: React.FC<{
           : 'bg-[#0E1526]/80 hover:bg-[#141E34] border-white/10 hover:border-orange-400/40 shadow-md'
       }`}
     >
-      {/* Badge indicateur du modèle */}
+      {/* Badge indicateur de sélection */}
       <div className="absolute top-2 right-2 z-20 flex items-center gap-1">
         {isSelected && (
           <span className="w-5 h-5 rounded-full bg-orange-500 text-black flex items-center justify-center shadow-lg animate-in zoom-in-75">
@@ -741,12 +832,36 @@ export const Folder3DCard: React.FC<{
         )}
       </div>
 
-      {/* Rendu 3D selon le modèle */}
+      {/* Rendu 3D selon le modèle avec prise en compte de la date réelle et de la couleur */}
       <div className="w-full">
-        {item.model === 1 && <FolderModel1SVG item={item} isSelected={isSelected} />}
-        {item.model === 2 && <FolderModel2SVG item={item} isSelected={isSelected} />}
-        {item.model === 3 && <FolderModel3SVG item={item} isSelected={isSelected} />}
-        {item.model === 4 && <FolderModel4SVG item={item} isSelected={isSelected} />}
+        {item.model === 1 && (
+          <FolderModel1SVG
+            item={effectiveItem}
+            isSelected={isSelected}
+            dateText={dynamicDates.model1}
+          />
+        )}
+        {item.model === 2 && (
+          <FolderModel2SVG
+            item={effectiveItem}
+            isSelected={isSelected}
+            dateText={dynamicDates.model2}
+          />
+        )}
+        {item.model === 3 && (
+          <FolderModel3SVG
+            item={effectiveItem}
+            isSelected={isSelected}
+            dateText={dynamicDates.model3}
+          />
+        )}
+        {item.model === 4 && (
+          <FolderModel4SVG
+            item={effectiveItem}
+            isSelected={isSelected}
+            dateText={dynamicDates.model4}
+          />
+        )}
       </div>
     </div>
   );

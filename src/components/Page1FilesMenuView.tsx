@@ -74,7 +74,8 @@ import {
   AlignLeft,
   CheckSquare,
   Square,
-  UserCheck
+  UserCheck,
+  Palette
 } from 'lucide-react';
 import { getDownloadedFiles, recordDownloadedFile, DownloadedItem } from '../services/downloadsManager';
 import { 
@@ -89,7 +90,9 @@ import {
   MODEL_3_FOLDERS, 
   MODEL_4_FOLDERS, 
   Folder3DCard, 
-  FolderModelItem 
+  FolderModelItem,
+  getDynamicCurrentDate,
+  lightenColor
 } from './Folder3DModels';
 
 
@@ -193,7 +196,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // État du menu de propositions de création de dossier (Modèles 3D)
   const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
   const [createFolderActiveTab, setCreateFolderActiveTab] = useState<'all' | '1' | '2' | '3' | '4'>('all');
-  const [selectedFolderModelItem, setSelectedFolderModelItem] = useState<FolderModelItem | null>(MODEL_1_FOLDERS[0]);
+  const [selectedFolderModelItem, setSelectedFolderModelItem] = useState<FolderModelItem | null>(null);
+  const [customFolderColor, setCustomFolderColor] = useState<string | null>(null);
+  const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
   const [newFolderNameInput, setNewFolderNameInput] = useState('');
   const [folderCreationToast, setFolderCreationToast] = useState<string | null>(null);
 
@@ -4213,15 +4218,34 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // MODAL GRAND FORMAT : CRÉER UN DOSSIER (VIDE & ÉTIRÉ HORIZONTALEMENT)
   // Sans fond flou ni sombre (comme expressément demandé par l'utilisateur)
   // =========================================================================
-  // =========================================================================
   // MODAL GRAND FORMAT : CRÉER UN DOSSIER (4 MODÈLES 3D LUMINEUX À L'IDENTIQUE)
   // Sans fond flou ni sombre (comme expressément demandé par l'utilisateur)
   // =========================================================================
   const renderCreateFolderModal = () => {
     if (!isCreateFolderModalOpen) return null;
 
+    // Changement d'onglet avec désélection immédiate du modèle précédent
+    const handleTabSwitch = (newTab: 'all' | '1' | '2' | '3' | '4') => {
+      setCreateFolderActiveTab(newTab);
+      // Décocher le modèle précédemment sélectionné comme demandé
+      setSelectedFolderModelItem(null);
+      setCustomFolderColor(null);
+      setIsColorPickerOpen(false);
+      setNewFolderNameInput('');
+    };
+
     const handleSelectModelItem = (item: FolderModelItem) => {
+      // Re-clic sur le même modèle : le désélectionne
+      if (selectedFolderModelItem?.id === item.id) {
+        setSelectedFolderModelItem(null);
+        setCustomFolderColor(null);
+        setIsColorPickerOpen(false);
+        setNewFolderNameInput('');
+        return;
+      }
       setSelectedFolderModelItem(item);
+      setCustomFolderColor(null); // Réinitialise sur la couleur d'origine au nouveau choix
+      setIsColorPickerOpen(false);
       setNewFolderNameInput(item.title || item.badge || 'Nouveau dossier');
     };
 
@@ -4230,6 +4254,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       if (!selectedFolderModelItem) return;
 
       const folderName = newFolderNameInput.trim() || selectedFolderModelItem.title || selectedFolderModelItem.badge || 'Nouveau dossier';
+      const chosenColor = customFolderColor || selectedFolderModelItem.primaryColor;
+      const realCurrentDate = getDynamicCurrentDate();
       
       const newFolder = {
         id: `folder-${Date.now()}`,
@@ -4237,26 +4263,43 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         count: '0 module • 0 cours',
         iconColor: selectedFolderModelItem.model === 3 ? 'text-cyan-400' : 'text-orange-400',
         badge: selectedFolderModelItem.badge || `Modèle ${selectedFolderModelItem.model}`,
+        modelType: selectedFolderModelItem.model,
+        bgColor: chosenColor,
+        creationDate: realCurrentDate.full,
       };
 
       setClasseurFolders(prev => [newFolder, ...prev]);
-      setFolderCreationToast(`Dossier "${folderName}" créé avec succès !`);
+      setFolderCreationToast(`Dossier "${folderName}" créé avec succès avec la date d'aujourd'hui !`);
       setTimeout(() => {
         setIsCreateFolderModalOpen(false);
         setFolderCreationToast(null);
+        setSelectedFolderModelItem(null);
+        setCustomFolderColor(null);
+        setIsColorPickerOpen(false);
       }, 1200);
     };
+
+    const activeDisplayColor = selectedFolderModelItem 
+      ? (customFolderColor || selectedFolderModelItem.primaryColor)
+      : '#E76239';
 
     const content = (
       <div 
         className="fixed inset-0 z-[2500] bg-black/20 backdrop-blur-none flex items-center justify-center p-2 sm:p-4 md:p-6 animate-in fade-in duration-200 pointer-events-auto"
-        onClick={() => setIsCreateFolderModalOpen(false)}
+        onClick={() => {
+          setIsCreateFolderModalOpen(false);
+          setIsColorPickerOpen(false);
+          setCustomFolderColor(null);
+        }}
       >
         <div 
           className="relative w-[98%] max-w-6xl h-[88vh] max-h-[850px] bg-[#0A0F1D] border-2 border-orange-500/40 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden text-white animate-in zoom-in-95 duration-200"
-          onClick={(e) => e.stopPropagation()}
+          onClick={(e) => {
+            e.stopPropagation();
+            if (isColorPickerOpen) setIsColorPickerOpen(false);
+          }}
         >
-          {/* En-tête : uniquement "Créer un dossier" et la croix de fermeture */}
+          {/* En-tête : Titre, Bouton Couleur (quand sélectionné) et Croix de fermeture */}
           <div className="px-5 sm:px-7 py-3.5 sm:py-4 border-b border-white/10 flex items-center justify-between gap-3 bg-[#070B14] shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] text-white flex items-center justify-center shadow-[0_2px_12px_rgba(194,84,22,0.4)] border border-orange-400/40">
@@ -4272,21 +4315,161 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               </div>
             </div>
 
-            <button
-              type="button"
-              onClick={() => setIsCreateFolderModalOpen(false)}
-              className="p-2 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
-              title="Fermer"
-            >
-              <X className="w-5 h-5 stroke-[2.2]" />
-            </button>
+            {/* Boutons d'actions à droite : Couleur (si sélectionné) + Croix de fermeture */}
+            <div className="flex items-center gap-3 sm:gap-4 relative">
+              {/* Bouton Couleur qui apparaît uniquement lorsqu'un dossier est sélectionné */}
+              {selectedFolderModelItem && (
+                <div className="relative">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsColorPickerOpen(prev => !prev);
+                    }}
+                    className={`px-3 sm:px-4 py-1.5 sm:py-2 rounded-2xl border text-xs sm:text-sm font-black flex items-center gap-2 transition-all cursor-pointer shadow-lg active:scale-95 animate-in fade-in zoom-in-90 ${
+                      isColorPickerOpen
+                        ? 'bg-gradient-to-r from-orange-500 to-amber-500 text-black border-orange-400 ring-2 ring-orange-400/50'
+                        : 'bg-white/10 hover:bg-white/15 text-white border-white/20 hover:border-orange-400/50'
+                    }`}
+                    title="Changer la couleur du dossier sélectionné"
+                  >
+                    <div 
+                      className="w-4 h-4 rounded-full border-2 border-white shadow-sm shrink-0 transition-colors"
+                      style={{ backgroundColor: activeDisplayColor }}
+                    />
+                    <Palette className="w-4 h-4 stroke-[2.2] text-orange-300" />
+                    <span className="hidden sm:inline">Couleur</span>
+                    <ChevronDown className={`w-3.5 h-3.5 transition-transform duration-200 ${isColorPickerOpen ? 'rotate-180' : ''}`} />
+                  </button>
+
+                  {/* Menu Popover des Couleurs ("un millier de couleur") */}
+                  {isColorPickerOpen && (
+                    <div 
+                      className="absolute right-0 top-full mt-2 w-72 sm:w-80 bg-[#0E1526] border-2 border-orange-500/40 rounded-3xl p-4 shadow-[0_25px_50px_rgba(0,0,0,0.85)] z-[3000] text-white animate-in zoom-in-95 duration-150"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      {/* Header du Popover */}
+                      <div className="flex items-center justify-between pb-3 border-b border-white/10">
+                        <div className="flex items-center gap-2">
+                          <Palette className="w-4 h-4 text-orange-400" />
+                          <span className="text-xs font-black uppercase tracking-wider text-white">
+                            Palette de Couleurs
+                          </span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setIsColorPickerOpen(false)}
+                          className="p-1 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+                        >
+                          <X className="w-3.5 h-3.5" />
+                        </button>
+                      </div>
+
+                      {/* Spectre de couleur complet (Pipette / Input couleur native pour 16,7 millions de teintes) */}
+                      <div className="mt-3.5 p-3 rounded-2xl bg-white/5 border border-white/10 flex items-center justify-between gap-3">
+                        <div className="flex items-center gap-2.5">
+                          <input
+                            type="color"
+                            value={activeDisplayColor}
+                            onChange={(e) => setCustomFolderColor(e.target.value)}
+                            className="w-8 h-8 rounded-xl cursor-pointer border-0 bg-transparent p-0 overflow-hidden shadow-inner"
+                            title="Sélectionner n'importe quelle couleur dans le spectre complet"
+                          />
+                          <div>
+                            <div className="text-xs font-extrabold text-white">Nuance personnalisée</div>
+                            <div className="text-[10px] text-slate-400 font-mono uppercase">
+                              {activeDisplayColor}
+                            </div>
+                          </div>
+                        </div>
+                        <span className="text-[10px] font-bold text-orange-400 bg-orange-500/10 px-2 py-0.5 rounded-full border border-orange-500/20">
+                          16M de couleurs
+                        </span>
+                      </div>
+
+                      {/* Sélection rapide : 24 teintes vibrantes, néons et pastels 3D */}
+                      <div className="mt-3.5">
+                        <div className="text-[11px] font-bold text-slate-400 mb-2">
+                          Teintes recommandées & 3D :
+                        </div>
+                        <div className="grid grid-cols-6 gap-2">
+                          {[
+                            // Néons & Éclatants
+                            '#FF3366', '#FF6D00', '#FFC400', '#00E676', '#18B2DC', '#7E57C2',
+                            // Pastels & Doux
+                            '#FFB3BA', '#FFDFBA', '#FFFFBA', '#BAFFC9', '#BAE1FF', '#E8D7FF',
+                            // Profonds & Électriques
+                            '#D500F9', '#3D5AFE', '#00B0FF', '#00C853', '#FFAB00', '#DD2C00',
+                            // Designer Chic
+                            '#63555F', '#7D6575', '#786F64', '#A19182', '#293B49', '#8DC9F6',
+                          ].map((hexColor) => {
+                            const isActive = activeDisplayColor.toLowerCase() === hexColor.toLowerCase();
+                            return (
+                              <button
+                                key={hexColor}
+                                type="button"
+                                onClick={() => setCustomFolderColor(hexColor)}
+                                className={`w-full aspect-square rounded-xl transition-all cursor-pointer relative shadow-sm hover:scale-110 active:scale-95 ${
+                                  isActive ? 'ring-2 ring-white scale-105 shadow-[0_0_10px_rgba(255,255,255,0.7)]' : 'border border-white/20'
+                                }`}
+                                style={{ backgroundColor: hexColor }}
+                                title={hexColor}
+                              >
+                                {isActive && (
+                                  <div className="absolute inset-0 flex items-center justify-center">
+                                    <Check className="w-3.5 h-3.5 stroke-[3] text-black drop-shadow-[0_1px_2px_rgba(255,255,255,0.8)]" />
+                                  </div>
+                                )}
+                              </button>
+                            );
+                          })}
+                        </div>
+                      </div>
+
+                      {/* Actions du popover */}
+                      <div className="mt-4 pt-3 border-t border-white/10 flex items-center justify-between gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setCustomFolderColor(null)}
+                          className="text-[11px] font-bold text-slate-400 hover:text-white transition-colors cursor-pointer py-1 px-2 rounded-lg hover:bg-white/5"
+                        >
+                          Couleur d'origine
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setIsColorPickerOpen(false)}
+                          className="px-3.5 py-1.5 rounded-xl bg-orange-500 hover:bg-orange-400 text-black font-black text-xs transition-all cursor-pointer active:scale-95 shadow-md"
+                        >
+                          Valider
+                        </button>
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
+
+              {/* Bouton Croix Fermer */}
+              <button
+                type="button"
+                onClick={() => {
+                  setIsCreateFolderModalOpen(false);
+                  setIsColorPickerOpen(false);
+                  setCustomFolderColor(null);
+                  setSelectedFolderModelItem(null);
+                }}
+                className="p-2 rounded-full text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+                title="Fermer"
+              >
+                <X className="w-5 h-5 stroke-[2.2]" />
+              </button>
+            </div>
           </div>
 
           {/* Barre de navigation des 4 modèles */}
           <div className="px-4 sm:px-7 py-2.5 bg-[#0C1222] border-b border-white/10 flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
             <button
               type="button"
-              onClick={() => setCreateFolderActiveTab('all')}
+              onClick={() => handleTabSwitch('all')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                 createFolderActiveTab === 'all'
                   ? 'bg-orange-500 text-black shadow-md'
@@ -4303,7 +4486,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
             <button
               type="button"
-              onClick={() => setCreateFolderActiveTab('1')}
+              onClick={() => handleTabSwitch('1')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                 createFolderActiveTab === '1'
                   ? 'bg-orange-500 text-black shadow-md'
@@ -4320,7 +4503,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
             <button
               type="button"
-              onClick={() => setCreateFolderActiveTab('2')}
+              onClick={() => handleTabSwitch('2')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                 createFolderActiveTab === '2'
                   ? 'bg-orange-500 text-black shadow-md'
@@ -4337,7 +4520,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
             <button
               type="button"
-              onClick={() => setCreateFolderActiveTab('3')}
+              onClick={() => handleTabSwitch('3')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                 createFolderActiveTab === '3'
                   ? 'bg-orange-500 text-black shadow-md'
@@ -4354,7 +4537,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
             <button
               type="button"
-              onClick={() => setCreateFolderActiveTab('4')}
+              onClick={() => handleTabSwitch('4')}
               className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
                 createFolderActiveTab === '4'
                   ? 'bg-orange-500 text-black shadow-md'
@@ -4405,6 +4588,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       key={item.id}
                       item={item}
                       isSelected={selectedFolderModelItem?.id === item.id}
+                      customColor={selectedFolderModelItem?.id === item.id ? customFolderColor : null}
                       onSelect={handleSelectModelItem}
                     />
                   ))}
@@ -4421,7 +4605,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       MODÈLE 2
                     </span>
                     <h4 className="text-sm sm:text-base font-extrabold text-white">
-                      Bicolore Écolier, Rabat Courbé & Étiquettes Matières
+                      Bicolore Écolier, Date en Onglet & Étiquettes Matières
                     </h4>
                   </div>
                   <span className="text-xs text-slate-400 font-medium">
@@ -4435,6 +4619,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       key={item.id}
                       item={item}
                       isSelected={selectedFolderModelItem?.id === item.id}
+                      customColor={selectedFolderModelItem?.id === item.id ? customFolderColor : null}
                       onSelect={handleSelectModelItem}
                     />
                   ))}
@@ -4465,6 +4650,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       key={item.id}
                       item={item}
                       isSelected={selectedFolderModelItem?.id === item.id}
+                      customColor={selectedFolderModelItem?.id === item.id ? customFolderColor : null}
                       onSelect={handleSelectModelItem}
                     />
                   ))}
@@ -4481,7 +4667,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       MODÈLE 4
                     </span>
                     <h4 className="text-sm sm:text-base font-extrabold text-white">
-                      Nuancier Designer, Pastille Hex & Typographie Serif
+                      Nuancier Designer, Date en Onglet & Typographie Serif
                     </h4>
                   </div>
                   <span className="text-xs text-slate-400 font-medium">
@@ -4495,6 +4681,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       key={item.id}
                       item={item}
                       isSelected={selectedFolderModelItem?.id === item.id}
+                      customColor={selectedFolderModelItem?.id === item.id ? customFolderColor : null}
                       onSelect={handleSelectModelItem}
                     />
                   ))}
@@ -4507,25 +4694,48 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="px-4 sm:px-7 py-3.5 bg-[#070B14] border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
             {/* Aperçu du modèle actif */}
             <div className="flex items-center gap-3 w-full sm:w-auto">
-              <div 
-                className="w-10 h-8 rounded-lg shadow-md flex items-center justify-center text-xs font-black border border-white/20 shrink-0"
-                style={{ 
-                  backgroundColor: selectedFolderModelItem?.primaryColor || '#E76239',
-                  color: selectedFolderModelItem?.textDark ? '#111827' : '#FFFFFF'
-                }}
-              >
-                M{selectedFolderModelItem?.model || 1}
-              </div>
-              <div className="truncate">
-                <div className="text-xs font-black text-white flex items-center gap-1.5">
-                  <span>Modèle {selectedFolderModelItem?.model || 1}</span>
-                  <span className="text-slate-400">•</span>
-                  <span className="text-orange-400 truncate">{selectedFolderModelItem?.title || selectedFolderModelItem?.badge}</span>
-                </div>
-                <div className="text-[10px] text-slate-400 truncate">
-                  Cliquez sur un modèle ci-dessus pour le sélectionner
-                </div>
-              </div>
+              {selectedFolderModelItem ? (
+                <>
+                  <div 
+                    className="w-10 h-8 rounded-lg shadow-md flex items-center justify-center text-xs font-black border border-white/20 shrink-0 transition-colors"
+                    style={{ 
+                      backgroundColor: activeDisplayColor,
+                      color: selectedFolderModelItem.textDark ? '#111827' : '#FFFFFF'
+                    }}
+                  >
+                    M{selectedFolderModelItem.model}
+                  </div>
+                  <div className="truncate">
+                    <div className="text-xs font-black text-white flex items-center gap-1.5">
+                      <span>Modèle {selectedFolderModelItem.model}</span>
+                      <span className="text-slate-400">•</span>
+                      <span className="text-orange-400 truncate">{selectedFolderModelItem.title || selectedFolderModelItem.badge}</span>
+                      {customFolderColor && (
+                        <span className="px-1.5 py-0.2 rounded text-[9px] bg-orange-500/20 text-orange-300 font-mono">
+                          {customFolderColor.toUpperCase()}
+                        </span>
+                      )}
+                    </div>
+                    <div className="text-[10px] text-slate-400 truncate">
+                      Prêt pour la création • Personnalisez la couleur en haut à droite
+                    </div>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <div className="w-10 h-8 rounded-lg shadow-md flex items-center justify-center text-xs font-black border border-white/20 shrink-0 bg-white/5 text-slate-400">
+                    📁
+                  </div>
+                  <div className="truncate">
+                    <div className="text-xs font-black text-slate-300">
+                      Aucun modèle sélectionné
+                    </div>
+                    <div className="text-[10px] text-slate-500 truncate">
+                      Cliquez sur un modèle ci-dessus pour le sélectionner et le personnaliser
+                    </div>
+                  </div>
+                </>
+              )}
             </div>
 
             {/* Formulaire de saisie du nom & validation */}
@@ -4534,12 +4744,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 type="text"
                 value={newFolderNameInput}
                 onChange={(e) => setNewFolderNameInput(e.target.value)}
-                placeholder="Nom du dossier..."
-                className="px-3.5 py-2 bg-white/5 border border-white/15 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 w-full sm:w-64 transition-all"
+                placeholder={selectedFolderModelItem ? "Nom du dossier..." : "Sélectionnez un modèle ci-dessus..."}
+                disabled={!selectedFolderModelItem}
+                className="px-3.5 py-2 bg-white/5 border border-white/15 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 w-full sm:w-64 transition-all disabled:opacity-50 disabled:cursor-not-allowed"
               />
               <button
                 type="submit"
-                className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-black text-xs sm:text-sm shadow-[0_4px_16px_rgba(249,115,22,0.4)] flex items-center gap-2 transition-all active:scale-95 cursor-pointer shrink-0"
+                disabled={!selectedFolderModelItem}
+                className={`px-5 py-2 rounded-xl text-xs sm:text-sm font-black flex items-center gap-2 transition-all active:scale-95 shrink-0 ${
+                  selectedFolderModelItem
+                    ? 'bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black shadow-[0_4px_16px_rgba(249,115,22,0.4)] cursor-pointer'
+                    : 'bg-white/10 text-slate-500 cursor-not-allowed border border-white/10'
+                }`}
               >
                 <FolderPlus className="w-4 h-4 stroke-[2.5]" />
                 <span>Créer ce dossier</span>
@@ -4552,6 +4768,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     return createPortal(content, document.body);
   };
+
 
 
   return (
