@@ -79,6 +79,7 @@ export interface ClasseurCreatedFolder {
   textDark?: boolean;
   dateText: string;
   createdAt: number;
+  parentId?: string;
 }
 
 // MODÈLE 1 : Onglets Index Pastel (Image 1 - 12 dossiers)
@@ -917,6 +918,92 @@ export const Classeur3DFolderCard: React.FC<{
         <FolderModel4SVG item={item} dateText={folder.dateText} />
       )}
     </div>
+  );
+};
+
+// ============================================================================
+// FICHIER TEXTE / BLOC-NOTES TXT CONFORME À L'IMAGE 2 FOURNIE
+// ============================================================================
+export const TxtDocumentSVG: React.FC<{ className?: string }> = ({ className = "w-full h-auto" }) => {
+  return (
+    <svg 
+      viewBox="0 0 160 215" 
+      className={className} 
+      fill="none" 
+      xmlns="http://www.w3.org/2000/svg"
+    >
+      <defs>
+        <linearGradient id="txt-page-gradient" x1="0" y1="0" x2="160" y2="215" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#C6EEFA" />
+          <stop offset="100%" stopColor="#A8E2F4" />
+        </linearGradient>
+        <linearGradient id="txt-fold-gradient" x1="122" y1="0" x2="160" y2="38" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stopColor="#E2F7FD" />
+          <stop offset="100%" stopColor="#89D3EB" />
+        </linearGradient>
+      </defs>
+
+      {/* Page principale avec coins arrondis et coin supérieur droit biseauté pour le pli */}
+      <path
+        d="M 22 0 
+           L 122 0 
+           L 160 38 
+           L 160 193 
+           Q 160 215 138 215 
+           L 22 215 
+           Q 0 215 0 193 
+           L 0 22 
+           Q 0 0 22 0 Z"
+        fill="url(#txt-page-gradient)"
+      />
+
+      {/* Ombre sous le pli */}
+      <path
+        d="M 122 0 
+           L 122 28 
+           Q 122 38 132 38 
+           L 160 38 Z"
+        fill="#000000"
+        opacity="0.12"
+      />
+
+      {/* Coin plié supérieur droit (dog-ear) */}
+      <path
+        d="M 122 0 
+           L 122 28 
+           Q 122 38 132 38 
+           L 160 38 Z"
+        fill="url(#txt-fold-gradient)"
+      />
+
+      {/* 3 lignes de texte stylisées au centre (Image 2) */}
+      {/* Ligne 1 : Segment court + Segment long */}
+      <rect x="36" y="94" width="28" height="8.5" rx="4.25" fill="#3B5D71" />
+      <rect x="72" y="94" width="52" height="8.5" rx="4.25" fill="#3B5D71" />
+
+      {/* Ligne 2 : Segment long + Segment court */}
+      <rect x="36" y="111" width="50" height="8.5" rx="4.25" fill="#3B5D71" />
+      <rect x="94" y="111" width="30" height="8.5" rx="4.25" fill="#3B5D71" />
+
+      {/* Ligne 3 : Segment moyen + Segment moyen */}
+      <rect x="36" y="128" width="36" height="8.5" rx="4.25" fill="#3B5D71" />
+      <rect x="80" y="128" width="44" height="8.5" rx="4.25" fill="#3B5D71" />
+
+      {/* Texte TXT en gras italique au bas (Image 2) */}
+      <text
+        x="80"
+        y="184"
+        fill="#325467"
+        fontSize="32"
+        fontWeight="900"
+        fontStyle="italic"
+        fontFamily="system-ui, -apple-system, sans-serif"
+        textAnchor="middle"
+        letterSpacing="0.05em"
+      >
+        TXT
+      </text>
+    </svg>
   );
 };
 
