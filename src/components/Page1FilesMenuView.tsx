@@ -162,9 +162,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [isVideoMuted, setIsVideoMuted] = useState(false);
   const videoRef = useRef<HTMLVideoElement | null>(null);
 
-  // Lecteur Document (Pages)
+  // Lecteur Document (Pages & Mode d'affichage Vertical/Horizontal)
   const [docCurrentPage, setDocCurrentPage] = useState(1);
   const totalDocPages = 4;
+  const [docLayoutMode, setDocLayoutMode] = useState<'vertical' | 'horizontal'>('vertical');
 
   // Téléchargements réels synchronisés
   const [downloadedItems, setDownloadedItems] = useState<DownloadedItem[]>(() => getDownloadedFiles());
@@ -2946,6 +2947,304 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     );
   };
 
+  // =========================================================================
+  // RENDU DÉTAILLÉ DES PAGES DU DOCUMENT (FORMAT HAUTE DÉFINITION)
+  // =========================================================================
+  const renderDocPage1 = (file: FileItem) => {
+    const docTitle = file.name.replace(/\.[^/.]+$/, '').replace(/_/g, ' ');
+    return (
+      <div id="doc-page-1" className="w-full space-y-6">
+        {/* En-tête officiel CME & StudyCloud */}
+        <div className="flex items-center justify-between border-b-2 border-stone-900 pb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-black text-red-600 tracking-tight">cme</span>
+            <span className="text-xs text-stone-500 font-bold">Électronique Fondamentale</span>
+          </div>
+          <span className="px-2.5 py-1 bg-stone-900 text-white rounded-md text-[10px] font-black uppercase">
+            StudyCloud Drive • Page 1
+          </span>
+        </div>
+
+        {/* Titre du chapitre */}
+        <div className="space-y-1 pt-1">
+          <h2 className="text-sm sm:text-base font-black text-stone-900 uppercase tracking-tight">
+            {docTitle}
+          </h2>
+          <p className="text-xs text-stone-600 font-bold">
+            Fascicule de Travaux Dirigés & Cours Magistral • {file.documentCategory || 'COURS'} • Chapitre 1
+          </p>
+        </div>
+
+        {/* Schéma électronique AOP Inverseur Grand Format */}
+        <div className="w-full bg-stone-50 rounded-xl p-4 sm:p-6 border border-stone-200 flex flex-col items-center justify-center">
+          <p className="text-[11px] font-black text-stone-700 self-start mb-2">
+            Schéma 1 : Montage Amplificateur Inverseur de Tension (AOP Idéal en boucle fermée)
+          </p>
+          <svg className="w-full max-w-lg h-40" viewBox="0 0 160 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="60,10 60,60 115,35" fill="#FFFFFF" stroke="#1c1917" strokeWidth="2" />
+            <line x1="20" y1="23" x2="60" y2="23" stroke="#1c1917" strokeWidth="1.8" />
+            <line x1="20" y1="47" x2="60" y2="47" stroke="#1c1917" strokeWidth="1.8" />
+            <rect x="30" y="19" width="16" height="8" fill="#F5F5F4" stroke="#1c1917" strokeWidth="1.5" />
+            <text x="34" y="25" fontSize="6" fontWeight="bold" fill="#1c1917">R1</text>
+            <text x="64" y="26" fontSize="10" fontWeight="bold" fill="#1c1917">-</text>
+            <text x="64" y="50" fontSize="10" fontWeight="bold" fill="#1c1917">+</text>
+            <line x1="115" y1="35" x2="150" y2="35" stroke="#1c1917" strokeWidth="1.8" />
+            <text x="152" y="38" fontSize="9" fontWeight="bold" fill="#dc2626">Vs</text>
+            <line x1="50" y1="23" x2="50" y2="7" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="50" y1="7" x2="130" y2="7" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="130" y1="7" x2="130" y2="35" stroke="#1c1917" strokeWidth="1.5" />
+            <rect x="80" y="3" width="20" height="8" fill="#F5F5F4" stroke="#1c1917" strokeWidth="1.5" />
+            <text x="86" y="9.5" fontSize="6" fontWeight="bold" fill="#1c1917">R2</text>
+            <line x1="20" y1="47" x2="20" y2="58" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="14" y1="58" x2="26" y2="58" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="17" y1="61" x2="23" y2="61" stroke="#1c1917" strokeWidth="1.5" />
+          </svg>
+          <div className="w-full flex items-center justify-between text-[11px] font-bold text-stone-700 mt-2 px-2">
+            <span>Formule de transfert : <strong className="text-red-700">Vs = -(R2 / R1) · Ve</strong></span>
+            <span>Gain en tension : <strong className="text-red-700">Av = -R2 / R1</strong></span>
+          </div>
+        </div>
+
+        {/* Paragraphes explicatifs */}
+        <div className="space-y-2 text-xs text-stone-700 leading-relaxed">
+          <p className="font-bold text-stone-900 text-sm">1. Définition et principe de fonctionnement :</p>
+          <p>
+            Un amplificateur opérationnel idéal possède un gain infini en boucle ouverte et une impédance d'entrée infinie.
+            En régime linéaire avec réaction négative, la tension différentielle d'entrée <strong>ε = V+ - V-</strong> est rigoureusement nulle (masse virtuelle).
+          </p>
+          <p>
+            Le courant traversant la résistance <strong>R1</strong> est intégralement dévié dans <strong>R2</strong> (car aucun courant ne pénètre dans l'AOP idéal, i- = 0).
+            On en déduit immédiatement la relation fondamentale de sortie : <em>Vs = - (R2 / R1) · Ve</em>.
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDocPage2 = (_file: FileItem) => {
+    return (
+      <div id="doc-page-2" className="w-full space-y-6">
+        <div className="flex items-center justify-between border-b-2 border-stone-900 pb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-black text-red-600 tracking-tight">cme</span>
+            <span className="text-xs text-stone-500 font-bold">Électronique Fondamentale</span>
+          </div>
+          <span className="px-2.5 py-1 bg-stone-900 text-white rounded-md text-[10px] font-black uppercase">
+            StudyCloud Drive • Page 2
+          </span>
+        </div>
+
+        <div className="space-y-1 pt-1">
+          <h2 className="text-sm sm:text-base font-black text-stone-900 uppercase tracking-tight">
+            2. MONTAGE AMPLIFICATEUR NON-INVERSEUR DE TENSION
+          </h2>
+          <p className="text-xs text-stone-600 font-bold">
+            Étude en régime linéaire avec gain strictement supérieur ou égal à 1
+          </p>
+        </div>
+
+        <div className="w-full bg-stone-50 rounded-xl p-4 sm:p-6 border border-stone-200 flex flex-col items-center justify-center">
+          <p className="text-[11px] font-black text-stone-700 self-start mb-2">
+            Schéma 2 : Montage Non-Inverseur (Signal appliqué sur l'entrée V+)
+          </p>
+          <svg className="w-full max-w-lg h-40" viewBox="0 0 160 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="60,10 60,60 115,35" fill="#FFFFFF" stroke="#1c1917" strokeWidth="2" />
+            <line x1="20" y1="47" x2="60" y2="47" stroke="#1c1917" strokeWidth="1.8" />
+            <text x="12" y="50" fontSize="7" fontWeight="bold" fill="#2563eb">Ve</text>
+            <text x="64" y="26" fontSize="10" fontWeight="bold" fill="#1c1917">-</text>
+            <text x="64" y="50" fontSize="10" fontWeight="bold" fill="#1c1917">+</text>
+            <line x1="115" y1="35" x2="150" y2="35" stroke="#1c1917" strokeWidth="1.8" />
+            <text x="152" y="38" fontSize="9" fontWeight="bold" fill="#dc2626">Vs</text>
+            <line x1="45" y1="23" x2="60" y2="23" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="45" y1="23" x2="45" y2="10" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="45" y1="10" x2="125" y2="10" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="125" y1="10" x2="125" y2="35" stroke="#1c1917" strokeWidth="1.5" />
+            <rect x="75" y="6" width="20" height="8" fill="#F5F5F4" stroke="#1c1917" strokeWidth="1.5" />
+            <text x="81" y="12.5" fontSize="6" fontWeight="bold" fill="#1c1917">R2</text>
+            <line x1="45" y1="23" x2="45" y2="40" stroke="#1c1917" strokeWidth="1.5" />
+            <rect x="36" y="40" width="18" height="8" fill="#F5F5F4" stroke="#1c1917" strokeWidth="1.5" />
+            <text x="41" y="46.5" fontSize="6" fontWeight="bold" fill="#1c1917">R1</text>
+            <line x1="45" y1="48" x2="45" y2="58" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="39" y1="58" x2="51" y2="58" stroke="#1c1917" strokeWidth="1.5" />
+          </svg>
+          <div className="w-full flex items-center justify-between text-[11px] font-bold text-stone-700 mt-2 px-2">
+            <span>Formule de transfert : <strong className="text-blue-700">Vs = (1 + R2 / R1) · Ve</strong></span>
+            <span>Gain en tension : <strong className="text-blue-700">Av = 1 + R2 / R1 (Av ≥ 1)</strong></span>
+          </div>
+        </div>
+
+        <div className="space-y-2 text-xs text-stone-700 leading-relaxed">
+          <p className="font-bold text-stone-900 text-sm">Caractéristiques essentielles :</p>
+          <p>
+            Le signal de sortie <strong>Vs</strong> est en phase exacte avec la tension d'entrée <strong>Ve</strong> (pas d'inversion de polarité).
+            L'impédance d'entrée vue par le générateur est celle de la borne positive de l'AOP, soit une impédance virtuellement infinie (&gt; 10¹² Ω).
+          </p>
+          <p>
+            <strong>Cas limite remarquable :</strong> Si l'on court-circuite R2 (R2 = 0) et qu'on supprime R1 (R1 → ∞), on obtient le <strong>montage suiveur (buffer)</strong> avec <em>Vs = Ve</em> et <em>Av = 1</em>.
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDocPage3 = (_file: FileItem) => {
+    return (
+      <div id="doc-page-3" className="w-full space-y-6">
+        <div className="flex items-center justify-between border-b-2 border-stone-900 pb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-black text-red-600 tracking-tight">cme</span>
+            <span className="text-xs text-stone-500 font-bold">Électronique Fondamentale</span>
+          </div>
+          <span className="px-2.5 py-1 bg-stone-900 text-white rounded-md text-[10px] font-black uppercase">
+            StudyCloud Drive • Page 3
+          </span>
+        </div>
+
+        <div className="space-y-1 pt-1">
+          <h2 className="text-sm sm:text-base font-black text-stone-900 uppercase tracking-tight">
+            3. MONTAGE SOMMATEUR INVERSEUR ANALOGIQUE
+          </h2>
+          <p className="text-xs text-stone-600 font-bold">
+            Addition algébrique et pondération de multiples sources de signaux
+          </p>
+        </div>
+
+        <div className="w-full bg-stone-50 rounded-xl p-4 sm:p-6 border border-stone-200 flex flex-col items-center justify-center">
+          <p className="text-[11px] font-black text-stone-700 self-start mb-2">
+            Schéma 3 : Sommateur Inverseur à 2 voies indépendantes (V1, V2)
+          </p>
+          <svg className="w-full max-w-lg h-40" viewBox="0 0 160 70" fill="none" xmlns="http://www.w3.org/2000/svg">
+            <polygon points="65,10 65,60 120,35" fill="#FFFFFF" stroke="#1c1917" strokeWidth="2" />
+            <text x="69" y="26" fontSize="10" fontWeight="bold" fill="#1c1917">-</text>
+            <text x="69" y="50" fontSize="10" fontWeight="bold" fill="#1c1917">+</text>
+            <line x1="15" y1="17" x2="35" y2="17" stroke="#1c1917" strokeWidth="1.5" />
+            <rect x="25" y="13" width="16" height="8" fill="#F5F5F4" stroke="#1c1917" strokeWidth="1.5" />
+            <text x="29" y="19.5" fontSize="6" fontWeight="bold" fill="#1c1917">R1</text>
+            <text x="8" y="20" fontSize="7" fontWeight="bold" fill="#16a34a">V1</text>
+            <line x1="15" y1="31" x2="35" y2="31" stroke="#1c1917" strokeWidth="1.5" />
+            <rect x="25" y="27" width="16" height="8" fill="#F5F5F4" stroke="#1c1917" strokeWidth="1.5" />
+            <text x="29" y="33.5" fontSize="6" fontWeight="bold" fill="#1c1917">R2</text>
+            <text x="8" y="34" fontSize="7" fontWeight="bold" fill="#16a34a">V2</text>
+            <line x1="41" y1="17" x2="52" y2="24" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="41" y1="31" x2="52" y2="24" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="52" y1="24" x2="65" y2="24" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="55" y1="24" x2="55" y2="7" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="55" y1="7" x2="135" y2="7" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="135" y1="7" x2="135" y2="35" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="120" y1="35" x2="150" y2="35" stroke="#1c1917" strokeWidth="1.8" />
+            <text x="152" y="38" fontSize="9" fontWeight="bold" fill="#dc2626">Vs</text>
+            <rect x="85" y="3" width="20" height="8" fill="#F5F5F4" stroke="#1c1917" strokeWidth="1.5" />
+            <text x="91" y="9.5" fontSize="6" fontWeight="bold" fill="#1c1917">Rf</text>
+            <line x1="65" y1="47" x2="50" y2="47" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="50" y1="47" x2="50" y2="58" stroke="#1c1917" strokeWidth="1.5" />
+            <line x1="44" y1="58" x2="56" y2="58" stroke="#1c1917" strokeWidth="1.5" />
+          </svg>
+          <div className="w-full flex items-center justify-between text-[11px] font-bold text-stone-700 mt-2 px-2">
+            <span>Formule générale : <strong className="text-purple-700">Vs = - [ (Rf / R1)·V1 + (Rf / R2)·V2 ]</strong></span>
+            <span>Si R1 = R2 = Rf : <strong className="text-purple-700">Vs = -(V1 + V2)</strong></span>
+          </div>
+        </div>
+
+        <div className="space-y-2 text-xs text-stone-700 leading-relaxed">
+          <p className="font-bold text-stone-900 text-sm">Applications industrielles et audio :</p>
+          <p>
+            Chaque voie d'entrée apporte un courant <em>I_k = V_k / R_k</em> vers le point de masse virtuelle.
+            La somme de ces courants converge directement dans la résistance de contre-réaction <strong>Rf</strong>.
+          </p>
+          <p>
+            Ce montage constitue la brique de base fondamentale des tables de mixage analogiques professionnelles et des convertisseurs numérique-analogique (CNA).
+          </p>
+        </div>
+      </div>
+    );
+  };
+
+  const renderDocPage4 = (_file: FileItem) => {
+    return (
+      <div id="doc-page-4" className="w-full space-y-6">
+        <div className="flex items-center justify-between border-b-2 border-stone-900 pb-3">
+          <div className="flex items-center gap-2">
+            <span className="text-xl font-black text-red-600 tracking-tight">cme</span>
+            <span className="text-xs text-stone-500 font-bold">Électronique Fondamentale</span>
+          </div>
+          <span className="px-2.5 py-1 bg-stone-900 text-white rounded-md text-[10px] font-black uppercase">
+            StudyCloud Drive • Page 4
+          </span>
+        </div>
+
+        <div className="space-y-1 pt-1">
+          <h2 className="text-sm sm:text-base font-black text-stone-900 uppercase tracking-tight">
+            4. MONTAGE SOUSTRACTEUR (DIFFÉRENTIEL) & SYNTHÈSE DES FORMULES
+          </h2>
+          <p className="text-xs text-stone-600 font-bold">
+            Amplificateur d'instrumentation élémentaire et récapitulatif
+          </p>
+        </div>
+
+        <div className="w-full bg-stone-50 rounded-xl p-4 sm:p-6 border border-stone-200 space-y-3">
+          <p className="text-[11px] font-black text-stone-700">
+            Tableau récapitulatif des montages linéaires à AOP :
+          </p>
+          <div className="overflow-x-auto">
+            <table className="w-full text-left text-xs border border-stone-300">
+              <thead className="bg-stone-200 text-stone-800 font-bold">
+                <tr>
+                  <th className="p-2 border border-stone-300">Montage</th>
+                  <th className="p-2 border border-stone-300">Formule de Sortie (Vs)</th>
+                  <th className="p-2 border border-stone-300">Impédance d'entrée</th>
+                  <th className="p-2 border border-stone-300">Déphasage</th>
+                </tr>
+              </thead>
+              <tbody className="divide-y divide-stone-200 text-stone-700">
+                <tr>
+                  <td className="p-2 font-bold">Inverseur</td>
+                  <td className="p-2 text-red-700 font-bold">Vs = -(R2/R1)·Ve</td>
+                  <td className="p-2">R1</td>
+                  <td className="p-2">180° (Inversé)</td>
+                </tr>
+                <tr>
+                  <td className="p-2 font-bold">Non-Inverseur</td>
+                  <td className="p-2 text-blue-700 font-bold">Vs = (1 + R2/R1)·Ve</td>
+                  <td className="p-2">Infinie (∞)</td>
+                  <td className="p-2">0° (En phase)</td>
+                </tr>
+                <tr>
+                  <td className="p-2 font-bold">Suiveur</td>
+                  <td className="p-2 text-emerald-700 font-bold">Vs = Ve</td>
+                  <td className="p-2">Infinie (∞)</td>
+                  <td className="p-2">0° (En phase)</td>
+                </tr>
+                <tr>
+                  <td className="p-2 font-bold">Différentiel</td>
+                  <td className="p-2 text-purple-700 font-bold">Vs = (R2/R1)·(V2 - V1)</td>
+                  <td className="p-2">R1 + R3</td>
+                  <td className="p-2">Selon entrées</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+        </div>
+
+        <div className="p-4 bg-emerald-50 border border-emerald-300 rounded-xl space-y-1.5 text-xs text-emerald-950">
+          <p className="font-black text-emerald-900">Exercice d'application résolu :</p>
+          <p>
+            Soit un montage amplificateur inverseur avec <strong>R1 = 10 kΩ</strong> et <strong>R2 = 47 kΩ</strong>.
+            Pour une tension d'entrée <em>Ve = +200 mV</em>, déterminez le gain et la tension de sortie :
+          </p>
+          <p className="font-bold text-emerald-800">
+            • Gain en tension : Av = - (47 / 10) = -4,7<br />
+            • Tension de sortie : Vs = -4,7 × (+200 mV) = -940 mV = -0,94 V.
+          </p>
+        </div>
+
+        <div className="pt-2 flex items-center justify-between text-[10px] text-stone-500 font-bold border-t border-stone-200">
+          <span>Certifié conforme CME • Espace Numérique StudyCloud</span>
+          <span>Fin du document • 4 / 4 pages</span>
+        </div>
+      </div>
+    );
+  };
+
   return (
     <div className={`transition-colors duration-300 bg-[#F4F6F8] dark:bg-[#0C111D] text-stone-900 dark:text-slate-100 flex flex-col overflow-y-auto selection:bg-blue-600 selection:text-white ${
       isFullscreen
@@ -3582,9 +3881,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   </div>
 
                   {/* DROITE : PETITS BOUTONS D'ACTIONS (Zoom, Rotation, Partage, Agrandir, Fermer) */}
-                  <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+                  <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-wrap justify-end">
                     
-                    {/* Zoom & Rotation (pour images et documents) */}
+                    {/* Zoom & Rotation (pour images et documents) - PLACÉS DEVANT */}
                     {(splitSelectedFile.category === 'images' || splitSelectedFile.isImage || splitSelectedFile.category === 'documents') && (
                       <>
                         <button
@@ -3612,6 +3911,71 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           <RotateCw className="w-3.5 h-3.5" />
                         </button>
                       </>
+                    )}
+
+                    {/* Choix mode Vertical ou Horizontal (Pour les documents) */}
+                    {splitSelectedFile.category === 'documents' && (
+                      <button
+                        type="button"
+                        onClick={() => setDocLayoutMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
+                        className={`h-7 sm:h-8 px-2 sm:px-2.5 rounded-full flex items-center gap-1.5 border transition-all cursor-pointer shadow-sm text-xs font-bold ${
+                          docLayoutMode === 'vertical'
+                            ? 'bg-blue-600/30 text-blue-300 border-blue-500/50 hover:bg-blue-600/50'
+                            : 'bg-emerald-600/30 text-emerald-300 border-emerald-500/50 hover:bg-emerald-600/50'
+                        }`}
+                        title={docLayoutMode === 'vertical' ? "Mode actuel : Vertical (cliquer pour Horizontal)" : "Mode actuel : Horizontal (cliquer pour Vertical)"}
+                      >
+                        {docLayoutMode === 'vertical' ? (
+                          <>
+                            <SlidersHorizontal className="w-3.5 h-3.5 rotate-90 text-blue-400" />
+                            <span className="text-[11px] font-bold">Vertical</span>
+                          </>
+                        ) : (
+                          <>
+                            <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" />
+                            <span className="text-[11px] font-bold">Horizontal</span>
+                          </>
+                        )}
+                      </button>
+                    )}
+
+                    {/* Pagination intégrée sur l'en-tête (derrière les boutons zoom) */}
+                    {splitSelectedFile.category === 'documents' && (
+                      <div className="flex items-center gap-0.5 sm:gap-1 bg-[#121826] border border-white/15 rounded-full px-1.5 py-0.5 sm:h-8 text-xs text-white shadow-inner">
+                        <button
+                          type="button"
+                          disabled={docCurrentPage <= 1}
+                          onClick={() => {
+                            const newPage = Math.max(1, docCurrentPage - 1);
+                            setDocCurrentPage(newPage);
+                            if (docLayoutMode === 'vertical') {
+                              document.getElementById(`doc-page-${newPage}`)?.scrollIntoView({ behavior: 'smooth' });
+                            }
+                          }}
+                          className="w-6 h-6 rounded-full bg-black/60 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-white transition-colors cursor-pointer"
+                          title="Page précédente (Précédent)"
+                        >
+                          <ChevronLeft className="w-3.5 h-3.5 stroke-[2.2]" />
+                        </button>
+                        <span className="px-1.5 text-[11px] font-black text-blue-300 whitespace-nowrap">
+                          {docCurrentPage} / {totalDocPages}
+                        </span>
+                        <button
+                          type="button"
+                          disabled={docCurrentPage >= totalDocPages}
+                          onClick={() => {
+                            const newPage = Math.min(totalDocPages, docCurrentPage + 1);
+                            setDocCurrentPage(newPage);
+                            if (docLayoutMode === 'vertical') {
+                              document.getElementById(`doc-page-${newPage}`)?.scrollIntoView({ behavior: 'smooth' });
+                            }
+                          }}
+                          className="w-6 h-6 rounded-full bg-black/60 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-white transition-colors cursor-pointer"
+                          title="Page suivante (Suivant)"
+                        >
+                          <ChevronRight className="w-3.5 h-3.5 stroke-[2.2]" />
+                        </button>
+                      </div>
                     )}
 
                     {/* Partager */}
@@ -3777,7 +4141,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
 
                 {/* CORPS DU LECTEUR GRAND FORMAT SELON LE TYPE DE MÉDIA (Prend tout l'espace disponible) */}
-                <div className="flex-1 w-full h-full flex flex-col items-center justify-center p-1 sm:p-2 sm:px-4 overflow-hidden relative">
+                <div className={`flex-1 w-full h-full flex flex-col items-center justify-center ${splitSelectedFile.category === 'documents' ? 'p-0 overflow-hidden bg-white' : 'p-1 sm:p-2 sm:px-4 overflow-hidden'} relative`}>
 
                   {/* 1. LECTEUR IMAGE GRAND FORMAT (Prend tout l'espace avec Zoom & Rotation) */}
                   {(splitSelectedFile.category === 'images' || splitSelectedFile.isImage) && (
@@ -4068,112 +4432,59 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   )}
 
-                  {/* 4. LECTEUR DOCUMENT GRAND FORMAT (Prend tout l'espace) */}
+                  {/* 4. LECTEUR DOCUMENT GRAND FORMAT (Prend tout l'espace disponible, sans bandes noires ni creux) */}
                   {splitSelectedFile.category === 'documents' && (
-                    <div className={`w-full h-full flex-1 flex flex-col items-center space-y-3 overflow-y-auto px-1 sm:px-4 py-2 ${
-                      isViewerMaximized ? 'max-w-6xl' : 'max-w-4xl'
-                    }`}>
-                      
-                      {/* Contrôle des pages */}
-                      <div className="w-full bg-[#121826] border border-white/10 rounded-xl px-4 py-2 flex items-center justify-between text-xs text-white shrink-0 shadow-md">
-                        <span className="font-bold flex items-center gap-2">
-                          <BookOpen className="w-4 h-4 text-blue-400" /> Page {docCurrentPage} sur {totalDocPages}
-                        </span>
-                        <div className="flex items-center gap-1.5">
-                          <button
-                            type="button"
-                            disabled={docCurrentPage <= 1}
-                            onClick={() => setDocCurrentPage(prev => Math.max(1, prev - 1))}
-                            className="px-2.5 py-1 rounded-lg bg-black hover:bg-slate-800 disabled:opacity-40 text-xs font-bold border border-white/10 transition-colors"
-                          >
-                            Précédent
-                          </button>
-                          <button
-                            type="button"
-                            disabled={docCurrentPage >= totalDocPages}
-                            onClick={() => setDocCurrentPage(prev => Math.min(totalDocPages, prev + 1))}
-                            className="px-2.5 py-1 rounded-lg bg-black hover:bg-slate-800 disabled:opacity-40 text-xs font-bold border border-white/10 transition-colors"
-                          >
-                            Suivant
-                          </button>
-                        </div>
-                      </div>
-
-                      {/* Feuille de document haute définition format A4 réaliste */}
+                    <div className="w-full h-full flex-1 flex flex-col overflow-y-auto overflow-x-hidden bg-white text-stone-900 select-text">
                       <div 
-                        className="w-full flex-1 bg-white text-stone-900 rounded-2xl shadow-2xl p-6 sm:p-10 md:p-12 space-y-6 border border-stone-300 transition-transform duration-200"
+                        className="w-full flex-1 flex flex-col p-4 sm:p-8 md:p-10 pb-36 transition-transform duration-200"
                         style={{
-                          transform: `scale(${viewerZoom})`
+                          transform: viewerZoom !== 1 ? `scale(${viewerZoom})` : undefined,
+                          transformOrigin: 'top center'
                         }}
                       >
-                        {/* En-tête officiel CME & StudyCloud */}
-                        <div className="flex items-center justify-between border-b-2 border-stone-900 pb-3">
-                          <div className="flex items-center gap-2">
-                            <span className="text-xl font-black text-red-600 tracking-tight">cme</span>
-                            <span className="text-xs text-stone-500 font-bold">Électronique Fondamentale</span>
+                        {docLayoutMode === 'vertical' ? (
+                          <div className="w-full space-y-10">
+                            {renderDocPage1(splitSelectedFile)}
+                            
+                            <div className="w-full flex items-center gap-3 py-3 text-stone-400 select-none">
+                              <div className="flex-1 h-px bg-stone-300" />
+                              <span className="text-[10px] font-black uppercase tracking-widest text-stone-500 bg-stone-100 px-3 py-1 rounded-full border border-stone-200">
+                                Page 2 sur 4
+                              </span>
+                              <div className="flex-1 h-px bg-stone-300" />
+                            </div>
+
+                            {renderDocPage2(splitSelectedFile)}
+
+                            <div className="w-full flex items-center gap-3 py-3 text-stone-400 select-none">
+                              <div className="flex-1 h-px bg-stone-300" />
+                              <span className="text-[10px] font-black uppercase tracking-widest text-stone-500 bg-stone-100 px-3 py-1 rounded-full border border-stone-200">
+                                Page 3 sur 4
+                              </span>
+                              <div className="flex-1 h-px bg-stone-300" />
+                            </div>
+
+                            {renderDocPage3(splitSelectedFile)}
+
+                            <div className="w-full flex items-center gap-3 py-3 text-stone-400 select-none">
+                              <div className="flex-1 h-px bg-stone-300" />
+                              <span className="text-[10px] font-black uppercase tracking-widest text-stone-500 bg-stone-100 px-3 py-1 rounded-full border border-stone-200">
+                                Page 4 sur 4
+                              </span>
+                              <div className="flex-1 h-px bg-stone-300" />
+                            </div>
+
+                            {renderDocPage4(splitSelectedFile)}
                           </div>
-                          <span className="px-2.5 py-1 bg-stone-900 text-white rounded-md text-[10px] font-black uppercase">
-                            StudyCloud Drive
-                          </span>
-                        </div>
-
-                        {/* Titre du chapitre */}
-                        <div className="space-y-1 pt-1">
-                          <h2 className="text-sm sm:text-base font-black text-stone-900 uppercase tracking-tight">
-                            AMPLIFICATEUR OPERATIONNEL EN REGIME LINEAIRE : MONTAGES DE BASE
-                          </h2>
-                          <p className="text-xs text-stone-600 font-bold">
-                            Fascicule de Travaux Dirigés & Cours Magistral • {splitSelectedFile.documentCategory || 'COURS'}
-                          </p>
-                        </div>
-
-                        {/* Schéma électronique AOP Grand Format */}
-                        <div className="w-full bg-stone-50 rounded-xl p-4 border border-stone-200 flex flex-col items-center justify-center">
-                          <p className="text-[11px] font-black text-stone-700 self-start mb-2">
-                            Schéma 1 : Montage Amplificateur Inverseur de Tension (AOP Idéal)
-                          </p>
-                          <svg className="w-full max-w-md h-36" viewBox="0 0 160 70" fill="none" xmlns="http://www.w3.org/2000/svg">
-                            {/* Triangle AOP */}
-                            <polygon points="60,10 60,60 115,35" fill="#FFFFFF" stroke="#1c1917" strokeWidth="2" />
-                            {/* Entrées */}
-                            <line x1="20" y1="23" x2="60" y2="23" stroke="#1c1917" strokeWidth="1.8" />
-                            <line x1="20" y1="47" x2="60" y2="47" stroke="#1c1917" strokeWidth="1.8" />
-                            {/* Résistance d'entrée R1 */}
-                            <rect x="30" y="19" width="16" height="8" fill="#F5F5F4" stroke="#1c1917" strokeWidth="1.5" />
-                            <text x="34" y="25" fontSize="6" fontWeight="bold" fill="#1c1917">R1</text>
-                            {/* Signes - et + */}
-                            <text x="64" y="26" fontSize="10" fontWeight="bold" fill="#1c1917">-</text>
-                            <text x="64" y="50" fontSize="10" fontWeight="bold" fill="#1c1917">+</text>
-                            {/* Sortie */}
-                            <line x1="115" y1="35" x2="150" y2="35" stroke="#1c1917" strokeWidth="1.8" />
-                            <text x="152" y="38" fontSize="9" fontWeight="bold" fill="#dc2626">Vs</text>
-                            {/* Boucle de contre-réaction R2 */}
-                            <line x1="50" y1="23" x2="50" y2="7" stroke="#1c1917" strokeWidth="1.5" />
-                            <line x1="50" y1="7" x2="130" y2="7" stroke="#1c1917" strokeWidth="1.5" />
-                            <line x1="130" y1="7" x2="130" y2="35" stroke="#1c1917" strokeWidth="1.5" />
-                            <rect x="80" y="3" width="20" height="8" fill="#F5F5F4" stroke="#1c1917" strokeWidth="1.5" />
-                            <text x="86" y="9.5" fontSize="6" fontWeight="bold" fill="#1c1917">R2</text>
-                            {/* Masse non inverseuse */}
-                            <line x1="20" y1="47" x2="20" y2="58" stroke="#1c1917" strokeWidth="1.5" />
-                            <line x1="14" y1="58" x2="26" y2="58" stroke="#1c1917" strokeWidth="1.5" />
-                            <line x1="17" y1="61" x2="23" y2="61" stroke="#1c1917" strokeWidth="1.5" />
-                          </svg>
-                          <div className="w-full flex items-center justify-between text-[11px] font-bold text-stone-700 mt-2 px-2">
-                            <span>Formule de transfert : <strong className="text-red-700">Vs = -(R2 / R1) · Ve</strong></span>
-                            <span>Gain en tension : <strong className="text-red-700">Av = -R2 / R1</strong></span>
+                        ) : (
+                          <div className="w-full flex-1 flex flex-col animate-in fade-in duration-200">
+                            {docCurrentPage === 1 && renderDocPage1(splitSelectedFile)}
+                            {docCurrentPage === 2 && renderDocPage2(splitSelectedFile)}
+                            {docCurrentPage === 3 && renderDocPage3(splitSelectedFile)}
+                            {docCurrentPage === 4 && renderDocPage4(splitSelectedFile)}
                           </div>
-                        </div>
-
-                        {/* Paragraphes explicatifs */}
-                        <div className="space-y-1.5 text-xs text-stone-700 leading-relaxed">
-                          <p className="font-bold text-stone-900">1. Définition et principe de fonctionnement :</p>
-                          <p>
-                            Un amplificateur opérationnel idéal possède un gain infini en boucle ouverte et une impédance d'entrée infinie.
-                            En régime linéaire, la tension différentielle d'entrée ε = V+ - V- est nulle (court-circuit virtuel).
-                          </p>
-                        </div>
+                        )}
                       </div>
-
                     </div>
                   )}
 
