@@ -31,7 +31,7 @@ interface FoldersViewProps {
   setActivePreviewItem?: (item: any) => void;
   activePreviewItem?: any;
   onOpenCreateShareLink?: (items: any[]) => void;
-  onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[]) => void;
+  onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[], isFullscreen?: boolean) => void;
 }
 
 export const FoldersView: React.FC<FoldersViewProps> = ({

@@ -74,7 +74,7 @@ import {
 
 interface Page1FilesMenuViewProps {
   onBack: () => void;
-  onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[]) => void;
+  onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[], isFullscreen?: boolean) => void;
 }
 
 export interface FileItem {
@@ -187,6 +187,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
   }, [isViewerMaximized]);
+
+  // Réinitialiser le plein écran et agrandi dès que l'espace d'étude s'ouvre pour éviter toute bande noire
+  useEffect(() => {
+    const handleStudySpaceOpened = () => {
+      setIsFullscreen(false);
+      setIsViewerMaximized(false);
+    };
+    window.addEventListener('studycloud_open_study_space', handleStudySpaceOpened);
+    return () => window.removeEventListener('studycloud_open_study_space', handleStudySpaceOpened);
+  }, []);
 
   // Fermer les menus déroulants lors d'un clic extérieur ou touche Échap SANS jamais bloquer le défilement de la page
   useEffect(() => {
@@ -1860,8 +1870,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       isPublic: false
     };
 
+    const wasFullscreen = isFullscreen || isViewerMaximized;
+    setIsFullscreen(false);
+    setIsViewerMaximized(false);
+
     if (onOpenStudySpace) {
-      onOpenStudySpace(selectedFileForStudy, menuName, convertedFiles);
+      onOpenStudySpace(selectedFileForStudy, menuName, convertedFiles, wasFullscreen);
     }
 
     window.dispatchEvent(new CustomEvent('studycloud_open_study_space', {
@@ -1869,7 +1883,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         file: selectedFileForStudy,
         folderName: menuName,
         files: convertedFiles,
-        folder: folderPayload
+        folder: folderPayload,
+        isFullscreen: wasFullscreen
       }
     }));
   };

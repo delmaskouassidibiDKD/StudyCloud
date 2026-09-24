@@ -487,6 +487,7 @@ export default function App() {
   });
   const [isPreviewLoading, setIsPreviewLoading] = useState(false);
   const [isStudySpaceOpen, setIsStudySpaceOpen] = useState(false);
+  const [isStudySpaceFullscreen, setIsStudySpaceFullscreen] = useState(false);
 
   const setActivePreviewItem = (item: { id: string; name: string; size: number; type: string; url?: string; isImage?: boolean; folderName?: string; lockFullscreen?: boolean } | null) => {
     if (!item) {
@@ -494,6 +495,7 @@ export default function App() {
       setPreviewOwnerTab(null);
       setIsPreviewLoading(false);
       setIsCenterFullscreen(false);
+      setIsStudySpaceFullscreen(false);
       try {
         localStorage.removeItem('studycloud_active_preview_item');
         localStorage.removeItem('studycloud_preview_owner_tab');
@@ -1133,6 +1135,11 @@ export default function App() {
       const folder = e.detail?.folder || null;
       const folderName = e.detail?.folderName || file?.folderName || file?.matiere || folder?.title || null;
       const folderFiles = e.detail?.files || folder?.files || (file ? [file] : []);
+      const isFs = !!e.detail?.isFullscreen;
+
+      if (isFs) {
+        setIsStudySpaceFullscreen(true);
+      }
 
       if (file) {
         setActivePreviewItem(file);
@@ -1333,7 +1340,10 @@ export default function App() {
               onOpenPublishView={() => {
                 handleSetTab('publish-file');
               }}
-              onOpenStudySpace={(file?: any, folderName?: string, folderFiles?: any[]) => {
+              onOpenStudySpace={(file?: any, folderName?: string, folderFiles?: any[], isFullscreen?: boolean) => {
+                if (isFullscreen) {
+                  setIsStudySpaceFullscreen(true);
+                }
                 if (file) {
                   setActivePreviewItem(file);
                 } else {
@@ -1639,9 +1649,9 @@ export default function App() {
       )}
 
       {(isStudySpaceOpen || activePreviewItem) && (previewOwnerTab ? previewOwnerTab === currentTab : currentTab === 'folders') && (
-        <div className="fixed inset-0 md:left-64 z-[99999] bg-[#FDFBF7] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-hidden">
+        <div className={`fixed inset-0 ${isStudySpaceFullscreen ? 'left-0' : 'md:left-64'} z-[99999] bg-[#FDFBF7] dark:bg-[#0b0f19] flex flex-col animate-fadeIn overflow-hidden`}>
           {/* Top Header Bar - Solid Dark #070a13 */}
-          <div className="fixed top-0 left-0 right-0 md:left-64 z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[44px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2">
+          <div className={`fixed top-0 left-0 right-0 ${isStudySpaceFullscreen ? 'left-0' : 'md:left-64'} z-50 bg-[#FDFBF7] dark:bg-[#070a13] h-[44px] py-1 px-3 md:px-6 border-b-2 border-stone-800 dark:border-[#1e293b] shadow-sm flex items-center justify-between gap-2`}>
             {/* Left: Bouton Retour & badge du dossier/matière */}
             <div className="flex items-center gap-1.5 shrink-0">
               <button
@@ -1649,6 +1659,7 @@ export default function App() {
                   setActivePreviewItem(null);
                   setIsStudySpaceOpen(false);
                   setActiveFolderDetail(null);
+                  setIsStudySpaceFullscreen(false);
                 }}
                 className="flex items-center gap-1 px-2.5 py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white font-extrabold text-[11px] sm:text-xs rounded-lg border-2 border-stone-800 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
               >
@@ -1683,6 +1694,26 @@ export default function App() {
                 </span>
               ) : null}
               <div className="flex items-center gap-1.5 sm:gap-2">
+                {/* Bouton Plein écran / Normal de l'espace d'étude (Desktop) */}
+                <button
+                  type="button"
+                  onClick={() => setIsStudySpaceFullscreen(prev => !prev)}
+                  className="hidden md:flex items-center justify-center p-1 sm:px-2 sm:py-1 bg-white dark:bg-[#1e293b] hover:bg-stone-100 dark:hover:bg-[#283852] text-stone-900 dark:text-white rounded-lg border-2 border-stone-800 dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer gap-1 shrink-0"
+                  title={isStudySpaceFullscreen ? "Afficher le menu latéral (Réduire)" : "Plein écran complet (Prendre tout l'écran)"}
+                >
+                  {isStudySpaceFullscreen ? (
+                    <>
+                      <Minimize className="w-3.5 h-3.5 shrink-0 text-stone-900 dark:text-white" />
+                      <span className="text-[7.5px] sm:text-xs font-bold leading-none">Réduire</span>
+                    </>
+                  ) : (
+                    <>
+                      <Maximize className="w-3.5 h-3.5 shrink-0 text-stone-900 dark:text-white" />
+                      <span className="text-[7.5px] sm:text-xs font-bold leading-none">Plein écran</span>
+                    </>
+                  )}
+                </button>
+
                 {/* Clock / Study Timer Button */}
                 <button
                   onClick={() => setShowStudyTimer(true)}
