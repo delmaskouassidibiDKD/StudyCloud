@@ -353,6 +353,42 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       date: '19 Sept, 16:00',
       extension: 'XLSX',
       downloadsCount: 4
+    },
+    {
+      id: 'doc-9',
+      name: 'Cours_Supply_Chain_Logistique.pdf',
+      category: 'documents',
+      documentCategory: 'COURS',
+      source: 'StudyCloud',
+      size: '4.2 Mo',
+      sizeBytes: 4404019,
+      date: "Aujourd'hui, 10:15",
+      extension: 'PDF',
+      downloadsCount: 2
+    },
+    {
+      id: 'doc-10',
+      name: 'Notes_Revision_Semestre_1.pdf',
+      category: 'documents',
+      documentCategory: 'COURS',
+      source: 'StudyCloud',
+      size: '950 Ko',
+      sizeBytes: 972800,
+      date: '21 Sept, 14:00',
+      extension: 'PDF',
+      downloadsCount: 1
+    },
+    {
+      id: 'doc-11',
+      name: 'Fiche_TD_Mathematiques.pdf',
+      category: 'documents',
+      documentCategory: 'TD',
+      source: 'StudyCloud',
+      size: '1.7 Mo',
+      sizeBytes: 1782579,
+      date: '20 Sept, 11:20',
+      extension: 'PDF',
+      downloadsCount: 3
     }
   ]);
 
@@ -780,7 +816,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   ]);
 
   // FICHIERS RÉCENTS : STUDYCLOUD (Strictement 6 éléments maximum, 1 seule ligne, FIFO)
-  const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>([
+  const DEFAULT_RECENT_FILES: FileItem[] = [
     {
       id: 'rec-cld-1',
       name: 'Cours_Supply_Chain_Logistique.pdf',
@@ -835,7 +871,35 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       sizeBytes: 1782579,
       date: '20 Sept, 11:20'
     }
-  ]);
+  ];
+
+  // État des fichiers récents avec persistance locale
+  const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_recent_files');
+      if (saved !== null) {
+        return JSON.parse(saved);
+      }
+    } catch {
+      // ignore
+    }
+    return DEFAULT_RECENT_FILES;
+  });
+
+  // Synchronisation de la liste des récents dans le stockage local
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_recent_files', JSON.stringify(cloudRecentFiles));
+    } catch {
+      // ignore
+    }
+  }, [cloudRecentFiles]);
+
+  // Retirer un élément de la liste des récents sans supprimer le fichier
+  const handleRemoveRecentFile = (fileId: string) => {
+    setCloudRecentFiles(prev => prev.filter(f => f.id !== fileId));
+    showToast("Élément retiré des récents");
+  };
 
   // Déclencher le sélecteur de fichier
   const handleTriggerImport = () => {
@@ -872,6 +936,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     });
 
     setCloudRecentFiles(prev => [...newItems, ...prev].slice(0, 6));
+    newItems.forEach(item => {
+      if (item.category === 'images') setImagesList(prev => [item, ...prev]);
+      else if (item.category === 'videos') setVideosList(prev => [item, ...prev]);
+      else if (item.category === 'audio') setAudioList(prev => [item, ...prev]);
+      else setDocumentsList(prev => [item, ...prev]);
+    });
     showToast(`${files.length} fichier(s) importé(s) dans StudyCloud !`);
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
@@ -4257,118 +4327,123 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-3 sm:py-4 pb-48 sm:pb-64 space-y-4 sm:space-y-5">
 
             {/* SECTION 1 : RÉCENTS (STRICTEMENT 6 ÉLÉMENTS SUR 1 LIGNE) */}
-            <section className="space-y-2">
-              <div className="flex items-center justify-between">
-                <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
-                  Récents
-                </h2>
-              </div>
+            {displayedFiles.length > 0 && (
+              <section className="space-y-2 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
+                    Récents
+                  </h2>
+                </div>
 
-              {/* Grille STRICTEMENT sur 1 ligne : 6 colonnes sur écran moyen/grand */}
-              <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3 md:gap-3.5 overflow-x-auto md:overflow-visible no-scrollbar">
-                {displayedFiles.map((file) => (
-                  <div
-                    key={file.id}
-                    onClick={() => handleSelectFile(file)}
-                    className={`group relative bg-[#151C2C] hover:bg-[#1A2338] border border-slate-800 hover:border-slate-700 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-200 cursor-pointer flex flex-col ${
-                      menuOpenId === file.id ? 'z-50 relative' : 'z-10'
-                    }`}
-                  >
-                    {/* Vignette compacte */}
-                    <div className="w-full h-24 sm:h-28 md:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center">
-                      <div className="absolute inset-0 rounded-t-2xl overflow-hidden pointer-events-none">
-                      {file.previewUrl ? (
-                        <img 
-                          src={file.previewUrl} 
-                          alt={file.name}
-                          className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                          loading="lazy"
-                        />
-                      ) : (
-                        <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-3">
-                          {file.category === 'documents' && <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-blue-400/85 stroke-[1.8]" />}
-                          {file.category === 'audio' && <Music className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400/85 stroke-[1.8]" />}
-                          {file.category === 'videos' && <Film className="w-8 h-8 sm:w-10 sm:h-10 text-purple-400/85 stroke-[1.8]" />}
-                          {file.category === 'downloads' && <Download className="w-8 h-8 sm:w-10 sm:h-10 text-sky-400/85 stroke-[1.8]" />}
-                          {file.category === 'images' && <ImageIcon className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-400/85 stroke-[1.8]" />}
-                          {file.category === 'apps' && <LayoutGrid className="w-8 h-8 sm:w-10 sm:h-10 text-pink-400/85 stroke-[1.8]" />}
+                {/* Grille STRICTEMENT sur 1 ligne : 6 colonnes sur écran moyen/grand */}
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3 md:gap-3.5 overflow-x-auto md:overflow-visible no-scrollbar">
+                  {displayedFiles.map((file) => (
+                    <div
+                      key={file.id}
+                      onClick={() => handleSelectFile(file)}
+                      className={`group relative bg-[#151C2C] hover:bg-[#1A2338] border border-slate-800 hover:border-slate-700 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-200 cursor-pointer flex flex-col ${
+                        menuOpenId === file.id ? 'z-50 relative' : 'z-10'
+                      }`}
+                    >
+                      {/* Vignette compacte */}
+                      <div className="w-full h-24 sm:h-28 md:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center">
+                        <div className="absolute inset-0 rounded-t-2xl overflow-hidden pointer-events-none">
+                        {file.previewUrl ? (
+                          <img 
+                            src={file.previewUrl} 
+                            alt={file.name}
+                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                            loading="lazy"
+                          />
+                        ) : (
+                          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-3">
+                            {file.category === 'documents' && <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-blue-400/85 stroke-[1.8]" />}
+                            {file.category === 'audio' && <Music className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400/85 stroke-[1.8]" />}
+                            {file.category === 'videos' && <Film className="w-8 h-8 sm:w-10 sm:h-10 text-purple-400/85 stroke-[1.8]" />}
+                            {file.category === 'downloads' && <Download className="w-8 h-8 sm:w-10 sm:h-10 text-sky-400/85 stroke-[1.8]" />}
+                            {file.category === 'images' && <ImageIcon className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-400/85 stroke-[1.8]" />}
+                            {file.category === 'apps' && <LayoutGrid className="w-8 h-8 sm:w-10 sm:h-10 text-pink-400/85 stroke-[1.8]" />}
+                          </div>
+                        )}
                         </div>
-                      )}
-                      </div>
 
-                      {/* Bouton 3 petits points verticaux en haut à droite */}
-                      <button
-                        type="button"
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMenuOpenId(menuOpenId === file.id ? null : file.id);
-                        }}
-                        className="studycloud-menu-trigger absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/75 hover:bg-black flex items-center justify-center text-white transition-colors cursor-pointer shadow-md z-20 border border-white/20"
-                        title="Options du fichier"
-                      >
-                        <MoreVertical className="w-3.5 h-3.5" />
-                      </button>
-
-                      {/* Menu contextuel 3 points */}
-                      {menuOpenId === file.id && (
-                        <div 
-                          onClick={(e) => e.stopPropagation()}
-                          className="studycloud-file-menu-panel absolute top-9 right-1.5 z-50 w-44 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.15)] py-1.5 text-xs font-semibold text-white animate-in fade-in zoom-in-95 overflow-hidden divide-y divide-white/10"
+                        {/* Bouton 3 petits points verticaux en haut à droite */}
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMenuOpenId(menuOpenId === file.id ? null : file.id);
+                          }}
+                          className="studycloud-menu-trigger absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/75 hover:bg-black flex items-center justify-center text-white transition-colors cursor-pointer shadow-md z-20 border border-white/20"
+                          title="Options du fichier"
                         >
-                          <button
-                            onClick={() => {
-                              handleSelectFile(file);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
-                          >
-                            <Eye className="w-3.5 h-3.5 text-blue-400" /> Ouvrir
-                          </button>
-                          <button
-                            onClick={() => {
-                              handleShareFile(file);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
-                          >
-                            <Share2 className="w-3.5 h-3.5 text-emerald-400" /> Partager
-                          </button>
-                          <button
-                            onClick={() => {
-                              handleDownloadFile(file);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
-                          >
-                            <Download className="w-3.5 h-3.5 text-amber-400" /> Télécharger
-                          </button>
-                          <button
-                            onClick={() => {
-                              handleGenericFileAction('secure_folder', file, cloudRecentFiles);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-amber-300 transition-colors"
-                          >
-                            <Lock className="w-3.5 h-3.5 text-amber-400" /> Dossier sécurisé
-                          </button>
-                        </div>
-                      )}
-                    </div>
+                          <MoreVertical className="w-3.5 h-3.5" />
+                        </button>
 
-                    {/* Bas de carte avec Nom et Emplacement */}
-                    <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-[#151C2C] rounded-b-2xl">
-                      <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-blue-400 transition-colors" title={file.name}>
-                        {file.name}
-                      </p>
-                      <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
-                        <span className="truncate max-w-[85px]">{file.source}</span>
-                        <span className="shrink-0 font-medium">{file.size}</span>
+                        {/* Menu contextuel 3 points */}
+                        {menuOpenId === file.id && (
+                          <div 
+                            onClick={(e) => e.stopPropagation()}
+                            className="studycloud-file-menu-panel absolute top-9 right-1.5 z-50 w-44 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.15)] py-1.5 text-xs font-semibold text-white animate-in fade-in zoom-in-95 overflow-hidden divide-y divide-white/10"
+                          >
+                            <button
+                              type="button"
+                              onClick={(e) => {
+                                e.stopPropagation();
+                                handleRemoveRecentFile(file.id);
+                                setMenuOpenId(null);
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-rose-500/20 flex items-center gap-2 cursor-pointer text-rose-400 hover:text-rose-300 transition-colors"
+                              title="Retirer cet élément des récents"
+                            >
+                              <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Effacer
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleShareFile(file);
+                                setMenuOpenId(null);
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
+                            >
+                              <Share2 className="w-3.5 h-3.5 text-emerald-400" /> Partager
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleDownloadFile(file);
+                                setMenuOpenId(null);
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
+                            >
+                              <Download className="w-3.5 h-3.5 text-amber-400" /> Télécharger
+                            </button>
+                            <button
+                              onClick={() => {
+                                handleGenericFileAction('secure_folder', file, cloudRecentFiles);
+                                setMenuOpenId(null);
+                              }}
+                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-amber-300 transition-colors"
+                            >
+                              <Lock className="w-3.5 h-3.5 text-amber-400" /> Dossier sécurisé
+                            </button>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Bas de carte avec Nom et Emplacement */}
+                      <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-[#151C2C] rounded-b-2xl">
+                        <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-blue-400 transition-colors" title={file.name}>
+                          {file.name}
+                        </p>
+                        <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                          <span className="truncate max-w-[85px]">{file.source}</span>
+                          <span className="shrink-0 font-medium">{file.size}</span>
+                        </div>
                       </div>
                     </div>
-                  </div>
-                ))}
-              </div>
-            </section>
+                  ))}
+                </div>
+              </section>
+            )}
 
             {/* ========================================================================= */}
             {/* BOUTON CLASSEUR : BIEN AU MILIEU, COULEUR ORANGE DOUCE                    */}
