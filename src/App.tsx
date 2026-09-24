@@ -1127,6 +1127,22 @@ export default function App() {
     return () => window.removeEventListener('unifolder_data_restored', handleRestore);
   }, []);
 
+  useEffect(() => {
+    const handleStudyCloudOpenSpace = (e: any) => {
+      const file = e.detail?.file || null;
+      if (file) {
+        setActivePreviewItem(file);
+      } else {
+        setActivePreviewItem(null);
+      }
+      setPreviewOwnerTab('folders');
+      setIsStudySpaceOpen(true);
+    };
+
+    window.addEventListener('studycloud_open_study_space', handleStudyCloudOpenSpace);
+    return () => window.removeEventListener('studycloud_open_study_space', handleStudyCloudOpenSpace);
+  }, []);
+
   const handleAddFolder = (newFolder: SharedFolder) => {
     setFolders((prev) => [newFolder, ...prev]);
     setCurrentTab('folders');
@@ -1287,8 +1303,12 @@ export default function App() {
               onOpenPublishView={() => {
                 handleSetTab('publish-file');
               }}
-              onOpenStudySpace={() => {
-                setActivePreviewItem(null);
+              onOpenStudySpace={(file?: any, folderName?: string) => {
+                if (file) {
+                  setActivePreviewItem(file);
+                } else {
+                  setActivePreviewItem(null);
+                }
                 setPreviewOwnerTab('folders');
                 setIsStudySpaceOpen(true);
               }}
