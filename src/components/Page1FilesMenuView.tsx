@@ -168,6 +168,164 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const totalDocPages = 4;
   const [docLayoutMode, setDocLayoutMode] = useState<'vertical' | 'horizontal'>('vertical');
 
+  // Gestion du glissement tactile (main/doigt) et souris pour le mode horizontal du document
+  const [docDragOffset, setDocDragOffset] = useState<number>(0);
+  const [isDocDragging, setIsDocDragging] = useState<boolean>(false);
+  const docDragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
+  const docIsHorizontalDragRef = useRef<boolean>(false);
+  const docHasMovedRef = useRef<boolean>(false);
+  const lastDocWheelTimeRef = useRef<number>(0);
+
+  // Glissement tactile (Écran tactile / Mobile / Tablette)
+  const handleDocTouchStart = (e: React.TouchEvent) => {
+    if (docLayoutMode !== 'horizontal') return;
+    const touch = e.touches[0];
+    docDragStartRef.current = {
+      x: touch.clientX,
+      y: touch.clientY,
+      time: Date.now()
+    };
+    docIsHorizontalDragRef.current = false;
+    docHasMovedRef.current = false;
+  };
+
+  const handleDocTouchMove = (e: React.TouchEvent) => {
+    if (docLayoutMode !== 'horizontal' || !docDragStartRef.current) return;
+    const touch = e.touches[0];
+    const deltaX = touch.clientX - docDragStartRef.current.x;
+    const deltaY = touch.clientY - docDragStartRef.current.y;
+
+    if (!docIsHorizontalDragRef.current) {
+      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
+        docDragStartRef.current = null;
+        return;
+      }
+      if (Math.abs(deltaX) > 8) {
+        docIsHorizontalDragRef.current = true;
+        setIsDocDragging(true);
+        docHasMovedRef.current = true;
+      }
+    }
+
+    if (docIsHorizontalDragRef.current) {
+      let adjustedDelta = deltaX;
+      if (docCurrentPage === 1 && deltaX > 0) {
+        adjustedDelta = deltaX * 0.25;
+      } else if (docCurrentPage === totalDocPages && deltaX < 0) {
+        adjustedDelta = deltaX * 0.25;
+      }
+      setDocDragOffset(adjustedDelta);
+    }
+  };
+
+  const handleDocTouchEnd = () => {
+    if (docLayoutMode !== 'horizontal' || !docDragStartRef.current) return;
+    const deltaX = docDragOffset;
+    const threshold = 40;
+
+    if (deltaX < -threshold && docCurrentPage < totalDocPages) {
+      setDocCurrentPage(prev => Math.min(totalDocPages, prev + 1));
+    } else if (deltaX > threshold && docCurrentPage > 1) {
+      setDocCurrentPage(prev => Math.max(1, prev - 1));
+    }
+
+    setDocDragOffset(0);
+    setIsDocDragging(false);
+    docDragStartRef.current = null;
+    docIsHorizontalDragRef.current = false;
+  };
+
+  // Glissement à la souris (Clic gauche maintenu et glissement gauche/droite)
+  const handleDocMouseDown = (e: React.MouseEvent) => {
+    if (docLayoutMode !== 'horizontal' || e.button !== 0) return;
+    if ((e.target as HTMLElement).closest('button, a, input, select')) return;
+    docDragStartRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      time: Date.now()
+    };
+    docIsHorizontalDragRef.current = false;
+    docHasMovedRef.current = false;
+  };
+
+  const handleDocMouseMove = (e: React.MouseEvent) => {
+    if (docLayoutMode !== 'horizontal' || !docDragStartRef.current) return;
+    const deltaX = e.clientX - docDragStartRef.current.x;
+    const deltaY = e.clientY - docDragStartRef.current.y;
+
+    if (!docIsHorizontalDragRef.current) {
+      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
+        docDragStartRef.current = null;
+        return;
+      }
+      if (Math.abs(deltaX) > 5) {
+        docIsHorizontalDragRef.current = true;
+        setIsDocDragging(true);
+        docHasMovedRef.current = true;
+      }
+    }
+
+    if (docIsHorizontalDragRef.current) {
+      let adjustedDelta = deltaX;
+      if (docCurrentPage === 1 && deltaX > 0) {
+        adjustedDelta = deltaX * 0.25;
+      } else if (docCurrentPage === totalDocPages && deltaX < 0) {
+        adjustedDelta = deltaX * 0.25;
+      }
+      setDocDragOffset(adjustedDelta);
+    }
+  };
+
+  const handleDocMouseUp = () => {
+    if (docLayoutMode !== 'horizontal' || !docDragStartRef.current) return;
+    const deltaX = docDragOffset;
+    const threshold = 40;
+
+    if (deltaX < -threshold && docCurrentPage < totalDocPages) {
+      setDocCurrentPage(prev => Math.min(totalDocPages, prev + 1));
+    } else if (deltaX > threshold && docCurrentPage > 1) {
+      setDocCurrentPage(prev => Math.max(1, prev - 1));
+    }
+
+    setDocDragOffset(0);
+    setIsDocDragging(false);
+    docDragStartRef.current = null;
+    docIsHorizontalDragRef.current = false;
+  };
+
+  // Support navigation par molette ou défilement horizontal trackpad
+  const handleDocWheel = (e: React.WheelEvent) => {
+    if (docLayoutMode !== 'horizontal') return;
+    const now = Date.now();
+    if (now - lastDocWheelTimeRef.current < 450) return;
+
+    if (Math.abs(e.deltaX) > 28 || (e.shiftKey && Math.abs(e.deltaY) > 28)) {
+      const delta = Math.abs(e.deltaX) > 28 ? e.deltaX : e.deltaY;
+      if (delta > 0 && docCurrentPage < totalDocPages) {
+        lastDocWheelTimeRef.current = now;
+        setDocCurrentPage(prev => Math.min(totalDocPages, prev + 1));
+      } else if (delta < 0 && docCurrentPage > 1) {
+        lastDocWheelTimeRef.current = now;
+        setDocCurrentPage(prev => Math.max(1, prev - 1));
+      }
+    }
+  };
+
+  // Navigation clavier pour le mode horizontal (Flèches gauche / droite)
+  useEffect(() => {
+    if (docLayoutMode !== 'horizontal' || splitSelectedFile?.category !== 'documents') return;
+    const handleDocKeyDown = (e: KeyboardEvent) => {
+      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
+      if (e.key === 'ArrowRight' || e.key === 'PageDown') {
+        setDocCurrentPage(prev => Math.min(totalDocPages, prev + 1));
+      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
+        setDocCurrentPage(prev => Math.max(1, prev - 1));
+      }
+    };
+    window.addEventListener('keydown', handleDocKeyDown);
+    return () => window.removeEventListener('keydown', handleDocKeyDown);
+  }, [docLayoutMode, splitSelectedFile]);
+
   // Téléchargements réels synchronisés
   const [downloadedItems, setDownloadedItems] = useState<DownloadedItem[]>(() => getDownloadedFiles());
 
@@ -4522,11 +4680,84 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             {renderDocPage4(splitSelectedFile)}
                           </div>
                         ) : (
-                          <div className="w-full flex-1 flex flex-col animate-in fade-in duration-200">
-                            {docCurrentPage === 1 && renderDocPage1(splitSelectedFile)}
-                            {docCurrentPage === 2 && renderDocPage2(splitSelectedFile)}
-                            {docCurrentPage === 3 && renderDocPage3(splitSelectedFile)}
-                            {docCurrentPage === 4 && renderDocPage4(splitSelectedFile)}
+                          <div 
+                            className={`w-full flex-1 overflow-x-hidden relative ${isDocDragging ? 'select-none cursor-grabbing' : 'cursor-grab'}`}
+                            onTouchStart={handleDocTouchStart}
+                            onTouchMove={handleDocTouchMove}
+                            onTouchEnd={handleDocTouchEnd}
+                            onTouchCancel={handleDocTouchEnd}
+                            onMouseDown={handleDocMouseDown}
+                            onMouseMove={handleDocMouseMove}
+                            onMouseUp={handleDocMouseUp}
+                            onMouseLeave={handleDocMouseUp}
+                            onWheel={handleDocWheel}
+                          >
+                            <div 
+                              className="flex w-[400%] will-change-transform"
+                              style={{
+                                transform: `translate3d(calc(-${(docCurrentPage - 1) * 25}% + ${docDragOffset}px), 0, 0)`,
+                                transition: isDocDragging ? 'none' : 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)'
+                              }}
+                            >
+                              <div className="w-1/4 shrink-0 px-2 sm:px-4">
+                                {renderDocPage1(splitSelectedFile)}
+                              </div>
+                              <div className="w-1/4 shrink-0 px-2 sm:px-4">
+                                {renderDocPage2(splitSelectedFile)}
+                              </div>
+                              <div className="w-1/4 shrink-0 px-2 sm:px-4">
+                                {renderDocPage3(splitSelectedFile)}
+                              </div>
+                              <div className="w-1/4 shrink-0 px-2 sm:px-4">
+                                {renderDocPage4(splitSelectedFile)}
+                              </div>
+                            </div>
+
+                            {/* Barre de navigation / pagination tactile sous le document horizontal */}
+                            <div className="w-full flex items-center justify-center gap-3 mt-10 pt-4 pb-4 select-none">
+                              <button
+                                type="button"
+                                disabled={docCurrentPage <= 1}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDocCurrentPage(prev => Math.max(1, prev - 1));
+                                }}
+                                className="px-3 py-1.5 rounded-full bg-stone-100 hover:bg-stone-200 border border-stone-300 text-stone-700 text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              >
+                                ← Précédent
+                              </button>
+
+                              <div className="flex items-center gap-1.5">
+                                {[1, 2, 3, 4].map((pNum) => (
+                                  <button
+                                    key={pNum}
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setDocCurrentPage(pNum);
+                                    }}
+                                    className={`h-2.5 rounded-full transition-all duration-300 cursor-pointer ${
+                                      docCurrentPage === pNum
+                                        ? 'w-8 bg-blue-600 shadow-sm'
+                                        : 'w-2.5 bg-stone-300 hover:bg-stone-400'
+                                    }`}
+                                    title={`Aller à la page ${pNum}`}
+                                  />
+                                ))}
+                              </div>
+
+                              <button
+                                type="button"
+                                disabled={docCurrentPage >= totalDocPages}
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setDocCurrentPage(prev => Math.min(totalDocPages, prev + 1));
+                                }}
+                                className="px-3 py-1.5 rounded-full bg-stone-100 hover:bg-stone-200 border border-stone-300 text-stone-700 text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
+                              >
+                                Suivant →
+                              </button>
+                            </div>
                           </div>
                         )}
                       </div>
