@@ -35,6 +35,12 @@ import {
   Box,
   Plus,
   FolderArchive,
+  ArrowRight,
+  BarChart3,
+  Atom,
+  Moon,
+  FlaskConical,
+  Settings,
   Play,
   Pause,
   RotateCcw,
@@ -77,6 +83,15 @@ import {
   DEFAULT_AUDIO_LIST, 
   DEFAULT_DOCUMENTS_LIST 
 } from '../data/categoryFilesData';
+import { 
+  MODEL_1_FOLDERS, 
+  MODEL_2_FOLDERS, 
+  MODEL_3_FOLDERS, 
+  MODEL_4_FOLDERS, 
+  Folder3DCard, 
+  FolderModelItem 
+} from './Folder3DModels';
+
 
 interface Page1FilesMenuViewProps {
   onBack: () => void;
@@ -177,6 +192,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // État du menu de propositions de création de dossier (Modèles 3D)
   const [isCreateFolderModalOpen, setIsCreateFolderModalOpen] = useState(false);
+  const [createFolderActiveTab, setCreateFolderActiveTab] = useState<'all' | '1' | '2' | '3' | '4'>('all');
+  const [selectedFolderModelItem, setSelectedFolderModelItem] = useState<FolderModelItem | null>(MODEL_1_FOLDERS[0]);
+  const [newFolderNameInput, setNewFolderNameInput] = useState('');
+  const [folderCreationToast, setFolderCreationToast] = useState<string | null>(null);
 
   // Lecteur Vidéo
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
@@ -471,7 +490,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const isCloudView = currentSubView?.id === 'studycloud-collection-cloud-storage';
 
   // Fiches et dossiers pédagogiques pour le Classeur
-  const classeurFolders = [
+  const [classeurFolders, setClasseurFolders] = useState([
     {
       id: 'folder-elec',
       name: 'Électronique & Circuits',
@@ -500,7 +519,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       iconColor: 'text-rose-400',
       badge: 'Pratique'
     }
-  ];
+  ]);
 
   const [classeurExtraDocs] = useState<FileItem[]>([
     {
@@ -4194,27 +4213,63 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // MODAL GRAND FORMAT : CRÉER UN DOSSIER (VIDE & ÉTIRÉ HORIZONTALEMENT)
   // Sans fond flou ni sombre (comme expressément demandé par l'utilisateur)
   // =========================================================================
+  // =========================================================================
+  // MODAL GRAND FORMAT : CRÉER UN DOSSIER (4 MODÈLES 3D LUMINEUX À L'IDENTIQUE)
+  // Sans fond flou ni sombre (comme expressément demandé par l'utilisateur)
+  // =========================================================================
   const renderCreateFolderModal = () => {
     if (!isCreateFolderModalOpen) return null;
 
+    const handleSelectModelItem = (item: FolderModelItem) => {
+      setSelectedFolderModelItem(item);
+      setNewFolderNameInput(item.title || item.badge || 'Nouveau dossier');
+    };
+
+    const handleCreateFolderSubmit = (e?: React.FormEvent) => {
+      if (e) e.preventDefault();
+      if (!selectedFolderModelItem) return;
+
+      const folderName = newFolderNameInput.trim() || selectedFolderModelItem.title || selectedFolderModelItem.badge || 'Nouveau dossier';
+      
+      const newFolder = {
+        id: `folder-${Date.now()}`,
+        name: folderName,
+        count: '0 module • 0 cours',
+        iconColor: selectedFolderModelItem.model === 3 ? 'text-cyan-400' : 'text-orange-400',
+        badge: selectedFolderModelItem.badge || `Modèle ${selectedFolderModelItem.model}`,
+      };
+
+      setClasseurFolders(prev => [newFolder, ...prev]);
+      setFolderCreationToast(`Dossier "${folderName}" créé avec succès !`);
+      setTimeout(() => {
+        setIsCreateFolderModalOpen(false);
+        setFolderCreationToast(null);
+      }, 1200);
+    };
+
     const content = (
       <div 
-        className="fixed inset-0 z-[2500] bg-black/20 backdrop-blur-none flex items-center justify-center p-3 sm:p-6 animate-in fade-in duration-200 pointer-events-auto"
+        className="fixed inset-0 z-[2500] bg-black/20 backdrop-blur-none flex items-center justify-center p-2 sm:p-4 md:p-6 animate-in fade-in duration-200 pointer-events-auto"
         onClick={() => setIsCreateFolderModalOpen(false)}
       >
         <div 
-          className="relative w-[96%] max-w-6xl min-h-[520px] max-h-[88vh] bg-[#0A0F1D] border-2 border-orange-500/40 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden text-white animate-in zoom-in-95 duration-200"
+          className="relative w-[98%] max-w-6xl h-[88vh] max-h-[850px] bg-[#0A0F1D] border-2 border-orange-500/40 rounded-3xl shadow-[0_20px_50px_rgba(0,0,0,0.5)] flex flex-col overflow-hidden text-white animate-in zoom-in-95 duration-200"
           onClick={(e) => e.stopPropagation()}
         >
           {/* En-tête : uniquement "Créer un dossier" et la croix de fermeture */}
-          <div className="px-5 sm:px-7 py-4 border-b border-white/10 flex items-center justify-between gap-3 bg-[#070B14]">
+          <div className="px-5 sm:px-7 py-3.5 sm:py-4 border-b border-white/10 flex items-center justify-between gap-3 bg-[#070B14] shrink-0">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 sm:w-11 sm:h-11 rounded-2xl bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] text-white flex items-center justify-center shadow-[0_2px_12px_rgba(194,84,22,0.4)] border border-orange-400/40">
                 <FolderPlus className="w-5 h-5 sm:w-6 sm:h-6 stroke-[2.2]" />
               </div>
-              <h3 className="text-base sm:text-lg font-black text-white">
-                Créer un dossier
-              </h3>
+              <div>
+                <h3 className="text-base sm:text-lg font-black text-white leading-tight">
+                  Créer un dossier
+                </h3>
+                <p className="text-[11px] text-slate-400 font-medium hidden sm:block">
+                  Choisissez parmi les 4 modèles 3D ultra-lumineux et personnalisez votre dossier
+                </p>
+              </div>
             </div>
 
             <button
@@ -4227,9 +4282,269 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             </button>
           </div>
 
-          {/* Corps de la page : entièrement vidé comme demandé, prêt pour accueillir vos modèles */}
-          <div className="flex-1 overflow-y-auto p-6 sm:p-8">
-            {/* Espace vierge prêt pour accueillir les modèles de l'utilisateur */}
+          {/* Barre de navigation des 4 modèles */}
+          <div className="px-4 sm:px-7 py-2.5 bg-[#0C1222] border-b border-white/10 flex items-center gap-2 overflow-x-auto no-scrollbar shrink-0">
+            <button
+              type="button"
+              onClick={() => setCreateFolderActiveTab('all')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                createFolderActiveTab === 'all'
+                  ? 'bg-orange-500 text-black shadow-md'
+                  : 'bg-white/5 hover:bg-white/10 text-slate-300'
+              }`}
+            >
+              <span>🌟 Tous (4 Modèles)</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${
+                createFolderActiveTab === 'all' ? 'bg-black/20 text-black' : 'bg-white/10 text-slate-400'
+              }`}>
+                34
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCreateFolderActiveTab('1')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                createFolderActiveTab === '1'
+                  ? 'bg-orange-500 text-black shadow-md'
+                  : 'bg-white/5 hover:bg-white/10 text-slate-300'
+              }`}
+            >
+              <span>📁 Modèle 1 : Index Pastel</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${
+                createFolderActiveTab === '1' ? 'bg-black/20 text-black' : 'bg-white/10 text-slate-400'
+              }`}>
+                12
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCreateFolderActiveTab('2')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                createFolderActiveTab === '2'
+                  ? 'bg-orange-500 text-black shadow-md'
+                  : 'bg-white/5 hover:bg-white/10 text-slate-300'
+              }`}
+            >
+              <span>🎨 Modèle 2 : Bicolore Écolier</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${
+                createFolderActiveTab === '2' ? 'bg-black/20 text-black' : 'bg-white/10 text-slate-400'
+              }`}>
+                6
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCreateFolderActiveTab('3')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                createFolderActiveTab === '3'
+                  ? 'bg-orange-500 text-black shadow-md'
+                  : 'bg-white/5 hover:bg-white/10 text-slate-300'
+              }`}
+            >
+              <span>✨ Modèle 3 : Luminous Glow 3D</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${
+                createFolderActiveTab === '3' ? 'bg-black/20 text-black' : 'bg-white/10 text-slate-400'
+              }`}>
+                8
+              </span>
+            </button>
+
+            <button
+              type="button"
+              onClick={() => setCreateFolderActiveTab('4')}
+              className={`px-3.5 py-1.5 rounded-xl text-xs font-bold transition-all whitespace-nowrap flex items-center gap-1.5 cursor-pointer ${
+                createFolderActiveTab === '4'
+                  ? 'bg-orange-500 text-black shadow-md'
+                  : 'bg-white/5 hover:bg-white/10 text-slate-300'
+              }`}
+            >
+              <span>🏷️ Modèle 4 : Nuancier Designer</span>
+              <span className={`px-1.5 py-0.2 rounded-md text-[10px] font-black ${
+                createFolderActiveTab === '4' ? 'bg-black/20 text-black' : 'bg-white/10 text-slate-400'
+              }`}>
+                8
+              </span>
+            </button>
+          </div>
+
+          {/* Corps de la modal : Grille des 4 modèles 3D ultra-lumineux */}
+          <div className="flex-1 overflow-y-auto p-4 sm:p-6 sm:px-8 space-y-8">
+            {/* Notification de création réussie */}
+            {folderCreationToast && (
+              <div className="p-3.5 rounded-2xl bg-emerald-500/20 border border-emerald-400/50 text-emerald-300 flex items-center justify-between gap-3 shadow-lg animate-in fade-in slide-in-from-top-2">
+                <div className="flex items-center gap-2.5">
+                  <Check className="w-5 h-5 stroke-[3] text-emerald-400 shrink-0" />
+                  <span className="font-bold text-sm">{folderCreationToast}</span>
+                </div>
+              </div>
+            )}
+
+            {/* SECTION MODÈLE 1 */}
+            {(createFolderActiveTab === 'all' || createFolderActiveTab === '1') && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-lg bg-orange-500/20 text-orange-400 font-black text-xs border border-orange-500/30">
+                      MODÈLE 1
+                    </span>
+                    <h4 className="text-sm sm:text-base font-extrabold text-white">
+                      Onglets Index Pastel & Biseaux 3D
+                    </h4>
+                  </div>
+                  <span className="text-xs text-slate-400 font-medium">
+                    12 déclinaisons
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-5">
+                  {MODEL_1_FOLDERS.map((item) => (
+                    <Folder3DCard
+                      key={item.id}
+                      item={item}
+                      isSelected={selectedFolderModelItem?.id === item.id}
+                      onSelect={handleSelectModelItem}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* SECTION MODÈLE 2 */}
+            {(createFolderActiveTab === 'all' || createFolderActiveTab === '2') && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-lg bg-amber-500/20 text-amber-400 font-black text-xs border border-amber-500/30">
+                      MODÈLE 2
+                    </span>
+                    <h4 className="text-sm sm:text-base font-extrabold text-white">
+                      Bicolore Écolier, Rabat Courbé & Étiquettes Matières
+                    </h4>
+                  </div>
+                  <span className="text-xs text-slate-400 font-medium">
+                    6 déclinaisons
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-3 gap-4 sm:gap-6">
+                  {MODEL_2_FOLDERS.map((item) => (
+                    <Folder3DCard
+                      key={item.id}
+                      item={item}
+                      isSelected={selectedFolderModelItem?.id === item.id}
+                      onSelect={handleSelectModelItem}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* SECTION MODÈLE 3 */}
+            {(createFolderActiveTab === 'all' || createFolderActiveTab === '3') && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-lg bg-cyan-500/20 text-cyan-400 font-black text-xs border border-cyan-500/30">
+                      MODÈLE 3
+                    </span>
+                    <h4 className="text-sm sm:text-base font-extrabold text-white">
+                      Luminous Glow Néon 3D & Étoile Lumineuse
+                    </h4>
+                  </div>
+                  <span className="text-xs text-slate-400 font-medium">
+                    8 déclinaisons
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+                  {MODEL_3_FOLDERS.map((item) => (
+                    <Folder3DCard
+                      key={item.id}
+                      item={item}
+                      isSelected={selectedFolderModelItem?.id === item.id}
+                      onSelect={handleSelectModelItem}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+
+            {/* SECTION MODÈLE 4 */}
+            {(createFolderActiveTab === 'all' || createFolderActiveTab === '4') && (
+              <div className="space-y-4">
+                <div className="flex items-center justify-between border-b border-white/10 pb-2">
+                  <div className="flex items-center gap-2">
+                    <span className="px-2 py-0.5 rounded-lg bg-purple-500/20 text-purple-400 font-black text-xs border border-purple-500/30">
+                      MODÈLE 4
+                    </span>
+                    <h4 className="text-sm sm:text-base font-extrabold text-white">
+                      Nuancier Designer, Pastille Hex & Typographie Serif
+                    </h4>
+                  </div>
+                  <span className="text-xs text-slate-400 font-medium">
+                    8 déclinaisons
+                  </span>
+                </div>
+
+                <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-4 sm:gap-6">
+                  {MODEL_4_FOLDERS.map((item) => (
+                    <Folder3DCard
+                      key={item.id}
+                      item={item}
+                      isSelected={selectedFolderModelItem?.id === item.id}
+                      onSelect={handleSelectModelItem}
+                    />
+                  ))}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* Barre inférieure fixe : Sélection & Création personnalisée */}
+          <div className="px-4 sm:px-7 py-3.5 bg-[#070B14] border-t border-white/10 flex flex-col sm:flex-row items-center justify-between gap-3 shrink-0">
+            {/* Aperçu du modèle actif */}
+            <div className="flex items-center gap-3 w-full sm:w-auto">
+              <div 
+                className="w-10 h-8 rounded-lg shadow-md flex items-center justify-center text-xs font-black border border-white/20 shrink-0"
+                style={{ 
+                  backgroundColor: selectedFolderModelItem?.primaryColor || '#E76239',
+                  color: selectedFolderModelItem?.textDark ? '#111827' : '#FFFFFF'
+                }}
+              >
+                M{selectedFolderModelItem?.model || 1}
+              </div>
+              <div className="truncate">
+                <div className="text-xs font-black text-white flex items-center gap-1.5">
+                  <span>Modèle {selectedFolderModelItem?.model || 1}</span>
+                  <span className="text-slate-400">•</span>
+                  <span className="text-orange-400 truncate">{selectedFolderModelItem?.title || selectedFolderModelItem?.badge}</span>
+                </div>
+                <div className="text-[10px] text-slate-400 truncate">
+                  Cliquez sur un modèle ci-dessus pour le sélectionner
+                </div>
+              </div>
+            </div>
+
+            {/* Formulaire de saisie du nom & validation */}
+            <form onSubmit={handleCreateFolderSubmit} className="flex items-center gap-2.5 w-full sm:w-auto">
+              <input
+                type="text"
+                value={newFolderNameInput}
+                onChange={(e) => setNewFolderNameInput(e.target.value)}
+                placeholder="Nom du dossier..."
+                className="px-3.5 py-2 bg-white/5 border border-white/15 focus:border-orange-400 focus:outline-none focus:ring-1 focus:ring-orange-400 rounded-xl text-xs sm:text-sm text-white placeholder-slate-500 w-full sm:w-64 transition-all"
+              />
+              <button
+                type="submit"
+                className="px-5 py-2 rounded-xl bg-gradient-to-r from-amber-500 via-orange-500 to-orange-600 hover:from-amber-400 hover:to-orange-500 text-black font-black text-xs sm:text-sm shadow-[0_4px_16px_rgba(249,115,22,0.4)] flex items-center gap-2 transition-all active:scale-95 cursor-pointer shrink-0"
+              >
+                <FolderPlus className="w-4 h-4 stroke-[2.5]" />
+                <span>Créer ce dossier</span>
+              </button>
+            </form>
           </div>
         </div>
       </div>
@@ -4237,6 +4552,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     return createPortal(content, document.body);
   };
+
 
   return (
     <div className={`transition-colors duration-300 bg-[#F4F6F8] dark:bg-[#0C111D] text-stone-900 dark:text-slate-100 flex flex-col overflow-y-auto selection:bg-blue-600 selection:text-white ${
