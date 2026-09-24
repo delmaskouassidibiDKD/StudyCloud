@@ -588,6 +588,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     // Désactivé : aucun message lors des clics sur les boutons
   };
 
+  const [profileToastMessage, setProfileToastMessage] = useState<string | null>(null);
+  const profileToastTimerRef = useRef<any>(null);
+
+  const showProfileToast = (msg: string) => {
+    if (profileToastTimerRef.current) clearTimeout(profileToastTimerRef.current);
+    setProfileToastMessage(msg);
+    profileToastTimerRef.current = setTimeout(() => {
+      setProfileToastMessage(null);
+    }, 3500);
+  };
+
+  const handleRestoreDefaultWallpaperAndAvatar = () => {
+    localStorage.removeItem('studycloud_dashboard_wallpaper');
+    localStorage.removeItem('unifolder_user_avatar');
+    window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: null } }));
+    window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: null } }));
+    showProfileToast("Fond d'écran et photo de profil d'origine restaurés !");
+  };
+
   // =========================================================================
   // DONNÉES RICHES CONFORMENT EXACTEMENT AUX IMAGES FOURNIES PAR L'UTILISATEUR
   // =========================================================================
@@ -1647,14 +1666,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       case 'set_as_profile_and_wallpaper': {
         const imageUrl = file.previewUrl || '';
         if (!imageUrl) {
-          showToast("Aperçu de l'image indisponible.");
+          showProfileToast("Aperçu de l'image indisponible.");
           break;
         }
         localStorage.setItem('studycloud_dashboard_wallpaper', imageUrl);
         localStorage.setItem('unifolder_user_avatar', imageUrl);
         window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: imageUrl } }));
         window.dispatchEvent(new CustomEvent('studycloud_avatar_updated', { detail: { avatar: imageUrl } }));
-        showToast(`Photo de profil et fond du tableau de bord mis à jour !`);
+        showProfileToast("Cette image a été définie comme photo de profil");
         break;
       }
 
@@ -2944,6 +2963,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               >
                 <KeyRound className="w-3.5 h-3.5 shrink-0 text-amber-400" />
                 <span>Changer de code</span>
+              </button>
+            </div>
+          )}
+
+          {/* Option Restaurer le fond d'origine et la photo de profil (Menu Images) */}
+          {(currentSubView?.id === 'studycloud-category-images' || (isCloudView && cloudActiveTab === 'images')) && (
+            <div className="py-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsHeaderMenuOpen(false);
+                  handleRestoreDefaultWallpaperAndAvatar();
+                }}
+                className="w-full px-3 py-2 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+              >
+                <RotateCcw className="w-3.5 h-3.5 shrink-0 text-rose-400" />
+                <span>Restaurer le fond et photo de profil d'origine</span>
               </button>
             </div>
           )}
@@ -6154,6 +6190,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
       {/* Modal de changement de code PIN (Image 2) */}
       {renderChangePinModal()}
+
+      {/* Toast Notification sobre sans logo étoiles ou autre */}
+      {profileToastMessage && (
+        <div className="fixed top-5 left-1/2 -translate-x-1/2 z-[300000] max-w-md w-[92%] sm:w-auto px-5 py-3 rounded-2xl bg-[#0B132B]/95 border-2 border-emerald-500/80 text-white shadow-[0_20px_50px_rgba(0,0,0,0.85)] flex items-center justify-between gap-3 backdrop-blur-md animate-in fade-in slide-in-from-top-3 duration-200">
+          <div className="flex items-center gap-2.5">
+            <Check className="w-4 h-4 text-emerald-400 shrink-0" />
+            <span className="text-xs sm:text-sm font-bold text-white tracking-wide">
+              {profileToastMessage}
+            </span>
+          </div>
+          <button
+            type="button"
+            onClick={() => setProfileToastMessage(null)}
+            className="p-1 rounded-lg text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0 ml-2"
+            title="Fermer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+      )}
 
     </div>
   );

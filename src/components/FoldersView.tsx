@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
+import { createPortal } from 'react-dom';
 import { Folder, FolderPlus, Sparkles, Layers, ArrowLeft, X, Search, Globe, Sun, Moon, BookOpen, ChevronLeft, ChevronRight } from 'lucide-react';
 import { MenuDrawer } from './MenuDrawer';
 import { DelmasRobot } from './DelmasRobot';
@@ -760,10 +761,10 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         </div>
       )}
 
-      {/* Fixed Header bar with action buttons - Solid Dark #070a13 */}
+      {/* Fixed Header bar with action buttons - Transparent sur fond d'écran avec ligne de séparation bien visible */}
       <div className={`fixed top-0 left-0 right-0 md:left-64 z-40 px-3 md:px-6 py-2 h-[64px] md:h-[68px] flex items-center justify-between gap-2 md:gap-4 transition-all duration-300 ${
         dashboardWallpaper && viewMode === 'home'
-          ? 'bg-stone-950/85 backdrop-blur-md border-b border-white/10 text-white shadow-md'
+          ? 'bg-transparent border-b-2 border-white/50 text-white shadow-sm'
           : isDarkMode 
             ? 'bg-[#070a13] border-b border-[#1e293b] shadow-md' 
             : 'bg-[#E9D7C9] border-b-2 border-stone-800 shadow-sm'
@@ -785,22 +786,6 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             onUpdateMatiereColor={handleUpdateMatiereColor}
             onSelectMatiere={(name) => setViewMode(`matiere-${name}`)}
           />
-          {/* Delmas IA Overlay Modal - Chat direct et éphémère (sans base de données) */}
-          {isAssistantOpen && (
-            <div 
-              className="fixed inset-0 z-[200000] flex items-center justify-center bg-black/75 backdrop-blur-md p-0 sm:p-4 md:p-6 animate-fadeIn"
-              onClick={() => setIsAssistantOpen(false)}
-            >
-              <div 
-                className="w-full h-full sm:max-w-3xl sm:h-[88vh] sm:max-h-[820px] bg-[#16181d] sm:rounded-3xl sm:border sm:border-zinc-700/70 shadow-2xl flex flex-col overflow-hidden relative text-left"
-                onClick={(e) => e.stopPropagation()}
-              >
-                <DelmasChat 
-                  onClose={() => setIsAssistantOpen(false)} 
-                />
-              </div>
-            </div>
-          )}
         </div>
 
         <div className="flex items-center gap-1.5 sm:gap-2.5 md:gap-3">
@@ -817,7 +802,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             >
               <BookOpen className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${isDarkMode ? 'text-white' : 'text-stone-700'}`}>
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${
+              dashboardWallpaper && viewMode === 'home'
+                ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
+                : (isDarkMode ? 'text-white' : 'text-stone-700')
+            }`}>
               Espace d'étude
             </span>
           </div>
@@ -839,7 +828,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                 <Moon className="w-4 h-4 text-indigo-600" />
               )}
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${isDarkMode ? 'text-amber-300' : 'text-stone-700'}`}>
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${
+              dashboardWallpaper && viewMode === 'home'
+                ? 'text-amber-300 drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
+                : (isDarkMode ? 'text-amber-300' : 'text-stone-700')
+            }`}>
               {isDarkMode ? "Jour" : "Sombre"}
             </span>
           </div>
@@ -857,7 +850,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             >
               <Globe className="w-4 h-4 text-rose-400" />
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${isDarkMode ? 'text-white' : 'text-stone-700'}`}>
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${
+              dashboardWallpaper && viewMode === 'home'
+                ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
+                : (isDarkMode ? 'text-white' : 'text-stone-700')
+            }`}>
               Langue
             </span>
             
@@ -918,7 +915,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
               </div>
             </button>
             <span className={`text-[9px] sm:text-[10px] font-black uppercase tracking-wider mt-1 leading-none whitespace-nowrap transition-colors ${
-              isAssistantOpen ? 'text-blue-500' : 'text-blue-600 dark:text-blue-400 group-hover:text-blue-700'
+              isAssistantOpen 
+                ? 'text-blue-500' 
+                : (dashboardWallpaper && viewMode === 'home'
+                    ? 'text-blue-300 drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)] group-hover:text-blue-200'
+                    : (isDarkMode ? 'text-blue-400 group-hover:text-blue-300' : 'text-blue-600 group-hover:text-blue-700'))
             }`}>
               delmas IA
             </span>
@@ -941,7 +942,11 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             >
               <Sparkles className="w-4 h-4 text-amber-400" />
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${isDarkMode ? 'text-white' : 'text-stone-700'}`}>
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${
+              dashboardWallpaper && viewMode === 'home'
+                ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
+                : (isDarkMode ? 'text-white' : 'text-stone-700')
+            }`}>
               Abonnement
             </span>
           </div>
@@ -959,13 +964,35 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             >
               <FolderPlus className="w-4 h-4 text-orange-400" />
             </button>
-            <span className={`text-[10px] font-extrabold leading-none mt-1 ${isDarkMode ? 'text-white' : 'text-stone-700'}`}>
+            <span className={`text-[10px] font-extrabold leading-none mt-1 ${
+              dashboardWallpaper && viewMode === 'home'
+                ? 'text-white drop-shadow-[0_1.5px_2px_rgba(0,0,0,0.9)]'
+                : (isDarkMode ? 'text-white' : 'text-stone-700')
+            }`}>
               Matière
             </span>
           </div>
 
         </div>
       </div>
+
+      {/* Delmas IA Overlay Modal - Isolé hors du header avec createPortal vers document.body (ne subit aucune déformation ni creux) */}
+      {isAssistantOpen && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 z-[200000] flex items-center justify-center bg-black/75 backdrop-blur-md p-0 sm:p-4 md:p-6 animate-fadeIn"
+          onClick={() => setIsAssistantOpen(false)}
+        >
+          <div 
+            className="w-full h-full sm:max-w-3xl sm:h-[88vh] sm:max-h-[820px] bg-[#16181d] sm:rounded-3xl sm:border sm:border-zinc-700/70 shadow-2xl flex flex-col overflow-hidden relative text-left"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <DelmasChat 
+              onClose={() => setIsAssistantOpen(false)} 
+            />
+          </div>
+        </div>,
+        document.body
+      )}
 
       {isMatiereMenuOpen && (
         <div 
@@ -1493,21 +1520,6 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             }`}>
               {activePageIndex === 0 ? "Espace libre • Page 1" : "Écran d'accueil • Page 2"}
             </span>
-
-            {dashboardWallpaper && (
-              <button
-                type="button"
-                onClick={() => {
-                  localStorage.removeItem('studycloud_dashboard_wallpaper');
-                  setDashboardWallpaper(null);
-                  window.dispatchEvent(new CustomEvent('studycloud_wallpaper_updated', { detail: { wallpaper: null } }));
-                }}
-                className="text-[10px] font-black text-rose-300 hover:text-white bg-black/60 hover:bg-rose-950/80 px-2.5 py-1 rounded-full border border-white/15 transition-all cursor-pointer shadow-md active:scale-95"
-                title="Rétablir le fond d'écran par défaut"
-              >
-                Rétablir fond par défaut
-              </button>
-            )}
           </div>
 
           {/* Conteneur Carrousel / Glissement fluide (Swipe phone & Desktop) */}
