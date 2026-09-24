@@ -52,7 +52,7 @@ export function LeftMenu({
   const [searchQuery, setSearchQuery] = useState('');
 
   const currentFolderName = activePreviewItem?.folderName || activePreviewItem?.matiere || activeFolderDetail?.title;
-  const isMesFichiersMode = currentFolderName === 'Mes fichiers' || !currentFolderName || !activeFolderDetail;
+  const isMesFichiersMode = !currentFolderName || currentFolderName === 'Mes fichiers';
   const [panelWidth, setPanelWidth] = useState(380);
 
   useEffect(() => {
@@ -757,6 +757,7 @@ export function LeftMenu({
                 matiereMap.set(f.id, {
                   ...f,
                   matiere: folder,
+                  folderName: folder,
                   extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
                 });
               }
@@ -773,6 +774,7 @@ export function LeftMenu({
               matiereMap.set(f.id, {
                 ...f,
                 matiere: folder,
+                folderName: folder,
                 extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
               });
             }
@@ -787,6 +789,7 @@ export function LeftMenu({
           matiereMap.set(activePreviewItem.id, {
             ...activePreviewItem,
             matiere: folder,
+            folderName: folder,
             extension: activePreviewItem.extension || (activePreviewItem.name && activePreviewItem.name.includes('.') ? activePreviewItem.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
           });
         }

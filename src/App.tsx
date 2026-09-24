@@ -1130,11 +1130,41 @@ export default function App() {
   useEffect(() => {
     const handleStudyCloudOpenSpace = (e: any) => {
       const file = e.detail?.file || null;
+      const folder = e.detail?.folder || null;
+      const folderName = e.detail?.folderName || file?.folderName || file?.matiere || folder?.title || null;
+      const folderFiles = e.detail?.files || folder?.files || (file ? [file] : []);
+
       if (file) {
         setActivePreviewItem(file);
       } else {
         setActivePreviewItem(null);
       }
+
+      if (folder) {
+        setActiveFolderDetail(folder);
+      } else if (folderName) {
+        setActiveFolderDetail({
+          id: `menu-${folderName}`,
+          title: folderName,
+          description: '',
+          category: folderName,
+          author: 'StudyCloud',
+          school: '',
+          country: "Côte d'Ivoire",
+          createdAt: new Date().toISOString(),
+          files: folderFiles,
+          totalSize: 0,
+          downloadsCount: 0,
+          isPublic: false
+        });
+      }
+
+      if (folderName && folderFiles.length > 0) {
+        try {
+          localStorage.setItem(`unifolder_matiere_files_${folderName}`, JSON.stringify(folderFiles));
+        } catch (err) {}
+      }
+
       setPreviewOwnerTab('folders');
       setIsStudySpaceOpen(true);
     };
@@ -1303,11 +1333,31 @@ export default function App() {
               onOpenPublishView={() => {
                 handleSetTab('publish-file');
               }}
-              onOpenStudySpace={(file?: any, folderName?: string) => {
+              onOpenStudySpace={(file?: any, folderName?: string, folderFiles?: any[]) => {
                 if (file) {
                   setActivePreviewItem(file);
                 } else {
                   setActivePreviewItem(null);
+                }
+                if (folderName) {
+                  const files = folderFiles || (file ? [file] : []);
+                  setActiveFolderDetail({
+                    id: `menu-${folderName}`,
+                    title: folderName,
+                    description: '',
+                    category: folderName,
+                    author: 'StudyCloud',
+                    school: '',
+                    country: "Côte d'Ivoire",
+                    createdAt: new Date().toISOString(),
+                    files,
+                    totalSize: 0,
+                    downloadsCount: 0,
+                    isPublic: false
+                  });
+                  try {
+                    localStorage.setItem(`unifolder_matiere_files_${folderName}`, JSON.stringify(files));
+                  } catch (err) {}
                 }
                 setPreviewOwnerTab('folders');
                 setIsStudySpaceOpen(true);
@@ -1613,7 +1663,7 @@ export default function App() {
             {/* Center: Nom du fichier & Contrôles Audio (au-dessus de la page en mode écran réduit) */}
             <div className="flex-1 items-center justify-center gap-2 overflow-hidden px-1 sm:px-2 min-w-0 flex">
               <p className="text-[11px] sm:text-xs font-bold text-stone-900 dark:text-white leading-tight truncate overflow-hidden text-ellipsis text-center max-w-[140px] sm:max-w-xs lg:max-w-sm shrink">
-                {activePreviewItem ? activePreviewItem.name : "Espace d'étude - Mes fichiers"}
+                {activePreviewItem ? activePreviewItem.name : (activeFolderDetail?.title ? `Espace d'étude - ${activeFolderDetail.title}` : "Espace d'étude - Mes fichiers")}
               </p>
               <div id="studycloud-top-audio-portal" className="flex items-center shrink-0" />
             </div>

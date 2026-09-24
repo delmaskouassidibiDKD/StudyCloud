@@ -23,6 +23,7 @@ import {
   Info, 
   Maximize2, 
   Minimize2, 
+  BookOpen, 
   Menu,
   ShieldCheck,
   FolderCheck,
@@ -67,6 +68,7 @@ import { getDownloadedFiles, recordDownloadedFile, DownloadedItem } from '../ser
 
 interface Page1FilesMenuViewProps {
   onBack: () => void;
+  onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[]) => void;
 }
 
 export interface FileItem {
@@ -101,7 +103,7 @@ interface SubMenuView {
   color: string;
 }
 
-export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }) => {
+export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, onOpenStudySpace }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [subSearchQuery, setSubSearchQuery] = useState('');
   const [docMenuOpenId, setDocMenuOpenId] = useState<string | null>(null);
@@ -1747,6 +1749,102 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     return `${mins < 10 ? '0' : ''}${mins}:${secs < 10 ? '0' : ''}${secs}`;
   };
 
+  // Ouvrir l'espace d'étude pour le menu actif (ex: Musique, Téléchargements, Documents, Images, etc.)
+  const handleOpenStudySpaceForCurrentMenu = (withSelectedFile: boolean) => {
+    let menuName = currentSubView ? currentSubView.name : 'Mes fichiers';
+    if (currentSubView?.id === 'studycloud-category-audio' || menuName.toLowerCase() === 'audio') {
+      menuName = 'Musique';
+    }
+
+    let sourceList: FileItem[] = [];
+    if (currentSubView?.id === 'studycloud-category-images') {
+      sourceList = filteredImages;
+    } else if (currentSubView?.id === 'studycloud-category-videos') {
+      sourceList = filteredVideos;
+    } else if (currentSubView?.id === 'studycloud-category-audio') {
+      sourceList = filteredAudio;
+    } else if (currentSubView?.id === 'studycloud-category-documents') {
+      sourceList = filteredDocuments;
+    } else if (currentSubView?.id === 'studycloud-category-downloads') {
+      sourceList = [...downloadDocs, ...downloadImages, ...downloadVideos, ...downloadAudio, ...downloadOthers];
+    } else if (currentSubView?.id === 'studycloud-collection-secure-folder') {
+      sourceList = filteredSecureFiles;
+    } else {
+      sourceList = cloudRecentFiles;
+    }
+
+    const convertedFiles = sourceList.map(f => {
+      const ext = f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
+      return {
+        id: f.id,
+        name: f.name,
+        size: f.sizeBytes || 0,
+        type: f.isImage ? 'image/jpeg' : (f.videoUrl ? 'video/mp4' : (f.audioUrl ? 'audio/mpeg' : 'application/pdf')),
+        extension: ext,
+        url: f.previewUrl || f.audioUrl || f.videoUrl || (f as any).url || '',
+        previewUrl: f.previewUrl,
+        audioUrl: f.audioUrl,
+        videoUrl: f.videoUrl,
+        isImage: !!f.isImage,
+        folderName: menuName,
+        matiere: menuName,
+        source: f.source || menuName
+      };
+    });
+
+    let selectedFileForStudy: any = null;
+    if (withSelectedFile && splitSelectedFile) {
+      const ext = splitSelectedFile.extension || (splitSelectedFile.name && splitSelectedFile.name.includes('.') ? splitSelectedFile.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
+      selectedFileForStudy = {
+        id: splitSelectedFile.id,
+        name: splitSelectedFile.name,
+        size: splitSelectedFile.sizeBytes || 0,
+        type: splitSelectedFile.isImage ? 'image/jpeg' : (splitSelectedFile.videoUrl ? 'video/mp4' : (splitSelectedFile.audioUrl ? 'audio/mpeg' : 'application/pdf')),
+        extension: ext,
+        url: splitSelectedFile.previewUrl || splitSelectedFile.audioUrl || splitSelectedFile.videoUrl || (splitSelectedFile as any).url || '',
+        previewUrl: splitSelectedFile.previewUrl,
+        audioUrl: splitSelectedFile.audioUrl,
+        videoUrl: splitSelectedFile.videoUrl,
+        isImage: !!splitSelectedFile.isImage,
+        folderName: menuName,
+        matiere: menuName,
+        source: splitSelectedFile.source || menuName
+      };
+    }
+
+    try {
+      localStorage.setItem(`unifolder_matiere_files_${menuName}`, JSON.stringify(convertedFiles));
+    } catch (e) {}
+
+    const folderPayload = {
+      id: `menu-${menuName}`,
+      title: menuName,
+      description: '',
+      category: menuName,
+      author: 'StudyCloud',
+      school: '',
+      country: "Côte d'Ivoire",
+      createdAt: new Date().toISOString(),
+      files: convertedFiles,
+      totalSize: 0,
+      downloadsCount: 0,
+      isPublic: false
+    };
+
+    if (onOpenStudySpace) {
+      onOpenStudySpace(selectedFileForStudy, menuName, convertedFiles);
+    }
+
+    window.dispatchEvent(new CustomEvent('studycloud_open_study_space', {
+      detail: {
+        file: selectedFileForStudy,
+        folderName: menuName,
+        files: convertedFiles,
+        folder: folderPayload
+      }
+    }));
+  };
+
   // =========================================================================
   // BANDEAU DE SÉLECTION MULTIPLE UNIVERSEL (PROPOSITIONS D'ACTIONS)
   // Apparaît dès que l'on clique sur "Cocher" ou "Tout cocher" dans le menu à 3 traits
@@ -2819,8 +2917,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 </div>
               </div>
 
-              {/* DROITE : Plein écran général & Bouton 3 traits d'en-tête (options de tri & bouton œil) */}
+              {/* DROITE : Bouton Espace d'étude, Plein écran général & Bouton 3 traits d'en-tête */}
               <div className="shrink-0 flex items-center gap-2">
+                {/* BOUTON ESPACE D'ÉTUDE DEVANT LE BOUTON ZOOM */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenStudySpaceForCurrentMenu(false)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 hover:border-emerald-500/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black group"
+                  title="Ouvrir l'Espace d'étude"
+                >
+                  <BookOpen className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                  <span className="hidden sm:inline">Espace d'étude</span>
+                </button>
+
                 <button
                   type="button"
                   onClick={() => setIsFullscreen(!isFullscreen)}
@@ -3409,6 +3518,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                       title="Télécharger"
                     >
                       <Download className="w-3.5 h-3.5" />
+                    </button>
+
+                    {/* BOUTON ESPACE D'ÉTUDE DEVANT LE BOUTON ZOOM / OPTIONS */}
+                    <button
+                      type="button"
+                      onClick={() => handleOpenStudySpaceForCurrentMenu(true)}
+                      className="w-7 h-7 sm:w-8 sm:h-8 rounded-full flex items-center justify-center border transition-all cursor-pointer shadow-sm active:scale-95 bg-[#04060A] hover:bg-emerald-950 text-emerald-400 border-white/10 hover:border-emerald-500/50"
+                      title="Ouvrir dans l'Espace d'étude"
+                    >
+                      <BookOpen className="w-3.5 h-3.5 stroke-[2.2]" />
                     </button>
 
                     {/* BOUTON 3 TRAITS D'OPTIONS AUDIO OU AGRANDIR POUR AUTRES FORMATS */}
@@ -4041,6 +4160,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                   <Plus className="w-4 h-4 text-blue-400 stroke-[2.5]" />
                   <span className="hidden xs:inline">Importer un fichier</span>
                   <span className="xs:hidden">Importer</span>
+                </button>
+
+                {/* BOUTON ESPACE D'ÉTUDE DEVANT LE BOUTON ZOOM DE L'ACCUEIL */}
+                <button
+                  type="button"
+                  onClick={() => handleOpenStudySpaceForCurrentMenu(false)}
+                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 hover:border-emerald-500/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black group"
+                  title="Ouvrir l'Espace d'étude"
+                >
+                  <BookOpen className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
+                  <span className="hidden sm:inline">Espace d'étude</span>
                 </button>
 
                 <button

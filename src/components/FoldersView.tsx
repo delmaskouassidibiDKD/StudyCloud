@@ -31,7 +31,7 @@ interface FoldersViewProps {
   setActivePreviewItem?: (item: any) => void;
   activePreviewItem?: any;
   onOpenCreateShareLink?: (items: any[]) => void;
-  onOpenStudySpace?: () => void;
+  onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[]) => void;
 }
 
 export const FoldersView: React.FC<FoldersViewProps> = ({
@@ -1434,7 +1434,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         />
       )}
       {viewMode === 'page1-files-menu' && (
-        <Page1FilesMenuView onBack={() => setViewMode('home')} />
+        <Page1FilesMenuView onBack={() => setViewMode('home')} onOpenStudySpace={onOpenStudySpace} />
       )}
 
       {viewMode === 'home' && (
