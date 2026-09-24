@@ -65,6 +65,12 @@ import {
   Square
 } from 'lucide-react';
 import { getDownloadedFiles, recordDownloadedFile, DownloadedItem } from '../services/downloadsManager';
+import { 
+  DEFAULT_IMAGES_LIST, 
+  DEFAULT_VIDEOS_LIST, 
+  DEFAULT_AUDIO_LIST, 
+  DEFAULT_DOCUMENTS_LIST 
+} from '../data/categoryFilesData';
 
 interface Page1FilesMenuViewProps {
   onBack: () => void;
@@ -1752,19 +1758,32 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Ouvrir l'espace d'étude pour le menu actif (ex: Musique, Téléchargements, Documents, Images, etc.)
   const handleOpenStudySpaceForCurrentMenu = (withSelectedFile: boolean) => {
     let menuName = currentSubView ? currentSubView.name : 'Mes fichiers';
-    if (currentSubView?.id === 'studycloud-category-audio' || menuName.toLowerCase() === 'audio') {
+
+    // Si un fichier spécifique est sélectionné, sa catégorie dicte la galerie correspondante
+    if (withSelectedFile && splitSelectedFile) {
+      if (splitSelectedFile.category === 'images' || splitSelectedFile.isImage) {
+        menuName = 'Images';
+      } else if (splitSelectedFile.category === 'videos' || splitSelectedFile.videoUrl) {
+        menuName = 'Vidéos';
+      } else if (splitSelectedFile.category === 'audio' || splitSelectedFile.audioUrl) {
+        menuName = 'Musique';
+      } else if (splitSelectedFile.category === 'documents') {
+        menuName = 'Documents';
+      }
+    } else if (currentSubView?.id === 'studycloud-category-audio' || menuName.toLowerCase() === 'audio') {
       menuName = 'Musique';
     }
 
-    let sourceList: FileItem[] = [];
-    if (currentSubView?.id === 'studycloud-category-images') {
-      sourceList = filteredImages;
-    } else if (currentSubView?.id === 'studycloud-category-videos') {
-      sourceList = filteredVideos;
-    } else if (currentSubView?.id === 'studycloud-category-audio') {
-      sourceList = filteredAudio;
-    } else if (currentSubView?.id === 'studycloud-category-documents') {
-      sourceList = filteredDocuments;
+    let sourceList: any[] = [];
+    const norm = menuName.toLowerCase();
+    if (norm.includes('image')) {
+      sourceList = filteredImages.length > 0 ? filteredImages : (imagesList.length > 0 ? imagesList : DEFAULT_IMAGES_LIST);
+    } else if (norm.includes('vid')) {
+      sourceList = filteredVideos.length > 0 ? filteredVideos : (videosList.length > 0 ? videosList : DEFAULT_VIDEOS_LIST);
+    } else if (norm.includes('musiq') || norm.includes('audio') || norm.includes('son')) {
+      sourceList = filteredAudio.length > 0 ? filteredAudio : (audioList.length > 0 ? audioList : DEFAULT_AUDIO_LIST);
+    } else if (norm.includes('doc')) {
+      sourceList = filteredDocuments.length > 0 ? filteredDocuments : (documentsList.length > 0 ? documentsList : DEFAULT_DOCUMENTS_LIST);
     } else if (currentSubView?.id === 'studycloud-category-downloads') {
       sourceList = [...downloadDocs, ...downloadImages, ...downloadVideos, ...downloadAudio, ...downloadOthers];
     } else if (currentSubView?.id === 'studycloud-collection-secure-folder') {
@@ -1773,7 +1792,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       sourceList = cloudRecentFiles;
     }
 
-    const convertedFiles = sourceList.map(f => {
+    let convertedFiles = sourceList.map(f => {
       const ext = f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER');
       return {
         id: f.id,
@@ -1786,6 +1805,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         audioUrl: f.audioUrl,
         videoUrl: f.videoUrl,
         isImage: !!f.isImage,
+        category: f.category,
         folderName: menuName,
         matiere: menuName,
         source: f.source || menuName
@@ -1806,10 +1826,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         audioUrl: splitSelectedFile.audioUrl,
         videoUrl: splitSelectedFile.videoUrl,
         isImage: !!splitSelectedFile.isImage,
+        category: splitSelectedFile.category,
         folderName: menuName,
         matiere: menuName,
         source: splitSelectedFile.source || menuName
       };
+
+      // S'assurer que le fichier sélectionné est bien inclus dans la liste de tous les fichiers
+      const existingIdx = convertedFiles.findIndex(f => f.id === selectedFileForStudy.id || f.name === selectedFileForStudy.name);
+      if (existingIdx >= 0) {
+        convertedFiles[existingIdx] = selectedFileForStudy;
+      } else {
+        convertedFiles = [selectedFileForStudy, ...convertedFiles];
+      }
     }
 
     try {

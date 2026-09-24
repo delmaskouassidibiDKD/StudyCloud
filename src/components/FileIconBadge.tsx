@@ -4,10 +4,13 @@ interface FileIconBadgeProps {
   fileName?: string;
   size?: number; // width in pixels
   isFolder?: boolean;
+  isAudio?: boolean;
 }
 
-export const FileIconBadge: React.FC<FileIconBadgeProps> = ({ fileName = '', size = 36, isFolder = false }) => {
+export const FileIconBadge: React.FC<FileIconBadgeProps> = ({ fileName = '', size = 36, isFolder = false, isAudio = false }) => {
   const ext = fileName.split('.').pop()?.toLowerCase() || '';
+
+  const isAudioFile = isAudio || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma', 'opus', 'mid', 'midi'].includes(ext);
 
   let color = '#57534E'; // default stone
   let label = ext.toUpperCase() || 'FILE';
@@ -15,6 +18,9 @@ export const FileIconBadge: React.FC<FileIconBadgeProps> = ({ fileName = '', siz
   if (isFolder) {
     color = '#EAB308'; // Yellow
     label = 'DOSSIER';
+  } else if (isAudioFile) {
+    color = '#8B5CF6'; // Violet / Purple for melody
+    label = 'SON';
   } else if (ext === 'pdf') {
     color = '#EF4444'; // Red
     label = 'PDF';
@@ -62,19 +68,33 @@ export const FileIconBadge: React.FC<FileIconBadgeProps> = ({ fileName = '', siz
         {/* Folded corner shadow */}
         <path d="M24 2L34 12H24Z" fill="#000000" fillOpacity="0.2" />
         
-        {/* Text Label */}
-        <text
-           x="18"
-           y="28"
-           fill="white"
-           fontSize={isFolder ? "6.5" : (label.length > 3 ? "7" : "8.5")}
-           fontWeight="900"
-           fontFamily="ui-sans-serif, system-ui, sans-serif"
-           textAnchor="middle"
-           letterSpacing={label.length > 3 ? "-0.5" : "0"}
-        >
-          {label}
-        </text>
+        {/* Logo au centre : Logo de mélodie pour les sons, ou label texte pour les autres */}
+        {isAudioFile ? (
+          <g fill="white">
+            {/* Têtes de notes */}
+            <ellipse cx="12" cy="29" rx="3.2" ry="2.2" transform="rotate(-18 12 29)" />
+            <ellipse cx="23" cy="26" rx="3.2" ry="2.2" transform="rotate(-18 23 26)" />
+            {/* Hampes */}
+            <rect x="14" y="16" width="1.8" height="13" rx="0.9" />
+            <rect x="25" y="13" width="1.8" height="13" rx="0.9" />
+            {/* Double ligature mélodique (barres de notes) */}
+            <polygon points="14,16 26.8,13 26.8,16 14,19" />
+            <polygon points="14,20.2 26.8,17.2 26.8,19.2 14,22.2" opacity="0.9" />
+          </g>
+        ) : (
+          <text
+             x="18"
+             y="28"
+             fill="white"
+             fontSize={isFolder ? "6.5" : (label.length > 3 ? "7" : "8.5")}
+             fontWeight="900"
+             fontFamily="ui-sans-serif, system-ui, sans-serif"
+             textAnchor="middle"
+             letterSpacing={label.length > 3 ? "-0.5" : "0"}
+          >
+            {label}
+          </text>
+        )}
       </svg>
     </div>
   );

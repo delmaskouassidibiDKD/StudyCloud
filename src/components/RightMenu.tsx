@@ -933,23 +933,6 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
       {/* Barre supérieure en haut dans le creux : Bouton Zoom (jaune) + Bouton + (Retour aux 12 boutons) + Bouton Historique (horloge) */}
       <div className="w-full flex items-center justify-between px-3 py-2 bg-[#23252a] border-b border-zinc-700/60 shrink-0 z-50 shadow-sm">
         <div className="flex items-center gap-2">
-          {/* Bouton Espace d'étude placé DEVANT le bouton Zoom jaune */}
-          <button
-            type="button"
-            onClick={() => {
-              if (activePreviewItem) {
-                window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 0 } }));
-                window.dispatchEvent(new CustomEvent('studycloud_open_study_space', { detail: { file: activePreviewItem } }));
-              } else {
-                window.dispatchEvent(new CustomEvent('studycloud_open_study_space', { detail: {} }));
-              }
-            }}
-            className="p-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer flex items-center justify-center"
-            title="Espace d'étude"
-          >
-            <BookOpen className="w-4 h-4 text-white" />
-          </button>
-
           {/* Bouton Zoom jaune */}
           <button
             type="button"

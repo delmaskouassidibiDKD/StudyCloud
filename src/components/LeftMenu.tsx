@@ -6,6 +6,7 @@ import { FileIconBadge } from './FileIconBadge';
 import { StudyCloudAPI } from '../services/api';
 import { buildAiStudyKey } from '../services/storageUtils';
 import { storeFileBlob, deleteFileBlob, getFileBlobUrl, MAX_FILE_SIZE_BYTES, formatFileSize } from '../services/localFileStorage';
+import { getGalleryFilesForCategory } from '../data/categoryFilesData';
 
 interface LeftMenuProps {
   isCenterFullscreen: boolean;
@@ -51,8 +52,13 @@ export function LeftMenu({
   const [showDeleteConfirm, setShowDeleteConfirm] = useState(false);
   const [searchQuery, setSearchQuery] = useState('');
 
-  const currentFolderName = activePreviewItem?.folderName || activePreviewItem?.matiere || activeFolderDetail?.title;
-  const isMesFichiersMode = !currentFolderName || currentFolderName === 'Mes fichiers';
+  const detectedCategory = activePreviewItem?.isImage || activePreviewItem?.category === 'images' ? 'Images'
+    : (activePreviewItem?.videoUrl || activePreviewItem?.category === 'videos' ? 'Vidéos'
+    : (activePreviewItem?.audioUrl || activePreviewItem?.category === 'audio' ? 'Musique'
+    : (activePreviewItem?.category === 'documents' ? 'Documents' : null)));
+
+  const currentFolderName = activePreviewItem?.folderName || activePreviewItem?.matiere || activeFolderDetail?.title || detectedCategory;
+  const isMesFichiersMode = (!currentFolderName || currentFolderName === 'Mes fichiers') && !detectedCategory;
   const [panelWidth, setPanelWidth] = useState(380);
 
   useEffect(() => {
@@ -566,7 +572,11 @@ export function LeftMenu({
           className={`group flex flex-col items-center cursor-pointer transition-all ${isHorizontal ? 'w-[100px] shrink-0' : 'w-full min-w-0'} relative ${isActive || isAttached ? 'scale-[1.03]' : 'hover:scale-105'} ${openMenuId === f.id ? 'z-[200]' : 'z-10'} p-1`}
         >
           <div className={`relative p-2.5 rounded-xl transition-all ${containerClass}`}>
-            <FileIconBadge fileName={f.name} size={48} />
+            <FileIconBadge 
+              fileName={f.name} 
+              size={48} 
+              isAudio={f.category === 'audio' || !!f.audioUrl || f.type?.startsWith('audio/') || ['mp3', 'wav', 'ogg', 'm4a', 'flac', 'aac', 'wma'].includes((f.extension || f.name.split('.').pop() || '').toLowerCase())} 
+            />
             
             {showMenuButton && (
               <div className={`absolute top-1 right-1 transition-opacity z-50 ${openMenuId === f.id ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'}`}>
@@ -743,8 +753,24 @@ export function LeftMenu({
     let baseFiles: any[] = [];
 
     if (folder && !isMesFichiersMode) {
-      // CAS DANS UNE MATIÈRE (ex: Mathématiques) -> Uniquement les fichiers de cette matière
+      // CAS DANS UNE MATIÈRE OU GALERIE (ex: Images, Vidéos, Musique, Documents)
       const matiereMap = new Map<string, any>();
+
+      // 0. Si le dossier correspond à une galerie connue (Images, Vidéos, Musique, Documents),
+      // pré-charger TOUTE la galerie par défaut pour que tous les autres fichiers de la galerie soient visibles
+      const defaultGallery = getGalleryFilesForCategory(folder);
+      if (defaultGallery && defaultGallery.length > 0) {
+        defaultGallery.forEach((f: any) => {
+          if (f && f.id && !importedIds.includes(f.id)) {
+            matiereMap.set(f.id, {
+              ...f,
+              matiere: folder,
+              folderName: folder,
+              extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+            });
+          }
+        });
+      }
 
       // A. Charger les fichiers de cette matière depuis le localStorage
       const matiereRaw = localStorage.getItem(`unifolder_matiere_files_${folder}`);
@@ -770,29 +796,24 @@ export function LeftMenu({
       if (activeFolderDetail && Array.isArray(activeFolderDetail.files)) {
         activeFolderDetail.files.forEach((f: any) => {
           if (f && f.id && !f.isLeftMenuImport && !f.isStudyImport && !importedIds.includes(f.id)) {
-            if (!matiereMap.has(f.id)) {
-              matiereMap.set(f.id, {
-                ...f,
-                matiere: folder,
-                folderName: folder,
-                extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
-              });
-            }
+            matiereMap.set(f.id, {
+              ...f,
+              matiere: folder,
+              folderName: folder,
+              extension: f.extension || (f.name && f.name.includes('.') ? f.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+            });
           }
         });
       }
 
-      // C. S'assurer que le fichier actif sélectionné (si de cette matière) est présent
+      // C. S'assurer que le fichier actif sélectionné est présent
       if (activePreviewItem && activePreviewItem.id && !importedIds.includes(activePreviewItem.id)) {
-        const itemFolder = activePreviewItem.folderName || activePreviewItem.matiere;
-        if (itemFolder === folder && !matiereMap.has(activePreviewItem.id)) {
-          matiereMap.set(activePreviewItem.id, {
-            ...activePreviewItem,
-            matiere: folder,
-            folderName: folder,
-            extension: activePreviewItem.extension || (activePreviewItem.name && activePreviewItem.name.includes('.') ? activePreviewItem.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
-          });
-        }
+        matiereMap.set(activePreviewItem.id, {
+          ...activePreviewItem,
+          matiere: folder,
+          folderName: folder,
+          extension: activePreviewItem.extension || (activePreviewItem.name && activePreviewItem.name.includes('.') ? activePreviewItem.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER')
+        });
       }
 
       baseFiles = Array.from(matiereMap.values());
