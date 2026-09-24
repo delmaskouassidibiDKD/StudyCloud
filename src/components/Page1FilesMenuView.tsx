@@ -1874,6 +1874,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return applySorting(favs);
   }, [documentsList, imagesList, videosList, audioList, classeurExtraDocs, subSearchQuery, sortOption]);
 
+  // Liste des téléchargements pour le sous-menu Téléchargements (Prend tout type de fichier)
+  const filteredDownloads = useMemo(() => {
+    return downloadedItems.filter(item => {
+      return subSearchQuery.trim() === '' || item.name.toLowerCase().includes(subSearchQuery.toLowerCase());
+    });
+  }, [downloadedItems, subSearchQuery]);
+
   // Éléments de la barre horizontale de navigation Espace Cloud (Image 2 + Classeur Image 3, SANS Espace Cloud)
   const cloudNavItems = useMemo(() => [
     {
@@ -2123,13 +2130,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
     }
   }, [isAudioPlaying, splitSelectedFile]);
-
-  // Liste des téléchargements pour le sous-menu Téléchargements (Prend tout type de fichier)
-  const filteredDownloads = useMemo(() => {
-    return downloadedItems.filter(item => {
-      return subSearchQuery.trim() === '' || item.name.toLowerCase().includes(subSearchQuery.toLowerCase());
-    });
-  }, [downloadedItems, subSearchQuery]);
 
   // Conversion d'un DownloadedItem en FileItem pour l'affichage riche et le lecteur
   const toFileItem = (item: DownloadedItem): FileItem => ({
