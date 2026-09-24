@@ -35,6 +35,7 @@ import {
   FolderPlus,
   Box,
   Plus,
+  Minus,
   Upload,
   FolderArchive,
   ArrowRight,
@@ -220,6 +221,51 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // État d'ouverture du menu d'options 3 traits pour les dossiers 3D du Classeur
   const [activeFolderMenuId, setActiveFolderMenuId] = useState<string | null>(null);
+
+  // Niveau de zoom / taille des dossiers 3D du Classeur (0 à 10, valeur par défaut: 10 taille actuelle)
+  const [folderZoomLevel, setFolderZoomLevel] = useState<number>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_classeur_folder_zoom');
+      if (saved !== null) {
+        const parsed = parseInt(saved, 10);
+        if (!isNaN(parsed) && parsed >= 0 && parsed <= 10) {
+          return parsed;
+        }
+      }
+    } catch (e) {}
+    return 10;
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_classeur_folder_zoom', folderZoomLevel.toString());
+    } catch (e) {}
+  }, [folderZoomLevel]);
+
+  // Calcul dynamique de la largeur minimale et espacement de la grille (auto-fill progressif)
+  const folderCardMinWidth = Math.round(95 + (folderZoomLevel / 10) * 175);
+  const folderGridGap = Math.round(8 + (folderZoomLevel / 10) * 16);
+
+  const getFolderCardPadding = (zoom: number) => {
+    if (zoom <= 2) return 'p-1.5 rounded-xl';
+    if (zoom <= 5) return 'p-2 sm:p-2.5 rounded-2xl';
+    if (zoom <= 7) return 'p-2.5 sm:p-3 rounded-2xl';
+    return 'p-3 sm:p-4 rounded-3xl';
+  };
+
+  const getFolderTopSpacing = (zoom: number) => {
+    if (zoom <= 2) return 'pt-3 pb-0.5';
+    if (zoom <= 5) return 'pt-4 sm:pt-4.5 pb-0.5';
+    if (zoom <= 7) return 'pt-5 sm:pt-5.5 pb-1';
+    return 'pt-6 sm:pt-7 pb-1';
+  };
+
+  const getFolderMenuBtnClass = (zoom: number) => {
+    if (zoom <= 2) return 'absolute top-1 right-1 z-30 studycloud-menu-trigger scale-75 origin-top-right';
+    if (zoom <= 5) return 'absolute top-1.5 right-1.5 z-30 studycloud-menu-trigger scale-85 origin-top-right';
+    if (zoom <= 7) return 'absolute top-2 right-2 z-30 studycloud-menu-trigger scale-90 origin-top-right';
+    return 'absolute top-2.5 right-2.5 z-30 studycloud-menu-trigger';
+  };
 
   useEffect(() => {
     localStorage.setItem('studycloud_classeur_3d_folders', JSON.stringify(classeur3DFolders));
@@ -6027,7 +6073,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   ) : (
                     <div className="space-y-4 animate-in fade-in duration-200 pb-28">
-                      <div className="flex items-center justify-between px-1">
+                      <div className="flex items-center justify-between px-1 gap-2 flex-wrap sm:flex-nowrap">
                         <div className="flex items-center gap-2">
                           <h3 className="text-xs sm:text-sm font-black text-stone-900 dark:text-white tracking-wide">
                             Mes Dossiers
@@ -6036,13 +6082,54 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             {classeur3DFolders.length}
                           </span>
                         </div>
-                        <div className="text-[11px] text-stone-400 font-medium hidden sm:flex items-center gap-1.5">
-                          <span>Cliquez pour ouvrir • Maintenez pour déplacer</span>
+
+                        {/* Zone droite : Indication & Contrôle de taille (Zoom - / + de 0 à 10, défaut 10) */}
+                        <div className="flex items-center gap-2.5 sm:gap-3">
+                          <div className="text-[11px] text-stone-400 font-medium hidden md:flex items-center gap-1.5">
+                            <span>Maintenez et glissez pour déplacer</span>
+                          </div>
+
+                          {/* Widget Bouton - et + avec nombre 0 à 10 au milieu */}
+                          <div className="flex items-center gap-1 bg-[#0A101D] border border-white/15 hover:border-orange-500/40 rounded-full p-0.5 sm:p-1 shadow-inner transition-colors">
+                            <button
+                              type="button"
+                              onClick={() => setFolderZoomLevel(prev => Math.max(0, prev - 1))}
+                              disabled={folderZoomLevel <= 0}
+                              className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white/10 hover:bg-orange-500/25 hover:text-orange-400 disabled:opacity-20 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all active:scale-90 cursor-pointer shadow-sm"
+                              title="Réduire la taille des dossiers (Moins)"
+                              aria-label="Réduire la taille des dossiers"
+                            >
+                              <Minus className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </button>
+
+                            <div className="min-w-[24px] sm:min-w-[28px] text-center px-0.5">
+                              <span className="text-xs sm:text-sm font-black text-amber-400 tabular-nums select-none">
+                                {folderZoomLevel}
+                              </span>
+                            </div>
+
+                            <button
+                              type="button"
+                              onClick={() => setFolderZoomLevel(prev => Math.min(10, prev + 1))}
+                              disabled={folderZoomLevel >= 10}
+                              className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white/10 hover:bg-orange-500/25 hover:text-orange-400 disabled:opacity-20 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all active:scale-90 cursor-pointer shadow-sm"
+                              title="Agrandir la taille des dossiers (Plus)"
+                              aria-label="Agrandir la taille des dossiers"
+                            >
+                              <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                            </button>
+                          </div>
                         </div>
                       </div>
 
-                      {/* Grille progressive ligne par ligne : une ligne se remplit d'abord, puis est poussée en bas */}
-                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                      {/* Grille progressive ligne par ligne : auto-fill qui s'adapte à la réduction de taille pour occuper tout l'espace libre */}
+                      <div 
+                        className="grid transition-all duration-300 w-full"
+                        style={{
+                          gridTemplateColumns: `repeat(auto-fill, minmax(${folderCardMinWidth}px, 1fr))`,
+                          gap: `${folderGridGap}px`
+                        }}
+                      >
                         {classeur3DFolders
                           .filter(f => !subSearchQuery.trim() || f.name.toLowerCase().includes(subSearchQuery.toLowerCase().trim()))
                           .map((folder) => {
@@ -6060,7 +6147,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                     setOpened3DFolder(folder);
                                   }
                                 }}
-                                className={`group relative p-3 sm:p-4 rounded-3xl cursor-grab active:cursor-grabbing transition-all select-none touch-none border ${
+                                className={`group relative ${getFolderCardPadding(folderZoomLevel)} cursor-grab active:cursor-grabbing transition-all select-none touch-none border ${
                                   isBeingDragged
                                     ? 'opacity-20 scale-95 border-dashed border-orange-500/60 bg-orange-500/5'
                                     : 'bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1'
@@ -6068,7 +6155,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                               >
                                 {/* Haut droite : Bouton 3 traits & Menu d'options (Image 1 & 2) */}
                                 <div 
-                                  className="absolute top-2.5 right-2.5 z-30 studycloud-menu-trigger"
+                                  className={getFolderMenuBtnClass(folderZoomLevel)}
                                   onPointerDown={(e) => e.stopPropagation()}
                                 >
                                   <button
@@ -6091,7 +6178,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                 </div>
 
                                 {/* Le dossier 3D lui-même glissé un peu vers le bas sur l'espace noir sans bouger l'espace noir pour que le bouton 3 traits ne chevauche plus la date */}
-                                <div className="pt-6 sm:pt-7 pb-1 w-full">
+                                <div className={`${getFolderTopSpacing(folderZoomLevel)} w-full`}>
                                   <Classeur3DFolderCard folder={folder} isDragging={isBeingDragged} />
                                 </div>
                               </motion.div>
@@ -7932,9 +8019,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             pointerEvents: 'none',
             touchAction: 'none',
           }}
-          className="rounded-3xl p-3 sm:p-4 border-2 border-orange-400 ring-4 ring-orange-500/50 bg-[#0E1526] shadow-[0_25px_60px_rgba(0,0,0,0.85)] scale-105 rotate-1 select-none overflow-hidden"
+          className={`${getFolderCardPadding(folderZoomLevel)} border-2 border-orange-400 ring-4 ring-orange-500/50 bg-[#0E1526] shadow-[0_25px_60px_rgba(0,0,0,0.85)] scale-105 rotate-1 select-none overflow-hidden`}
         >
-          <div className="pt-6 sm:pt-7 pb-1 w-full">
+          <div className={`${getFolderTopSpacing(folderZoomLevel)} w-full`}>
             <Classeur3DFolderCard folder={folderDragState.folder} />
           </div>
         </div>,
