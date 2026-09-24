@@ -86,6 +86,7 @@ export interface FileItem {
   downloadsCount?: number;
   isFavorite?: boolean;
   isSecure?: boolean;
+  isPinned?: boolean;
   artist?: string;
   lyricsSnippet?: string;
   fullLyrics?: string[];
@@ -132,6 +133,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   const [activeMenuFileId, setActiveMenuFileId] = useState<string | null>(null);
   const [audioMenuSongId, setAudioMenuSongId] = useState<string | null>(null);
   const [isPlayerMenuOpen, setIsPlayerMenuOpen] = useState(false);
+  // État du menu 3 traits supérieur (Tri et bouton œil)
+  const [isHeaderMenuOpen, setIsHeaderMenuOpen] = useState(false);
+  const [sortOption, setSortOption] = useState<'recent' | 'oldest' | 'pinned'>('recent');
+  const [isEyeViewActive, setIsEyeViewActive] = useState(false);
   const [isSelectionMode, setIsSelectionMode] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<string[]>([]);
   // Aliases de compatibilité pour la sélection audio existante
@@ -177,7 +182,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
   // Fermer les menus déroulants lors d'un clic extérieur ou touche Échap SANS jamais bloquer le défilement de la page
   useEffect(() => {
-    if (!activeMenuFileId && !docMenuOpenId && !audioMenuSongId && !menuOpenId && !isPlayerMenuOpen) {
+    if (!activeMenuFileId && !docMenuOpenId && !audioMenuSongId && !menuOpenId && !isPlayerMenuOpen && !isHeaderMenuOpen) {
       return;
     }
 
@@ -192,6 +197,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       setAudioMenuSongId(null);
       setMenuOpenId(null);
       setIsPlayerMenuOpen(false);
+      setIsHeaderMenuOpen(false);
     };
 
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -201,6 +207,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
         setAudioMenuSongId(null);
         setMenuOpenId(null);
         setIsPlayerMenuOpen(false);
+        setIsHeaderMenuOpen(false);
       }
     };
 
@@ -215,7 +222,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       document.removeEventListener('click', handleClickOutside);
       window.removeEventListener('keydown', handleKeyDown);
     };
-  }, [activeMenuFileId, docMenuOpenId, audioMenuSongId, menuOpenId, isPlayerMenuOpen]);
+  }, [activeMenuFileId, docMenuOpenId, audioMenuSongId, menuOpenId, isPlayerMenuOpen, isHeaderMenuOpen]);
 
   // Référence pour l'import de fichier
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -1075,12 +1082,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
       }
 
       case 'pin': {
-        const pinToTop = (list: FileItem[]) => [file, ...list.filter(f => f.id !== file.id)];
-        if (file.category === 'documents') setDocumentsList(pinToTop);
-        else if (file.category === 'images') setImagesList(pinToTop);
-        else if (file.category === 'videos') setVideosList(pinToTop);
-        else if (file.category === 'audio') setAudioList(pinToTop);
-        showToast(`"${file.name}" épinglé !`);
+        const togglePin = (list: FileItem[]) =>
+          list.map(f => f.id === file.id ? { ...f, isPinned: !f.isPinned } : f);
+        if (file.category === 'documents') setDocumentsList(togglePin);
+        else if (file.category === 'images') setImagesList(togglePin);
+        else if (file.category === 'videos') setVideosList(togglePin);
+        else if (file.category === 'audio') setAudioList(togglePin);
+        showToast(file.isPinned ? `"${file.name}" désépinglé` : `"${file.name}" épinglé au début !`);
         break;
       }
 
@@ -1335,44 +1343,64 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     });
   };
 
+  // Fonction de tri universelle appliquée aux listes selon l'option sélectionnée (menu 3 traits)
+  const applySorting = (list: FileItem[]): FileItem[] => {
+    let result = [...list];
+    if (sortOption === 'pinned') {
+      result.sort((a, b) => {
+        if (a.isPinned && !b.isPinned) return -1;
+        if (!a.isPinned && b.isPinned) return 1;
+        return 0;
+      });
+    } else if (sortOption === 'oldest') {
+      result.reverse();
+    }
+    return result;
+  };
+
   // Liste des documents pour le sous-menu Documents (Image 1)
   const filteredDocuments = useMemo(() => {
     const list = [...documentsList, ...cloudRecentFiles.filter(f => f.category === 'documents' && !documentsList.some(s => s.name === f.name))];
-    return list.filter(doc => {
+    const filtered = list.filter(doc => {
       return subSearchQuery.trim() === '' || doc.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
-  }, [documentsList, cloudRecentFiles, subSearchQuery]);
+    return applySorting(filtered);
+  }, [documentsList, cloudRecentFiles, subSearchQuery, sortOption]);
 
   // Liste des images pour le sous-menu Images (Image 2)
   const filteredImages = useMemo(() => {
     const list = [...imagesList, ...cloudRecentFiles.filter(f => f.category === 'images' && !imagesList.some(s => s.name === f.name))];
-    return list.filter(img => {
+    const filtered = list.filter(img => {
       return subSearchQuery.trim() === '' || img.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
-  }, [imagesList, cloudRecentFiles, subSearchQuery]);
+    return applySorting(filtered);
+  }, [imagesList, cloudRecentFiles, subSearchQuery, sortOption]);
 
   // Liste des vidéos pour le sous-menu Vidéos (Image 3)
   const filteredVideos = useMemo(() => {
     const list = [...videosList, ...cloudRecentFiles.filter(f => f.category === 'videos' && !videosList.some(s => s.name === f.name))];
-    return list.filter(vid => {
+    const filtered = list.filter(vid => {
       return subSearchQuery.trim() === '' || vid.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
-  }, [videosList, cloudRecentFiles, subSearchQuery]);
+    return applySorting(filtered);
+  }, [videosList, cloudRecentFiles, subSearchQuery, sortOption]);
 
   // Liste audio pour le sous-menu Audio (Image 4)
   const filteredAudio = useMemo(() => {
     const list = [...audioList, ...cloudRecentFiles.filter(f => f.category === 'audio' && !audioList.some(s => s.name === f.name))];
-    return list.filter(aud => {
+    const filtered = list.filter(aud => {
       return subSearchQuery.trim() === '' || aud.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
-  }, [audioList, cloudRecentFiles, subSearchQuery]);
+    return applySorting(filtered);
+  }, [audioList, cloudRecentFiles, subSearchQuery, sortOption]);
 
   // Liste des fichiers du dossier sécurisé (filtrés par recherche)
   const filteredSecureFiles = useMemo(() => {
-    return secureFolderFiles.filter(item => {
+    const list = secureFolderFiles.filter(item => {
       return subSearchQuery.trim() === '' || item.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
-  }, [secureFolderFiles, subSearchQuery]);
+    return applySorting(list);
+  }, [secureFolderFiles, subSearchQuery, sortOption]);
 
   // Groupement des fichiers audio par date comme dans Image 4
   const groupedAudio = useMemo(() => {
@@ -1602,28 +1630,36 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
 
   // Catégorisation des téléchargements pour l'affichage selon le type d'origine
   const downloadDocs = useMemo(() => {
-    return filteredDownloads.filter(item => 
+    const list = filteredDownloads.filter(item => 
       item.category === 'documents' || ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'].includes(item.extension?.toLowerCase() || '')
     ).map(toFileItem);
-  }, [filteredDownloads]);
+    return applySorting(list);
+  }, [filteredDownloads, sortOption]);
 
   const downloadImages = useMemo(() => {
-    return filteredDownloads.filter(item => 
+    const list = filteredDownloads.filter(item => 
       item.category === 'images' || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(item.extension?.toLowerCase() || '')
     ).map(toFileItem);
-  }, [filteredDownloads]);
+    return applySorting(list);
+  }, [filteredDownloads, sortOption]);
 
   const downloadVideos = useMemo(() => {
-    return filteredDownloads.filter(item => 
+    const list = filteredDownloads.filter(item => 
       item.category === 'videos' || ['mp4', 'mov', 'webm', 'avi', 'mkv'].includes(item.extension?.toLowerCase() || '')
     ).map(toFileItem);
-  }, [filteredDownloads]);
+    return applySorting(list);
+  }, [filteredDownloads, sortOption]);
 
   const downloadAudio = useMemo(() => {
-    return filteredDownloads.filter(item => 
+    const list = filteredDownloads.filter(item => 
       item.category === 'audio' || ['mp3', 'm4a', 'wav', 'aac', 'ogg'].includes(item.extension?.toLowerCase() || '')
-    ).map(toFileItem);
-  }, [filteredDownloads]);
+    ).map(item => ({
+      ...toFileItem(item),
+      category: 'audio' as const,
+      artist: item.artist || (item as any).author || 'Fichier Audio'
+    }));
+    return applySorting(list);
+  }, [filteredDownloads, sortOption]);
 
   const downloadOthers = useMemo(() => {
     return filteredDownloads.filter(item => 
@@ -1643,7 +1679,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     else if (currentSubView?.id === 'studycloud-category-audio') list = filteredAudio;
     else if (currentSubView?.id === 'studycloud-category-documents') list = filteredDocuments;
     else if (currentSubView?.id === 'studycloud-category-downloads') {
-      list = [...downloadDocs, ...downloadImages, ...downloadVideos, ...downloadAudio, ...downloadOthers];
+      list = [...downloadDocs, ...downloadImages, ...downloadVideos, ...downloadAudio];
     } else {
       list = displayedFiles;
     }
@@ -1973,6 +2009,131 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
   };
 
   // =========================================================================
+  // MENU D'EN-TÊTE À 3 TRAITS (OPTIONS DE TRI & BOUTON ŒIL)
+  // Demandé : trié par plus récent, plus ancien, ce qui sont épinglez, et bouton œil
+  // =========================================================================
+  const renderHeaderOptionsMenu = () => {
+    if (!isHeaderMenuOpen) return null;
+
+    return (
+      <div 
+        className="studycloud-file-menu-panel absolute right-0 top-11 sm:top-12 z-50 w-64 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col"
+        onClick={(e) => e.stopPropagation()}
+      >
+        {/* En-tête du menu */}
+        <div className="px-3.5 py-2.5 bg-slate-900 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
+          <div>
+            <p className="text-[11px] font-black text-white">Options d'affichage & Tri</p>
+            <p className="text-[9px] font-semibold text-slate-400">StudyCloud</p>
+          </div>
+          <button
+            type="button"
+            onClick={(e) => {
+              e.stopPropagation();
+              setIsHeaderMenuOpen(false);
+            }}
+            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+            title="Fermer"
+          >
+            <X className="w-3.5 h-3.5" />
+          </button>
+        </div>
+
+        {/* Options de tri et bouton œil */}
+        <div className="py-1 divide-y divide-white/5">
+          <div className="py-1">
+            {/* Trié par plus récent */}
+            <button
+              type="button"
+              onClick={() => {
+                setSortOption('recent');
+                setIsHeaderMenuOpen(false);
+                showToast("Trié par plus récent");
+              }}
+              className={`w-full px-3 py-2 flex items-center justify-between text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer text-left ${
+                sortOption === 'recent'
+                  ? 'bg-blue-600/20 text-blue-400'
+                  : 'text-slate-100 hover:bg-white/10'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-3.5 h-3.5 shrink-0 text-blue-400" />
+                <span>Trié par plus récent</span>
+              </div>
+              {sortOption === 'recent' && <Check className="w-3.5 h-3.5 text-blue-400 shrink-0" />}
+            </button>
+
+            {/* Plus ancien */}
+            <button
+              type="button"
+              onClick={() => {
+                setSortOption('oldest');
+                setIsHeaderMenuOpen(false);
+                showToast("Trié par plus ancien");
+              }}
+              className={`w-full px-3 py-2 flex items-center justify-between text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer text-left ${
+                sortOption === 'oldest'
+                  ? 'bg-purple-600/20 text-purple-400'
+                  : 'text-slate-100 hover:bg-white/10'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Clock className="w-3.5 h-3.5 shrink-0 text-purple-400" />
+                <span>Plus ancien</span>
+              </div>
+              {sortOption === 'oldest' && <Check className="w-3.5 h-3.5 text-purple-400 shrink-0" />}
+            </button>
+
+            {/* Ceux qui sont épinglés */}
+            <button
+              type="button"
+              onClick={() => {
+                setSortOption('pinned');
+                setIsHeaderMenuOpen(false);
+                showToast("Ceux qui sont épinglés en premier");
+              }}
+              className={`w-full px-3 py-2 flex items-center justify-between text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer text-left ${
+                sortOption === 'pinned'
+                  ? 'bg-amber-600/20 text-amber-400'
+                  : 'text-slate-100 hover:bg-white/10'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Pin className="w-3.5 h-3.5 shrink-0 text-amber-400" />
+                <span>Ceux qui sont épinglés</span>
+              </div>
+              {sortOption === 'pinned' && <Check className="w-3.5 h-3.5 text-amber-400 shrink-0" />}
+            </button>
+          </div>
+
+          {/* Bouton œil */}
+          <div className="py-1">
+            <button
+              type="button"
+              onClick={() => {
+                setIsEyeViewActive(!isEyeViewActive);
+                setIsHeaderMenuOpen(false);
+                showToast(!isEyeViewActive ? "Bouton œil activé" : "Bouton œil désactivé");
+              }}
+              className={`w-full px-3 py-2 flex items-center justify-between text-[11px] sm:text-xs font-semibold transition-colors cursor-pointer text-left ${
+                isEyeViewActive
+                  ? 'bg-emerald-600/20 text-emerald-400'
+                  : 'text-slate-100 hover:bg-white/10'
+              }`}
+            >
+              <div className="flex items-center gap-2.5">
+                <Eye className="w-3.5 h-3.5 shrink-0 text-emerald-400" />
+                <span>{isEyeViewActive ? "Bouton œil (Activé)" : "Bouton œil"}</span>
+              </div>
+              {isEyeViewActive && <Check className="w-3.5 h-3.5 text-emerald-400 shrink-0" />}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+  };
+
+  // =========================================================================
   // FONCTIONS DE RENDU DES CARTES MULTIMÉDIA (RÉUTILISÉES DANS DOCUMENTS & TÉLÉCHARGEMENTS)
   // =========================================================================
 
@@ -2288,6 +2449,110 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
     );
   };
 
+  // Rendu Carte Audio Carrée (Comme pour les vidéos, carré avec bouton 3 traits, logo musique/mélodie au centre, taille en haut à droite, titre en bas)
+  const renderAudioSquareCard = (aud: FileItem, index?: number) => {
+    const isSelected = splitSelectedFile?.id === aud.id;
+    const isMenuOpen = activeMenuFileId === aud.id || audioMenuSongId === aud.id;
+    const isChecked = selectedItemIds.includes(aud.id);
+
+    // Déterminer alignement du menu
+    const isRightCol = typeof index === 'number' && ((index + 1) % (splitSelectedFile ? 2 : 3) === 0);
+    const menuAlign: 'left' | 'right' = isRightCol ? 'right' : 'left';
+
+    return (
+      <div
+        key={aud.id}
+        onClick={() => {
+          if (isSelectionMode) {
+            toggleItemSelection(aud.id);
+          } else {
+            handleSelectFile(aud);
+          }
+        }}
+        className={`group relative aspect-square rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 cursor-pointer ${
+          isChecked
+            ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
+            : isSelected 
+              ? 'border-amber-500 ring-4 ring-amber-500/50 shadow-2xl scale-[1.02]' 
+              : 'border-white/10 hover:border-amber-400/50 shadow-md'
+        } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
+      >
+        {/* Conteneur média interne avec overflow-hidden : arrondit l'arrière-plan sans couper le menu */}
+        <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
+          {aud.previewUrl ? (
+            <img
+              src={aud.previewUrl}
+              alt={aud.name}
+              className="w-full h-full object-cover opacity-45 group-hover:scale-105 group-hover:opacity-65 transition-all duration-300"
+              loading="lazy"
+            />
+          ) : (
+            <div className="w-full h-full bg-gradient-to-br from-amber-950/40 via-slate-900 to-black" />
+          )}
+          <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
+
+          {/* AU MILIEU : LE LOGO DE MUSIQUE / MÉLODIE DEMANDÉ PAR L'UTILISATEUR */}
+          <div className="absolute inset-0 flex items-center justify-center">
+            <div className="w-12 h-12 sm:w-14 sm:h-14 rounded-full bg-gradient-to-br from-amber-400 to-amber-600 text-stone-950 flex items-center justify-center shadow-[0_8px_25px_rgba(245,158,11,0.45)] group-hover:scale-110 transition-transform duration-200 border-2 border-white/20">
+              <Music className="w-6 h-6 sm:w-7 sm:h-7 stroke-[2.3] fill-stone-950 text-stone-950" />
+            </div>
+          </div>
+
+          {/* Titre en bas sur dégradé sombre identique aux vidéos */}
+          <div className="absolute inset-x-0 bottom-0 p-2 sm:p-2.5 bg-gradient-to-t from-black/95 via-black/60 to-transparent">
+            <p className="text-[10px] sm:text-xs font-bold text-white truncate drop-shadow-sm">{aud.name}</p>
+            <p className="text-[9px] text-amber-300/90 font-semibold truncate">{aud.artist || 'Fichier Audio'}</p>
+          </div>
+        </div>
+
+        {/* Haut gauche : Bouton 3 traits & Checkbox */}
+        <div className="absolute top-1.5 sm:top-2 left-1.5 sm:left-2 z-20 flex items-center gap-1.5">
+          <div className="relative studycloud-menu-trigger">
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFileId(isMenuOpen ? null : aud.id);
+                setAudioMenuSongId(isMenuOpen ? null : aud.id);
+              }}
+              className="p-1 sm:p-1.2 rounded-lg bg-black/75 hover:bg-black text-white border border-white/30 transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm"
+              title="Options de l'audio (3 traits)"
+            >
+              <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+            </button>
+
+            {renderFileOptionsMenu(aud, downloadAudio, menuAlign)}
+          </div>
+
+          {isSelectionMode && (
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                toggleItemSelection(aud.id);
+              }}
+              className="p-1 rounded-md bg-black/60 text-white hover:scale-110 transition-transform cursor-pointer backdrop-blur-sm border border-white/20"
+              title={isChecked ? "Décocher" : "Cocher"}
+            >
+              {isChecked ? (
+                <CheckSquare className="w-4 h-4 fill-amber-400 text-stone-950" />
+              ) : (
+                <Square className="w-4 h-4 text-white" />
+              )}
+            </button>
+          )}
+        </div>
+
+        {/* Haut droit : Taille */}
+        <div className="absolute top-1.5 sm:top-2 right-1.5 sm:right-2 z-10">
+          <span className="text-[10px] sm:text-xs font-black text-white bg-black/60 px-1.5 py-0.5 rounded border border-white/20 drop-shadow-[0_2px_4px_rgba(0,0,0,0.9)] tracking-tight">
+            {aud.size}
+          </span>
+        </div>
+      </div>
+    );
+  };
+
   // Rendu Élément Audio (utilisé dans téléchargements & listes globales)
   const renderAudioItem = (track: FileItem) => {
     const isSelected = splitSelectedFile?.id === track.id;
@@ -2566,7 +2831,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                 </div>
               </div>
 
-              {/* DROITE : Plein écran général */}
+              {/* DROITE : Plein écran général & Bouton 3 traits d'en-tête (options de tri & bouton œil) */}
               <div className="shrink-0 flex items-center gap-2">
                 <button
                   type="button"
@@ -2580,6 +2845,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     <Maximize2 className="w-4 h-4 stroke-[2.2]" />
                   )}
                 </button>
+
+                {/* Bouton 3 traits d'en-tête derrière le bouton zoom (Image 1) */}
+                <div className="relative studycloud-menu-trigger">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsHeaderMenuOpen(!isHeaderMenuOpen);
+                    }}
+                    className={`flex items-center justify-center w-9 h-9 rounded-full ${
+                      isHeaderMenuOpen ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
+                    } border transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm`}
+                    title="Options d'affichage et de tri (3 traits)"
+                  >
+                    <Menu className="w-4 h-4 stroke-[2.2]" />
+                  </button>
+
+                  {renderHeaderOptionsMenu()}
+                </div>
               </div>
 
             </div>
@@ -2599,7 +2883,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
             <div className={`transition-all duration-300 overflow-y-auto px-3 sm:px-5 py-3 sm:py-4 pb-64 sm:pb-80 ${
               isViewerMaximized 
                 ? 'hidden' 
-                : currentSubView.id === 'studycloud-category-audio'
+                : (currentSubView.id === 'studycloud-category-audio' || splitSelectedFile?.category === 'audio')
                   ? `${isMobilePlayerOpen ? 'hidden md:block' : 'w-full'} md:w-5/12 lg:w-5/12 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80`
                   : splitSelectedFile 
                     ? 'w-full md:w-1/2 lg:w-1/2 xl:w-5/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
@@ -2943,7 +3227,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                         </div>
                       )}
 
-                      {/* Audio téléchargé */}
+                      {/* Audio téléchargé (Carré comme pour les vidéos, logo musique au centre, bouton 3 traits) */}
                       {downloadAudio.length > 0 && (
                         <div className="space-y-2.5">
                           <div className="flex items-center gap-2">
@@ -2952,23 +3236,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                               Fichiers Audio ({downloadAudio.length})
                             </h3>
                           </div>
-                          <div className="space-y-1">
-                            {downloadAudio.map(aud => renderAudioItem(aud))}
-                          </div>
-                        </div>
-                      )}
-
-                      {/* Autres téléchargements */}
-                      {downloadOthers.length > 0 && (
-                        <div className="space-y-2.5">
-                          <div className="flex items-center gap-2">
-                            <Archive className="w-4 h-4 text-sky-400" />
-                            <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
-                              Autres fichiers ({downloadOthers.length})
-                            </h3>
-                          </div>
-                          <div className="space-y-2">
-                            {downloadOthers.map(other => renderOtherFileCard(other))}
+                          <div className={`grid gap-2 sm:gap-3 ${
+                            splitSelectedFile ? 'grid-cols-2' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                          }`}>
+                            {downloadAudio.map((aud, idx) => renderAudioSquareCard(aud, idx))}
                           </div>
                         </div>
                       )}
@@ -3062,7 +3333,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
               <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
                 isViewerMaximized 
                   ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
-                  : currentSubView.id === 'studycloud-category-audio'
+                  : (currentSubView.id === 'studycloud-category-audio' || splitSelectedFile?.category === 'audio')
                     ? `${isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'} md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10`
                     : 'w-full md:w-1/2 lg:w-1/2 xl:w-7/12 min-h-[500px] border-t md:border-t-0 md:border-l border-white/10'
               }`}>
@@ -3796,6 +4067,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack }
                     <Maximize2 className="w-4 h-4 stroke-[2.2]" />
                   )}
                 </button>
+
+                {/* Bouton 3 traits d'en-tête derrière le bouton zoom */}
+                <div className="relative studycloud-menu-trigger">
+                  <button
+                    type="button"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setIsHeaderMenuOpen(!isHeaderMenuOpen);
+                    }}
+                    className={`flex items-center justify-center w-10 h-10 rounded-full ${
+                      isHeaderMenuOpen ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
+                    } border transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm`}
+                    title="Options d'affichage et de tri (3 traits)"
+                  >
+                    <Menu className="w-4 h-4 stroke-[2.2]" />
+                  </button>
+
+                  {renderHeaderOptionsMenu()}
+                </div>
               </div>
 
             </div>
