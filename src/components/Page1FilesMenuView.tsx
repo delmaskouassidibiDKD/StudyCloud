@@ -1,5 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
 import { createPortal } from 'react-dom';
+import { motion } from 'motion/react';
 import { 
   ArrowLeft, 
   Search, 
@@ -91,6 +92,8 @@ import {
   MODEL_4_FOLDERS, 
   Folder3DCard, 
   FolderModelItem,
+  ClasseurCreatedFolder,
+  Classeur3DFolderCard,
   getDynamicCurrentDate,
   lightenColor
 } from './Folder3DModels';
@@ -201,6 +204,184 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
   const [newFolderNameInput, setNewFolderNameInput] = useState('');
   const [folderCreationToast, setFolderCreationToast] = useState<string | null>(null);
+
+  // Liste ordonnée des dossiers 3D du Classeur avec persistance localStorage
+  const [classeur3DFolders, setClasseur3DFolders] = useState<ClasseurCreatedFolder[]>(() => {
+    const saved = localStorage.getItem('studycloud_classeur_3d_folders');
+    if (saved) {
+      try {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed;
+      } catch (e) {}
+    }
+    return [];
+  });
+
+  useEffect(() => {
+    localStorage.setItem('studycloud_classeur_3d_folders', JSON.stringify(classeur3DFolders));
+  }, [classeur3DFolders]);
+
+  // État et refs de Drag & Drop pour réordonner les dossiers 3D dans le Classeur
+  interface FolderDragState {
+    folder: ClasseurCreatedFolder;
+    x: number;
+    y: number;
+    width: number;
+    height: number;
+    offsetX: number;
+    offsetY: number;
+  }
+
+  const [folderDragState, setFolderDragState] = useState<FolderDragState | null>(null);
+  const folderPointerDownRef = useRef<{
+    x: number;
+    y: number;
+    currentX: number;
+    currentY: number;
+    folder: ClasseurCreatedFolder;
+    cardRect: DOMRect;
+    isDragging: boolean;
+  } | null>(null);
+  const folderLongPressTimerRef = useRef<any>(null);
+  const folderLastSwapTimeRef = useRef<number>(0);
+
+  // Gestion des événements Pointer globaux pour réordonner fluidement les dossiers
+  useEffect(() => {
+    const handleGlobalPointerMove = (e: PointerEvent) => {
+      const p = folderPointerDownRef.current;
+      if (!p) return;
+
+      p.currentX = e.clientX;
+      p.currentY = e.clientY;
+
+      const deltaX = Math.abs(e.clientX - p.x);
+      const deltaY = Math.abs(e.clientY - p.y);
+
+      // Si la souris ou le doigt bouge de plus de 5px, déclencher le drag
+      if (!p.isDragging && (deltaX > 5 || deltaY > 5)) {
+        if (e.pointerType === 'mouse') {
+          p.isDragging = true;
+          if (folderLongPressTimerRef.current) {
+            clearTimeout(folderLongPressTimerRef.current);
+            folderLongPressTimerRef.current = null;
+          }
+          setFolderDragState({
+            folder: p.folder,
+            x: p.currentX,
+            y: p.currentY,
+            width: p.cardRect.width,
+            height: p.cardRect.height,
+            offsetX: p.x - p.cardRect.left,
+            offsetY: p.y - p.cardRect.top,
+          });
+        } else {
+          // Sur tactile : si glissement avant long press, annuler le long press
+          if (folderLongPressTimerRef.current) {
+            clearTimeout(folderLongPressTimerRef.current);
+            folderLongPressTimerRef.current = null;
+          }
+        }
+      }
+
+      if (p.isDragging) {
+        setFolderDragState(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
+
+        const now = Date.now();
+        if (now - folderLastSwapTimeRef.current > 140) {
+          const element = document.elementFromPoint(e.clientX, e.clientY);
+          const cardElement = element?.closest('[data-classeur-folder-id]');
+          if (cardElement) {
+            const targetId = cardElement.getAttribute('data-classeur-folder-id');
+            if (targetId && targetId !== p.folder.id) {
+              folderLastSwapTimeRef.current = Date.now();
+              setClasseur3DFolders(prevList => {
+                const fromIndex = prevList.findIndex(f => f.id === p.folder.id);
+                const toIndex = prevList.findIndex(f => f.id === targetId);
+                if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return prevList;
+                const next = [...prevList];
+                const [moved] = next.splice(fromIndex, 1);
+                next.splice(toIndex, 0, moved);
+                return next;
+              });
+            }
+          }
+        }
+      }
+    };
+
+    const handleGlobalPointerUp = () => {
+      if (folderLongPressTimerRef.current) {
+        clearTimeout(folderLongPressTimerRef.current);
+        folderLongPressTimerRef.current = null;
+      }
+      folderPointerDownRef.current = null;
+      setFolderDragState(null);
+    };
+
+    window.addEventListener('pointermove', handleGlobalPointerMove);
+    window.addEventListener('pointerup', handleGlobalPointerUp);
+    window.addEventListener('pointercancel', handleGlobalPointerUp);
+    return () => {
+      window.removeEventListener('pointermove', handleGlobalPointerMove);
+      window.removeEventListener('pointerup', handleGlobalPointerUp);
+      window.removeEventListener('pointercancel', handleGlobalPointerUp);
+    };
+  }, []);
+
+  // Empêcher le défilement tactile natif de la page quand un dossier 3D est en cours de déplacement
+  useEffect(() => {
+    const preventTouchScroll = (e: TouchEvent) => {
+      if (folderPointerDownRef.current?.isDragging) {
+        if (e.cancelable) e.preventDefault();
+      }
+    };
+
+    window.addEventListener('touchmove', preventTouchScroll, { passive: false });
+    return () => {
+      window.removeEventListener('touchmove', preventTouchScroll);
+    };
+  }, []);
+
+  const handleFolderPointerDown = (e: React.PointerEvent, folder: ClasseurCreatedFolder) => {
+    if ((e.target as HTMLElement).closest('button')) return;
+
+    const cardElement = (e.currentTarget as HTMLElement);
+    const rect = cardElement.getBoundingClientRect();
+
+    folderPointerDownRef.current = {
+      x: e.clientX,
+      y: e.clientY,
+      currentX: e.clientX,
+      currentY: e.clientY,
+      folder,
+      cardRect: rect,
+      isDragging: false,
+    };
+
+    if (e.pointerType === 'touch') {
+      folderLongPressTimerRef.current = setTimeout(() => {
+        if (folderPointerDownRef.current) {
+          folderPointerDownRef.current.isDragging = true;
+          if (typeof navigator !== 'undefined' && navigator.vibrate) {
+            try { navigator.vibrate(35); } catch {}
+          }
+          setFolderDragState({
+            folder,
+            x: folderPointerDownRef.current.currentX,
+            y: folderPointerDownRef.current.currentY,
+            width: rect.width,
+            height: rect.height,
+            offsetX: folderPointerDownRef.current.x - rect.left,
+            offsetY: folderPointerDownRef.current.y - rect.top,
+          });
+        }
+      }, 200);
+    }
+  };
+
+  const handleDeleteCreatedFolder = (folderId: string) => {
+    setClasseur3DFolders(prev => prev.filter(f => f.id !== folderId));
+  };
 
   // Lecteur Vidéo
   const [isVideoPlaying, setIsVideoPlaying] = useState(false);
@@ -4256,6 +4437,27 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const folderName = newFolderNameInput.trim() || selectedFolderModelItem.title || selectedFolderModelItem.badge || 'Nouveau dossier';
       const chosenColor = customFolderColor || selectedFolderModelItem.primaryColor;
       const realCurrentDate = getDynamicCurrentDate();
+
+      let dateForModel = realCurrentDate.model1;
+      if (selectedFolderModelItem.model === 2) dateForModel = realCurrentDate.model2;
+      else if (selectedFolderModelItem.model === 3) dateForModel = realCurrentDate.model3;
+      else if (selectedFolderModelItem.model === 4) dateForModel = realCurrentDate.model4;
+
+      const created3DFolder: ClasseurCreatedFolder = {
+        id: `c3d-${Date.now()}`,
+        name: folderName,
+        model: selectedFolderModelItem.model,
+        primaryColor: chosenColor,
+        secondaryColor: selectedFolderModelItem.secondaryColor,
+        badge: selectedFolderModelItem.badge,
+        iconType: selectedFolderModelItem.iconType,
+        textDark: selectedFolderModelItem.textDark,
+        dateText: dateForModel,
+        createdAt: Date.now(),
+      };
+
+      // Nouveaux dossiers créés toujours en haut par défaut (index 0)
+      setClasseur3DFolders(prev => [created3DFolder, ...prev]);
       
       const newFolder = {
         id: `folder-${Date.now()}`,
@@ -4269,14 +4471,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       };
 
       setClasseurFolders(prev => [newFolder, ...prev]);
-      setFolderCreationToast(`Dossier "${folderName}" créé avec succès avec la date d'aujourd'hui !`);
+      setFolderCreationToast(`Dossier "${folderName}" créé avec succès !`);
       setTimeout(() => {
         setIsCreateFolderModalOpen(false);
         setFolderCreationToast(null);
         setSelectedFolderModelItem(null);
         setCustomFolderColor(null);
         setIsColorPickerOpen(false);
-      }, 1200);
+      }, 700);
     };
 
     const activeDisplayColor = selectedFolderModelItem 
@@ -5065,18 +5267,84 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     ? 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
             }`}>
-              {/* 0. CLASSEUR PRINCIPAL (BOUTON DE LA PAGE 1 : SOUS-MENU VIDE) */}
+              {/* 0. CLASSEUR PRINCIPAL (BOUTON DE LA PAGE 1 : SOUS-MENU CLASSEUR 3D) */}
               {currentSubView.id === 'studycloud-classeur-classeur' && (
-                <div className="py-28 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400">
-                  <div className="w-16 h-16 rounded-3xl bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center justify-center mb-4 shadow-sm">
-                    <FolderArchive className="w-8 h-8 stroke-[1.8]" />
-                  </div>
-                  <h3 className="text-base sm:text-lg font-bold text-stone-800 dark:text-stone-200">
-                    Le classeur est vide
-                  </h3>
-                  <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
-                    Aucun document ou cours n'a été ajouté dans ce classeur pour le moment.
-                  </p>
+                <div className="w-full">
+                  {classeur3DFolders.length === 0 ? (
+                    <div className="py-24 sm:py-32 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400">
+                      <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center justify-center mb-4 shadow-sm">
+                        <FolderArchive className="w-8 h-8 sm:w-10 sm:h-10 stroke-[1.8]" />
+                      </div>
+                      <h3 className="text-base sm:text-lg font-bold text-stone-800 dark:text-stone-200">
+                        Le classeur est vide
+                      </h3>
+                      <p className="text-xs text-stone-500 dark:text-slate-400 mt-1 max-w-sm mx-auto">
+                        Aucun document ou dossier n'a été créé dans ce classeur pour le moment.
+                      </p>
+                      <button
+                        type="button"
+                        onClick={() => setIsCreateFolderModalOpen(true)}
+                        className="mt-6 px-5 py-2.5 rounded-2xl bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] text-white text-xs sm:text-sm font-bold shadow-[0_4px_16px_rgba(194,84,22,0.4)] hover:brightness-110 flex items-center gap-2 transition-all active:scale-95 cursor-pointer"
+                      >
+                        <FolderPlus className="w-4 h-4 stroke-[2.2]" />
+                        <span>Créer un dossier</span>
+                      </button>
+                    </div>
+                  ) : (
+                    <div className="space-y-4 animate-in fade-in duration-200 pb-28">
+                      <div className="flex items-center justify-between px-1">
+                        <div className="flex items-center gap-2">
+                          <h3 className="text-xs sm:text-sm font-black text-stone-900 dark:text-white tracking-wide">
+                            Mes Dossiers
+                          </h3>
+                          <span className="px-2.5 py-0.5 rounded-full bg-orange-500/15 text-orange-500 text-[11px] font-black border border-orange-500/30">
+                            {classeur3DFolders.length}
+                          </span>
+                        </div>
+                        <div className="text-[11px] text-stone-400 font-medium hidden sm:flex items-center gap-1.5">
+                          <span>Maintenez et glissez pour déplacer</span>
+                        </div>
+                      </div>
+
+                      {/* Grille progressive ligne par ligne : une ligne se remplit d'abord, puis est poussée en bas */}
+                      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 sm:gap-6">
+                        {classeur3DFolders
+                          .filter(f => !subSearchQuery.trim() || f.name.toLowerCase().includes(subSearchQuery.toLowerCase().trim()))
+                          .map((folder) => {
+                            const isBeingDragged = folderDragState?.folder.id === folder.id;
+                            return (
+                              <motion.div
+                                key={folder.id}
+                                layout
+                                transition={{ type: 'spring', stiffness: 350, damping: 25 }}
+                                data-classeur-folder-id={folder.id}
+                                onPointerDown={(e) => handleFolderPointerDown(e, folder)}
+                                className={`group relative p-3 sm:p-4 rounded-3xl cursor-grab active:cursor-grabbing transition-all select-none touch-none border ${
+                                  isBeingDragged
+                                    ? 'opacity-20 scale-95 border-dashed border-orange-500/60 bg-orange-500/5'
+                                    : 'bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1'
+                                }`}
+                              >
+                                {/* Bouton de suppression discret au survol */}
+                                <button
+                                  type="button"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    handleDeleteCreatedFolder(folder.id);
+                                  }}
+                                  className="absolute top-2.5 right-2.5 z-20 w-7 h-7 rounded-xl bg-black/60 hover:bg-red-500 text-white/70 hover:text-white flex items-center justify-center opacity-0 group-hover:opacity-100 transition-all cursor-pointer backdrop-blur-sm shadow-md"
+                                  title="Supprimer ce dossier"
+                                >
+                                  <Trash2 className="w-3.5 h-3.5" />
+                                </button>
+
+                                <Classeur3DFolderCard folder={folder} isDragging={isBeingDragged} />
+                              </motion.div>
+                            );
+                          })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -6896,6 +7164,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
       {/* Grand modal de propositions de création de dossier (Modèles 3D) */}
       {renderCreateFolderModal()}
+
+      {/* Clone flottant lors du Drag & Drop pour réordonner librement les dossiers 3D */}
+      {folderDragState && typeof document !== 'undefined' && createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            left: folderDragState.x - folderDragState.offsetX,
+            top: folderDragState.y - folderDragState.offsetY,
+            width: folderDragState.width,
+            zIndex: 9999999,
+            pointerEvents: 'none',
+            touchAction: 'none',
+          }}
+          className="rounded-3xl p-3 sm:p-4 border-2 border-orange-400 ring-4 ring-orange-500/50 bg-[#0E1526] shadow-[0_25px_60px_rgba(0,0,0,0.85)] scale-105 rotate-1 select-none overflow-hidden"
+        >
+          <Classeur3DFolderCard folder={folderDragState.folder} />
+        </div>,
+        document.body
+      )}
 
       {/* Toast Notification sans 3D, au-dessus de tous les éléments via Portal */}
       {profileToastMessage && createPortal(

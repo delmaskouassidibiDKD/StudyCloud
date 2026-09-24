@@ -68,6 +68,19 @@ export interface FolderModelItem {
   textDark?: boolean;
 }
 
+export interface ClasseurCreatedFolder {
+  id: string;
+  name: string;
+  model: 1 | 2 | 3 | 4;
+  primaryColor: string;
+  secondaryColor?: string;
+  badge?: string;
+  iconType?: string;
+  textDark?: boolean;
+  dateText: string;
+  createdAt: number;
+}
+
 // MODÈLE 1 : Onglets Index Pastel (Image 1 - 12 dossiers)
 export const MODEL_1_FOLDERS: FolderModelItem[] = [
   { id: 'm1-1', model: 1, title: 'Daily Notes', primaryColor: '#E76239', textDark: false },
@@ -866,3 +879,44 @@ export const Folder3DCard: React.FC<{
     </div>
   );
 };
+
+// ============================================================================
+// CARTE 3D RÉELLE DU DOSSIER CRÉÉ DANS LE CLASSEUR (À L'IDENTIQUE DU MODÈLE)
+// ============================================================================
+export const Classeur3DFolderCard: React.FC<{
+  folder: ClasseurCreatedFolder;
+  isDragging?: boolean;
+}> = ({ folder, isDragging }) => {
+  const item: FolderModelItem = {
+    id: folder.id,
+    model: folder.model,
+    title: folder.name,
+    primaryColor: folder.primaryColor,
+    secondaryColor: folder.secondaryColor,
+    badge: folder.badge,
+    iconType: folder.iconType,
+    textDark: folder.textDark,
+  };
+
+  return (
+    <div
+      className={`w-full select-none transition-all duration-200 ${
+        isDragging ? 'opacity-25 scale-95' : ''
+      }`}
+    >
+      {folder.model === 1 && (
+        <FolderModel1SVG item={item} dateText={folder.dateText} />
+      )}
+      {folder.model === 2 && (
+        <FolderModel2SVG item={item} dateText={folder.dateText} />
+      )}
+      {folder.model === 3 && (
+        <FolderModel3SVG item={item} dateText={folder.dateText} />
+      )}
+      {folder.model === 4 && (
+        <FolderModel4SVG item={item} dateText={folder.dateText} />
+      )}
+    </div>
+  );
+};
+
