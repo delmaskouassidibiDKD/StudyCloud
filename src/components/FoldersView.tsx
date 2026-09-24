@@ -126,16 +126,14 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
   const [activeNotification, setActiveNotification] = useState<string | null>(null);
   const [pricingInitialTab, setPricingInitialTab] = useState<'storage' | 'ai' | 'renewal'>('storage');
   const [previousViewMode, setPreviousViewMode] = useState<string>('home');
-  const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'storage-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | string>(() => {
-    const saved = localStorage.getItem('unifolder_view_mode');
-    // Ne pas restaurer 'page1-files-menu' depuis localStorage pour éviter le clignotement
-    if (!saved || saved === 'page1-files-menu') return 'home';
-    return saved;
-  });
+  // viewMode ne doit JAMAIS être restauré depuis localStorage - toujours démarrer à 'home'
+  const [viewMode, setViewMode] = useState<'home' | 'abondamment' | 'files-menu' | 'storage-menu' | 'schedule-menu' | 'notes-menu' | 'grades-menu' | 'calendar-menu' | 'favorites-menu' | 'clock-menu' | 'level-menu' | 'calculator-menu' | string>('home');
 
   useEffect(() => {
-    localStorage.setItem('unifolder_view_mode', viewMode);
-  }, [viewMode]);
+    // Nettoyage : effacer toute ancienne valeur de viewMode dans localStorage
+    localStorage.removeItem('unifolder_view_mode');
+  }, []);
+
 
   // État et gestion du carrousel de l'écran d'accueil (Page 0 = Page vide, Page 1 = Écran d'accueil principal)
   const [activePageIndex, setActivePageIndex] = useState<number>(1);

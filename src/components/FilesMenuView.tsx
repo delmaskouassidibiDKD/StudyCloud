@@ -150,13 +150,16 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
       }
     } catch (e) {}
 
-    // 5. Parcourir toutes les clés de matières existantes dans localStorage
+    // 5. Parcourir toutes les clés de matières existantes dans localStorage (en ignorant les catégories internes Page 1 comme Images, Documents, Vidéos, Audio)
     try {
+      const excludedCategories = ['Images', 'Documents', 'Vidéos', 'Videos', 'Audio', 'Musique', 'Corbeille'];
       for (let i = 0; i < localStorage.length; i++) {
         const key = localStorage.key(i);
         if (key && key.startsWith('unifolder_matiere_files_')) {
           const matName = key.replace('unifolder_matiere_files_', '');
-          addFiles(localStorage.getItem(key), matName);
+          if (!excludedCategories.includes(matName) && !matName.startsWith('menu-')) {
+            addFiles(localStorage.getItem(key), matName);
+          }
         }
       }
     } catch (e) {
