@@ -222,13 +222,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // État d'ouverture du menu d'options 3 traits pour les dossiers 3D du Classeur
   const [activeFolderMenuId, setActiveFolderMenuId] = useState<string | null>(null);
 
-  // Niveau de zoom / taille des dossiers 3D du Classeur (0 à 10, valeur par défaut: 10 taille actuelle)
+  // Niveau de zoom / taille des dossiers 3D du Classeur (1 à 10, valeur par défaut: 10 taille standard, 1 est le minimum)
   const [folderZoomLevel, setFolderZoomLevel] = useState<number>(() => {
     try {
       const saved = localStorage.getItem('studycloud_classeur_folder_zoom');
       if (saved !== null) {
         const parsed = parseInt(saved, 10);
-        if (!isNaN(parsed) && parsed >= 0 && parsed <= 10) {
+        if (!isNaN(parsed) && parsed >= 1 && parsed <= 10) {
           return parsed;
         }
       }
@@ -242,28 +242,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     } catch (e) {}
   }, [folderZoomLevel]);
 
-  // Calcul dynamique de la largeur minimale et espacement de la grille (auto-fill progressif)
-  const folderCardMinWidth = Math.round(95 + (folderZoomLevel / 10) * 175);
-  const folderGridGap = Math.round(8 + (folderZoomLevel / 10) * 16);
+  // Calcul dynamique de la largeur minimale et espacement de la grille (échelle 1 à 10)
+  // Le niveau 1 correspond exactement à la taille compacte de l'ancien niveau 2 (130px), le niveau 10 à la taille standard (270px)
+  const folderCardMinWidth = Math.round(130 + ((folderZoomLevel - 1) / 9) * 140);
+  const folderGridGap = Math.round(12 + ((folderZoomLevel - 1) / 9) * 12);
 
   const getFolderCardPadding = (zoom: number) => {
-    if (zoom <= 2) return 'p-1.5 rounded-xl';
-    if (zoom <= 5) return 'p-2 sm:p-2.5 rounded-2xl';
-    if (zoom <= 7) return 'p-2.5 sm:p-3 rounded-2xl';
+    if (zoom <= 3) return 'p-2 rounded-2xl';
+    if (zoom <= 6) return 'p-2.5 sm:p-3 rounded-2xl';
     return 'p-3 sm:p-4 rounded-3xl';
   };
 
+  // Maintient le dossier 3D glissé vers le bas sur le fond noir pour que le bouton 3 traits
+  // reste toujours sur l'espace noir supérieur sans jamais chevaucher la date ou l'onglet
   const getFolderTopSpacing = (zoom: number) => {
-    if (zoom <= 2) return 'pt-3 pb-0.5';
-    if (zoom <= 5) return 'pt-4 sm:pt-4.5 pb-0.5';
-    if (zoom <= 7) return 'pt-5 sm:pt-5.5 pb-1';
-    return 'pt-6 sm:pt-7 pb-1';
+    if (zoom <= 3) return 'pt-7 pb-1';
+    if (zoom <= 6) return 'pt-7 sm:pt-7.5 pb-1';
+    return 'pt-7 sm:pt-8 pb-1';
   };
 
   const getFolderMenuBtnClass = (zoom: number) => {
-    if (zoom <= 2) return 'absolute top-1 right-1 z-30 studycloud-menu-trigger scale-75 origin-top-right';
-    if (zoom <= 5) return 'absolute top-1.5 right-1.5 z-30 studycloud-menu-trigger scale-85 origin-top-right';
-    if (zoom <= 7) return 'absolute top-2 right-2 z-30 studycloud-menu-trigger scale-90 origin-top-right';
+    if (zoom <= 3) return 'absolute top-1.5 right-1.5 z-30 studycloud-menu-trigger scale-80 origin-top-right';
+    if (zoom <= 6) return 'absolute top-2 right-2 z-30 studycloud-menu-trigger scale-90 origin-top-right';
     return 'absolute top-2.5 right-2.5 z-30 studycloud-menu-trigger';
   };
 
@@ -392,6 +392,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   }
 
   const [folderDragState, setFolderDragState] = useState<FolderDragState | null>(null);
+  const [holdingFolderId, setHoldingFolderId] = useState<string | null>(null);
   const folderPointerDownRef = useRef<{
     x: number;
     y: number;
@@ -400,6 +401,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     folder: ClasseurCreatedFolder;
     cardRect: DOMRect;
     isDragging: boolean;
+    isHoldActive: boolean;
   } | null>(null);
   const folderLongPressTimerRef = useRef<any>(null);
   const folderLastSwapTimeRef = useRef<number>(0);
@@ -416,33 +418,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const deltaX = Math.abs(e.clientX - p.x);
       const deltaY = Math.abs(e.clientY - p.y);
 
-      // Si la souris ou le doigt bouge de plus de 5px, déclencher le drag
-      if (!p.isDragging && (deltaX > 5 || deltaY > 5)) {
-        if (e.pointerType === 'mouse') {
-          p.isDragging = true;
-          if (folderLongPressTimerRef.current) {
-            clearTimeout(folderLongPressTimerRef.current);
-            folderLongPressTimerRef.current = null;
-          }
-          setFolderDragState({
-            folder: p.folder,
-            x: p.currentX,
-            y: p.currentY,
-            width: p.cardRect.width,
-            height: p.cardRect.height,
-            offsetX: p.x - p.cardRect.left,
-            offsetY: p.y - p.cardRect.top,
-          });
-        } else {
-          // Sur tactile : si glissement avant long press, annuler le long press
-          if (folderLongPressTimerRef.current) {
-            clearTimeout(folderLongPressTimerRef.current);
-            folderLongPressTimerRef.current = null;
-          }
+      // Si l'utilisateur bouge de manière significative (> 12px) avant la fin du maintien continu requis,
+      // on annule le timer de maintien pour éviter tout déplacement intempestif
+      if (!p.isHoldActive && (deltaX > 12 || deltaY > 12)) {
+        if (folderLongPressTimerRef.current) {
+          clearTimeout(folderLongPressTimerRef.current);
+          folderLongPressTimerRef.current = null;
         }
       }
 
-      if (p.isDragging) {
+      // Le glissement est actif UNIQUEMENT après que le maintien continu ait été validé
+      if (p.isDragging && p.isHoldActive) {
         setFolderDragState(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
 
         const now = Date.now();
@@ -473,12 +459,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         clearTimeout(folderLongPressTimerRef.current);
         folderLongPressTimerRef.current = null;
       }
+
+      document.body.style.cursor = '';
+      setHoldingFolderId(null);
+
       const p = folderPointerDownRef.current;
       if (p && !p.isDragging) {
         const deltaX = Math.abs(e.clientX - p.x);
         const deltaY = Math.abs(e.clientY - p.y);
-        if (deltaX < 8 && deltaY < 8) {
-          // Clic / tap sans déplacement : ouvrir le menu dédié du dossier
+        // Clic simple rapide sans maintien continu : ouvre le dossier avec le curseur flèche normal
+        if (deltaX < 12 && deltaY < 12) {
           setOpened3DFolder(p.folder);
         }
       }
@@ -513,6 +503,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const handleFolderPointerDown = (e: React.PointerEvent, folder: ClasseurCreatedFolder) => {
     if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('.studycloud-file-menu-panel') || (e.target as HTMLElement).closest('.studycloud-menu-trigger')) return;
 
+    // Sur ordinateur avec souris : uniquement clic gauche
+    if (e.pointerType === 'mouse' && e.button !== 0) return;
+
     const cardElement = (e.currentTarget as HTMLElement);
     const rect = cardElement.getBoundingClientRect();
 
@@ -524,27 +517,39 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       folder,
       cardRect: rect,
       isDragging: false,
+      isHoldActive: false,
     };
 
-    if (e.pointerType === 'touch') {
-      folderLongPressTimerRef.current = setTimeout(() => {
-        if (folderPointerDownRef.current) {
-          folderPointerDownRef.current.isDragging = true;
-          if (typeof navigator !== 'undefined' && navigator.vibrate) {
-            try { navigator.vibrate(35); } catch {}
-          }
-          setFolderDragState({
-            folder,
-            x: folderPointerDownRef.current.currentX,
-            y: folderPointerDownRef.current.currentY,
-            width: rect.width,
-            height: rect.height,
-            offsetX: folderPointerDownRef.current.x - rect.left,
-            offsetY: folderPointerDownRef.current.y - rect.top,
-          });
-        }
-      }, 200);
+    if (folderLongPressTimerRef.current) {
+      clearTimeout(folderLongPressTimerRef.current);
+      folderLongPressTimerRef.current = null;
     }
+
+    // Maintien continu obligatoire pour activer le glissement (sur ordinateur comme sur mobile)
+    folderLongPressTimerRef.current = setTimeout(() => {
+      if (folderPointerDownRef.current) {
+        folderPointerDownRef.current.isHoldActive = true;
+        folderPointerDownRef.current.isDragging = true;
+        setHoldingFolderId(folder.id);
+
+        if (typeof navigator !== 'undefined' && navigator.vibrate) {
+          try { navigator.vibrate(35); } catch {}
+        }
+
+        // Le curseur devient la paume qui a saisi le fichier pour le déplacer
+        document.body.style.cursor = 'grabbing';
+
+        setFolderDragState({
+          folder,
+          x: folderPointerDownRef.current.currentX,
+          y: folderPointerDownRef.current.currentY,
+          width: rect.width,
+          height: rect.height,
+          offsetX: folderPointerDownRef.current.x - rect.left,
+          offsetY: folderPointerDownRef.current.y - rect.top,
+        });
+      }
+    }, 280);
   };
 
   const handleDeleteCreatedFolder = (folderId: string) => {
@@ -6089,12 +6094,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             <span>Maintenez et glissez pour déplacer</span>
                           </div>
 
-                          {/* Widget Bouton - et + avec nombre 0 à 10 au milieu */}
+                          {/* Widget Bouton - et + avec nombre 1 à 10 au milieu (1 est le minimum) */}
                           <div className="flex items-center gap-1 bg-[#0A101D] border border-white/15 hover:border-orange-500/40 rounded-full p-0.5 sm:p-1 shadow-inner transition-colors">
                             <button
                               type="button"
-                              onClick={() => setFolderZoomLevel(prev => Math.max(0, prev - 1))}
-                              disabled={folderZoomLevel <= 0}
+                              onClick={() => setFolderZoomLevel(prev => Math.max(1, prev - 1))}
+                              disabled={folderZoomLevel <= 1}
                               className="w-6 h-6 sm:w-7 sm:h-7 rounded-full bg-white/10 hover:bg-orange-500/25 hover:text-orange-400 disabled:opacity-20 disabled:cursor-not-allowed text-white flex items-center justify-center transition-all active:scale-90 cursor-pointer shadow-sm"
                               title="Réduire la taille des dossiers (Moins)"
                               aria-label="Réduire la taille des dossiers"
@@ -6134,6 +6139,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           .filter(f => !subSearchQuery.trim() || f.name.toLowerCase().includes(subSearchQuery.toLowerCase().trim()))
                           .map((folder) => {
                             const isBeingDragged = folderDragState?.folder.id === folder.id;
+                            const isBeingHeld = holdingFolderId === folder.id;
                             return (
                               <motion.div
                                 key={folder.id}
@@ -6147,10 +6153,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                     setOpened3DFolder(folder);
                                   }
                                 }}
-                                className={`group relative ${getFolderCardPadding(folderZoomLevel)} cursor-grab active:cursor-grabbing transition-all select-none touch-none border ${
+                                className={`group relative ${getFolderCardPadding(folderZoomLevel)} transition-all select-none touch-none border ${
                                   isBeingDragged
-                                    ? 'opacity-20 scale-95 border-dashed border-orange-500/60 bg-orange-500/5'
-                                    : 'bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1'
+                                    ? 'opacity-20 scale-95 border-dashed border-orange-500/60 bg-orange-500/5 cursor-grabbing'
+                                    : isBeingHeld
+                                      ? 'scale-105 shadow-2xl border-orange-400 bg-[#141E34] cursor-grabbing'
+                                      : 'bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer'
                                 }`}
                               >
                                 {/* Haut droite : Bouton 3 traits & Menu d'options (Image 1 & 2) */}
