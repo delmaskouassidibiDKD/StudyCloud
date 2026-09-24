@@ -1434,7 +1434,13 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         />
       )}
       {viewMode === 'page1-files-menu' && (
-        <Page1FilesMenuView onBack={() => setViewMode('home')} onOpenStudySpace={onOpenStudySpace} />
+        <Page1FilesMenuView 
+          onBack={() => {
+            setActivePageIndex(0);
+            setViewMode('home');
+          }} 
+          onOpenStudySpace={onOpenStudySpace} 
+        />
       )}
 
       {viewMode === 'home' && (
@@ -1476,6 +1482,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
                         e.stopPropagation();
                         return;
                       }
+                      setActivePageIndex(0);
                       setViewMode('page1-files-menu');
                     }}
                     className="group flex flex-col items-center cursor-pointer select-none transition-all duration-300 hover:scale-105 active:scale-95"

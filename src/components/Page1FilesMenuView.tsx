@@ -4587,21 +4587,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   <span className="xs:hidden">Importer</span>
                 </button>
 
-                {/* BOUTON ESPACE D'ÉTUDE DEVANT LE BOUTON ZOOM DE L'ACCUEIL */}
-                <button
-                  type="button"
-                  onClick={() => handleOpenStudySpaceForCurrentMenu(false)}
-                  className="flex items-center gap-1.5 px-3 py-1.5 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 hover:border-emerald-500/50 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs font-black group"
-                  title="Ouvrir l'Espace d'étude"
-                >
-                  <BookOpen className="w-4 h-4 text-emerald-400 group-hover:scale-110 transition-transform" />
-                  <span className="hidden sm:inline">Espace d'étude</span>
-                </button>
-
                 <button
                   type="button"
                   onClick={() => setIsFullscreen(!isFullscreen)}
-                  className="hidden md:flex items-center justify-center w-10 h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
+                  className="flex items-center justify-center w-9 h-9 sm:w-10 sm:h-10 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/10 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm"
                   title={isFullscreen ? "Quitter le plein écran" : "Plein écran complet (Prendre tout l'écran)"}
                 >
                   {isFullscreen ? (
@@ -4610,25 +4599,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     <Maximize2 className="w-4 h-4 stroke-[2.2]" />
                   )}
                 </button>
-
-                {/* Bouton 3 traits d'en-tête derrière le bouton zoom */}
-                <div className="relative studycloud-menu-trigger">
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setIsHeaderMenuOpen(!isHeaderMenuOpen);
-                    }}
-                    className={`flex items-center justify-center w-10 h-10 rounded-full ${
-                      isHeaderMenuOpen ? 'bg-amber-500/20 text-amber-400 border-amber-400/40' : 'bg-[#04060A] hover:bg-[#0A0E18] text-white border-white/10'
-                    } border transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm`}
-                    title="Options d'affichage et de tri (3 traits)"
-                  >
-                    <Menu className="w-4 h-4 stroke-[2.2]" />
-                  </button>
-
-                  {renderHeaderOptionsMenu()}
-                </div>
               </div>
 
             </div>
