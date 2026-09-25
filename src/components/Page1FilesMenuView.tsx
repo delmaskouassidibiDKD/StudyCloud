@@ -3134,6 +3134,40 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     ).map(toFileItem);
   }, [filteredDownloads, downloadDocs, downloadImages, downloadVideos, downloadAudio]);
 
+  // Catégorisation des fichiers de la corbeille pour un affichage identique à Téléchargements
+  const trashDocs = useMemo(() => {
+    const list = filteredTrashFiles.filter(item => 
+      item.category === 'documents' || item.isNotepad || ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt'].includes(item.extension?.toLowerCase() || '') ||
+      (!['images', 'videos', 'audio'].includes(item.category || '') && !['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg', 'mp4', 'mov', 'webm', 'avi', 'mkv', 'mp3', 'm4a', 'wav', 'aac', 'ogg'].includes(item.extension?.toLowerCase() || ''))
+    );
+    return applySorting(list);
+  }, [filteredTrashFiles, sortOption]);
+
+  const trashImages = useMemo(() => {
+    const list = filteredTrashFiles.filter(item => 
+      item.category === 'images' || item.isImage || ['png', 'jpg', 'jpeg', 'webp', 'gif', 'svg'].includes(item.extension?.toLowerCase() || '')
+    );
+    return applySorting(list);
+  }, [filteredTrashFiles, sortOption]);
+
+  const trashVideos = useMemo(() => {
+    const list = filteredTrashFiles.filter(item => 
+      item.category === 'videos' || !!item.videoUrl || (item as any).isVideo || ['mp4', 'mov', 'webm', 'avi', 'mkv'].includes(item.extension?.toLowerCase() || '')
+    );
+    return applySorting(list);
+  }, [filteredTrashFiles, sortOption]);
+
+  const trashAudio = useMemo(() => {
+    const list = filteredTrashFiles.filter(item => 
+      item.category === 'audio' || !!item.audioUrl || (item as any).isAudio || ['mp3', 'm4a', 'wav', 'aac', 'ogg'].includes(item.extension?.toLowerCase() || '')
+    ).map(item => ({
+      ...item,
+      category: 'audio' as const,
+      artist: item.artist || (item as any).author || 'Fichier Audio'
+    }));
+    return applySorting(list);
+  }, [filteredTrashFiles, sortOption]);
+
   // Liste exacte des éléments du menu / dossier actuellement ouvert
   const currentSplitList = useMemo((): FileItem[] => {
     if (opened3DFolder) {
@@ -3150,7 +3184,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       return favoriteFiles;
     }
     if (currentSubView?.id === 'studycloud-collection-trash' || (isCloudView && cloudActiveTab === 'trash')) {
-      return filteredTrashFiles;
+      return [...trashDocs, ...trashImages, ...trashVideos, ...trashAudio];
     }
     if (isCloudView) {
       if (cloudActiveTab === 'classeur') return opened3DFolder ? (folderFilesMap[opened3DFolder.id] || []) : [];
@@ -3161,7 +3195,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       if (cloudActiveTab === 'downloads') return [...downloadDocs, ...downloadImages, ...downloadVideos, ...downloadAudio];
       if (cloudActiveTab === 'secure-folder') return filteredSecureFiles;
       if (cloudActiveTab === 'favorites') return favoriteFiles;
-      if (cloudActiveTab === 'trash') return filteredTrashFiles;
+      if (cloudActiveTab === 'trash') return [...trashDocs, ...trashImages, ...trashVideos, ...trashAudio];
       return displayedFiles;
     }
     return displayedFiles;
@@ -3179,6 +3213,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     downloadImages,
     downloadVideos,
     downloadAudio,
+    trashDocs,
+    trashImages,
+    trashVideos,
+    trashAudio,
     filteredSecureFiles,
     favoriteFiles,
     filteredTrashFiles,
@@ -3457,17 +3495,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <Trash2 className="w-3.5 h-3.5" />
                 <span>{isAllSelected ? 'Tout supprimer définitivement' : 'Supprimer définitivement'}</span>
               </button>
-
-              {/* Tout télécharger ou Télécharger */}
-              <button
-                type="button"
-                onClick={() => handleDownloadSelected(currentCategoryList)}
-                className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                title={isAllSelected ? "Tout télécharger" : "Télécharger"}
-              >
-                <Download className="w-3.5 h-3.5" />
-                <span>{isAllSelected ? 'Tout télécharger' : 'Télécharger'}</span>
-              </button>
             </>
           ) : (
             <>
@@ -3551,6 +3578,129 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const renderFileOptionsMenu = (file: FileItem, currentCategoryList: FileItem[], align: 'left' | 'right' = 'left') => {
     const isMenuOpen = activeMenuFileId === file.id || docMenuOpenId === file.id || audioMenuSongId === file.id;
     if (!isMenuOpen) return null;
+
+    const isTrash = currentSubView?.id === 'studycloud-collection-trash' || 
+                    (isCloudView && cloudActiveTab === 'trash') || 
+                    file.isTrash || 
+                    trashFiles.some(t => t.id === file.id);
+
+    if (isTrash) {
+      const isChecked = selectedItemIds.includes(file.id);
+      const isAllChecked = filteredTrashFiles.length > 0 && selectedItemIds.length >= filteredTrashFiles.length;
+      const hasMultipleSelected = selectedItemIds.length > 1;
+
+      return (
+        <div 
+          className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-50 w-60 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* En-tête du menu */}
+          <div className="px-3 py-2 bg-slate-900 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
+            <div className="min-w-0">
+              <p className="text-[11px] font-black text-white truncate" title={file.name}>
+                {file.name}
+              </p>
+              <p className="text-[9px] font-semibold text-slate-400">
+                {file.size} • <span className="uppercase text-rose-400 font-bold">Corbeille</span>
+              </p>
+            </div>
+            <button
+              type="button"
+              onClick={(e) => {
+                e.stopPropagation();
+                setActiveMenuFileId(null);
+                setDocMenuOpenId(null);
+                setAudioMenuSongId(null);
+              }}
+              className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              title="Fermer"
+            >
+              <X className="w-3.5 h-3.5" />
+            </button>
+          </div>
+
+          {/* Options : Cocher, Tout cocher, Restaurer, Supprimer définitivement */}
+          <div className="py-1 divide-y divide-white/5">
+            <div className="py-1">
+              <button
+                type="button"
+                onClick={() => {
+                  setIsSelectionMode(true);
+                  toggleItemSelection(file.id);
+                  setActiveMenuFileId(null);
+                  setDocMenuOpenId(null);
+                  setAudioMenuSongId(null);
+                }}
+                className="w-full px-3 py-2 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+              >
+                {isChecked ? <Square className="w-3.5 h-3.5 shrink-0" /> : <CheckSquare className="w-3.5 h-3.5 shrink-0" />}
+                <span>{isChecked ? 'Décocher' : 'Cocher'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (isAllChecked) {
+                    setSelectedItemIds([]);
+                    setIsSelectionMode(false);
+                  } else {
+                    setIsSelectionMode(true);
+                    setSelectedItemIds(filteredTrashFiles.map(f => f.id));
+                  }
+                  setActiveMenuFileId(null);
+                  setDocMenuOpenId(null);
+                  setAudioMenuSongId(null);
+                }}
+                className="w-full px-3 py-2 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+              >
+                {isAllChecked ? <Square className="w-3.5 h-3.5 shrink-0" /> : <CheckSquare className="w-3.5 h-3.5 shrink-0" />}
+                <span>{isAllChecked ? 'Tout décocher' : 'Tout cocher'}</span>
+              </button>
+            </div>
+
+            <div className="py-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isAllChecked || hasMultipleSelected) {
+                    handleRestoreSelectedFromTrash();
+                  } else {
+                    handleRestoreFromTrash(file);
+                  }
+                  setActiveMenuFileId(null);
+                  setDocMenuOpenId(null);
+                  setAudioMenuSongId(null);
+                }}
+                className="w-full px-3 py-2 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-emerald-400 hover:bg-emerald-500/15 transition-colors cursor-pointer text-left"
+                title="Restaurer à son emplacement d'origine"
+              >
+                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                <span>{isAllChecked ? 'Tout restaurer' : (hasMultipleSelected && isChecked ? 'Tout restaurer' : 'Restaurer')}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (isAllChecked || hasMultipleSelected) {
+                    handlePermanentDeleteSelectedFromTrash();
+                  } else {
+                    handlePermanentDelete(file.id);
+                  }
+                  setActiveMenuFileId(null);
+                  setDocMenuOpenId(null);
+                  setAudioMenuSongId(null);
+                }}
+                className="w-full px-3 py-2 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
+                title="Supprimer définitivement"
+              >
+                <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                <span>{isAllChecked ? 'Tout supprimer' : (hasMultipleSelected && isChecked ? 'Tout supprimer' : 'Supprimer définitivement')}</span>
+              </button>
+            </div>
+          </div>
+        </div>
+      );
+    }
 
     return (
       <div 
@@ -3724,165 +3874,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // =========================================================================
   // MENU 3 TRAITS DÉDIÉ POUR LES ÉLÉMENTS DE LA CORBEILLE
-  // Options requises : Sélectionner, Tout sélectionner, Restaurer, Supprimer définitivement,
-  // et les fonctions habituelles sur les fichiers (Lire / Aperçu, Télécharger, Partager, Créer un lien, Modifier le nom)
+  // Options requises : Cocher, Tout cocher, Restaurer / Tout restaurer, Supprimer définitivement / Tout supprimer
   // =========================================================================
   const renderTrashOptionsMenu = (file: FileItem, align: 'left' | 'right' = 'left') => {
-    const isMenuOpen = activeMenuFileId === file.id;
-    if (!isMenuOpen) return null;
-
-    const isChecked = selectedItemIds.includes(file.id);
-
-    return (
-      <div 
-        className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-50 w-60 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
-        onClick={(e) => e.stopPropagation()}
-      >
-        {/* En-tête de menu dédié avec nom du fichier et bouton fermeture */}
-        <div className="px-3 py-2 bg-slate-900 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
-          <div className="min-w-0">
-            <p className="text-[11px] font-black text-white truncate" title={file.name}>
-              {file.name}
-            </p>
-            <p className="text-[9px] font-semibold text-slate-400">
-              {file.size} • <span className="uppercase text-rose-400">Corbeille</span>
-            </p>
-          </div>
-          <button
-            type="button"
-            onClick={(e) => {
-              e.stopPropagation();
-              setActiveMenuFileId(null);
-            }}
-            className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
-            title="Fermer"
-          >
-            <X className="w-3.5 h-3.5" />
-          </button>
-        </div>
-
-        {/* Liste déroulante des options */}
-        <div className="max-h-[min(380px,calc(100vh-140px))] overflow-y-auto no-scrollbar py-1 divide-y divide-white/5">
-          {/* Section 1 : Sélection (Sélectionné / Sélectionner, Tout sélectionner) */}
-          <div className="py-1">
-            <button
-              type="button"
-              onClick={() => {
-                setIsSelectionMode(true);
-                toggleItemSelection(file.id);
-                setActiveMenuFileId(null);
-              }}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
-            >
-              <CheckSquare className="w-3.5 h-3.5 shrink-0" />
-              <span>{isChecked ? 'Désélectionner' : 'Sélectionner'}</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                setIsSelectionMode(true);
-                setSelectedItemIds(filteredTrashFiles.map(f => f.id));
-                setActiveMenuFileId(null);
-              }}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
-            >
-              <CheckSquare className="w-3.5 h-3.5 shrink-0" />
-              <span>Tout sélectionner</span>
-            </button>
-          </div>
-
-          {/* Section 2 : Restaurer & Supprimer définitivement */}
-          <div className="py-1">
-            <button
-              type="button"
-              onClick={() => {
-                handleRestoreFromTrash(file);
-                setActiveMenuFileId(null);
-              }}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-emerald-400 hover:bg-emerald-500/15 transition-colors cursor-pointer text-left"
-              title="Restaurer à son emplacement d'origine"
-            >
-              <RotateCcw className="w-3.5 h-3.5 shrink-0" />
-              <span>Restaurer</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                handlePermanentDelete(file.id);
-                setActiveMenuFileId(null);
-              }}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
-              title="Supprimer définitivement ce fichier"
-            >
-              <Trash2 className="w-3.5 h-3.5 shrink-0" />
-              <span>Supprimer définitivement</span>
-            </button>
-          </div>
-
-          {/* Section 3 : Fonctions comme dans tous les menus sur les fichiers */}
-          <div className="py-1">
-            <button
-              type="button"
-              onClick={() => {
-                handleSelectFile(file);
-                setActiveMenuFileId(null);
-              }}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-sky-400 hover:bg-sky-500/15 transition-colors cursor-pointer text-left"
-            >
-              <Eye className="w-3.5 h-3.5 shrink-0" />
-              <span>Lire / Aperçu</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                handleDownloadFile(file);
-                setActiveMenuFileId(null);
-              }}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-blue-400 hover:bg-blue-500/15 transition-colors cursor-pointer text-left"
-            >
-              <Download className="w-3.5 h-3.5 shrink-0" />
-              <span>Télécharger</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                handleShareFile(file);
-                setActiveMenuFileId(null);
-              }}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
-            >
-              <Share2 className="w-3.5 h-3.5 shrink-0 text-blue-400" />
-              <span>Partager</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                const link = `${window.location.origin}${window.location.pathname}#trash-${file.id}`;
-                try {
-                  navigator.clipboard?.writeText(link);
-                } catch {}
-                setActiveMenuFileId(null);
-              }}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
-            >
-              <Link className="w-3.5 h-3.5 shrink-0 text-sky-400" />
-              <span>Créer un lien</span>
-            </button>
-            <button
-              type="button"
-              onClick={() => {
-                handleRenameTrashFile(file);
-                setActiveMenuFileId(null);
-              }}
-              className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
-            >
-              <Pencil className="w-3.5 h-3.5 shrink-0 text-cyan-400" />
-              <span>Modifier le nom</span>
-            </button>
-          </div>
-        </div>
-      </div>
-    );
+    return renderFileOptionsMenu(file, filteredTrashFiles, align);
   };
 
   // =========================================================================
@@ -4617,6 +4612,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const renderHeaderOptionsMenu = () => {
     if (!isHeaderMenuOpen) return null;
 
+    const isTrashView = currentSubView?.id === 'studycloud-collection-trash' || (isCloudView && cloudActiveTab === 'trash');
+    const isAllTrashSelected = filteredTrashFiles.length > 0 && selectedItemIds.length >= filteredTrashFiles.length;
+    const hasMultipleTrashSelected = selectedItemIds.length > 1;
+
     return (
       <div 
         className="studycloud-file-menu-panel absolute right-0 top-11 sm:top-12 z-50 w-64 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col"
@@ -4625,7 +4624,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         {/* En-tête du menu */}
         <div className="px-3.5 py-2.5 bg-slate-900 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
           <div>
-            <p className="text-[11px] font-black text-white">Options d'affichage & Tri</p>
+            <p className="text-[11px] font-black text-white">
+              {isTrashView ? 'Options de la corbeille' : "Options d'affichage & Tri"}
+            </p>
             <p className="text-[9px] font-semibold text-slate-400">StudyCloud</p>
           </div>
           <button
@@ -4643,6 +4644,78 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
         {/* Options de tri et bouton œil */}
         <div className="py-1 divide-y divide-white/5">
+          {isTrashView && (
+            <div className="py-1">
+              <button
+                type="button"
+                onClick={() => {
+                  if (isSelectionMode) {
+                    setIsSelectionMode(false);
+                    setSelectedItemIds([]);
+                  } else {
+                    setIsSelectionMode(true);
+                    if (filteredTrashFiles.length > 0 && selectedItemIds.length === 0) {
+                      setSelectedItemIds([filteredTrashFiles[0].id]);
+                    }
+                  }
+                  setIsHeaderMenuOpen(false);
+                }}
+                className="w-full px-3.5 py-2 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+              >
+                {isSelectionMode ? <Square className="w-3.5 h-3.5 shrink-0" /> : <CheckSquare className="w-3.5 h-3.5 shrink-0" />}
+                <span>{isSelectionMode ? 'Décocher tout' : 'Cocher'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (isAllTrashSelected) {
+                    setSelectedItemIds([]);
+                    setIsSelectionMode(false);
+                  } else {
+                    setIsSelectionMode(true);
+                    setSelectedItemIds(filteredTrashFiles.map(f => f.id));
+                  }
+                  setIsHeaderMenuOpen(false);
+                }}
+                className="w-full px-3.5 py-2 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-amber-400 hover:bg-amber-500/15 transition-colors cursor-pointer text-left"
+              >
+                {isAllTrashSelected ? <Square className="w-3.5 h-3.5 shrink-0" /> : <CheckSquare className="w-3.5 h-3.5 shrink-0" />}
+                <span>{isAllTrashSelected ? 'Tout décocher' : 'Tout cocher'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  handleRestoreSelectedFromTrash();
+                  setIsHeaderMenuOpen(false);
+                }}
+                disabled={filteredTrashFiles.length === 0}
+                className="w-full px-3.5 py-2 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-emerald-400 hover:bg-emerald-500/15 disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer text-left"
+              >
+                <RotateCcw className="w-3.5 h-3.5 shrink-0" />
+                <span>{isAllTrashSelected || hasMultipleTrashSelected ? 'Tout restaurer' : 'Restaurer'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => {
+                  if (selectedItemIds.length > 0) {
+                    handlePermanentDeleteSelectedFromTrash();
+                  } else {
+                    handleEmptyTrash();
+                  }
+                  setIsHeaderMenuOpen(false);
+                }}
+                disabled={filteredTrashFiles.length === 0}
+                className="w-full px-3.5 py-2 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 disabled:opacity-30 disabled:pointer-events-none transition-colors cursor-pointer text-left"
+              >
+                <Trash2 className="w-3.5 h-3.5 shrink-0" />
+                <span>{isAllTrashSelected || hasMultipleTrashSelected ? 'Tout supprimer' : 'Supprimer définitivement'}</span>
+              </button>
+            </div>
+          )}
+
           <div className="py-1">
             {/* Trié par plus récent */}
             <button
@@ -7918,20 +7991,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   ) : (
                     <>
-                      <div className="p-4 rounded-2xl bg-gradient-to-r from-amber-500/15 via-yellow-500/10 to-transparent border border-amber-500/30 flex items-center justify-between gap-3 shadow-md">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-400 border border-amber-500/40 shrink-0">
-                            <Star className="w-6 h-6 stroke-[2.2]" />
-                          </div>
-                          <div>
-                            <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white">
-                              Fichiers Favoris StudyCloud
-                            </h2>
-                            <p className="text-xs text-stone-500 dark:text-slate-400">
-                              {favoriteFiles.length} fichier{favoriteFiles.length > 1 ? 's' : ''} marqué{favoriteFiles.length > 1 ? 's' : ''} comme favori ou épinglé.
-                            </p>
-                          </div>
-                        </div>
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
+                          {favoriteFiles.length} fichier{favoriteFiles.length > 1 ? 's' : ''} marqué{favoriteFiles.length > 1 ? 's' : ''} comme favori
+                        </span>
                       </div>
 
                       {renderSelectionBanner(favoriteFiles)}
@@ -7962,40 +8025,84 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   ) : (
                     <>
-                      <div className="p-4 rounded-2xl bg-gradient-to-r from-rose-500/15 via-red-500/10 to-transparent border border-rose-500/30 flex items-center justify-between gap-3 shadow-md">
-                        <div className="flex items-center gap-3">
-                          <div className="p-2.5 rounded-xl bg-rose-500/20 text-rose-400 border border-rose-500/40 shrink-0">
-                            <Trash2 className="w-6 h-6 stroke-[2.2]" />
-                          </div>
-                          <div>
-                            <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white">
-                              Corbeille StudyCloud
-                            </h2>
-                            <p className="text-xs text-stone-500 dark:text-slate-400">
-                              {filteredTrashFiles.length} élément{filteredTrashFiles.length > 1 ? 's' : ''} dans la corbeille.
-                            </p>
-                          </div>
-                        </div>
-                        {filteredTrashFiles.length > 0 && (
-                          <div className="flex items-center gap-2">
-                            <button
-                              type="button"
-                              onClick={handleEmptyTrash}
-                              className="px-3.5 py-1.5 rounded-full bg-rose-600 hover:bg-rose-700 text-white text-xs font-black transition-all cursor-pointer active:scale-95 shadow-md flex items-center gap-1.5"
-                            >
-                              <Trash2 className="w-3.5 h-3.5" />
-                              <span>Vider la corbeille</span>
-                            </button>
-                          </div>
-                        )}
+                      {/* Compteur sobre sans bandeau */}
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
+                          {filteredTrashFiles.length} fichier{filteredTrashFiles.length > 1 ? 's' : ''} dans la corbeille
+                        </span>
                       </div>
 
                       {renderSelectionBanner(filteredTrashFiles)}
 
-                      <div className={`grid gap-2.5 sm:gap-3.5 ${
-                        splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                      }`}>
-                        {filteredTrashFiles.map((file, idx) => renderTrashCard(file, idx))}
+                      {/* Structure et cartes de fichiers identiques au menu Téléchargements */}
+                      <div className="space-y-6">
+                        {/* Documents dans la corbeille */}
+                        {trashDocs.length > 0 && (
+                          <div className="space-y-2.5">
+                            <div className="flex items-center gap-2">
+                              <FileText className="w-4 h-4 text-blue-400" />
+                              <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
+                                Documents ({trashDocs.length})
+                              </h3>
+                            </div>
+                            <div className={`grid gap-2.5 sm:gap-3.5 ${
+                              splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                            }`}>
+                              {trashDocs.map(doc => renderDocumentCard(doc))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Images dans la corbeille */}
+                        {trashImages.length > 0 && (
+                          <div className="space-y-2.5">
+                            <div className="flex items-center gap-2">
+                              <ImageIcon className="w-4 h-4 text-emerald-400" />
+                              <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
+                                Images ({trashImages.length})
+                              </h3>
+                            </div>
+                            <div className={`grid gap-2 sm:gap-3 ${
+                              splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                            }`}>
+                              {trashImages.map((img, idx) => renderImageCard(img, idx))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Vidéos dans la corbeille */}
+                        {trashVideos.length > 0 && (
+                          <div className="space-y-2.5">
+                            <div className="flex items-center gap-2">
+                              <Film className="w-4 h-4 text-purple-400" />
+                              <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
+                                Vidéos ({trashVideos.length})
+                              </h3>
+                            </div>
+                            <div className={`grid gap-2 sm:gap-3 ${
+                              splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                            }`}>
+                              {trashVideos.map((vid, idx) => renderVideoCard(vid, idx))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Fichiers Audio dans la corbeille */}
+                        {trashAudio.length > 0 && (
+                          <div className="space-y-2.5">
+                            <div className="flex items-center gap-2">
+                              <Music className="w-4 h-4 text-amber-400" />
+                              <h3 className="text-xs sm:text-sm font-black text-stone-800 dark:text-slate-200">
+                                Fichiers Audio ({trashAudio.length})
+                              </h3>
+                            </div>
+                            <div className={`grid gap-2 sm:gap-3 ${
+                              splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+                            }`}>
+                              {trashAudio.map((aud, idx) => renderAudioSquareCard(aud, idx))}
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </>
                   )}
