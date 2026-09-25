@@ -6818,7 +6818,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         )}
                         <span className="text-stone-400 dark:text-slate-500 font-bold select-none text-xs sm:text-sm">/</span>
                         <h1 
-                          className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-lg border-2 border-stone-800 dark:border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] truncate max-w-[140px] sm:max-w-[200px] md:max-w-xs text-center"
+                          className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-lg border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs truncate max-w-[140px] sm:max-w-[200px] md:max-w-xs text-center"
                           style={{
                             backgroundColor: opened3DFolder.primaryColor || '#FFC400',
                             color: opened3DFolder.textDark ? '#1c1917' : '#FFFFFF'
@@ -6831,7 +6831,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     );
                   })() : (
                     <h1 
-                      className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-lg border-2 border-stone-800 dark:border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] truncate max-w-[180px] sm:max-w-xs md:max-w-md text-center"
+                      className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-lg border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs truncate max-w-[180px] sm:max-w-xs md:max-w-md text-center"
                       style={{
                         backgroundColor: opened3DFolder.primaryColor || '#FFC400',
                         color: opened3DFolder.textDark ? '#1c1917' : '#FFFFFF'

@@ -145,7 +145,7 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
         </div>
 
         {/* Titre au centre */}
-        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm md:text-base font-extrabold text-stone-900 dark:text-stone-900 bg-amber-400 dark:bg-amber-500 px-3.5 py-1.5 rounded-xl border-2 border-stone-800 dark:border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] truncate">
+        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm md:text-base font-extrabold text-stone-900 dark:text-stone-900 bg-amber-400 dark:bg-amber-500 px-3.5 py-1.5 rounded-xl border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs truncate">
           Mon stockage
         </h1>
 

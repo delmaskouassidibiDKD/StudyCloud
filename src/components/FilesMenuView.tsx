@@ -1073,7 +1073,7 @@ export const FilesMenuView: React.FC<FilesMenuViewProps> = ({ onBack, onImportFi
           </button>
         </div>
 
-        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-stone-900 dark:text-stone-900 bg-amber-400 dark:bg-amber-500 px-3 py-1 rounded-lg border-2 border-stone-800 dark:border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] self-start">
+        <h1 className="pointer-events-auto font-sans text-xs sm:text-sm font-bold text-stone-900 dark:text-stone-900 bg-amber-400 dark:bg-amber-500 px-3 py-1 rounded-lg border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs self-start">
           Mes fichiers
         </h1>
 
