@@ -4108,6 +4108,124 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           onChange={(e) => handleFolderFileUpload(e, folder.id)} 
         />
 
+        {/* Barre de navigation et fil d'Ariane du dossier dans l'Espace Cloud */}
+        {isCloudView && (
+          <div className="w-full flex items-center justify-between gap-2 sm:gap-4 py-2 px-1 mb-4 border-b border-stone-300/60 dark:border-white/10 animate-in fade-in duration-150">
+            {/* GAUCHE : Bouton Retour et Bouton Importer */}
+            <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+              <button
+                type="button"
+                onClick={() => {
+                  if (folder.parentId) {
+                    const parent = classeur3DFolders.find(f => f.id === folder.parentId);
+                    setOpened3DFolder(parent || null);
+                  } else {
+                    setOpened3DFolder(null);
+                  }
+                  setSplitSelectedFile(null);
+                  setSubSearchQuery('');
+                }}
+                className="flex items-center gap-1 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[11px] sm:text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-xs transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                title={folder.parentId ? "Retour au dossier parent" : "Retour aux dossiers du classeur"}
+              >
+                <ArrowLeft className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
+                <span>Retour</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => folderFileInputRef.current?.click()}
+                className="flex items-center gap-1 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[11px] sm:text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-xs transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                title="Importer des fichiers dans ce dossier"
+              >
+                <Upload className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-white" />
+                <span>Importer</span>
+              </button>
+            </div>
+
+            {/* MILIEU : Fil d'Ariane parent + nom du dossier avec bordures en pointillés */}
+            <div className="flex-1 flex justify-center items-center px-1 min-w-0">
+              {folder.parentId ? (() => {
+                const parentFolder = classeur3DFolders.find(f => f.id === folder.parentId);
+                return (
+                  <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                    {parentFolder && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setOpened3DFolder(parentFolder);
+                          setSplitSelectedFile(null);
+                          setSubSearchQuery('');
+                        }}
+                        className="font-sans text-xs sm:text-sm font-bold text-stone-800 dark:text-stone-200 bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 px-2.5 sm:px-3 py-1 rounded-lg border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs truncate max-w-[120px] sm:max-w-[160px] text-center cursor-pointer transition-all active:scale-95 flex items-center gap-1"
+                        title={`Retourner au dossier parent « ${parentFolder.name} »`}
+                      >
+                        <span className="truncate">{parentFolder.name}</span>
+                      </button>
+                    )}
+                    <span className="text-stone-400 dark:text-slate-500 font-bold select-none text-xs sm:text-sm">/</span>
+                    <h1 
+                      className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-lg border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs truncate max-w-[140px] sm:max-w-[200px] md:max-w-xs text-center"
+                      style={{
+                        backgroundColor: folder.primaryColor || '#FFC400',
+                        color: folder.textDark ? '#1c1917' : '#FFFFFF'
+                      }}
+                      title={folder.name}
+                    >
+                      {folder.name}
+                    </h1>
+                  </div>
+                );
+              })() : (
+                <h1 
+                  className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-lg border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs truncate max-w-[180px] sm:max-w-xs md:max-w-md text-center"
+                  style={{
+                    backgroundColor: folder.primaryColor || '#FFC400',
+                    color: folder.textDark ? '#1c1917' : '#FFFFFF'
+                  }}
+                  title={folder.name}
+                >
+                  {folder.name}
+                </h1>
+              )}
+            </div>
+
+            {/* DROITE : Boutons Créer sous-dossier + Bloc-notes */}
+            <div className="shrink-0 flex items-center gap-1.5 sm:gap-2">
+              {!folder.parentId && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setSubFolderParentId(folder.id);
+                    setSelectedFolderModelItem(null);
+                    setCustomFolderColor(null);
+                    setNewFolderNameInput('');
+                    setIsCreateFolderModalOpen(true);
+                  }}
+                  className="flex items-center gap-1 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[11px] sm:text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-xs transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                  title="Créer un sous-dossier dans ce dossier"
+                >
+                  <FolderPlus className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-orange-400" />
+                  <span className="hidden sm:inline">Créer un dossier</span>
+                </button>
+              )}
+
+              <button
+                type="button"
+                onClick={() => {
+                  setNewNoteNameInput('');
+                  setIsNewNoteModalOpen(true);
+                }}
+                className="flex items-center gap-1 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[11px] sm:text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-xs transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+                title="Nouveau document Bloc-notes (.txt)"
+              >
+                <FileEdit className="w-3.5 h-3.5 text-[#2D4A3E] dark:text-cyan-400" />
+                <span className="hidden sm:inline">Bloc-notes</span>
+              </button>
+            </div>
+          </div>
+        )}
+
         {/* Fichiers et sous-dossiers du dossier OU État vide */}
         {totalItems === 0 ? (
           <div className="py-20 sm:py-28 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400 rounded-3xl border-2 border-dashed border-white/10 p-6 bg-black/20">
@@ -6761,7 +6879,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className={`sticky top-0 z-30 w-full bg-[#F4F6F8]/95 dark:bg-[#0C111D]/95 backdrop-blur-md px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 border-b border-stone-300/70 dark:border-slate-800/60 shadow-xs ${
             isViewerMaximized ? 'hidden' : ''
           }`}>
-            {opened3DFolder ? (
+            {(opened3DFolder && !isCloudView) ? (
               /* EN-TÊTE DU DOSSIER 3D OUVERT (Conforme à l'écran 1 : Retour + Importer à gauche, Nom au milieu collé à l'en-tête sur la ligne horizontale) */
               <div className="w-full flex items-center justify-between gap-2 sm:gap-4 animate-in fade-in duration-150">
                 {/* GAUCHE : Bouton Retour et Bouton Importer (style exact de Mes dossiers / Mes fichiers de l'écran 1) */}
@@ -6991,7 +7109,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {(currentSubView.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur') || currentSubView.type === 'classeur') && (
                     <button
                       type="button"
-                      onClick={() => setIsCreateFolderModalOpen(true)}
+                      onClick={() => {
+                        setSubFolderParentId(opened3DFolder ? opened3DFolder.id : null);
+                        setIsCreateFolderModalOpen(true);
+                      }}
                       className="flex items-center gap-1.5 sm:gap-2 px-3 sm:px-4 py-1.5 sm:py-2 rounded-full bg-gradient-to-r from-[#C25416] via-[#B8480C] to-[#A03D07] hover:from-[#D15C1B] hover:via-[#C55010] hover:to-[#AC430A] text-white border border-orange-500/50 shadow-[0_2px_12px_rgba(194,84,22,0.45)] hover:shadow-[0_4px_18px_rgba(194,84,22,0.6)] transition-all cursor-pointer shrink-0 active:scale-95 text-xs sm:text-sm font-bold group select-none animate-in fade-in duration-150"
                       title="Créer un nouveau dossier"
                     >
@@ -7045,7 +7166,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {/* ========================================================================= */}
           {isCloudView && (
             <div className={`w-full bg-[#EAECEF] dark:bg-[#070B14] border-b border-stone-300/80 dark:border-white/10 px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 sm:py-3 select-none ${
-              isViewerMaximized || opened3DFolder ? 'hidden' : ''
+              isViewerMaximized ? 'hidden' : ''
             }`}>
               <div className="relative flex items-center">
                 {/* Flèche gauche pour défilement rapide sur grand écran */}
