@@ -132,6 +132,7 @@ export interface FileItem {
   durationSec?: number;
   isNotepad?: boolean;
   content?: string;
+  noteTitle?: string;
   originalCategory?: string;
   originalSource?: string;
   url?: string;
@@ -291,6 +292,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Fichier Bloc-notes en cours d'édition / écriture
   const [activeEditingNote, setActiveEditingNote] = useState<FileItem | null>(null);
   const [noteTextContent, setNoteTextContent] = useState<string>('');
+  const [noteTitleContent, setNoteTitleContent] = useState<string>('');
   const [isNoteSavedIndicator, setIsNoteSavedIndicator] = useState<boolean>(true);
 
   // Table des fichiers par dossier 3D créé (chaque dossier possède son propre menu et ses fichiers indépendants)
@@ -445,14 +447,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     // Ouvrir immédiatement le bloc-notes dans le volet divisé pour écrire dedans
     handleSelectFile(newNoteFile);
     setNoteTextContent('');
+    setNoteTitleContent('');
     setIsNoteSavedIndicator(true);
   };
 
-  const handleUpdateNoteContent = (newText: string, fileId?: string) => {
+  const handleUpdateNoteContent = (newText: string, newTitle?: string, fileId?: string) => {
     const targetId = fileId || splitSelectedFile?.id || activeEditingNote?.id;
     if (!targetId) return;
 
-    const byteLength = new Blob([newText]).size;
+    const titleToSave = newTitle !== undefined ? newTitle : noteTitleContent;
+    const combinedContent = (titleToSave ? `${titleToSave}\n\n` : '') + newText;
+    const byteLength = new Blob([combinedContent]).size;
     const k = 1024;
     const sizes = ['o', 'Ko', 'Mo', 'Go'];
     const i = byteLength > 0 ? Math.floor(Math.log(byteLength) / Math.log(k)) : 0;
@@ -466,6 +471,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             return {
               ...f,
               content: newText,
+              noteTitle: titleToSave,
               size: sizeStr,
               sizeBytes: byteLength,
             };
@@ -484,6 +490,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         return {
           ...f,
           content: newText,
+          noteTitle: titleToSave,
           size: sizeStr,
           sizeBytes: byteLength
         };
@@ -495,6 +502,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setSplitSelectedFile(prev => prev ? {
         ...prev,
         content: newText,
+        noteTitle: titleToSave,
         size: sizeStr,
         sizeBytes: byteLength
       } : null);
@@ -505,10 +513,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   const handleSaveAndCloseNote = () => {
     if (activeEditingNote && opened3DFolder) {
-      handleUpdateNoteContent(noteTextContent);
+      handleUpdateNoteContent(noteTextContent, noteTitleContent);
     }
     setActiveEditingNote(null);
     setNoteTextContent('');
+    setNoteTitleContent('');
     setIsNoteSavedIndicator(true);
   };
 
@@ -2395,6 +2404,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     if (file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt')) {
       setNoteTextContent(file.content || '');
+      setNoteTitleContent(file.noteTitle || '');
       setIsNoteSavedIndicator(true);
     }
 
@@ -2954,40 +2964,82 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     ).map(toFileItem);
   }, [filteredDownloads, downloadDocs, downloadImages, downloadVideos, downloadAudio]);
 
-  // NAVIGATION PRÉCÉDENT / SUIVANT DANS LA VUE DIVISÉE
-  const handleNavigateSplit = (direction: 'prev' | 'next') => {
-    if (!splitSelectedFile) return;
-    let list: FileItem[] = [];
-    if (currentSubView?.id === 'studycloud-category-images') list = filteredImages;
-    else if (currentSubView?.id === 'studycloud-category-videos') list = filteredVideos;
-    else if (currentSubView?.id === 'studycloud-category-audio') list = filteredAudio;
-    else if (currentSubView?.id === 'studycloud-category-documents') list = filteredDocuments;
-    else if (currentSubView?.id === 'studycloud-category-downloads') {
-      list = [...downloadDocs, ...downloadImages, ...downloadVideos, ...downloadAudio];
-    } else if (isCloudView) {
-      if (cloudActiveTab === 'classeur') list = displayedClasseurDocuments;
-      else if (cloudActiveTab === 'documents') list = filteredDocuments;
-      else if (cloudActiveTab === 'images') list = filteredImages;
-      else if (cloudActiveTab === 'videos') list = filteredVideos;
-      else if (cloudActiveTab === 'audio') list = filteredAudio;
-      else if (cloudActiveTab === 'downloads') list = [...downloadDocs, ...downloadImages, ...downloadVideos, ...downloadAudio];
-      else if (cloudActiveTab === 'secure-folder') list = filteredSecureFiles;
-      else if (cloudActiveTab === 'favorites') list = favoriteFiles;
-      else list = displayedClasseurDocuments;
-    } else {
-      list = displayedFiles;
+  // Liste exacte des éléments du menu / dossier actuellement ouvert
+  const currentSplitList = useMemo((): FileItem[] => {
+    if (opened3DFolder) {
+      return folderFilesMap[opened3DFolder.id] || [];
     }
+    if (currentSubView?.id === 'studycloud-category-images') return filteredImages;
+    if (currentSubView?.id === 'studycloud-category-videos') return filteredVideos;
+    if (currentSubView?.id === 'studycloud-category-audio') return filteredAudio;
+    if (currentSubView?.id === 'studycloud-category-documents') return filteredDocuments;
+    if (currentSubView?.id === 'studycloud-category-downloads') {
+      return [...downloadDocs, ...downloadImages, ...downloadVideos, ...downloadAudio];
+    }
+    if (isCloudView) {
+      if (cloudActiveTab === 'classeur') return displayedClasseurDocuments;
+      if (cloudActiveTab === 'documents') return filteredDocuments;
+      if (cloudActiveTab === 'images') return filteredImages;
+      if (cloudActiveTab === 'videos') return filteredVideos;
+      if (cloudActiveTab === 'audio') return filteredAudio;
+      if (cloudActiveTab === 'downloads') return [...downloadDocs, ...downloadImages, ...downloadVideos, ...downloadAudio];
+      if (cloudActiveTab === 'secure-folder') return filteredSecureFiles;
+      if (cloudActiveTab === 'favorites') return favoriteFiles;
+      return displayedClasseurDocuments;
+    }
+    return displayedFiles;
+  }, [
+    opened3DFolder,
+    folderFilesMap,
+    currentSubView,
+    isCloudView,
+    cloudActiveTab,
+    filteredImages,
+    filteredVideos,
+    filteredAudio,
+    filteredDocuments,
+    downloadDocs,
+    downloadImages,
+    downloadVideos,
+    downloadAudio,
+    displayedClasseurDocuments,
+    filteredSecureFiles,
+    favoriteFiles,
+    displayedFiles
+  ]);
 
-    const currentIndex = list.findIndex(f => f.id === splitSelectedFile.id);
-    if (currentIndex === -1) return;
-    const nextIndex = direction === 'next' 
-      ? (currentIndex + 1) % list.length 
-      : (currentIndex - 1 + list.length) % list.length;
-    
-    setSplitSelectedFile(list[nextIndex]);
-    setViewerZoom(1);
-    setViewerRotation(0);
-    setDocCurrentPage(1);
+  const currentSplitIndex = useMemo(() => {
+    if (!splitSelectedFile || currentSplitList.length === 0) return -1;
+    return currentSplitList.findIndex(f => f.id === splitSelectedFile.id);
+  }, [splitSelectedFile, currentSplitList]);
+
+  const canNavigatePrev = currentSplitIndex > 0;
+  const canNavigateNext = currentSplitIndex >= 0 && currentSplitIndex < currentSplitList.length - 1;
+
+  // NAVIGATION PRÉCÉDENT / SUIVANT DANS LA VUE DIVISÉE (STRICTEMENT DANS LE MENU ACTUEL)
+  const handleNavigateSplit = (direction: 'prev' | 'next') => {
+    if (!splitSelectedFile || currentSplitList.length === 0) return;
+    if (direction === 'prev' && canNavigatePrev) {
+      const nextFile = currentSplitList[currentSplitIndex - 1];
+      setSplitSelectedFile(nextFile);
+      if (nextFile.isNotepad || nextFile.extension === 'txt' || nextFile.name.toLowerCase().endsWith('.txt')) {
+        setNoteTextContent(nextFile.content || '');
+        setNoteTitleContent(nextFile.noteTitle || '');
+      }
+      setViewerZoom(1);
+      setViewerRotation(0);
+      setDocCurrentPage(1);
+    } else if (direction === 'next' && canNavigateNext) {
+      const nextFile = currentSplitList[currentSplitIndex + 1];
+      setSplitSelectedFile(nextFile);
+      if (nextFile.isNotepad || nextFile.extension === 'txt' || nextFile.name.toLowerCase().endsWith('.txt')) {
+        setNoteTextContent(nextFile.content || '');
+        setNoteTitleContent(nextFile.noteTitle || '');
+      }
+      setViewerZoom(1);
+      setViewerRotation(0);
+      setDocCurrentPage(1);
+    }
   };
 
   // Récupération des styles de carte document en fonction de l'extension
@@ -6120,7 +6172,30 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           </div>
 
           {/* Zone d'écriture plein espace */}
-          <div className="flex-1 p-4 sm:p-6 overflow-hidden flex flex-col bg-[#070B14]/60">
+          <div className="flex-1 p-4 sm:p-6 overflow-hidden flex flex-col space-y-3 bg-[#070B14]/60">
+            {/* Espace Titre dédié en haut : sort en majuscules et limité à deux lignes */}
+            <textarea
+              value={noteTitleContent}
+              rows={2}
+              placeholder="TITRE DE LA NOTE (EN MAJUSCULES)..."
+              onChange={(e) => {
+                const val = e.target.value.toUpperCase();
+                const lines = val.split('\n');
+                const limitedVal = lines.slice(0, 2).join('\n');
+                setNoteTitleContent(limitedVal);
+                setIsNoteSavedIndicator(false);
+                handleUpdateNoteContent(noteTextContent, limitedVal);
+              }}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const currentLines = noteTitleContent.split('\n');
+                  if (currentLines.length >= 2) e.preventDefault();
+                }
+              }}
+              className="w-full uppercase font-black text-sm sm:text-base md:text-lg text-cyan-300 placeholder:text-slate-500 placeholder:normal-case bg-transparent border-b border-white/10 pb-2 outline-none resize-none tracking-wide break-all [overflow-wrap:anywhere] [word-break:break-word] leading-snug selection:bg-cyan-500/30"
+              style={{ maxHeight: '4.2rem', lineHeight: '1.4' }}
+            />
+
             <textarea
               autoFocus
               value={noteTextContent}
@@ -6128,10 +6203,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 const newText = e.target.value;
                 setNoteTextContent(newText);
                 setIsNoteSavedIndicator(false);
-                handleUpdateNoteContent(newText);
+                handleUpdateNoteContent(newText, noteTitleContent);
               }}
               placeholder="Écrivez vos notes, cours ou réflexions ici..."
-              className="w-full flex-1 bg-transparent text-slate-100 placeholder:text-slate-600 text-xs sm:text-sm md:text-base leading-relaxed resize-none outline-none font-sans no-scrollbar"
+              className="w-full flex-1 bg-transparent text-slate-100 placeholder:text-slate-600 text-xs sm:text-sm md:text-base leading-relaxed resize-none outline-none font-sans no-scrollbar break-all [overflow-wrap:anywhere] [word-break:break-word]"
             />
           </div>
 
@@ -7484,17 +7559,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
                     <button
                       type="button"
+                      disabled={!canNavigatePrev}
                       onClick={() => handleNavigateSplit('prev')}
-                      className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-                      title="Élément précédent"
+                      className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 disabled:opacity-20 disabled:pointer-events-none disabled:cursor-not-allowed text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                      title={canNavigatePrev ? "Élément précédent" : "Aucun élément précédent"}
                     >
                       <ChevronLeft className="w-4 h-4 stroke-[2.2]" />
                     </button>
                     <button
                       type="button"
+                      disabled={!canNavigateNext}
                       onClick={() => handleNavigateSplit('next')}
-                      className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
-                      title="Élément suivant"
+                      className="w-8 h-8 rounded-full bg-black/60 hover:bg-slate-800 disabled:opacity-20 disabled:pointer-events-none disabled:cursor-not-allowed text-white flex items-center justify-center border border-white/10 transition-colors cursor-pointer"
+                      title={canNavigateNext ? "Élément suivant" : "Aucun élément suivant"}
                     >
                       <ChevronRight className="w-4 h-4 stroke-[2.2]" />
                     </button>
@@ -7503,9 +7580,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[150px] sm:max-w-[220px]" title={splitSelectedFile.name}>
                         {splitSelectedFile.name}
                       </p>
-                      <p className="text-[10px] text-slate-400 font-semibold truncate">
-                        {splitSelectedFile.size} • {splitSelectedFile.source}
-                      </p>
+                      {splitSelectedFile.size && (
+                        <p className="text-[10px] text-slate-400 font-semibold truncate">
+                          {splitSelectedFile.size}
+                        </p>
+                      )}
                     </div>
                   </div>
 
@@ -7540,71 +7619,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           <RotateCw className="w-3.5 h-3.5" />
                         </button>
                       </>
-                    )}
-
-                    {/* Choix mode Vertical ou Horizontal (Pour les documents) */}
-                    {splitSelectedFile.category === 'documents' && (
-                      <button
-                        type="button"
-                        onClick={() => setDocLayoutMode(prev => prev === 'vertical' ? 'horizontal' : 'vertical')}
-                        className={`h-7 sm:h-8 px-2 sm:px-2.5 rounded-full flex items-center gap-1.5 border transition-all cursor-pointer shadow-sm text-xs font-bold ${
-                          docLayoutMode === 'vertical'
-                            ? 'bg-blue-600/30 text-blue-300 border-blue-500/50 hover:bg-blue-600/50'
-                            : 'bg-emerald-600/30 text-emerald-300 border-emerald-500/50 hover:bg-emerald-600/50'
-                        }`}
-                        title={docLayoutMode === 'vertical' ? "Mode actuel : Vertical (cliquer pour Horizontal)" : "Mode actuel : Horizontal (cliquer pour Vertical)"}
-                      >
-                        {docLayoutMode === 'vertical' ? (
-                          <>
-                            <SlidersHorizontal className="w-3.5 h-3.5 rotate-90 text-blue-400" />
-                            <span className="text-[11px] font-bold">Vertical</span>
-                          </>
-                        ) : (
-                          <>
-                            <SlidersHorizontal className="w-3.5 h-3.5 text-emerald-400" />
-                            <span className="text-[11px] font-bold">Horizontal</span>
-                          </>
-                        )}
-                      </button>
-                    )}
-
-                    {/* Pagination intégrée sur l'en-tête (derrière les boutons zoom) */}
-                    {splitSelectedFile.category === 'documents' && (
-                      <div className="flex items-center gap-0.5 sm:gap-1 bg-[#121826] border border-white/15 rounded-full px-1.5 py-0.5 sm:h-8 text-xs text-white shadow-inner">
-                        <button
-                          type="button"
-                          disabled={docCurrentPage <= 1}
-                          onClick={() => {
-                            const newPage = Math.max(1, docCurrentPage - 1);
-                            setDocCurrentPage(newPage);
-                            if (docLayoutMode === 'vertical') {
-                              document.getElementById(`doc-page-${newPage}`)?.scrollIntoView({ behavior: 'smooth' });
-                            }
-                          }}
-                          className="w-6 h-6 rounded-full bg-black/60 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-white transition-colors cursor-pointer"
-                          title="Page précédente (Précédent)"
-                        >
-                          <ChevronLeft className="w-3.5 h-3.5 stroke-[2.2]" />
-                        </button>
-                        <span className="px-1.5 text-[11px] font-black text-blue-300 whitespace-nowrap">
-                          {docCurrentPage} / {totalDocPages}
-                        </span>
-                        <button
-                          type="button"
-                          disabled={docCurrentPage >= totalDocPages}
-                          onClick={() => {
-                            const newPage = Math.min(totalDocPages, docCurrentPage + 1);
-                            setDocCurrentPage(newPage);
-                            if (docLayoutMode === 'vertical') {
-                              document.getElementById(`doc-page-${newPage}`)?.scrollIntoView({ behavior: 'smooth' });
-                            }
-                          }}
-                          className="w-6 h-6 rounded-full bg-black/60 hover:bg-slate-800 disabled:opacity-30 disabled:cursor-not-allowed flex items-center justify-center text-white transition-colors cursor-pointer"
-                          title="Page suivante (Suivant)"
-                        >
-                          <ChevronRight className="w-3.5 h-3.5 stroke-[2.2]" />
-                        </button>
-                      </div>
                     )}
 
                     {/* Partager */}
@@ -8074,7 +8088,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           <button
                             type="button"
                             onClick={() => {
-                              navigator.clipboard?.writeText(noteTextContent);
+                              const fullText = (noteTitleContent ? `${noteTitleContent.toUpperCase()}\n\n` : '') + noteTextContent;
+                              navigator.clipboard?.writeText(fullText);
                               showToast('Texte copié dans le presse-papiers !');
                             }}
                             className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
@@ -8087,7 +8102,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           <button
                             type="button"
                             onClick={() => {
-                              const blob = new Blob([noteTextContent], { type: 'text/plain;charset=utf-8' });
+                              const fullText = (noteTitleContent ? `${noteTitleContent.toUpperCase()}\n\n` : '') + noteTextContent;
+                              const blob = new Blob([fullText], { type: 'text/plain;charset=utf-8' });
                               const url = URL.createObjectURL(blob);
                               const a = document.createElement('a');
                               a.href = url;
@@ -8104,35 +8120,52 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             <Download className="w-3.5 h-3.5 text-amber-400" />
                             <span className="hidden sm:inline">Télécharger</span>
                           </button>
-
-                          <button
-                            type="button"
-                            onClick={() => {
-                              handleUpdateNoteContent(noteTextContent);
-                              showToast('Note enregistrée !');
-                            }}
-                            className="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[11px] flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
-                            title="Enregistrer la note"
-                          >
-                            <Check className="w-3.5 h-3.5 stroke-[2.5]" />
-                            <span>Enregistrer</span>
-                          </button>
                         </div>
                       </div>
 
-                      {/* Zone de saisie et de lecture */}
-                      <div className="flex-1 w-full p-3 sm:p-5 overflow-y-auto">
+                      {/* Zone de saisie du Titre et du Contenu */}
+                      <div className="flex-1 w-full p-3 sm:p-5 overflow-y-auto flex flex-col space-y-3">
+                        {/* Espace Titre dédié en haut : sort en majuscules et limité à deux lignes */}
+                        <div className="w-full relative">
+                          <textarea
+                            value={noteTitleContent}
+                            rows={2}
+                            placeholder="TITRE DE LA NOTE (EN MAJUSCULES)..."
+                            onChange={(e) => {
+                              const val = e.target.value.toUpperCase();
+                              const lines = val.split('\n');
+                              const limitedVal = lines.slice(0, 2).join('\n');
+                              setNoteTitleContent(limitedVal);
+                              handleUpdateNoteContent(noteTextContent, limitedVal);
+                            }}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter') {
+                                const currentLines = noteTitleContent.split('\n');
+                                if (currentLines.length >= 2) {
+                                  e.preventDefault();
+                                }
+                              }
+                            }}
+                            className="w-full uppercase font-black text-sm sm:text-base md:text-lg text-cyan-300 placeholder:text-slate-500 placeholder:normal-case bg-transparent border-b border-white/10 pb-2 outline-none resize-none tracking-wide break-all [overflow-wrap:anywhere] [word-break:break-word] leading-snug selection:bg-cyan-500/30"
+                            style={{
+                              maxHeight: '4.2rem',
+                              lineHeight: '1.4'
+                            }}
+                          />
+                        </div>
+
+                        {/* Zone de contenu de la note : break-all pour remplir toute la ligne sans blocage */}
                         <textarea
                           value={noteTextContent}
                           onChange={(e) => {
                             const newText = e.target.value;
                             setNoteTextContent(newText);
-                            handleUpdateNoteContent(newText);
+                            handleUpdateNoteContent(newText, noteTitleContent);
                           }}
                           placeholder="Commencez à écrire votre note ici..."
-                          className="w-full h-full min-h-[350px] bg-transparent text-slate-100 placeholder-slate-500 text-xs sm:text-sm font-mono leading-relaxed border-none outline-none resize-none focus:ring-0 selection:bg-cyan-500/30"
+                          className="w-full flex-1 min-h-[350px] bg-transparent text-slate-100 placeholder-slate-500 text-xs sm:text-sm font-sans leading-relaxed border-none outline-none resize-none focus:ring-0 selection:bg-cyan-500/30 break-all [overflow-wrap:anywhere] [word-break:break-word]"
                           style={{
-                            fontSize: `${Math.max(11, Math.round(14 * viewerZoom))}px`
+                            fontSize: `${Math.max(12, Math.round(14 * viewerZoom))}px`
                           }}
                         />
                       </div>

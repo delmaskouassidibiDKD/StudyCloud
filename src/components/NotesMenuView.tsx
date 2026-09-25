@@ -509,24 +509,37 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
             </div>
           )}
 
-          {/* Title Textarea (Auto-resizing) */}
+          {/* Title Textarea (Auto-resizing, uppercase, max 2 lines, break-all) */}
           <div className="relative w-full">
             {!editorTitle && (
               <span 
-                className="absolute top-0 left-0 pointer-events-none font-black text-xl sm:text-2xl text-stone-400 tracking-wide select-none"
-                dangerouslySetInnerHTML={{ __html: 'Titre' }}
+                className="absolute top-0 left-0 pointer-events-none font-black text-xl sm:text-2xl text-stone-400 tracking-wide select-none uppercase"
+                dangerouslySetInnerHTML={{ __html: 'TITRE' }}
               />
             )}
             <textarea
               value={editorTitle}
-              maxLength={120}
+              rows={2}
               onChange={(e) => {
-                setEditorTitle(e.target.value);
+                const val = e.target.value.toUpperCase();
+                const lines = val.split('\n');
+                const limitedVal = lines.slice(0, 2).join('\n');
+                setEditorTitle(limitedVal);
                 e.target.style.height = 'auto';
-                e.target.style.height = e.target.scrollHeight + 'px';
+                e.target.style.height = Math.min(e.target.scrollHeight, 80) + 'px';
               }}
-              rows={1}
-              className="w-full bg-transparent font-black text-xl sm:text-2xl text-white focus:outline-none tracking-wide resize-none overflow-hidden"
+              onKeyDown={(e) => {
+                if (e.key === 'Enter') {
+                  const currentLines = editorTitle.split('\n');
+                  if (currentLines.length >= 2) {
+                    e.preventDefault();
+                  }
+                }
+              }}
+              className="w-full bg-transparent font-black text-xl sm:text-2xl text-white focus:outline-none tracking-wide resize-none overflow-hidden uppercase break-all [overflow-wrap:anywhere] [word-break:break-word] leading-snug"
+              style={{
+                maxHeight: '4.5rem'
+              }}
             />
           </div>
 
@@ -542,7 +555,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
               value={editorContent}
               maxLength={10000}
               onChange={(e) => setEditorContent(e.target.value)}
-              className="w-full flex-1 bg-transparent text-sm sm:text-base text-stone-100 font-normal focus:outline-none resize-none leading-relaxed h-full"
+              className="w-full flex-1 bg-transparent text-sm sm:text-base text-stone-100 font-normal focus:outline-none resize-none leading-relaxed h-full break-all [overflow-wrap:anywhere] [word-break:break-word]"
             />
           </div>
         </div>
@@ -696,13 +709,13 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
           )}
 
           {note.title && (
-            <h4 className="font-extrabold text-xs sm:text-sm text-white mb-2 leading-snug line-clamp-3 pr-4 tracking-wide">
+            <h4 className="font-extrabold text-xs sm:text-sm text-white mb-2 leading-snug line-clamp-2 pr-4 tracking-wide uppercase break-all [overflow-wrap:anywhere]">
               {note.title}
             </h4>
           )}
 
           {note.content && (
-            <p className="text-[11px] sm:text-xs text-stone-100 font-normal leading-relaxed whitespace-pre-line line-clamp-10 opacity-95">
+            <p className="text-[11px] sm:text-xs text-stone-100 font-normal leading-relaxed whitespace-pre-line line-clamp-10 opacity-95 break-all [overflow-wrap:anywhere]">
               {note.content}
             </p>
           )}
