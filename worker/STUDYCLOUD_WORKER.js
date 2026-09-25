@@ -5624,6 +5624,9 @@ var index_default = {
             source: dl.source || "Web",
             r2Key: dl.r2_key || "",
             url: dl.file_url || "",
+            previewUrl: dl.file_url || "",
+            videoUrl: dl.file_url || "",
+            audioUrl: dl.file_url || "",
             downloadedAt: dl.downloaded_at,
             date: dl.downloaded_at,
             category: "downloads"

@@ -81,7 +81,7 @@ import {
   UserCheck,
   Palette
 } from 'lucide-react';
-import { getDownloadedFiles, recordDownloadedFile, DownloadedItem } from '../services/downloadsManager';
+import { getDownloadedFiles, recordDownloadedFile, clearLegacyDownloadedFiles, DownloadedItem } from '../services/downloadsManager';
 import { 
   MODEL_1_FOLDERS, 
   MODEL_2_FOLDERS, 
@@ -96,6 +96,9 @@ import {
   lightenColor
 } from './Folder3DModels';
 import { CloudStorageAPI } from '../services/cloudStorageService';
+import { DocumentCardPreview } from './DocumentCardPreview';
+import { VideoCardPreview } from './VideoCardPreview';
+import { generatePdfThumbnail, generateVideoThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 
 interface Page1FilesMenuViewProps {
   onBack: () => void;
@@ -1149,6 +1152,33 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         if (isMounted && docs) {
           setDocumentsList(docs);
         }
+
+        // 9. Téléchargements réels depuis Cloudflare D1
+        const cloudDownloads = await CloudStorageAPI.getDownloadsList();
+        if (isMounted) {
+          if (cloudDownloads && cloudDownloads.length > 0) {
+            const mapped: DownloadedItem[] = cloudDownloads.map(dl => ({
+              id: dl.id,
+              name: dl.name,
+              category: (dl.category as any) || 'downloads',
+              size: dl.size || '0 o',
+              sizeBytes: dl.sizeBytes,
+              date: dl.date || (dl as any).downloadedAt || "Aujourd'hui",
+              timestamp: dl.timestamp || Date.now(),
+              url: dl.url || (dl as any).file_url,
+              extension: dl.extension || (dl.name.includes('.') ? dl.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+              type: dl.type,
+              previewUrl: dl.previewUrl || dl.url,
+              videoUrl: dl.videoUrl || dl.url,
+              audioUrl: dl.audioUrl || dl.url,
+              documentCategory: dl.documentCategory || 'COURS',
+            }));
+            setDownloadedItems(mapped);
+          } else {
+            setDownloadedItems([]);
+            clearLegacyDownloadedFiles();
+          }
+        }
       } catch (e) {
         console.warn('[Page1FilesMenuView] Chargement D1/R2 local fallback:', e);
       }
@@ -1560,7 +1590,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     for (const file of files) {
       try {
+        // Pré-générer les aperçus instantanés pour les vidéos et documents
+        let previewDataUrl: string | null = null;
+        const normName = file.name.toLowerCase();
+        if (normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) {
+          previewDataUrl = await generateVideoThumbnail(file, file.name);
+        } else if (normName.endsWith('.pdf')) {
+          previewDataUrl = await generatePdfThumbnail(file, file.name);
+        }
+
         const res = await CloudStorageAPI.uploadFile(file, 'auto', file.name);
+        if (res.success && res.file && previewDataUrl) {
+          res.file.previewUrl = previewDataUrl;
+          res.file.thumbnailUrl = previewDataUrl;
+          setCachedMediaThumbnail(res.file.id, previewDataUrl);
+          if (res.file.url) setCachedMediaThumbnail(res.file.url, previewDataUrl);
+        }
         if (res.success && res.file) {
           const cat = res.category || res.file.category;
           if (cat === 'images') {
@@ -1604,12 +1649,27 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     for (const file of files) {
       try {
+        // Pré-générer les aperçus instantanés pour les vidéos et documents
+        let previewDataUrl: string | null = null;
+        const normName = file.name.toLowerCase();
+        if (normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) {
+          previewDataUrl = await generateVideoThumbnail(file, file.name);
+        } else if (normName.endsWith('.pdf')) {
+          previewDataUrl = await generatePdfThumbnail(file, file.name);
+        }
+
         const res = await CloudStorageAPI.uploadFile(
           file, 
           importConfig.category, 
           file.name, 
           importConfig.folderId
         );
+        if (res.success && res.file && previewDataUrl) {
+          res.file.previewUrl = previewDataUrl;
+          res.file.thumbnailUrl = previewDataUrl;
+          setCachedMediaThumbnail(res.file.id, previewDataUrl);
+          if (res.file.url) setCachedMediaThumbnail(res.file.url, previewDataUrl);
+        }
 
         if (!res.success) {
           // Bloqué par le worker car le fichier ne correspond pas au menu
@@ -2561,7 +2621,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     {
       id: 'downloads' as const,
       name: 'Téléchargements',
-      subtitle: `${filteredDownloads.length || 7} fichiers`,
+      subtitle: `${filteredDownloads.length} fichier${filteredDownloads.length > 1 ? 's' : ''}`,
       icon: Download,
       color: 'text-cyan-400'
     },
@@ -4216,7 +4276,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
                 >
                   <div className="w-full h-24 sm:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center overflow-hidden">
-                    {file.previewUrl ? (
+                    {file.category === 'images' ? (
+                      <img 
+                        src={file.previewUrl || (file as any).url} 
+                        alt={file.name}
+                        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
+                        loading="lazy"
+                      />
+                    ) : file.category === 'videos' ? (
+                      <VideoCardPreview vid={file} />
+                    ) : file.category === 'documents' ? (
+                      <DocumentCardPreview doc={file} />
+                    ) : file.previewUrl ? (
                       <img 
                         src={file.previewUrl} 
                         alt={file.name}
@@ -4225,11 +4296,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       />
                     ) : (
                       <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-3">
-                        {file.category === 'documents' && <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-blue-400/85 stroke-[1.8]" />}
                         {file.category === 'audio' && <Music className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400/85 stroke-[1.8]" />}
-                        {file.category === 'videos' && <Film className="w-8 h-8 sm:w-10 sm:h-10 text-purple-400/85 stroke-[1.8]" />}
                         {file.category === 'downloads' && <Download className="w-8 h-8 sm:w-10 sm:h-10 text-sky-400/85 stroke-[1.8]" />}
-                        {file.category === 'images' && <ImageIcon className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-400/85 stroke-[1.8]" />}
                         {file.category === 'apps' && <LayoutGrid className="w-8 h-8 sm:w-10 sm:h-10 text-pink-400/85 stroke-[1.8]" />}
                       </div>
                     )}
@@ -4732,33 +4800,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           </span>
         </div>
 
-        {/* Corps de carte / illustration schéma */}
-        <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white p-2 relative shadow-inner border border-white/20 flex flex-col justify-between pointer-events-none">
-          <div className="flex items-center justify-between border-b border-stone-200 pb-1">
-            <span className="text-[9px] font-black text-red-600 tracking-tighter">cme</span>
-            <span className="text-[7px] font-bold bg-stone-900 text-white px-1 py-0.2 rounded">StudyCloud</span>
-          </div>
-          <div className="my-1">
-            <p className="text-[7px] sm:text-[8px] font-black text-stone-800 leading-tight uppercase line-clamp-2">
-              AMPLIFICATEUR OPERATIONNEL EN REGIME LINEAIRE : MONTAGES DE BASE
-            </p>
-            <p className="text-[6px] text-stone-500 font-semibold mt-0.5">1. Définition</p>
-          </div>
-          <div className="w-full h-12 flex items-center justify-center bg-stone-50 rounded border border-stone-200/80 my-0.5">
-            <svg className="w-full h-full max-h-11" viewBox="0 0 100 45" fill="none" xmlns="http://www.w3.org/2000/svg">
-              <polygon points="35,5 35,40 70,22.5" fill="#FFFFFF" stroke="#1c1917" strokeWidth="1.5" />
-              <line x1="15" y1="14" x2="35" y2="14" stroke="#1c1917" strokeWidth="1.2" />
-              <line x1="15" y1="31" x2="35" y2="31" stroke="#1c1917" strokeWidth="1.2" />
-              <text x="38" y="16" fontSize="7" fontWeight="bold" fill="#1c1917">-</text>
-              <text x="38" y="33" fontSize="7" fontWeight="bold" fill="#1c1917">+</text>
-              <line x1="70" y1="22.5" x2="90" y2="22.5" stroke="#1c1917" strokeWidth="1.2" />
-              <text x="91" y="24" fontSize="6" fontWeight="bold" fill="#1c1917">Vs</text>
-            </svg>
-          </div>
-          <div className="space-y-0.5 opacity-60">
-            <div className="h-0.5 bg-stone-400 rounded-full w-full"></div>
-            <div className="h-0.5 bg-stone-400 rounded-full w-5/6"></div>
-          </div>
+        {/* Corps de carte / aperçu réel du document (PDF page 1 ou layout dynamique) */}
+        <div className="flex-1 w-full my-1.5 overflow-hidden rounded-lg bg-white relative shadow-inner border border-white/20 flex flex-col justify-between pointer-events-none">
+          <DocumentCardPreview doc={doc} />
         </div>
 
         {/* Titre unique : un seul nom en bas */}
@@ -4858,19 +4902,30 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         </div>
 
         {/* Aperçu visuel ou icône de type */}
-        <div className="w-full flex-1 flex flex-col items-center justify-center py-3 min-h-[105px]">
-          {file.previewUrl || (file.category === 'images' && (file as any).url) ? (
+        <div className="w-full flex-1 flex flex-col items-center justify-center py-2 min-h-[105px] overflow-hidden rounded-xl">
+          {file.category === 'images' ? (
             <img 
               src={file.previewUrl || (file as any).url} 
               alt={file.name} 
               className="w-full h-24 object-cover rounded-xl border border-white/10 shadow-inner"
             />
+          ) : file.category === 'videos' ? (
+            <div className="w-full h-24 rounded-xl overflow-hidden relative">
+              <VideoCardPreview vid={file} />
+            </div>
+          ) : file.category === 'documents' ? (
+            <div className="w-full h-24 rounded-xl overflow-hidden relative">
+              <DocumentCardPreview doc={file} />
+            </div>
+          ) : file.previewUrl ? (
+            <img 
+              src={file.previewUrl} 
+              alt={file.name} 
+              className="w-full h-24 object-cover rounded-xl border border-white/10 shadow-inner"
+            />
           ) : (
             <div className="p-4 rounded-2xl bg-black/50 border border-white/10 group-hover:scale-105 transition-transform flex items-center justify-center">
-              {file.category === 'images' && <ImageIcon className="w-8 h-8 text-emerald-400/90" />}
-              {file.category === 'videos' && <Film className="w-8 h-8 text-purple-400/90" />}
               {file.category === 'audio' && <Music className="w-8 h-8 text-amber-400/90" />}
-              {file.category === 'documents' && <FileText className="w-8 h-8 text-blue-400/90" />}
               {file.category === 'downloads' && <Download className="w-8 h-8 text-sky-400/90" />}
               {file.isNotepad && <FileEdit className="w-8 h-8 text-cyan-400/90" />}
               {!['images', 'videos', 'audio', 'documents', 'downloads'].includes(file.category || '') && !file.isNotepad && (
@@ -5030,12 +5085,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       >
         {/* Conteneur média interne avec overflow-hidden : arrondit la vignette sans couper le menu déroulant */}
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
-          <img
-            src={vid.previewUrl}
-            alt={vid.name}
-            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-            loading="lazy"
-          />
+          <VideoCardPreview vid={vid} />
           <div className="absolute inset-0 bg-black/30 group-hover:bg-black/15 transition-colors" />
 
           {/* Centre : Bouton Play */}

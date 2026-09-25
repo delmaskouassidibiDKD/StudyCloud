@@ -33,25 +33,45 @@ export function getDownloadedFiles(): DownloadedItem[] {
     if (!raw) return [];
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed) && parsed.length > 0) {
-      // Nettoyer les faux fichiers de démonstration du localStorage
+      // Nettoyer les faux fichiers de démonstration et fichiers locaux résiduels
       const clean = parsed.filter(item => {
+        if (!item || !item.name) return false;
         const isLegacyMockId = ['dl-1', 'dl-2', 'dl-3', 'dl-4', 'dl-5', 'dl-6'].includes(item?.id);
         const isMockName = [
           'CHI_AOP_LINEAIRE_MONT_BASE (1).pdf',
+          'CHI_AOP_LINEAIRE_MONT_BASE (1) (1).pdf',
+          'CHI_AOP_LINEAIRE_MONT_BASE.pdf',
+          'CHI_AOP_LINEAIRE_APPLICATIONS.pdf',
           'Himra _ Ciel paroles.m4a',
           'Projet_Algorithmique_V2.zip',
           'Capture_ecran_Dashboard.png',
           'Tutoriel_Physique_Ondes.mp4',
-          'Synthese_Cours_Semestre_1.docx'
+          'Synthese_Cours_Semestre_1.docx',
+          'TD_PREPA_ANA_2MIT.pdf',
+          'Notes_Revision_Semestre_1.pdf'
         ].includes(item?.name);
-        return !isLegacyMockId && !isMockName;
+        const isLocalOnly = !item.url && !item.previewUrl && !item.videoUrl && !item.audioUrl && !(item as any).r2Key;
+        return !isLegacyMockId && !isMockName && !isLocalOnly;
       });
+      if (clean.length !== parsed.length) {
+        try {
+          localStorage.setItem(STORAGE_KEY, JSON.stringify(clean));
+        } catch {}
+      }
       return clean;
     }
     return [];
   } catch (e) {
     return [];
   }
+}
+
+export function clearLegacyDownloadedFiles(): void {
+  if (typeof window === 'undefined') return;
+  try {
+    localStorage.removeItem(STORAGE_KEY);
+    window.dispatchEvent(new CustomEvent('studycloud_download_updated', { detail: null }));
+  } catch (e) {}
 }
 
 export function recordDownloadedFile(item: {
