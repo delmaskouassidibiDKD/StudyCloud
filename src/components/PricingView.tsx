@@ -295,6 +295,13 @@ export const PricingView: React.FC<PricingViewProps> = ({
   isEmbeddedInSettings = false 
 }) => {
   const [activeTab, setActiveTab] = useState<'storage' | 'ai' | 'renewal'>(initialTab);
+
+  useEffect(() => {
+    if (initialTab) {
+      setActiveTab(initialTab);
+    }
+  }, [initialTab]);
+
   // Présentation par MOIS par défaut demandée par l'utilisateur
   const [billingCycle, setBillingCycle] = useState<'annual' | 'monthly'>('monthly');
 

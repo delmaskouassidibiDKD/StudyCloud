@@ -15,11 +15,15 @@ import {
   ShieldCheck,
   ChevronRight,
   TrendingUp,
-  AlertCircle
+  AlertCircle,
+  Clock,
+  XCircle
 } from 'lucide-react';
 import {
   getUserStorageQuota,
   requestStorageUpgrade,
+  getUserStorageRequests,
+  getUserPurchasesHistory,
   UserStorageQuotaDetails
 } from '../services/api';
 
@@ -33,6 +37,10 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
   const [refreshing, setRefreshing] = useState(false);
   const [storageData, setStorageData] = useState<UserStorageQuotaDetails | null>(null);
   const [error, setError] = useState<string | null>(null);
+
+  // Onglets pour l'utilisateur : "Demandes en cours" vs "Achats validés & Refus"
+  const [activeRequestTab, setActiveRequestTab] = useState<'pending' | 'history'>('pending');
+  const [allRequests, setAllRequests] = useState<any[]>([]);
 
   // État de la modale "Augmenter mon stockage"
   const [isUpgradeModalOpen, setIsUpgradeModalOpen] = useState(false);
@@ -50,12 +58,49 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
 
     try {
       const currentUserId = localStorage.getItem('unifolder_user_id') || 'default-user';
+      
+      // 1. Quota de stockage
       const res = await getUserStorageQuota(currentUserId);
       if (res.success && res.data) {
         setStorageData(res.data);
       } else {
         setError(res.error || "Impossible de charger les données de stockage");
       }
+
+      // 2. Demandes d'augmentation de stockage sur le serveur
+      const reqRes = await getUserStorageRequests(currentUserId);
+      let serverReqs: any[] = [];
+      if (reqRes && reqRes.success && Array.isArray(reqRes.requests)) {
+        serverReqs = reqRes.requests;
+      }
+
+      // 3. Achats de stockage enregistrés sur le serveur
+      const purRes = await getUserPurchasesHistory(currentUserId);
+      let serverPurs: any[] = [];
+      if (purRes && purRes.success && Array.isArray(purRes.purchases)) {
+        serverPurs = purRes.purchases;
+      }
+
+      // 4. Demandes locales
+      let localReqs: any[] = [];
+      try {
+        const saved = localStorage.getItem('studycloud_storage_upgrade_requests');
+        if (saved) localReqs = JSON.parse(saved);
+      } catch {}
+
+      // Fusionner en éliminant les doublons
+      const allMap = new Map<string, any>();
+      [...localReqs, ...serverReqs, ...serverPurs].forEach((item) => {
+        if (item && (item.id || item.requestId)) {
+          const key = item.id || item.requestId;
+          allMap.set(key, item);
+        }
+      });
+
+      const combined = Array.from(allMap.values()).sort(
+        (a, b) => new Date(b.created_at || b.purchased_at || 0).getTime() - new Date(a.created_at || a.purchased_at || 0).getTime()
+      );
+      setAllRequests(combined);
     } catch (err: any) {
       console.error("[StorageMenuView] Erreur chargement:", err);
       setError(err?.message || "Erreur de connexion au serveur");
@@ -69,15 +114,33 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
     loadStorage();
   }, []);
 
+  // Filtrage : Demandes de stockage en cours
+  const pendingRequests = allRequests.filter(r => {
+    const st = (r.status || '').toLowerCase();
+    return st === 'pending' || st === 'en_attente' || st === 'traitement' || st === 'soumis';
+  });
+
+  // Filtrage : Achats de stockage validés
+  const approvedPurchases = allRequests.filter(r => {
+    const st = (r.status || '').toLowerCase();
+    return st === 'completed' || st === 'approved' || st === 'active' || st === 'confirmed';
+  });
+
+  // Filtrage : Demandes refusées
+  const rejectedRequests = allRequests.filter(r => {
+    const st = (r.status || '').toLowerCase();
+    return st === 'rejected' || st === 'refused' || st === 'refusé' || st === 'annule' || st === 'annulé';
+  });
+
   // Soumission de la demande d'augmentation
   const handleUpgradeSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setSubmittingUpgrade(true);
 
     const packDetails = {
-      pack_1gb: { name: 'Pack Découverte (+1 Go)', mb: 1024, words: 100000 },
-      pack_5gb: { name: 'Pack Performance (+5 Go)', mb: 5120, words: 500000 },
-      pack_10gb: { name: 'Pack Illimité Master (+10 Go)', mb: 10240, words: 1000000 },
+      pack_1gb: { name: 'Pack Découverte (+1 Go)', mb: 1024, words: 100000, priceFcfa: 6500 },
+      pack_5gb: { name: 'Pack Performance (+5 Go)', mb: 5120, words: 500000, priceFcfa: 20000 },
+      pack_10gb: { name: 'Pack Illimité Master (+10 Go)', mb: 10240, words: 1000000, priceFcfa: 55000 },
     }[selectedPack];
 
     try {
@@ -91,12 +154,28 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
       });
 
       if (res.success) {
+        try {
+          const currentList = JSON.parse(localStorage.getItem('studycloud_storage_upgrade_requests') || '[]');
+          currentList.unshift({
+            id: `req-${Date.now()}`,
+            pack_name: packDetails.name,
+            additional_mb: packDetails.mb,
+            price_display: `${packDetails.priceFcfa.toLocaleString('fr-FR')} FCFA`,
+            created_at: new Date().toISOString(),
+            status: 'pending',
+            payment_method: 'Mobile Money / Virement',
+            contact_phone: contactPhone.trim(),
+            notes: upgradeNotes.trim()
+          });
+          localStorage.setItem('studycloud_storage_upgrade_requests', JSON.stringify(currentList));
+        } catch (e) {}
+
         setUpgradeSuccess(true);
         setTimeout(() => {
           setIsUpgradeModalOpen(false);
           setUpgradeSuccess(false);
           loadStorage(true);
-        }, 2200);
+        }, 1500);
       } else {
         alert(res.message || "Erreur lors de l'enregistrement de votre demande.");
       }
@@ -156,6 +235,7 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
               if (onOpenPricing) {
                 onOpenPricing('storage');
               } else {
+                window.dispatchEvent(new CustomEvent('studycloud_open_pricing', { detail: { tab: 'storage' } }));
                 setIsUpgradeModalOpen(true);
               }
             }}
@@ -370,6 +450,241 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
               </div>
             </div>
           </div>
+        </div>
+
+        {/* ========================================================================= */}
+        {/* SÉLECTEUR D'ONGLETS UTILISATEUR (Demandes en cours vs Achats & Refus)     */}
+        {/* ========================================================================= */}
+        <div className="pt-4 space-y-4">
+          <div className="flex items-center gap-2 border-b-2 border-stone-300 dark:border-slate-800 pb-2">
+            <button
+              onClick={() => setActiveRequestTab('pending')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-black text-xs sm:text-sm transition-all border-2 cursor-pointer ${
+                activeRequestTab === 'pending'
+                  ? 'bg-amber-500 text-white border-stone-900 shadow-[2px_2px_0px_0px_#1c1917]'
+                  : 'bg-white dark:bg-slate-800 text-stone-700 dark:text-slate-300 border-stone-300 dark:border-slate-700 hover:bg-stone-100'
+              }`}
+            >
+              <Clock className="w-4 h-4" />
+              <span>Mes demandes en cours</span>
+              <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-black ${
+                activeRequestTab === 'pending'
+                  ? 'bg-white text-stone-900'
+                  : 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+              }`}>
+                {pendingRequests.length}
+              </span>
+            </button>
+
+            <button
+              onClick={() => setActiveRequestTab('history')}
+              className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-black text-xs sm:text-sm transition-all border-2 cursor-pointer ${
+                activeRequestTab === 'history'
+                  ? 'bg-amber-500 text-white border-stone-900 shadow-[2px_2px_0px_0px_#1c1917]'
+                  : 'bg-white dark:bg-slate-800 text-stone-700 dark:text-slate-300 border-stone-300 dark:border-slate-700 hover:bg-stone-100'
+              }`}
+            >
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Mes achats validés & Refus</span>
+              <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-black ${
+                activeRequestTab === 'history'
+                  ? 'bg-white text-stone-900'
+                  : 'bg-stone-200 dark:bg-slate-700 text-stone-700 dark:text-white'
+              }`}>
+                {approvedPurchases.length + rejectedRequests.length}
+              </span>
+            </button>
+          </div>
+
+          {/* ONGLET 1 : MES DEMANDES EN COURS DE VALIDATION */}
+          {activeRequestTab === 'pending' && (
+            <div className="space-y-4">
+              {pendingRequests.length === 0 ? (
+                <div className="bg-white dark:bg-[#131b2e] rounded-3xl p-8 sm:p-12 text-center border-2 border-dashed border-stone-300 dark:border-slate-800 space-y-4">
+                  <div className="w-16 h-16 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-500 mx-auto flex items-center justify-center">
+                    <Clock className="w-8 h-8" />
+                  </div>
+                  <h3 className="text-lg font-extrabold text-stone-900 dark:text-white">
+                    Aucune demande en cours de validation
+                  </h3>
+                  <p className="text-xs sm:text-sm text-stone-500 dark:text-slate-400 max-w-md mx-auto">
+                    Lorsque vous souscrivez à une formule d'abonnement ou effectuez une demande d'augmentation de stockage, elle s'affiche ici pendant la vérification de votre reçu de paiement.
+                  </p>
+                  <button
+                    onClick={() => {
+                      if (onOpenPricing) onOpenPricing('storage');
+                      else window.dispatchEvent(new CustomEvent('studycloud_open_pricing', { detail: { tab: 'storage' } }));
+                    }}
+                    className="inline-flex items-center gap-2 px-5 py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs sm:text-sm rounded-xl border-2 border-stone-900 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer"
+                  >
+                    <Zap className="w-4 h-4" />
+                    <span>Découvrir les formules Stockage</span>
+                  </button>
+                </div>
+              ) : (
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  {pendingRequests.map((req, idx) => (
+                    <div 
+                      key={req.id || idx}
+                      className="bg-white dark:bg-[#131b2e] rounded-2xl p-5 border-2 border-amber-500/80 dark:border-amber-500/60 shadow-[3px_3px_0px_0px_#f59e0b] dark:shadow-none space-y-3"
+                    >
+                      <div className="flex items-start justify-between gap-2">
+                        <div>
+                          <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                            ⏳ En cours de validation
+                          </span>
+                          <h4 className="text-base font-black text-stone-900 dark:text-white mt-1.5">
+                            {req.pack_name || req.packName || 'Extension de Stockage'}
+                          </h4>
+                        </div>
+                        <span className="text-sm font-black text-orange-600 dark:text-orange-400">
+                          {req.price_display || `${(req.price_paid || req.pricePaid || 0).toLocaleString('fr-FR')} FCFA`}
+                        </span>
+                      </div>
+
+                      <div className="text-xs text-stone-600 dark:text-slate-300 space-y-1 bg-stone-50 dark:bg-slate-900/60 p-3 rounded-xl border border-stone-200 dark:border-slate-800">
+                        <div className="flex justify-between">
+                          <span className="text-stone-400">Date de soumission :</span>
+                          <span className="font-bold">{req.created_at ? new Date(req.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Récemment'}</span>
+                        </div>
+                        {req.payment_method && (
+                          <div className="flex justify-between">
+                            <span className="text-stone-400">Moyen de paiement :</span>
+                            <span className="font-bold">{req.payment_method}</span>
+                          </div>
+                        )}
+                        {req.payment_reference && (
+                          <div className="flex justify-between">
+                            <span className="text-stone-400">Référence / Reçu :</span>
+                            <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{req.payment_reference}</span>
+                          </div>
+                        )}
+                      </div>
+
+                      <div className="flex items-center gap-2 text-[11px] text-amber-700 dark:text-amber-300/90 bg-amber-50 dark:bg-amber-950/30 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/50">
+                        <Info className="w-4 h-4 shrink-0" />
+                        <span>Votre reçu est en cours d'inspection par l'équipe DKD Technologies. Votre espace sera débloqué dès validation.</span>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
+
+          {/* ONGLET 2 : MES ACHATS VALIDÉS & REFUS */}
+          {activeRequestTab === 'history' && (
+            <div className="space-y-6">
+              {/* Section 1 : Achats validés et actifs */}
+              <div className="space-y-3">
+                <h3 className="text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 px-1">
+                  <CheckCircle2 className="w-4 h-4" />
+                  <span>Achats validés & Extensions actives ({approvedPurchases.length})</span>
+                </h3>
+
+                {approvedPurchases.length === 0 ? (
+                  <div className="bg-white dark:bg-[#131b2e] rounded-2xl p-6 text-center border border-stone-200 dark:border-slate-800 text-stone-500 dark:text-slate-400 text-xs">
+                    Aucun achat validé pour le moment.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {approvedPurchases.map((pur, idx) => (
+                      <div 
+                        key={pur.id || idx}
+                        className="bg-white dark:bg-[#131b2e] rounded-2xl p-5 border-2 border-emerald-500/70 shadow-[3px_3px_0px_0px_#10b981] dark:shadow-none space-y-3"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                              ✅ Achat Validé & Activé
+                            </span>
+                            <h4 className="text-base font-black text-stone-900 dark:text-white mt-1.5">
+                              {pur.pack_name || pur.packName || 'Extension de Stockage StudyCloud'}
+                            </h4>
+                          </div>
+                          <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                            {pur.price_display || `${(pur.price_paid || pur.pricePaid || 0).toLocaleString('fr-FR')} FCFA`}
+                          </span>
+                        </div>
+
+                        <div className="text-xs text-stone-600 dark:text-slate-300 space-y-1 bg-stone-50 dark:bg-slate-900/60 p-3 rounded-xl border border-stone-200 dark:border-slate-800">
+                          <div className="flex justify-between">
+                            <span className="text-stone-400">Activé le :</span>
+                            <span className="font-bold">{pur.confirmed_at || pur.updated_at || pur.created_at ? new Date(pur.confirmed_at || pur.updated_at || pur.created_at).toLocaleDateString('fr-FR') : 'Confirmé'}</span>
+                          </div>
+                          {pur.additional_mb ? (
+                            <div className="flex justify-between">
+                              <span className="text-stone-400">Espace accordé :</span>
+                              <span className="font-bold text-emerald-600">+{pur.additional_mb >= 1024 ? `${(pur.additional_mb / 1024).toFixed(0)} Go` : `${pur.additional_mb} Mo`}</span>
+                            </div>
+                          ) : null}
+                          {pur.payment_reference && (
+                            <div className="flex justify-between">
+                              <span className="text-stone-400">Réf transaction :</span>
+                              <span className="font-mono text-stone-700 dark:text-slate-300">{pur.payment_reference}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Section 2 : Demandes refusées */}
+              <div className="space-y-3 pt-4 border-t border-stone-200 dark:border-slate-800">
+                <h3 className="text-xs font-black uppercase tracking-wider text-red-600 dark:text-red-400 flex items-center gap-1.5 px-1">
+                  <XCircle className="w-4 h-4" />
+                  <span>Demandes non validées ou refusées ({rejectedRequests.length})</span>
+                </h3>
+
+                {rejectedRequests.length === 0 ? (
+                  <div className="bg-white dark:bg-[#131b2e] rounded-2xl p-6 text-center border border-stone-200 dark:border-slate-800 text-stone-500 dark:text-slate-400 text-xs">
+                    Aucune demande refusée.
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                    {rejectedRequests.map((rej, idx) => (
+                      <div 
+                        key={rej.id || idx}
+                        className="bg-white dark:bg-[#131b2e] rounded-2xl p-5 border-2 border-red-400/60 dark:border-red-500/40 shadow-[3px_3px_0px_0px_#ef4444] dark:shadow-none space-y-3"
+                      >
+                        <div className="flex items-start justify-between gap-2">
+                          <div>
+                            <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 border border-red-300 dark:border-red-700">
+                              ❌ Demande non validée
+                            </span>
+                            <h4 className="text-base font-black text-stone-900 dark:text-white mt-1.5">
+                              {rej.pack_name || rej.packName || 'Demande de Stockage'}
+                            </h4>
+                          </div>
+                          <span className="text-sm font-bold text-stone-500">
+                            {rej.price_display || `${(rej.price_paid || rej.pricePaid || 0).toLocaleString('fr-FR')} FCFA`}
+                          </span>
+                        </div>
+
+                        <p className="text-xs text-stone-600 dark:text-slate-300 bg-red-50 dark:bg-red-950/30 p-3 rounded-xl border border-red-200 dark:border-red-900/50">
+                          {rej.admin_notes || rej.notes || "Le reçu ou la référence de transaction n'a pas pu être validé avec le paiement. Vous pouvez réitérer votre demande."}
+                        </p>
+
+                        <div className="flex justify-end pt-1">
+                          <button
+                            onClick={() => {
+                              if (onOpenPricing) onOpenPricing('storage');
+                              else window.dispatchEvent(new CustomEvent('studycloud_open_pricing', { detail: { tab: 'storage' } }));
+                            }}
+                            className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
+                          >
+                            Réitérer la demande
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
         </div>
       </div>
 

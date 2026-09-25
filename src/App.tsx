@@ -594,8 +594,14 @@ export default function App() {
   });
   const [isRightFullscreen, setIsRightFullscreen] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
-  const [showPricingModal, setShowPricingModal] = useState<boolean>(false);
-  const [pricingModalTab, setPricingModalTab] = useState<'storage' | 'ai' | 'renewal'>('ai');
+  
+  // Navigation directe vers le vrai menu officiel de tarification intégré dans FoldersView (Image 5)
+  const handleOpenAuthenticPricing = (tab: 'storage' | 'ai' | 'renewal' = 'ai') => {
+    handleSetTab('folders');
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent('studycloud_open_pricing', { detail: { tab } }));
+    }, 60);
+  };
 
   // Determine if actually running on a mobile touch screen or desktop
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(() => {
@@ -1504,18 +1510,12 @@ export default function App() {
           ) : currentTab === 'ai-subscriptions' ? (
             <AiSubscriptionsView
               onBack={() => handleSetTab('folders')}
-              onOpenPricing={(tab = 'ai') => {
-                setPricingModalTab(tab);
-                setShowPricingModal(true);
-              }}
+              onOpenPricing={(tab = 'ai') => handleOpenAuthenticPricing(tab)}
             />
           ) : currentTab === 'storage-menu' ? (
             <StorageMenuView
               onBack={() => handleSetTab('folders')}
-              onOpenPricing={(tab = 'storage') => {
-                setPricingModalTab(tab);
-                setShowPricingModal(true);
-              }}
+              onOpenPricing={(tab = 'storage') => handleOpenAuthenticPricing(tab)}
             />
           ) : null}
 
@@ -1980,16 +1980,7 @@ export default function App() {
         />
       )}
 
-      {/* Modale plein écran de tarification officielle (connectée au worker tableau de bord) */}
-      {showPricingModal && (
-        <div className="fixed inset-0 z-[100000] bg-[#F8F6F0] dark:bg-[#0b0f19] overflow-y-auto">
-          <PricingView
-            initialTab={pricingModalTab}
-            onBack={() => setShowPricingModal(false)}
-            onSelectPlan={(_plan) => {}}
-          />
-        </div>
-      )}
+
 
       {/* Bannière et bouton d'installation PWA sur l'écran d'accueil */}
       <PwaInstallPrompt />

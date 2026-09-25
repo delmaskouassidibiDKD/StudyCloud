@@ -156,9 +156,16 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     if (onOpenPricing) {
       onOpenPricing('ai');
     } else {
+      window.dispatchEvent(new CustomEvent('studycloud_open_pricing', { detail: { tab: 'ai' } }));
       setShowPricingView(true);
     }
   };
+
+  const totalMaxCredits = 50 + (userCredits.totalPurchased || 0);
+  const creditsRemaining = Math.max(0, userCredits.balance);
+  const creditsPercentage = totalMaxCredits > 0
+    ? Math.min(100, Math.max(0, Math.round((creditsRemaining / totalMaxCredits) * 100)))
+    : 0;
 
   // Si l'utilisateur clique sur "Recharger", afficher le menu officiel de tarification
   if (showPricingView) {
@@ -229,19 +236,12 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
       <div className="bg-white dark:bg-[#131b2e] rounded-3xl p-5 sm:p-7 border-2 border-stone-800 dark:border-slate-800 shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-stone-200 dark:border-slate-800">
           <div className="space-y-1.5">
-            <div className="flex items-center gap-2">
-              <span className="p-2 rounded-xl bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 border border-orange-300 dark:border-orange-800">
-                <Sparkles className="w-5 h-5" />
-              </span>
-              <div>
-                <h2 className="text-lg sm:text-xl font-extrabold text-stone-900 dark:text-white">
-                  Portefeuille de Crédits IA
-                </h2>
-                <p className="text-xs text-stone-500 dark:text-slate-400">
-                  Surveillez vos crédits disponibles pour discuter avec Delmas IA et générer vos modules de cours
-                </p>
-              </div>
-            </div>
+            <h2 className="text-lg sm:text-xl font-extrabold text-stone-900 dark:text-white">
+              Portefeuille de Crédits IA
+            </h2>
+            <p className="text-xs text-stone-500 dark:text-slate-400">
+              Surveillez vos crédits disponibles pour discuter avec Delmas IA et générer vos modules de cours
+            </p>
           </div>
 
           {/* Affichage Chiffré du Solde Actuel */}
@@ -252,14 +252,11 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
             <div className="text-3xl sm:text-4xl font-black text-orange-600 dark:text-orange-400 mt-1">
               {userCredits.balance} <span className="text-sm font-bold text-stone-700 dark:text-slate-300">Crédits</span>
             </div>
-            <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 mt-1">
-              ✨ {wordsRemainingFormatted}
-            </div>
           </div>
         </div>
 
-        {/* Détails et badges de répartition */}
-        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-5">
+        {/* Détails et badges de répartition : Crédits Offerts & Crédits Achetés */}
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-5">
           <div className="p-3.5 bg-stone-50 dark:bg-slate-900/60 rounded-2xl border border-stone-200 dark:border-slate-800 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center font-bold text-sm shrink-0">
               🎁
@@ -276,30 +273,50 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
 
           <div className="p-3.5 bg-stone-50 dark:bg-slate-900/60 rounded-2xl border border-stone-200 dark:border-slate-800 flex items-center gap-3">
             <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950/50 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0">
-              ⚡
+              <CreditCard className="w-4 h-4 text-blue-600 dark:text-blue-400" />
             </div>
             <div>
               <div className="text-[11px] font-bold text-stone-500 dark:text-slate-400 uppercase tracking-wider">
-                Consommation
+                Crédits Achetés
               </div>
               <div className="text-sm font-black text-stone-800 dark:text-white">
-                ~{userCredits.tokensUsed.toLocaleString('fr-FR')} tokens Llama
+                {userCredits.totalPurchased > 0 ? `${userCredits.totalPurchased} Crédits achetés` : '0 Crédit acheté'}
               </div>
             </div>
           </div>
+        </div>
 
-          <div className="p-3.5 bg-stone-50 dark:bg-slate-900/60 rounded-2xl border border-stone-200 dark:border-slate-800 flex items-center gap-3">
-            <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-950/50 text-purple-600 flex items-center justify-center font-bold text-sm shrink-0">
-              🎓
+        {/* LIGNE DE CRÉDITS QUI SE REMPLIT ET DIMINUE AVEC L'USAGE (STYLE MON STOCKAGE) */}
+        <div className="mt-5 space-y-2 pt-4 border-t border-stone-200 dark:border-slate-800">
+          <div className="flex items-baseline justify-between">
+            <div className="flex items-baseline gap-2">
+              <span className="text-2xl sm:text-3xl font-black text-stone-900 dark:text-white tracking-tight">
+                {creditsRemaining} Crédits
+              </span>
+              <span className="text-xs sm:text-sm font-semibold text-stone-500 dark:text-slate-400">
+                disponibles sur <strong className="text-stone-800 dark:text-slate-200">{totalMaxCredits} Crédits au total</strong>
+              </span>
             </div>
-            <div>
-              <div className="text-[11px] font-bold text-stone-500 dark:text-slate-400 uppercase tracking-wider">
-                Formule Active
-              </div>
-              <div className="text-sm font-black text-stone-800 dark:text-white">
-                {userCredits.plan}
-              </div>
-            </div>
+            <span className="text-sm sm:text-base font-black text-amber-600 dark:text-amber-400">
+              {creditsPercentage}%
+            </span>
+          </div>
+
+          {/* Barre de progression remplie qui diminue quand les crédits sont utilisés */}
+          <div className="w-full h-4 sm:h-5 bg-stone-100 dark:bg-slate-900 rounded-full border border-stone-300 dark:border-slate-800 overflow-hidden p-0.5 relative shadow-inner">
+            <div
+              className="h-full rounded-full transition-all duration-700 ease-out bg-gradient-to-r from-emerald-500 via-amber-500 to-orange-500 shadow-sm"
+              style={{ width: `${Math.max(creditsPercentage > 0 ? 3 : 0, Math.min(100, creditsPercentage))}%` }}
+            />
+          </div>
+
+          <div className="flex items-center justify-between text-[11px] text-stone-500 dark:text-slate-400 pt-1">
+            <span>0 Crédit</span>
+            <span className="font-semibold text-emerald-600 dark:text-emerald-400 flex items-center gap-1">
+              <CheckCircle2 className="w-3 h-3" />
+              {creditsRemaining > 0 ? 'Crédits actifs et prêts à l\'emploi' : 'Solde épuisé'}
+            </span>
+            <span>{totalMaxCredits} Crédits</span>
           </div>
         </div>
       </div>
@@ -535,28 +552,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
         </div>
       )}
 
-      {/* ========================================================================= */}
-      {/* BANNIÈRE D'APPEL À L'ACTION : RECHARGER VIA LE WORKER TABLEAU DE BORD */}
-      {/* ========================================================================= */}
-      <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/15 to-purple-500/10 dark:from-amber-950/30 dark:via-orange-950/40 dark:to-purple-950/30 border-2 border-stone-800 dark:border-slate-700 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none">
-        <div className="space-y-1.5 text-center sm:text-left">
-          <h3 className="text-base sm:text-lg font-black text-stone-900 dark:text-white">
-            Besoin de recharger vos crédits ou de passer à l'offre Pro ?
-          </h3>
-          <p className="text-xs sm:text-sm text-stone-600 dark:text-slate-300 max-w-xl">
-            Retrouvez toutes les formules d'abonnements assistante StudyCloud configurées en direct sur le tableau de bord avec activation instantanée par Mobile Money.
-          </p>
-        </div>
-
-        <button
-          onClick={handleOpenPricing}
-          className="shrink-0 flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-sm rounded-2xl border-2 border-stone-900 shadow-[3px_3px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
-        >
-          <Zap className="w-4 h-4 fill-current" />
-          <span>Accéder aux formules & Abonnements</span>
-          <ArrowRight className="w-4 h-4" />
-        </button>
-      </div>
+      {/* Fin des onglets demandes et achats */}
     </div>
   );
 };

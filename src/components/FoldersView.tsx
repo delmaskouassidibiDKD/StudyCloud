@@ -134,6 +134,19 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
     localStorage.removeItem('unifolder_view_mode');
   }, []);
 
+  useEffect(() => {
+    const handleOpenPricingEvent = (e: any) => {
+      const tab = e?.detail?.tab || 'storage';
+      setPricingInitialTab(tab);
+      setPreviousViewMode('home');
+      setViewMode('abondamment');
+    };
+    window.addEventListener('studycloud_open_pricing', handleOpenPricingEvent);
+    return () => {
+      window.removeEventListener('studycloud_open_pricing', handleOpenPricingEvent);
+    };
+  }, []);
+
 
   // État et gestion du carrousel de l'écran d'accueil (Page 0 = Page vide, Page 1 = Écran d'accueil principal)
   const [activePageIndex, setActivePageIndex] = useState<number>(1);
