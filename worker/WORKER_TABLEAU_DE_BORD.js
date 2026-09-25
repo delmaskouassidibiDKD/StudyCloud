@@ -7718,6 +7718,71 @@ function renderDashboardHtml(data) {
           resp = await fetch('/api/company-profile/update', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ field: colName, value: newVal })
+          });
+        } catch(e) {}
+        if (!resp || !resp.ok) {
+          try {
+            resp = await fetch('https://api-worker.dkd-technologies.com/api/company-profile/update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ field: colName, value: newVal })
+            });
+          } catch(e) {}
+        }
+        if (!resp || !resp.ok) {
+          throw new Error('Erreur de communication avec le serveur (HTTP ' + (resp ? resp.status : 'offline') + ')');
+        }
+        const res = await resp.json();
+        if (res && res.success) {
+          if (typeof companyProfileGlobal === 'object' && companyProfileGlobal) {
+            companyProfileGlobal[colName] = newVal;
+          }
+          if (spinnerContainer) {
+            spinnerContainer.innerHTML = '<div class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400 text-[10px] font-bold">✓ Enregistré</div>';
+            setTimeout(() => {
+              if (spinnerContainer) {
+                spinnerContainer.innerHTML = '<span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>';
+              }
+            }, 2500);
+          }
+          showToast('✓ ' + (fieldLabel || 'Champ') + ' enregistré dans la base de données !');
+        } else {
+          throw new Error(res?.error || 'Échec de la mise à jour');
+        }
+      } catch (err) {
+        console.error('Erreur enregistrement champ:', err);
+        if (targetField) {
+          targetField.value = prevVal;
+        }
+        if (spinnerContainer) {
+          spinnerContainer.innerHTML = '<span class="text-rose-400 font-bold text-xs">⚠️ Erreur</span>';
+          setTimeout(() => {
+            if (spinnerContainer) {
+              spinnerContainer.innerHTML = '<span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>';
+            }
+          }, 3500);
+        }
+        showToast('⚠️ Erreur lors de l\'enregistrement : ' + (err.message || 'Échec'));
+      }
+    }
+    window.saveFieldEditModal = saveFieldEditModal;
+
+    async function togglePaymentSetting(field, isChecked, elementId) {
+      const val = isChecked ? 1 : 0;
+      const spinner = document.getElementById('spinner-' + elementId);
+      const label = document.getElementById('status-label-' + elementId);
+
+      if (spinner) {
+        spinner.innerHTML = '<span class="inline-block animate-spin text-orange-400 text-xs">⏳</span>';
+      }
+
+      try {
+        let resp;
+        try {
+          resp = await fetch('/api/company-profile/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
             body: JSON.stringify({ field, value: val })
           });
         } catch(e) {}
@@ -7729,6 +7794,9 @@ function renderDashboardHtml(data) {
               body: JSON.stringify({ field, value: val })
             });
           } catch(e) {}
+        }
+        if (!resp || !resp.ok) {
+          throw new Error('Erreur de communication avec le serveur');
         }
         const res = await resp.json();
         if (res && res.success) {
@@ -10745,6 +10813,9 @@ export default {
       // ----------------------------------------------------------------------
       let upgradeRequestsRes = await safeQuery(db, `SELECT * FROM storage_upgrade_requests ORDER BY created_at DESC`, [], { results: [] });
       let userSubsRes = await safeQuery(db, `SELECT * FROM user_subscriptions ORDER BY created_at DESC`, [], { results: [] });
+      if (db) {
+        await safeRun(db, `INSERT OR IGNORE INTO company_profile (id) VALUES ('main')`);
+      }
       let companyProfileRow = await safeFirst(db, `SELECT * FROM company_profile WHERE id = 'main'`);
       if (!companyProfileRow) {
         companyProfileRow = {
@@ -10796,18 +10867,22 @@ export default {
         if (!companyProfileRow.moov_name) {
           companyProfileRow.moov_name = "Moov Money Côte d'Ivoire";
         }
-        if (companyProfileRow.wave_enabled === undefined || companyProfileRow.wave_enabled === null) companyProfileRow.wave_enabled = 1;
-        if (companyProfileRow.wave_show_number === undefined || companyProfileRow.wave_show_number === null) companyProfileRow.wave_show_number = 1;
-        if (companyProfileRow.wave_show_image === undefined || companyProfileRow.wave_show_image === null) companyProfileRow.wave_show_image = 1;
-        if (companyProfileRow.orange_enabled === undefined || companyProfileRow.orange_enabled === null) companyProfileRow.orange_enabled = 1;
-        if (companyProfileRow.orange_show_number === undefined || companyProfileRow.orange_show_number === null) companyProfileRow.orange_show_number = 1;
-        if (companyProfileRow.orange_show_image === undefined || companyProfileRow.orange_show_image === null) companyProfileRow.orange_show_image = 1;
-        if (companyProfileRow.mtn_enabled === undefined || companyProfileRow.mtn_enabled === null) companyProfileRow.mtn_enabled = 1;
-        if (companyProfileRow.mtn_show_number === undefined || companyProfileRow.mtn_show_number === null) companyProfileRow.mtn_show_number = 1;
-        if (companyProfileRow.mtn_show_image === undefined || companyProfileRow.mtn_show_image === null) companyProfileRow.mtn_show_image = 1;
-        if (companyProfileRow.moov_enabled === undefined || companyProfileRow.moov_enabled === null) companyProfileRow.moov_enabled = 1;
-        if (companyProfileRow.moov_show_number === undefined || companyProfileRow.moov_show_number === null) companyProfileRow.moov_show_number = 1;
-        if (companyProfileRow.moov_show_image === undefined || companyProfileRow.moov_show_image === null) companyProfileRow.moov_show_image = 1;
+        const toFlag = (v, defaultVal = 1) => {
+          if (v === undefined || v === null || v === '') return defaultVal;
+          return (v === 1 || v === '1' || v === true) ? 1 : 0;
+        };
+        companyProfileRow.wave_enabled = toFlag(companyProfileRow.wave_enabled, 1);
+        companyProfileRow.wave_show_number = toFlag(companyProfileRow.wave_show_number, 1);
+        companyProfileRow.wave_show_image = toFlag(companyProfileRow.wave_show_image, 1);
+        companyProfileRow.orange_enabled = toFlag(companyProfileRow.orange_enabled, 1);
+        companyProfileRow.orange_show_number = toFlag(companyProfileRow.orange_show_number, 1);
+        companyProfileRow.orange_show_image = toFlag(companyProfileRow.orange_show_image, 1);
+        companyProfileRow.mtn_enabled = toFlag(companyProfileRow.mtn_enabled, 1);
+        companyProfileRow.mtn_show_number = toFlag(companyProfileRow.mtn_show_number, 1);
+        companyProfileRow.mtn_show_image = toFlag(companyProfileRow.mtn_show_image, 1);
+        companyProfileRow.moov_enabled = toFlag(companyProfileRow.moov_enabled, 1);
+        companyProfileRow.moov_show_number = toFlag(companyProfileRow.moov_show_number, 1);
+        companyProfileRow.moov_show_image = toFlag(companyProfileRow.moov_show_image, 1);
       }
 
       const rawUpgradeRequests = (upgradeRequestsRes && upgradeRequestsRes.results) ? upgradeRequestsRes.results : [];

@@ -9427,6 +9427,7 @@ Lien vers le produit : ${productShareUrl}`;
           "phone_whatsapp",
           "email",
           "website",
+          "about_text",
           "wave_number",
           "wave_name",
           "wave_enabled",

@@ -10795,7 +10795,7 @@ export default {
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
         const body: any = await request.json().catch(() => ({}));
         const allowedCols = [
-          'company_name', 'activity', 'location', 'address', 'phone_contact', 'phone_contact_secondary', 'phone_whatsapp', 'email', 'website',
+          'company_name', 'activity', 'location', 'address', 'phone_contact', 'phone_contact_secondary', 'phone_whatsapp', 'email', 'website', 'about_text',
           'wave_number', 'wave_name', 'wave_enabled', 'wave_show_number', 'wave_show_image', 'wave_image_url',
           'orange_number', 'orange_name', 'orange_enabled', 'orange_show_number', 'orange_show_image', 'orange_image_url',
           'mtn_number', 'mtn_name', 'mtn_enabled', 'mtn_show_number', 'mtn_show_image', 'mtn_image_url',
