@@ -10451,54 +10451,7 @@ export default {
             storagePlans = (storageRes && storageRes.results) ? storageRes.results : [];
             aiPlans = (aiRes && aiRes.results) ? aiRes.results : [];
 
-            // Si aucune carte IA n'est en base, insérer et retourner la carte BASIQUE créée par l'administrateur
-            if (aiPlans.length === 0) {
-              const defaultAiCard = {
-                id: 'ai_card_basique',
-                name: 'BASIQUE',
-                badge: '',
-                description: 'Pour les particuliers et petites équipes qui débutent.',
-                credits_or_words: '100 000 crédits IA',
-                credits_count: 100000,
-                price: 1000,
-                primary_currency: 'XOF',
-                currencies_enabled: '["USD","XOF","EUR"]',
-                currency_conversions: '{"XOF":1000,"USD":1.54,"EUR":1.52}',
-                yearly_price: 1000,
-                yearly_discount_pct: 0,
-                features: JSON.stringify([
-                  { text: '100 000 crédits IA', enabled: true },
-                  { text: 'Résumés automatiques de cours et PDF', enabled: true },
-                  { text: "Explications interactives avec l'assistante IA", enabled: true },
-                  { text: 'Génération de quiz et flashcards personnalisés', enabled: true },
-                  { text: 'Support prioritaire et réponses instantanées', enabled: true }
-                ]),
-                is_auto_billing: 0,
-                is_active: 1,
-                sort_order: 1,
-                pricing_model: 'one_time'
-              };
-
-              try {
-                await targetDb.prepare(`
-                  INSERT OR IGNORE INTO ai_subscription_plans (
-                    id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
-                    currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
-                    is_auto_billing, is_active, sort_order, pricing_model
-                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-                `).bind(
-                  defaultAiCard.id, defaultAiCard.name, defaultAiCard.badge, defaultAiCard.description,
-                  defaultAiCard.credits_or_words, defaultAiCard.credits_count, defaultAiCard.price,
-                  defaultAiCard.primary_currency, defaultAiCard.currencies_enabled, defaultAiCard.currency_conversions,
-                  defaultAiCard.yearly_price, defaultAiCard.yearly_discount_pct, defaultAiCard.features,
-                  defaultAiCard.is_auto_billing, defaultAiCard.is_active, defaultAiCard.sort_order,
-                  defaultAiCard.pricing_model
-                ).run();
-                aiPlans = [defaultAiCard];
-              } catch (insErr) {
-                aiPlans = [defaultAiCard];
-              }
-            }
+            // Pas d'auto-seed pour respecter fidèlement les suppressions
           } catch (dbErr: any) {
             console.warn('[Subscription Plans Query Error]', dbErr);
             try {
@@ -10672,16 +10625,23 @@ export default {
       // ==============================================================================
       // ROUTE POST : /api/subscription-plans/delete
       // ==============================================================================
-      if (path === '/api/subscription-plans/delete' && method === 'POST') {
+            if (path === '/api/subscription-plans/delete' && method === 'POST') {
         const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
         if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
 
         const body = await request.json().catch(() => ({}));
         const category = body.category === 'ai' ? 'ai' : 'storage';
         const planId = String(body.id || '').trim();
+        const planName = String(body.name || '').trim();
         const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
 
-        await targetDb.prepare(`DELETE FROM ${tableName} WHERE id = ?`).bind(planId).run();
+        if (planId && planName) {
+          await targetDb.prepare(`DELETE FROM ${tableName} WHERE id = ? OR name = ?`).bind(planId, planName).run();
+        } else if (planId) {
+          await targetDb.prepare(`DELETE FROM ${tableName} WHERE id = ?`).bind(planId).run();
+        } else if (planName) {
+          await targetDb.prepare(`DELETE FROM ${tableName} WHERE name = ?`).bind(planName).run();
+        }
         return jsonResponse({ success: true, id: planId }, 200, origin);
       }
 

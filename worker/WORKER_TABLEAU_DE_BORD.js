@@ -8979,12 +8979,14 @@ function renderDashboardHtml(data) {
     }
     window.safeSubPlansApi = safeSubPlansApi;
 
-    let pendingDeleteCategory = null;
+        let pendingDeleteCategory = null;
     let pendingDeletePlanId = null;
+    let pendingDeletePlanName = null;
 
     function openDeleteConfirmModal(category, id, planName) {
       pendingDeleteCategory = category;
       pendingDeletePlanId = id;
+      pendingDeletePlanName = planName;
       const modal = document.getElementById('confirm-delete-sub-plan-modal');
       const textEl = document.getElementById('confirm-delete-sub-plan-text');
       if (textEl) {
@@ -9006,6 +9008,7 @@ function renderDashboardHtml(data) {
       }
       pendingDeleteCategory = null;
       pendingDeletePlanId = null;
+      pendingDeletePlanName = null;
     }
     window.closeDeleteConfirmModal = closeDeleteConfirmModal;
 
@@ -9013,22 +9016,24 @@ function renderDashboardHtml(data) {
       if (!pendingDeleteCategory || !pendingDeletePlanId) return;
       const cat = pendingDeleteCategory;
       const id = pendingDeletePlanId;
+      const name = pendingDeletePlanName;
       const btn = document.getElementById('btn-confirm-delete-sub-plan');
       if (btn) {
         btn.disabled = true;
         btn.textContent = 'Suppression en cours...';
       }
       try {
-        const res = await safeSubPlansApi('/api/subscription-plans/delete', { category: cat, id });
+        const res = await safeSubPlansApi('/api/subscription-plans/delete', { category: cat, id, name });
         if (res && res.success) {
           if (cat === 'ai') {
-            allAiPlans = (allAiPlans || []).filter(p => p.id !== id);
+            allAiPlans = (allAiPlans || []).filter(p => p.id !== id && p.name !== name);
           } else {
-            allStoragePlans = (allStoragePlans || []).filter(p => p.id !== id);
+            allStoragePlans = (allStoragePlans || []).filter(p => p.id !== id && p.name !== name);
           }
           renderSubscriptionPlansCards(currentSubPlanTab);
           closeDeleteConfirmModal();
-          showToast("✓ Carte d'abonnement supprimée définitivement avec succès !");
+          showToast("✓ Carte définitivement supprimée de la base de données !");
+          await refreshSubscriptionPlansFromD1();
         } else {
           throw new Error(res?.error || "Échec de la suppression");
         }
@@ -10536,28 +10541,7 @@ export default {
 
         const storageRes = await safeQuery(db, storageQuery, [], { results: [] });
         let aiRes = await safeQuery(db, aiQuery, [], { results: [] });
-        // Initialiser avec la carte créée par l'administrateur si la table est vide
-        if (!aiRes || !aiRes.results || aiRes.results.length === 0) {
-          try {
-            await db.prepare(`
-              INSERT OR IGNORE INTO ai_subscription_plans (
-                id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
-                currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
-                is_auto_billing, is_active, sort_order, pricing_model
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            `).bind(
-              'ai_card_basique', 'BASIQUE', '', 'Pour les particuliers et petites équipes qui débutent.',
-              '100 000 crédits IA', 100000, 1000, 'XOF',
-              '["USD","XOF","EUR"]', '{"XOF":1000,"USD":1.54,"EUR":1.52}', 1000, 0,
-              '[{"text":"100 000 crédits IA","enabled":true},{"text":"Résumés automatiques de cours et PDF","enabled":true},{"text":"Explications interactives avec l\'\'assistante IA","enabled":true},{"text":"Génération de quiz et flashcards personnalisés","enabled":true},{"text":"Support prioritaire et réponses instantanées","enabled":true}]',
-              0, 1, 1, 'one_time'
-            ).run();
-            const recheckAi = await safeQuery(db, "SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
-            if (recheckAi && recheckAi.results && recheckAi.results.length > 0) {
-              aiRes = recheckAi;
-            }
-          } catch (e) {}
-        }
+        // Pas d'auto-seed pour respecter fidèlement les suppressions de l'administrateur
 
 
         return new Response(JSON.stringify({
@@ -10681,19 +10665,26 @@ export default {
       // ----------------------------------------------------------------------
       // ROUTE POST : /api/subscription-plans/delete
       // ----------------------------------------------------------------------
-      if (request.method === 'POST' && path === '/api/subscription-plans/delete') {
+            if (request.method === 'POST' && path === '/api/subscription-plans/delete') {
         if (!db) {
           return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
             status: 500,
             headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
           });
         }
-                const body = await request.json().catch(() => ({}));
+        const body = await request.json().catch(() => ({}));
         const category = body.category === 'ai' ? 'ai' : 'storage';
         const planId = String(body.id || '').trim();
+        const planName = String(body.name || '').trim();
         const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
 
-        await db.prepare(`DELETE FROM ${tableName} WHERE id = ?`).bind(planId).run();
+        if (planId && planName) {
+          await db.prepare(`DELETE FROM ${tableName} WHERE id = ? OR name = ?`).bind(planId, planName).run();
+        } else if (planId) {
+          await db.prepare(`DELETE FROM ${tableName} WHERE id = ?`).bind(planId).run();
+        } else if (planName) {
+          await db.prepare(`DELETE FROM ${tableName} WHERE name = ?`).bind(planName).run();
+        }
         return new Response(JSON.stringify({ success: true, id: planId }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
@@ -10861,14 +10852,7 @@ export default {
         aiPlansRes = await db.prepare("SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC").all();
       } catch (e) {}
 
-      if (!aiPlansRes || !aiPlansRes.results || aiPlansRes.results.length === 0) {
-        try {
-          const recheck = await db.prepare("SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC").all();
-          if (recheck && recheck.results && recheck.results.length > 0) {
-            aiPlansRes = recheck;
-          }
-        } catch (e) {}
-      }
+      
 
 
       // ----------------------------------------------------------------------
