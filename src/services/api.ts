@@ -42,6 +42,10 @@ export const setAiWorkerUrl = (url: string) => {
   localStorage.setItem('studycloud_ai_worker_url', url.trim());
 };
 
+// URL et connecteurs du Cerveau Neuronal Cloudflare Agent (Durable Objects)
+export { getStudyAgentUrl, setStudyAgentUrl } from './studyAgentService';
+import { generateAgentCreation, sendAgentChatMessage } from './studyAgentService';
+
 // URL du Worker Cloudflare connecté à Google Gemini (Mode Puissance)
 export const getGeminiWorkerUrl = (): string => {
   return (
@@ -426,6 +430,24 @@ export async function generateDirectAiCreation(params: {
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
   const currentUserId = params.userId || localStorage.getItem('unifolder_user_id') || 'default-user';
 
+  // 1. Tente en priorité le cerveau neuronal Cloudflare Agent (Durable Objects)
+  if (!isPowerMode) {
+    try {
+      const agentRes = await generateAgentCreation({
+        toolType: params.toolType,
+        docName: params.docName,
+        docContent: params.docContent,
+        prompt: params.prompt,
+        userId: currentUserId,
+      });
+      if (agentRes && agentRes.success && agentRes.creation_data) {
+        return agentRes;
+      }
+    } catch (agentErr) {
+      console.warn('[StudyCloud API] Agent Cloudflare distant en attente de déploiement, bascule automatique sur Worker standard:', agentErr);
+    }
+  }
+
   const payload = {
     isDirectCreation: true,
     skipChatHistory: true,
@@ -642,6 +664,20 @@ export async function sendDelmasChatMessage(params: {
 }> {
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
   const userGeminiApiKey = (params.geminiApiKey || getGeminiApiKey()).trim();
+
+  // 0. Tente en priorité le cerveau neuronal Cloudflare Agent
+  try {
+    const agentChat = await sendAgentChatMessage({
+      message: params.message,
+      history: params.history,
+      signal: params.signal,
+    });
+    if (agentChat && agentChat.success && agentChat.response) {
+      return agentChat;
+    }
+  } catch (_e) {
+    // Repli sur le worker existant
+  }
 
   const payload = {
     message: params.message,
