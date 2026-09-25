@@ -72,8 +72,10 @@ async function safeRun(db, sql, params = []) {
 /**
  * Initialise automatiquement les tables nécessaires aux quotas et paramètres globaux
  */
+let _tablesEnsured = false;
 async function ensureStorageTables(db) {
-  if (!db) return;
+  if (!db || _tablesEnsured) return;
+  _tablesEnsured = true;
   try {
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS storage_global_config (
@@ -10187,8 +10189,7 @@ export default {
             headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
           });
         }
-        await ensureStorageTables(db);
-        const body = await request.json().catch(() => ({}));
+                const body = await request.json().catch(() => ({}));
         const network = (body.network || '').toLowerCase().trim();
         if (!['wave', 'orange', 'mtn', 'moov'].includes(network)) {
           return new Response(JSON.stringify({ success: false, message: 'Réseau de paiement invalide (wave, orange, mtn, moov)' }), {
@@ -10353,8 +10354,7 @@ export default {
       // ROUTE GET : /api/subscription-plans (Plans de stockage et IA)
       // ----------------------------------------------------------------------
       if (request.method === 'GET' && path === '/api/subscription-plans') {
-        await ensureStorageTables(db);
-        const onlyActive = url.searchParams.get('active_only') === '1';
+                const onlyActive = url.searchParams.get('active_only') === '1';
         const storageQuery = onlyActive 
           ? "SELECT * FROM storage_subscription_plans WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC"
           : "SELECT * FROM storage_subscription_plans ORDER BY sort_order ASC, created_at ASC";
@@ -10363,7 +10363,30 @@ export default {
           : "SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC";
 
         const storageRes = await safeQuery(db, storageQuery, [], { results: [] });
-        const aiRes = await safeQuery(db, aiQuery, [], { results: [] });
+        let aiRes = await safeQuery(db, aiQuery, [], { results: [] });
+        // Initialiser avec la carte créée par l'administrateur si la table est vide
+        if (!aiRes || !aiRes.results || aiRes.results.length === 0) {
+          try {
+            await db.prepare(`
+              INSERT OR IGNORE INTO ai_subscription_plans (
+                id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
+                currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
+                is_auto_billing, is_active, sort_order, pricing_model
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+            `).bind(
+              'ai_card_basique', 'BASIQUE', '', 'Pour les particuliers et petites équipes qui débutent.',
+              '100 000 crédits IA', 100000, 1000, 'XOF',
+              '["USD","XOF","EUR"]', '{"XOF":1000,"USD":1.54,"EUR":1.52}', 1000, 0,
+              '[{"text":"100 000 crédits IA","enabled":true},{"text":"Résumés automatiques de cours et PDF","enabled":true},{"text":"Explications interactives avec l\'\'assistante IA","enabled":true},{"text":"Génération de quiz et flashcards personnalisés","enabled":true},{"text":"Support prioritaire et réponses instantanées","enabled":true}]',
+              0, 1, 1, 'one_time'
+            ).run();
+            const recheckAi = await safeQuery(db, "SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC", [], { results: [] });
+            if (recheckAi && recheckAi.results && recheckAi.results.length > 0) {
+              aiRes = recheckAi;
+            }
+          } catch (e) {}
+        }
+
 
         return new Response(JSON.stringify({
           success: true,
@@ -10385,8 +10408,7 @@ export default {
             headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
           });
         }
-        await ensureStorageTables(db);
-        const body = await request.json().catch(() => ({}));
+                const body = await request.json().catch(() => ({}));
         const category = body.category === 'ai' ? 'ai' : 'storage';
         const plan = body.plan || {};
 
@@ -10494,8 +10516,7 @@ export default {
             headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
           });
         }
-        await ensureStorageTables(db);
-        const body = await request.json().catch(() => ({}));
+                const body = await request.json().catch(() => ({}));
         const category = body.category === 'ai' ? 'ai' : 'storage';
         const planId = String(body.id || '').trim();
         const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
@@ -10517,8 +10538,7 @@ export default {
             headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
           });
         }
-        await ensureStorageTables(db);
-        const body = await request.json().catch(() => ({}));
+                const body = await request.json().catch(() => ({}));
         const category = body.category === 'ai' ? 'ai' : 'storage';
         const planId = String(body.id || '').trim();
         const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
@@ -10546,8 +10566,7 @@ export default {
             headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
           });
         }
-        await ensureStorageTables(db);
-        const body = await request.json().catch(() => ({}));
+                const body = await request.json().catch(() => ({}));
         const category = body.category === 'ai' ? 'ai' : 'storage';
         const planId = String(body.id || '').trim();
         const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
@@ -10575,8 +10594,7 @@ export default {
             headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
           });
         }
-        await ensureStorageTables(db);
-        const body = await request.json().catch(() => ({}));
+                const body = await request.json().catch(() => ({}));
         const category = body.category === 'ai' ? 'ai' : 'storage';
         const planId = String(body.id || '').trim();
         const badge = String(body.badge || '').trim();
@@ -10670,6 +10688,16 @@ export default {
       try {
         aiPlansRes = await db.prepare("SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC").all();
       } catch (e) {}
+
+      if (!aiPlansRes || !aiPlansRes.results || aiPlansRes.results.length === 0) {
+        try {
+          const recheck = await db.prepare("SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC").all();
+          if (recheck && recheck.results && recheck.results.length > 0) {
+            aiPlansRes = recheck;
+          }
+        } catch (e) {}
+      }
+
 
       // ----------------------------------------------------------------------
       // GARDE 404 JSON : TOUTE REQUÊTE /api/* NON RECONNUE DOIT RENVOYER DU JSON ET JAMAIS DU HTML

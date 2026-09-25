@@ -10369,7 +10369,9 @@ export default {
         let storagePlans: any[] = [];
         let aiPlans: any[] = [];
 
-        if (env.DB) {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+
+        if (targetDb) {
           try {
             const storageQuery = onlyActive 
               ? "SELECT * FROM storage_subscription_plans WHERE is_active = 1 OR is_active IS NULL ORDER BY sort_order ASC, created_at ASC"
@@ -10378,15 +10380,64 @@ export default {
               ? "SELECT * FROM ai_subscription_plans WHERE is_active = 1 OR is_active IS NULL ORDER BY sort_order ASC, created_at ASC"
               : "SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC";
 
-            const storageRes = await env.DB.prepare(storageQuery).all();
-            const aiRes = await env.DB.prepare(aiQuery).all();
+            const storageRes = await targetDb.prepare(storageQuery).all();
+            const aiRes = await targetDb.prepare(aiQuery).all();
 
             storagePlans = (storageRes && storageRes.results) ? storageRes.results : [];
             aiPlans = (aiRes && aiRes.results) ? aiRes.results : [];
+
+            // Si aucune carte IA n'est en base, insérer et retourner la carte BASIQUE créée par l'administrateur
+            if (aiPlans.length === 0) {
+              const defaultAiCard = {
+                id: 'ai_card_basique',
+                name: 'BASIQUE',
+                badge: '',
+                description: 'Pour les particuliers et petites équipes qui débutent.',
+                credits_or_words: '100 000 crédits IA',
+                credits_count: 100000,
+                price: 1000,
+                primary_currency: 'XOF',
+                currencies_enabled: '["USD","XOF","EUR"]',
+                currency_conversions: '{"XOF":1000,"USD":1.54,"EUR":1.52}',
+                yearly_price: 1000,
+                yearly_discount_pct: 0,
+                features: JSON.stringify([
+                  { text: '100 000 crédits IA', enabled: true },
+                  { text: 'Résumés automatiques de cours et PDF', enabled: true },
+                  { text: "Explications interactives avec l'assistante IA", enabled: true },
+                  { text: 'Génération de quiz et flashcards personnalisés', enabled: true },
+                  { text: 'Support prioritaire et réponses instantanées', enabled: true }
+                ]),
+                is_auto_billing: 0,
+                is_active: 1,
+                sort_order: 1,
+                pricing_model: 'one_time'
+              };
+
+              try {
+                await targetDb.prepare(`
+                  INSERT OR IGNORE INTO ai_subscription_plans (
+                    id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
+                    currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
+                    is_auto_billing, is_active, sort_order, pricing_model
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                `).bind(
+                  defaultAiCard.id, defaultAiCard.name, defaultAiCard.badge, defaultAiCard.description,
+                  defaultAiCard.credits_or_words, defaultAiCard.credits_count, defaultAiCard.price,
+                  defaultAiCard.primary_currency, defaultAiCard.currencies_enabled, defaultAiCard.currency_conversions,
+                  defaultAiCard.yearly_price, defaultAiCard.yearly_discount_pct, defaultAiCard.features,
+                  defaultAiCard.is_auto_billing, defaultAiCard.is_active, defaultAiCard.sort_order,
+                  defaultAiCard.pricing_model
+                ).run();
+                aiPlans = [defaultAiCard];
+              } catch (insErr) {
+                aiPlans = [defaultAiCard];
+              }
+            }
           } catch (dbErr: any) {
             console.warn('[Subscription Plans Query Error]', dbErr);
             try {
-              await env.DB.prepare(`
+              await targetDb.prepare(`
                 CREATE TABLE IF NOT EXISTS storage_subscription_plans (
                   id TEXT PRIMARY KEY,
                   name TEXT NOT NULL,
@@ -10409,7 +10460,7 @@ export default {
                 )
               `).run();
 
-              await env.DB.prepare(`
+              await targetDb.prepare(`
                 CREATE TABLE IF NOT EXISTS ai_subscription_plans (
                   id TEXT PRIMARY KEY,
                   name TEXT NOT NULL,
@@ -10434,20 +10485,10 @@ export default {
               `).run();
 
               try {
-                await env.DB.prepare("ALTER TABLE ai_subscription_plans ADD COLUMN pricing_model TEXT DEFAULT 'subscription'").run();
+                await targetDb.prepare("ALTER TABLE ai_subscription_plans ADD COLUMN pricing_model TEXT DEFAULT 'subscription'").run();
               } catch (e) {}
 
-              const storageQuery = onlyActive 
-                ? "SELECT * FROM storage_subscription_plans WHERE is_active = 1 OR is_active IS NULL ORDER BY sort_order ASC, created_at ASC"
-                : "SELECT * FROM storage_subscription_plans ORDER BY sort_order ASC, created_at ASC";
-              const aiQuery = onlyActive
-                ? "SELECT * FROM ai_subscription_plans WHERE is_active = 1 OR is_active IS NULL ORDER BY sort_order ASC, created_at ASC"
-                : "SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC";
-
-              const storageRes = await env.DB.prepare(storageQuery).all();
-              const aiRes = await env.DB.prepare(aiQuery).all();
-
-              storagePlans = (storageRes && storageRes.results) ? storageRes.results : [];
+              const aiRes = await targetDb.prepare("SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC").all();
               aiPlans = (aiRes && aiRes.results) ? aiRes.results : [];
             } catch (initErr) {
               console.warn('[Subscription Plans Init Error]', initErr);
@@ -10460,6 +10501,184 @@ export default {
           storagePlans,
           aiPlans
         }, 200, origin);
+      }
+
+      // ==============================================================================
+      // ROUTE POST : /api/subscription-plans/save
+      // ==============================================================================
+      if (path === '/api/subscription-plans/save' && method === 'POST') {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const plan = body.plan || {};
+
+        const planId = String(plan.id || ((category === 'ai' ? 'ai_card_' : 'storage_card_') + Date.now() + '_' + Math.random().toString(36).substring(2, 6))).trim();
+        const name = String(plan.name || 'Nouveau Forfait').trim();
+        const badge = String(plan.badge || '').trim();
+        const description = String(plan.description || '').trim();
+        const price = Number(plan.price) || 0;
+        const primaryCurrency = String(plan.primary_currency || 'USD').trim();
+        const currenciesEnabled = typeof plan.currencies_enabled === 'string' ? plan.currencies_enabled : JSON.stringify(plan.currencies_enabled || ['USD', 'XOF', 'EUR']);
+        const currencyConversions = typeof plan.currency_conversions === 'string' ? plan.currency_conversions : JSON.stringify(plan.currency_conversions || {});
+        const yearlyPrice = Number(plan.yearly_price) || 0;
+        const yearlyDiscountPct = Number(plan.yearly_discount_pct) || 0;
+        const features = typeof plan.features === 'string' ? plan.features : JSON.stringify(plan.features || []);
+        const isAutoBilling = plan.is_auto_billing ? 1 : 0;
+        const isActive = plan.is_active !== undefined ? (plan.is_active ? 1 : 0) : 1;
+        const sortOrder = Number(plan.sort_order) || 1;
+
+        if (category === 'ai') {
+          const creditsOrWords = String(plan.credits_or_words || '100 000 crédits IA').trim();
+          const creditsCount = Number(plan.credits_count) || 100000;
+          const pricingModel = String(plan.pricing_model || 'one_time').trim();
+
+          await targetDb.prepare(`
+            INSERT INTO ai_subscription_plans (
+              id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
+              currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
+              is_auto_billing, is_active, sort_order, pricing_model, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              badge = excluded.badge,
+              description = excluded.description,
+              credits_or_words = excluded.credits_or_words,
+              credits_count = excluded.credits_count,
+              price = excluded.price,
+              primary_currency = excluded.primary_currency,
+              currencies_enabled = excluded.currencies_enabled,
+              currency_conversions = excluded.currency_conversions,
+              yearly_price = excluded.yearly_price,
+              yearly_discount_pct = excluded.yearly_discount_pct,
+              features = excluded.features,
+              is_auto_billing = excluded.is_auto_billing,
+              is_active = excluded.is_active,
+              sort_order = excluded.sort_order,
+              pricing_model = excluded.pricing_model,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            planId, name, badge, description, creditsOrWords, creditsCount, price, primaryCurrency,
+            currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
+            isAutoBilling, isActive, sortOrder, pricingModel
+          ).run();
+
+          const updatedPlan = await targetDb.prepare("SELECT * FROM ai_subscription_plans WHERE id = ?").bind(planId).first();
+          return jsonResponse({ success: true, plan: updatedPlan }, 200, origin);
+        } else {
+          const storageAmount = String(plan.storage_amount || '10 Go').trim();
+          const storageMb = Number(plan.storage_mb) || 10240;
+
+          await targetDb.prepare(`
+            INSERT INTO storage_subscription_plans (
+              id, name, badge, description, storage_amount, storage_mb, price, primary_currency,
+              currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
+              is_auto_billing, is_active, sort_order, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              badge = excluded.badge,
+              description = excluded.description,
+              storage_amount = excluded.storage_amount,
+              storage_mb = excluded.storage_mb,
+              price = excluded.price,
+              primary_currency = excluded.primary_currency,
+              currencies_enabled = excluded.currencies_enabled,
+              currency_conversions = excluded.currency_conversions,
+              yearly_price = excluded.yearly_price,
+              yearly_discount_pct = excluded.yearly_discount_pct,
+              features = excluded.features,
+              is_auto_billing = excluded.is_auto_billing,
+              is_active = excluded.is_active,
+              sort_order = excluded.sort_order,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            planId, name, badge, description, storageAmount, storageMb, price, primaryCurrency,
+            currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
+            isAutoBilling, isActive, sortOrder
+          ).run();
+
+          const updatedPlan = await targetDb.prepare("SELECT * FROM storage_subscription_plans WHERE id = ?").bind(planId).first();
+          return jsonResponse({ success: true, plan: updatedPlan }, 200, origin);
+        }
+      }
+
+      // ==============================================================================
+      // ROUTE POST : /api/subscription-plans/delete
+      // ==============================================================================
+      if (path === '/api/subscription-plans/delete' && method === 'POST') {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const planId = String(body.id || '').trim();
+        const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+
+        await targetDb.prepare(`DELETE FROM ${tableName} WHERE id = ?`).bind(planId).run();
+        return jsonResponse({ success: true, id: planId }, 200, origin);
+      }
+
+      // ==============================================================================
+      // ROUTE POST : /api/subscription-plans/toggle-active
+      // ==============================================================================
+      if (path === '/api/subscription-plans/toggle-active' && method === 'POST') {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const planId = String(body.id || '').trim();
+        const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+
+        if (body.is_active !== undefined) {
+          const newVal = body.is_active ? 1 : 0;
+          await targetDb.prepare(`UPDATE ${tableName} SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(newVal, planId).run();
+        } else {
+          await targetDb.prepare(`UPDATE ${tableName} SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        }
+        const row = await targetDb.prepare(`SELECT is_active FROM ${tableName} WHERE id = ?`).bind(planId).first();
+        return jsonResponse({ success: true, is_active: row ? (row as any).is_active : 1 }, 200, origin);
+      }
+
+      // ==============================================================================
+      // ROUTE POST : /api/subscription-plans/toggle-auto-billing
+      // ==============================================================================
+      if (path === '/api/subscription-plans/toggle-auto-billing' && method === 'POST') {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const planId = String(body.id || '').trim();
+        const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+
+        if (body.is_auto_billing !== undefined) {
+          const newVal = body.is_auto_billing ? 1 : 0;
+          await targetDb.prepare(`UPDATE ${tableName} SET is_auto_billing = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(newVal, planId).run();
+        } else {
+          await targetDb.prepare(`UPDATE ${tableName} SET is_auto_billing = CASE WHEN is_auto_billing = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
+        }
+        const row = await targetDb.prepare(`SELECT is_auto_billing FROM ${tableName} WHERE id = ?`).bind(planId).first();
+        return jsonResponse({ success: true, is_auto_billing: row ? (row as any).is_auto_billing : 0 }, 200, origin);
+      }
+
+      // ==============================================================================
+      // ROUTE POST : /api/subscription-plans/update-badge
+      // ==============================================================================
+      if (path === '/api/subscription-plans/update-badge' && method === 'POST') {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+
+        const body = await request.json().catch(() => ({}));
+        const category = body.category === 'ai' ? 'ai' : 'storage';
+        const planId = String(body.id || '').trim();
+        const badge = String(body.badge || '').trim();
+        const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
+
+        await targetDb.prepare(`UPDATE ${tableName} SET badge = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(badge, planId).run();
+        return jsonResponse({ success: true, id: planId, badge }, 200, origin);
       }
 
       // Route 404 par défaut
