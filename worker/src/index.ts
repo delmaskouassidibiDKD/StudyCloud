@@ -5514,6 +5514,12 @@ export default {
         headers.set('Accept-Ranges', 'bytes');
         headers.set('Access-Control-Allow-Origin', origin);
 
+        const isDownloadReq = url.searchParams.get('download') === '1' || url.searchParams.get('download') === 'true';
+        if (isDownloadReq) {
+          const downloadName = url.searchParams.get('filename') || key.split('/').pop() || 'download';
+          headers.set('Content-Disposition', `attachment; filename="${encodeURIComponent(downloadName)}"`);
+        }
+
         const status = rangeHeader && object.range ? 206 : 200;
         return new Response(object.body, { status, headers });
       }
@@ -5901,6 +5907,11 @@ export default {
           const folderId = url.searchParams.get('id');
           if (!folderId) return errorResponse('id de dossier manquant', 400, origin);
 
+          // Récupérer le dossier pour l'archiver dans la corbeille
+          const targetFolder: any = await env.DB.prepare(`
+            SELECT * FROM classeur_folders WHERE id = ? AND user_id = ?
+          `).bind(folderId, reqUserId).first();
+
           // Déplacer les fichiers du dossier dans la corbeille avant suppression
           const { results: folderFiles } = await env.DB.prepare(`
             SELECT * FROM classeur_files WHERE folder_id = ? AND user_id = ?
@@ -5920,12 +5931,26 @@ export default {
             ).run();
           }
 
+          if (targetFolder) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, '1 dossier', 0, 'folder', 'folder', 'classeur_folder', ?, ?, ?, '', '', CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET deleted_at = CURRENT_TIMESTAMP
+            `).bind(
+              folderId, reqUserId, targetFolder.name, targetFolder.parent_id || '',
+              JSON.stringify(targetFolder), new Date().toLocaleDateString('fr-FR')
+            ).run();
+          }
+
           // Supprimer le dossier (la contrainte ON DELETE CASCADE nettoie les fichiers associés)
           await env.DB.prepare(`
             DELETE FROM classeur_folders WHERE id = ? AND user_id = ?
           `).bind(folderId, reqUserId).run();
 
-          return jsonResponse({ success: true, message: 'Dossier supprimé et fichiers archivés dans la corbeille' }, 200, origin);
+          return jsonResponse({ success: true, message: 'Dossier et son contenu déplacés dans la corbeille' }, 200, origin);
         }
       }
 
@@ -6606,11 +6631,31 @@ export default {
           const fileId = url.searchParams.get('id');
           if (!fileId) return errorResponse('id manquant', 400, origin);
 
+          const dlFile: any = await env.DB.prepare(`
+            SELECT * FROM download_files WHERE id = ? AND user_id = ?
+          `).bind(fileId, reqUserId).first();
+
+          if (dlFile) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, 'downloads', ?, 'downloads', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              ON CONFLICT(id) DO UPDATE SET deleted_at = CURRENT_TIMESTAMP
+            `).bind(
+              dlFile.id, reqUserId, dlFile.name, dlFile.size, dlFile.size_bytes, dlFile.extension || '',
+              JSON.stringify({ sourceUrl: dlFile.source_url, source: dlFile.source }),
+              dlFile.downloaded_at || new Date().toLocaleDateString('fr-FR'),
+              dlFile.r2_key, dlFile.file_url
+            ).run();
+          }
+
           await env.DB.prepare(`
             DELETE FROM download_files WHERE id = ? AND user_id = ?
           `).bind(fileId, reqUserId).run();
 
-          return jsonResponse({ success: true, message: 'Téléchargement retiré de l\'historique' }, 200, origin);
+          return jsonResponse({ success: true, message: 'Téléchargement déplacé dans la corbeille' }, 200, origin);
         }
       }
 
@@ -6761,6 +6806,10 @@ export default {
           // Retirer de la table source correspondante
           if (fromFolderId) {
             await env.DB.prepare('DELETE FROM classeur_files WHERE id = ? AND user_id = ?').bind(id, reqUserId).run();
+          } else if (originalCategory === 'classeur_folder' || category === 'folder') {
+            await env.DB.prepare('DELETE FROM classeur_folders WHERE id = ? AND user_id = ?').bind(id, reqUserId).run();
+          } else if (originalCategory === 'downloads') {
+            await env.DB.prepare('DELETE FROM download_files WHERE id = ? AND user_id = ?').bind(id, reqUserId).run();
           } else if (originalCategory === 'audio') {
             await env.DB.prepare('DELETE FROM audio_files WHERE id = ? AND user_id = ?').bind(id, reqUserId).run();
           } else if (originalCategory === 'images') {
@@ -6787,8 +6836,25 @@ export default {
           if (secFile) {
             const origCat = secFile.original_category || 'documents';
             const origFolder = secFile.original_folder_id || '';
+            const meta = secFile.metadata_json ? JSON.parse(secFile.metadata_json) : {};
 
-            if (origFolder) {
+            if (origCat === 'classeur_folder' || secFile.category === 'folder') {
+              await env.DB.prepare(`
+                INSERT INTO classeur_folders (
+                  id, user_id, parent_id, name, model_id, primary_color, accent_color,
+                  icon_name, text_dark, position_x, position_y, display_order, zoom_level,
+                  is_pinned, is_favorite, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO NOTHING
+              `).bind(
+                secFile.id, reqUserId, meta.parentId || meta.parent_id || null, secFile.name,
+                meta.modelId || meta.model_id || '1', meta.primaryColor || meta.primary_color || '#EA580C',
+                meta.accentColor || meta.accent_color || '#F97316', meta.iconName || meta.icon_name || 'Folder',
+                meta.textDark ? 1 : 0, Number(meta.positionX || meta.position_x || 0),
+                Number(meta.positionY || meta.position_y || 0), Number(meta.displayOrder || meta.display_order || 0),
+                Number(meta.zoomLevel || meta.zoom_level || 10), meta.isPinned ? 1 : 0, meta.isFavorite ? 1 : 0
+              ).run();
+            } else if (origFolder) {
               await env.DB.prepare(`
                 INSERT INTO classeur_files (
                   id, user_id, folder_id, name, size, size_bytes, category, extension,
@@ -6800,6 +6866,12 @@ export default {
                 secFile.size_bytes, secFile.category, secFile.extension,
                 secFile.date_formatted, secFile.r2_key, secFile.file_url
               ).run();
+            } else if (origCat === 'downloads') {
+              await env.DB.prepare(`
+                INSERT INTO download_files (id, user_id, name, size, size_bytes, category, extension, file_url, date_formatted, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO NOTHING
+              `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.category || 'documents', secFile.extension || '', secFile.file_url, secFile.date_formatted).run();
             } else if (origCat === 'audio') {
               await env.DB.prepare(`
                 INSERT INTO audio_files (id, user_id, name, size, size_bytes, audio_url, date_formatted, updated_at)
@@ -6883,7 +6955,24 @@ export default {
               const origFolder = item.original_folder_id || '';
               const meta = item.metadata_json ? JSON.parse(item.metadata_json) : {};
 
-              if (origFolder || srcCat === 'classeur') {
+              if (srcCat === 'classeur_folder' || item.category === 'folder') {
+                const fMeta = item.metadata_json ? JSON.parse(item.metadata_json) : {};
+                await env.DB.prepare(`
+                  INSERT INTO classeur_folders (
+                    id, user_id, parent_id, name, model_id, primary_color, accent_color,
+                    icon_name, text_dark, position_x, position_y, display_order, zoom_level,
+                    is_pinned, is_favorite, updated_at
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO NOTHING
+                `).bind(
+                  item.id, reqUserId, fMeta.parentId || fMeta.parent_id || null, item.name,
+                  fMeta.modelId || fMeta.model_id || '1', fMeta.primaryColor || fMeta.primary_color || '#EA580C',
+                  fMeta.accentColor || fMeta.accent_color || '#F97316', fMeta.iconName || fMeta.icon_name || 'Folder',
+                  fMeta.textDark ? 1 : 0, Number(fMeta.positionX || fMeta.position_x || 0),
+                  Number(fMeta.positionY || fMeta.position_y || 0), Number(fMeta.displayOrder || fMeta.display_order || 0),
+                  Number(fMeta.zoomLevel || fMeta.zoom_level || 10), fMeta.isPinned ? 1 : 0, fMeta.isFavorite ? 1 : 0
+                ).run();
+              } else if (origFolder || srcCat === 'classeur') {
                 await env.DB.prepare(`
                   INSERT INTO classeur_files (
                     id, user_id, folder_id, name, size, size_bytes, category, extension,
@@ -6896,6 +6985,12 @@ export default {
                   meta.isNotepad ? 1 : 0, meta.notepadTitle || '', meta.content || '',
                   item.r2_key, item.file_url
                 ).run();
+              } else if (srcCat === 'downloads') {
+                await env.DB.prepare(`
+                  INSERT INTO download_files (id, user_id, name, size, size_bytes, category, extension, file_url, date_formatted, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO NOTHING
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.category || 'documents', item.extension || '', item.file_url, item.date_formatted).run();
               } else if (srcCat === 'audio') {
                 await env.DB.prepare(`
                   INSERT INTO audio_files (id, user_id, name, artist, duration_sec, size, size_bytes, audio_url, date_formatted, updated_at)

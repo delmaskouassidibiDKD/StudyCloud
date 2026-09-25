@@ -519,6 +519,20 @@ export const CloudStorageAPI = {
     }
   },
 
+  async deleteDownload(id: string): Promise<boolean> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetch(`${baseUrl}/api/cloud/downloads?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[CloudStorageAPI] deleteDownload error:', e);
+      return false;
+    }
+  },
+
   // --------------------------------------------------------------------------
   // 8. DOSSIER SÉCURISÉ (/api/cloud/secure/*)
   // --------------------------------------------------------------------------

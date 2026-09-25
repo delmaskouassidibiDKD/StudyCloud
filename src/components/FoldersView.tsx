@@ -1505,6 +1505,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
             setViewMode('home');
           }} 
           onOpenStudySpace={onOpenStudySpace} 
+          onOpenCreateShareLink={onOpenCreateShareLink}
         />
       )}
 

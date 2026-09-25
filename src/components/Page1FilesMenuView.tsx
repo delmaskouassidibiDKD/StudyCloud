@@ -103,6 +103,7 @@ import { generatePdfThumbnail, generateVideoThumbnail, setCachedMediaThumbnail }
 interface Page1FilesMenuViewProps {
   onBack: () => void;
   onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[], isFullscreen?: boolean) => void;
+  onOpenCreateShareLink?: (items: any[]) => void;
 }
 
 export interface FileItem {
@@ -148,7 +149,7 @@ interface SubMenuView {
   color: string;
 }
 
-export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, onOpenStudySpace }) => {
+export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, onOpenStudySpace, onOpenCreateShareLink }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [subSearchQuery, setSubSearchQuery] = useState('');
   const [docMenuOpenId, setDocMenuOpenId] = useState<string | null>(null);
@@ -777,6 +778,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       return [id, ...children.flatMap(c => getDescendantFolderIds(c.id, all))];
     };
 
+    const targetFolder = classeur3DFolders.find(f => f.id === folderId);
+
     setClasseur3DFolders(prev => {
       const toDeleteIds = getDescendantFolderIds(folderId, prev);
       setFolderFilesMap(mapPrev => {
@@ -784,13 +787,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         const deletedFolderFiles: FileItem[] = [];
         toDeleteIds.forEach(id => {
           if (next[id] && next[id].length > 0) {
-            deletedFolderFiles.push(...next[id].map(f => ({ ...f, originalFolderId: id })));
+            deletedFolderFiles.push(...next[id].map(f => ({ ...f, originalFolderId: id, isTrash: true })));
             delete next[id];
           }
         });
-        if (deletedFolderFiles.length > 0) {
-          setTrashFiles(tPrev => [...deletedFolderFiles, ...tPrev]);
-        }
+        const folderTrashItems: FileItem[] = toDeleteIds.map(fId => {
+          const fObj = prev.find(pf => pf.id === fId) || (fId === targetFolder?.id ? targetFolder : null);
+          return {
+            id: fId,
+            name: fObj?.name || 'Dossier',
+            category: 'documents' as const,
+            source: 'Classeur',
+            sourceCategory: 'classeur_folder',
+            size: '1 dossier 3D',
+            sizeBytes: 2048,
+            date: fObj?.dateText || new Date().toLocaleDateString('fr-FR'),
+            isTrash: true,
+            metadata: fObj
+          } as FileItem;
+        });
+        setTrashFiles(tPrev => [...folderTrashItems, ...deletedFolderFiles, ...tPrev.filter(t => !toDeleteIds.includes(t.id))]);
         return next;
       });
       return prev.filter(f => !toDeleteIds.includes(f.id));
@@ -1248,7 +1264,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   const handleRestoreFromTrash = (file: FileItem) => {
     setTrashFiles(prev => prev.filter(f => f.id !== file.id));
-    if (file.originalFolderId) {
+    if (file.category === 'folder' || (file as any).sourceCategory === 'classeur_folder') {
+      const meta = (file as any).metadata || {};
+      const restoredFolder: ClasseurCreatedFolder = {
+        id: file.id,
+        name: file.name,
+        modelId: meta.modelId || '1',
+        primaryColor: meta.primaryColor || '#EA580C',
+        accentColor: meta.accentColor || '#F97316',
+        iconName: meta.iconName || 'Folder',
+        textDark: meta.textDark || false,
+        positionX: meta.positionX || 0,
+        positionY: meta.positionY || 0,
+        dateText: file.date || new Date().toLocaleDateString('fr-FR'),
+        zoomLevel: meta.zoomLevel || 10,
+        displayOrder: meta.displayOrder || 0,
+        parentId: meta.parentId || null
+      };
+      setClasseur3DFolders(prev => prev.some(f => f.id === file.id) ? prev : [restoredFolder, ...prev]);
+    } else if (file.originalFolderId) {
       setFolderFilesMap(prev => ({
         ...prev,
         [file.originalFolderId!]: [file, ...(prev[file.originalFolderId!] || []).filter(f => f.id !== file.id)]
@@ -1277,7 +1311,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (selectedItemIds.length === 0) return;
     const itemsToRestore = trashFiles.filter(f => selectedItemIds.includes(f.id));
     itemsToRestore.forEach(file => {
-      if (file.originalFolderId) {
+      if (file.category === 'folder' || (file as any).sourceCategory === 'classeur_folder') {
+        const meta = (file as any).metadata || {};
+        const restoredFolder: ClasseurCreatedFolder = {
+          id: file.id,
+          name: file.name,
+          modelId: meta.modelId || '1',
+          primaryColor: meta.primaryColor || '#EA580C',
+          accentColor: meta.accentColor || '#F97316',
+          iconName: meta.iconName || 'Folder',
+          textDark: meta.textDark || false,
+          positionX: meta.positionX || 0,
+          positionY: meta.positionY || 0,
+          dateText: file.date || new Date().toLocaleDateString('fr-FR'),
+          zoomLevel: meta.zoomLevel || 10,
+          displayOrder: meta.displayOrder || 0,
+          parentId: meta.parentId || null
+        };
+        setClasseur3DFolders(prev => prev.some(f => f.id === file.id) ? prev : [restoredFolder, ...prev]);
+      } else if (file.originalFolderId) {
         setFolderFilesMap(prev => ({
           ...prev,
           [file.originalFolderId!]: [file, ...(prev[file.originalFolderId!] || []).filter(f => f.id !== file.id)]
@@ -1843,45 +1895,81 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Verrouiller les éléments sélectionnés vers le dossier sécurisé
   const handleLockSelected = (currentCategoryList: FileItem[]) => {
     if (selectedItemIds.length === 0) return;
-    const itemsToLock = currentCategoryList.filter(f => selectedItemIds.includes(f.id));
-    if (itemsToLock.length === 0) return;
+    const idsToLock = [...selectedItemIds];
+    const count = idsToLock.length;
 
-    const lockedItems: FileItem[] = itemsToLock.map(f => ({
-      ...f,
-      isSecure: true,
-      originalCategory: (f as any).originalCategory || f.category,
-      originalSource: (f as any).originalSource || f.source,
-      source: 'Dossier Sécurisé'
-    }));
+    const lockedItems: FileItem[] = [];
 
-    setSecureFolderFiles(prev => [...lockedItems, ...prev]);
+    idsToLock.forEach(id => {
+      // 1. Est-ce un dossier ?
+      const folder = classeur3DFolders.find(f => f.id === id);
+      if (folder) {
+        const securedFolderItem: FileItem = {
+          id: folder.id,
+          name: folder.name,
+          category: 'documents' as const,
+          source: 'Dossier Sécurisé',
+          originalCategory: 'classeur_folder',
+          size: '1 dossier 3D',
+          sizeBytes: 2048,
+          date: folder.dateText,
+          isSecure: true,
+          metadata: folder
+        } as FileItem;
+        lockedItems.push(securedFolderItem);
+        CloudStorageAPI.moveToSecureFolder(securedFolderItem, 'classeur_folder').catch(console.error);
+        setClasseur3DFolders(prev => prev.filter(f => f.id !== folder.id));
+      } else {
+        // 2. Est-ce un fichier ?
+        const item = currentCategoryList.find(f => f.id === id) ||
+          (opened3DFolder ? (folderFilesMap[opened3DFolder.id] || []).find(f => f.id === id) : null) ||
+          documentsList.find(f => f.id === id) ||
+          imagesList.find(f => f.id === id) ||
+          videosList.find(f => f.id === id) ||
+          audioList.find(f => f.id === id) ||
+          downloadedItems.find(f => f.id === id) ||
+          Object.values(folderFilesMap).flat().find(f => f.id === id);
 
-    // Persistance dans Cloudflare D1 secure_files
-    itemsToLock.forEach(item => {
-      const origCat = (item as any).originalCategory || item.category || 'documents';
-      CloudStorageAPI.moveToSecureFolder(item, origCat, (item as any).folderId || opened3DFolder?.id).catch(console.error);
+        if (item) {
+          const locked: FileItem = {
+            ...item,
+            isSecure: true,
+            originalCategory: (item as any).originalCategory || item.category,
+            originalSource: (item as any).originalSource || item.source,
+            source: 'Dossier Sécurisé'
+          };
+          lockedItems.push(locked);
+          const origCat = (item as any).originalCategory || item.category || 'documents';
+          CloudStorageAPI.moveToSecureFolder(item, origCat, (item as any).folderId || opened3DFolder?.id).catch(console.error);
+        }
+      }
     });
 
+    if (lockedItems.length > 0) {
+      setSecureFolderFiles(prev => [...lockedItems, ...prev]);
+    }
+
     // Retirer des listes d'origine pour isolation
-    setDocumentsList(prev => prev.filter(d => !selectedItemIds.includes(d.id)));
-    setImagesList(prev => prev.filter(img => !selectedItemIds.includes(img.id)));
-    setVideosList(prev => prev.filter(vid => !selectedItemIds.includes(vid.id)));
-    setAudioList(prev => prev.filter(aud => !selectedItemIds.includes(aud.id)));
-    setDownloadedItems(prev => prev.filter(dl => !selectedItemIds.includes(dl.id)));
-    setCloudRecentFiles(prev => prev.filter(f => !selectedItemIds.includes(f.id)));
+    setDocumentsList(prev => prev.filter(d => !idsToLock.includes(d.id)));
+    setImagesList(prev => prev.filter(img => !idsToLock.includes(img.id)));
+    setVideosList(prev => prev.filter(vid => !idsToLock.includes(vid.id)));
+    setAudioList(prev => prev.filter(aud => !idsToLock.includes(aud.id)));
+    setDownloadedItems(prev => prev.filter(dl => !idsToLock.includes(dl.id)));
+    setCloudRecentFiles(prev => prev.filter(f => !idsToLock.includes(f.id)));
     if (opened3DFolder) {
       setFolderFilesMap(prev => ({
         ...prev,
-        [opened3DFolder.id]: (prev[opened3DFolder.id] || []).filter(f => !selectedItemIds.includes(f.id))
+        [opened3DFolder.id]: (prev[opened3DFolder.id] || []).filter(f => !idsToLock.includes(f.id))
       }));
     }
 
-    if (splitSelectedFile && selectedItemIds.includes(splitSelectedFile.id)) {
+    if (splitSelectedFile && idsToLock.includes(splitSelectedFile.id)) {
       setSplitSelectedFile(null);
     }
 
     setIsSelectionMode(false);
     setSelectedItemIds([]);
+    showToast(`${count} élément(s) verrouillé(s) dans le dossier sécurisé !`);
   };
 
   // Déverrouiller les éléments sélectionnés et les renvoyer à leur emplacement d'origine
@@ -1893,26 +1981,47 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     itemsToUnlock.forEach(file => {
       const origCat = (file as any).originalCategory || file.category;
       const origSource = (file as any).originalSource || 'StudyCloud';
-      const restored: FileItem = {
-        ...file,
-        isSecure: false,
-        category: origCat,
-        source: origSource
-      };
 
-      if (origCat === 'documents') setDocumentsList(prev => [restored, ...prev]);
-      else if (origCat === 'images') setImagesList(prev => [restored, ...prev]);
-      else if (origCat === 'videos') setVideosList(prev => [restored, ...prev]);
-      else if (origCat === 'audio') setAudioList(prev => [restored, ...prev]);
-      else if (origCat === 'downloads') setDownloadedItems(prev => [restored, ...prev]);
-      else if (origCat === 'classeur' && (file as any).originalFolderId) {
-        const fId = (file as any).originalFolderId;
-        setFolderFilesMap(prev => ({
-          ...prev,
-          [fId]: [restored, ...(prev[fId] || [])]
-        }));
+      if (origCat === 'classeur_folder' || file.category === 'folder') {
+        const meta = (file as any).metadata || {};
+        const restoredFolder: ClasseurCreatedFolder = {
+          id: file.id,
+          name: file.name,
+          modelId: meta.modelId || '1',
+          primaryColor: meta.primaryColor || '#EA580C',
+          accentColor: meta.accentColor || '#F97316',
+          iconName: meta.iconName || 'Folder',
+          textDark: meta.textDark || false,
+          positionX: meta.positionX || 0,
+          positionY: meta.positionY || 0,
+          dateText: file.date || new Date().toLocaleDateString('fr-FR'),
+          zoomLevel: meta.zoomLevel || 10,
+          displayOrder: meta.displayOrder || 0,
+          parentId: meta.parentId || null
+        };
+        setClasseur3DFolders(prev => prev.some(f => f.id === file.id) ? prev : [restoredFolder, ...prev]);
       } else {
-        setDocumentsList(prev => [restored, ...prev]);
+        const restored: FileItem = {
+          ...file,
+          isSecure: false,
+          category: origCat,
+          source: origSource
+        };
+
+        if (origCat === 'documents') setDocumentsList(prev => [restored, ...prev]);
+        else if (origCat === 'images') setImagesList(prev => [restored, ...prev]);
+        else if (origCat === 'videos') setVideosList(prev => [restored, ...prev]);
+        else if (origCat === 'audio') setAudioList(prev => [restored, ...prev]);
+        else if (origCat === 'downloads') setDownloadedItems(prev => [restored, ...prev]);
+        else if (origCat === 'classeur' && (file as any).originalFolderId) {
+          const fId = (file as any).originalFolderId;
+          setFolderFilesMap(prev => ({
+            ...prev,
+            [fId]: [restored, ...(prev[fId] || [])]
+          }));
+        } else {
+          setDocumentsList(prev => [restored, ...prev]);
+        }
       }
 
       // Restauration dans Cloudflare D1
@@ -1927,19 +2036,93 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     setIsSelectionMode(false);
     setSelectedItemIds([]);
+    showToast(`${itemsToUnlock.length} élément(s) déverrouillé(s) !`);
   };
 
   const handleSecureSelected = handleLockSelected;
 
+  // Téléchargement propre directement sur l'appareil de l'utilisateur
+  const downloadFileDirectly = async (file: FileItem) => {
+    try {
+      // 1. Si note TXT ou contenu texte
+      if (file.content !== undefined && (file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt'))) {
+        const blob = new Blob([file.content || ''], { type: 'text/plain;charset=utf-8' });
+        const blobUrl = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = blobUrl;
+        a.download = file.name.toLowerCase().endsWith('.txt') ? file.name : `${file.name}.txt`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 1000);
+        return;
+      }
+
+      // 2. Si URL distante ou blob
+      let targetUrl = file.url || file.previewUrl || (file as any).fileUrl || (file as any).videoUrl || (file as any).audioUrl;
+      if (!targetUrl && file.r2Key) {
+        const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+        targetUrl = `${baseUrl}/api/cloud/file/${file.category || 'documents'}/${encodeURIComponent(file.r2Key)}?download=1&filename=${encodeURIComponent(file.name)}`;
+      }
+
+      if (targetUrl) {
+        if (targetUrl.startsWith('blob:') || targetUrl.startsWith('data:')) {
+          const a = document.createElement('a');
+          a.href = targetUrl;
+          a.download = file.name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          return;
+        }
+
+        // Tenter de télécharger en tant que blob pour forcer l'enregistrement direct
+        try {
+          const resp = await fetch(targetUrl);
+          if (resp.ok) {
+            const blob = await resp.blob();
+            const blobUrl = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = blobUrl;
+            a.download = file.name;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            setTimeout(() => URL.revokeObjectURL(blobUrl), 1500);
+            return;
+          }
+        } catch (fetchErr) {
+          console.warn('Fetch blob download error, falling back:', fetchErr);
+        }
+
+        // Fallback: ajout du paramètre download=1 si endpoint du worker
+        let downloadUrl = targetUrl;
+        if (downloadUrl.includes('/api/cloud/file/')) {
+          downloadUrl += (downloadUrl.includes('?') ? '&' : '?') + `download=1&filename=${encodeURIComponent(file.name)}`;
+        }
+        const a = document.createElement('a');
+        a.href = downloadUrl;
+        a.download = file.name;
+        a.target = '_blank';
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } catch (err) {
+      console.error('Erreur téléchargement propre:', err);
+    }
+  };
+
   // Téléchargement d'un fichier avec enregistrement dans le menu téléchargement
-  const handleDownloadFile = (file: { name: string; size?: string; sizeBytes?: number; category?: any }) => {
+  const handleDownloadFile = (file: { name: string; size?: string; sizeBytes?: number; category?: any; url?: string; previewUrl?: string; r2Key?: string; content?: string; isNotepad?: boolean; extension?: string }) => {
+    downloadFileDirectly(file as FileItem);
     recordDownloadedFile({
       name: file.name,
       size: file.size,
       sizeBytes: file.sizeBytes,
       category: file.category
     });
-    showToast(`Téléchargement de ${file.name}... Ajouté au menu Téléchargements !`);
+    showToast(`Téléchargement de "${file.name}" en cours...`);
   };
 
   // Partage de fichier
@@ -1992,7 +2175,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         // Supprime de la liste adéquate et archive dans la corbeille
         const fileWithSource: FileItem = {
           ...file,
-          originalFolderId: opened3DFolder?.id || file.originalFolderId
+          originalFolderId: opened3DFolder?.id || file.originalFolderId,
+          isTrash: true
         };
         setTrashFiles(prev => [fileWithSource, ...prev.filter(f => f.id !== file.id)]);
         setDocumentsList(prev => prev.filter(d => d.id !== file.id));
@@ -2009,7 +2193,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         if (splitSelectedFile?.id === file.id) {
           setSplitSelectedFile(null);
         }
-        showToast(`"${file.name}" supprimé !`);
+
+        // Appel API Cloudflare D1 pour persister dans trash_files et supprimer de la table active
+        if (opened3DFolder || file.originalFolderId || (file as any).folderId) {
+          CloudStorageAPI.deleteClasseurFile(file.id).catch(console.error);
+        } else if (file.category === 'images' || file.isImage) {
+          CloudStorageAPI.deleteImage(file.id).catch(console.error);
+        } else if (file.category === 'videos' || file.videoUrl) {
+          CloudStorageAPI.deleteVideo(file.id).catch(console.error);
+        } else if (file.category === 'audio' || file.audioUrl) {
+          CloudStorageAPI.deleteAudio(file.id).catch(console.error);
+        } else if (file.category === 'downloads') {
+          CloudStorageAPI.deleteDownload(file.id).catch(console.error);
+        } else {
+          CloudStorageAPI.deleteDocument(file.id).catch(console.error);
+        }
+
+        showToast(`"${file.name}" déplacé dans la corbeille !`);
         break;
       }
 
@@ -2018,12 +2218,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         break;
 
       case 'create_link': {
-        const link = `${window.location.origin}${window.location.pathname}#${file.category || 'file'}-${file.id}`;
-        try {
-          navigator.clipboard?.writeText(link);
-          showToast('Lien copié dans le presse-papiers !');
-        } catch {
-          showToast(`Lien créé pour "${file.name}"`);
+        if (onOpenCreateShareLink) {
+          onOpenCreateShareLink([{
+            id: file.id,
+            name: file.name,
+            size: file.sizeBytes || 0,
+            type: file.extension || file.category || 'file',
+            url: file.url || file.previewUrl
+          }]);
+          showToast(`Création du lien pour "${file.name}"...`);
+        } else {
+          const link = `${window.location.origin}${window.location.pathname}#${file.category || 'file'}-${file.id}`;
+          try {
+            navigator.clipboard?.writeText(link);
+            showToast('Lien copié dans le presse-papiers !');
+          } catch {
+            showToast(`Lien créé pour "${file.name}"`);
+          }
         }
         break;
       }
@@ -2234,28 +2445,93 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   const handleDeleteSelected = (list: FileItem[]) => {
-    const idsToDelete = selectedItemIds;
+    const idsToDelete = [...selectedItemIds];
     if (idsToDelete.length === 0) {
       showToast("Aucun élément sélectionné");
       return;
     }
     const count = idsToDelete.length;
 
-    // Récupérer et envoyer les éléments supprimés dans la corbeille
     const deletedItems: FileItem[] = [];
+
+    // Récursion pour trouver les sous-dossiers et fichiers d'un dossier
+    const getDescendants = (folderId: string): { folderIds: string[]; files: FileItem[] } => {
+      const subFolders = classeur3DFolders.filter(f => f.parentId === folderId);
+      const directFiles = (folderFilesMap[folderId] || []).map(f => ({ ...f, originalFolderId: folderId, isTrash: true }));
+      let allFolderIds = [folderId, ...subFolders.map(s => s.id)];
+      let allFiles = [...directFiles];
+      subFolders.forEach(sub => {
+        const desc = getDescendants(sub.id);
+        allFolderIds = [...allFolderIds, ...desc.folderIds];
+        allFiles = [...allFiles, ...desc.files];
+      });
+      return { folderIds: allFolderIds, files: allFiles };
+    };
+
     idsToDelete.forEach(id => {
-      const found = list.find(f => f.id === id) ||
-        (opened3DFolder ? (folderFilesMap[opened3DFolder.id] || []).find(f => f.id === id) : null) ||
-        documentsList.find(f => f.id === id) ||
-        imagesList.find(f => f.id === id) ||
-        videosList.find(f => f.id === id) ||
-        audioList.find(f => f.id === id) ||
-        downloadedItems.find(f => f.id === id);
-      if (found) {
+      // 1. Est-ce un dossier 3D ?
+      const folder = classeur3DFolders.find(f => f.id === id);
+      if (folder) {
+        CloudStorageAPI.deleteClasseurFolder(id).catch(console.error);
+
+        const { folderIds, files } = getDescendants(id);
+
         deletedItems.push({
-          ...found,
-          originalFolderId: opened3DFolder?.id || found.originalFolderId
+          id: folder.id,
+          name: folder.name,
+          category: 'documents' as const,
+          source: 'Classeur',
+          sourceCategory: 'classeur_folder',
+          size: `${files.length} fichier(s)`,
+          date: folder.dateText,
+          isTrash: true,
+          metadata: folder
+        } as FileItem);
+
+        deletedItems.push(...files);
+
+        setClasseur3DFolders(prev => prev.filter(f => !folderIds.includes(f.id)));
+        setFolderFilesMap(prev => {
+          const next = { ...prev };
+          folderIds.forEach(fId => delete next[fId]);
+          return next;
         });
+
+        if (opened3DFolder && folderIds.includes(opened3DFolder.id)) {
+          setOpened3DFolder(null);
+        }
+      } else {
+        // 2. Est-ce un fichier ?
+        const found = list.find(f => f.id === id) ||
+          (opened3DFolder ? (folderFilesMap[opened3DFolder.id] || []).find(f => f.id === id) : null) ||
+          documentsList.find(f => f.id === id) ||
+          imagesList.find(f => f.id === id) ||
+          videosList.find(f => f.id === id) ||
+          audioList.find(f => f.id === id) ||
+          downloadedItems.find(f => f.id === id) ||
+          Object.values(folderFilesMap).flat().find(f => f.id === id);
+
+        if (found) {
+          deletedItems.push({
+            ...found,
+            originalFolderId: opened3DFolder?.id || found.originalFolderId,
+            isTrash: true
+          });
+
+          if (opened3DFolder || found.originalFolderId || (found as any).folderId) {
+            CloudStorageAPI.deleteClasseurFile(found.id).catch(console.error);
+          } else if (found.category === 'images' || found.isImage) {
+            CloudStorageAPI.deleteImage(found.id).catch(console.error);
+          } else if (found.category === 'videos' || found.videoUrl) {
+            CloudStorageAPI.deleteVideo(found.id).catch(console.error);
+          } else if (found.category === 'audio' || found.audioUrl) {
+            CloudStorageAPI.deleteAudio(found.id).catch(console.error);
+          } else if (found.category === 'downloads') {
+            CloudStorageAPI.deleteDownload(found.id).catch(console.error);
+          } else {
+            CloudStorageAPI.deleteDocument(found.id).catch(console.error);
+          }
+        }
       }
     });
 
@@ -2291,7 +2567,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
     setSelectedItemIds([]);
     setIsSelectionMode(false);
-    showToast(`${count} élément(s) supprimé(s)`);
+    showToast(`${count} élément(s) déplacé(s) dans la corbeille`);
   };
 
   const handleDownloadSelected = (list: FileItem[]) => {
@@ -2299,16 +2575,49 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       showToast("Aucun élément sélectionné");
       return;
     }
-    const count = selectedItemIds.length;
+
+    const filesToDownload: FileItem[] = [];
+
+    const getFolderFilesRecursive = (folderId: string): FileItem[] => {
+      const directFiles = folderFilesMap[folderId] || [];
+      const subFolders = classeur3DFolders.filter(f => f.parentId === folderId);
+      const subFiles = subFolders.flatMap(sub => getFolderFilesRecursive(sub.id));
+      return [...directFiles, ...subFiles];
+    };
+
     selectedItemIds.forEach(id => {
-      const item = list.find(f => f.id === id) ||
-        documentsList.find(f => f.id === id) ||
-        imagesList.find(f => f.id === id) ||
-        videosList.find(f => f.id === id) ||
-        audioList.find(f => f.id === id);
-      if (item) handleDownloadFile(item);
+      const folder = classeur3DFolders.find(f => f.id === id);
+      if (folder) {
+        filesToDownload.push(...getFolderFilesRecursive(folder.id));
+      } else {
+        const item = list.find(f => f.id === id) ||
+          (opened3DFolder ? (folderFilesMap[opened3DFolder.id] || []).find(f => f.id === id) : null) ||
+          documentsList.find(f => f.id === id) ||
+          imagesList.find(f => f.id === id) ||
+          videosList.find(f => f.id === id) ||
+          audioList.find(f => f.id === id) ||
+          downloadedItems.find(f => f.id === id) ||
+          Object.values(folderFilesMap).flat().find(f => f.id === id);
+        if (item) {
+          filesToDownload.push(item);
+        }
+      }
     });
-    showToast(`${count} fichier(s) en cours de téléchargement`);
+
+    if (filesToDownload.length === 0) {
+      showToast("Aucun fichier à télécharger");
+      setIsSelectionMode(false);
+      setSelectedItemIds([]);
+      return;
+    }
+
+    filesToDownload.forEach((file, index) => {
+      setTimeout(() => {
+        handleDownloadFile(file);
+      }, index * 250);
+    });
+
+    showToast(`${filesToDownload.length} fichier(s) en cours de téléchargement`);
     setIsSelectionMode(false);
     setSelectedItemIds([]);
   };
@@ -2318,14 +2627,63 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       showToast("Aucun élément sélectionné");
       return;
     }
-    const count = selectedItemIds.length;
-    const url = `${window.location.origin}/share?ids=${selectedItemIds.join(',')}`;
-    try {
-      navigator.clipboard?.writeText(url);
-      showToast(`${count} élément(s) : lien copié dans le presse-papiers !`);
-    } catch {
-      showToast(`${count} élément(s) : lien créé !`);
+
+    const filesToShare: any[] = [];
+
+    const getFolderFilesRecursive = (folderId: string): FileItem[] => {
+      const directFiles = folderFilesMap[folderId] || [];
+      const subFolders = classeur3DFolders.filter(f => f.parentId === folderId);
+      const subFiles = subFolders.flatMap(sub => getFolderFilesRecursive(sub.id));
+      return [...directFiles, ...subFiles];
+    };
+
+    selectedItemIds.forEach(id => {
+      const folder = classeur3DFolders.find(f => f.id === id);
+      if (folder) {
+        const folderFiles = getFolderFilesRecursive(folder.id);
+        folderFiles.forEach(f => {
+          filesToShare.push({
+            id: f.id,
+            name: f.name,
+            size: f.sizeBytes || 0,
+            type: f.extension || f.category || 'file',
+            url: f.url || f.previewUrl
+          });
+        });
+      } else {
+        const item = list.find(f => f.id === id) ||
+          (opened3DFolder ? (folderFilesMap[opened3DFolder.id] || []).find(f => f.id === id) : null) ||
+          documentsList.find(f => f.id === id) ||
+          imagesList.find(f => f.id === id) ||
+          videosList.find(f => f.id === id) ||
+          audioList.find(f => f.id === id) ||
+          downloadedItems.find(f => f.id === id) ||
+          Object.values(folderFilesMap).flat().find(f => f.id === id);
+        if (item) {
+          filesToShare.push({
+            id: item.id,
+            name: item.name,
+            size: item.sizeBytes || 0,
+            type: item.extension || item.category || 'file',
+            url: item.url || item.previewUrl
+          });
+        }
+      }
+    });
+
+    if (onOpenCreateShareLink && filesToShare.length > 0) {
+      onOpenCreateShareLink(filesToShare);
+      showToast(`${filesToShare.length} fichier(s) prêt(s) pour la création du lien de partage !`);
+    } else {
+      const url = `${window.location.origin}/share?ids=${selectedItemIds.join(',')}`;
+      try {
+        navigator.clipboard?.writeText(url);
+        showToast(`${selectedItemIds.length} élément(s) : lien copié dans le presse-papiers !`);
+      } catch {
+        showToast(`${selectedItemIds.length} élément(s) : lien créé !`);
+      }
     }
+
     setIsSelectionMode(false);
     setSelectedItemIds([]);
   };
@@ -3225,6 +3583,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // =========================================================================
   const renderSelectionBanner = (currentCategoryList: FileItem[]) => {
     if (!isSelectionMode) return null;
+    const isSingle = selectedItemIds.length === 1;
     const isAllSelected = currentCategoryList.length > 0 && selectedItemIds.length >= currentCategoryList.length;
     const isTrashView = currentSubView?.id === 'studycloud-collection-trash' || (isCloudView && cloudActiveTab === 'trash');
 
@@ -3264,10 +3623,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 type="button"
                 onClick={handleRestoreSelectedFromTrash}
                 className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                title={isAllSelected ? "Tout restaurer" : "Restaurer"}
+                title={isSingle ? "Restaurer" : "Tout restaurer"}
               >
                 <RotateCcw className="w-3.5 h-3.5" />
-                <span>{isAllSelected ? 'Tout restaurer' : 'Restaurer'}</span>
+                <span>{isSingle ? 'Restaurer' : 'Tout restaurer'}</span>
               </button>
 
               {/* Supprimer définitivement */}
@@ -3275,10 +3634,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 type="button"
                 onClick={handlePermanentDeleteSelectedFromTrash}
                 className="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                title={isAllSelected ? "Tout supprimer définitivement" : "Supprimer définitivement"}
+                title={isSingle ? "Supprimer définitivement" : "Tout supprimer définitivement"}
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>{isAllSelected ? 'Tout supprimer définitivement' : 'Supprimer définitivement'}</span>
+                <span>{isSingle ? 'Supprimer définitivement' : 'Tout supprimer définitivement'}</span>
               </button>
             </>
           ) : (
@@ -3288,10 +3647,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 type="button"
                 onClick={() => handleDeleteSelected(currentCategoryList)}
                 className="px-2.5 py-1.5 rounded-xl bg-rose-600 hover:bg-rose-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                title={isAllSelected ? "Tout supprimer" : "Supprimer"}
+                title={isSingle ? "Supprimer" : "Tout supprimer"}
               >
                 <Trash2 className="w-3.5 h-3.5" />
-                <span>{isAllSelected ? 'Tout supprimer' : 'Supprimer'}</span>
+                <span>{isSingle ? 'Supprimer' : 'Tout supprimer'}</span>
               </button>
 
               {/* Tout télécharger ou Télécharger */}
@@ -3299,10 +3658,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 type="button"
                 onClick={() => handleDownloadSelected(currentCategoryList)}
                 className="px-2.5 py-1.5 rounded-xl bg-blue-600 hover:bg-blue-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                title={isAllSelected ? "Tout télécharger" : "Télécharger"}
+                title={isSingle ? "Télécharger" : "Tout télécharger"}
               >
                 <Download className="w-3.5 h-3.5" />
-                <span>{isAllSelected ? 'Tout télécharger' : 'Télécharger'}</span>
+                <span>{isSingle ? 'Télécharger' : 'Tout télécharger'}</span>
               </button>
 
               {/* Créer un lien */}
@@ -3322,20 +3681,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   type="button"
                   onClick={handleUnlockSelected}
                   className="px-2.5 py-1.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                  title={isAllSelected ? "Tout déverrouiller" : "Déverrouiller"}
+                  title={isSingle ? "Déverrouiller" : "Tout déverrouiller"}
                 >
                   <Unlock className="w-3.5 h-3.5" />
-                  <span>{isAllSelected ? 'Tout déverrouiller' : 'Déverrouiller'}</span>
+                  <span>{isSingle ? 'Déverrouiller' : 'Tout déverrouiller'}</span>
                 </button>
               ) : (
                 <button
                   type="button"
                   onClick={() => handleLockSelected(currentCategoryList)}
                   className="px-2.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
-                  title={isAllSelected ? "Tout verrouiller" : "Verrouiller"}
+                  title={isSingle ? "Verrouiller" : "Tout verrouiller"}
                 >
                   <Lock className="w-3.5 h-3.5" />
-                  <span>{isAllSelected ? 'Tout verrouiller' : 'Verrouiller'}</span>
+                  <span>{isSingle ? 'Verrouiller' : 'Tout verrouiller'}</span>
                 </button>
               )}
             </>
@@ -3680,27 +4039,38 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
       case 'check_all': {
         setIsSelectionMode(true);
-        const allIds = classeur3DFolders.map(f => f.id);
-        setSelectedItemIds(allIds);
-        showToast(`Tous les ${classeur3DFolders.length} dossiers cochés`);
+        if (opened3DFolder) {
+          const subFolders = classeur3DFolders.filter(f => f.parentId === opened3DFolder.id);
+          const folderFiles = folderFilesMap[opened3DFolder.id] || [];
+          const allIds = [...subFolders.map(sf => sf.id), ...folderFiles.map(f => f.id)];
+          setSelectedItemIds(allIds);
+          showToast(`Tous les ${allIds.length} éléments cochés`);
+        } else {
+          const rootFolders = classeur3DFolders.filter(f => !f.parentId);
+          const allIds = rootFolders.map(f => f.id);
+          setSelectedItemIds(allIds);
+          showToast(`Tous les ${allIds.length} dossiers cochés`);
+        }
         break;
       }
 
       case 'download': {
-        try {
-          const exportData = JSON.stringify(folder, null, 2);
-          const blob = new Blob([exportData], { type: 'application/json' });
-          const url = URL.createObjectURL(blob);
-          const a = document.createElement('a');
-          a.href = url;
-          a.download = `${folder.name.replace(/[^a-zA-Z0-9_-]/g, '_')}_dossier.json`;
-          document.body.appendChild(a);
-          a.click();
-          document.body.removeChild(a);
-          URL.revokeObjectURL(url);
-          showToast(`Dossier "${folder.name}" téléchargé !`);
-        } catch {
-          showToast(`Dossier "${folder.name}" téléchargé !`);
+        const getFolderFilesRecursive = (folderId: string): FileItem[] => {
+          const directFiles = folderFilesMap[folderId] || [];
+          const subFolders = classeur3DFolders.filter(f => f.parentId === folderId);
+          const subFiles = subFolders.flatMap(sub => getFolderFilesRecursive(sub.id));
+          return [...directFiles, ...subFiles];
+        };
+        const filesToDownload = getFolderFilesRecursive(folder.id);
+        if (filesToDownload.length === 0) {
+          showToast(`Le dossier "${folder.name}" est vide.`);
+        } else {
+          showToast(`Téléchargement de ${filesToDownload.length} fichier(s) du dossier "${folder.name}"...`);
+          filesToDownload.forEach((file, index) => {
+            setTimeout(() => {
+              downloadFileDirectly(file);
+            }, index * 200);
+          });
         }
         break;
       }
@@ -3737,12 +4107,32 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
 
       case 'create_link': {
-        const link = `${window.location.origin}${window.location.pathname}#classeur-${folder.id}`;
-        try {
-          navigator.clipboard?.writeText(link);
-          showToast('Lien copié dans le presse-papiers !');
-        } catch {
-          showToast(`Lien créé pour "${folder.name}"`);
+        const getFolderFilesRecursive = (folderId: string): FileItem[] => {
+          const directFiles = folderFilesMap[folderId] || [];
+          const subFolders = classeur3DFolders.filter(f => f.parentId === folderId);
+          const subFiles = subFolders.flatMap(sub => getFolderFilesRecursive(sub.id));
+          return [...directFiles, ...subFiles];
+        };
+        const folderFiles = getFolderFilesRecursive(folder.id);
+        const filesToShare = folderFiles.map(f => ({
+          id: f.id,
+          name: f.name,
+          size: f.sizeBytes || 0,
+          type: f.extension || f.category || 'file',
+          url: f.url || f.previewUrl
+        }));
+
+        if (onOpenCreateShareLink && filesToShare.length > 0) {
+          onOpenCreateShareLink(filesToShare);
+          showToast(`${filesToShare.length} fichier(s) du dossier "${folder.name}" prêts pour le lien de partage !`);
+        } else {
+          const link = `${window.location.origin}${window.location.pathname}#classeur-${folder.id}`;
+          try {
+            navigator.clipboard?.writeText(link);
+            showToast('Lien du dossier copié dans le presse-papiers !');
+          } catch {
+            showToast(`Lien créé pour "${folder.name}"`);
+          }
         }
         break;
       }
@@ -3753,10 +4143,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           name: folder.name,
           category: 'documents',
           source: 'Dossier Sécurisé',
+          originalCategory: 'classeur_folder',
           size: '1 dossier 3D',
           sizeBytes: 2048,
           date: folder.dateText,
           isSecure: true,
+          metadata: folder,
         };
         setSecureFolderFiles(prev => [securedFile, ...prev]);
         setClasseur3DFolders(prev => prev.filter(f => f.id !== folder.id));
@@ -3764,6 +4156,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         if (opened3DFolder?.id === folder.id) {
           setOpened3DFolder(null);
         }
+        CloudStorageAPI.moveToSecureFolder(securedFile, 'classeur_folder').catch(console.error);
         showToast(`Dossier "${folder.name}" verrouillé dans le dossier sécurisé !`);
         break;
       }
@@ -3848,6 +4241,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       !subSearchQuery.trim() || f.name.toLowerCase().includes(subSearchQuery.toLowerCase().trim())
     );
     const totalItems = subFolders.length + files.length;
+    const allOpenedFolderItems: FileItem[] = [
+      ...subFolders.map(sf => ({
+        id: sf.id,
+        name: sf.name,
+        category: 'classeur',
+        size: 'Dossier 3D',
+        sizeBytes: 1024,
+        date: sf.dateText,
+      } as FileItem)),
+      ...files
+    ];
 
     return (
       <div 
@@ -4006,6 +4410,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           </div>
         )}
 
+        {/* Bandeau d'action de sélection multiple si activé */}
+        {renderSelectionBanner(allOpenedFolderItems)}
+
         {/* Fichiers et sous-dossiers du dossier OU État vide */}
         {totalItems === 0 ? (
           <div className="py-20 sm:py-28 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400 rounded-3xl border-2 border-dashed border-white/10 p-6 bg-black/20">
@@ -4066,49 +4473,89 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             }}
           >
             {/* 1. Sous-dossiers créés dans ce dossier (dossier dans dossier - taille fixe 4) */}
-            {subFolders.map((subF) => (
-              <div
-                key={subF.id}
-                onClick={() => {
-                  setOpened3DFolder(subF);
-                  setSplitSelectedFile(null);
-                  setSubSearchQuery('');
-                }}
-                className="group relative p-2.5 sm:p-3 rounded-2xl transition-all select-none border bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer flex flex-col justify-between"
-              >
-                {/* Bouton 3 traits & menu d'options */}
-                <div 
-                  className="absolute top-2 right-2 z-30 studycloud-menu-trigger scale-90 origin-top-right"
-                  onClick={(e) => e.stopPropagation()}
+            {subFolders.map((subF) => {
+              const isSubFolderSelected = selectedItemIds.includes(subF.id);
+              return (
+                <div
+                  key={subF.id}
+                  onClick={() => {
+                    if (isSelectionMode) {
+                      toggleItemSelection(subF.id);
+                      return;
+                    }
+                    setOpened3DFolder(subF);
+                    setSplitSelectedFile(null);
+                    setSubSearchQuery('');
+                  }}
+                  className={`group relative p-2.5 sm:p-3 rounded-2xl transition-all select-none border ${
+                    isSubFolderSelected
+                      ? 'border-amber-400 ring-2 ring-amber-400/50 bg-[#14233C]'
+                      : 'bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50'
+                  } shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer flex flex-col justify-between`}
                 >
-                  <button
-                    type="button"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      setActiveFolderMenuId(activeFolderMenuId === subF.id ? null : subF.id);
-                    }}
-                    className={`p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
-                      activeFolderMenuId === subF.id 
-                        ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black' 
-                        : 'border-white/30 opacity-90 group-hover:opacity-100'
-                    }`}
-                    title="Options du sous-dossier (3 traits)"
-                  >
-                    <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
-                  </button>
-                  {renderFolder3DOptionsMenu(subF)}
-                </div>
+                  {/* Case à cocher carrée quand le mode sélection est actif */}
+                  {isSelectionMode && (
+                    <div 
+                      className="absolute top-2 left-2 z-30"
+                      onClick={(e) => e.stopPropagation()}
+                    >
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleItemSelection(subF.id);
+                        }}
+                        className={`p-1 sm:p-1.5 rounded-lg border transition-all cursor-pointer shadow-lg backdrop-blur-sm ${
+                          isSubFolderSelected
+                            ? 'bg-amber-500 text-stone-900 border-amber-400 ring-2 ring-amber-400/50'
+                            : 'bg-black/75 hover:bg-black text-white/70 hover:text-white border-white/30'
+                        }`}
+                        title={isSubFolderSelected ? "Décocher" : "Cocher"}
+                      >
+                        {isSubFolderSelected ? (
+                          <CheckSquare className="w-3.5 h-3.5 stroke-[2.5]" />
+                        ) : (
+                          <Square className="w-3.5 h-3.5 stroke-[2]" />
+                        )}
+                      </button>
+                    </div>
+                  )}
 
-                <div className="pt-7 sm:pt-7.5 pb-1 w-full">
-                  <Classeur3DFolderCard folder={subF} />
+                  {/* Bouton 3 traits & menu d'options */}
+                  <div 
+                    className="absolute top-2 right-2 z-30 studycloud-menu-trigger scale-90 origin-top-right"
+                    onClick={(e) => e.stopPropagation()}
+                  >
+                    <button
+                      type="button"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setActiveFolderMenuId(activeFolderMenuId === subF.id ? null : subF.id);
+                      }}
+                      className={`p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                        activeFolderMenuId === subF.id 
+                          ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black' 
+                          : 'border-white/30 opacity-90 group-hover:opacity-100'
+                      }`}
+                      title="Options du sous-dossier (3 traits)"
+                    >
+                      <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
+                    </button>
+                    {renderFolder3DOptionsMenu(subF)}
+                  </div>
+
+                  <div className="pt-7 sm:pt-7.5 pb-1 w-full">
+                    <Classeur3DFolderCard folder={subF} />
+                  </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
 
             {/* 2. Fichiers du dossier (Bloc-notes TXT modèle Image 2 et autres fichiers importés - taille fixe 4) */}
             {files.map((file) => {
               const isTxtNote = file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt');
               const isSelected = splitSelectedFile?.id === file.id;
+              const isChecked = selectedItemIds.includes(file.id);
               const isMenuOpen = activeMenuFileId === file.id;
               const isBeingDragged = draggedFileId === file.id;
               const isDropTarget = dragOverFileId === file.id && draggedFileId !== file.id;
@@ -4156,7 +4603,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 return (
                   <div
                     key={file.id}
-                    draggable
+                    draggable={!isSelectionMode}
                     onDragStart={(e) => {
                       e.stopPropagation();
                       e.dataTransfer.setData('text/plain', file.id);
@@ -4177,22 +4624,49 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       setDraggedFileId(null);
                       setDragOverFileId(null);
                     }}
-                    onClick={() => handleSelectFile(file)}
+                    onClick={() => {
+                      if (isSelectionMode) {
+                        toggleItemSelection(file.id);
+                        return;
+                      }
+                      handleSelectFile(file);
+                    }}
                     className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 cursor-pointer flex flex-col justify-between select-none ${
                       isBeingDragged
                         ? 'opacity-30 scale-95 border-dashed border-cyan-400 bg-cyan-500/10 cursor-grabbing'
                         : isDropTarget
                         ? 'border-cyan-400 ring-4 ring-cyan-400/50 scale-[1.03]'
+                        : isChecked
+                        ? 'border-amber-400 ring-2 ring-amber-400/50 bg-[#14233C]'
                         : isSelected
                         ? 'border-cyan-400 ring-2 ring-cyan-400/40 bg-[#14233C]'
                         : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1'
                     } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
                   >
-                    {/* Haut de carte : Badge TXT et Bouton 3 traits identique aux dossiers et fichiers */}
+                    {/* Haut de carte : Case à cocher, Badge TXT et Bouton 3 traits */}
                     <div className="flex items-center justify-between w-full mb-1">
-                      <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
-                        TXT
-                      </span>
+                      <div className="flex items-center gap-1.5">
+                        {isSelectionMode && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              toggleItemSelection(file.id);
+                            }}
+                            className="p-0.5 text-white hover:scale-110 transition-transform cursor-pointer"
+                            title={isChecked ? "Décocher" : "Cocher"}
+                          >
+                            {isChecked ? (
+                              <CheckSquare className="w-4 h-4 fill-amber-400 text-stone-950" />
+                            ) : (
+                              <Square className="w-4 h-4 text-white/90" />
+                            )}
+                          </button>
+                        )}
+                        <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
+                          TXT
+                        </span>
+                      </div>
 
                       <div 
                         className="relative studycloud-menu-trigger"
@@ -4215,7 +4689,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         </button>
 
                         {/* Menu de propositions identique pour les fichiers */}
-                        {renderFileOptionsMenu(file, files, 'right')}
+                        {renderFileOptionsMenu(file, allOpenedFolderItems, 'right')}
                       </div>
                     </div>
 
@@ -4243,7 +4717,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               return (
                 <div
                   key={file.id}
-                  draggable
+                  draggable={!isSelectionMode}
                   onDragStart={(e) => {
                     e.stopPropagation();
                     e.dataTransfer.setData('text/plain', file.id);
@@ -4264,18 +4738,45 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     setDraggedFileId(null);
                     setDragOverFileId(null);
                   }}
-                  onClick={() => handleSelectFile(file)}
+                  onClick={() => {
+                    if (isSelectionMode) {
+                      toggleItemSelection(file.id);
+                      return;
+                    }
+                    handleSelectFile(file);
+                  }}
                   className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200 cursor-pointer flex flex-col ${
                     isBeingDragged
                       ? 'opacity-30 scale-95 border-dashed border-orange-400 bg-orange-500/10 cursor-grabbing'
                       : isDropTarget
                       ? 'border-orange-400 ring-4 ring-orange-400/50 scale-[1.03]'
+                      : isChecked
+                      ? 'border-amber-400 ring-2 ring-amber-400/50 bg-[#192238]'
                       : isSelected
                       ? 'border-orange-400 ring-2 ring-orange-400/40 bg-[#192238]'
                       : 'border-white/10 hover:border-orange-500/50 hover:-translate-y-1'
                   } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
                 >
                   <div className="w-full h-24 sm:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center overflow-hidden">
+                    {/* Case à cocher carrée quand le mode sélection est actif */}
+                    {isSelectionMode && (
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleItemSelection(file.id);
+                        }}
+                        className="absolute top-1.5 left-1.5 z-20 p-1 rounded-lg bg-black/75 hover:bg-black text-white border border-white/30 transition-all cursor-pointer shadow-lg backdrop-blur-sm"
+                        title={isChecked ? "Décocher" : "Cocher"}
+                      >
+                        {isChecked ? (
+                          <CheckSquare className="w-3.5 h-3.5 fill-amber-400 text-stone-950" />
+                        ) : (
+                          <Square className="w-3.5 h-3.5 text-white/90" />
+                        )}
+                      </button>
+                    )}
+
                     {file.category === 'images' ? (
                       <img 
                         src={file.previewUrl || (file as any).url} 
@@ -4323,7 +4824,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       </button>
 
                       {/* Menu de propositions identique pour les fichiers */}
-                      {renderFileOptionsMenu(file, files, 'right')}
+                      {renderFileOptionsMenu(file, allOpenedFolderItems, 'right')}
                     </div>
                   </div>
 
@@ -7355,6 +7856,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         </div>
                       </div>
 
+                      {/* Bandeau d'action de sélection multiple si activé pour les dossiers du classeur */}
+                      {(() => {
+                        const rootFoldersAsFiles: FileItem[] = classeur3DFolders
+                          .filter(f => !f.parentId)
+                          .map(f => ({
+                            id: f.id,
+                            name: f.name,
+                            category: 'classeur',
+                            size: 'Dossier 3D',
+                            sizeBytes: 2048,
+                            date: f.dateText,
+                          } as FileItem));
+                        return renderSelectionBanner(rootFoldersAsFiles);
+                      })()}
+
                       {/* Grille progressive ligne par ligne : auto-fill qui s'adapte à la réduction de taille pour occuper tout l'espace libre */}
                       <div 
                         className="grid transition-all duration-300 w-full"
@@ -7368,6 +7884,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           .map((folder) => {
                             const isBeingDragged = folderDragState?.folder.id === folder.id;
                             const isBeingHeld = holdingFolderId === folder.id;
+                            const isFolderSelected = selectedItemIds.includes(folder.id);
                             return (
                               <motion.div
                                 key={folder.id}
@@ -7377,6 +7894,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                 onPointerDown={(e) => handleFolderPointerDown(e, folder)}
                                 onClick={(e) => {
                                   if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('.studycloud-file-menu-panel') || (e.target as HTMLElement).closest('.studycloud-menu-trigger')) return;
+                                  if (isSelectionMode) {
+                                    toggleItemSelection(folder.id);
+                                    return;
+                                  }
                                   if (!folderDragState) {
                                     setOpened3DFolder(folder);
                                   }
@@ -7386,9 +7907,40 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                     ? 'opacity-20 scale-95 border-dashed border-orange-500/60 bg-orange-500/5 cursor-grabbing'
                                     : isBeingHeld
                                       ? 'scale-105 shadow-2xl border-orange-400 bg-[#141E34] cursor-grabbing'
-                                      : 'bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer'
+                                      : isFolderSelected
+                                        ? 'border-amber-400 ring-2 ring-amber-400/50 bg-[#14233C] shadow-2xl scale-[1.01]'
+                                        : 'bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer'
                                 }`}
                               >
+                                {/* Case à cocher carrée quand le mode sélection est actif */}
+                                {isSelectionMode && (
+                                  <div 
+                                    className="absolute top-2 left-2 z-30"
+                                    onPointerDown={(e) => e.stopPropagation()}
+                                    onClick={(e) => e.stopPropagation()}
+                                  >
+                                    <button
+                                      type="button"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        toggleItemSelection(folder.id);
+                                      }}
+                                      className={`p-1 sm:p-1.5 rounded-lg border transition-all cursor-pointer shadow-lg backdrop-blur-sm ${
+                                        isFolderSelected
+                                          ? 'bg-amber-500 text-stone-900 border-amber-400 ring-2 ring-amber-400/50'
+                                          : 'bg-black/75 hover:bg-black text-white/70 hover:text-white border-white/30'
+                                      }`}
+                                      title={isFolderSelected ? "Décocher" : "Cocher"}
+                                    >
+                                      {isFolderSelected ? (
+                                        <CheckSquare className="w-3.5 h-3.5 stroke-[2.5]" />
+                                      ) : (
+                                        <Square className="w-3.5 h-3.5 stroke-[2]" />
+                                      )}
+                                    </button>
+                                  </div>
+                                )}
+
                                 {/* Haut droite : Bouton 3 traits & Menu d'options (Image 1 & 2) */}
                                 <div 
                                   className={getFolderMenuBtnClass(folderZoomLevel)}
