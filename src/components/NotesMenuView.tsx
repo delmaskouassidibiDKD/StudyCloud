@@ -397,9 +397,32 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
     setViewMode('list');
   };
 
-  const handleDeleteNote = (id: string) => {
+  const deleteNoteAndSendToTrash = (id: string) => {
+    const noteToDelete = notes.find(n => n.id === id);
+    if (noteToDelete) {
+      try {
+        const savedTrash = localStorage.getItem('studycloud_trash_files');
+        const trashList = savedTrash ? JSON.parse(savedTrash) : [];
+        const trashItem = {
+          id: noteToDelete.id,
+          name: `${noteToDelete.title || 'Note sans titre'}.txt`,
+          size: `${Math.max(1, Math.round((noteToDelete.content || '').length / 100))} Ko`,
+          date: noteToDelete.date || "Aujourd'hui",
+          source: 'Bloc-notes',
+          category: 'documents',
+          extension: 'txt',
+          isNotepad: true,
+          content: noteToDelete.content
+        };
+        localStorage.setItem('studycloud_trash_files', JSON.stringify([trashItem, ...trashList.filter((t: any) => t.id !== id)]));
+      } catch {}
+    }
     setNotes(prev => prev.filter(n => n.id !== id));
     StudyCloudAPI.deleteNote(id).catch(() => {});
+  };
+
+  const handleDeleteNote = (id: string) => {
+    deleteNoteAndSendToTrash(id);
     setViewMode('list');
   };
 
@@ -478,8 +501,7 @@ export const NotesMenuView: React.FC<NotesMenuViewProps> = ({ onBack }) => {
                   type="button"
                   onClick={() => {
                     if (activeNote) {
-                      setNotes(prev => prev.filter(n => n.id !== activeNote.id));
-                      StudyCloudAPI.deleteNote(activeNote.id).catch(() => {});
+                      deleteNoteAndSendToTrash(activeNote.id);
                     }
                     setShowDeleteConfirm(false);
                     setViewMode('list');
