@@ -82,6 +82,10 @@ export interface ClasseurCreatedFolder {
   parentId?: string;
   isFavorite?: boolean;
   isPinned?: boolean;
+  positionX?: number;
+  positionY?: number;
+  displayOrder?: number;
+  zoomLevel?: number;
 }
 
 // MODÈLE 1 : Onglets Index Pastel (Image 1 - 12 dossiers)

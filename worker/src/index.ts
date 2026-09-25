@@ -9,6 +9,28 @@ export interface Env {
   'MON_R2-STUDYCLOUD'?: R2Bucket;
   MON_D1_STUDYCLOUD?: D1Database;
   MON_R2_STUDYCLOUD?: R2Bucket;
+  // Option B: Liaisons R2 dédiées par catégorie
+  BUCKET_CLASSEUR?: R2Bucket;
+  BUCKET_AUDIO?: R2Bucket;
+  BUCKET_IMAGES?: R2Bucket;
+  BUCKET_VIDEOS?: R2Bucket;
+  BUCKET_DOCUMENTS?: R2Bucket;
+  BUCKET_DOWNLOADS?: R2Bucket;
+  BUCKET_SECURE?: R2Bucket;
+  MON_R2_CLASSEUR?: R2Bucket;
+  MON_R2_AUDIO?: R2Bucket;
+  MON_R2_IMAGES?: R2Bucket;
+  MON_R2_VIDEOS?: R2Bucket;
+  MON_R2_DOCUMENTS?: R2Bucket;
+  MON_R2_DOWNLOADS?: R2Bucket;
+  MON_R2_SECURE?: R2Bucket;
+  'MON_R2-CLASSEUR'?: R2Bucket;
+  'MON_R2-AUDIO'?: R2Bucket;
+  'MON_R2-IMAGES'?: R2Bucket;
+  'MON_R2-VIDEOS'?: R2Bucket;
+  'MON_R2-DOCUMENTS'?: R2Bucket;
+  'MON_R2-DOWNLOADS'?: R2Bucket;
+  'MON_R2-SECURE'?: R2Bucket;
   // Liaisons Workers AI (nom officiel: MON-STUDYCLOUD-ia)
   'MON-STUDYCLOUD-ia'?: any;
   MON_STUDYCLOUD_IA?: any;
@@ -2461,6 +2483,286 @@ async function createNotification(
   }
 }
 
+// ----------------------------------------------------------------------------
+// Initialisation des Tables D1 et Résolution R2 Dédiées (Option B)
+// ----------------------------------------------------------------------------
+let isCloudMediaTablesInitialized = false;
+
+function getBucketForCategory(rawEnv: any, category?: string): any {
+  if (!rawEnv) return undefined;
+  if (!category) {
+    return rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv['MON_R2-STUDYCLOUD'];
+  }
+  const cat = String(category).toLowerCase().trim();
+  if (cat === 'classeur') {
+    return rawEnv.BUCKET_CLASSEUR || rawEnv.MON_R2_CLASSEUR || rawEnv['MON_R2-CLASSEUR'] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv['MON_R2-STUDYCLOUD'];
+  }
+  if (cat === 'audio' || cat === 'musique') {
+    return rawEnv.BUCKET_AUDIO || rawEnv.MON_R2_AUDIO || rawEnv['MON_R2-AUDIO'] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv['MON_R2-STUDYCLOUD'];
+  }
+  if (cat === 'images' || cat === 'photos') {
+    return rawEnv.BUCKET_IMAGES || rawEnv.MON_R2_IMAGES || rawEnv['MON_R2-IMAGES'] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv['MON_R2-STUDYCLOUD'];
+  }
+  if (cat === 'videos') {
+    return rawEnv.BUCKET_VIDEOS || rawEnv.MON_R2_VIDEOS || rawEnv['MON_R2-VIDEOS'] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv['MON_R2-STUDYCLOUD'];
+  }
+  if (cat === 'documents' || cat === 'docs') {
+    return rawEnv.BUCKET_DOCUMENTS || rawEnv.MON_R2_DOCUMENTS || rawEnv['MON_R2-DOCUMENTS'] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv['MON_R2-STUDYCLOUD'];
+  }
+  if (cat === 'downloads' || cat === 'telechargements') {
+    return rawEnv.BUCKET_DOWNLOADS || rawEnv.MON_R2_DOWNLOADS || rawEnv['MON_R2-DOWNLOADS'] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv['MON_R2-STUDYCLOUD'];
+  }
+  if (cat === 'secure' || cat === 'secure-folder') {
+    return rawEnv.BUCKET_SECURE || rawEnv.MON_R2_SECURE || rawEnv['MON_R2-SECURE'] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv['MON_R2-STUDYCLOUD'];
+  }
+  return rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv['MON_R2-STUDYCLOUD'];
+}
+
+async function ensureCloudMediaTables(db: any) {
+  if (isCloudMediaTablesInitialized || !db) return;
+  try {
+    // 1. Classeur - Dossiers 3D (avec positions X/Y et tailles réelles)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS classeur_folders (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        parent_id TEXT,
+        name TEXT NOT NULL,
+        model_id TEXT DEFAULT '1',
+        primary_color TEXT DEFAULT '#EA580C',
+        accent_color TEXT DEFAULT '#F97316',
+        icon_name TEXT DEFAULT 'Folder',
+        text_dark INTEGER DEFAULT 0,
+        position_x REAL DEFAULT 0,
+        position_y REAL DEFAULT 0,
+        display_order INTEGER DEFAULT 0,
+        zoom_level REAL DEFAULT 10,
+        is_pinned INTEGER DEFAULT 0,
+        is_favorite INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // 2. Classeur - Fichiers et Bloc-notes (avec positions X/Y, tailles réelles et contenu)
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS classeur_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        folder_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        category TEXT DEFAULT 'documents',
+        extension TEXT DEFAULT 'txt',
+        source TEXT DEFAULT '',
+        date_formatted TEXT DEFAULT '',
+        position_x REAL DEFAULT 0,
+        position_y REAL DEFAULT 0,
+        display_order INTEGER DEFAULT 0,
+        is_notepad INTEGER DEFAULT 0,
+        notepad_title TEXT DEFAULT '',
+        notepad_content TEXT DEFAULT '',
+        preview_url TEXT DEFAULT '',
+        r2_key TEXT DEFAULT '',
+        file_url TEXT DEFAULT '',
+        is_pinned INTEGER DEFAULT 0,
+        is_favorite INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // 3. Audio / Musique
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS audio_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        title TEXT DEFAULT '',
+        artist TEXT DEFAULT 'Artiste inconnu',
+        album TEXT DEFAULT '',
+        duration_sec REAL DEFAULT 0,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        date_formatted TEXT DEFAULT '',
+        lyrics_snippet TEXT DEFAULT '',
+        full_lyrics_json TEXT DEFAULT '[]',
+        cover_url TEXT DEFAULT '',
+        r2_key TEXT DEFAULT '',
+        audio_url TEXT DEFAULT '',
+        is_favorite INTEGER DEFAULT 0,
+        is_pinned INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // 4. Images / Photos
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS image_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        width INTEGER DEFAULT 0,
+        height INTEGER DEFAULT 0,
+        extension TEXT DEFAULT 'jpg',
+        date_formatted TEXT DEFAULT '',
+        r2_key TEXT DEFAULT '',
+        image_url TEXT DEFAULT '',
+        thumbnail_url TEXT DEFAULT '',
+        is_favorite INTEGER DEFAULT 0,
+        is_pinned INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // 5. Vidéos
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS video_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        duration_sec REAL DEFAULT 0,
+        resolution TEXT DEFAULT '1080p',
+        extension TEXT DEFAULT 'mp4',
+        date_formatted TEXT DEFAULT '',
+        r2_key TEXT DEFAULT '',
+        video_url TEXT DEFAULT '',
+        thumbnail_url TEXT DEFAULT '',
+        is_favorite INTEGER DEFAULT 0,
+        is_pinned INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // 6. Documents de Cours
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS document_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        extension TEXT DEFAULT 'pdf',
+        document_category TEXT DEFAULT 'COURS',
+        page_count INTEGER DEFAULT 1,
+        date_formatted TEXT DEFAULT '',
+        source TEXT DEFAULT 'StudyCloud',
+        r2_key TEXT DEFAULT '',
+        file_url TEXT DEFAULT '',
+        preview_url TEXT DEFAULT '',
+        is_favorite INTEGER DEFAULT 0,
+        is_pinned INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // 7. Téléchargements
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS download_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        type TEXT DEFAULT 'document',
+        extension TEXT DEFAULT '',
+        source_url TEXT DEFAULT '',
+        source TEXT DEFAULT 'Web',
+        r2_key TEXT DEFAULT '',
+        file_url TEXT DEFAULT '',
+        downloaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // 8. Dossier Sécurisé
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS secure_folder_config (
+        user_id TEXT PRIMARY KEY,
+        pin_hash TEXT NOT NULL,
+        is_locked INTEGER DEFAULT 1,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS secure_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        category TEXT DEFAULT 'documents',
+        extension TEXT DEFAULT '',
+        original_category TEXT DEFAULT 'documents',
+        original_folder_id TEXT DEFAULT '',
+        date_formatted TEXT DEFAULT '',
+        metadata_json TEXT DEFAULT '{}',
+        r2_key TEXT DEFAULT '',
+        file_url TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // 9. Corbeille et Favoris
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS trash_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        category TEXT DEFAULT 'documents',
+        extension TEXT DEFAULT '',
+        source_category TEXT DEFAULT 'documents',
+        original_folder_id TEXT DEFAULT '',
+        metadata_json TEXT DEFAULT '{}',
+        date_formatted TEXT DEFAULT '',
+        r2_key TEXT DEFAULT '',
+        file_url TEXT DEFAULT '',
+        deleted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        expires_at TEXT
+      )
+    `).run();
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_favorites (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        category TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
+    // Index d'isolation et d'optimisation
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_cfolders_user ON classeur_folders(user_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_cfiles_user ON classeur_files(user_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_cfiles_folder ON classeur_files(folder_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_audio_user ON audio_files(user_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_images_user ON image_files(user_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_videos_user ON video_files(user_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_docs_user ON document_files(user_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_downloads_user ON download_files(user_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_secfiles_user ON secure_files(user_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_trash_user ON trash_files(user_id)").run(); } catch(e){}
+    try { await db.prepare("CREATE INDEX IF NOT EXISTS idx_favs_user ON user_favorites(user_id)").run(); } catch(e){}
+
+    isCloudMediaTablesInitialized = true;
+  } catch (err) {
+    console.error('[StudyCloud Cloud Media Tables Init Error]', err);
+  }
+}
+
 async function ensureReferralsTables(db: any) {
   if (isReferralsTableInitialized || !db) return;
   try {
@@ -3483,6 +3785,17 @@ export default {
           'password_resets',
           'matieres',
           'files',
+          'classeur_files',
+          'classeur_folders',
+          'audio_files',
+          'image_files',
+          'video_files',
+          'document_files',
+          'download_files',
+          'secure_folder_config',
+          'secure_files',
+          'trash_files',
+          'user_favorites',
           'shared_folders',
           'shared_links',
           'schedule_config',
@@ -5119,6 +5432,1429 @@ export default {
         headers.set('Access-Control-Allow-Origin', origin);
 
         return new Response(object.body, { headers });
+      }
+
+      // ======================================================================
+      // 4b. API STUDYCLOUD - ESPACE CLOUD, CLASSEUR 3D & MÉDIAS DÉDIÉS (OPTION B)
+      // ======================================================================
+
+      // Helper d'extraction et de sécurisation de l'identité utilisateur (Multi-Tenant Strict)
+      async function extractRequestUserId(): Promise<string | null> {
+        const authHeader = request.headers.get('Authorization') || '';
+        if (authHeader.startsWith('Bearer ')) {
+          const token = authHeader.slice(7).trim();
+          try {
+            const payload = await verifyJWT(token);
+            if (payload?.userId) return String(payload.userId);
+          } catch {}
+        }
+        const xUserId = request.headers.get('x-user-id');
+        if (xUserId && xUserId.trim() && xUserId !== 'null' && xUserId !== 'undefined') {
+          return xUserId.trim();
+        }
+        const queryUserId = url.searchParams.get('userId');
+        if (queryUserId && queryUserId.trim() && queryUserId !== 'null' && queryUserId !== 'undefined') {
+          return queryUserId.trim();
+        }
+        return null;
+      }
+
+      // ----------------------------------------------------------------------
+      // Distribution et Streaming des Fichiers R2 Dédiés (Audio, Vidéos, Images, Documents)
+      // Route publique pour permettre l'affichage <img src>, lecture audio/vidéo avec support Range
+      // ----------------------------------------------------------------------
+      if (path.startsWith('/api/cloud/file/') && method === 'GET') {
+        const pathParts = path.replace('/api/cloud/file/', '').split('/');
+        const category = pathParts[0];
+        const rawKey = pathParts.slice(1).join('/');
+        const key = decodeURIComponent(rawKey);
+
+        const categoryBucket = getBucketForCategory(rawEnv, category);
+        if (!categoryBucket) {
+          return errorResponse('Stockage R2 indisponible pour cette catégorie', 503, origin);
+        }
+
+        // Sécurité Multi-Tenant Stricte :
+        // Pour les fichiers sécurisés ou privés, la clé R2 est isolée et réservée à son propriétaire
+        const reqUserId = await extractRequestUserId();
+        if (category === 'secure') {
+          if (!reqUserId) {
+            return errorResponse('Accès refusé au dossier sécurisé : authentification requise', 401, origin);
+          }
+          if (!key.startsWith(reqUserId + '/')) {
+            return errorResponse('Accès interdit aux données d\'un autre utilisateur', 403, origin);
+          }
+        } else if (reqUserId && key.includes('/') && !key.startsWith(reqUserId + '/')) {
+          const keyOwnerId = key.split('/')[0];
+          if (keyOwnerId && keyOwnerId !== reqUserId && (keyOwnerId.startsWith('u_') || keyOwnerId.length > 8)) {
+            return errorResponse('Accès interdit aux fichiers d\'un autre utilisateur', 403, origin);
+          }
+        }
+
+        const rangeHeader = request.headers.get('Range');
+        let object: any;
+        if (rangeHeader) {
+          try {
+            object = await categoryBucket.get(key, { range: request.headers });
+          } catch (e) {
+            object = await categoryBucket.get(key);
+          }
+        } else {
+          object = await categoryBucket.get(key);
+        }
+
+        if (!object) {
+          return errorResponse('Fichier introuvable dans le stockage R2', 404, origin);
+        }
+
+        const headers = new Headers();
+        object.writeHttpMetadata(headers);
+        headers.set('etag', object.httpEtag);
+        headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+        headers.set('Accept-Ranges', 'bytes');
+        headers.set('Access-Control-Allow-Origin', origin);
+
+        const status = rangeHeader && object.range ? 206 : 200;
+        return new Response(object.body, { status, headers });
+      }
+
+      // Initialisation paresseuse automatique des tables D1 dédiées
+      if (path.startsWith('/api/cloud/') && env.DB) {
+        await ensureCloudMediaTables(env.DB);
+      }
+
+      // ----------------------------------------------------------------------
+      // Upload Direct R2 par Catégorie (Partitionné par user_id)
+      // ----------------------------------------------------------------------
+      if (path === '/api/cloud/upload' && (method === 'PUT' || method === 'POST')) {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise pour téléverser un fichier', 401, origin);
+
+        const category = url.searchParams.get('category') || 'documents';
+        const fileName = url.searchParams.get('name') || 'fichier_' + Date.now();
+        const folderId = url.searchParams.get('folderId') || '';
+        const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const fileId = 'f_' + crypto.randomUUID().substring(0, 12);
+        const storageKey = `${reqUserId}/${category}/${fileId}_${sanitizedName}`;
+
+        const categoryBucket = getBucketForCategory(rawEnv, category);
+        if (!categoryBucket) {
+          return errorResponse('Bucket de stockage non configuré pour la catégorie ' + category, 503, origin);
+        }
+
+        const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
+        const fileData = request.body || (await request.arrayBuffer());
+
+        await categoryBucket.put(storageKey, fileData as any, {
+          httpMetadata: { contentType },
+          customMetadata: {
+            userId: reqUserId,
+            originalName: fileName,
+            category,
+            folderId
+          }
+        });
+
+        const fileUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(category)}/${encodeURIComponent(storageKey)}`;
+        return jsonResponse({
+          success: true,
+          id: fileId,
+          key: storageKey,
+          url: fileUrl,
+          name: fileName,
+          category,
+          folderId
+        }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
+      // Vue Synthétique Espace Cloud (Agrégation sans table dédiée comme demandé)
+      // ----------------------------------------------------------------------
+      if (path === '/api/cloud/overview' && method === 'GET') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        const [
+          foldersCount,
+          cFilesStat,
+          audioStat,
+          imageStat,
+          videoStat,
+          docStat,
+          downloadStat,
+          secureStat,
+          trashStat
+        ] = await Promise.all([
+          env.DB.prepare('SELECT COUNT(*) as count FROM classeur_folders WHERE user_id = ?').bind(reqUserId).first<any>(),
+          env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM classeur_files WHERE user_id = ?').bind(reqUserId).first<any>(),
+          env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM audio_files WHERE user_id = ?').bind(reqUserId).first<any>(),
+          env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM image_files WHERE user_id = ?').bind(reqUserId).first<any>(),
+          env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM video_files WHERE user_id = ?').bind(reqUserId).first<any>(),
+          env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM document_files WHERE user_id = ?').bind(reqUserId).first<any>(),
+          env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM download_files WHERE user_id = ?').bind(reqUserId).first<any>(),
+          env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM secure_files WHERE user_id = ?').bind(reqUserId).first<any>(),
+          env.DB.prepare('SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM trash_files WHERE user_id = ?').bind(reqUserId).first<any>(),
+        ]);
+
+        const counts = {
+          classeurFolders: Number(foldersCount?.count || 0),
+          classeurFiles: Number(cFilesStat?.count || 0),
+          audio: Number(audioStat?.count || 0),
+          images: Number(imageStat?.count || 0),
+          videos: Number(videoStat?.count || 0),
+          documents: Number(docStat?.count || 0),
+          downloads: Number(downloadStat?.count || 0),
+          secure: Number(secureStat?.count || 0),
+          trash: Number(trashStat?.count || 0),
+        };
+
+        const totalBytes = Number(cFilesStat?.totalBytes || 0) +
+          Number(audioStat?.totalBytes || 0) +
+          Number(imageStat?.totalBytes || 0) +
+          Number(videoStat?.totalBytes || 0) +
+          Number(docStat?.totalBytes || 0) +
+          Number(downloadStat?.totalBytes || 0) +
+          Number(secureStat?.totalBytes || 0);
+
+        // Récupérer les fichiers récents pour l'espace cloud (toutes catégories confondues)
+        const [recentDocs, recentImages, recentAudio, recentVideos] = await Promise.all([
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, created_at FROM document_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, "images" as category, created_at FROM image_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, artist, "audio" as category, created_at FROM audio_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, "videos" as category, created_at FROM video_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
+        ]);
+
+        const recentFiles = [
+          ...(recentDocs?.results || []),
+          ...(recentImages?.results || []),
+          ...(recentAudio?.results || []),
+          ...(recentVideos?.results || []),
+        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 12);
+
+        return jsonResponse({
+          success: true,
+          counts,
+          totalBytes,
+          totalFormatted: formatBytes(totalBytes),
+          recentFiles
+        }, 200, origin);
+      }
+
+      // ----------------------------------------------------------------------
+      // 1. CLASSEUR - DOSSIERS 3D (/api/cloud/classeur/folders)
+      // Stocke les couleurs, modèles 3D, positions X/Y, niveau de zoom et ordre
+      // ----------------------------------------------------------------------
+      if (path === '/api/cloud/classeur/folders') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        if (method === 'GET') {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM classeur_folders
+            WHERE user_id = ?
+            ORDER BY display_order ASC, created_at ASC
+          `).bind(reqUserId).all<any>();
+
+          const formatted = (results || []).map((f: any) => ({
+            id: f.id,
+            userId: f.user_id,
+            parentId: f.parent_id,
+            name: f.name,
+            modelId: f.model_id || '1',
+            primaryColor: f.primary_color || '#EA580C',
+            accentColor: f.accent_color || '#F97316',
+            iconName: f.icon_name || 'Folder',
+            textDark: Boolean(f.text_dark),
+            positionX: Number(f.position_x || 0),
+            positionY: Number(f.position_y || 0),
+            displayOrder: Number(f.display_order || 0),
+            zoomLevel: Number(f.zoom_level || 10),
+            isPinned: Boolean(f.is_pinned),
+            isFavorite: Boolean(f.is_favorite),
+            createdAt: f.created_at,
+            updatedAt: f.updated_at
+          }));
+
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+
+        if (method === 'POST') {
+          const body: any = await request.json().catch(() => ({}));
+          const id = body.id || 'f3d_' + crypto.randomUUID().substring(0, 10);
+          const name = String(body.name || 'Nouveau Dossier').trim();
+          const parentId = body.parentId || null;
+          const modelId = String(body.modelId || '1');
+          const primaryColor = body.primaryColor || '#EA580C';
+          const accentColor = body.accentColor || '#F97316';
+          const iconName = body.iconName || 'Folder';
+          const textDark = body.textDark ? 1 : 0;
+          const positionX = Number(body.positionX || 0);
+          const positionY = Number(body.positionY || 0);
+          const displayOrder = Number(body.displayOrder || 0);
+          const zoomLevel = Number(body.zoomLevel || 10);
+
+          await env.DB.prepare(`
+            INSERT INTO classeur_folders (
+              id, user_id, parent_id, name, model_id, primary_color, accent_color,
+              icon_name, text_dark, position_x, position_y, display_order, zoom_level,
+              is_pinned, is_favorite, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              parent_id = excluded.parent_id,
+              model_id = excluded.model_id,
+              primary_color = excluded.primary_color,
+              accent_color = excluded.accent_color,
+              icon_name = excluded.icon_name,
+              text_dark = excluded.text_dark,
+              position_x = excluded.position_x,
+              position_y = excluded.position_y,
+              display_order = excluded.display_order,
+              zoom_level = excluded.zoom_level,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id, reqUserId, parentId, name, modelId, primaryColor, accentColor,
+            iconName, textDark, positionX, positionY, displayOrder, zoomLevel
+          ).run();
+
+          return jsonResponse({
+            success: true,
+            folder: {
+              id,
+              userId: reqUserId,
+              parentId,
+              name,
+              modelId,
+              primaryColor,
+              accentColor,
+              iconName,
+              textDark: Boolean(textDark),
+              positionX,
+              positionY,
+              displayOrder,
+              zoomLevel
+            }
+          }, 200, origin);
+        }
+
+        if (method === 'PUT') {
+          const body: any = await request.json().catch(() => ({}));
+
+          // Mise à jour groupée de l'ordre et des positions (Drag & Drop)
+          if (Array.isArray(body.reorderList)) {
+            for (const item of body.reorderList) {
+              if (item?.id) {
+                await env.DB.prepare(`
+                  UPDATE classeur_folders SET
+                    display_order = COALESCE(?, display_order),
+                    position_x = COALESCE(?, position_x),
+                    position_y = COALESCE(?, position_y),
+                    zoom_level = COALESCE(?, zoom_level),
+                    updated_at = CURRENT_TIMESTAMP
+                  WHERE id = ? AND user_id = ?
+                `).bind(
+                  item.displayOrder !== undefined ? Number(item.displayOrder) : null,
+                  item.positionX !== undefined ? Number(item.positionX) : null,
+                  item.positionY !== undefined ? Number(item.positionY) : null,
+                  item.zoomLevel !== undefined ? Number(item.zoomLevel) : null,
+                  item.id,
+                  reqUserId
+                ).run();
+              }
+            }
+            return jsonResponse({ success: true, message: 'Ordre et positions mis à jour' }, 200, origin);
+          }
+
+          // Mise à jour unitaire
+          if (!body.id) return errorResponse('Identifiant id manquant', 400, origin);
+          const fields: string[] = [];
+          const values: any[] = [];
+
+          if (body.name !== undefined) { fields.push('name = ?'); values.push(body.name); }
+          if (body.primaryColor !== undefined) { fields.push('primary_color = ?'); values.push(body.primaryColor); }
+          if (body.accentColor !== undefined) { fields.push('accent_color = ?'); values.push(body.accentColor); }
+          if (body.positionX !== undefined) { fields.push('position_x = ?'); values.push(Number(body.positionX)); }
+          if (body.positionY !== undefined) { fields.push('position_y = ?'); values.push(Number(body.positionY)); }
+          if (body.displayOrder !== undefined) { fields.push('display_order = ?'); values.push(Number(body.displayOrder)); }
+          if (body.zoomLevel !== undefined) { fields.push('zoom_level = ?'); values.push(Number(body.zoomLevel)); }
+          if (body.isPinned !== undefined) { fields.push('is_pinned = ?'); values.push(body.isPinned ? 1 : 0); }
+          if (body.isFavorite !== undefined) { fields.push('is_favorite = ?'); values.push(body.isFavorite ? 1 : 0); }
+
+          if (fields.length > 0) {
+            fields.push('updated_at = CURRENT_TIMESTAMP');
+            values.push(body.id, reqUserId);
+            await env.DB.prepare(`
+              UPDATE classeur_folders SET ${fields.join(', ')}
+              WHERE id = ? AND user_id = ?
+            `).bind(...values).run();
+          }
+
+          return jsonResponse({ success: true, message: 'Dossier 3D mis à jour' }, 200, origin);
+        }
+
+        if (method === 'DELETE') {
+          const folderId = url.searchParams.get('id');
+          if (!folderId) return errorResponse('id de dossier manquant', 400, origin);
+
+          // Déplacer les fichiers du dossier dans la corbeille avant suppression
+          const { results: folderFiles } = await env.DB.prepare(`
+            SELECT * FROM classeur_files WHERE folder_id = ? AND user_id = ?
+          `).bind(folderId, reqUserId).all<any>();
+
+          for (const f of folderFiles || []) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, 'classeur', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              f.id, reqUserId, f.name, f.size, f.size_bytes, f.category, f.extension,
+              folderId, JSON.stringify({ isNotepad: f.is_notepad, notepadTitle: f.notepad_title }),
+              f.date_formatted, f.r2_key, f.file_url
+            ).run();
+          }
+
+          // Supprimer le dossier (la contrainte ON DELETE CASCADE nettoie les fichiers associés)
+          await env.DB.prepare(`
+            DELETE FROM classeur_folders WHERE id = ? AND user_id = ?
+          `).bind(folderId, reqUserId).run();
+
+          return jsonResponse({ success: true, message: 'Dossier supprimé et fichiers archivés dans la corbeille' }, 200, origin);
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // 2. CLASSEUR - FICHIERS & BLOC-NOTES INTÉGRÉS (/api/cloud/classeur/files)
+      // Stocke positions X/Y, tailles réelles et contenu texte
+      // ----------------------------------------------------------------------
+      if (path === '/api/cloud/classeur/files') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        if (method === 'GET') {
+          const folderId = url.searchParams.get('folderId');
+          let query = 'SELECT * FROM classeur_files WHERE user_id = ?';
+          const params: any[] = [reqUserId];
+
+          if (folderId) {
+            query += ' AND folder_id = ?';
+            params.push(folderId);
+          }
+          query += ' ORDER BY display_order ASC, created_at DESC';
+
+          const { results } = await env.DB.prepare(query).bind(...params).all<any>();
+
+          const formatted = (results || []).map((f: any) => ({
+            id: f.id,
+            userId: f.user_id,
+            folderId: f.folder_id,
+            name: f.name,
+            size: f.size || '0 o',
+            sizeBytes: Number(f.size_bytes || 0),
+            category: f.category || 'documents',
+            extension: f.extension || 'txt',
+            source: f.source || '',
+            date: f.date_formatted || '',
+            positionX: Number(f.position_x || 0),
+            positionY: Number(f.position_y || 0),
+            displayOrder: Number(f.display_order || 0),
+            isNotepad: Boolean(f.is_notepad),
+            noteTitle: f.notepad_title || '',
+            content: f.notepad_content || '',
+            previewUrl: f.preview_url || '',
+            r2Key: f.r2_key || '',
+            url: f.file_url || '',
+            isPinned: Boolean(f.is_pinned),
+            isFavorite: Boolean(f.is_favorite)
+          }));
+
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+
+        if (method === 'POST') {
+          const body: any = await request.json().catch(() => ({}));
+          const id = body.id || 'cf_' + crypto.randomUUID().substring(0, 10);
+          const folderId = body.folderId;
+          if (!folderId) return errorResponse('folderId requis', 400, origin);
+
+          const name = String(body.name || 'Document sans titre').trim();
+          const size = body.size || '0 o';
+          const sizeBytes = Number(body.sizeBytes || 0);
+          const category = body.category || 'documents';
+          const extension = body.extension || (name.includes('.') ? name.split('.').pop() : 'txt');
+          const source = body.source || '';
+          const dateFormatted = body.date || body.dateFormatted || '';
+          const positionX = Number(body.positionX || 0);
+          const positionY = Number(body.positionY || 0);
+          const displayOrder = Number(body.displayOrder || 0);
+          const isNotepad = body.isNotepad ? 1 : 0;
+          const notepadTitle = body.notepadTitle || body.noteTitle || '';
+          const notepadContent = body.notepadContent || body.content || '';
+          const previewUrl = body.previewUrl || '';
+          const r2Key = body.r2Key || '';
+          const fileUrl = body.fileUrl || body.url || '';
+
+          await env.DB.prepare(`
+            INSERT INTO classeur_files (
+              id, user_id, folder_id, name, size, size_bytes, category, extension,
+              source, date_formatted, position_x, position_y, display_order,
+              is_notepad, notepad_title, notepad_content, preview_url, r2_key,
+              file_url, is_pinned, is_favorite, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              size_bytes = excluded.size_bytes,
+              position_x = excluded.position_x,
+              position_y = excluded.position_y,
+              display_order = excluded.display_order,
+              notepad_title = excluded.notepad_title,
+              notepad_content = excluded.notepad_content,
+              preview_url = excluded.preview_url,
+              r2_key = excluded.r2_key,
+              file_url = excluded.file_url,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id, reqUserId, folderId, name, size, sizeBytes, category, extension,
+            source, dateFormatted, positionX, positionY, displayOrder,
+            isNotepad, notepadTitle, notepadContent, previewUrl, r2Key, fileUrl
+          ).run();
+
+          return jsonResponse({
+            success: true,
+            file: {
+              id,
+              userId: reqUserId,
+              folderId,
+              name,
+              size,
+              sizeBytes,
+              category,
+              extension,
+              source,
+              date: dateFormatted,
+              positionX,
+              positionY,
+              displayOrder,
+              isNotepad: Boolean(isNotepad),
+              noteTitle: notepadTitle,
+              content: notepadContent,
+              previewUrl,
+              r2Key,
+              url: fileUrl
+            }
+          }, 200, origin);
+        }
+
+        if (method === 'PUT') {
+          const body: any = await request.json().catch(() => ({}));
+
+          // Mise à jour par lot des positions (Drag & Drop de fichiers dans le classeur)
+          if (Array.isArray(body.reorderList)) {
+            for (const item of body.reorderList) {
+              if (item?.id) {
+                await env.DB.prepare(`
+                  UPDATE classeur_files SET
+                    display_order = COALESCE(?, display_order),
+                    position_x = COALESCE(?, position_x),
+                    position_y = COALESCE(?, position_y),
+                    updated_at = CURRENT_TIMESTAMP
+                  WHERE id = ? AND user_id = ?
+                `).bind(
+                  item.displayOrder !== undefined ? Number(item.displayOrder) : null,
+                  item.positionX !== undefined ? Number(item.positionX) : null,
+                  item.positionY !== undefined ? Number(item.positionY) : null,
+                  item.id,
+                  reqUserId
+                ).run();
+              }
+            }
+            return jsonResponse({ success: true, message: 'Positions des fichiers sauvegardées' }, 200, origin);
+          }
+
+          if (!body.id) return errorResponse('id de fichier manquant', 400, origin);
+          const fields: string[] = [];
+          const values: any[] = [];
+
+          if (body.name !== undefined) { fields.push('name = ?'); values.push(body.name); }
+          if (body.size !== undefined) { fields.push('size = ?'); values.push(body.size); }
+          if (body.sizeBytes !== undefined) { fields.push('size_bytes = ?'); values.push(Number(body.sizeBytes)); }
+          if (body.positionX !== undefined) { fields.push('position_x = ?'); values.push(Number(body.positionX)); }
+          if (body.positionY !== undefined) { fields.push('position_y = ?'); values.push(Number(body.positionY)); }
+          if (body.displayOrder !== undefined) { fields.push('display_order = ?'); values.push(Number(body.displayOrder)); }
+          if (body.noteTitle !== undefined || body.notepadTitle !== undefined) {
+            fields.push('notepad_title = ?');
+            values.push(body.noteTitle !== undefined ? body.noteTitle : body.notepadTitle);
+          }
+          if (body.content !== undefined || body.notepadContent !== undefined) {
+            fields.push('notepad_content = ?');
+            values.push(body.content !== undefined ? body.content : body.notepadContent);
+          }
+          if (body.isPinned !== undefined) { fields.push('is_pinned = ?'); values.push(body.isPinned ? 1 : 0); }
+          if (body.isFavorite !== undefined) { fields.push('is_favorite = ?'); values.push(body.isFavorite ? 1 : 0); }
+
+          if (fields.length > 0) {
+            fields.push('updated_at = CURRENT_TIMESTAMP');
+            values.push(body.id, reqUserId);
+            await env.DB.prepare(`
+              UPDATE classeur_files SET ${fields.join(', ')}
+              WHERE id = ? AND user_id = ?
+            `).bind(...values).run();
+          }
+
+          return jsonResponse({ success: true, message: 'Fichier classeur mis à jour' }, 200, origin);
+        }
+
+        if (method === 'DELETE') {
+          const fileId = url.searchParams.get('id');
+          if (!fileId) return errorResponse('id manquant', 400, origin);
+
+          const file: any = await env.DB.prepare(`
+            SELECT * FROM classeur_files WHERE id = ? AND user_id = ?
+          `).bind(fileId, reqUserId).first();
+
+          if (file) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, 'classeur', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              file.id, reqUserId, file.name, file.size, file.size_bytes, file.category,
+              file.extension, file.folder_id, JSON.stringify({ isNotepad: file.is_notepad, notepadTitle: file.notepad_title }),
+              file.date_formatted, file.r2_key, file.file_url
+            ).run();
+
+            await env.DB.prepare(`
+              DELETE FROM classeur_files WHERE id = ? AND user_id = ?
+            `).bind(fileId, reqUserId).run();
+          }
+
+          return jsonResponse({ success: true, message: 'Fichier placé dans la corbeille' }, 200, origin);
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // 3. AUDIO / MUSIQUE (/api/cloud/audio)
+      // ----------------------------------------------------------------------
+      if (path === '/api/cloud/audio') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        if (method === 'GET') {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM audio_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+          `).bind(reqUserId).all<any>();
+
+          const formatted = (results || []).map((a: any) => ({
+            id: a.id,
+            userId: a.user_id,
+            name: a.name,
+            title: a.title || a.name,
+            artist: a.artist || 'Artiste inconnu',
+            album: a.album || '',
+            durationSec: Number(a.duration_sec || 0),
+            size: a.size || '0 o',
+            sizeBytes: Number(a.size_bytes || 0),
+            date: a.date_formatted || '',
+            lyricsSnippet: a.lyrics_snippet || '',
+            fullLyrics: a.full_lyrics_json ? JSON.parse(a.full_lyrics_json) : [],
+            coverUrl: a.cover_url || '',
+            r2Key: a.r2_key || '',
+            audioUrl: a.audio_url || '',
+            url: a.audio_url || '',
+            category: 'audio',
+            isFavorite: Boolean(a.is_favorite),
+            isPinned: Boolean(a.is_pinned)
+          }));
+
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+
+        if (method === 'POST') {
+          const body: any = await request.json().catch(() => ({}));
+          const id = body.id || 'aud_' + crypto.randomUUID().substring(0, 10);
+          const name = String(body.name || 'Audio').trim();
+          const title = body.title || name;
+          const artist = body.artist || 'Artiste inconnu';
+          const album = body.album || '';
+          const durationSec = Number(body.durationSec || 0);
+          const size = body.size || '0 o';
+          const sizeBytes = Number(body.sizeBytes || 0);
+          const dateFormatted = body.date || body.dateFormatted || '';
+          const lyricsSnippet = body.lyricsSnippet || '';
+          const fullLyricsJson = JSON.stringify(body.fullLyrics || []);
+          const coverUrl = body.coverUrl || '';
+          const r2Key = body.r2Key || '';
+          const audioUrl = body.audioUrl || body.url || '';
+
+          await env.DB.prepare(`
+            INSERT INTO audio_files (
+              id, user_id, name, title, artist, album, duration_sec, size, size_bytes,
+              date_formatted, lyrics_snippet, full_lyrics_json, cover_url, r2_key,
+              audio_url, is_favorite, is_pinned, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              title = excluded.title,
+              artist = excluded.artist,
+              album = excluded.album,
+              duration_sec = excluded.duration_sec,
+              size = excluded.size,
+              size_bytes = excluded.size_bytes,
+              audio_url = excluded.audio_url,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id, reqUserId, name, title, artist, album, durationSec, size, sizeBytes,
+            dateFormatted, lyricsSnippet, fullLyricsJson, coverUrl, r2Key, audioUrl
+          ).run();
+
+          return jsonResponse({ success: true, message: 'Audio enregistré' }, 200, origin);
+        }
+
+        if (method === 'DELETE') {
+          const fileId = url.searchParams.get('id');
+          if (!fileId) return errorResponse('id manquant', 400, origin);
+
+          const file: any = await env.DB.prepare(`
+            SELECT * FROM audio_files WHERE id = ? AND user_id = ?
+          `).bind(fileId, reqUserId).first();
+
+          if (file) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, 'audio', 'mp3', 'audio', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              file.id, reqUserId, file.name, file.size, file.size_bytes,
+              JSON.stringify({ artist: file.artist, durationSec: file.duration_sec, coverUrl: file.cover_url }),
+              file.date_formatted, file.r2_key, file.audio_url
+            ).run();
+
+            await env.DB.prepare(`DELETE FROM audio_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+          }
+
+          return jsonResponse({ success: true, message: 'Audio déplacé dans la corbeille' }, 200, origin);
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // 4. IMAGES / PHOTOS (/api/cloud/images)
+      // ----------------------------------------------------------------------
+      if (path === '/api/cloud/images') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        if (method === 'GET') {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM image_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+          `).bind(reqUserId).all<any>();
+
+          const formatted = (results || []).map((img: any) => ({
+            id: img.id,
+            userId: img.user_id,
+            name: img.name,
+            size: img.size || '0 o',
+            sizeBytes: Number(img.size_bytes || 0),
+            width: Number(img.width || 0),
+            height: Number(img.height || 0),
+            extension: img.extension || 'jpg',
+            date: img.date_formatted || '',
+            r2Key: img.r2_key || '',
+            previewUrl: img.image_url || '',
+            url: img.image_url || '',
+            thumbnailUrl: img.thumbnail_url || '',
+            category: 'images',
+            isImage: true,
+            isFavorite: Boolean(img.is_favorite),
+            isPinned: Boolean(img.is_pinned)
+          }));
+
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+
+        if (method === 'POST') {
+          const body: any = await request.json().catch(() => ({}));
+          const id = body.id || 'img_' + crypto.randomUUID().substring(0, 10);
+          const name = String(body.name || 'Image').trim();
+          const size = body.size || '0 o';
+          const sizeBytes = Number(body.sizeBytes || 0);
+          const width = Number(body.width || 0);
+          const height = Number(body.height || 0);
+          const extension = body.extension || 'jpg';
+          const dateFormatted = body.date || body.dateFormatted || '';
+          const r2Key = body.r2Key || '';
+          const imageUrl = body.imageUrl || body.url || body.previewUrl || '';
+          const thumbnailUrl = body.thumbnailUrl || '';
+
+          await env.DB.prepare(`
+            INSERT INTO image_files (
+              id, user_id, name, size, size_bytes, width, height, extension,
+              date_formatted, r2_key, image_url, thumbnail_url, is_favorite, is_pinned, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              size_bytes = excluded.size_bytes,
+              image_url = excluded.image_url,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id, reqUserId, name, size, sizeBytes, width, height, extension,
+            dateFormatted, r2Key, imageUrl, thumbnailUrl
+          ).run();
+
+          return jsonResponse({ success: true, message: 'Image enregistrée' }, 200, origin);
+        }
+
+        if (method === 'DELETE') {
+          const fileId = url.searchParams.get('id');
+          if (!fileId) return errorResponse('id manquant', 400, origin);
+
+          const file: any = await env.DB.prepare(`
+            SELECT * FROM image_files WHERE id = ? AND user_id = ?
+          `).bind(fileId, reqUserId).first();
+
+          if (file) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, 'images', ?, 'images', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              file.id, reqUserId, file.name, file.size, file.size_bytes, file.extension,
+              JSON.stringify({ width: file.width, height: file.height }),
+              file.date_formatted, file.r2_key, file.image_url
+            ).run();
+
+            await env.DB.prepare(`DELETE FROM image_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+          }
+
+          return jsonResponse({ success: true, message: 'Image déplacée dans la corbeille' }, 200, origin);
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // 5. VIDÉOS (/api/cloud/videos)
+      // ----------------------------------------------------------------------
+      if (path === '/api/cloud/videos') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        if (method === 'GET') {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM video_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+          `).bind(reqUserId).all<any>();
+
+          const formatted = (results || []).map((v: any) => ({
+            id: v.id,
+            userId: v.user_id,
+            name: v.name,
+            size: v.size || '0 o',
+            sizeBytes: Number(v.size_bytes || 0),
+            durationSec: Number(v.duration_sec || 0),
+            resolution: v.resolution || '1080p',
+            extension: v.extension || 'mp4',
+            date: v.date_formatted || '',
+            r2Key: v.r2_key || '',
+            videoUrl: v.video_url || '',
+            url: v.video_url || '',
+            thumbnailUrl: v.thumbnail_url || '',
+            category: 'videos',
+            isVideo: true,
+            isFavorite: Boolean(v.is_favorite),
+            isPinned: Boolean(v.is_pinned)
+          }));
+
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+
+        if (method === 'POST') {
+          const body: any = await request.json().catch(() => ({}));
+          const id = body.id || 'vid_' + crypto.randomUUID().substring(0, 10);
+          const name = String(body.name || 'Vidéo').trim();
+          const size = body.size || '0 o';
+          const sizeBytes = Number(body.sizeBytes || 0);
+          const durationSec = Number(body.durationSec || 0);
+          const resolution = body.resolution || '1080p';
+          const extension = body.extension || 'mp4';
+          const dateFormatted = body.date || body.dateFormatted || '';
+          const r2Key = body.r2Key || '';
+          const videoUrl = body.videoUrl || body.url || '';
+          const thumbnailUrl = body.thumbnailUrl || '';
+
+          await env.DB.prepare(`
+            INSERT INTO video_files (
+              id, user_id, name, size, size_bytes, duration_sec, resolution, extension,
+              date_formatted, r2_key, video_url, thumbnail_url, is_favorite, is_pinned, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              size_bytes = excluded.size_bytes,
+              video_url = excluded.video_url,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id, reqUserId, name, size, sizeBytes, durationSec, resolution, extension,
+            dateFormatted, r2Key, videoUrl, thumbnailUrl
+          ).run();
+
+          return jsonResponse({ success: true, message: 'Vidéo enregistrée' }, 200, origin);
+        }
+
+        if (method === 'DELETE') {
+          const fileId = url.searchParams.get('id');
+          if (!fileId) return errorResponse('id manquant', 400, origin);
+
+          const file: any = await env.DB.prepare(`
+            SELECT * FROM video_files WHERE id = ? AND user_id = ?
+          `).bind(fileId, reqUserId).first();
+
+          if (file) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, 'videos', ?, 'videos', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              file.id, reqUserId, file.name, file.size, file.size_bytes, file.extension,
+              JSON.stringify({ durationSec: file.duration_sec, resolution: file.resolution }),
+              file.date_formatted, file.r2_key, file.video_url
+            ).run();
+
+            await env.DB.prepare(`DELETE FROM video_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+          }
+
+          return jsonResponse({ success: true, message: 'Vidéo déplacée dans la corbeille' }, 200, origin);
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // 6. DOCUMENTS DE COURS & FASCICULES (/api/cloud/documents)
+      // ----------------------------------------------------------------------
+      if (path === '/api/cloud/documents') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        if (method === 'GET') {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM document_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+          `).bind(reqUserId).all<any>();
+
+          const formatted = (results || []).map((d: any) => ({
+            id: d.id,
+            userId: d.user_id,
+            name: d.name,
+            size: d.size || '0 o',
+            sizeBytes: Number(d.size_bytes || 0),
+            extension: d.extension || 'pdf',
+            documentCategory: d.document_category || 'COURS',
+            pageCount: Number(d.page_count || 1),
+            date: d.date_formatted || '',
+            source: d.source || 'StudyCloud',
+            r2Key: d.r2_key || '',
+            previewUrl: d.preview_url || '',
+            url: d.file_url || '',
+            category: 'documents',
+            isFavorite: Boolean(d.is_favorite),
+            isPinned: Boolean(d.is_pinned)
+          }));
+
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+
+        if (method === 'POST') {
+          const body: any = await request.json().catch(() => ({}));
+          const id = body.id || 'doc_' + crypto.randomUUID().substring(0, 10);
+          const name = String(body.name || 'Document').trim();
+          const size = body.size || '0 o';
+          const sizeBytes = Number(body.sizeBytes || 0);
+          const extension = body.extension || 'pdf';
+          const documentCategory = body.documentCategory || 'COURS';
+          const pageCount = Number(body.pageCount || 1);
+          const dateFormatted = body.date || body.dateFormatted || '';
+          const source = body.source || 'StudyCloud';
+          const r2Key = body.r2Key || '';
+          const fileUrl = body.fileUrl || body.url || '';
+          const previewUrl = body.previewUrl || '';
+
+          await env.DB.prepare(`
+            INSERT INTO document_files (
+              id, user_id, name, size, size_bytes, extension, document_category,
+              page_count, date_formatted, source, r2_key, file_url, preview_url,
+              is_favorite, is_pinned, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              size_bytes = excluded.size_bytes,
+              document_category = excluded.document_category,
+              file_url = excluded.file_url,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id, reqUserId, name, size, sizeBytes, extension, documentCategory,
+            pageCount, dateFormatted, source, r2Key, fileUrl, previewUrl
+          ).run();
+
+          return jsonResponse({ success: true, message: 'Document enregistré' }, 200, origin);
+        }
+
+        if (method === 'DELETE') {
+          const fileId = url.searchParams.get('id');
+          if (!fileId) return errorResponse('id manquant', 400, origin);
+
+          const file: any = await env.DB.prepare(`
+            SELECT * FROM document_files WHERE id = ? AND user_id = ?
+          `).bind(fileId, reqUserId).first();
+
+          if (file) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, 'documents', ?, 'documents', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              file.id, reqUserId, file.name, file.size, file.size_bytes, file.extension,
+              JSON.stringify({ documentCategory: file.document_category, pageCount: file.page_count }),
+              file.date_formatted, file.r2_key, file.file_url
+            ).run();
+
+            await env.DB.prepare(`DELETE FROM document_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+          }
+
+          return jsonResponse({ success: true, message: 'Document déplacé dans la corbeille' }, 200, origin);
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // 7. TÉLÉCHARGEMENTS (/api/cloud/downloads)
+      // ----------------------------------------------------------------------
+      if (path === '/api/cloud/downloads') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        if (method === 'GET') {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM download_files WHERE user_id = ? ORDER BY downloaded_at DESC
+          `).bind(reqUserId).all<any>();
+
+          const formatted = (results || []).map((dl: any) => ({
+            id: dl.id,
+            userId: dl.user_id,
+            name: dl.name,
+            size: dl.size || '0 o',
+            sizeBytes: Number(dl.size_bytes || 0),
+            type: dl.type || 'document',
+            extension: dl.extension || '',
+            sourceUrl: dl.source_url || '',
+            source: dl.source || 'Web',
+            r2Key: dl.r2_key || '',
+            url: dl.file_url || '',
+            downloadedAt: dl.downloaded_at,
+            date: dl.downloaded_at,
+            category: 'downloads'
+          }));
+
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+
+        if (method === 'POST') {
+          const body: any = await request.json().catch(() => ({}));
+          const id = body.id || 'dl_' + crypto.randomUUID().substring(0, 10);
+          const name = String(body.name || 'Téléchargement').trim();
+          const size = body.size || '0 o';
+          const sizeBytes = Number(body.sizeBytes || 0);
+          const type = body.type || 'document';
+          const extension = body.extension || '';
+          const sourceUrl = body.sourceUrl || '';
+          const source = body.source || 'Web';
+          const r2Key = body.r2Key || '';
+          const fileUrl = body.fileUrl || body.url || '';
+
+          await env.DB.prepare(`
+            INSERT INTO download_files (
+              id, user_id, name, size, size_bytes, type, extension,
+              source_url, source, r2_key, file_url, downloaded_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              size_bytes = excluded.size_bytes
+          `).bind(
+            id, reqUserId, name, size, sizeBytes, type, extension,
+            sourceUrl, source, r2Key, fileUrl
+          ).run();
+
+          return jsonResponse({ success: true, message: 'Téléchargement enregistré' }, 200, origin);
+        }
+
+        if (method === 'DELETE') {
+          const fileId = url.searchParams.get('id');
+          if (!fileId) return errorResponse('id manquant', 400, origin);
+
+          await env.DB.prepare(`
+            DELETE FROM download_files WHERE id = ? AND user_id = ?
+          `).bind(fileId, reqUserId).run();
+
+          return jsonResponse({ success: true, message: 'Téléchargement retiré de l\'historique' }, 200, origin);
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // 8. DOSSIER SÉCURISÉ (/api/cloud/secure/*)
+      // PIN chiffré PBKDF2/SHA-256 et table dédiée pour les fichiers protégés
+      // ----------------------------------------------------------------------
+      if (path === '/api/cloud/secure/config' && method === 'GET') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        const config = await env.DB.prepare(`
+          SELECT user_id, updated_at FROM secure_folder_config WHERE user_id = ?
+        `).bind(reqUserId).first();
+
+        return jsonResponse({
+          success: true,
+          isConfigured: !!config
+        }, 200, origin);
+      }
+
+      if (path === '/api/cloud/secure/set-pin' && method === 'POST') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        const body: any = await request.json().catch(() => ({}));
+        const pin = String(body.pin || '').trim();
+        const oldPin = body.oldPin ? String(body.oldPin).trim() : null;
+
+        if (pin.length < 4) {
+          return errorResponse('Le code PIN doit comporter au moins 4 caractères', 400, origin);
+        }
+
+        const existing: any = await env.DB.prepare(`
+          SELECT pin_hash FROM secure_folder_config WHERE user_id = ?
+        `).bind(reqUserId).first();
+
+        if (existing && existing.pin_hash) {
+          if (!oldPin) {
+            return errorResponse('Ancien code PIN requis pour modifier le code', 400, origin);
+          }
+          const isOldValid = await verifyPassword(oldPin, existing.pin_hash);
+          if (!isOldValid) {
+            return errorResponse('Ancien code PIN incorrect', 403, origin);
+          }
+        }
+
+        const pinHash = await hashPassword(pin);
+
+        await env.DB.prepare(`
+          INSERT INTO secure_folder_config (user_id, pin_hash, is_locked, updated_at)
+          VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+          ON CONFLICT(user_id) DO UPDATE SET
+            pin_hash = excluded.pin_hash,
+            updated_at = CURRENT_TIMESTAMP
+        `).bind(reqUserId, pinHash).run();
+
+        return jsonResponse({
+          success: true,
+          message: 'Code PIN sécurisé configuré avec succès'
+        }, 200, origin);
+      }
+
+      if (path === '/api/cloud/secure/verify-pin' && method === 'POST') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        const body: any = await request.json().catch(() => ({}));
+        const pin = String(body.pin || '').trim();
+
+        const existing: any = await env.DB.prepare(`
+          SELECT pin_hash FROM secure_folder_config WHERE user_id = ?
+        `).bind(reqUserId).first();
+
+        if (!existing || !existing.pin_hash) {
+          return errorResponse('Aucun code PIN configuré pour cet utilisateur', 404, origin);
+        }
+
+        const isValid = await verifyPassword(pin, existing.pin_hash);
+        if (!isValid) {
+          return jsonResponse({ success: false, error: 'Code PIN incorrect', verified: false }, 401, origin);
+        }
+
+        return jsonResponse({ success: true, verified: true, message: 'Dossier sécurisé déverrouillé' }, 200, origin);
+      }
+
+      if (path === '/api/cloud/secure/files') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        if (method === 'GET') {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM secure_files WHERE user_id = ? ORDER BY created_at DESC
+          `).bind(reqUserId).all<any>();
+
+          const formatted = (results || []).map((s: any) => ({
+            id: s.id,
+            userId: s.user_id,
+            name: s.name,
+            size: s.size || '0 o',
+            sizeBytes: Number(s.size_bytes || 0),
+            category: s.category || 'documents',
+            extension: s.extension || '',
+            originalCategory: s.original_category || 'documents',
+            originalFolderId: s.original_folder_id || '',
+            date: s.date_formatted || '',
+            metadata: s.metadata_json ? JSON.parse(s.metadata_json) : {},
+            r2Key: s.r2_key || '',
+            url: s.file_url || '',
+            previewUrl: s.file_url || '',
+            isSecure: true
+          }));
+
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+
+        // Verrouiller un fichier (déplacement dans le dossier sécurisé)
+        if (method === 'POST') {
+          const body: any = await request.json().catch(() => ({}));
+          const { file, fromCategory, fromFolderId } = body;
+          if (!file?.id) return errorResponse('Informations de fichier manquantes', 400, origin);
+
+          const id = file.id;
+          const name = file.name || 'Fichier sécurisé';
+          const size = file.size || '0 o';
+          const sizeBytes = Number(file.sizeBytes || 0);
+          const category = file.category || fromCategory || 'documents';
+          const extension = file.extension || '';
+          const originalCategory = fromCategory || file.category || 'documents';
+          const originalFolderId = fromFolderId || file.originalFolderId || '';
+          const dateFormatted = file.date || '';
+          const r2Key = file.r2Key || '';
+          const fileUrl = file.url || file.previewUrl || '';
+          const metaJson = JSON.stringify(file);
+
+          await env.DB.prepare(`
+            INSERT INTO secure_files (
+              id, user_id, name, size, size_bytes, category, extension,
+              original_category, original_folder_id, date_formatted, metadata_json,
+              r2_key, file_url, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO NOTHING
+          `).bind(
+            id, reqUserId, name, size, sizeBytes, category, extension,
+            originalCategory, originalFolderId, dateFormatted, metaJson, r2Key, fileUrl
+          ).run();
+
+          // Retirer de la table source correspondante
+          if (fromFolderId) {
+            await env.DB.prepare('DELETE FROM classeur_files WHERE id = ? AND user_id = ?').bind(id, reqUserId).run();
+          } else if (originalCategory === 'audio') {
+            await env.DB.prepare('DELETE FROM audio_files WHERE id = ? AND user_id = ?').bind(id, reqUserId).run();
+          } else if (originalCategory === 'images') {
+            await env.DB.prepare('DELETE FROM image_files WHERE id = ? AND user_id = ?').bind(id, reqUserId).run();
+          } else if (originalCategory === 'videos') {
+            await env.DB.prepare('DELETE FROM video_files WHERE id = ? AND user_id = ?').bind(id, reqUserId).run();
+          } else if (originalCategory === 'documents') {
+            await env.DB.prepare('DELETE FROM document_files WHERE id = ? AND user_id = ?').bind(id, reqUserId).run();
+          }
+
+          return jsonResponse({ success: true, message: 'Fichier déplacé dans le dossier sécurisé' }, 200, origin);
+        }
+
+        // Déverrouiller un fichier (restauration vers son emplacement d'origine)
+        if (method === 'DELETE') {
+          const body: any = await request.json().catch(() => ({}));
+          const id = body.id || url.searchParams.get('id');
+          if (!id) return errorResponse('id manquant', 400, origin);
+
+          const secFile: any = await env.DB.prepare(`
+            SELECT * FROM secure_files WHERE id = ? AND user_id = ?
+          `).bind(id, reqUserId).first();
+
+          if (secFile) {
+            const origCat = secFile.original_category || 'documents';
+            const origFolder = secFile.original_folder_id || '';
+
+            if (origFolder) {
+              await env.DB.prepare(`
+                INSERT INTO classeur_files (
+                  id, user_id, folder_id, name, size, size_bytes, category, extension,
+                  date_formatted, r2_key, file_url, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO NOTHING
+              `).bind(
+                secFile.id, reqUserId, origFolder, secFile.name, secFile.size,
+                secFile.size_bytes, secFile.category, secFile.extension,
+                secFile.date_formatted, secFile.r2_key, secFile.file_url
+              ).run();
+            } else if (origCat === 'audio') {
+              await env.DB.prepare(`
+                INSERT INTO audio_files (id, user_id, name, size, size_bytes, audio_url, date_formatted, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO NOTHING
+              `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
+            } else if (origCat === 'images') {
+              await env.DB.prepare(`
+                INSERT INTO image_files (id, user_id, name, size, size_bytes, image_url, date_formatted, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO NOTHING
+              `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
+            } else if (origCat === 'videos') {
+              await env.DB.prepare(`
+                INSERT INTO video_files (id, user_id, name, size, size_bytes, video_url, date_formatted, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO NOTHING
+              `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
+            } else {
+              await env.DB.prepare(`
+                INSERT INTO document_files (id, user_id, name, size, size_bytes, file_url, date_formatted, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO NOTHING
+              `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
+            }
+
+            await env.DB.prepare(`DELETE FROM secure_files WHERE id = ? AND user_id = ?`).bind(id, reqUserId).run();
+          }
+
+          return jsonResponse({ success: true, message: 'Fichier retiré du dossier sécurisé' }, 200, origin);
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // 9. CORBEILLE & RESTAURATION (/api/cloud/trash/*)
+      // Conserve la forme exacte, les métadonnées et restaure dans la bonne table/dossier
+      // ----------------------------------------------------------------------
+      if (path === '/api/cloud/trash') {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse('Authentification requise', 401, origin);
+
+        if (method === 'GET') {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM trash_files WHERE user_id = ? ORDER BY deleted_at DESC
+          `).bind(reqUserId).all<any>();
+
+          const formatted = (results || []).map((t: any) => ({
+            id: t.id,
+            userId: t.user_id,
+            name: t.name,
+            size: t.size || '0 o',
+            sizeBytes: Number(t.size_bytes || 0),
+            category: t.category || 'documents',
+            extension: t.extension || '',
+            sourceCategory: t.source_category || 'documents',
+            originalFolderId: t.original_folder_id || '',
+            date: t.date_formatted || '',
+            deletedAt: t.deleted_at,
+            metadata: t.metadata_json ? JSON.parse(t.metadata_json) : {},
+            r2Key: t.r2_key || '',
+            url: t.file_url || '',
+            previewUrl: t.file_url || ''
+          }));
+
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+
+        // Restauration d'un élément ou d'une liste vers sa table d'origine
+        if (method === 'POST') {
+          const body: any = await request.json().catch(() => ({}));
+          const targetIds: string[] = Array.isArray(body.ids) ? body.ids : (body.id ? [body.id] : []);
+          if (targetIds.length === 0) return errorResponse('Aucun identifiant fourni pour la restauration', 400, origin);
+
+          for (const tid of targetIds) {
+            const item: any = await env.DB.prepare(`
+              SELECT * FROM trash_files WHERE id = ? AND user_id = ?
+            `).bind(tid, reqUserId).first();
+
+            if (item) {
+              const srcCat = item.source_category || item.category || 'documents';
+              const origFolder = item.original_folder_id || '';
+              const meta = item.metadata_json ? JSON.parse(item.metadata_json) : {};
+
+              if (origFolder || srcCat === 'classeur') {
+                await env.DB.prepare(`
+                  INSERT INTO classeur_files (
+                    id, user_id, folder_id, name, size, size_bytes, category, extension,
+                    date_formatted, is_notepad, notepad_title, notepad_content, r2_key, file_url, updated_at
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO NOTHING
+                `).bind(
+                  item.id, reqUserId, origFolder || 'default', item.name, item.size,
+                  item.size_bytes, item.category, item.extension, item.date_formatted,
+                  meta.isNotepad ? 1 : 0, meta.notepadTitle || '', meta.content || '',
+                  item.r2_key, item.file_url
+                ).run();
+              } else if (srcCat === 'audio') {
+                await env.DB.prepare(`
+                  INSERT INTO audio_files (id, user_id, name, artist, duration_sec, size, size_bytes, audio_url, date_formatted, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO NOTHING
+                `).bind(
+                  item.id, reqUserId, item.name, meta.artist || 'Artiste inconnu',
+                  Number(meta.durationSec || 0), item.size, item.size_bytes, item.file_url, item.date_formatted
+                ).run();
+              } else if (srcCat === 'images') {
+                await env.DB.prepare(`
+                  INSERT INTO image_files (id, user_id, name, size, size_bytes, image_url, date_formatted, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO NOTHING
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+              } else if (srcCat === 'videos') {
+                await env.DB.prepare(`
+                  INSERT INTO video_files (id, user_id, name, size, size_bytes, video_url, date_formatted, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO NOTHING
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+              } else {
+                await env.DB.prepare(`
+                  INSERT INTO document_files (id, user_id, name, size, size_bytes, file_url, date_formatted, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO NOTHING
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+              }
+
+              await env.DB.prepare('DELETE FROM trash_files WHERE id = ? AND user_id = ?').bind(tid, reqUserId).run();
+            }
+          }
+
+          return jsonResponse({ success: true, message: `${targetIds.length} élément(s) restauré(s) avec succès` }, 200, origin);
+        }
+
+        // Suppression définitive (unitaire, lot ou vider la corbeille)
+        if (method === 'DELETE') {
+          const body: any = await request.json().catch(() => ({}));
+          const isEmptyAll = url.searchParams.get('empty') === 'true' || body.empty === true;
+          const targetIds: string[] = Array.isArray(body.ids) ? body.ids : (url.searchParams.get('id') ? [url.searchParams.get('id')!] : []);
+
+          let itemsToDelete: any[] = [];
+          if (isEmptyAll) {
+            const { results } = await env.DB.prepare(`SELECT id, r2_key, category FROM trash_files WHERE user_id = ?`).bind(reqUserId).all<any>();
+            itemsToDelete = results || [];
+            await env.DB.prepare('DELETE FROM trash_files WHERE user_id = ?').bind(reqUserId).run();
+          } else if (targetIds.length > 0) {
+            for (const tid of targetIds) {
+              const item: any = await env.DB.prepare(`SELECT id, r2_key, category FROM trash_files WHERE id = ? AND user_id = ?`).bind(tid, reqUserId).first();
+              if (item) {
+                itemsToDelete.push(item);
+                await env.DB.prepare('DELETE FROM trash_files WHERE id = ? AND user_id = ?').bind(tid, reqUserId).run();
+              }
+            }
+          }
+
+          // Nettoyage physique dans les buckets R2
+          for (const item of itemsToDelete) {
+            if (item.r2_key) {
+              const catBucket = getBucketForCategory(rawEnv, item.category);
+              if (catBucket) await catBucket.delete(item.r2_key).catch(() => {});
+            }
+          }
+
+          return jsonResponse({ success: true, message: 'Éléments définitivement supprimés' }, 200, origin);
+        }
       }
 
       // ----------------------------------------------------------------------

@@ -101,7 +101,7 @@ import {
   getDynamicCurrentDate,
   lightenColor
 } from './Folder3DModels';
-
+import { CloudStorageAPI } from '../services/cloudStorageService';
 
 interface Page1FilesMenuViewProps {
   onBack: () => void;
@@ -137,6 +137,10 @@ export interface FileItem {
   originalCategory?: string;
   originalSource?: string;
   url?: string;
+  positionX?: number;
+  positionY?: number;
+  displayOrder?: number;
+  r2Key?: string;
 }
 
 interface SubMenuView {
@@ -215,6 +219,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [isColorPickerOpen, setIsColorPickerOpen] = useState(false);
   const [newFolderNameInput, setNewFolderNameInput] = useState('');
   const [folderCreationToast, setFolderCreationToast] = useState<string | null>(null);
+
+  // État de glisser-déposer pour le réordonnancement des fichiers dans un dossier du classeur
+  const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
+  const [dragOverFileId, setDragOverFileId] = useState<string | null>(null);
 
   // Liste ordonnée des dossiers 3D du Classeur avec persistance localStorage
   const [classeur3DFolders, setClasseur3DFolders] = useState<ClasseurCreatedFolder[]>(() => {
@@ -344,7 +352,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         size: sizeStr,
         sizeBytes: f.size,
         date: getDynamicCurrentDate().full,
-        previewUrl: category === 'images' ? URL.createObjectURL(f) : undefined
+        previewUrl: category === 'images' ? URL.createObjectURL(f) : undefined,
+        positionX: idx * 25,
+        positionY: 0,
+        displayOrder: idx
       };
     });
 
@@ -352,6 +363,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       ...prev,
       [folderId]: [...newFiles, ...(prev[folderId] || [])]
     }));
+
+    // Sauvegarde en arrière-plan dans Cloudflare R2 dédié classeur et Cloudflare D1 classeur_files
+    files.forEach(async (file, idx) => {
+      try {
+        const item = newFiles[idx];
+        const uploadRes = await CloudStorageAPI.uploadFileToCategoryR2(file, 'classeur', file.name, folderId);
+        const fileToSave: FileItem = {
+          ...item,
+          url: uploadRes.url,
+          r2Key: uploadRes.key
+        };
+        await CloudStorageAPI.saveClasseurFile(fileToSave, folderId);
+      } catch (err) {
+        console.warn('[handleFolderFileUpload] Erreur upload R2/D1:', err);
+      }
+    });
 
     showToast(`${newFiles.length} fichier(s) importé(s) dans "${folderName}" !`);
     e.target.value = '';
@@ -382,7 +409,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         size: sizeStr,
         sizeBytes: f.size,
         date: getDynamicCurrentDate().full,
-        previewUrl: category === 'images' ? URL.createObjectURL(f) : undefined
+        previewUrl: category === 'images' ? URL.createObjectURL(f) : undefined,
+        positionX: idx * 25,
+        positionY: 0,
+        displayOrder: idx
       };
     });
 
@@ -390,6 +420,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       ...prev,
       [folderId]: [...newFiles, ...(prev[folderId] || [])]
     }));
+
+    // Sauvegarde en arrière-plan dans Cloudflare R2 dédié classeur et Cloudflare D1 classeur_files
+    files.forEach(async (file, idx) => {
+      try {
+        const item = newFiles[idx];
+        const uploadRes = await CloudStorageAPI.uploadFileToCategoryR2(file, 'classeur', file.name, folderId);
+        const fileToSave: FileItem = {
+          ...item,
+          url: uploadRes.url,
+          r2Key: uploadRes.key
+        };
+        await CloudStorageAPI.saveClasseurFile(fileToSave, folderId);
+      } catch (err) {
+        console.warn('[handleDirectFilesImportToFolder] Erreur upload R2/D1:', err);
+      }
+    });
 
     showToast(`${newFiles.length} fichier(s) importé(s) dans "${folderName}" !`);
   };
@@ -403,6 +449,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       ...prev,
       [folderId]: (prev[folderId] || []).filter(f => f.id !== fileId)
     }));
+    CloudStorageAPI.deleteClasseurFile(fileId).catch(() => {});
     showToast('Fichier déplacé dans la corbeille');
   };
 
@@ -416,6 +463,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         ...prev,
         [folderId]: (prev[folderId] || []).map(f => f.id === file.id ? { ...f, name: finalName } : f)
       }));
+      CloudStorageAPI.updateClasseurFile(file.id, { name: finalName }).catch(() => {});
       showToast(`Fichier renommé en "${finalName}" !`);
     }
   };
@@ -438,12 +486,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       extension: 'txt',
       isNotepad: true,
       content: '',
+      positionX: 0,
+      positionY: 0,
+      displayOrder: 0
     };
 
     setFolderFilesMap(prev => ({
       ...prev,
       [opened3DFolder.id]: [newNoteFile, ...(prev[opened3DFolder.id] || [])]
     }));
+
+    // Persister dans la table D1 classeur_files
+    CloudStorageAPI.saveClasseurFile(newNoteFile, opened3DFolder.id).catch(() => {});
 
     setIsNewNoteModalOpen(false);
     setNewNoteNameInput('');
@@ -488,6 +542,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           [opened3DFolder.id]: updatedList,
         };
       });
+
+      // Persister la mise à jour de contenu et de taille dans Cloudflare D1 classeur_files
+      CloudStorageAPI.updateClasseurFile(targetId, {
+        noteTitle: titleToSave,
+        content: newText,
+        size: sizeStr,
+        sizeBytes: byteLength
+      }).catch(() => {});
     }
 
     setDocumentsList(prev => prev.map(f => {
@@ -617,6 +679,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         if (deltaX < 12 && deltaY < 12) {
           setOpened3DFolder(p.folder);
         }
+      } else if (p && p.isDragging) {
+        // Sauvegarde de l'ordre et des positions X/Y dans Cloudflare D1
+        setClasseur3DFolders(currentFolders => {
+          const reorderPayload = currentFolders.map((f, idx) => ({
+            id: f.id,
+            displayOrder: idx,
+            positionX: f.positionX || 0,
+            positionY: f.positionY || 0,
+            zoomLevel: folderZoomLevel
+          }));
+          CloudStorageAPI.reorderClasseurFolders(reorderPayload).catch(() => {});
+          return currentFolders;
+        });
       }
       folderPointerDownRef.current = null;
       setFolderDragState(null);
@@ -699,6 +774,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   const handleDeleteCreatedFolder = (folderId: string) => {
+    CloudStorageAPI.deleteClasseurFolder(folderId).catch(() => {});
     const getDescendantFolderIds = (id: string, all: ClasseurCreatedFolder[]): string[] => {
       const children = all.filter(f => f.parentId === id);
       return [id, ...children.flatMap(c => getDescendantFolderIds(c.id, all))];
@@ -1012,6 +1088,77 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
   }, [currentSubView, cloudActiveTab]);
 
+  // Synchronisation initiale complète avec Cloudflare D1 et R2 (Option B)
+  useEffect(() => {
+    let isMounted = true;
+
+    async function loadCloudBackendData() {
+      try {
+        // 1. Dossiers 3D du Classeur
+        const cloudFolders = await CloudStorageAPI.getClasseurFolders();
+        if (isMounted && cloudFolders && cloudFolders.length > 0) {
+          setClasseur3DFolders(cloudFolders);
+
+          // 2. Fichiers et bloc-notes de chaque dossier
+          const filesMap: Record<string, FileItem[]> = {};
+          for (const folder of cloudFolders) {
+            const files = await CloudStorageAPI.getClasseurFiles(folder.id);
+            if (files && files.length > 0) {
+              filesMap[folder.id] = files;
+            }
+          }
+          if (isMounted && Object.keys(filesMap).length > 0) {
+            setFolderFilesMap(prev => ({ ...prev, ...filesMap }));
+          }
+        }
+
+        // 3. Corbeille
+        const trash = await CloudStorageAPI.getTrashFiles();
+        if (isMounted && trash && trash.length > 0) {
+          setTrashFiles(trash);
+        }
+
+        // 4. Dossier Sécurisé
+        const secFiles = await CloudStorageAPI.getSecureFiles();
+        if (isMounted && secFiles && secFiles.length > 0) {
+          setSecureFolderFiles(secFiles);
+        }
+
+        // 5. Audio
+        const audio = await CloudStorageAPI.getAudioList();
+        if (isMounted && audio && audio.length > 0) {
+          setAudioList(prev => [...audio, ...prev.filter(p => !audio.some(a => a.id === p.id))]);
+        }
+
+        // 6. Images
+        const images = await CloudStorageAPI.getImagesList();
+        if (isMounted && images && images.length > 0) {
+          setImagesList(prev => [...images, ...prev.filter(p => !images.some(i => i.id === p.id))]);
+        }
+
+        // 7. Vidéos
+        const videos = await CloudStorageAPI.getVideosList();
+        if (isMounted && videos && videos.length > 0) {
+          setVideosList(prev => [...videos, ...prev.filter(p => !videos.some(v => v.id === p.id))]);
+        }
+
+        // 8. Documents
+        const docs = await CloudStorageAPI.getDocumentsList();
+        if (isMounted && docs && docs.length > 0) {
+          setDocumentsList(prev => [...docs, ...prev.filter(p => !docs.some(d => d.id === p.id))]);
+        }
+      } catch (e) {
+        console.warn('[Page1FilesMenuView] Chargement D1/R2 local fallback:', e);
+      }
+    }
+
+    loadCloudBackendData();
+
+    return () => {
+      isMounted = false;
+    };
+  }, []);
+
   // Défilement et glissement horizontal de la barre de l'Espace Cloud (souris et tactile)
   const cloudNavScrollRef = useRef<HTMLDivElement>(null);
   const [isNavDragging, setIsNavDragging] = useState(false);
@@ -1172,6 +1319,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setSplitSelectedFile(null);
     }
     setSelectedItemIds(prev => prev.filter(id => id !== file.id));
+    CloudStorageAPI.restoreTrashItem(file.id).catch(() => {});
     showToast(`"${file.name}" restauré !`);
   };
 
@@ -1201,6 +1349,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (splitSelectedFile && selectedItemIds.includes(splitSelectedFile.id)) {
       setSplitSelectedFile(null);
     }
+    CloudStorageAPI.restoreMultipleTrash(selectedItemIds).catch(() => {});
     setSelectedItemIds([]);
     setIsSelectionMode(false);
     showToast(`${itemsToRestore.length} élément(s) restauré(s) !`);
@@ -1212,6 +1361,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setSplitSelectedFile(null);
     }
     setSelectedItemIds(prev => prev.filter(i => i !== id));
+    CloudStorageAPI.deleteTrashPermanently([id]).catch(() => {});
     showToast('Fichier définitivement supprimé.');
   };
 
@@ -1222,6 +1372,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (splitSelectedFile && selectedItemIds.includes(splitSelectedFile.id)) {
       setSplitSelectedFile(null);
     }
+    CloudStorageAPI.deleteTrashPermanently(selectedItemIds).catch(() => {});
     setSelectedItemIds([]);
     setIsSelectionMode(false);
     showToast(`${count} élément(s) définitivement supprimé(s).`);
@@ -1244,6 +1395,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
     setSelectedItemIds([]);
     setIsSelectionMode(false);
+    CloudStorageAPI.emptyTrash().catch(() => {});
     showToast('Corbeille vidée.');
   };
 
@@ -1995,7 +2147,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const getStoredPin = () => localStorage.getItem('studycloud_secure_folder_pin');
 
   // Déverrouillage ou définition initiale du code secret du Dossier Sécurisé
-  const handleUnlockSecureFolder = (e?: React.FormEvent) => {
+  const handleUnlockSecureFolder = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const stored = getStoredPin();
 
@@ -2011,6 +2163,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         return;
       }
       localStorage.setItem('studycloud_secure_folder_pin', trimmed);
+      CloudStorageAPI.setSecurePin(trimmed).catch(console.error);
       setIsSecureFolderUnlocked(true);
       setIsPinModalOpen(false);
       setSecurePinInput('');
@@ -2026,8 +2179,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
       setPinTargetDestination(null);
     } else {
-      // Code déjà existant : vérification
-      if (securePinInput.trim() === stored.trim()) {
+      // Code déjà existant : vérification locale ou via worker Cloudflare D1
+      const isLocalOk = securePinInput.trim() === stored.trim();
+      let isWorkerOk = false;
+      try {
+        isWorkerOk = await CloudStorageAPI.verifySecurePin(securePinInput.trim());
+      } catch (err) {
+        // repli silencieux sur la vérification locale
+      }
+
+      if (isLocalOk || isWorkerOk) {
         setIsSecureFolderUnlocked(true);
         setIsPinModalOpen(false);
         setSecurePinInput('');
@@ -2065,7 +2226,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   // Modification du code secret depuis le menu 3 traits
-  const handleChangePin = (e?: React.FormEvent) => {
+  const handleChangePin = async (e?: React.FormEvent) => {
     if (e) e.preventDefault();
     const stored = getStoredPin();
 
@@ -2084,6 +2245,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
 
     localStorage.setItem('studycloud_secure_folder_pin', newTrimmed);
+    CloudStorageAPI.setSecurePin(newTrimmed, oldPinInput.trim()).catch(console.error);
     setChangePinSuccess("Code secret mis à jour avec succès !");
     setChangePinError(null);
     setTimeout(() => {
@@ -2111,6 +2273,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     setSecureFolderFiles(prev => [...lockedItems, ...prev]);
 
+    // Persistance dans Cloudflare D1 secure_files
+    itemsToLock.forEach(item => {
+      const origCat = (item as any).originalCategory || item.category || 'documents';
+      CloudStorageAPI.moveToSecureFolder(item, origCat, (item as any).folderId || opened3DFolder?.id).catch(console.error);
+    });
+
     // Retirer des listes d'origine pour isolation
     setDocumentsList(prev => prev.filter(d => !selectedItemIds.includes(d.id)));
     setImagesList(prev => prev.filter(img => !selectedItemIds.includes(img.id)));
@@ -2118,6 +2286,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setAudioList(prev => prev.filter(aud => !selectedItemIds.includes(aud.id)));
     setDownloadedItems(prev => prev.filter(dl => !selectedItemIds.includes(dl.id)));
     setCloudRecentFiles(prev => prev.filter(f => !selectedItemIds.includes(f.id)));
+    if (opened3DFolder) {
+      setFolderFilesMap(prev => ({
+        ...prev,
+        [opened3DFolder.id]: (prev[opened3DFolder.id] || []).filter(f => !selectedItemIds.includes(f.id))
+      }));
+    }
 
     if (splitSelectedFile && selectedItemIds.includes(splitSelectedFile.id)) {
       setSplitSelectedFile(null);
@@ -2148,7 +2322,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       else if (origCat === 'videos') setVideosList(prev => [restored, ...prev]);
       else if (origCat === 'audio') setAudioList(prev => [restored, ...prev]);
       else if (origCat === 'downloads') setDownloadedItems(prev => [restored, ...prev]);
-      else setDocumentsList(prev => [restored, ...prev]);
+      else if (origCat === 'classeur' && (file as any).originalFolderId) {
+        const fId = (file as any).originalFolderId;
+        setFolderFilesMap(prev => ({
+          ...prev,
+          [fId]: [restored, ...(prev[fId] || [])]
+        }));
+      } else {
+        setDocumentsList(prev => [restored, ...prev]);
+      }
+
+      // Restauration dans Cloudflare D1
+      CloudStorageAPI.restoreFromSecureFolder(file.id).catch(console.error);
     });
 
     setSecureFolderFiles(prev => prev.filter(f => !selectedItemIds.includes(f.id)));
@@ -2292,6 +2477,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         if (splitSelectedFile?.id === file.id) {
           setSplitSelectedFile(null);
         }
+
+        // Persistance dans Cloudflare D1 secure_files
+        const origCat = (file as any).originalCategory || file.category || 'documents';
+        CloudStorageAPI.moveToSecureFolder(file, origCat, (file as any).folderId || opened3DFolder?.id).catch(console.error);
+
         showToast(`"${file.name}" verrouillé dans le dossier sécurisé !`);
         break;
       }
@@ -2313,11 +2503,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         else if (origCat === 'videos') setVideosList(prev => [restoredFile, ...prev]);
         else if (origCat === 'audio') setAudioList(prev => [restoredFile, ...prev]);
         else if (origCat === 'downloads') setDownloadedItems(prev => [restoredFile, ...prev]);
-        else setDocumentsList(prev => [restoredFile, ...prev]);
+        else if (origCat === 'classeur' && (file as any).originalFolderId) {
+          const fId = (file as any).originalFolderId;
+          setFolderFilesMap(prev => ({
+            ...prev,
+            [fId]: [restoredFile, ...(prev[fId] || [])]
+          }));
+        } else {
+          setDocumentsList(prev => [restoredFile, ...prev]);
+        }
 
         if (splitSelectedFile?.id === file.id) {
           setSplitSelectedFile(null);
         }
+
+        // Restauration dans Cloudflare D1
+        CloudStorageAPI.restoreFromSecureFolder(file.id).catch(console.error);
+
         showToast(`"${file.name}" déverrouillé !`);
         break;
       }
@@ -4325,16 +4527,82 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               const isTxtNote = file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt');
               const isSelected = splitSelectedFile?.id === file.id;
               const isMenuOpen = activeMenuFileId === file.id;
+              const isBeingDragged = draggedFileId === file.id;
+              const isDropTarget = dragOverFileId === file.id && draggedFileId !== file.id;
+
+              const handleFileDrop = (e: React.DragEvent) => {
+                e.preventDefault();
+                e.stopPropagation();
+                const sourceId = draggedFileId || e.dataTransfer.getData('text/plain');
+                if (sourceId && sourceId !== file.id && opened3DFolder) {
+                  setFolderFilesMap(prev => {
+                    const currentList = prev[opened3DFolder.id] || [];
+                    const fromIdx = currentList.findIndex(f => f.id === sourceId);
+                    const toIdx = currentList.findIndex(f => f.id === file.id);
+                    if (fromIdx < 0 || toIdx < 0) return prev;
+                    const nextList = [...currentList];
+                    const [moved] = nextList.splice(fromIdx, 1);
+                    nextList.splice(toIdx, 0, moved);
+
+                    const reordered = nextList.map((f, idx) => ({
+                      ...f,
+                      displayOrder: idx,
+                      positionX: idx * 25,
+                      positionY: 0
+                    }));
+
+                    // Persistance de l'ordre et des coordonnées dans Cloudflare D1 classeur_files
+                    CloudStorageAPI.reorderClasseurFiles(reordered.map((f, idx) => ({
+                      id: f.id,
+                      displayOrder: idx,
+                      positionX: idx * 25,
+                      positionY: 0
+                    }))).catch(() => {});
+
+                    return {
+                      ...prev,
+                      [opened3DFolder.id]: reordered
+                    };
+                  });
+                }
+                setDraggedFileId(null);
+                setDragOverFileId(null);
+              };
 
               if (isTxtNote) {
                 return (
                   <div
                     key={file.id}
+                    draggable
+                    onDragStart={(e) => {
+                      e.stopPropagation();
+                      e.dataTransfer.setData('text/plain', file.id);
+                      setDraggedFileId(file.id);
+                    }}
+                    onDragOver={(e) => {
+                      e.preventDefault();
+                      e.stopPropagation();
+                      if (draggedFileId && draggedFileId !== file.id) {
+                        setDragOverFileId(file.id);
+                      }
+                    }}
+                    onDragLeave={() => {
+                      if (dragOverFileId === file.id) setDragOverFileId(null);
+                    }}
+                    onDrop={handleFileDrop}
+                    onDragEnd={() => {
+                      setDraggedFileId(null);
+                      setDragOverFileId(null);
+                    }}
                     onClick={() => handleSelectFile(file)}
-                    className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col justify-between select-none ${
-                      isSelected
+                    className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 cursor-pointer flex flex-col justify-between select-none ${
+                      isBeingDragged
+                        ? 'opacity-30 scale-95 border-dashed border-cyan-400 bg-cyan-500/10 cursor-grabbing'
+                        : isDropTarget
+                        ? 'border-cyan-400 ring-4 ring-cyan-400/50 scale-[1.03]'
+                        : isSelected
                         ? 'border-cyan-400 ring-2 ring-cyan-400/40 bg-[#14233C]'
-                        : 'border-white/10 hover:border-cyan-400/50'
+                        : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1'
                     } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
                   >
                     {/* Haut de carte : Badge TXT et Bouton 3 traits identique aux dossiers et fichiers */}
@@ -4375,7 +4643,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       </div>
                     </div>
 
-                    {/* Bas de carte : Titre et détails (suppression de 'Cliquer pour écrire' comme entouré en rouge) */}
+                    {/* Bas de carte : Titre et détails */}
                     <div className="p-1.5 flex flex-col justify-between bg-black/30 rounded-xl mt-1.5">
                       <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors" title={file.name}>
                         {file.name}
@@ -4392,11 +4660,36 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               return (
                 <div
                   key={file.id}
+                  draggable
+                  onDragStart={(e) => {
+                    e.stopPropagation();
+                    e.dataTransfer.setData('text/plain', file.id);
+                    setDraggedFileId(file.id);
+                  }}
+                  onDragOver={(e) => {
+                    e.preventDefault();
+                    e.stopPropagation();
+                    if (draggedFileId && draggedFileId !== file.id) {
+                      setDragOverFileId(file.id);
+                    }
+                  }}
+                  onDragLeave={() => {
+                    if (dragOverFileId === file.id) setDragOverFileId(null);
+                  }}
+                  onDrop={handleFileDrop}
+                  onDragEnd={() => {
+                    setDraggedFileId(null);
+                    setDragOverFileId(null);
+                  }}
                   onClick={() => handleSelectFile(file)}
-                  className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col ${
-                    isSelected
+                  className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200 cursor-pointer flex flex-col ${
+                    isBeingDragged
+                      ? 'opacity-30 scale-95 border-dashed border-orange-400 bg-orange-500/10 cursor-grabbing'
+                      : isDropTarget
+                      ? 'border-orange-400 ring-4 ring-orange-400/50 scale-[1.03]'
+                      : isSelected
                       ? 'border-orange-400 ring-2 ring-orange-400/40 bg-[#192238]'
-                      : 'border-white/10 hover:border-orange-500/50'
+                      : 'border-white/10 hover:border-orange-500/50 hover:-translate-y-1'
                   } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
                 >
                   <div className="w-full h-24 sm:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center overflow-hidden">
@@ -6183,10 +6476,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         dateText: dateForModel,
         createdAt: Date.now(),
         parentId: subFolderParentId || undefined,
+        positionX: 0,
+        positionY: 0,
+        displayOrder: 0,
+        zoomLevel: folderZoomLevel
       };
 
       // Nouveaux dossiers créés toujours en haut par défaut (index 0)
       setClasseur3DFolders(prev => [created3DFolder, ...prev]);
+      CloudStorageAPI.saveClasseurFolder(created3DFolder).catch(() => {});
       
       const newFolder = {
         id: `folder-${Date.now()}`,

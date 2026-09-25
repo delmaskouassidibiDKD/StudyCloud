@@ -566,3 +566,261 @@ CREATE TABLE IF NOT EXISTS storage_global_config (
     default_welcome_d1_mb REAL DEFAULT 20.0,
     updated_at TEXT DEFAULT CURRENT_TIMESTAMP
 );
+
+-- ============================================================================
+-- 19. CLASSEUR - DOSSIERS 3D PÉDAGOGIQUES (Positions, Tailles, Modèles 3D)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS classeur_folders (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    parent_id TEXT,
+    name TEXT NOT NULL,
+    model_id TEXT DEFAULT '1',
+    primary_color TEXT DEFAULT '#EA580C',
+    accent_color TEXT DEFAULT '#F97316',
+    icon_name TEXT DEFAULT 'Folder',
+    text_dark INTEGER DEFAULT 0,
+    position_x REAL DEFAULT 0,
+    position_y REAL DEFAULT 0,
+    display_order INTEGER DEFAULT 0,
+    zoom_level REAL DEFAULT 10,
+    is_pinned INTEGER DEFAULT 0,
+    is_favorite INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (parent_id) REFERENCES classeur_folders(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_classeur_folders_user ON classeur_folders(user_id);
+CREATE INDEX IF NOT EXISTS idx_classeur_folders_parent ON classeur_folders(parent_id);
+CREATE INDEX IF NOT EXISTS idx_classeur_folders_order ON classeur_folders(user_id, display_order);
+
+-- ============================================================================
+-- 20. CLASSEUR - FICHIERS & BLOC-NOTES INTÉGRÉS (Positions, Tailles réelles)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS classeur_files (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    folder_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    size TEXT DEFAULT '0 o',
+    size_bytes INTEGER DEFAULT 0,
+    category TEXT DEFAULT 'documents',
+    extension TEXT DEFAULT 'txt',
+    source TEXT DEFAULT '',
+    date_formatted TEXT DEFAULT '',
+    position_x REAL DEFAULT 0,
+    position_y REAL DEFAULT 0,
+    display_order INTEGER DEFAULT 0,
+    is_notepad INTEGER DEFAULT 0,
+    notepad_title TEXT DEFAULT '',
+    notepad_content TEXT DEFAULT '',
+    preview_url TEXT DEFAULT '',
+    r2_key TEXT DEFAULT '',
+    file_url TEXT DEFAULT '',
+    is_pinned INTEGER DEFAULT 0,
+    is_favorite INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE,
+    FOREIGN KEY (folder_id) REFERENCES classeur_folders(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_classeur_files_user ON classeur_files(user_id);
+CREATE INDEX IF NOT EXISTS idx_classeur_files_folder ON classeur_files(folder_id);
+CREATE INDEX IF NOT EXISTS idx_classeur_files_pos ON classeur_files(folder_id, position_x, position_y);
+
+-- ============================================================================
+-- 21. AUDIO / MUSIQUE (Métadonnées & Pistes Audio D1)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS audio_files (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    title TEXT DEFAULT '',
+    artist TEXT DEFAULT 'Artiste inconnu',
+    album TEXT DEFAULT '',
+    duration_sec REAL DEFAULT 0,
+    size TEXT DEFAULT '0 o',
+    size_bytes INTEGER DEFAULT 0,
+    date_formatted TEXT DEFAULT '',
+    lyrics_snippet TEXT DEFAULT '',
+    full_lyrics_json TEXT DEFAULT '[]',
+    cover_url TEXT DEFAULT '',
+    r2_key TEXT DEFAULT '',
+    audio_url TEXT DEFAULT '',
+    is_favorite INTEGER DEFAULT 0,
+    is_pinned INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_audio_files_user ON audio_files(user_id);
+
+-- ============================================================================
+-- 22. IMAGES / PHOTOS (Dimensions, Métadonnées D1)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS image_files (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    size TEXT DEFAULT '0 o',
+    size_bytes INTEGER DEFAULT 0,
+    width INTEGER DEFAULT 0,
+    height INTEGER DEFAULT 0,
+    extension TEXT DEFAULT 'jpg',
+    date_formatted TEXT DEFAULT '',
+    r2_key TEXT DEFAULT '',
+    image_url TEXT DEFAULT '',
+    thumbnail_url TEXT DEFAULT '',
+    is_favorite INTEGER DEFAULT 0,
+    is_pinned INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_image_files_user ON image_files(user_id);
+
+-- ============================================================================
+-- 23. VIDÉOS (Durées, Résolutions, Métadonnées D1)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS video_files (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    size TEXT DEFAULT '0 o',
+    size_bytes INTEGER DEFAULT 0,
+    duration_sec REAL DEFAULT 0,
+    resolution TEXT DEFAULT '1080p',
+    extension TEXT DEFAULT 'mp4',
+    date_formatted TEXT DEFAULT '',
+    r2_key TEXT DEFAULT '',
+    video_url TEXT DEFAULT '',
+    thumbnail_url TEXT DEFAULT '',
+    is_favorite INTEGER DEFAULT 0,
+    is_pinned INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_video_files_user ON video_files(user_id);
+
+-- ============================================================================
+-- 24. DOCUMENTS DE COURS & FASCICULES (PDF, Word, etc.)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS document_files (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    size TEXT DEFAULT '0 o',
+    size_bytes INTEGER DEFAULT 0,
+    extension TEXT DEFAULT 'pdf',
+    document_category TEXT DEFAULT 'COURS',
+    page_count INTEGER DEFAULT 1,
+    date_formatted TEXT DEFAULT '',
+    source TEXT DEFAULT 'StudyCloud',
+    r2_key TEXT DEFAULT '',
+    file_url TEXT DEFAULT '',
+    preview_url TEXT DEFAULT '',
+    is_favorite INTEGER DEFAULT 0,
+    is_pinned INTEGER DEFAULT 0,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_document_files_user ON document_files(user_id);
+
+-- ============================================================================
+-- 25. TÉLÉCHARGEMENTS (Historique & Fichiers D1)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS download_files (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    size TEXT DEFAULT '0 o',
+    size_bytes INTEGER DEFAULT 0,
+    type TEXT DEFAULT 'document',
+    extension TEXT DEFAULT '',
+    source_url TEXT DEFAULT '',
+    source TEXT DEFAULT 'Web',
+    r2_key TEXT DEFAULT '',
+    file_url TEXT DEFAULT '',
+    downloaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_download_files_user ON download_files(user_id);
+
+-- ============================================================================
+-- 26. DOSSIER SÉCURISÉ (PIN Chiffré & Fichiers Protégés)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS secure_folder_config (
+    user_id TEXT PRIMARY KEY,
+    pin_hash TEXT NOT NULL,
+    is_locked INTEGER DEFAULT 1,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE TABLE IF NOT EXISTS secure_files (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    size TEXT DEFAULT '0 o',
+    size_bytes INTEGER DEFAULT 0,
+    category TEXT DEFAULT 'documents',
+    extension TEXT DEFAULT '',
+    original_category TEXT DEFAULT 'documents',
+    original_folder_id TEXT DEFAULT '',
+    date_formatted TEXT DEFAULT '',
+    metadata_json TEXT DEFAULT '{}',
+    r2_key TEXT DEFAULT '',
+    file_url TEXT DEFAULT '',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_secure_files_user ON secure_files(user_id);
+
+-- ============================================================================
+-- 27. CORBEILLE & FAVORIS (Restauration exacte & Marquage D1)
+-- ============================================================================
+CREATE TABLE IF NOT EXISTS trash_files (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    name TEXT NOT NULL,
+    size TEXT DEFAULT '0 o',
+    size_bytes INTEGER DEFAULT 0,
+    category TEXT DEFAULT 'documents',
+    extension TEXT DEFAULT '',
+    source_category TEXT DEFAULT 'documents',
+    original_folder_id TEXT DEFAULT '',
+    metadata_json TEXT DEFAULT '{}',
+    date_formatted TEXT DEFAULT '',
+    r2_key TEXT DEFAULT '',
+    file_url TEXT DEFAULT '',
+    deleted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    expires_at TEXT,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_trash_files_user ON trash_files(user_id);
+
+CREATE TABLE IF NOT EXISTS user_favorites (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    item_id TEXT NOT NULL,
+    category TEXT NOT NULL,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_user_favorites_user ON user_favorites(user_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_user_fav_unique ON user_favorites(user_id, item_id, category);
+
