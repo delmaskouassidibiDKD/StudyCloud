@@ -3254,15 +3254,38 @@ function renderDashboardHtml(data) {
                 </p>
               </div>
 
-              <!-- Bouton + Créer une carte d'abonnement -->
-              <button 
-                type="button" 
-                onclick="openSubscriptionPlanModal(currentSubPlanTab)"
-                class="px-3.5 py-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-orange-950/40 flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shrink-0"
-              >
-                <span>➕</span>
-                <span>Créer une carte d'abonnement</span>
-              </button>
+                            <!-- Actions Cartes d'abonnement -->
+              <div class="flex items-center gap-2 flex-wrap justify-end">
+                <button 
+                  type="button" 
+                  id="btn-refresh-sub-plans"
+                  onclick="refreshSubscriptionPlansFromD1(true)"
+                  title="Recharger les vraies cartes enregistrées en base D1"
+                  class="px-3 py-2 bg-slate-800 hover:bg-slate-700 text-slate-200 font-bold text-xs rounded-xl border border-slate-700 flex items-center gap-1.5 transition cursor-pointer active:scale-95 shrink-0 shadow-xs"
+                >
+                  <span id="sub-refresh-spinner" class="inline-block transition-transform duration-500">🔄</span>
+                  <span>Actualiser les cartes</span>
+                </button>
+
+                <button 
+                  type="button" 
+                  onclick="resetSubscriptionPlansTables()"
+                  title="Supprimer les tables actuelles de la base et les recréer à neuf"
+                  class="px-3 py-2 bg-red-950/40 hover:bg-red-900/60 text-red-300 border border-red-800/60 font-bold text-xs rounded-xl flex items-center gap-1.5 transition cursor-pointer active:scale-95 shrink-0 shadow-xs"
+                >
+                  <span>🗑️</span>
+                  <span>Supprimer & Recréer les tables D1</span>
+                </button>
+
+                <button 
+                  type="button" 
+                  onclick="openSubscriptionPlanModal(currentSubPlanTab)"
+                  class="px-3.5 py-2 bg-gradient-to-r from-orange-600 to-amber-600 hover:from-orange-500 hover:to-amber-500 text-white font-extrabold text-xs rounded-xl shadow-lg shadow-orange-950/40 flex items-center justify-center gap-1.5 transition cursor-pointer active:scale-95 shrink-0"
+                >
+                  <span>➕</span>
+                  <span>Créer une carte d'abonnement</span>
+                </button>
+              </div>
             </div>
 
             <!-- Deux Boutons d'Onglets Principaux : Paiement Stockage vs Assistante StudyCloud -->
@@ -8029,6 +8052,8 @@ function renderDashboardHtml(data) {
         }
       }
       renderSubscriptionPlansCards(currentSubPlanTab);
+    setTimeout(refreshSubscriptionPlansFromD1, 100);
+      refreshSubscriptionPlansFromD1();
     }
     window.switchSubscriptionTab = switchSubscriptionTab;
 
@@ -8164,6 +8189,79 @@ function renderDashboardHtml(data) {
       }
     }
     window.updateSubscriptionPricingCalculations = updateSubscriptionPricingCalculations;
+
+    
+    // Récupérer dynamiquement les cartes créées depuis D1 pour les afficher dans le tableau de bord
+    async function refreshSubscriptionPlansFromD1(notifyUser = false) {
+      const spinner = document.getElementById('sub-refresh-spinner');
+      if (spinner) spinner.style.transform = 'rotate(360deg)';
+
+      const t = Date.now();
+      const endpoints = [
+        '/api/subscription-plans?active_only=0&_t=' + t,
+        'https://api-worker.dkd-technologies.com/api/subscription-plans?active_only=0&_t=' + t
+      ];
+
+      for (const ep of endpoints) {
+        try {
+          const resp = await fetch(ep, {
+            headers: { 'Cache-Control': 'no-cache, no-store, must-revalidate', 'Pragma': 'no-cache' }
+          });
+          if (resp.ok) {
+            const text = await resp.text();
+            if (text && !text.trim().startsWith('<')) {
+              const data = JSON.parse(text);
+              if (data && data.success) {
+                allStoragePlans = Array.isArray(data.storagePlans) ? data.storagePlans : [];
+                allAiPlans = Array.isArray(data.aiPlans) ? data.aiPlans : [];
+                renderSubscriptionPlansCards(currentSubPlanTab);
+                if (notifyUser) showToast("✓ Cartes D1 synchronisées (" + allStoragePlans.length + " Stockage, " + allAiPlans.length + " IA)");
+                setTimeout(() => { if (spinner) spinner.style.transform = 'none'; }, 500);
+                return;
+              }
+            }
+          }
+        } catch (e) {
+          console.warn('[SubPlans] Essai refresh endpoint échoué sur ' + ep, e);
+        }
+      }
+      setTimeout(() => { if (spinner) spinner.style.transform = 'none'; }, 500);
+    }
+    window.refreshSubscriptionPlansFromD1 = refreshSubscriptionPlansFromD1;
+
+    // Supprimer et recréer à neuf les tables de forfaits dans Cloudflare D1
+    async function resetSubscriptionPlansTables() {
+      if (!confirm("⚠️ ATTENTION : Voulez-vous vraiment SUPPRIMER les tables 'storage_subscription_plans' et 'ai_subscription_plans' dans la base de données D1 pour les recréer complètement à neuf ?")) {
+        return;
+      }
+
+      showToast("⏳ Suppression et recréation à neuf des tables dans D1...");
+      const endpoints = [
+        '/api/subscription-plans/reset-tables',
+        'https://api-worker.dkd-technologies.com/api/subscription-plans/reset-tables'
+      ];
+
+      for (const ep of endpoints) {
+        try {
+          const resp = await fetch(ep, { method: 'POST', headers: { 'Content-Type': 'application/json' } });
+          const text = await resp.text();
+          if (text && !text.trim().startsWith('<')) {
+            const data = JSON.parse(text);
+            if (data && data.success) {
+              allStoragePlans = [];
+              allAiPlans = [];
+              renderSubscriptionPlansCards(currentSubPlanTab);
+              alert("✅ Les tables de cartes ont été supprimées et recréées à neuf avec succès dans Cloudflare D1 ! Vous pouvez maintenant créer vos nouvelles cartes.");
+              return;
+            }
+          }
+        } catch (err) {
+          console.warn('[SubPlans Reset] Essai reset échoué sur ' + ep, err);
+        }
+      }
+      alert("Erreur lors de la suppression des tables D1.");
+    }
+    window.resetSubscriptionPlansTables = resetSubscriptionPlansTables;
 
     function renderSubscriptionPlansCards(category) {
       const targetCat = category === 'ai' ? 'ai' : 'storage';
@@ -10353,6 +10451,80 @@ export default {
       // ----------------------------------------------------------------------
       // ROUTE GET : /api/subscription-plans (Plans de stockage et IA)
       // ----------------------------------------------------------------------
+      
+      // ----------------------------------------------------------------------
+      // ROUTE POST/GET : /api/subscription-plans/reset-tables (Suppression et recréation à neuf des tables)
+      // ----------------------------------------------------------------------
+      if ((request.method === 'POST' || request.method === 'GET') && path === '/api/subscription-plans/reset-tables') {
+        if (!db) {
+          return new Response(JSON.stringify({ success: false, error: 'Base de données D1 indisponible' }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+        try {
+          await db.prepare("DROP TABLE IF EXISTS storage_subscription_plans").run();
+          await db.prepare("DROP TABLE IF EXISTS ai_subscription_plans").run();
+
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS storage_subscription_plans (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              badge TEXT DEFAULT '',
+              description TEXT DEFAULT '',
+              storage_amount TEXT NOT NULL,
+              storage_mb REAL DEFAULT 0,
+              price REAL NOT NULL,
+              primary_currency TEXT DEFAULT 'USD',
+              currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
+              currency_conversions TEXT DEFAULT '{}',
+              yearly_price REAL DEFAULT 0,
+              yearly_discount_pct REAL DEFAULT 10,
+              features TEXT DEFAULT '[]',
+              is_auto_billing INTEGER DEFAULT 0,
+              is_active INTEGER DEFAULT 1,
+              sort_order INTEGER DEFAULT 0,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+
+          await db.prepare(`
+            CREATE TABLE IF NOT EXISTS ai_subscription_plans (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              badge TEXT DEFAULT '',
+              description TEXT DEFAULT '',
+              credits_or_words TEXT NOT NULL,
+              credits_count REAL DEFAULT 0,
+              price REAL NOT NULL,
+              primary_currency TEXT DEFAULT 'USD',
+              currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
+              currency_conversions TEXT DEFAULT '{}',
+              yearly_price REAL DEFAULT 0,
+              yearly_discount_pct REAL DEFAULT 0,
+              features TEXT DEFAULT '[]',
+              is_auto_billing INTEGER DEFAULT 0,
+              is_active INTEGER DEFAULT 1,
+              sort_order INTEGER DEFAULT 0,
+              pricing_model TEXT DEFAULT 'subscription',
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+
+          return new Response(JSON.stringify({ success: true, message: 'Tables storage_subscription_plans et ai_subscription_plans supprimées et recréées à neuf avec succès !' }), {
+            status: 200,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        } catch (err) {
+          return new Response(JSON.stringify({ success: false, error: err.message }), {
+            status: 500,
+            headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+          });
+        }
+      }
+
       if (request.method === 'GET' && path === '/api/subscription-plans') {
                 const onlyActive = url.searchParams.get('active_only') === '1';
         const storageQuery = onlyActive 

@@ -10364,6 +10364,71 @@ export default {
       // ==============================================================================
       // ROUTE GET : /api/subscription-plans (Plans et Packs pour l'application)
       // ==============================================================================
+      
+      // ==============================================================================
+      // ROUTE POST/GET : /api/subscription-plans/reset-tables
+      // ==============================================================================
+      if ((path === '/api/subscription-plans/reset-tables') && (method === 'POST' || method === 'GET')) {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+
+        try {
+          await targetDb.prepare("DROP TABLE IF EXISTS storage_subscription_plans").run();
+          await targetDb.prepare("DROP TABLE IF EXISTS ai_subscription_plans").run();
+
+          await targetDb.prepare(`
+            CREATE TABLE IF NOT EXISTS storage_subscription_plans (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              badge TEXT DEFAULT '',
+              description TEXT DEFAULT '',
+              storage_amount TEXT NOT NULL,
+              storage_mb REAL DEFAULT 0,
+              price REAL NOT NULL,
+              primary_currency TEXT DEFAULT 'USD',
+              currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
+              currency_conversions TEXT DEFAULT '{}',
+              yearly_price REAL DEFAULT 0,
+              yearly_discount_pct REAL DEFAULT 10,
+              features TEXT DEFAULT '[]',
+              is_auto_billing INTEGER DEFAULT 0,
+              is_active INTEGER DEFAULT 1,
+              sort_order INTEGER DEFAULT 0,
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+
+          await targetDb.prepare(`
+            CREATE TABLE IF NOT EXISTS ai_subscription_plans (
+              id TEXT PRIMARY KEY,
+              name TEXT NOT NULL,
+              badge TEXT DEFAULT '',
+              description TEXT DEFAULT '',
+              credits_or_words TEXT NOT NULL,
+              credits_count REAL DEFAULT 0,
+              price REAL NOT NULL,
+              primary_currency TEXT DEFAULT 'USD',
+              currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
+              currency_conversions TEXT DEFAULT '{}',
+              yearly_price REAL DEFAULT 0,
+              yearly_discount_pct REAL DEFAULT 0,
+              features TEXT DEFAULT '[]',
+              is_auto_billing INTEGER DEFAULT 0,
+              is_active INTEGER DEFAULT 1,
+              sort_order INTEGER DEFAULT 0,
+              pricing_model TEXT DEFAULT 'subscription',
+              created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+              updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+            )
+          `).run();
+
+          return jsonResponse({ success: true, message: 'Tables storage_subscription_plans et ai_subscription_plans réinitialisées à neuf dans D1 !' }, 200, origin);
+        } catch (e: any) {
+          return errorResponse(e.message || 'Erreur reset tables', 500, origin);
+        }
+      }
+
       if (path === '/api/subscription-plans' && method === 'GET') {
         const onlyActive = url.searchParams.get('active_only') === '1';
         let storagePlans: any[] = [];
