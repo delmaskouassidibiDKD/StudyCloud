@@ -10,6 +10,7 @@ import { FoldersView } from './components/FoldersView';
 import { UploadView } from './components/UploadView';
 import { SharedLinksView } from './components/SharedLinksView';
 import { SettingsView } from './components/SettingsView';
+import { AiSubscriptionsView } from './components/AiSubscriptionsView';
 import { CreateShareLinkModal } from './components/CreateShareLinkModal';
 import { PublishFileView } from './components/PublishFileView';
 import { INITIAL_FOLDERS } from './data/initialData';
@@ -185,7 +186,7 @@ export default function App() {
       }
     } catch (e) {}
     const saved = localStorage.getItem('unifolder_current_tab');
-    if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file'].includes(saved)) {
+    if (saved && ['folders', 'upload', 'share-portal', 'library', 'shared', 'settings', 'publish-file', 'ai-subscriptions'].includes(saved)) {
       return saved as NavigationTab;
     }
     return 'folders';
@@ -1496,6 +1497,8 @@ export default function App() {
             />
           ) : currentTab === 'settings' ? (
             <SettingsView />
+          ) : currentTab === 'ai-subscriptions' ? (
+            <AiSubscriptionsView />
           ) : null}
 
           {/* Persistent PublishFileView: keeps in-progress uploads, drafts, rejected files & status intact */}

@@ -824,3 +824,90 @@ CREATE TABLE IF NOT EXISTS user_favorites (
 CREATE INDEX IF NOT EXISTS idx_user_favorites_user ON user_favorites(user_id);
 CREATE UNIQUE INDEX IF NOT EXISTS idx_user_fav_unique ON user_favorites(user_id, item_id, category);
 
+-- ============================================================================
+-- 28. MONÉTISATION, CRÉDITS IA, TOKENS & RÉACTIONS (Delmas IA / StudyCloud Agent)
+-- ============================================================================
+
+-- Portefeuille individuel de crédits et compteur de tokens de chaque utilisateur
+CREATE TABLE IF NOT EXISTS user_ai_credits (
+    user_id TEXT PRIMARY KEY,
+    credits_balance REAL DEFAULT 50.0,              -- Crédits disponibles (ex: 50 offerts à l'inscription)
+    total_tokens_consumed INTEGER DEFAULT 0,         -- Cumul des tokens réels Llama consommés
+    total_credits_purchased REAL DEFAULT 0.0,       -- Cumul des crédits payés
+    total_credits_consumed REAL DEFAULT 0.0,        -- Cumul des crédits dépensés
+    plan_tier TEXT DEFAULT 'gratuit',               -- 'gratuit' | 'etudiant' | 'pro' | 'master'
+    is_blocked INTEGER DEFAULT 0,                   -- 1 = bloqué par l'admin
+    last_usage_at TEXT,                             -- Dernière utilisation de l'IA
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_credits_tier ON user_ai_credits(plan_tier);
+
+-- Demandes d'achat / recharges de crédits (Wave, Orange, MTN...) validées par l'admin
+CREATE TABLE IF NOT EXISTS ai_credit_purchases (
+    id TEXT PRIMARY KEY,                            -- 'aicp-xyz' ou UUID
+    user_id TEXT NOT NULL,
+    user_name TEXT DEFAULT '',
+    user_email TEXT DEFAULT '',
+    user_phone TEXT DEFAULT '',
+    user_whatsapp TEXT DEFAULT '',
+    pack_id TEXT NOT NULL,                          -- 'pack_100_credits', 'pack_500_credits', etc.
+    pack_name TEXT NOT NULL,                        -- 'Pack Découverte 100 Crédits'
+    credits_amount REAL NOT NULL,                   -- Ex: 100 crédits
+    price_paid REAL NOT NULL,                       -- Ex: 1000 FCFA
+    currency TEXT DEFAULT 'FCFA',
+    payment_method TEXT DEFAULT 'Wave / Orange Money / MTN',
+    payment_reference TEXT DEFAULT '',
+    receipt_image_url TEXT DEFAULT '',              -- Capture d'écran du reçu Mobile Money
+    receipt_r2_key TEXT DEFAULT '',
+    status TEXT DEFAULT 'pending',                  -- 'pending' | 'completed' | 'rejected'
+    admin_notes TEXT DEFAULT '',
+    approved_by TEXT DEFAULT '',
+    approved_at TEXT,
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    updated_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_aicp_user ON ai_credit_purchases(user_id);
+CREATE INDEX IF NOT EXISTS idx_aicp_status ON ai_credit_purchases(status);
+CREATE INDEX IF NOT EXISTS idx_aicp_date ON ai_credit_purchases(created_at);
+
+-- Journal d'audit et de consommation détaillée des tokens (facturation exacte par action)
+CREATE TABLE IF NOT EXISTS ai_usage_logs (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    action_type TEXT NOT NULL,                      -- 'questionnaire' | 'vrai-ou-faux' | 'resume' | 'carte-mentale' | 'chat' | 'doc_analysis'
+    prompt_tokens INTEGER DEFAULT 0,
+    completion_tokens INTEGER DEFAULT 0,
+    total_tokens INTEGER DEFAULT 0,
+    credits_deducted REAL DEFAULT 1.0,              -- Crédits prélevés sur le solde
+    doc_name TEXT DEFAULT '',                       -- Nom du document joint analysé
+    model_used TEXT DEFAULT '@cf/meta/llama-3.3-70b-instruct-fp8-fast',
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_usage_user ON ai_usage_logs(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_action ON ai_usage_logs(action_type);
+CREATE INDEX IF NOT EXISTS idx_ai_usage_date ON ai_usage_logs(created_at);
+
+-- Réactions des utilisateurs (Pouce J'aime 👍 / J'aime pas 👎) avec retour qualité
+CREATE TABLE IF NOT EXISTS ai_reactions (
+    id TEXT PRIMARY KEY,
+    user_id TEXT NOT NULL,
+    content_id TEXT NOT NULL,                       -- ID du contenu (généré ou message)
+    content_type TEXT DEFAULT 'creation',           -- 'creation' | 'chat_message'
+    reaction TEXT NOT NULL,                         -- 'thumbs_up' | 'thumbs_down'
+    comment TEXT DEFAULT '',                        -- Remarque éventuelle de l'étudiant
+    created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+    FOREIGN KEY (user_id) REFERENCES users(id) ON DELETE CASCADE
+);
+
+CREATE INDEX IF NOT EXISTS idx_ai_react_user ON ai_reactions(user_id);
+CREATE INDEX IF NOT EXISTS idx_ai_react_content ON ai_reactions(content_id);
+CREATE UNIQUE INDEX IF NOT EXISTS idx_ai_react_unique ON ai_reactions(user_id, content_id);
+
+
