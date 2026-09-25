@@ -473,32 +473,10 @@ async function ensureStorageTables(db) {
       await db.prepare("ALTER TABLE ai_subscription_plans ADD COLUMN pricing_model TEXT DEFAULT 'subscription'").run();
     } catch (e) {}
 
-    // Insérer les plans de stockage par défaut si vides
+    // Nettoyer tous les faux plans pour que la base de données soit 100% vierge tant que l'admin n'a pas créé de cartes
     try {
-      const countStorage = await db.prepare("SELECT COUNT(*) as c FROM storage_subscription_plans").first();
-      if (!countStorage || countStorage.c === 0) {
-        await db.prepare(`
-          INSERT INTO storage_subscription_plans (id, name, badge, description, storage_amount, storage_mb, price, primary_currency, currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features, is_auto_billing, is_active, sort_order)
-          VALUES 
-          ('storage_plan_basique', 'Basique', '', 'Pour les particuliers et petites équipes qui débutent.', '10 Go', 10240, 10, 'USD', '["USD","XOF","EUR"]', '{"USD":10,"XOF":6500,"EUR":9.2}', 90, 10, '[{"text":"10 Go de stockage cloud haute vitesse","enabled":true},{"text":"Messagerie d''équipe et partage de fichiers","enabled":true},{"text":"Fil d''activité et aperçu des projets","enabled":true},{"text":"Accès mobile et bureau","enabled":true},{"text":"Support par e-mail","enabled":true}]', 0, 1, 1),
-          ('storage_plan_pro', 'Pro', 'Populaire', 'Pour les professionnels et étudiants avancés.', '50 Go', 51200, 32, 'USD', '["USD","XOF","EUR"]', '{"USD":32,"XOF":20000,"EUR":29.5}', 290, 10, '[{"text":"50 Go de stockage cloud haute vitesse","enabled":true},{"text":"Support prioritaire 24/7","enabled":true},{"text":"Analyses avancées et rapports","enabled":true},{"text":"Collaboration en temps réel illimitée","enabled":true},{"text":"Domaine personnalisé","enabled":true}]', 0, 1, 2),
-          ('storage_plan_entreprise', 'Entreprise', '', 'Pour les universités, laboratoires et grandes équipes.', '200 Go', 204800, 89, 'USD', '["USD","XOF","EUR"]', '{"USD":89,"XOF":55000,"EUR":82}', 790, 10, '[{"text":"200 Go de stockage cloud haute vitesse","enabled":true},{"text":"Sécurité renforcée et SSO","enabled":true},{"text":"Gestionnaire de compte dédié","enabled":true},{"text":"SLA garanti 99.9%","enabled":true},{"text":"Formations personnalisées","enabled":true},{"text":"Facturation centralisée","enabled":true}]', 0, 1, 3)
-        `).run();
-      }
-    } catch (e) {}
-
-    // Insérer les plans IA par défaut si vides
-    try {
-      const countAi = await db.prepare("SELECT COUNT(*) as c FROM ai_subscription_plans").first();
-      if (!countAi || countAi.c === 0) {
-        await db.prepare(`
-          INSERT INTO ai_subscription_plans (id, name, badge, description, credits_or_words, credits_count, price, primary_currency, currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features, is_auto_billing, is_active, sort_order, pricing_model)
-          VALUES 
-          ('ai_plan_basique', 'IA Basique', '', 'Pour réviser, poser des questions et comprendre rapidement vos cours au quotidien.', '100 000 crédits IA', 100000, 10, 'USD', '["USD","XOF","EUR"]', '{"USD":10,"XOF":6500,"EUR":9.2}', 90, 10, '[{"text":"100 000 crédits IA par mois","enabled":true},{"text":"Résumés automatiques de cours et PDF","enabled":true},{"text":"Création instantanée de cartes mémoires (Flashcards)","enabled":true},{"text":"Aide aux devoirs et explications pas à pas","enabled":true},{"text":"Support par e-mail","enabled":true}]', 0, 1, 1, 'subscription'),
-          ('ai_plan_pro', 'IA Pro Étudiant', 'Populaire', 'L''assistant d''apprentissage complet pour exceller et réussir tous vos examens.', '1 000 000 crédits IA', 1000000, 32, 'USD', '["USD","XOF","EUR"]', '{"USD":32,"XOF":20000,"EUR":29.5}', 290, 10, '[{"text":"1 000 000 crédits IA avec priorité maximale","enabled":true},{"text":"Génération de Quiz interactifs & examens blancs","enabled":true},{"text":"Synthèse vocale & lecture audio de vos fiches","enabled":true},{"text":"Analyse intelligente de documents scannés et photos","enabled":true},{"text":"Support prioritaire 24/7","enabled":true}]', 0, 1, 2, 'subscription'),
-          ('ai_plan_master', 'IA Recherche & Master', '', 'Pour les doctorants, thèses, mémoires volumineux et laboratoires universitaires.', 'Crédits IA illimités', 10000000, 89, 'USD', '["USD","XOF","EUR"]', '{"USD":89,"XOF":55000,"EUR":82}', 790, 10, '[{"text":"Crédits IA illimités avec accès modèles avancés","enabled":true},{"text":"Traitement prioritaire ultra-rapide","enabled":true},{"text":"Export complet des synthèses & fiches en PDF/Word","enabled":true},{"text":"Analyse illimitée de livres et thèses entières","enabled":true},{"text":"Accès API assistante pour vos projets de recherche","enabled":true}]', 0, 1, 3, 'subscription')
-        `).run();
-      }
+      await db.prepare("DELETE FROM storage_subscription_plans WHERE id LIKE 'storage_plan_%' OR id IN ('storage_plan_basique', 'storage_plan_pro', 'storage_plan_entreprise')").run();
+      await db.prepare("DELETE FROM ai_subscription_plans WHERE id LIKE 'ai_plan_%' OR id IN ('ai_plan_basique', 'ai_plan_pro', 'ai_plan_master')").run();
     } catch (e) {}
   } catch (e) {
     console.warn('[Storage Tables Init]', e);
@@ -3431,6 +3409,40 @@ function renderDashboardHtml(data) {
       <form id="form-sub-plan" onsubmit="event.preventDefault(); saveSubscriptionPlanModal();" class="p-5 overflow-y-auto space-y-4 text-xs">
         <input type="hidden" id="sub-plan-id" value="" />
         <input type="hidden" id="sub-plan-category" value="storage" />
+        <input type="hidden" id="sub-plan-pricing-model" value="subscription" />
+
+        <!-- SÉLECTEUR DE TYPE : ABONNEMENT RÉCURRENT VS VENTE UNIQUE / PACK DE CRÉDITS (POUR L'IA) -->
+        <div id="sub-pricing-model-container" class="p-3 bg-slate-900/90 rounded-xl border border-slate-700/80 space-y-2">
+          <label class="text-[11px] font-bold text-slate-200 block flex items-center gap-1.5">
+            <span>⚙️</span>
+            <span>Type d'offre IA :</span>
+          </label>
+          <div class="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <button 
+              type="button" 
+              id="sub-model-btn-subscription"
+              onclick="setSubscriptionPricingModel('subscription')"
+              class="p-2.5 rounded-xl border-2 border-orange-500 bg-orange-950/40 text-orange-200 text-left transition-all cursor-pointer flex flex-col justify-between shadow-md"
+            >
+              <div class="flex items-center gap-1.5 font-extrabold text-xs">
+                <span>🔄</span> <span>Abonnement Récurrent</span>
+              </div>
+              <span class="text-[10px] text-slate-400 mt-1">Facturé par mois / an avec réduction</span>
+            </button>
+
+            <button 
+              type="button" 
+              id="sub-model-btn-onetime"
+              onclick="setSubscriptionPricingModel('one_time')"
+              class="p-2.5 rounded-xl border border-slate-700 bg-slate-900/60 text-slate-400 text-left transition-all cursor-pointer flex flex-col justify-between hover:border-slate-600"
+            >
+              <div class="flex items-center gap-1.5 font-extrabold text-xs">
+                <span>⚡</span> <span>Vente unique / Pack de crédits</span>
+              </div>
+              <span class="text-[10px] text-slate-400 mt-1">Paiement direct, l'étudiant consomme et rachète</span>
+            </button>
+          </div>
+        </div>
 
         <!-- 1. Catégorie et Nom du forfait -->
         <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
@@ -8117,11 +8129,12 @@ function renderDashboardHtml(data) {
 
       const conv = calculateConversions(price, primaryCurr);
 
-      // Aperçu mensuel
+      // Aperçu tarif direct ou mensuel
+      const isOneTime = document.getElementById('sub-plan-pricing-model')?.value === 'one_time';
       const monthlyPrimaryEl = document.getElementById('sub-preview-monthly-primary');
       const monthlyConvEl = document.getElementById('sub-preview-monthly-conversions');
       if (monthlyPrimaryEl) {
-        monthlyPrimaryEl.textContent = getCurrencySymbol(primaryCurr) + ' ' + (primaryCurr === 'XOF' ? conv.XOF.toLocaleString() : conv[primaryCurr]) + ' / mois';
+        monthlyPrimaryEl.textContent = getCurrencySymbol(primaryCurr) + ' ' + (primaryCurr === 'XOF' ? conv.XOF.toLocaleString() : conv[primaryCurr]) + (isOneTime ? '' : ' / mois');
       }
       if (monthlyConvEl) {
         const parts = [];
@@ -8179,6 +8192,7 @@ function renderDashboardHtml(data) {
         const isActive = plan.is_active !== 0;
         const isAuto = plan.is_auto_billing === 1;
         const hasBadge = !!(plan.badge && plan.badge.trim());
+        const isOneTime = targetCat === 'ai' && (plan.pricing_model === 'one_time' || plan.pricing_model === 'pack');
 
         card.className = 'relative flex flex-col justify-between rounded-2xl p-5 border transition-all duration-200 ' + 
           (isActive 
@@ -8345,10 +8359,17 @@ function renderDashboardHtml(data) {
         mainPrice.textContent = getCurrencySymbol(primaryCurr) + ' ' + (primaryCurr === 'XOF' ? Number(plan.price).toLocaleString() : plan.price);
         priceRow.appendChild(mainPrice);
 
-        const perMonth = document.createElement('span');
-        perMonth.className = 'text-xs text-slate-400 font-bold';
-        perMonth.textContent = '/ mois';
-        priceRow.appendChild(perMonth);
+        if (!isOneTime) {
+          const perMonth = document.createElement('span');
+          perMonth.className = 'text-xs text-slate-400 font-bold';
+          perMonth.textContent = '/ mois';
+          priceRow.appendChild(perMonth);
+        } else {
+          const oneTimeBadge = document.createElement('span');
+          oneTimeBadge.className = 'text-[11px] text-cyan-400 font-bold bg-cyan-950/60 px-2 py-0.5 rounded border border-cyan-800/60';
+          oneTimeBadge.textContent = 'Paiement unique (Pack)';
+          priceRow.appendChild(oneTimeBadge);
+        }
         priceBox.appendChild(priceRow);
 
         // Devises secondaires mensuelles
@@ -8507,6 +8528,18 @@ function renderDashboardHtml(data) {
         btnDel.innerHTML = '<span>🗑️</span><span>Supprimer</span>';
         btnDel.onclick = function() { openDeleteConfirmModal(targetCat, plan.id, plan.name); };
 
+        if (targetCat === 'ai') {
+          const btnToggleModel = document.createElement('button');
+          btnToggleModel.type = 'button';
+          btnToggleModel.className = 'text-[11px] font-bold px-2 py-1 rounded-lg border transition cursor-pointer ' + 
+            (isOneTime ? 'border-orange-500/40 bg-orange-950/40 text-orange-300 hover:bg-orange-900/50' : 'border-cyan-500/40 bg-cyan-950/40 text-cyan-300 hover:bg-cyan-900/50');
+          btnToggleModel.textContent = isOneTime ? '🔄 Passer en Abonnement' : '⚡ Passer en Vente Unique';
+          btnToggleModel.onclick = function() {
+            toggleSubscriptionPlanPricingModel(plan.id, isOneTime ? 'subscription' : 'one_time');
+          };
+          actionRow.appendChild(btnToggleModel);
+        }
+
         actionRow.appendChild(btnEdit);
         actionRow.appendChild(btnDel);
         footerDiv.appendChild(actionRow);
@@ -8525,13 +8558,19 @@ function renderDashboardHtml(data) {
 
       document.getElementById('sub-plan-category').value = targetCat;
       document.getElementById('sub-modal-icon').textContent = targetCat === 'ai' ? '🤖' : '💾';
+      
+      const modelContainer = document.getElementById('sub-pricing-model-container');
+      if (modelContainer) {
+        modelContainer.style.display = targetCat === 'ai' ? 'block' : 'none';
+      }
+
       document.getElementById('sub-main-feature-label').textContent = targetCat === 'ai' ? 
-        'Nombre de crédits / mots IA (Obligatoire, non décochable)' : 
+        'Nombre de crédits IA inclus (Obligatoire, non décochable)' : 
         'Volume de stockage inclus (Obligatoire, non décochable)';
 
       const featInput = document.getElementById('sub-plan-main-feature-text');
       if (featInput) {
-        featInput.placeholder = targetCat === 'ai' ? 'Ex: 1 000 000 mots IA / mois' : 'Ex: 50 Go supplémentaires (+ 51 200 Mo)';
+        featInput.placeholder = targetCat === 'ai' ? 'Ex: 100 000 crédits IA' : 'Ex: 50 Go supplémentaires (+ 51 200 Mo)';
       }
 
       const listContainer = document.getElementById('sub-plan-features-list');
@@ -8588,7 +8627,7 @@ function renderDashboardHtml(data) {
           bManual.checked = !isAuto;
         }
       } else {
-        document.getElementById('sub-modal-title').textContent = targetCat === 'ai' ? "Créer une carte d'abonnement IA" : "Créer une carte d'abonnement Stockage";
+        document.getElementById('sub-modal-title').textContent = targetCat === 'ai' ? "Créer une offre / carte IA" : "Créer une carte d'abonnement Stockage";
         document.getElementById('sub-plan-id').value = '';
         document.getElementById('sub-plan-name').value = '';
         document.getElementById('sub-plan-badge').value = '';
@@ -8596,8 +8635,9 @@ function renderDashboardHtml(data) {
         document.getElementById('sub-plan-price').value = '10';
         document.getElementById('sub-plan-primary-curr').value = 'USD';
         document.getElementById('sub-plan-discount').value = '10';
+        setSubscriptionPricingModel('subscription');
 
-        document.getElementById('sub-plan-main-feature-text').value = targetCat === 'ai' ? '100 000 mots IA / mois' : '10 Go supplémentaires';
+        document.getElementById('sub-plan-main-feature-text').value = targetCat === 'ai' ? '100 000 crédits IA' : '10 Go supplémentaires';
         document.getElementById('sub-plan-main-feature-val').value = targetCat === 'ai' ? '100000' : '10240';
 
         const cXof = document.getElementById('sub-curr-xof');
@@ -8714,6 +8754,11 @@ function renderDashboardHtml(data) {
         }
       }
 
+      const pricingModel = category === 'ai' 
+        ? (document.getElementById('sub-plan-pricing-model')?.value || 'subscription')
+        : 'subscription';
+      const isOneTime = pricingModel === 'one_time' || pricingModel === 'pack';
+
       const planData = {
         id: planId || (category + '_plan_' + Date.now()),
         name,
@@ -8723,11 +8768,12 @@ function renderDashboardHtml(data) {
         primary_currency: primaryCurr,
         currencies_enabled: currEnabled,
         currency_conversions: conv,
-        yearly_price: yearlyPrice,
-        yearly_discount_pct: discountPct,
+        yearly_price: isOneTime ? 0 : yearlyPrice,
+        yearly_discount_pct: isOneTime ? 0 : discountPct,
         features,
         is_auto_billing: isAuto,
-        is_active: 1
+        is_active: 1,
+        pricing_model: pricingModel
       };
 
       if (category === 'ai') {

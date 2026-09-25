@@ -12,159 +12,8 @@ interface PricingViewProps {
   isEmbeddedInSettings?: boolean;
 }
 
-const DEFAULT_STORAGE_PLANS: SubscriptionPlan[] = [
-  {
-    id: 'storage_plan_basique',
-    name: 'Basique',
-    badge: '',
-    description: 'Pour les particuliers et petites équipes qui débutent.',
-    storage_amount: '10 Go',
-    storage_mb: 10240,
-    price: 10,
-    primary_currency: 'USD',
-    currencies_enabled: ['USD', 'XOF', 'EUR'],
-    currency_conversions: { USD: 10, XOF: 6500, EUR: 9.2 },
-    yearly_price: 90,
-    yearly_discount_pct: 10,
-    features: [
-      { text: "10 Go de stockage cloud haute vitesse", enabled: true },
-      { text: "Messagerie d'équipe et partage de fichiers", enabled: true },
-      { text: "Fil d'activité et aperçu des projets", enabled: true },
-      { text: "Accès mobile et bureau", enabled: true },
-      { text: "Support par e-mail", enabled: true }
-    ],
-    is_auto_billing: 0,
-    is_active: 1,
-    sort_order: 1
-  },
-  {
-    id: 'storage_plan_pro',
-    name: 'Pro',
-    badge: 'POPULAIRE',
-    description: 'Pour les professionnels et étudiants avancés.',
-    storage_amount: '50 Go',
-    storage_mb: 51200,
-    price: 32,
-    primary_currency: 'USD',
-    currencies_enabled: ['USD', 'XOF', 'EUR'],
-    currency_conversions: { USD: 32, XOF: 20000, EUR: 29.5 },
-    yearly_price: 290,
-    yearly_discount_pct: 10,
-    features: [
-      { text: "50 Go de stockage cloud haute vitesse", enabled: true },
-      { text: "Support prioritaire 24/7", enabled: true },
-      { text: "Analyses avancées et rapports", enabled: true },
-      { text: "Collaboration en temps réel illimitée", enabled: true },
-      { text: "Domaine personnalisé", enabled: true }
-    ],
-    is_auto_billing: 0,
-    is_active: 1,
-    sort_order: 2
-  },
-  {
-    id: 'storage_plan_entreprise',
-    name: 'Entreprise',
-    badge: '',
-    description: 'Pour les universités, laboratoires et grandes équipes.',
-    storage_amount: '200 Go',
-    storage_mb: 204800,
-    price: 89,
-    primary_currency: 'USD',
-    currencies_enabled: ['USD', 'XOF', 'EUR'],
-    currency_conversions: { USD: 89, XOF: 55000, EUR: 82 },
-    yearly_price: 790,
-    yearly_discount_pct: 10,
-    features: [
-      { text: "200 Go de stockage cloud haute vitesse", enabled: true },
-      { text: "Sécurité renforcée et SSO", enabled: true },
-      { text: "Gestionnaire de compte dédié", enabled: true },
-      { text: "SLA garanti 99.9%", enabled: true },
-      { text: "Formations personnalisées", enabled: true },
-      { text: "Facturation centralisée", enabled: true }
-    ],
-    is_auto_billing: 0,
-    is_active: 1,
-    sort_order: 3
-  }
-];
-
-const DEFAULT_AI_PLANS: SubscriptionPlan[] = [
-  {
-    id: 'ai_plan_basique',
-    name: 'IA Basique',
-    badge: '',
-    description: 'Pour réviser, poser des questions et comprendre rapidement vos cours au quotidien.',
-    credits_or_words: '100 000 crédits IA',
-    credits_count: 100000,
-    price: 10,
-    primary_currency: 'USD',
-    currencies_enabled: ['USD', 'XOF', 'EUR'],
-    currency_conversions: { USD: 10, XOF: 6500, EUR: 9.2 },
-    yearly_price: 90,
-    yearly_discount_pct: 10,
-    features: [
-      { text: "100 000 crédits IA par mois", enabled: true },
-      { text: "Résumés automatiques de cours et PDF", enabled: true },
-      { text: "Création instantanée de cartes mémoires (Flashcards)", enabled: true },
-      { text: "Aide aux devoirs et explications pas à pas", enabled: true },
-      { text: "Support par e-mail", enabled: true }
-    ],
-    is_auto_billing: 0,
-    is_active: 1,
-    sort_order: 1,
-    pricing_model: 'subscription'
-  },
-  {
-    id: 'ai_plan_pro',
-    name: 'IA Pro Étudiant',
-    badge: 'Populaire',
-    description: 'L\'assistant d\'apprentissage complet pour exceller et réussir tous vos examens.',
-    credits_or_words: '1 000 000 crédits IA',
-    credits_count: 1000000,
-    price: 32,
-    primary_currency: 'USD',
-    currencies_enabled: ['USD', 'XOF', 'EUR'],
-    currency_conversions: { USD: 32, XOF: 20000, EUR: 29.5 },
-    yearly_price: 290,
-    yearly_discount_pct: 10,
-    features: [
-      { text: "1 000 000 crédits IA avec priorité maximale", enabled: true },
-      { text: "Génération de Quiz interactifs & examens blancs", enabled: true },
-      { text: "Synthèse vocale & lecture audio de vos fiches", enabled: true },
-      { text: "Analyse intelligente de documents scannés et photos", enabled: true },
-      { text: "Support prioritaire 24/7", enabled: true }
-    ],
-    is_auto_billing: 0,
-    is_active: 1,
-    sort_order: 2,
-    pricing_model: 'subscription'
-  },
-  {
-    id: 'ai_plan_master',
-    name: 'IA Recherche & Master',
-    badge: '',
-    description: 'Pour les doctorants, thèses, mémoires volumineux et laboratoires universitaires.',
-    credits_or_words: 'Crédits IA illimités',
-    credits_count: 10000000,
-    price: 89,
-    primary_currency: 'USD',
-    currencies_enabled: ['USD', 'XOF', 'EUR'],
-    currency_conversions: { USD: 89, XOF: 55000, EUR: 82 },
-    yearly_price: 790,
-    yearly_discount_pct: 10,
-    features: [
-      { text: "Crédits IA illimités avec accès modèles avancés", enabled: true },
-      { text: "Traitement prioritaire ultra-rapide", enabled: true },
-      { text: "Export complet des synthèses & fiches en PDF/Word", enabled: true },
-      { text: "Analyse illimitée de livres et thèses entières", enabled: true },
-      { text: "Accès API assistante pour vos projets de recherche", enabled: true }
-    ],
-    is_auto_billing: 0,
-    is_active: 1,
-    sort_order: 3,
-    pricing_model: 'subscription'
-  }
-];
+const DEFAULT_STORAGE_PLANS: SubscriptionPlan[] = [];
+const DEFAULT_AI_PLANS: SubscriptionPlan[] = [];
 
 function parsePlanFeatures(raw: any): { text: string; enabled: boolean }[] {
   if (Array.isArray(raw)) return raw;
@@ -313,8 +162,8 @@ export const PricingView: React.FC<PricingViewProps> = ({
   // Présentation par MOIS par défaut demandée par l'utilisateur
   const [billingCycle, setBillingCycle] = useState<'annual' | 'monthly'>('monthly');
 
-  const [dbStoragePlans, setDbStoragePlans] = useState<SubscriptionPlan[]>(DEFAULT_STORAGE_PLANS);
-  const [dbAiPlans, setDbAiPlans] = useState<SubscriptionPlan[]>(DEFAULT_AI_PLANS);
+  const [dbStoragePlans, setDbStoragePlans] = useState<SubscriptionPlan[]>([]);
+  const [dbAiPlans, setDbAiPlans] = useState<SubscriptionPlan[]>([]);
   const [loadingPlans, setLoadingPlans] = useState<boolean>(true);
 
   // État du plan sélectionné pour afficher le menu de souscription
@@ -736,16 +585,32 @@ export const PricingView: React.FC<PricingViewProps> = ({
             <>
               {/* 1. SECTION : ABONNEMENTS STOCKAGE (DYNAMIQUES DEPUIS LA BASE DE DONNÉES)  */}
               {activeTab === 'storage' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
-                  {dbStoragePlans.filter(plan => plan.is_active !== 0).map(plan => renderCard(plan, 'storage'))}
-                </div>
+                dbStoragePlans.filter(plan => plan.is_active !== 0).length > 0 ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
+                    {dbStoragePlans.filter(plan => plan.is_active !== 0).map(plan => renderCard(plan, 'storage'))}
+                  </div>
+                ) : (
+                  <div className="col-span-full py-16 text-center bg-[#E8DFD0]/40 rounded-2xl border-2 border-dashed border-[#D4C9B5] p-8 max-w-xl mx-auto mb-20">
+                    <div className="w-16 h-16 rounded-full bg-[#C9B896]/30 flex items-center justify-center mx-auto mb-4 text-3xl">💾</div>
+                    <h3 className="text-xl font-bold text-[#2D4A3E] mb-2 font-serif">Aucune offre de stockage pour le moment</h3>
+                    <p className="text-sm text-[#5C6B5A] leading-relaxed">Les cartes d'abonnement de stockage créées dans le tableau de bord administrateur s'afficheront ici automatiquement.</p>
+                  </div>
+                )
               )}
 
               {/* 2. SECTION : ASSISTANTE STUDYCLOUD (DYNAMIQUES DEPUIS LA BASE DE DONNÉES) */}
               {activeTab === 'ai' && (
-                <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
-                  {dbAiPlans.filter(plan => plan.is_active !== 0).map(plan => renderCard(plan, 'ai'))}
-                </div>
+                dbAiPlans.filter(plan => plan.is_active !== 0).length > 0 ? (
+                  <div className="grid grid-cols-1 lg:grid-cols-3 gap-6 items-stretch pb-20 w-full max-w-[1250px] mx-auto px-2">
+                    {dbAiPlans.filter(plan => plan.is_active !== 0).map(plan => renderCard(plan, 'ai'))}
+                  </div>
+                ) : (
+                  <div className="col-span-full py-16 text-center bg-[#E8DFD0]/40 rounded-2xl border-2 border-dashed border-[#D4C9B5] p-8 max-w-xl mx-auto mb-20">
+                    <div className="w-16 h-16 rounded-full bg-[#C9B896]/30 flex items-center justify-center mx-auto mb-4 text-3xl">🤖</div>
+                    <h3 className="text-xl font-bold text-[#2D4A3E] mb-2 font-serif">Aucune offre IA pour le moment</h3>
+                    <p className="text-sm text-[#5C6B5A] leading-relaxed">Les forfaits et packs de crédits IA créés dans le tableau de bord administrateur s'afficheront ici automatiquement.</p>
+                  </div>
+                )
               )}
             </>
           )}
