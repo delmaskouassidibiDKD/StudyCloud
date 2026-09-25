@@ -2237,19 +2237,74 @@ const DEFAULT_COMPANY_PROFILE: CompanyProfile = {
  * Récupère les informations professionnelles et coordonnées marchandes de l'entreprise
  */
 export async function getCompanyProfile(): Promise<CompanyProfile> {
+  const t = Date.now();
+  const mainWorkerUrl = getWorkerApiUrl().replace(/\/+$/, '');
+  const candidateUrls = [
+    `${mainWorkerUrl}/api/company-profile?_t=${t}`,
+    `https://api-worker.dkd-technologies.com/api/company-profile?_t=${t}`,
+    `https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev/api/company-profile?_t=${t}`,
+    `https://studycloud-worker.delmaskouassidibi.workers.dev/api/company-profile?_t=${t}`
+  ];
+
+  const normalizeProfile = (raw: any): CompanyProfile => {
+    const toFlag = (v: any, def: number) => {
+      if (v === 1 || v === '1' || v === true) return 1;
+      if (v === 0 || v === '0' || v === false) return 0;
+      return def;
+    };
+
+    return {
+      ...DEFAULT_COMPANY_PROFILE,
+      ...raw,
+      wave_enabled: toFlag(raw?.wave_enabled, 1),
+      wave_show_number: toFlag(raw?.wave_show_number, 1),
+      wave_show_image: toFlag(raw?.wave_show_image, 1),
+      orange_enabled: toFlag(raw?.orange_enabled, 0),
+      orange_show_number: toFlag(raw?.orange_show_number, 1),
+      orange_show_image: toFlag(raw?.orange_show_image, 1),
+      mtn_enabled: toFlag(raw?.mtn_enabled, 0),
+      mtn_show_number: toFlag(raw?.mtn_show_number, 1),
+      mtn_show_image: toFlag(raw?.mtn_show_image, 1),
+      moov_enabled: toFlag(raw?.moov_enabled, 0),
+      moov_show_number: toFlag(raw?.moov_show_number, 1),
+      moov_show_image: toFlag(raw?.moov_show_image, 1),
+      payment_instructions: raw?.payment_instructions || DEFAULT_COMPANY_PROFILE.payment_instructions
+    };
+  };
+
+  for (const url of candidateUrls) {
+    try {
+      const resp = await fetch(url, {
+        method: 'GET',
+        headers: {
+          'Cache-Control': 'no-cache, no-store, must-revalidate',
+          'Pragma': 'no-cache'
+        }
+      });
+      if (resp.ok) {
+        const data = await resp.json();
+        if (data && (data.success || data.profile) && data.profile) {
+          return normalizeProfile(data.profile);
+        }
+      }
+    } catch (e) {
+      console.warn('[API] Essai connecteur profil échoué sur ' + url, e);
+    }
+  }
+
   try {
     const res = await request<{ success: boolean; profile?: CompanyProfile }>(
-      '/api/company-profile',
-      { method: 'GET' }
+      `/api/company-profile?_t=${t}`,
+      { method: 'GET', headers: { 'Cache-Control': 'no-cache', Pragma: 'no-cache' } }
     );
     if (res && res.profile && res.profile.company_name) {
-      return { ...DEFAULT_COMPANY_PROFILE, ...res.profile };
+      return normalizeProfile(res.profile);
     }
-    return DEFAULT_COMPANY_PROFILE;
   } catch (err) {
     console.warn('[API] Utilisation du profil entreprise par défaut:', err);
-    return DEFAULT_COMPANY_PROFILE;
   }
+
+  return DEFAULT_COMPANY_PROFILE;
 }
 
 /**

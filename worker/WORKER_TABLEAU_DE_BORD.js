@@ -7713,63 +7713,23 @@ function renderDashboardHtml(data) {
 
       // 4. Envoi individuel à Cloudflare D1
       try {
-        const resp = await fetch('/api/company-profile/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ field: colName, value: newVal })
-        });
-        const res = await resp.json();
-        if (res && res.success) {
-          if (typeof companyProfileGlobal === 'object' && companyProfileGlobal) {
-            companyProfileGlobal[colName] = newVal;
-          }
-          if (spinnerContainer) {
-            spinnerContainer.innerHTML = '<div class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-emerald-500/20 border border-emerald-500/40 text-emerald-400">' +
-              '<svg class="w-3.5 h-3.5" fill="none" stroke="currentColor" viewBox="0 0 24 24">' +
-              '<path stroke-linecap="round" stroke-linejoin="round" stroke-width="3" d="M5 13l4 4L19 7"></path>' +
-              '</svg>' +
-              '<span class="text-[9px] font-bold">Enregistré</span>' +
-              '</div>';
-            setTimeout(() => {
-              spinnerContainer.innerHTML = '<span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>';
-            }, 2500);
-          }
-          showToast("✓ " + (fieldLabel || 'Champ') + " enregistré avec succès dans la base de données !");
-        } else {
-          throw new Error(res?.error || 'Échec de la sauvegarde');
+        let resp;
+        try {
+          resp = await fetch('/api/company-profile/update', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ field, value: val })
+          });
+        } catch(e) {}
+        if (!resp || !resp.ok) {
+          try {
+            resp = await fetch('https://api-worker.dkd-technologies.com/api/company-profile/update', {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({ field, value: val })
+            });
+          } catch(e) {}
         }
-      } catch (err) {
-        console.error('Erreur sauvegarde champ:', err);
-        if (targetField) {
-          targetField.value = prevVal;
-        }
-        if (spinnerContainer) {
-          spinnerContainer.innerHTML = '<div class="flex items-center gap-1 px-2 py-0.5 rounded-full bg-rose-500/20 border border-rose-500/40 text-rose-400">' +
-            '<span class="text-xs">⚠️</span>' +
-            '<span class="text-[9px] font-bold">Erreur</span>' +
-            '</div>';
-          setTimeout(() => {
-            spinnerContainer.innerHTML = '<span class="text-slate-500 group-hover:text-orange-400 transition text-xs">✏️</span>';
-          }, 4000);
-        }
-        showToast("⚠️ Erreur lors de l'enregistrement : " + err.message);
-      }
-    }
-    window.saveFieldEditModal = saveFieldEditModal;
-
-    async function togglePaymentSetting(field, isChecked, elementId) {
-      const val = isChecked ? 1 : 0;
-      const spinner = document.getElementById('spinner-' + elementId);
-      const label = document.getElementById('status-label-' + elementId);
-      if (spinner) {
-        spinner.innerHTML = '<span class="inline-block animate-spin text-orange-400 text-xs">⏳</span>';
-      }
-      try {
-        const resp = await fetch('/api/company-profile/update', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
-          body: JSON.stringify({ field, value: val })
-        });
         const res = await resp.json();
         if (res && res.success) {
           if (typeof companyProfileGlobal === 'object' && companyProfileGlobal) {
@@ -7961,14 +7921,15 @@ function renderDashboardHtml(data) {
           el.value = v;
         }
       };
+      const isFieldChecked = (val) => val === 1 || val === '1' || val === true;
       const setCheck = (id, val) => {
         const el = document.getElementById(id);
-        if (el) el.checked = (val !== 0 && val !== false);
+        if (el) el.checked = isFieldChecked(val);
       };
       const setLabel = (id, val, activeColor) => {
         const el = document.getElementById(id);
         if (el) {
-          const isAct = (val !== 0 && val !== false);
+          const isAct = isFieldChecked(val);
           el.textContent = isAct ? 'Actif' : 'Inactif';
           el.className = 'ml-1.5 text-[10px] font-bold ' + (isAct ? (activeColor || 'text-blue-400') : 'text-slate-500');
         }
@@ -8026,8 +7987,11 @@ function renderDashboardHtml(data) {
       }
 
       try {
-        const resp = await fetch('/api/company-profile');
-        if (!resp.ok) return;
+        let resp = await fetch('/api/company-profile?_t=' + Date.now()).catch(() => null);
+        if (!resp || !resp.ok) {
+          resp = await fetch('https://api-worker.dkd-technologies.com/api/company-profile?_t=' + Date.now()).catch(() => null);
+        }
+        if (!resp || !resp.ok) return;
         const res = await resp.json();
         if (res && res.profile) {
           companyProfileGlobal = res.profile;
@@ -10245,7 +10209,12 @@ export default {
         if (body.field && allowedCols.includes(body.field)) {
           // Mise à jour individuelle ciblée sans toucher aux autres champs
           const colName = body.field;
-          const colValue = (typeof body.value === 'number') ? body.value : String(body.value ?? '');
+          let colValue = body.value;
+          if (colName.endsWith('_enabled') || colName.endsWith('_show_number') || colName.endsWith('_show_image')) {
+            colValue = (body.value === 1 || body.value === '1' || body.value === true) ? 1 : 0;
+          } else {
+            colValue = String(body.value ?? '');
+          }
           await safeRun(db, `
             UPDATE company_profile 
             SET ${colName} = ?, updated_at = CURRENT_TIMESTAMP 
@@ -10434,18 +10403,19 @@ export default {
           if (!profile.moov_name) {
             profile.moov_name = "Moov Money Côte d'Ivoire";
           }
-          if (profile.wave_enabled === undefined || profile.wave_enabled === null) profile.wave_enabled = 1;
-          if (profile.wave_show_number === undefined || profile.wave_show_number === null) profile.wave_show_number = 1;
-          if (profile.wave_show_image === undefined || profile.wave_show_image === null) profile.wave_show_image = 1;
-          if (profile.orange_enabled === undefined || profile.orange_enabled === null) profile.orange_enabled = 1;
-          if (profile.orange_show_number === undefined || profile.orange_show_number === null) profile.orange_show_number = 1;
-          if (profile.orange_show_image === undefined || profile.orange_show_image === null) profile.orange_show_image = 1;
-          if (profile.mtn_enabled === undefined || profile.mtn_enabled === null) profile.mtn_enabled = 1;
-          if (profile.mtn_show_number === undefined || profile.mtn_show_number === null) profile.mtn_show_number = 1;
-          if (profile.mtn_show_image === undefined || profile.mtn_show_image === null) profile.mtn_show_image = 1;
-          if (profile.moov_enabled === undefined || profile.moov_enabled === null) profile.moov_enabled = 1;
-          if (profile.moov_show_number === undefined || profile.moov_show_number === null) profile.moov_show_number = 1;
-          if (profile.moov_show_image === undefined || profile.moov_show_image === null) profile.moov_show_image = 1;
+          const toFlag = (v, def = 0) => (v === 1 || v === '1' || v === true) ? 1 : (v === 0 || v === '0' || v === false) ? 0 : def;
+          profile.wave_enabled = toFlag(profile.wave_enabled, 1);
+          profile.wave_show_number = toFlag(profile.wave_show_number, 1);
+          profile.wave_show_image = toFlag(profile.wave_show_image, 1);
+          profile.orange_enabled = toFlag(profile.orange_enabled, 0);
+          profile.orange_show_number = toFlag(profile.orange_show_number, 1);
+          profile.orange_show_image = toFlag(profile.orange_show_image, 1);
+          profile.mtn_enabled = toFlag(profile.mtn_enabled, 0);
+          profile.mtn_show_number = toFlag(profile.mtn_show_number, 1);
+          profile.mtn_show_image = toFlag(profile.mtn_show_image, 1);
+          profile.moov_enabled = toFlag(profile.moov_enabled, 0);
+          profile.moov_show_number = toFlag(profile.moov_show_number, 1);
+          profile.moov_show_image = toFlag(profile.moov_show_image, 1);
         }
         return new Response(JSON.stringify({ success: true, profile }), {
           status: 200,
@@ -10679,11 +10649,11 @@ export default {
         const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
 
         if (planId && planName) {
-          await db.prepare(`DELETE FROM ${tableName} WHERE id = ? OR name = ?`).bind(planId, planName).run();
+          await db.prepare(`DELETE FROM ${tableName} WHERE id = ? OR LOWER(TRIM(id)) = LOWER(TRIM(?)) OR LOWER(TRIM(name)) = LOWER(TRIM(?))`).bind(planId, planId, planName).run();
         } else if (planId) {
-          await db.prepare(`DELETE FROM ${tableName} WHERE id = ?`).bind(planId).run();
+          await db.prepare(`DELETE FROM ${tableName} WHERE id = ? OR LOWER(TRIM(id)) = LOWER(TRIM(?))`).bind(planId, planId).run();
         } else if (planName) {
-          await db.prepare(`DELETE FROM ${tableName} WHERE name = ?`).bind(planName).run();
+          await db.prepare(`DELETE FROM ${tableName} WHERE name = ? OR LOWER(TRIM(name)) = LOWER(TRIM(?))`).bind(planName, planName).run();
         }
         return new Response(JSON.stringify({ success: true, id: planId }), {
           status: 200,

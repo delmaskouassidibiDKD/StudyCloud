@@ -2398,6 +2398,59 @@ let isEmailVerifTableInitialized = true;
 let isReferralsTableInitialized = false;
 let isNotificationsTableInitialized = false;
 let isAppLinksTableInitialized = false;
+let isCompanyProfileTableInitialized = false;
+
+async function ensureCompanyProfileTable(db: any) {
+  if (isCompanyProfileTableInitialized || !db) return;
+  try {
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS company_profile (
+        id TEXT PRIMARY KEY DEFAULT 'main',
+        company_name TEXT DEFAULT 'DKD Technologies',
+        activity TEXT DEFAULT 'Technologies & Éducation Numérique',
+        location TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
+        address TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
+        phone_contact TEXT DEFAULT '+225 0101007978',
+        phone_contact_secondary TEXT DEFAULT '',
+        phone_whatsapp TEXT DEFAULT '+225 0101007978',
+        email TEXT DEFAULT 'contact@dkd-technologies.com',
+        website TEXT DEFAULT 'https://studycloud.dkd-technologies.com',
+        wave_number TEXT DEFAULT '+225 07 00 00 00 00',
+        wave_name TEXT DEFAULT 'StudyCloud CI',
+        wave_enabled INTEGER DEFAULT 1,
+        wave_show_number INTEGER DEFAULT 1,
+        wave_show_image INTEGER DEFAULT 1,
+        wave_image_url TEXT DEFAULT '',
+        orange_number TEXT DEFAULT '+225 07 00 00 00 00',
+        orange_name TEXT DEFAULT 'Orange Money Côte d''Ivoire',
+        orange_enabled INTEGER DEFAULT 1,
+        orange_show_number INTEGER DEFAULT 1,
+        orange_show_image INTEGER DEFAULT 1,
+        orange_image_url TEXT DEFAULT '',
+        mtn_number TEXT DEFAULT '+225 05 00 00 00 00',
+        mtn_name TEXT DEFAULT 'MTN Mobile Money CI',
+        mtn_enabled INTEGER DEFAULT 1,
+        mtn_show_number INTEGER DEFAULT 1,
+        mtn_show_image INTEGER DEFAULT 1,
+        mtn_image_url TEXT DEFAULT '',
+        moov_number TEXT DEFAULT '+225 01 00 00 00 00',
+        moov_name TEXT DEFAULT 'Moov Money Côte d''Ivoire',
+        moov_enabled INTEGER DEFAULT 1,
+        moov_show_number INTEGER DEFAULT 1,
+        moov_show_image INTEGER DEFAULT 1,
+        moov_image_url TEXT DEFAULT '',
+        payment_instructions TEXT DEFAULT 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.',
+        about_text TEXT DEFAULT 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
+        notes TEXT DEFAULT '',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    await db.prepare(`INSERT OR IGNORE INTO company_profile (id) VALUES ('main')`).run();
+    isCompanyProfileTableInitialized = true;
+  } catch (err) {
+    console.warn('[StudyCloud Company Profile Table Init Warning]', err);
+  }
+}
 
 function generateReferralCode(): string {
   // Code d'invitation à 9 chiffres (ex: 171765542)
@@ -10636,11 +10689,11 @@ export default {
         const tableName = category === 'ai' ? 'ai_subscription_plans' : 'storage_subscription_plans';
 
         if (planId && planName) {
-          await targetDb.prepare(`DELETE FROM ${tableName} WHERE id = ? OR name = ?`).bind(planId, planName).run();
+          await targetDb.prepare(`DELETE FROM ${tableName} WHERE id = ? OR LOWER(TRIM(id)) = LOWER(TRIM(?)) OR LOWER(TRIM(name)) = LOWER(TRIM(?))`).bind(planId, planId, planName).run();
         } else if (planId) {
-          await targetDb.prepare(`DELETE FROM ${tableName} WHERE id = ?`).bind(planId).run();
+          await targetDb.prepare(`DELETE FROM ${tableName} WHERE id = ? OR LOWER(TRIM(id)) = LOWER(TRIM(?))`).bind(planId, planId).run();
         } else if (planName) {
-          await targetDb.prepare(`DELETE FROM ${tableName} WHERE name = ?`).bind(planName).run();
+          await targetDb.prepare(`DELETE FROM ${tableName} WHERE name = ? OR LOWER(TRIM(name)) = LOWER(TRIM(?))`).bind(planName, planName).run();
         }
         return jsonResponse({ success: true, id: planId }, 200, origin);
       }
@@ -10704,6 +10757,160 @@ export default {
 
         await targetDb.prepare(`UPDATE ${tableName} SET badge = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(badge, planId).run();
         return jsonResponse({ success: true, id: planId, badge }, 200, origin);
+      }
+
+      // ==============================================================================
+      // ROUTE GET : /api/company-profile (Profil entreprise & Comptes marchands D1)
+      // ==============================================================================
+      if (path === '/api/company-profile' && method === 'GET') {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (targetDb) {
+          await ensureCompanyProfileTable(targetDb);
+          let profile: any = await targetDb.prepare("SELECT * FROM company_profile WHERE id = 'main'").first();
+          if (profile) {
+            const toFlag = (v: any, def = 0) => (v === 1 || v === '1' || v === true) ? 1 : (v === 0 || v === '0' || v === false) ? 0 : def;
+            profile.wave_enabled = toFlag(profile.wave_enabled, 1);
+            profile.wave_show_number = toFlag(profile.wave_show_number, 1);
+            profile.wave_show_image = toFlag(profile.wave_show_image, 1);
+            profile.orange_enabled = toFlag(profile.orange_enabled, 0);
+            profile.orange_show_number = toFlag(profile.orange_show_number, 1);
+            profile.orange_show_image = toFlag(profile.orange_show_image, 1);
+            profile.mtn_enabled = toFlag(profile.mtn_enabled, 0);
+            profile.mtn_show_number = toFlag(profile.mtn_show_number, 1);
+            profile.mtn_show_image = toFlag(profile.mtn_show_image, 1);
+            profile.moov_enabled = toFlag(profile.moov_enabled, 0);
+            profile.moov_show_number = toFlag(profile.moov_show_number, 1);
+            profile.moov_show_image = toFlag(profile.moov_show_image, 1);
+            return jsonResponse({ success: true, profile }, 200, origin);
+          }
+        }
+        return jsonResponse({ success: true, profile: null }, 200, origin);
+      }
+
+      // ==============================================================================
+      // ROUTE POST : /api/company-profile/update (Mise à jour des coordonnées marchandes)
+      // ==============================================================================
+      if (path === '/api/company-profile/update' && method === 'POST') {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+        const body: any = await request.json().catch(() => ({}));
+        const allowedCols = [
+          'company_name', 'activity', 'location', 'address', 'phone_contact', 'phone_contact_secondary', 'phone_whatsapp', 'email', 'website',
+          'wave_number', 'wave_name', 'wave_enabled', 'wave_show_number', 'wave_show_image', 'wave_image_url',
+          'orange_number', 'orange_name', 'orange_enabled', 'orange_show_number', 'orange_show_image', 'orange_image_url',
+          'mtn_number', 'mtn_name', 'mtn_enabled', 'mtn_show_number', 'mtn_show_image', 'mtn_image_url',
+          'moov_number', 'moov_name', 'moov_enabled', 'moov_show_number', 'moov_show_image', 'moov_image_url',
+          'payment_instructions', 'notes'
+        ];
+
+        await ensureCompanyProfileTable(targetDb);
+
+        if (body.field && allowedCols.includes(body.field)) {
+          const colName = body.field;
+          let colValue: any = body.value;
+          if (colName.endsWith('_enabled') || colName.endsWith('_show_number') || colName.endsWith('_show_image')) {
+            colValue = (body.value === 1 || body.value === '1' || body.value === true) ? 1 : 0;
+          } else {
+            colValue = String(body.value ?? '');
+          }
+          await targetDb.prepare(`UPDATE company_profile SET ${colName} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`).bind(colValue).run();
+        } else {
+          for (const col of allowedCols) {
+            if (body[col] !== undefined) {
+              let val: any = body[col];
+              if (col.endsWith('_enabled') || col.endsWith('_show_number') || col.endsWith('_show_image')) {
+                val = (val === 1 || val === '1' || val === true) ? 1 : 0;
+              } else {
+                val = String(val ?? '');
+              }
+              await targetDb.prepare(`UPDATE company_profile SET ${col} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`).bind(val).run();
+            }
+          }
+        }
+
+        const updatedProfile = await targetDb.prepare("SELECT * FROM company_profile WHERE id = 'main'").first();
+        return jsonResponse({
+          success: true,
+          message: 'Informations professionnelles enregistrées avec succès',
+          profile: updatedProfile
+        }, 200, origin);
+      }
+
+      // ==============================================================================
+      // ROUTE POST : /api/company-profile/upload-payment-image (Stockage Carte / QR R2)
+      // ==============================================================================
+      if (path === '/api/company-profile/upload-payment-image' && method === 'POST') {
+        const targetDb = env.DB || (env as any).MON_D1_STUDYCLOUD || (env as any).DATABASE;
+        if (!targetDb) return errorResponse('Base de données D1 indisponible', 500, origin);
+        const body: any = await request.json().catch(() => ({}));
+        const network = (body.network || '').toLowerCase().trim();
+        if (!['wave', 'orange', 'mtn', 'moov'].includes(network)) {
+          return errorResponse('Réseau de paiement invalide', 400, origin);
+        }
+        const rawData = body.image || '';
+        if (!rawData) {
+          return errorResponse('Image manquante', 400, origin);
+        }
+
+        let imageUrl = rawData;
+        const ext = (body.ext || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
+        const r2Key = `payment-methods/${network}_merchant_${Date.now()}.${ext}`;
+
+        const bucket = env.BUCKET || (env as any).STUDYCLOUD_FILES || (env as any).MON_R2_STUDYCLOUD || (env as any).STORAGE;
+        if (bucket && rawData.startsWith('data:')) {
+          try {
+            const parts = rawData.split(',');
+            const mimeMatch = parts[0].match(/:(.*?);/);
+            const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
+            const base64Data = parts[1];
+            const binaryString = atob(base64Data);
+            const len = binaryString.length;
+            const bytes = new Uint8Array(len);
+            for (let i = 0; i < len; i++) {
+              bytes[i] = binaryString.charCodeAt(i);
+            }
+            await bucket.put(r2Key, bytes, {
+              httpMetadata: { contentType: mimeType }
+            });
+            imageUrl = `${url.origin}/api/payment-methods/image/${encodeURIComponent(r2Key)}`;
+          } catch (r2Err) {
+            console.warn('[R2 Upload Fallback]:', r2Err);
+            imageUrl = rawData;
+          }
+        }
+
+        await ensureCompanyProfileTable(targetDb);
+        const fieldName = `${network}_image_url`;
+        await targetDb.prepare(`UPDATE company_profile SET ${fieldName} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`).bind(imageUrl).run();
+
+        return jsonResponse({
+          success: true,
+          url: imageUrl,
+          key: r2Key,
+          message: 'Carte commerçant / QR enregistré avec succès'
+        }, 200, origin);
+      }
+
+      // ==============================================================================
+      // ROUTE GET : /api/payment-methods/image/:key (Stream d'image depuis R2)
+      // ==============================================================================
+      if (path.startsWith('/api/payment-methods/image/') && method === 'GET') {
+        const key = decodeURIComponent(path.replace('/api/payment-methods/image/', ''));
+        const bucket = env.BUCKET || (env as any).STUDYCLOUD_FILES || (env as any).MON_R2_STUDYCLOUD || (env as any).STORAGE;
+        if (bucket && key) {
+          try {
+            const object = await bucket.get(key);
+            if (object) {
+              const headers = new Headers();
+              object.writeHttpMetadata(headers);
+              headers.set('etag', object.httpEtag);
+              headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+              headers.set('Access-Control-Allow-Origin', origin);
+              return new Response(object.body, { headers });
+            }
+          } catch (e) {}
+        }
+        return errorResponse('Image de paiement introuvable', 404, origin);
       }
 
       // Route 404 par défaut

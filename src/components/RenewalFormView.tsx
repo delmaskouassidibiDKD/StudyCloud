@@ -676,16 +676,18 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
                 {/* Comptes Marchands avec boutons copier et cartes QR */}
                 <div className="space-y-3 pt-1">
                   {(() => {
+                    const isNetworkActive = (val: any) => val === 1 || val === '1' || val === true;
+
                     const networks = [
                       {
                         id: 'wave',
                         name: 'Wave',
                         badgeColor: 'bg-blue-500/20 text-blue-700 dark:text-blue-400',
                         borderAccent: 'border-l-4 border-l-blue-500',
-                        enabled: companyProfile?.wave_enabled !== 0,
-                        showNumber: companyProfile?.wave_show_number !== 0,
-                        showImage: companyProfile?.wave_show_image !== 0,
-                        number: companyProfile?.wave_number || '+225 0101007978',
+                        enabled: isNetworkActive(companyProfile?.wave_enabled),
+                        showNumber: isNetworkActive(companyProfile?.wave_show_number),
+                        showImage: isNetworkActive(companyProfile?.wave_show_image),
+                        number: companyProfile?.wave_number || '+225 07 00 00 00 00',
                         titulaire: companyProfile?.wave_name || 'StudyCloud CI',
                         imageUrl: companyProfile?.wave_image_url || ''
                       },
@@ -694,9 +696,9 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
                         name: 'Orange',
                         badgeColor: 'bg-orange-500/20 text-orange-700 dark:text-orange-400',
                         borderAccent: 'border-l-4 border-l-orange-500',
-                        enabled: companyProfile?.orange_enabled !== 0,
-                        showNumber: companyProfile?.orange_show_number !== 0,
-                        showImage: companyProfile?.orange_show_image !== 0,
+                        enabled: isNetworkActive(companyProfile?.orange_enabled),
+                        showNumber: isNetworkActive(companyProfile?.orange_show_number),
+                        showImage: isNetworkActive(companyProfile?.orange_show_image),
                         number: companyProfile?.orange_number || '+225 07 00 00 00 00',
                         titulaire: companyProfile?.orange_name || "Orange Money Côte d'Ivoire",
                         imageUrl: companyProfile?.orange_image_url || ''
@@ -706,9 +708,9 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
                         name: 'MTN',
                         badgeColor: 'bg-yellow-500/20 text-yellow-800 dark:text-yellow-400',
                         borderAccent: 'border-l-4 border-l-yellow-500',
-                        enabled: companyProfile?.mtn_enabled !== 0,
-                        showNumber: companyProfile?.mtn_show_number !== 0,
-                        showImage: companyProfile?.mtn_show_image !== 0,
+                        enabled: isNetworkActive(companyProfile?.mtn_enabled),
+                        showNumber: isNetworkActive(companyProfile?.mtn_show_number),
+                        showImage: isNetworkActive(companyProfile?.mtn_show_image),
                         number: companyProfile?.mtn_number || '+225 05 00 00 00 00',
                         titulaire: companyProfile?.mtn_name || 'MTN Mobile Money CI',
                         imageUrl: companyProfile?.mtn_image_url || ''
@@ -718,9 +720,9 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
                         name: 'Moov',
                         badgeColor: 'bg-emerald-500/20 text-emerald-700 dark:text-emerald-400',
                         borderAccent: 'border-l-4 border-l-emerald-500',
-                        enabled: companyProfile?.moov_enabled !== 0,
-                        showNumber: companyProfile?.moov_show_number !== 0,
-                        showImage: companyProfile?.moov_show_image !== 0,
+                        enabled: isNetworkActive(companyProfile?.moov_enabled),
+                        showNumber: isNetworkActive(companyProfile?.moov_show_number),
+                        showImage: isNetworkActive(companyProfile?.moov_show_image),
                         number: companyProfile?.moov_number || '+225 01 00 00 00 00',
                         titulaire: companyProfile?.moov_name || "Moov Money Côte d'Ivoire",
                         imageUrl: companyProfile?.moov_image_url || ''
@@ -737,7 +739,9 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
                       );
                     }
 
-                    return active.map(net => (
+                    return active.map(net => {
+                      const isUrl = net.number.startsWith('http://') || net.number.startsWith('https://');
+                      return (
                       <div 
                         key={net.id} 
                         className={`bg-[#F5F0E8] dark:bg-[#0b0f19] p-3 rounded-xl border border-[#D4C9B5] dark:border-slate-800 ${net.borderAccent} space-y-2.5 transition-all shadow-sm`}
@@ -745,13 +749,29 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
                         {/* Numéro et Titulaire si showNumber activé */}
                         {net.showNumber && (
                           <div className="flex items-center justify-between gap-2">
-                            <div>
+                            <div className="min-w-0 flex-1">
                               <span className={`text-[10px] font-extrabold uppercase px-1.5 py-0.5 rounded ${net.badgeColor} mr-2`}>
                                 {net.name}
                               </span>
-                              <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
-                                {net.number}
-                              </span>
+                              {isUrl ? (
+                                <div className="mt-1 flex flex-wrap items-center gap-2">
+                                  <a
+                                    href={net.number}
+                                    target="_blank"
+                                    rel="noopener noreferrer"
+                                    className="inline-flex items-center gap-1 px-2.5 py-1 bg-blue-600 hover:bg-blue-500 text-white rounded-lg text-xs font-bold transition shadow-sm"
+                                  >
+                                    <span>Payer avec Wave ↗</span>
+                                  </a>
+                                  <span className="font-mono text-[10px] text-[#5C6B5A] dark:text-slate-400 truncate max-w-[220px]" title={net.number}>
+                                    {net.number}
+                                  </span>
+                                </div>
+                              ) : (
+                                <span className="font-mono font-bold text-xs text-[#2D4A3E] dark:text-white">
+                                  {net.number}
+                                </span>
+                              )}
                               <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
                                 Titulaire : {net.titulaire}
                               </span>
@@ -820,8 +840,9 @@ export const RenewalFormView: React.FC<RenewalFormViewProps> = ({
                           </div>
                         )}
                       </div>
-                    ));
-                  })()}
+                    );
+                  });
+                })()}
                 </div>
 
                 {/* Consigne de paiement */}
