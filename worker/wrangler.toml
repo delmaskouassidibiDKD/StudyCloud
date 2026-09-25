@@ -1,0 +1,64 @@
+name = "studycloud-worker"
+main = "src/index.ts"
+compatibility_date = "2024-03-01"
+
+# ==============================================================================
+# Domaine Personnalisé Cloudflare
+# ==============================================================================
+routes = [
+  { pattern = "api-worker.dkd-technologies.com", custom_domain = true }
+]
+
+# ==============================================================================
+# Liaison Base de Données Cloudflare D1
+# ==============================================================================
+[[d1_databases]]
+binding = "DB"
+database_name = "d1-studycloud"
+database_id = "d1-studycloud"
+
+[[d1_databases]]
+binding = "MON_D1_STUDYCLOUD"
+database_name = "d1-studycloud"
+database_id = "d1-studycloud"
+
+# ==============================================================================
+# Liaisons Buckets de Stockage Cloudflare R2 (Option B : Dédiés par Catégorie)
+# ==============================================================================
+# Bucket par défaut / principal (fallback automatique)
+[[r2_buckets]]
+binding = "BUCKET"
+bucket_name = "r2-studycloud"
+
+[[r2_buckets]]
+binding = "MON_R2_STUDYCLOUD"
+bucket_name = "r2-studycloud"
+
+# Buckets dédiés par catégorie (Option B)
+[[r2_buckets]]
+binding = "BUCKET_CLASSEUR"
+bucket_name = "r2-studycloud-classeur"
+
+[[r2_buckets]]
+binding = "BUCKET_AUDIO"
+bucket_name = "r2-studycloud-audio"
+
+[[r2_buckets]]
+binding = "BUCKET_IMAGES"
+bucket_name = "r2-studycloud-images"
+
+[[r2_buckets]]
+binding = "BUCKET_VIDEOS"
+bucket_name = "r2-studycloud-videos"
+
+[[r2_buckets]]
+binding = "BUCKET_DOCUMENTS"
+bucket_name = "r2-studycloud-documents"
+
+[[r2_buckets]]
+binding = "BUCKET_DOWNLOADS"
+bucket_name = "r2-studycloud-downloads"
+
+[[r2_buckets]]
+binding = "BUCKET_SECURE"
+bucket_name = "r2-studycloud-secure"

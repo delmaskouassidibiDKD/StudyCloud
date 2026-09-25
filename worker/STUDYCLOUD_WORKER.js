@@ -13,10 +13,9 @@
 // ============================================================================
 // @ts-nocheck
 /* eslint-disable */
-var __defProp = Object.defineProperty;
-var __name = (target, value) => __defProp(target, "name", { value, configurable: true });
 
-// src/index.ts
+
+// worker/src/index.ts
 var DNA_LOGO_PNG_B64 = "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";
 var DNA_LOGO_SVG = `<svg width="48" height="48" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg">
   <defs>
@@ -43,7 +42,6 @@ function corsHeaders(origin = "*") {
     "Access-Control-Allow-Headers": "Content-Type, Authorization, x-user-id, Cache-Control, Pragma, *"
   };
 }
-__name(corsHeaders, "corsHeaders");
 function jsonResponse(data, status = 200, origin = "*") {
   return new Response(JSON.stringify(data), {
     status,
@@ -56,26 +54,20 @@ function jsonResponse(data, status = 200, origin = "*") {
     }
   });
 }
-__name(jsonResponse, "jsonResponse");
 function errorResponse(error, status = 400, origin = "*") {
   return jsonResponse({ success: false, error }, status, origin);
 }
-__name(errorResponse, "errorResponse");
 function formatBytes(bytes) {
-  if (!bytes || bytes === 0)
-    return "0 o";
+  if (!bytes || bytes === 0) return "0 o";
   const k = 1024;
   const sizes = ["o", "Ko", "Mo", "Go"];
   const i = Math.floor(Math.log(bytes) / Math.log(k));
   return parseFloat((bytes / Math.pow(k, i)).toFixed(1)) + " " + sizes[i];
 }
-__name(formatBytes, "formatBytes");
 function escapeHtml(str) {
-  if (str === null || str === void 0)
-    return "";
+  if (str === null || str === void 0) return "";
   return String(str).replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
 }
-__name(escapeHtml, "escapeHtml");
 function generateCleanShareCode() {
   if (typeof crypto !== "undefined" && crypto.getRandomValues) {
     const buffer = new Uint8Array(16);
@@ -84,7 +76,6 @@ function generateCleanShareCode() {
   }
   return "sc_" + Math.random().toString(36).substring(2, 14) + Date.now().toString(36);
 }
-__name(generateCleanShareCode, "generateCleanShareCode");
 function getFileIconMeta(filename) {
   const lower = (filename || "").toLowerCase();
   if (lower.endsWith(".pdf")) {
@@ -113,7 +104,6 @@ function getFileIconMeta(filename) {
   const ext = lower.split(".").pop();
   return { color: "#64748B", label: ext && ext.length <= 4 ? ext.toUpperCase() : "DOC" };
 }
-__name(getFileIconMeta, "getFileIconMeta");
 function renderFileDocIconSvg(color, label) {
   return `<svg class="doc-icon-svg" viewBox="0 0 68 84" fill="none" xmlns="http://www.w3.org/2000/svg">
     <path d="M6 0H46L68 22V78C68 81.3137 65.3137 84 62 84H6C2.68629 84 0 81.3137 0 78V6C0 2.68629 2.68629 0 6 0Z" fill="${color}" />
@@ -121,7 +111,6 @@ function renderFileDocIconSvg(color, label) {
     <text x="34" y="53" fill="white" font-family="'Plus Jakarta Sans', system-ui, -apple-system, sans-serif" font-size="15" font-weight="900" text-anchor="middle" letter-spacing="0.5">${label}</text>
   </svg>`;
 }
-__name(renderFileDocIconSvg, "renderFileDocIconSvg");
 function renderShareNotFoundHtml(code, originUrl) {
   const siteUrl = "https://studycloud.dkd-technologies.com";
   return `<!DOCTYPE html>
@@ -206,7 +195,6 @@ function renderShareNotFoundHtml(code, originUrl) {
 </body>
 </html>`;
 }
-__name(renderShareNotFoundHtml, "renderShareNotFoundHtml");
 function renderShareLandingHtml(folder, files, originUrl) {
   const shareCode = escapeHtml(folder.share_code || "DKD-SHARE");
   const title = escapeHtml(folder.title || "Document Partag\xE9");
@@ -942,7 +930,6 @@ function renderShareLandingHtml(folder, files, originUrl) {
 </body>
 </html>`;
 }
-__name(renderShareLandingHtml, "renderShareLandingHtml");
 function renderProductSharePageHtml(product, sellerShop, sellerUser, relatedProducts, appOrigin) {
   const title = escapeHtml(product.title || "Produit StudyCloud");
   const price = escapeHtml(product.price || "0 FCFA");
@@ -956,8 +943,7 @@ function renderProductSharePageHtml(product, sellerShop, sellerUser, relatedProd
   } catch (e) {
   }
   if (!Array.isArray(rawImages) || rawImages.length === 0) {
-    if (product.image_url)
-      rawImages = [product.image_url];
+    if (product.image_url) rawImages = [product.image_url];
   }
   const imageSlides = Array.from({ length: 3 }).map((_, i) => rawImages[i] || (rawImages[0] ? rawImages[0] : null));
   const sellerName = escapeHtml(product.seller_name || sellerShop?.shop_name || sellerUser?.name || "DKD");
@@ -1724,8 +1710,7 @@ Lien vers le produit : ${productShareUrl}`;
     let rImg = "";
     try {
       const pImgs = JSON.parse(p.image_urls_json || "[]");
-      if (pImgs && pImgs[0])
-        rImg = pImgs[0];
+      if (pImgs && pImgs[0]) rImg = pImgs[0];
     } catch (e) {
     }
     return `
@@ -1907,7 +1892,6 @@ Lien vers le produit : ${productShareUrl}`;
 </body>
 </html>`;
 }
-__name(renderProductSharePageHtml, "renderProductSharePageHtml");
 var isSchemaInitialized = true;
 var isEmailVerifTableInitialized = true;
 var isReferralsTableInitialized = false;
@@ -1916,10 +1900,8 @@ var isAppLinksTableInitialized = false;
 function generateReferralCode() {
   return Math.floor(1e8 + Math.random() * 9e8).toString();
 }
-__name(generateReferralCode, "generateReferralCode");
 async function ensureAppLinksTable(db) {
-  if (isAppLinksTableInitialized || !db)
-    return;
+  if (isAppLinksTableInitialized || !db) return;
   try {
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS app_external_links (
@@ -1942,10 +1924,8 @@ async function ensureAppLinksTable(db) {
     console.error("[StudyCloud App Links Table Init Error]", err);
   }
 }
-__name(ensureAppLinksTable, "ensureAppLinksTable");
 async function ensureNotificationsTable(db) {
-  if (isNotificationsTableInitialized || !db)
-    return;
+  if (isNotificationsTableInitialized || !db) return;
   try {
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS notifications (
@@ -1976,10 +1956,8 @@ async function ensureNotificationsTable(db) {
     console.error("[StudyCloud Notifications Table Init Error]", err);
   }
 }
-__name(ensureNotificationsTable, "ensureNotificationsTable");
 async function createNotification(db, userId, title, description, itemRef, type = "general") {
-  if (!db || !userId)
-    return;
+  if (!db || !userId) return;
   try {
     await ensureNotificationsTable(db);
     const id = crypto.randomUUID();
@@ -1991,10 +1969,293 @@ async function createNotification(db, userId, title, description, itemRef, type 
     console.error("[Create Notification Error]", err);
   }
 }
-__name(createNotification, "createNotification");
+var isCloudMediaTablesInitialized = false;
+function getBucketForCategory(rawEnv, category) {
+  if (!rawEnv) return void 0;
+  if (!category) {
+    return rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
+  }
+  const cat = String(category).toLowerCase().trim();
+  if (cat === "classeur") {
+    return rawEnv.BUCKET_CLASSEUR || rawEnv.MON_R2_CLASSEUR || rawEnv["MON_R2-CLASSEUR"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
+  }
+  if (cat === "audio" || cat === "musique") {
+    return rawEnv.BUCKET_AUDIO || rawEnv.MON_R2_AUDIO || rawEnv["MON_R2-AUDIO"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
+  }
+  if (cat === "images" || cat === "photos") {
+    return rawEnv.BUCKET_IMAGES || rawEnv.MON_R2_IMAGES || rawEnv["MON_R2-IMAGES"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
+  }
+  if (cat === "videos") {
+    return rawEnv.BUCKET_VIDEOS || rawEnv.MON_R2_VIDEOS || rawEnv["MON_R2-VIDEOS"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
+  }
+  if (cat === "documents" || cat === "docs") {
+    return rawEnv.BUCKET_DOCUMENTS || rawEnv.MON_R2_DOCUMENTS || rawEnv["MON_R2-DOCUMENTS"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
+  }
+  if (cat === "downloads" || cat === "telechargements") {
+    return rawEnv.BUCKET_DOWNLOADS || rawEnv.MON_R2_DOWNLOADS || rawEnv["MON_R2-DOWNLOADS"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
+  }
+  if (cat === "secure" || cat === "secure-folder") {
+    return rawEnv.BUCKET_SECURE || rawEnv.MON_R2_SECURE || rawEnv["MON_R2-SECURE"] || rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
+  }
+  return rawEnv.BUCKET || rawEnv.MON_R2_STUDYCLOUD || rawEnv["MON_R2-STUDYCLOUD"];
+}
+async function ensureCloudMediaTables(db) {
+  if (isCloudMediaTablesInitialized || !db) return;
+  try {
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS classeur_folders (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        parent_id TEXT,
+        name TEXT NOT NULL,
+        model_id TEXT DEFAULT '1',
+        primary_color TEXT DEFAULT '#EA580C',
+        accent_color TEXT DEFAULT '#F97316',
+        icon_name TEXT DEFAULT 'Folder',
+        text_dark INTEGER DEFAULT 0,
+        position_x REAL DEFAULT 0,
+        position_y REAL DEFAULT 0,
+        display_order INTEGER DEFAULT 0,
+        zoom_level REAL DEFAULT 10,
+        is_pinned INTEGER DEFAULT 0,
+        is_favorite INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS classeur_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        folder_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        category TEXT DEFAULT 'documents',
+        extension TEXT DEFAULT 'txt',
+        source TEXT DEFAULT '',
+        date_formatted TEXT DEFAULT '',
+        position_x REAL DEFAULT 0,
+        position_y REAL DEFAULT 0,
+        display_order INTEGER DEFAULT 0,
+        is_notepad INTEGER DEFAULT 0,
+        notepad_title TEXT DEFAULT '',
+        notepad_content TEXT DEFAULT '',
+        preview_url TEXT DEFAULT '',
+        r2_key TEXT DEFAULT '',
+        file_url TEXT DEFAULT '',
+        is_pinned INTEGER DEFAULT 0,
+        is_favorite INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS audio_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        title TEXT DEFAULT '',
+        artist TEXT DEFAULT 'Artiste inconnu',
+        album TEXT DEFAULT '',
+        duration_sec REAL DEFAULT 0,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        date_formatted TEXT DEFAULT '',
+        lyrics_snippet TEXT DEFAULT '',
+        full_lyrics_json TEXT DEFAULT '[]',
+        cover_url TEXT DEFAULT '',
+        r2_key TEXT DEFAULT '',
+        audio_url TEXT DEFAULT '',
+        is_favorite INTEGER DEFAULT 0,
+        is_pinned INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS image_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        width INTEGER DEFAULT 0,
+        height INTEGER DEFAULT 0,
+        extension TEXT DEFAULT 'jpg',
+        date_formatted TEXT DEFAULT '',
+        r2_key TEXT DEFAULT '',
+        image_url TEXT DEFAULT '',
+        thumbnail_url TEXT DEFAULT '',
+        is_favorite INTEGER DEFAULT 0,
+        is_pinned INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS video_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        duration_sec REAL DEFAULT 0,
+        resolution TEXT DEFAULT '1080p',
+        extension TEXT DEFAULT 'mp4',
+        date_formatted TEXT DEFAULT '',
+        r2_key TEXT DEFAULT '',
+        video_url TEXT DEFAULT '',
+        thumbnail_url TEXT DEFAULT '',
+        is_favorite INTEGER DEFAULT 0,
+        is_pinned INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS document_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        extension TEXT DEFAULT 'pdf',
+        document_category TEXT DEFAULT 'COURS',
+        page_count INTEGER DEFAULT 1,
+        date_formatted TEXT DEFAULT '',
+        source TEXT DEFAULT 'StudyCloud',
+        r2_key TEXT DEFAULT '',
+        file_url TEXT DEFAULT '',
+        preview_url TEXT DEFAULT '',
+        is_favorite INTEGER DEFAULT 0,
+        is_pinned INTEGER DEFAULT 0,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS download_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        type TEXT DEFAULT 'document',
+        extension TEXT DEFAULT '',
+        source_url TEXT DEFAULT '',
+        source TEXT DEFAULT 'Web',
+        r2_key TEXT DEFAULT '',
+        file_url TEXT DEFAULT '',
+        downloaded_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS secure_folder_config (
+        user_id TEXT PRIMARY KEY,
+        pin_hash TEXT NOT NULL,
+        is_locked INTEGER DEFAULT 1,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS secure_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        category TEXT DEFAULT 'documents',
+        extension TEXT DEFAULT '',
+        original_category TEXT DEFAULT 'documents',
+        original_folder_id TEXT DEFAULT '',
+        date_formatted TEXT DEFAULT '',
+        metadata_json TEXT DEFAULT '{}',
+        r2_key TEXT DEFAULT '',
+        file_url TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS trash_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size TEXT DEFAULT '0 o',
+        size_bytes INTEGER DEFAULT 0,
+        category TEXT DEFAULT 'documents',
+        extension TEXT DEFAULT '',
+        source_category TEXT DEFAULT 'documents',
+        original_folder_id TEXT DEFAULT '',
+        metadata_json TEXT DEFAULT '{}',
+        date_formatted TEXT DEFAULT '',
+        r2_key TEXT DEFAULT '',
+        file_url TEXT DEFAULT '',
+        deleted_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        expires_at TEXT
+      )
+    `).run();
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_favorites (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        item_id TEXT NOT NULL,
+        category TEXT NOT NULL,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_cfolders_user ON classeur_folders(user_id)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_cfiles_user ON classeur_files(user_id)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_cfiles_folder ON classeur_files(folder_id)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_audio_user ON audio_files(user_id)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_images_user ON image_files(user_id)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_videos_user ON video_files(user_id)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_docs_user ON document_files(user_id)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_downloads_user ON download_files(user_id)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_secfiles_user ON secure_files(user_id)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_trash_user ON trash_files(user_id)").run();
+    } catch (e) {
+    }
+    try {
+      await db.prepare("CREATE INDEX IF NOT EXISTS idx_favs_user ON user_favorites(user_id)").run();
+    } catch (e) {
+    }
+    isCloudMediaTablesInitialized = true;
+  } catch (err) {
+    console.error("[StudyCloud Cloud Media Tables Init Error]", err);
+  }
+}
 async function ensureReferralsTables(db) {
-  if (isReferralsTableInitialized || !db)
-    return;
+  if (isReferralsTableInitialized || !db) return;
   try {
     try {
       await db.prepare("ALTER TABLE users ADD COLUMN referral_code TEXT").run();
@@ -2057,15 +2318,12 @@ async function ensureReferralsTables(db) {
     console.error("[StudyCloud Referrals Init Error]", e);
   }
 }
-__name(ensureReferralsTables, "ensureReferralsTables");
 async function processReferralAttribution(db, referralCode, newUserId, newUserName, newUserEmail) {
-  if (!db || !referralCode || !newUserId)
-    return;
+  if (!db || !referralCode || !newUserId) return;
   try {
     await ensureReferralsTables(db);
     const cleanCode = String(referralCode).trim();
-    if (!cleanCode)
-      return;
+    if (!cleanCode) return;
     const referrer = await db.prepare(
       "SELECT id, name, referral_code, referrals_count, ad_free_days_earned FROM users WHERE referral_code = ?"
     ).bind(cleanCode).first();
@@ -2128,631 +2386,7 @@ async function processReferralAttribution(db, referralCode, newUserId, newUserNa
     console.error("[Erreur Attribution Parrainage]", err);
   }
 }
-__name(processReferralAttribution, "processReferralAttribution");
-
-async function ensureStorageTables(db) {
-  if (!db) return;
-  try {
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS storage_global_config (
-        id TEXT PRIMARY KEY,
-        default_welcome_total_mb REAL DEFAULT 30.0,
-        default_welcome_r2_mb REAL DEFAULT 10.0,
-        default_welcome_d1_mb REAL DEFAULT 20.0,
-        cost_per_gb_eur REAL DEFAULT 0.015,
-        notes TEXT DEFAULT '',
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-
-    try { await db.prepare("ALTER TABLE storage_global_config ADD COLUMN default_welcome_total_mb REAL DEFAULT 30.0").run(); } catch (e) {}
-
-    await db.prepare(`
-      INSERT OR IGNORE INTO storage_global_config (id, default_welcome_total_mb, default_welcome_r2_mb, default_welcome_d1_mb, cost_per_gb_eur)
-      VALUES ('global', 30.0, 10.0, 20.0, 0.015)
-    `).run();
-
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS user_storage_quotas (
-        user_id TEXT PRIMARY KEY,
-        welcome_total_mb REAL DEFAULT 30.0,
-        welcome_r2_mb REAL DEFAULT 10.0,
-        welcome_d1_mb REAL DEFAULT 20.0,
-        paid_total_mb REAL DEFAULT 0.0,
-        paid_r2_mb REAL DEFAULT 0.0,
-        paid_d1_mb REAL DEFAULT 0.0,
-        bonus_total_mb REAL DEFAULT 0.0,
-        bonus_r2_mb REAL DEFAULT 0.0,
-        bonus_d1_mb REAL DEFAULT 0.0,
-        plan_name TEXT DEFAULT 'gratuit',
-        is_unlimited INTEGER DEFAULT 0,
-        notes TEXT DEFAULT '',
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-
-    try { await db.prepare("ALTER TABLE user_storage_quotas ADD COLUMN welcome_total_mb REAL DEFAULT 30.0").run(); } catch (e) {}
-    try { await db.prepare("ALTER TABLE user_storage_quotas ADD COLUMN paid_total_mb REAL DEFAULT 0.0").run(); } catch (e) {}
-    try { await db.prepare("ALTER TABLE user_storage_quotas ADD COLUMN bonus_total_mb REAL DEFAULT 0.0").run(); } catch (e) {}
-
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS user_word_counts (
-        id TEXT PRIMARY KEY,
-        user_id TEXT,
-        word_count INTEGER DEFAULT 0,
-        token_count INTEGER DEFAULT 0,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS storage_upgrade_requests (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        user_name TEXT DEFAULT '',
-        user_phone TEXT DEFAULT '',
-        user_email TEXT DEFAULT '',
-        pack_id TEXT DEFAULT 'custom',
-        pack_name TEXT DEFAULT 'Pack Stockage',
-        additional_mb REAL DEFAULT 0,
-        additional_words INTEGER DEFAULT 0,
-        price_paid REAL DEFAULT 0,
-        currency TEXT DEFAULT 'FCFA',
-        payment_method TEXT DEFAULT 'Wave / Orange / Moov / MTN',
-        payment_reference TEXT DEFAULT '',
-        receipt_image_url TEXT DEFAULT '',
-        receipt_r2_key TEXT DEFAULT '',
-        status TEXT DEFAULT 'pending',
-        contact_phone TEXT DEFAULT '',
-        notes TEXT DEFAULT '',
-        admin_notes TEXT DEFAULT '',
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-
-    const upgradeCols = [
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_name TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_phone TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_email TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN price_paid REAL DEFAULT 0",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN currency TEXT DEFAULT 'FCFA'",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN payment_method TEXT DEFAULT 'Wave / Orange / Moov / MTN'",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN payment_reference TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN receipt_image_url TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN receipt_r2_key TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN admin_notes TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN notes TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_start_date TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN confirmed_end_date TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN grace_period_days INTEGER DEFAULT 5",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN contact_phone TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_whatsapp TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN storage_display TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN price_display TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN billing_cycle TEXT DEFAULT 'annual'",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN user_deleted_at TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN purge_scheduled_at TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN request_type TEXT DEFAULT 'upgrade'"
-    ];
-    for (const sql of upgradeCols) {
-      try { await db.prepare(sql).run(); } catch (e) {}
-    }
-
-    try {
-      await db.prepare(`
-        CREATE TABLE IF NOT EXISTS user_requests_history_purge (
-          id TEXT PRIMARY KEY,
-          request_id TEXT NOT NULL,
-          user_id TEXT NOT NULL,
-          requested_at TEXT NOT NULL,
-          purge_effective_at TEXT NOT NULL,
-          status TEXT DEFAULT 'pending_purge',
-          created_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-      `).run();
-    } catch (e) {}
-
-    try {
-      await db.prepare(`
-        CREATE TABLE IF NOT EXISTS company_profile (
-          id TEXT PRIMARY KEY DEFAULT 'main',
-          company_name TEXT DEFAULT 'DKD Technologies',
-          activity TEXT DEFAULT 'Technologies & Éducation Numérique',
-          location TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
-          address TEXT DEFAULT 'Abidjan, Côte d''Ivoire',
-          phone_contact TEXT DEFAULT '+225 0101007978',
-          phone_contact_secondary TEXT DEFAULT '',
-          phone_whatsapp TEXT DEFAULT '+225 0101007978',
-          email TEXT DEFAULT 'contact@dkd-technologies.com',
-          website TEXT DEFAULT 'https://studycloud.dkd-technologies.com',
-          wave_number TEXT DEFAULT '+225 07 00 00 00 00',
-          wave_name TEXT DEFAULT 'StudyCloud CI',
-          orange_number TEXT DEFAULT '+225 07 00 00 00 00',
-          orange_name TEXT DEFAULT 'Orange Money Côte d''Ivoire',
-          mtn_number TEXT DEFAULT '+225 05 00 00 00 00',
-          mtn_name TEXT DEFAULT 'MTN Mobile Money CI',
-          moov_number TEXT DEFAULT '+225 01 00 00 00 00',
-          moov_name TEXT DEFAULT 'Moov Money Côte d''Ivoire',
-          payment_instructions TEXT DEFAULT 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.',
-          about_text TEXT DEFAULT 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
-          notes TEXT DEFAULT '',
-          updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-        )
-      `).run();
-    } catch (e) {}
-
-    const companyCols = [
-      "ALTER TABLE company_profile ADD COLUMN company_name TEXT DEFAULT 'DKD Technologies'",
-      "ALTER TABLE company_profile ADD COLUMN activity TEXT DEFAULT 'Technologies & Éducation Numérique'",
-      "ALTER TABLE company_profile ADD COLUMN location TEXT DEFAULT 'Abidjan, Côte d''Ivoire'",
-      "ALTER TABLE company_profile ADD COLUMN address TEXT DEFAULT 'Abidjan, Côte d''Ivoire'",
-      "ALTER TABLE company_profile ADD COLUMN phone_contact TEXT DEFAULT '+225 0101007978'",
-      "ALTER TABLE company_profile ADD COLUMN phone_contact_secondary TEXT DEFAULT ''",
-      "ALTER TABLE company_profile ADD COLUMN phone_whatsapp TEXT DEFAULT '+225 0101007978'",
-      "ALTER TABLE company_profile ADD COLUMN email TEXT DEFAULT 'contact@dkd-technologies.com'",
-      "ALTER TABLE company_profile ADD COLUMN website TEXT DEFAULT 'https://studycloud.dkd-technologies.com'",
-      "ALTER TABLE company_profile ADD COLUMN wave_number TEXT DEFAULT '+225 07 00 00 00 00'",
-      "ALTER TABLE company_profile ADD COLUMN wave_name TEXT DEFAULT 'StudyCloud CI'",
-      "ALTER TABLE company_profile ADD COLUMN wave_enabled INTEGER DEFAULT 1",
-      "ALTER TABLE company_profile ADD COLUMN wave_show_number INTEGER DEFAULT 1",
-      "ALTER TABLE company_profile ADD COLUMN wave_show_image INTEGER DEFAULT 1",
-      "ALTER TABLE company_profile ADD COLUMN wave_image_url TEXT DEFAULT ''",
-      "ALTER TABLE company_profile ADD COLUMN orange_number TEXT DEFAULT '+225 07 00 00 00 00'",
-      "ALTER TABLE company_profile ADD COLUMN orange_name TEXT DEFAULT 'Orange Money Côte d''Ivoire'",
-      "ALTER TABLE company_profile ADD COLUMN orange_enabled INTEGER DEFAULT 1",
-      "ALTER TABLE company_profile ADD COLUMN orange_show_number INTEGER DEFAULT 1",
-      "ALTER TABLE company_profile ADD COLUMN orange_show_image INTEGER DEFAULT 1",
-      "ALTER TABLE company_profile ADD COLUMN orange_image_url TEXT DEFAULT ''",
-      "ALTER TABLE company_profile ADD COLUMN mtn_number TEXT DEFAULT '+225 05 00 00 00 00'",
-      "ALTER TABLE company_profile ADD COLUMN mtn_name TEXT DEFAULT 'MTN Mobile Money CI'",
-      "ALTER TABLE company_profile ADD COLUMN mtn_enabled INTEGER DEFAULT 1",
-      "ALTER TABLE company_profile ADD COLUMN mtn_show_number INTEGER DEFAULT 1",
-      "ALTER TABLE company_profile ADD COLUMN mtn_show_image INTEGER DEFAULT 1",
-      "ALTER TABLE company_profile ADD COLUMN mtn_image_url TEXT DEFAULT ''",
-      "ALTER TABLE company_profile ADD COLUMN moov_number TEXT DEFAULT '+225 01 00 00 00 00'",
-      "ALTER TABLE company_profile ADD COLUMN moov_name TEXT DEFAULT 'Moov Money Côte d''Ivoire'",
-      "ALTER TABLE company_profile ADD COLUMN moov_enabled INTEGER DEFAULT 1",
-      "ALTER TABLE company_profile ADD COLUMN moov_show_number INTEGER DEFAULT 1",
-      "ALTER TABLE company_profile ADD COLUMN moov_show_image INTEGER DEFAULT 1",
-      "ALTER TABLE company_profile ADD COLUMN moov_image_url TEXT DEFAULT ''",
-      "ALTER TABLE company_profile ADD COLUMN payment_instructions TEXT DEFAULT ''",
-      "ALTER TABLE company_profile ADD COLUMN about_text TEXT DEFAULT ''",
-      "ALTER TABLE company_profile ADD COLUMN notes TEXT DEFAULT ''",
-      "ALTER TABLE company_profile ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
-    ];
-    for (const sql of companyCols) {
-      try { await db.prepare(sql).run(); } catch (e) {}
-    }
-
-    try {
-      await db.prepare(`
-        INSERT OR IGNORE INTO company_profile (id, company_name, activity, location, address, phone_contact, phone_whatsapp, email, website, wave_number, wave_name, orange_number, orange_name, mtn_number, mtn_name, moov_number, moov_name, payment_instructions, about_text)
-        VALUES ('main', 'DKD Technologies', 'Technologies & Éducation Numérique', 'Abidjan, Côte d''Ivoire', 'Abidjan, Côte d''Ivoire', '+225 0101007978', '+225 0101007978', 'contact@dkd-technologies.com', 'https://studycloud.dkd-technologies.com', '+225 07 00 00 00 00', 'StudyCloud CI', '+225 07 00 00 00 00', 'Orange Money Côte d''Ivoire', '+225 05 00 00 00 00', 'MTN Mobile Money CI', '+225 01 00 00 00 00', 'Moov Money Côte d''Ivoire', 'Transférez le montant exact sur l''un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu avec la date et le numéro de transaction.', 'Plateforme d''apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.')
-      `).run();
-
-      await db.prepare(`
-        UPDATE company_profile 
-        SET mtn_name = 'MTN Mobile Money CI' 
-        WHERE id = 'main' AND (mtn_name = 'Paiement Mobile National' OR mtn_name LIKE '%Moov%' OR mtn_name IS NULL OR mtn_name = '')
-      `).run();
-      await db.prepare(`
-        UPDATE company_profile 
-        SET moov_number = '+225 01 00 00 00 00' 
-        WHERE id = 'main' AND (moov_number IS NULL OR moov_number = '')
-      `).run();
-      await db.prepare(`
-        UPDATE company_profile 
-        SET moov_name = 'Moov Money Côte d''Ivoire' 
-        WHERE id = 'main' AND (moov_name IS NULL OR moov_name = '')
-      `).run();
-    } catch (e) {}
-
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS user_subscriptions (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        user_name TEXT DEFAULT '',
-        user_phone TEXT DEFAULT '',
-        user_email TEXT DEFAULT '',
-        plan_name TEXT DEFAULT 'Standard',
-        total_storage_mb REAL DEFAULT 1024,
-        monthly_price REAL DEFAULT 0,
-        currency TEXT DEFAULT 'FCFA',
-        status TEXT DEFAULT 'active',
-        start_date TEXT DEFAULT CURRENT_TIMESTAMP,
-        end_date TEXT DEFAULT '',
-        grace_period_days INTEGER DEFAULT 5,
-        payment_due_date TEXT DEFAULT '',
-        is_blocked INTEGER DEFAULT 0,
-        cancelled_at TEXT DEFAULT '',
-        previous_storage_mb REAL DEFAULT 0,
-        cancel_reason TEXT DEFAULT '',
-        request_id TEXT DEFAULT '',
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-
-    const subCols = [
-      "ALTER TABLE user_subscriptions ADD COLUMN grace_period_days INTEGER DEFAULT 5",
-      "ALTER TABLE user_subscriptions ADD COLUMN payment_due_date TEXT DEFAULT ''",
-      "ALTER TABLE user_subscriptions ADD COLUMN is_blocked INTEGER DEFAULT 0",
-      "ALTER TABLE user_subscriptions ADD COLUMN updated_at TEXT DEFAULT CURRENT_TIMESTAMP"
-    ];
-    for (const sql of subCols) {
-      try { await db.prepare(sql).run(); } catch (e) {}
-    }
-
-    // 6. Table 'user_purchases_history' pour l'historique complet des achats et paiements
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS user_purchases_history (
-        id TEXT PRIMARY KEY,
-        user_id TEXT NOT NULL,
-        user_name TEXT DEFAULT '',
-        user_email TEXT DEFAULT '',
-        user_phone TEXT DEFAULT '',
-        pack_name TEXT NOT NULL,
-        storage_bought_mb REAL DEFAULT 0,
-        total_storage_mb REAL DEFAULT 30,
-        price_paid REAL DEFAULT 0,
-        currency TEXT DEFAULT 'FCFA',
-        payment_method TEXT DEFAULT 'Mobile Money',
-        payment_reference TEXT DEFAULT '',
-        billing_cycle TEXT DEFAULT 'monthly',
-        renewal_date TEXT DEFAULT '',
-        status TEXT DEFAULT 'confirmed',
-        purchased_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        confirmed_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        user_deleted_at TEXT DEFAULT '',
-        purge_scheduled_at TEXT DEFAULT '',
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-
-    // 7. Table 'storage_subscription_plans' pour les cartes de paiement / forfaits de stockage
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS storage_subscription_plans (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        badge TEXT DEFAULT '',
-        description TEXT DEFAULT '',
-        storage_amount TEXT NOT NULL,
-        storage_mb REAL DEFAULT 0,
-        price REAL NOT NULL,
-        primary_currency TEXT DEFAULT 'USD',
-        currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
-        currency_conversions TEXT DEFAULT '{}',
-        yearly_price REAL DEFAULT 0,
-        yearly_discount_pct REAL DEFAULT 10,
-        features TEXT DEFAULT '[]',
-        is_auto_billing INTEGER DEFAULT 0,
-        is_active INTEGER DEFAULT 1,
-        sort_order INTEGER DEFAULT 0,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-
-    // 8. Table 'ai_subscription_plans' pour les cartes d'abonnement de l'assistante StudyCloud
-    await db.prepare(`
-      CREATE TABLE IF NOT EXISTS ai_subscription_plans (
-        id TEXT PRIMARY KEY,
-        name TEXT NOT NULL,
-        badge TEXT DEFAULT '',
-        description TEXT DEFAULT '',
-        credits_or_words TEXT NOT NULL,
-        credits_count REAL DEFAULT 0,
-        price REAL NOT NULL,
-        primary_currency TEXT DEFAULT 'USD',
-        currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
-        currency_conversions TEXT DEFAULT '{}',
-        yearly_price REAL DEFAULT 0,
-        yearly_discount_pct REAL DEFAULT 10,
-        features TEXT DEFAULT '[]',
-        is_auto_billing INTEGER DEFAULT 0,
-        is_active INTEGER DEFAULT 1,
-        sort_order INTEGER DEFAULT 0,
-        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-      )
-    `).run();
-
-    // Insérer les plans de stockage par défaut si vides
-    try {
-      const countStorage = await db.prepare("SELECT COUNT(*) as c FROM storage_subscription_plans").first();
-      if (!countStorage || countStorage.c === 0) {
-        await db.prepare(`
-          INSERT INTO storage_subscription_plans (id, name, badge, description, storage_amount, storage_mb, price, primary_currency, currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features, is_auto_billing, is_active, sort_order)
-          VALUES 
-          ('storage_plan_basique', 'Basique', '', 'Pour les particuliers et petites équipes qui débutent.', '10 Go', 10240, 10, 'USD', '["USD","XOF","EUR"]', '{"USD":10,"XOF":6500,"EUR":9.2}', 90, 10, '[{"text":"10 Go de stockage cloud haute vitesse","enabled":true},{"text":"Messagerie d''équipe et partage de fichiers","enabled":true},{"text":"Fil d''activité et aperçu des projets","enabled":true},{"text":"Accès mobile et bureau","enabled":true},{"text":"Support par e-mail","enabled":true}]', 0, 1, 1),
-          ('storage_plan_pro', 'Pro', 'Populaire', 'Pour les professionnels et étudiants avancés.', '50 Go', 51200, 32, 'USD', '["USD","XOF","EUR"]', '{"USD":32,"XOF":20000,"EUR":29.5}', 290, 10, '[{"text":"50 Go de stockage cloud haute vitesse","enabled":true},{"text":"Support prioritaire 24/7","enabled":true},{"text":"Analyses avancées et rapports","enabled":true},{"text":"Collaboration en temps réel illimitée","enabled":true},{"text":"Domaine personnalisé","enabled":true}]', 0, 1, 2),
-          ('storage_plan_entreprise', 'Entreprise', '', 'Pour les universités, laboratoires et grandes équipes.', '200 Go', 204800, 89, 'USD', '["USD","XOF","EUR"]', '{"USD":89,"XOF":55000,"EUR":82}', 790, 10, '[{"text":"200 Go de stockage cloud haute vitesse","enabled":true},{"text":"Sécurité renforcée et SSO","enabled":true},{"text":"Gestionnaire de compte dédié","enabled":true},{"text":"SLA garanti 99.9%","enabled":true},{"text":"Formations personnalisées","enabled":true},{"text":"Facturation centralisée","enabled":true}]', 0, 1, 3)
-        `).run();
-      }
-    } catch (e) {}
-
-    // Insérer les plans IA par défaut si vides
-    try {
-      const countAi = await db.prepare("SELECT COUNT(*) as c FROM ai_subscription_plans").first();
-      if (!countAi || countAi.c === 0) {
-        await db.prepare(`
-          INSERT INTO ai_subscription_plans (id, name, badge, description, credits_or_words, credits_count, price, primary_currency, currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features, is_auto_billing, is_active, sort_order)
-          VALUES 
-          ('ai_plan_basique', 'IA Basique', '', 'Pour réviser, poser des questions et comprendre rapidement vos cours au quotidien.', '100 000 mots IA', 100000, 10, 'USD', '["USD","XOF","EUR"]', '{"USD":10,"XOF":6500,"EUR":9.2}', 90, 10, '[{"text":"100 000 mots IA générés par mois","enabled":true},{"text":"Résumés automatiques de cours et PDF","enabled":true},{"text":"Création instantanée de cartes mémoires (Flashcards)","enabled":true},{"text":"Aide aux devoirs et explications pas à pas","enabled":true},{"text":"Support par e-mail","enabled":true}]', 0, 1, 1),
-          ('ai_plan_pro', 'IA Pro Étudiant', 'Populaire', 'L''assistant d''apprentissage complet pour exceller et réussir tous vos examens.', '1 000 000 mots IA', 1000000, 32, 'USD', '["USD","XOF","EUR"]', '{"USD":32,"XOF":20000,"EUR":29.5}', 290, 10, '[{"text":"1 000 000 mots IA avec priorité maximale","enabled":true},{"text":"Génération de Quiz interactifs & examens blancs","enabled":true},{"text":"Synthèse vocale & lecture audio de vos fiches","enabled":true},{"text":"Analyse intelligente de documents scannés et photos","enabled":true},{"text":"Support prioritaire 24/7","enabled":true}]', 0, 1, 2),
-          ('ai_plan_master', 'IA Recherche & Master', '', 'Pour les doctorants, thèses, mémoires volumineux et laboratoires universitaires.', 'Mots IA illimités', 10000000, 89, 'USD', '["USD","XOF","EUR"]', '{"USD":89,"XOF":55000,"EUR":82}', 790, 10, '[{"text":"Mots IA illimités avec accès modèles avancés","enabled":true},{"text":"Traitement prioritaire ultra-rapide","enabled":true},{"text":"Export complet des synthèses & fiches en PDF/Word","enabled":true},{"text":"Analyse illimitée de livres et thèses entières","enabled":true},{"text":"Accès API assistante pour vos projets de recherche","enabled":true}]', 0, 1, 3)
-        `).run();
-      }
-    } catch (e) {}
-  } catch (err) {
-    console.warn("[ensureStorageTables Warn]", err);
-  }
-}
-__name(ensureStorageTables, "ensureStorageTables");
-
-async function getUserStorageDetails(db, userId) {
-  if (!db || !userId) return null;
-  await ensureStorageTables(db);
-
-  // 1. Quota de l'utilisateur
-  let quotaRow = null;
-  try {
-    quotaRow = await db.prepare("SELECT * FROM user_storage_quotas WHERE user_id = ?").bind(userId).first();
-  } catch (e) {}
-
-  let globalConfig = null;
-  try {
-    globalConfig = await db.prepare("SELECT * FROM storage_global_config WHERE id = 'global'").first();
-  } catch (e) {}
-
-  const defaultWelcomeTotal = Number(globalConfig?.default_welcome_total_mb ?? ((globalConfig?.default_welcome_r2_mb ?? 10) + (globalConfig?.default_welcome_d1_mb ?? 20)));
-
-  if (!quotaRow) {
-    try {
-      await db.prepare(`
-        INSERT OR IGNORE INTO user_storage_quotas (user_id, welcome_total_mb, welcome_r2_mb, welcome_d1_mb, paid_total_mb, paid_r2_mb, paid_d1_mb, plan_name)
-        VALUES (?, ?, 10.0, 20.0, 0.0, 0.0, 0.0, 'gratuit')
-      `).bind(userId, defaultWelcomeTotal).run();
-    } catch (e) {}
-    quotaRow = {
-      welcome_total_mb: defaultWelcomeTotal,
-      welcome_r2_mb: 10.0,
-      welcome_d1_mb: 20.0,
-      paid_total_mb: 0.0,
-      paid_r2_mb: 0.0,
-      paid_d1_mb: 0.0,
-      bonus_total_mb: 0.0,
-      bonus_r2_mb: 0.0,
-      bonus_d1_mb: 0.0,
-      plan_name: 'gratuit'
-    };
-  }
-
-  // Quotas calculés sous forme d'un réservoir unique partagé (pas de limiteur séparé R2/D1)
-  const welcomeTotalMb = parseFloat(Number(quotaRow?.welcome_total_mb ?? ((quotaRow?.welcome_r2_mb ?? 10) + (quotaRow?.welcome_d1_mb ?? 20))).toFixed(2));
-  const paidTotalMb = parseFloat(Number(quotaRow?.paid_total_mb ?? ((quotaRow?.paid_r2_mb ?? 0) + (quotaRow?.paid_d1_mb ?? 0))).toFixed(2));
-  const bonusTotalMb = parseFloat(Number(quotaRow?.bonus_total_mb ?? ((quotaRow?.bonus_r2_mb ?? 0) + (quotaRow?.bonus_d1_mb ?? 0))).toFixed(2));
-
-  const totalAllowedMb = parseFloat((welcomeTotalMb + paidTotalMb + bonusTotalMb).toFixed(2));
-  const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
-
-  // 2. Fichiers personnels de cours et documents
-  let personalFilesBytes = 0;
-  let personalFilesCount = 0;
-  try {
-    const fRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(size), 0) AS s FROM files WHERE user_id = ?").bind(userId).first();
-    personalFilesCount = Number(fRes?.c || 0);
-    personalFilesBytes = Number(fRes?.s || 0);
-  } catch (e) {}
-
-  // Fichiers des liens et dossiers partagés personnels
-  let shareFilesBytes = 0;
-  let shareFilesCount = 0;
-  try {
-    const sfRes = await db.prepare(`
-      SELECT COUNT(sff.id) AS c, COALESCE(SUM(sff.size), 0) AS s 
-      FROM shared_folders sf 
-      JOIN shared_folder_files sff ON sff.shared_folder_id = sf.id 
-      WHERE sf.user_id = ?
-    `).bind(userId).first();
-    shareFilesCount = Number(sfRes?.c || 0);
-    shareFilesBytes = Number(sfRes?.s || 0);
-  } catch (e) {}
-
-  // Profil et icône/avatar personnalisé
-  let avatarBytes = 0;
-  let userProfileRow = null;
-  try {
-    userProfileRow = await db.prepare("SELECT avatar_url, name, email, phone, school, filiere FROM users WHERE id = ?").bind(userId).first();
-    if (userProfileRow?.avatar_url && (userProfileRow.avatar_url.includes('avatars/') || userProfileRow.avatar_url.startsWith('http') || userProfileRow.avatar_url.startsWith('data:image'))) {
-      avatarBytes = 85000;
-    }
-  } catch (e) {}
-
-  // Boutique : Produits publiés pour les commandes (images R2 & données écrites D1)
-  let shopProductsCount = 0;
-  let shopTextBytes = 0;
-  let shopImagesBytes = 0;
-  try {
-    const pRes = await db.prepare(`
-      SELECT COUNT(*) AS c, 
-             COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(description, '')) + LENGTH(COALESCE(price, '')) + LENGTH(COALESCE(image_urls_json, ''))), 0) AS tb 
-      FROM products WHERE seller_id = ?
-    `).bind(userId).first();
-    shopProductsCount = Number(pRes?.c || 0);
-    shopTextBytes = Number(pRes?.tb || 0);
-    shopImagesBytes = shopProductsCount * 120000;
-  } catch (e) {}
-
-  // Total Stockage Documents & Fichiers (R2 Net Facturé)
-  // STRICTEMENT EXCLUS : published_documents (ressources publiques de la bibliothèque)
-  const filesUsedBytes = personalFilesBytes + shareFilesBytes + avatarBytes + shopImagesBytes;
-  const filesUsedCount = personalFilesCount + shareFilesCount + (avatarBytes > 0 ? 1 : 0) + shopProductsCount;
-
-  // 3. Données & fiches d'étude (D1 Net Facturé)
-  // Strictement sans compter les éléments exemptés (ressources partagées publiques, vues, téléchargements, compteurs mots)
-  let notesBytes = 0, notesCount = 0;
-  try {
-    const nRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(content, ''))), 0) AS s FROM notes WHERE user_id = ?").bind(userId).first();
-    notesCount = Number(nRes?.c || 0);
-    notesBytes = Number(nRes?.s || 0);
-  } catch (e) {}
-
-  let matieresBytes = 0, matieresCount = 0;
-  try {
-    const mRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(name)), 0) AS s FROM matieres WHERE user_id = ?").bind(userId).first();
-    matieresCount = Number(mRes?.c || 0);
-    matieresBytes = Number(mRes?.s || 0);
-  } catch (e) {}
-
-  let scheduleBytes = 0, scheduleCount = 0;
-  try {
-    const sRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(subject) + LENGTH(COALESCE(room, '')) + LENGTH(COALESCE(note_or_teacher, ''))), 0) AS s FROM schedule_slots WHERE user_id = ?").bind(userId).first();
-    scheduleCount = Number(sRes?.c || 0);
-    scheduleBytes = Number(sRes?.s || 0);
-  } catch (e) {}
-
-  let gradesBytes = 0, gradesCount = 0;
-  try {
-    const gRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(subject_name) + LENGTH(COALESCE(sub_grades_json, ''))), 0) AS s FROM grades WHERE user_id = ?").bind(userId).first();
-    gradesCount = Number(gRes?.c || 0);
-    gradesBytes = Number(gRes?.s || 0);
-  } catch (e) {}
-
-  let aiContentsBytes = 0, aiContentsCount = 0;
-  try {
-    const aiRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(content_json, ''))), 0) AS s FROM ai_generated_contents WHERE user_id = ?").bind(userId).first();
-    aiContentsCount = Number(aiRes?.c || 0);
-    aiContentsBytes = Number(aiRes?.s || 0);
-  } catch (e) {}
-
-  let aiWorkspaceBytes = 0, aiWorkspaceCount = 0;
-  try {
-    const wsRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(message_text) + LENGTH(COALESCE(attached_file_content, '')) + LENGTH(COALESCE(user_notes, ''))), 0) AS s FROM user_ai_workspace WHERE user_id = ?").bind(userId).first();
-    aiWorkspaceCount = Number(wsRes?.c || 0);
-    aiWorkspaceBytes = Number(wsRes?.s || 0);
-  } catch (e) {}
-
-  let calendarBytes = 0, calendarCount = 0;
-  try {
-    const calRes = await db.prepare("SELECT COUNT(*) AS c, COALESCE(SUM(LENGTH(title)), 0) AS s FROM calendar_events WHERE user_id = ?").bind(userId).first();
-    calendarCount = Number(calRes?.c || 0);
-    calendarBytes = Number(calRes?.s || 0);
-  } catch (e) {}
-
-  // Horloge & sessions d'étude
-  let studySessionsCount = 0;
-  try {
-    const ssRes = await db.prepare("SELECT COUNT(*) AS c FROM study_sessions WHERE user_id = ?").bind(userId).first();
-    studySessionsCount = Number(ssRes?.c || 0);
-  } catch (e) {}
-
-  // Discussions & messages IA (inclus dans le stockage payant de données de l'utilisateur)
-  let chatBytes = 0, chatMessagesCount = 0;
-  try {
-    const chatRes = await db.prepare(`
-      SELECT COUNT(m.id) AS mc, COALESCE(SUM(LENGTH(m.content) + LENGTH(COALESCE(m.metadata, ''))), 0) AS mb
-      FROM conversations c
-      LEFT JOIN messages m ON m.conversation_id = c.id
-      WHERE c.user_id = ?
-    `).bind(userId).first();
-    chatMessagesCount = Number(chatRes?.mc || 0);
-    chatBytes = Number(chatRes?.mb || 0);
-  } catch (e) {}
-
-  // Profil
-  const profileBytes = (userProfileRow?.name?.length || 0) + (userProfileRow?.email?.length || 0) + (userProfileRow?.school?.length || 0) + (userProfileRow?.filiere?.length || 0) + (userProfileRow?.phone?.length || 0) + 120;
-
-  const personalDataTextBytes = notesBytes + matieresBytes + scheduleBytes + gradesBytes + aiContentsBytes + aiWorkspaceBytes + calendarBytes + chatBytes + shopTextBytes + profileBytes;
-  const personalDataRows = notesCount + matieresCount + scheduleCount + gradesCount + aiContentsCount + aiWorkspaceCount + calendarCount + chatMessagesCount + shopProductsCount + studySessionsCount + 1;
-  const dataUsedBytes = personalDataTextBytes + (personalDataRows * 128);
-
-  // 4. Nombre de mots de l'utilisateur (exempté du quota de stockage)
-  let wordsUsed = 0;
-  try {
-    const wRes = await db.prepare("SELECT COALESCE(SUM(word_count), 0) AS total_words FROM user_word_counts WHERE user_id = ?").bind(userId).first();
-    wordsUsed = Number(wRes?.total_words || 0);
-  } catch (e) {}
-
-  const wordsMax = 50000 + (paidTotalMb > 0 ? Math.round(paidTotalMb * 5000) : 0);
-  const wordsRemaining = Math.max(0, wordsMax - wordsUsed);
-  const wordsPercentage = wordsMax > 0 ? Math.min(100, parseFloat(((wordsUsed / wordsMax) * 100).toFixed(1))) : 0;
-
-  // Calculs totaux
-  const totalUsedBytes = filesUsedBytes + dataUsedBytes;
-
-  const totalUsedMb = parseFloat((totalUsedBytes / (1024 * 1024)).toFixed(3));
-  const filesUsedMb = parseFloat((filesUsedBytes / (1024 * 1024)).toFixed(3));
-  const dataUsedMb = parseFloat((dataUsedBytes / (1024 * 1024)).toFixed(3));
-
-  const totalPercentage = totalAllowedMb > 0 ? Math.min(100, parseFloat(((totalUsedMb / totalAllowedMb) * 100).toFixed(1))) : 0;
-
-  return {
-    userId,
-    planName: quotaRow?.plan_name || 'gratuit',
-    welcomeStorage: {
-      totalMb: welcomeTotalMb,
-      filesMb: Math.round(welcomeTotalMb / 3),
-      dataMb: Math.round((welcomeTotalMb * 2) / 3),
-      formatted: `${welcomeTotalMb} Mo`
-    },
-    paidStorage: {
-      totalMb: paidTotalMb,
-      filesMb: Math.round(paidTotalMb / 2),
-      dataMb: Math.round(paidTotalMb / 2),
-      formatted: `${paidTotalMb} Mo`
-    },
-    bonusStorage: {
-      totalMb: bonusTotalMb,
-      formatted: `${bonusTotalMb} Mo`
-    },
-    totalAllowedMb,
-    totalAllowedFormatted: totalAllowedMb >= 1024 ? `${(totalAllowedMb / 1024).toFixed(1)} Go` : `${totalAllowedMb} Mo`,
-    totalUsedBytes,
-    totalUsedMb,
-    totalUsedFormatted: formatBytes(totalUsedBytes),
-    totalPercentage,
-    filesStorage: {
-      name: "Stockage Documents & Fichiers",
-      subtitle: "Cours personnels, polycopiés, documents PDF et supports d'étude déposés",
-      count: filesUsedCount,
-      usedBytes: filesUsedBytes,
-      usedMb: filesUsedMb,
-      usedFormatted: formatBytes(filesUsedBytes),
-      allowedMb: totalAllowedMb,
-      allowedFormatted: totalAllowedMb >= 1024 ? `${(totalAllowedMb / 1024).toFixed(1)} Go` : `${totalAllowedMb} Mo`,
-      percentage: totalPercentage,
-      freeNote: "Ressources publiques de la bibliothèque offertes sans décompte"
-    },
-    dataStorage: {
-      name: "Espace Données & Fiches d'Étude",
-      subtitle: "Fiches mémoires, notes de révision, devoirs, emploi du temps et contenus d'apprentissage",
-      count: personalDataRows,
-      usedBytes: dataUsedBytes,
-      usedMb: dataUsedMb,
-      usedFormatted: formatBytes(dataUsedBytes),
-      allowedMb: totalAllowedMb,
-      allowedFormatted: totalAllowedMb >= 1024 ? `${(totalAllowedMb / 1024).toFixed(1)} Go` : `${totalAllowedMb} Mo`,
-      percentage: totalPercentage,
-      freeNote: "Messages IA décomptés du quota global partagé"
-    },
-    wordsUsage: {
-      name: "Mots d'étude & Génération IA",
-      subtitle: "Résumés de cours, quiz interactifs, cartes mémoires et explications",
-      usedWords: wordsUsed,
-      maxWords: wordsMax,
-      remainingWords: wordsRemaining,
-      percentage: wordsPercentage,
-      formatted: `${wordsUsed.toLocaleString('fr-FR')} / ${wordsMax.toLocaleString('fr-FR')} mots`
-    }
-  };
-}
-__name(getUserStorageDetails, "getUserStorageDetails");
-
-var src_default = {
+var index_default = {
   async fetch(request, rawEnv) {
     const url = new URL(request.url);
     const path = url.pathname;
@@ -2772,9 +2406,8 @@ var src_default = {
       });
     }
     try {
-      let sanitizeUser2 = function(user) {
-        if (!user)
-          return null;
+      let sanitizeUser = function(user) {
+        if (!user) return null;
         const { password_hash: _ph, security_answer_1_hash: _s1, security_answer_2_hash: _s2, ...rest } = user;
         return {
           ...rest,
@@ -2783,26 +2416,20 @@ var src_default = {
             user.security_answer_1_hash && typeof user.security_answer_1_hash === "string" && user.security_answer_1_hash.trim().length > 0 && user.security_answer_2_hash && typeof user.security_answer_2_hash === "string" && user.security_answer_2_hash.trim().length > 0
           )
         };
-      }, generateId3 = function() {
+      }, generateId2 = function() {
         return crypto.randomUUID();
-      }, isValidEmail2 = function(email) {
-        if (!email || typeof email !== "string")
-          return false;
+      }, isValidEmail = function(email) {
+        if (!email || typeof email !== "string") return false;
         const emailRegex = /^[a-zA-Z0-9._%+-]+@[a-zA-Z0-9.-]+\.[a-zA-Z]{2,}$/;
         return emailRegex.test(email.trim());
-      }, validatePasswordFormat2 = function(pwd) {
-        if (!pwd || typeof pwd !== "string")
-          return { valid: false, error: "Mot de passe requis" };
-        if (pwd.length < 6)
-          return { valid: false, error: "Le mot de passe doit comporter au moins 6 caract\xE8res" };
-        if (!/[a-zA-Z]/.test(pwd))
-          return { valid: false, error: "Le mot de passe doit contenir des lettres" };
-        if (!/[0-9]/.test(pwd))
-          return { valid: false, error: "Le mot de passe doit contenir des chiffres" };
-        if (!/[^a-zA-Z0-9]/.test(pwd))
-          return { valid: false, error: "Le mot de passe doit contenir au moins un caract\xE8re sp\xE9cial (ex: @, #, $, !, etc.)" };
+      }, validatePasswordFormat = function(pwd) {
+        if (!pwd || typeof pwd !== "string") return { valid: false, error: "Mot de passe requis" };
+        if (pwd.length < 6) return { valid: false, error: "Le mot de passe doit comporter au moins 6 caract\xE8res" };
+        if (!/[a-zA-Z]/.test(pwd)) return { valid: false, error: "Le mot de passe doit contenir des lettres" };
+        if (!/[0-9]/.test(pwd)) return { valid: false, error: "Le mot de passe doit contenir des chiffres" };
+        if (!/[^a-zA-Z0-9]/.test(pwd)) return { valid: false, error: "Le mot de passe doit contenir au moins un caract\xE8re sp\xE9cial (ex: @, #, $, !, etc.)" };
         return { valid: true };
-      }, generateEmailAvatar2 = function(email, name) {
+      }, generateEmailAvatar = function(email, name) {
         const cleanEmail = (email || "").trim().toLowerCase();
         const cleanName = (name || "").trim();
         let initials = "SC";
@@ -2816,12 +2443,11 @@ var src_default = {
         const colors = ["#EA580C", "#0284C7", "#059669", "#7C3AED", "#D97706", "#0D9488", "#DC2626", "#4F46E5"];
         let hash = 0;
         const seed = cleanEmail || cleanName || "studycloud";
-        for (let i = 0; i < seed.length; i++)
-          hash = seed.charCodeAt(i) + ((hash << 5) - hash);
+        for (let i = 0; i < seed.length; i++) hash = seed.charCodeAt(i) + ((hash << 5) - hash);
         const color = colors[Math.abs(hash) % colors.length];
         const svg = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" width="128" height="128"><rect width="128" height="128" rx="28" fill="${color}"/><text x="50%" y="54%" dominant-baseline="middle" text-anchor="middle" fill="#FFFFFF" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif" font-size="${initials.length > 1 ? "48" : "58"}" font-weight="700">${initials}</text></svg>`;
         return `data:image/svg+xml;utf8,${encodeURIComponent(svg)}`;
-      }, htmlResponse2 = function(title, message, success, userId, token) {
+      }, htmlResponse = function(title, message, success, userId, token) {
         const html = `<!DOCTYPE html>
 <html lang="fr">
 <head>
@@ -2943,13 +2569,6 @@ var src_default = {
           status: success ? 200 : 400
         });
       };
-      var sanitizeUser = sanitizeUser2, generateId2 = generateId3, isValidEmail = isValidEmail2, validatePasswordFormat = validatePasswordFormat2, generateEmailAvatar = generateEmailAvatar2, htmlResponse = htmlResponse2;
-      __name(sanitizeUser2, "sanitizeUser");
-      __name(generateId3, "generateId");
-      __name(isValidEmail2, "isValidEmail");
-      __name(validatePasswordFormat2, "validatePasswordFormat");
-      __name(generateEmailAvatar2, "generateEmailAvatar");
-      __name(htmlResponse2, "htmlResponse");
       if (path === "/api/assets/dna-logo.png" || path === "/assets/dna-logo.png") {
         const pngBytes = Uint8Array.from(atob(DNA_LOGO_PNG_B64), (c) => c.charCodeAt(0));
         return new Response(pngBytes, {
@@ -2995,8 +2614,7 @@ var src_default = {
       if ((path.startsWith("/s/") || path.startsWith("/share/") && !path.startsWith("/share/product/") || path.startsWith("/d/")) && method === "GET") {
         const code = path.split("/")[2];
         if (code && env.DB) {
-          if (!isSchemaInitialized)
-            await ensureDatabaseSchema(env.DB);
+          if (!isSchemaInitialized) await ensureDatabaseSchema(env.DB);
           const cleanCode = decodeURIComponent(code).trim();
           const folder = await env.DB.prepare(
             "SELECT * FROM shared_folders WHERE share_code = ? OR id = ? LIMIT 1"
@@ -3032,8 +2650,7 @@ var src_default = {
         const cookieHeader = request.headers.get("Cookie") || "";
         const cookieMatch = cookieHeader.match(/(?:^|;\s*)sc_share_last=([^;]+)/);
         if (cookieMatch && cookieMatch[1] && env.DB) {
-          if (!isSchemaInitialized)
-            await ensureDatabaseSchema(env.DB);
+          if (!isSchemaInitialized) await ensureDatabaseSchema(env.DB);
           const savedCode = decodeURIComponent(cookieMatch[1]).trim();
           const folder = await env.DB.prepare(
             "SELECT * FROM shared_folders WHERE share_code = ? OR id = ? LIMIT 1"
@@ -3083,7 +2700,6 @@ var src_default = {
         const saltArray = Array.from(salt);
         return btoa(JSON.stringify({ salt: saltArray, hash: hashArray, iter: iterations }));
       }
-      __name(hashPassword, "hashPassword");
       async function verifyPassword(password, stored) {
         try {
           const encoder = new TextEncoder();
@@ -3099,7 +2715,6 @@ var src_default = {
           return false;
         }
       }
-      __name(verifyPassword, "verifyPassword");
       async function createJWT(payload, expiresInHours = 720) {
         const encoder = new TextEncoder();
         const header = btoa(JSON.stringify({ alg: "HS256", typ: "JWT" }));
@@ -3110,7 +2725,6 @@ var src_default = {
         const sig = btoa(String.fromCharCode(...new Uint8Array(signature))).replace(/\+/g, "-").replace(/\//g, "_").replace(/=/g, "");
         return `${header}.${body}.${sig}`;
       }
-      __name(createJWT, "createJWT");
       async function verifyJWT(token) {
         try {
           const encoder = new TextEncoder();
@@ -3118,38 +2732,30 @@ var src_default = {
           const key = await crypto.subtle.importKey("raw", encoder.encode(JWT_SECRET), { name: "HMAC", hash: "SHA-256" }, false, ["verify"]);
           const sigBytes = Uint8Array.from(atob(sig.replace(/-/g, "+").replace(/_/g, "/")), (c) => c.charCodeAt(0));
           const valid = await crypto.subtle.verify("HMAC", key, sigBytes, encoder.encode(`${header}.${body}`));
-          if (!valid)
-            return null;
+          if (!valid) return null;
           const payload = JSON.parse(atob(body));
-          if (payload.exp < Math.floor(Date.now() / 1e3))
-            return null;
+          if (payload.exp < Math.floor(Date.now() / 1e3)) return null;
           return payload;
         } catch {
           return null;
         }
       }
-      __name(verifyJWT, "verifyJWT");
       async function hashToken(token) {
         const encoder = new TextEncoder();
         const buffer = await crypto.subtle.digest("SHA-256", encoder.encode(token));
         return Array.from(new Uint8Array(buffer)).map((b) => b.toString(16).padStart(2, "0")).join("");
       }
-      __name(hashToken, "hashToken");
       async function getAuthUser(req) {
         const authHeader = req.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token)
-          return null;
+        if (!token) return null;
         const payload = await verifyJWT(token);
-        if (!payload?.userId)
-          return null;
+        if (!payload?.userId) return null;
         return payload;
       }
-      __name(getAuthUser, "getAuthUser");
       async function ensureEmailVerificationsTable(_db, _force = false) {
         return;
       }
-      __name(ensureEmailVerificationsTable, "ensureEmailVerificationsTable");
       async function sendConfirmationEmail(toEmail, name, token, appOrigin = "https://studycloud.dkd-technologies.com", isLogin = false) {
         try {
           const workerBaseUrl = "https://api-worker.dkd-technologies.com";
@@ -3233,7 +2839,6 @@ var src_default = {
           console.error("Failed to send confirmation email via Resend:", e);
         }
       }
-      __name(sendConfirmationEmail, "sendConfirmationEmail");
       async function sendWelcomeEmail(toEmail, name, isStudent = true, school = "", filiere = "", appOrigin = "https://studycloud.dkd-technologies.com") {
         try {
           const cleanOrigin = (appOrigin || "https://studycloud.dkd-technologies.com").replace(/\/+$/, "");
@@ -3379,7 +2984,6 @@ var src_default = {
           console.error("Failed to send welcome email via Resend:", e);
         }
       }
-      __name(sendWelcomeEmail, "sendWelcomeEmail");
       async function sendPasswordResetEmail(toEmail, name, code, appOrigin = "https://studycloud.dkd-technologies.com") {
         try {
           const cleanOrigin = (appOrigin || "https://studycloud.dkd-technologies.com").replace(/\/+$/, "");
@@ -3481,27 +3085,22 @@ var src_default = {
           console.error("Failed to send password reset email via Resend:", e);
         }
       }
-      __name(sendPasswordResetEmail, "sendPasswordResetEmail");
       async function ensureDatabaseSchema(_db, _force = false) {
         return;
       }
-      __name(ensureDatabaseSchema, "ensureDatabaseSchema");
       const ensurePasswordResetsTable = ensureDatabaseSchema;
       async function ensureUsersTableUniqueIndex(_db) {
         return;
       }
-      __name(ensureUsersTableUniqueIndex, "ensureUsersTableUniqueIndex");
       async function deleteUserCompletely(db, userId, email, bucket) {
-        if (!db || !userId)
-          return;
+        if (!db || !userId) return;
         if (bucket) {
           try {
             const filesRes = await db.prepare("SELECT r2_key FROM files WHERE user_id = ? AND r2_key IS NOT NULL").bind(userId).all();
             if (filesRes?.results) {
               for (const f of filesRes.results) {
-                if (f.r2_key)
-                  await bucket.delete(f.r2_key).catch(() => {
-                  });
+                if (f.r2_key) await bucket.delete(f.r2_key).catch(() => {
+                });
               }
             }
           } catch (e) {
@@ -3510,9 +3109,8 @@ var src_default = {
             const pubDocs = await db.prepare("SELECT r2_key FROM published_documents WHERE user_id = ? AND r2_key IS NOT NULL").bind(userId).all();
             if (pubDocs?.results) {
               for (const d of pubDocs.results) {
-                if (d.r2_key)
-                  await bucket.delete(d.r2_key).catch(() => {
-                  });
+                if (d.r2_key) await bucket.delete(d.r2_key).catch(() => {
+                });
               }
             }
           } catch (e) {
@@ -3521,9 +3119,8 @@ var src_default = {
             const sfFiles = await db.prepare("SELECT r2_key FROM shared_folder_files WHERE shared_folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?) AND r2_key IS NOT NULL").bind(userId).all();
             if (sfFiles?.results) {
               for (const sf of sfFiles.results) {
-                if (sf.r2_key)
-                  await bucket.delete(sf.r2_key).catch(() => {
-                  });
+                if (sf.r2_key) await bucket.delete(sf.r2_key).catch(() => {
+                });
               }
             }
           } catch (e) {
@@ -3536,6 +3133,17 @@ var src_default = {
           "password_resets",
           "matieres",
           "files",
+          "classeur_files",
+          "classeur_folders",
+          "audio_files",
+          "image_files",
+          "video_files",
+          "document_files",
+          "download_files",
+          "secure_folder_config",
+          "secure_files",
+          "trash_files",
+          "user_favorites",
           "shared_folders",
           "shared_links",
           "schedule_config",
@@ -3602,20 +3210,16 @@ var src_default = {
           console.error(`[StudyCloud Delete Account] Erreur suppression users ${userId}:`, e);
         }
       }
-      __name(deleteUserCompletely, "deleteUserCompletely");
       async function cleanupExpiredUnfinishedAccounts(db) {
         return;
       }
-      __name(cleanupExpiredUnfinishedAccounts, "cleanupExpiredUnfinishedAccounts");
       if (path.startsWith("/api/auth/") && path !== "/api/auth/check-verification-status" && !isSchemaInitialized) {
         await ensureDatabaseSchema(env.DB);
         await ensureEmailVerificationsTable(env.DB);
       }
       if (path === "/api/auth/register" && method === "POST") {
-        if (!isEmailVerifTableInitialized)
-          await ensureEmailVerificationsTable(env.DB);
-        if (!isSchemaInitialized)
-          await ensureDatabaseSchema(env.DB);
+        if (!isEmailVerifTableInitialized) await ensureEmailVerificationsTable(env.DB);
+        if (!isSchemaInitialized) await ensureDatabaseSchema(env.DB);
         const body = await request.json();
         const {
           name,
@@ -3627,13 +3231,10 @@ var src_default = {
           securityQuestion2,
           securityAnswer2
         } = body;
-        if (!name || !email || !password)
-          return errorResponse("Nom, email et mot de passe requis", 400, origin);
-        if (!isValidEmail2(email))
-          return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
-        const pwdCheck = validatePasswordFormat2(password);
-        if (!pwdCheck.valid)
-          return errorResponse(pwdCheck.error || "Mot de passe non conforme", 400, origin);
+        if (!name || !email || !password) return errorResponse("Nom, email et mot de passe requis", 400, origin);
+        if (!isValidEmail(email)) return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
+        const pwdCheck = validatePasswordFormat(password);
+        if (!pwdCheck.valid) return errorResponse(pwdCheck.error || "Mot de passe non conforme", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const existing = await env.DB.prepare("SELECT * FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
         const q1 = securityQuestion1 || "Quelle est votre ville de naissance ?";
@@ -3654,7 +3255,7 @@ var src_default = {
           } catch (e) {
           }
         }
-        const userId = generateId3();
+        const userId = generateId2();
         const passwordHash = await hashPassword(password);
         const registrationPayload = JSON.stringify({
           userId,
@@ -3674,7 +3275,7 @@ var src_default = {
           await env.DB.prepare(`
             INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, block_stage, last_sent_at, expires_at)
             VALUES (?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, ?)
-          `).bind(generateId3(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
+          `).bind(generateId2(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
         } catch (insertErr) {
           if (String(insertErr).includes("FOREIGN KEY") || String(insertErr).includes("SQLITE_CONSTRAINT")) {
             try {
@@ -3685,7 +3286,7 @@ var src_default = {
             await env.DB.prepare(`
               INSERT INTO email_verifications (id, user_id, email, token, payload, resend_count, block_stage, last_sent_at, expires_at)
               VALUES (?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, ?)
-            `).bind(generateId3(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
+            `).bind(generateId2(), userId, cleanEmail, verificationToken, registrationPayload, expiresAt).run();
           } else {
             throw insertErr;
           }
@@ -3705,22 +3306,18 @@ var src_default = {
       if (path === "/api/auth/resend-verification" && method === "POST") {
         const body = await request.json();
         const { email } = body;
-        if (!email)
-          return errorResponse("Email requis", 400, origin);
-        if (!isValidEmail2(email))
-          return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
+        if (!email) return errorResponse("Email requis", 400, origin);
+        if (!isValidEmail(email)) return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const user = await env.DB.prepare("SELECT id, name, email_verified FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
         const verif = await env.DB.prepare("SELECT * FROM email_verifications WHERE LOWER(TRIM(email)) = ? ORDER BY created_at DESC LIMIT 1").bind(cleanEmail).first();
-        if (!user && !verif)
-          return errorResponse("Aucune demande en attente pour cet email", 404, origin);
+        if (!user && !verif) return errorResponse("Aucune demande en attente pour cet email", 404, origin);
         let userName = user?.name || "\xC9tudiant";
         const isLoginFlow = user ? user.email_verified === 1 : false;
         if (verif?.payload) {
           try {
             const p = JSON.parse(verif.payload);
-            if (p.name)
-              userName = p.name;
+            if (p.name) userName = p.name;
           } catch (e) {
           }
         }
@@ -3815,7 +3412,7 @@ var src_default = {
           await env.DB.prepare(`
             INSERT INTO email_verifications (id, user_id, email, token, resend_count, block_stage, last_sent_at, expires_at)
             VALUES (?, ?, ?, ?, 1, 0, CURRENT_TIMESTAMP, ?)
-          `).bind(generateId3(), user?.id || generateId3(), cleanEmail, newToken, newExpiresAt).run();
+          `).bind(generateId2(), user?.id || generateId2(), cleanEmail, newToken, newExpiresAt).run();
           const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
           await sendConfirmationEmail(cleanEmail, userName, newToken, clientOrigin, isLoginFlow);
           return jsonResponse({
@@ -3833,8 +3430,7 @@ var src_default = {
       if (path === "/api/auth/check-verification-status" && method === "GET") {
         const emailParam = url.searchParams.get("email");
         const userIdParam = url.searchParams.get("userId");
-        if (!emailParam && !userIdParam)
-          return errorResponse("Email ou userId requis", 400, origin);
+        if (!emailParam && !userIdParam) return errorResponse("Email ou userId requis", 400, origin);
         const cleanEmail = (emailParam || "").toLowerCase().trim();
         let latestVerif = null;
         try {
@@ -3874,7 +3470,7 @@ var src_default = {
               jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
               const tokenHash = await hashToken(jwtToken);
               const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
-              await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId3(), user.id, tokenHash, expiresAt).run();
+              await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), user.id, tokenHash, expiresAt).run();
               try {
                 await env.DB.prepare("UPDATE email_verifications SET confirmed_jwt = ? WHERE id = ?").bind(jwtToken, latestVerif.id).run();
               } catch (e3) {
@@ -3885,7 +3481,7 @@ var src_default = {
               confirmed: true,
               clicked: true,
               token: jwtToken,
-              user: sanitizeUser2(user)
+              user: sanitizeUser(user)
             }, 200, origin);
           }
         }
@@ -3916,14 +3512,14 @@ var src_default = {
       if ((path === "/verify" || path === "/api/auth/verify-email") && method === "GET") {
         const token = url.searchParams.get("token");
         if (!token) {
-          return htmlResponse2("Lien invalide", "Le lien de confirmation est incomplet.", false);
+          return htmlResponse("Lien invalide", "Le lien de confirmation est incomplet.", false);
         }
         try {
           const record = await env.DB.prepare(
             "SELECT * FROM email_verifications WHERE token = ?"
           ).bind(token).first();
           if (!record) {
-            return htmlResponse2("Lien expir\xE9 ou d\xE9j\xE0 utilis\xE9", "Ce lien ne peut plus \xEAtre utilis\xE9 ou n'est plus valide. Veuillez vous connecter.", false);
+            return htmlResponse("Lien expir\xE9 ou d\xE9j\xE0 utilis\xE9", "Ce lien ne peut plus \xEAtre utilis\xE9 ou n'est plus valide. Veuillez vous connecter.", false);
           }
           if (Number(record.used) === 1 || Number(record.confirmed) === 1) {
             let jwtToken2 = record.confirmed_jwt;
@@ -3933,7 +3529,7 @@ var src_default = {
                 jwtToken2 = await createJWT({ userId: user2.id, email: user2.email, name: user2.name });
               }
             }
-            return htmlResponse2(
+            return htmlResponse(
               "Confirmation d\xE9j\xE0 effectu\xE9e !",
               "Ce lien ne peut plus \xEAtre r\xE9utilis\xE9 car la confirmation a d\xE9j\xE0 \xE9t\xE9 valid\xE9e. Cet e-mail est d\xE9j\xE0 associ\xE9 \xE0 un compte. Vous pouvez retourner dans l'application pour vous connecter.",
               true,
@@ -3945,14 +3541,14 @@ var src_default = {
           const expiresAt = record.expires_at ? new Date(record.expires_at).getTime() : 0;
           const GRACE_PERIOD_MS = 15 * 1e3;
           if (expiresAt > 0 && now > expiresAt + GRACE_PERIOD_MS) {
-            return htmlResponse2("Lien expir\xE9", "Ce lien ne peut plus \xEAtre utilis\xE9 car son d\xE9lai de validit\xE9 (70 secondes) a expir\xE9. Veuillez r\xE9clamer un nouveau lien depuis l'application.", false);
+            return htmlResponse("Lien expir\xE9", "Ce lien ne peut plus \xEAtre utilis\xE9 car son d\xE9lai de validit\xE9 (70 secondes) a expir\xE9. Veuillez r\xE9clamer un nouveau lien depuis l'application.", false);
           }
           let user = null;
           let isNewUser = false;
           if (record.payload) {
             try {
               const userData = JSON.parse(record.payload);
-              const userId = userData.userId || record.user_id || generateId3();
+              const userId = userData.userId || record.user_id || generateId2();
               await env.DB.prepare(`
                 INSERT INTO users (
                   id, name, email, password_hash, provider, email_verified, is_onboarded,
@@ -3998,7 +3594,7 @@ var src_default = {
             user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(record.user_id).first();
           }
           if (!user) {
-            return htmlResponse2("Compte introuvable", "Le compte associ\xE9 \xE0 ce lien de confirmation est introuvable.", false);
+            return htmlResponse("Compte introuvable", "Le compte associ\xE9 \xE0 ce lien de confirmation est introuvable.", false);
           }
           await env.DB.prepare(`
             UPDATE users SET
@@ -4019,7 +3615,7 @@ var src_default = {
           const jwtToken = await createJWT({ userId: user.id, email: user.email, name: user.name });
           const tokenHash = await hashToken(jwtToken);
           const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
-          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId3(), user.id, tokenHash, sessionExpiresAt).run();
+          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), user.id, tokenHash, sessionExpiresAt).run();
           try {
             await env.DB.prepare(`
               UPDATE email_verifications SET
@@ -4055,7 +3651,7 @@ var src_default = {
           }
           const accept = request.headers.get("Accept") || "";
           if (accept.includes("application/json") && !accept.includes("text/html")) {
-            const safeUser = sanitizeUser2(user);
+            const safeUser = sanitizeUser(user);
             return jsonResponse({
               success: true,
               message: "Adresse email confirm\xE9e avec succ\xE8s !",
@@ -4063,7 +3659,7 @@ var src_default = {
               user: safeUser
             }, 200, origin);
           }
-          return htmlResponse2(
+          return htmlResponse(
             "Confirmation r\xE9ussie !",
             "Votre compte a \xE9t\xE9 confirm\xE9 avec succ\xE8s. Vous pouvez maintenant retourner dans l'application pour continuer.",
             true,
@@ -4072,7 +3668,7 @@ var src_default = {
           );
         } catch (err) {
           console.error("Erreur verify:", err);
-          return htmlResponse2("Erreur serveur", "Une erreur technique est survenue lors de la validation.", false);
+          return htmlResponse("Erreur serveur", "Une erreur technique est survenue lors de la validation.", false);
         }
       }
       if (path === "/api/auth/login" && method === "POST") {
@@ -4080,10 +3676,8 @@ var src_default = {
         await cleanupExpiredUnfinishedAccounts(env.DB);
         const body = await request.json();
         const { email, password } = body;
-        if (!email || !password)
-          return errorResponse("Email et mot de passe requis", 400, origin);
-        if (!isValidEmail2(email))
-          return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
+        if (!email || !password) return errorResponse("Email et mot de passe requis", 400, origin);
+        if (!isValidEmail(email)) return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const existingUser = await env.DB.prepare("SELECT * FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
         if (!existingUser) {
@@ -4116,7 +3710,7 @@ var src_default = {
         await env.DB.prepare(`
           INSERT INTO email_verifications (id, user_id, email, token, resend_count, block_stage, last_sent_at, expires_at)
           VALUES (?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP, ?)
-        `).bind(generateId3(), user.id, cleanEmail, verificationToken, expiresAt).run();
+        `).bind(generateId2(), user.id, cleanEmail, verificationToken, expiresAt).run();
         const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
         await sendConfirmationEmail(cleanEmail, user.name, verificationToken, clientOrigin, true);
         return jsonResponse({
@@ -4134,14 +3728,11 @@ var src_default = {
         await ensurePasswordResetsTable(env.DB);
         const body = await request.json();
         const { email } = body;
-        if (!email)
-          return errorResponse("Email requis", 400, origin);
-        if (!isValidEmail2(email))
-          return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
+        if (!email) return errorResponse("Email requis", 400, origin);
+        if (!isValidEmail(email)) return errorResponse("Format d'adresse email invalide (ex: exemple@gmail.com)", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const user = await env.DB.prepare("SELECT id, name, email, security_question_1, security_question_2, security_answer_1_hash FROM users WHERE email = ?").bind(cleanEmail).first();
-        if (!user)
-          return errorResponse("Aucun compte trouv\xE9 avec cet email", 404, origin);
+        if (!user) return errorResponse("Aucun compte trouv\xE9 avec cet email", 404, origin);
         const now = Date.now();
         const TWENTY_FOUR_HOURS_MS = 24 * 3600 * 1e3;
         const sinceDate = new Date(now - TWENTY_FOUR_HOURS_MS).toISOString();
@@ -4182,12 +3773,10 @@ var src_default = {
         await ensurePasswordResetsTable(env.DB);
         const body = await request.json();
         const { email, answer1, answer2 } = body;
-        if (!email || !answer1)
-          return errorResponse("Email et r\xE9ponse(s) de s\xE9curit\xE9 requis", 400, origin);
+        if (!email || !answer1) return errorResponse("Email et r\xE9ponse(s) de s\xE9curit\xE9 requis", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const user = await env.DB.prepare("SELECT id, name, email, security_answer_1_hash, security_answer_2_hash FROM users WHERE email = ?").bind(cleanEmail).first();
-        if (!user)
-          return errorResponse("Utilisateur introuvable", 404, origin);
+        if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
         if (user.security_answer_1_hash) {
           const hash1 = await hashToken(answer1.slice(0, 30).toLowerCase().trim());
           const match1 = hash1 === user.security_answer_1_hash;
@@ -4216,13 +3805,11 @@ var src_default = {
         if (!email || !resetSessionToken) {
           return errorResponse("Email et token requis", 400, origin);
         }
-        if (!isValidEmail2(email))
-          return errorResponse("Format d'adresse email du compte invalide (ex: exemple@gmail.com)", 400, origin);
+        if (!isValidEmail(email)) return errorResponse("Format d'adresse email du compte invalide (ex: exemple@gmail.com)", 400, origin);
         const cleanAccountEmail = email.toLowerCase().trim();
         const cleanTargetEmail = cleanAccountEmail;
         const user = await env.DB.prepare("SELECT id, name, email FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanAccountEmail).first();
-        if (!user)
-          return errorResponse("Utilisateur introuvable", 404, origin);
+        if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
         const now = Date.now();
         const TWENTY_FOUR_HOURS_MS = 24 * 3600 * 1e3;
         const sinceDate = new Date(now - TWENTY_FOUR_HOURS_MS).toISOString();
@@ -4251,7 +3838,7 @@ var src_default = {
         await env.DB.prepare(`
           INSERT INTO password_resets (id, user_id, target_email, reset_code, attempts_today, last_requested_at, expires_at, used)
           VALUES (?, ?, ?, ?, ?, CURRENT_TIMESTAMP, ?, 0)
-        `).bind(generateId3(), user.id, cleanTargetEmail, resetCode, count + 1, expiresAt).run();
+        `).bind(generateId2(), user.id, cleanTargetEmail, resetCode, count + 1, expiresAt).run();
         const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
         await sendPasswordResetEmail(cleanTargetEmail, user.name, resetCode, clientOrigin);
         return jsonResponse({
@@ -4268,13 +3855,11 @@ var src_default = {
         if (!email || !code || !newPassword) {
           return errorResponse("Email, code et nouveau mot de passe requis", 400, origin);
         }
-        const pwdCheck = validatePasswordFormat2(newPassword);
-        if (!pwdCheck.valid)
-          return errorResponse(pwdCheck.error || "Nouveau mot de passe non conforme", 400, origin);
+        const pwdCheck = validatePasswordFormat(newPassword);
+        if (!pwdCheck.valid) return errorResponse(pwdCheck.error || "Nouveau mot de passe non conforme", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const user = await env.DB.prepare("SELECT id, name FROM users WHERE email = ?").bind(cleanEmail).first();
-        if (!user)
-          return errorResponse("Utilisateur introuvable", 404, origin);
+        if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
         const resetRecord = await env.DB.prepare(`
           SELECT * FROM password_resets
           WHERE user_id = ? AND reset_code = ? AND used = 0 AND expires_at > CURRENT_TIMESTAMP
@@ -4295,8 +3880,7 @@ var src_default = {
       if (path === "/api/auth/google" && method === "POST") {
         const body = await request.json();
         const { code, redirectUri, action } = body;
-        if (!code)
-          return errorResponse("Code Google OAuth requis", 400, origin);
+        if (!code) return errorResponse("Code Google OAuth requis", 400, origin);
         const tokenRes = await fetch("https://oauth2.googleapis.com/token", {
           method: "POST",
           headers: { "Content-Type": "application/x-www-form-urlencoded" },
@@ -4309,20 +3893,18 @@ var src_default = {
           })
         });
         const tokenData = await tokenRes.json();
-        if (!tokenData.access_token)
-          return errorResponse("\xC9change Google OAuth \xE9chou\xE9 : " + (tokenData.error_description || tokenData.error || "inconnu"), 400, origin);
+        if (!tokenData.access_token) return errorResponse("\xC9change Google OAuth \xE9chou\xE9 : " + (tokenData.error_description || tokenData.error || "inconnu"), 400, origin);
         const profileRes = await fetch("https://www.googleapis.com/oauth2/v2/userinfo", {
           headers: { Authorization: `Bearer ${tokenData.access_token}` }
         });
         const profile = await profileRes.json();
-        if (!profile.id || !profile.email)
-          return errorResponse("Impossible de r\xE9cup\xE9rer le profil Google", 400, origin);
+        if (!profile.id || !profile.email) return errorResponse("Impossible de r\xE9cup\xE9rer le profil Google", 400, origin);
         const cleanGoogleEmail = profile.email.toLowerCase().trim();
         await ensureUsersTableUniqueIndex(env.DB);
         await cleanupExpiredUnfinishedAccounts(env.DB);
         let user = await env.DB.prepare("SELECT * FROM users WHERE google_id = ? OR LOWER(TRIM(email)) = ?").bind(profile.id, cleanGoogleEmail).first();
         if (!user) {
-          const userId = generateId3();
+          const userId = generateId2();
           let newRefCode = generateReferralCode();
           try {
             let codeExists = await env.DB.prepare("SELECT id FROM users WHERE referral_code = ?").bind(newRefCode).first();
@@ -4364,8 +3946,8 @@ var src_default = {
         const token = await createJWT({ userId: user.id, email: user.email, name: user.name });
         const tokenHash = await hashToken(token);
         const expiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
-        await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId3(), user.id, tokenHash, expiresAt).run();
-        const safeUser = sanitizeUser2(user);
+        await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), user.id, tokenHash, expiresAt).run();
+        const safeUser = sanitizeUser(user);
         return jsonResponse({
           success: true,
           token,
@@ -4385,14 +3967,11 @@ var src_default = {
       if (path === "/api/auth/me" && method === "GET") {
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token)
-          return errorResponse("Token requis", 401, origin);
+        if (!token) return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
-        if (!payload?.userId)
-          return errorResponse("Token invalide ou expir\xE9", 401, origin);
+        if (!payload?.userId) return errorResponse("Token invalide ou expir\xE9", 401, origin);
         const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();
-        if (!user)
-          return errorResponse("Utilisateur introuvable", 404, origin);
+        if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
         if (user.last_active_at) {
           const inactiveMs = Date.now() - new Date(user.last_active_at).getTime();
           const THIRTY_DAYS_MS = 30 * 24 * 3600 * 1e3;
@@ -4412,42 +3991,37 @@ var src_default = {
         try {
           const tokenHash = await hashToken(token);
           const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
-          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId3(), user.id, tokenHash, sessionExpiresAt).run();
+          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), user.id, tokenHash, sessionExpiresAt).run();
         } catch (e) {
         }
-        const safeUser = sanitizeUser2(user);
+        const safeUser = sanitizeUser(user);
         return jsonResponse({ success: true, data: safeUser }, 200, origin);
       }
       if ((path === "/api/auth/heartbeat" || path === "/api/users/heartbeat") && (method === "POST" || method === "GET")) {
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token)
-          return errorResponse("Token requis", 401, origin);
+        if (!token) return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
-        if (!payload?.userId)
-          return errorResponse("Token invalide ou expiré", 401, origin);
+        if (!payload?.userId) return errorResponse("Token invalide ou expir\xE9", 401, origin);
         await env.DB.prepare("UPDATE users SET last_active_at = CURRENT_TIMESTAMP WHERE id = ?").bind(payload.userId).run();
         try {
           const tokenHash = await hashToken(token);
           const sessionExpiresAt = new Date(Date.now() + 30 * 24 * 3600 * 1e3).toISOString();
-          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId3(), payload.userId, tokenHash, sessionExpiresAt).run();
+          await env.DB.prepare("INSERT OR REPLACE INTO auth_sessions (id, user_id, token_hash, expires_at) VALUES (?, ?, ?, ?)").bind(generateId2(), payload.userId, tokenHash, sessionExpiresAt).run();
         } catch (e) {
         }
-        return jsonResponse({ success: true, isOnline: true, last_active_at: new Date().toISOString() }, 200, origin);
+        return jsonResponse({ success: true, isOnline: true, last_active_at: (/* @__PURE__ */ new Date()).toISOString() }, 200, origin);
       }
       if ((path === "/api/auth/setup-security" || path === "/api/auth/google/complete-security") && (method === "PUT" || method === "POST")) {
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token)
-          return errorResponse("Token requis", 401, origin);
+        if (!token) return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
-        if (!payload?.userId)
-          return errorResponse("Token invalide ou expir\xE9", 401, origin);
+        if (!payload?.userId) return errorResponse("Token invalide ou expir\xE9", 401, origin);
         const body = await request.json();
         const { name, password, securityQuestion1, securityAnswer1, securityQuestion2, securityAnswer2 } = body;
-        const pwdCheck = validatePasswordFormat2(password);
-        if (!pwdCheck.valid)
-          return errorResponse(pwdCheck.error || "Mot de passe non conforme", 400, origin);
+        const pwdCheck = validatePasswordFormat(password);
+        if (!pwdCheck.valid) return errorResponse(pwdCheck.error || "Mot de passe non conforme", 400, origin);
         if (!securityAnswer1 || !securityAnswer1.trim() || !securityAnswer2 || !securityAnswer2.trim()) {
           return errorResponse("Veuillez renseigner les r\xE9ponses \xE0 vos deux questions de s\xE9curit\xE9", 400, origin);
         }
@@ -4470,7 +4044,7 @@ var src_default = {
           WHERE id = ?
         `).bind(finalName, passwordHash, q1, ans1Hash, q2, ans2Hash, payload.userId).run();
         const updatedUser = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();
-        const safeUser = sanitizeUser2(updatedUser);
+        const safeUser = sanitizeUser(updatedUser);
         return jsonResponse({
           success: true,
           message: "S\xE9curit\xE9 de votre compte configur\xE9e avec succ\xE8s !",
@@ -4480,11 +4054,9 @@ var src_default = {
       if (path === "/api/auth/onboarding" && method === "PUT") {
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token)
-          return errorResponse("Token requis", 401, origin);
+        if (!token) return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
-        if (!payload?.userId)
-          return errorResponse("Token invalide", 401, origin);
+        if (!payload?.userId) return errorResponse("Token invalide", 401, origin);
         const existingUser = await env.DB.prepare("SELECT id, email, is_onboarded FROM users WHERE id = ?").bind(payload.userId).first();
         if (!existingUser) {
           return errorResponse("Session introuvable ou expir\xE9e. Veuillez vous reconnecter.", 401, origin);
@@ -4496,10 +4068,8 @@ var src_default = {
         const finalSchool = !isStudent ? "Professionnel / Particulier" : school;
         const finalFiliere = !isStudent ? profession || filiere || "G\xE9n\xE9ral" : filiere;
         const finalLevel = !isStudent ? "Professionnel" : level || "";
-        if (!country)
-          return errorResponse("Le pays est obligatoire", 400, origin);
-        if (!phone || !String(phone).trim())
-          return errorResponse("Le num\xE9ro de t\xE9l\xE9phone est obligatoire", 400, origin);
+        if (!country) return errorResponse("Le pays est obligatoire", 400, origin);
+        if (!phone || !String(phone).trim()) return errorResponse("Le num\xE9ro de t\xE9l\xE9phone est obligatoire", 400, origin);
         const COUNTRY_PHONE_CONFIG = {
           "C\xF4te d'Ivoire": { dial: "225", lengths: [10], hint: "10 chiffres" },
           "S\xE9n\xE9gal": { dial: "221", lengths: [9], hint: "9 chiffres" },
@@ -4540,12 +4110,11 @@ var src_default = {
             );
           }
         }
-        if (!isStudent && !profession)
-          return errorResponse("La profession ou domaine d'activit\xE9 est obligatoire", 400, origin);
+        if (!isStudent && !profession) return errorResponse("La profession ou domaine d'activit\xE9 est obligatoire", 400, origin);
         if (isStudent && (!finalSchool || !finalFiliere)) {
           return errorResponse("L'\xE9cole et la fili\xE8re sont obligatoires pour les \xE9tudiants", 400, origin);
         }
-        const finalAvatar = avatarUrl ? String(avatarUrl).trim() : existingUser.avatar_url || generateEmailAvatar2(existingUser.email, name || "");
+        const finalAvatar = avatarUrl ? String(avatarUrl).trim() : existingUser.avatar_url || generateEmailAvatar(existingUser.email, name || "");
         await env.DB.prepare(`
           UPDATE users SET
             name = COALESCE(?, name),
@@ -4587,17 +4156,15 @@ var src_default = {
             clientOrigin
           );
         }
-        const safeUser = sanitizeUser2(user);
+        const safeUser = sanitizeUser(user);
         return jsonResponse({ success: true, data: safeUser }, 200, origin);
       }
       if (path === "/api/auth/onboarding/draft" && method === "PUT") {
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token)
-          return errorResponse("Token requis", 401, origin);
+        if (!token) return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
-        if (!payload?.userId)
-          return errorResponse("Token invalide", 401, origin);
+        if (!payload?.userId) return errorResponse("Token invalide", 401, origin);
         const body = await request.json().catch(() => ({}));
         const { name, school, filiere, level, country, phone, bio, avatarUrl } = body;
         await env.DB.prepare(`
@@ -4635,10 +4202,8 @@ var src_default = {
         if (token) {
           try {
             const payload = await verifyJWT(token);
-            if (payload?.userId)
-              targetUserId = payload.userId;
-            if (payload?.email && !targetEmail)
-              targetEmail = String(payload.email).toLowerCase().trim();
+            if (payload?.userId) targetUserId = payload.userId;
+            if (payload?.email && !targetEmail) targetEmail = String(payload.email).toLowerCase().trim();
           } catch (e) {
           }
         }
@@ -4670,14 +4235,11 @@ var src_default = {
       if (path === "/api/auth/welcome-email" && method === "POST") {
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
-        if (!token)
-          return errorResponse("Token requis", 401, origin);
+        if (!token) return errorResponse("Token requis", 401, origin);
         const payload = await verifyJWT(token);
-        if (!payload?.userId)
-          return errorResponse("Token invalide", 401, origin);
+        if (!payload?.userId) return errorResponse("Token invalide", 401, origin);
         const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(payload.userId).first();
-        if (!user || !user.email)
-          return errorResponse("Utilisateur ou email introuvable", 404, origin);
+        if (!user || !user.email) return errorResponse("Utilisateur ou email introuvable", 404, origin);
         const clientOrigin = request.headers.get("Origin") || "https://studycloud.dkd-technologies.com";
         const isUserStudent = user.is_student === 1 || user.is_student === null && user.school && user.school !== "Particulier / Professionnel" && user.school !== "Professionnel / Particulier";
         await sendWelcomeEmail(
@@ -4699,10 +4261,8 @@ var src_default = {
         if (token) {
           try {
             const payload = await verifyJWT(token);
-            if (payload?.userId)
-              targetUserId = payload.userId;
-            if (payload?.email && !targetEmail)
-              targetEmail = String(payload.email).toLowerCase().trim();
+            if (payload?.userId) targetUserId = payload.userId;
+            if (payload?.email && !targetEmail) targetEmail = String(payload.email).toLowerCase().trim();
           } catch (e) {
           }
         }
@@ -4729,8 +4289,7 @@ var src_default = {
       if (path === "/api/users/sync" && method === "POST") {
         const body = await request.json();
         const { id, name, email, school, filiere, country, avatarUrl } = body;
-        if (!id || !email)
-          return errorResponse("ID et email requis", 400, origin);
+        if (!id || !email) return errorResponse("ID et email requis", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         const hasAvatar = avatarUrl !== void 0;
         const avatarVal = avatarUrl ? String(avatarUrl) : null;
@@ -4780,8 +4339,7 @@ var src_default = {
       if (path.startsWith("/api/users/") && !path.includes("/preferences") && method === "GET") {
         const userId = path.split("/")[3];
         const user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
-        if (!user)
-          return errorResponse("Utilisateur introuvable", 404, origin);
+        if (!user) return errorResponse("Utilisateur introuvable", 404, origin);
         return jsonResponse({ success: true, data: user }, 200, origin);
       }
       if (path.startsWith("/api/users/") && path.endsWith("/preferences")) {
@@ -4805,12 +4363,10 @@ var src_default = {
         }
       }
       if (path === "/api/matieres") {
-        if (!isSchemaInitialized && env.DB)
-          await ensureDatabaseSchema(env.DB);
+        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare(`
             SELECT m.*, 
               (SELECT COUNT(*) FROM files f WHERE f.matiere_id = m.id OR f.matiere_id = m.name) AS files_count,
@@ -4824,8 +4380,7 @@ var src_default = {
         if (method === "POST") {
           const body = await request.json();
           const { id, userId, name, coefficient, color, category, displayOrder } = body;
-          if (!id || !userId || !name)
-            return errorResponse("id, userId et name requis", 400, origin);
+          if (!id || !userId || !name) return errorResponse("id, userId et name requis", 400, origin);
           await env.DB.prepare(`
             INSERT INTO matieres (id, user_id, name, coefficient, color, category, display_order)
             VALUES (?, ?, ?, ?, ?, ?, ?)
@@ -4840,22 +4395,19 @@ var src_default = {
         }
       }
       if (path.startsWith("/api/matieres/") && method === "DELETE") {
-        if (!isSchemaInitialized && env.DB)
-          await ensureDatabaseSchema(env.DB);
+        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
         const id = path.split("/")[3];
         await env.DB.prepare("DELETE FROM matieres WHERE id = ?").bind(id).run();
         return jsonResponse({ success: true, message: "Mati\xE8re supprim\xE9e" }, 200, origin);
       }
       if (path === "/api/files") {
-        if (!isSchemaInitialized && env.DB)
-          await ensureDatabaseSchema(env.DB);
+        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
           const matiereId = url.searchParams.get("matiereId");
           const isStudySession = url.searchParams.get("isStudySession");
           const isFavorite = url.searchParams.get("isFavorite");
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           let query = "SELECT * FROM files WHERE user_id = ?";
           const params = [userId];
           if (matiereId === "root" || matiereId === "none") {
@@ -4879,8 +4431,7 @@ var src_default = {
         if (method === "POST") {
           const body = await request.json();
           const { id, userId, matiereId, name, size, type, extension, r2Key, fileUrl, isFavorite, isImported, isStudySession, lastImported } = body;
-          if (!id || !userId || !name)
-            return errorResponse("id, userId et name requis", 400, origin);
+          if (!id || !userId || !name) return errorResponse("id, userId et name requis", 400, origin);
           await env.DB.prepare(`
             INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
             VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
@@ -4915,8 +4466,7 @@ var src_default = {
         }
       }
       if (path.startsWith("/api/files/") && path.endsWith("/favorite") && (method === "PATCH" || method === "PUT")) {
-        if (!isSchemaInitialized && env.DB)
-          await ensureDatabaseSchema(env.DB);
+        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
         const id = path.split("/")[3];
         const body = await request.json().catch(() => ({}));
         const isFavoriteVal = body.isFavorite === true || body.isFavorite === 1 ? 1 : 0;
@@ -4924,8 +4474,7 @@ var src_default = {
         return jsonResponse({ success: true, message: "Favori mis \xE0 jour", isFavorite: isFavoriteVal }, 200, origin);
       }
       if (path.startsWith("/api/files/") && method === "DELETE") {
-        if (!isSchemaInitialized && env.DB)
-          await ensureDatabaseSchema(env.DB);
+        if (!isSchemaInitialized && env.DB) await ensureDatabaseSchema(env.DB);
         const id = path.split("/")[3];
         const file = await env.DB.prepare("SELECT r2_key FROM files WHERE id = ?").bind(id).first();
         if (file && file.r2_key && env.BUCKET) {
@@ -4939,8 +4488,7 @@ var src_default = {
       }
       if (path === "/api/storage/upload" && method === "PUT") {
         const key = url.searchParams.get("key");
-        if (!key)
-          return errorResponse("Cl\xE9 de stockage manquante", 400, origin);
+        if (!key) return errorResponse("Cl\xE9 de stockage manquante", 400, origin);
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
         const fileData = request.body || await request.arrayBuffer();
         await env.BUCKET.put(key, fileData, {
@@ -4952,14 +4500,1418 @@ var src_default = {
       if (path.startsWith("/api/storage/file/") && method === "GET") {
         const key = decodeURIComponent(path.replace("/api/storage/file/", ""));
         const object = await env.BUCKET.get(key);
-        if (!object)
-          return errorResponse("Fichier introuvable dans R2", 404, origin);
+        if (!object) return errorResponse("Fichier introuvable dans R2", 404, origin);
         const headers = new Headers();
         object.writeHttpMetadata(headers);
         headers.set("etag", object.httpEtag);
         headers.set("Cache-Control", "public, max-age=31536000, immutable");
         headers.set("Access-Control-Allow-Origin", origin);
         return new Response(object.body, { headers });
+      }
+      async function extractRequestUserId() {
+        const authHeader = request.headers.get("Authorization") || "";
+        if (authHeader.startsWith("Bearer ")) {
+          const token = authHeader.slice(7).trim();
+          try {
+            const payload = await verifyJWT(token);
+            if (payload?.userId) return String(payload.userId);
+          } catch {
+          }
+        }
+        const xUserId = request.headers.get("x-user-id");
+        if (xUserId && xUserId.trim() && xUserId !== "null" && xUserId !== "undefined") {
+          return xUserId.trim();
+        }
+        const queryUserId = url.searchParams.get("userId");
+        if (queryUserId && queryUserId.trim() && queryUserId !== "null" && queryUserId !== "undefined") {
+          return queryUserId.trim();
+        }
+        return null;
+      }
+      if (path.startsWith("/api/cloud/file/") && method === "GET") {
+        const pathParts = path.replace("/api/cloud/file/", "").split("/");
+        const category = pathParts[0];
+        const rawKey = pathParts.slice(1).join("/");
+        const key = decodeURIComponent(rawKey);
+        const categoryBucket = getBucketForCategory(rawEnv, category);
+        if (!categoryBucket) {
+          return errorResponse("Stockage R2 indisponible pour cette cat\xE9gorie", 503, origin);
+        }
+        const reqUserId = await extractRequestUserId();
+        if (category === "secure") {
+          if (!reqUserId) {
+            return errorResponse("Acc\xE8s refus\xE9 au dossier s\xE9curis\xE9 : authentification requise", 401, origin);
+          }
+          if (!key.startsWith(reqUserId + "/")) {
+            return errorResponse("Acc\xE8s interdit aux donn\xE9es d'un autre utilisateur", 403, origin);
+          }
+        } else if (reqUserId && key.includes("/") && !key.startsWith(reqUserId + "/")) {
+          const keyOwnerId = key.split("/")[0];
+          if (keyOwnerId && keyOwnerId !== reqUserId && (keyOwnerId.startsWith("u_") || keyOwnerId.length > 8)) {
+            return errorResponse("Acc\xE8s interdit aux fichiers d'un autre utilisateur", 403, origin);
+          }
+        }
+        const rangeHeader = request.headers.get("Range");
+        let object;
+        if (rangeHeader) {
+          try {
+            object = await categoryBucket.get(key, { range: request.headers });
+          } catch (e) {
+            object = await categoryBucket.get(key);
+          }
+        } else {
+          object = await categoryBucket.get(key);
+        }
+        if (!object) {
+          return errorResponse("Fichier introuvable dans le stockage R2", 404, origin);
+        }
+        const headers = new Headers();
+        object.writeHttpMetadata(headers);
+        headers.set("etag", object.httpEtag);
+        headers.set("Cache-Control", "public, max-age=31536000, immutable");
+        headers.set("Accept-Ranges", "bytes");
+        headers.set("Access-Control-Allow-Origin", origin);
+        const status = rangeHeader && object.range ? 206 : 200;
+        return new Response(object.body, { status, headers });
+      }
+      if (path.startsWith("/api/cloud/") && env.DB) {
+        await ensureCloudMediaTables(env.DB);
+      }
+      if (path === "/api/cloud/upload" && (method === "PUT" || method === "POST")) {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise pour t\xE9l\xE9verser un fichier", 401, origin);
+        const category = url.searchParams.get("category") || "documents";
+        const fileName = url.searchParams.get("name") || "fichier_" + Date.now();
+        const folderId = url.searchParams.get("folderId") || "";
+        const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
+        const fileId = "f_" + crypto.randomUUID().substring(0, 12);
+        const storageKey = `${reqUserId}/${category}/${fileId}_${sanitizedName}`;
+        const categoryBucket = getBucketForCategory(rawEnv, category);
+        if (!categoryBucket) {
+          return errorResponse("Bucket de stockage non configur\xE9 pour la cat\xE9gorie " + category, 503, origin);
+        }
+        const contentType = request.headers.get("Content-Type") || "application/octet-stream";
+        const fileData = request.body || await request.arrayBuffer();
+        await categoryBucket.put(storageKey, fileData, {
+          httpMetadata: { contentType },
+          customMetadata: {
+            userId: reqUserId,
+            originalName: fileName,
+            category,
+            folderId
+          }
+        });
+        const fileUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(category)}/${encodeURIComponent(storageKey)}`;
+        return jsonResponse({
+          success: true,
+          id: fileId,
+          key: storageKey,
+          url: fileUrl,
+          name: fileName,
+          category,
+          folderId
+        }, 200, origin);
+      }
+      if (path === "/api/cloud/overview" && method === "GET") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const [
+          foldersCount,
+          cFilesStat,
+          audioStat,
+          imageStat,
+          videoStat,
+          docStat,
+          downloadStat,
+          secureStat,
+          trashStat
+        ] = await Promise.all([
+          env.DB.prepare("SELECT COUNT(*) as count FROM classeur_folders WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM classeur_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM audio_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM image_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM video_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM document_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM download_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM secure_files WHERE user_id = ?").bind(reqUserId).first(),
+          env.DB.prepare("SELECT COUNT(*) as count, COALESCE(SUM(size_bytes), 0) as totalBytes FROM trash_files WHERE user_id = ?").bind(reqUserId).first()
+        ]);
+        const counts = {
+          classeurFolders: Number(foldersCount?.count || 0),
+          classeurFiles: Number(cFilesStat?.count || 0),
+          audio: Number(audioStat?.count || 0),
+          images: Number(imageStat?.count || 0),
+          videos: Number(videoStat?.count || 0),
+          documents: Number(docStat?.count || 0),
+          downloads: Number(downloadStat?.count || 0),
+          secure: Number(secureStat?.count || 0),
+          trash: Number(trashStat?.count || 0)
+        };
+        const totalBytes = Number(cFilesStat?.totalBytes || 0) + Number(audioStat?.totalBytes || 0) + Number(imageStat?.totalBytes || 0) + Number(videoStat?.totalBytes || 0) + Number(docStat?.totalBytes || 0) + Number(downloadStat?.totalBytes || 0) + Number(secureStat?.totalBytes || 0);
+        const [recentDocs, recentImages, recentAudio, recentVideos] = await Promise.all([
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, created_at FROM document_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, "images" as category, created_at FROM image_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, artist, "audio" as category, created_at FROM audio_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, "videos" as category, created_at FROM video_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all()
+        ]);
+        const recentFiles = [
+          ...recentDocs?.results || [],
+          ...recentImages?.results || [],
+          ...recentAudio?.results || [],
+          ...recentVideos?.results || []
+        ].sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime()).slice(0, 12);
+        return jsonResponse({
+          success: true,
+          counts,
+          totalBytes,
+          totalFormatted: formatBytes(totalBytes),
+          recentFiles
+        }, 200, origin);
+      }
+      if (path === "/api/cloud/classeur/folders") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        if (method === "GET") {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM classeur_folders
+            WHERE user_id = ?
+            ORDER BY display_order ASC, created_at ASC
+          `).bind(reqUserId).all();
+          const formatted = (results || []).map((f) => ({
+            id: f.id,
+            userId: f.user_id,
+            parentId: f.parent_id,
+            name: f.name,
+            modelId: f.model_id || "1",
+            primaryColor: f.primary_color || "#EA580C",
+            accentColor: f.accent_color || "#F97316",
+            iconName: f.icon_name || "Folder",
+            textDark: Boolean(f.text_dark),
+            positionX: Number(f.position_x || 0),
+            positionY: Number(f.position_y || 0),
+            displayOrder: Number(f.display_order || 0),
+            zoomLevel: Number(f.zoom_level || 10),
+            isPinned: Boolean(f.is_pinned),
+            isFavorite: Boolean(f.is_favorite),
+            createdAt: f.created_at,
+            updatedAt: f.updated_at
+          }));
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+        if (method === "POST") {
+          const body = await request.json().catch(() => ({}));
+          const id = body.id || "f3d_" + crypto.randomUUID().substring(0, 10);
+          const name = String(body.name || "Nouveau Dossier").trim();
+          const parentId = body.parentId || null;
+          const modelId = String(body.modelId || "1");
+          const primaryColor = body.primaryColor || "#EA580C";
+          const accentColor = body.accentColor || "#F97316";
+          const iconName = body.iconName || "Folder";
+          const textDark = body.textDark ? 1 : 0;
+          const positionX = Number(body.positionX || 0);
+          const positionY = Number(body.positionY || 0);
+          const displayOrder = Number(body.displayOrder || 0);
+          const zoomLevel = Number(body.zoomLevel || 10);
+          await env.DB.prepare(`
+            INSERT INTO classeur_folders (
+              id, user_id, parent_id, name, model_id, primary_color, accent_color,
+              icon_name, text_dark, position_x, position_y, display_order, zoom_level,
+              is_pinned, is_favorite, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              parent_id = excluded.parent_id,
+              model_id = excluded.model_id,
+              primary_color = excluded.primary_color,
+              accent_color = excluded.accent_color,
+              icon_name = excluded.icon_name,
+              text_dark = excluded.text_dark,
+              position_x = excluded.position_x,
+              position_y = excluded.position_y,
+              display_order = excluded.display_order,
+              zoom_level = excluded.zoom_level,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id,
+            reqUserId,
+            parentId,
+            name,
+            modelId,
+            primaryColor,
+            accentColor,
+            iconName,
+            textDark,
+            positionX,
+            positionY,
+            displayOrder,
+            zoomLevel
+          ).run();
+          return jsonResponse({
+            success: true,
+            folder: {
+              id,
+              userId: reqUserId,
+              parentId,
+              name,
+              modelId,
+              primaryColor,
+              accentColor,
+              iconName,
+              textDark: Boolean(textDark),
+              positionX,
+              positionY,
+              displayOrder,
+              zoomLevel
+            }
+          }, 200, origin);
+        }
+        if (method === "PUT") {
+          const body = await request.json().catch(() => ({}));
+          if (Array.isArray(body.reorderList)) {
+            for (const item of body.reorderList) {
+              if (item?.id) {
+                await env.DB.prepare(`
+                  UPDATE classeur_folders SET
+                    display_order = COALESCE(?, display_order),
+                    position_x = COALESCE(?, position_x),
+                    position_y = COALESCE(?, position_y),
+                    zoom_level = COALESCE(?, zoom_level),
+                    updated_at = CURRENT_TIMESTAMP
+                  WHERE id = ? AND user_id = ?
+                `).bind(
+                  item.displayOrder !== void 0 ? Number(item.displayOrder) : null,
+                  item.positionX !== void 0 ? Number(item.positionX) : null,
+                  item.positionY !== void 0 ? Number(item.positionY) : null,
+                  item.zoomLevel !== void 0 ? Number(item.zoomLevel) : null,
+                  item.id,
+                  reqUserId
+                ).run();
+              }
+            }
+            return jsonResponse({ success: true, message: "Ordre et positions mis \xE0 jour" }, 200, origin);
+          }
+          if (!body.id) return errorResponse("Identifiant id manquant", 400, origin);
+          const fields = [];
+          const values = [];
+          if (body.name !== void 0) {
+            fields.push("name = ?");
+            values.push(body.name);
+          }
+          if (body.primaryColor !== void 0) {
+            fields.push("primary_color = ?");
+            values.push(body.primaryColor);
+          }
+          if (body.accentColor !== void 0) {
+            fields.push("accent_color = ?");
+            values.push(body.accentColor);
+          }
+          if (body.positionX !== void 0) {
+            fields.push("position_x = ?");
+            values.push(Number(body.positionX));
+          }
+          if (body.positionY !== void 0) {
+            fields.push("position_y = ?");
+            values.push(Number(body.positionY));
+          }
+          if (body.displayOrder !== void 0) {
+            fields.push("display_order = ?");
+            values.push(Number(body.displayOrder));
+          }
+          if (body.zoomLevel !== void 0) {
+            fields.push("zoom_level = ?");
+            values.push(Number(body.zoomLevel));
+          }
+          if (body.isPinned !== void 0) {
+            fields.push("is_pinned = ?");
+            values.push(body.isPinned ? 1 : 0);
+          }
+          if (body.isFavorite !== void 0) {
+            fields.push("is_favorite = ?");
+            values.push(body.isFavorite ? 1 : 0);
+          }
+          if (fields.length > 0) {
+            fields.push("updated_at = CURRENT_TIMESTAMP");
+            values.push(body.id, reqUserId);
+            await env.DB.prepare(`
+              UPDATE classeur_folders SET ${fields.join(", ")}
+              WHERE id = ? AND user_id = ?
+            `).bind(...values).run();
+          }
+          return jsonResponse({ success: true, message: "Dossier 3D mis \xE0 jour" }, 200, origin);
+        }
+        if (method === "DELETE") {
+          const folderId = url.searchParams.get("id");
+          if (!folderId) return errorResponse("id de dossier manquant", 400, origin);
+          const { results: folderFiles } = await env.DB.prepare(`
+            SELECT * FROM classeur_files WHERE folder_id = ? AND user_id = ?
+          `).bind(folderId, reqUserId).all();
+          for (const f of folderFiles || []) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, 'classeur', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              f.id,
+              reqUserId,
+              f.name,
+              f.size,
+              f.size_bytes,
+              f.category,
+              f.extension,
+              folderId,
+              JSON.stringify({ isNotepad: f.is_notepad, notepadTitle: f.notepad_title }),
+              f.date_formatted,
+              f.r2_key,
+              f.file_url
+            ).run();
+          }
+          await env.DB.prepare(`
+            DELETE FROM classeur_folders WHERE id = ? AND user_id = ?
+          `).bind(folderId, reqUserId).run();
+          return jsonResponse({ success: true, message: "Dossier supprim\xE9 et fichiers archiv\xE9s dans la corbeille" }, 200, origin);
+        }
+      }
+      if (path === "/api/cloud/classeur/files") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        if (method === "GET") {
+          const folderId = url.searchParams.get("folderId");
+          let query = "SELECT * FROM classeur_files WHERE user_id = ?";
+          const params = [reqUserId];
+          if (folderId) {
+            query += " AND folder_id = ?";
+            params.push(folderId);
+          }
+          query += " ORDER BY display_order ASC, created_at DESC";
+          const { results } = await env.DB.prepare(query).bind(...params).all();
+          const formatted = (results || []).map((f) => ({
+            id: f.id,
+            userId: f.user_id,
+            folderId: f.folder_id,
+            name: f.name,
+            size: f.size || "0 o",
+            sizeBytes: Number(f.size_bytes || 0),
+            category: f.category || "documents",
+            extension: f.extension || "txt",
+            source: f.source || "",
+            date: f.date_formatted || "",
+            positionX: Number(f.position_x || 0),
+            positionY: Number(f.position_y || 0),
+            displayOrder: Number(f.display_order || 0),
+            isNotepad: Boolean(f.is_notepad),
+            noteTitle: f.notepad_title || "",
+            content: f.notepad_content || "",
+            previewUrl: f.preview_url || "",
+            r2Key: f.r2_key || "",
+            url: f.file_url || "",
+            isPinned: Boolean(f.is_pinned),
+            isFavorite: Boolean(f.is_favorite)
+          }));
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+        if (method === "POST") {
+          const body = await request.json().catch(() => ({}));
+          const id = body.id || "cf_" + crypto.randomUUID().substring(0, 10);
+          const folderId = body.folderId;
+          if (!folderId) return errorResponse("folderId requis", 400, origin);
+          const name = String(body.name || "Document sans titre").trim();
+          const size = body.size || "0 o";
+          const sizeBytes = Number(body.sizeBytes || 0);
+          const category = body.category || "documents";
+          const extension = body.extension || (name.includes(".") ? name.split(".").pop() : "txt");
+          const source = body.source || "";
+          const dateFormatted = body.date || body.dateFormatted || "";
+          const positionX = Number(body.positionX || 0);
+          const positionY = Number(body.positionY || 0);
+          const displayOrder = Number(body.displayOrder || 0);
+          const isNotepad = body.isNotepad ? 1 : 0;
+          const notepadTitle = body.notepadTitle || body.noteTitle || "";
+          const notepadContent = body.notepadContent || body.content || "";
+          const previewUrl = body.previewUrl || "";
+          const r2Key = body.r2Key || "";
+          const fileUrl = body.fileUrl || body.url || "";
+          await env.DB.prepare(`
+            INSERT INTO classeur_files (
+              id, user_id, folder_id, name, size, size_bytes, category, extension,
+              source, date_formatted, position_x, position_y, display_order,
+              is_notepad, notepad_title, notepad_content, preview_url, r2_key,
+              file_url, is_pinned, is_favorite, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              size_bytes = excluded.size_bytes,
+              position_x = excluded.position_x,
+              position_y = excluded.position_y,
+              display_order = excluded.display_order,
+              notepad_title = excluded.notepad_title,
+              notepad_content = excluded.notepad_content,
+              preview_url = excluded.preview_url,
+              r2_key = excluded.r2_key,
+              file_url = excluded.file_url,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id,
+            reqUserId,
+            folderId,
+            name,
+            size,
+            sizeBytes,
+            category,
+            extension,
+            source,
+            dateFormatted,
+            positionX,
+            positionY,
+            displayOrder,
+            isNotepad,
+            notepadTitle,
+            notepadContent,
+            previewUrl,
+            r2Key,
+            fileUrl
+          ).run();
+          return jsonResponse({
+            success: true,
+            file: {
+              id,
+              userId: reqUserId,
+              folderId,
+              name,
+              size,
+              sizeBytes,
+              category,
+              extension,
+              source,
+              date: dateFormatted,
+              positionX,
+              positionY,
+              displayOrder,
+              isNotepad: Boolean(isNotepad),
+              noteTitle: notepadTitle,
+              content: notepadContent,
+              previewUrl,
+              r2Key,
+              url: fileUrl
+            }
+          }, 200, origin);
+        }
+        if (method === "PUT") {
+          const body = await request.json().catch(() => ({}));
+          if (Array.isArray(body.reorderList)) {
+            for (const item of body.reorderList) {
+              if (item?.id) {
+                await env.DB.prepare(`
+                  UPDATE classeur_files SET
+                    display_order = COALESCE(?, display_order),
+                    position_x = COALESCE(?, position_x),
+                    position_y = COALESCE(?, position_y),
+                    updated_at = CURRENT_TIMESTAMP
+                  WHERE id = ? AND user_id = ?
+                `).bind(
+                  item.displayOrder !== void 0 ? Number(item.displayOrder) : null,
+                  item.positionX !== void 0 ? Number(item.positionX) : null,
+                  item.positionY !== void 0 ? Number(item.positionY) : null,
+                  item.id,
+                  reqUserId
+                ).run();
+              }
+            }
+            return jsonResponse({ success: true, message: "Positions des fichiers sauvegard\xE9es" }, 200, origin);
+          }
+          if (!body.id) return errorResponse("id de fichier manquant", 400, origin);
+          const fields = [];
+          const values = [];
+          if (body.name !== void 0) {
+            fields.push("name = ?");
+            values.push(body.name);
+          }
+          if (body.size !== void 0) {
+            fields.push("size = ?");
+            values.push(body.size);
+          }
+          if (body.sizeBytes !== void 0) {
+            fields.push("size_bytes = ?");
+            values.push(Number(body.sizeBytes));
+          }
+          if (body.positionX !== void 0) {
+            fields.push("position_x = ?");
+            values.push(Number(body.positionX));
+          }
+          if (body.positionY !== void 0) {
+            fields.push("position_y = ?");
+            values.push(Number(body.positionY));
+          }
+          if (body.displayOrder !== void 0) {
+            fields.push("display_order = ?");
+            values.push(Number(body.displayOrder));
+          }
+          if (body.noteTitle !== void 0 || body.notepadTitle !== void 0) {
+            fields.push("notepad_title = ?");
+            values.push(body.noteTitle !== void 0 ? body.noteTitle : body.notepadTitle);
+          }
+          if (body.content !== void 0 || body.notepadContent !== void 0) {
+            fields.push("notepad_content = ?");
+            values.push(body.content !== void 0 ? body.content : body.notepadContent);
+          }
+          if (body.isPinned !== void 0) {
+            fields.push("is_pinned = ?");
+            values.push(body.isPinned ? 1 : 0);
+          }
+          if (body.isFavorite !== void 0) {
+            fields.push("is_favorite = ?");
+            values.push(body.isFavorite ? 1 : 0);
+          }
+          if (fields.length > 0) {
+            fields.push("updated_at = CURRENT_TIMESTAMP");
+            values.push(body.id, reqUserId);
+            await env.DB.prepare(`
+              UPDATE classeur_files SET ${fields.join(", ")}
+              WHERE id = ? AND user_id = ?
+            `).bind(...values).run();
+          }
+          return jsonResponse({ success: true, message: "Fichier classeur mis \xE0 jour" }, 200, origin);
+        }
+        if (method === "DELETE") {
+          const fileId = url.searchParams.get("id");
+          if (!fileId) return errorResponse("id manquant", 400, origin);
+          const file = await env.DB.prepare(`
+            SELECT * FROM classeur_files WHERE id = ? AND user_id = ?
+          `).bind(fileId, reqUserId).first();
+          if (file) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, 'classeur', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              file.id,
+              reqUserId,
+              file.name,
+              file.size,
+              file.size_bytes,
+              file.category,
+              file.extension,
+              file.folder_id,
+              JSON.stringify({ isNotepad: file.is_notepad, notepadTitle: file.notepad_title }),
+              file.date_formatted,
+              file.r2_key,
+              file.file_url
+            ).run();
+            await env.DB.prepare(`
+              DELETE FROM classeur_files WHERE id = ? AND user_id = ?
+            `).bind(fileId, reqUserId).run();
+          }
+          return jsonResponse({ success: true, message: "Fichier plac\xE9 dans la corbeille" }, 200, origin);
+        }
+      }
+      if (path === "/api/cloud/audio") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        if (method === "GET") {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM audio_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+          `).bind(reqUserId).all();
+          const formatted = (results || []).map((a) => ({
+            id: a.id,
+            userId: a.user_id,
+            name: a.name,
+            title: a.title || a.name,
+            artist: a.artist || "Artiste inconnu",
+            album: a.album || "",
+            durationSec: Number(a.duration_sec || 0),
+            size: a.size || "0 o",
+            sizeBytes: Number(a.size_bytes || 0),
+            date: a.date_formatted || "",
+            lyricsSnippet: a.lyrics_snippet || "",
+            fullLyrics: a.full_lyrics_json ? JSON.parse(a.full_lyrics_json) : [],
+            coverUrl: a.cover_url || "",
+            r2Key: a.r2_key || "",
+            audioUrl: a.audio_url || "",
+            url: a.audio_url || "",
+            category: "audio",
+            isFavorite: Boolean(a.is_favorite),
+            isPinned: Boolean(a.is_pinned)
+          }));
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+        if (method === "POST") {
+          const body = await request.json().catch(() => ({}));
+          const id = body.id || "aud_" + crypto.randomUUID().substring(0, 10);
+          const name = String(body.name || "Audio").trim();
+          const title = body.title || name;
+          const artist = body.artist || "Artiste inconnu";
+          const album = body.album || "";
+          const durationSec = Number(body.durationSec || 0);
+          const size = body.size || "0 o";
+          const sizeBytes = Number(body.sizeBytes || 0);
+          const dateFormatted = body.date || body.dateFormatted || "";
+          const lyricsSnippet = body.lyricsSnippet || "";
+          const fullLyricsJson = JSON.stringify(body.fullLyrics || []);
+          const coverUrl = body.coverUrl || "";
+          const r2Key = body.r2Key || "";
+          const audioUrl = body.audioUrl || body.url || "";
+          await env.DB.prepare(`
+            INSERT INTO audio_files (
+              id, user_id, name, title, artist, album, duration_sec, size, size_bytes,
+              date_formatted, lyrics_snippet, full_lyrics_json, cover_url, r2_key,
+              audio_url, is_favorite, is_pinned, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              title = excluded.title,
+              artist = excluded.artist,
+              album = excluded.album,
+              duration_sec = excluded.duration_sec,
+              size = excluded.size,
+              size_bytes = excluded.size_bytes,
+              audio_url = excluded.audio_url,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id,
+            reqUserId,
+            name,
+            title,
+            artist,
+            album,
+            durationSec,
+            size,
+            sizeBytes,
+            dateFormatted,
+            lyricsSnippet,
+            fullLyricsJson,
+            coverUrl,
+            r2Key,
+            audioUrl
+          ).run();
+          return jsonResponse({ success: true, message: "Audio enregistr\xE9" }, 200, origin);
+        }
+        if (method === "DELETE") {
+          const fileId = url.searchParams.get("id");
+          if (!fileId) return errorResponse("id manquant", 400, origin);
+          const file = await env.DB.prepare(`
+            SELECT * FROM audio_files WHERE id = ? AND user_id = ?
+          `).bind(fileId, reqUserId).first();
+          if (file) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, 'audio', 'mp3', 'audio', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              file.id,
+              reqUserId,
+              file.name,
+              file.size,
+              file.size_bytes,
+              JSON.stringify({ artist: file.artist, durationSec: file.duration_sec, coverUrl: file.cover_url }),
+              file.date_formatted,
+              file.r2_key,
+              file.audio_url
+            ).run();
+            await env.DB.prepare(`DELETE FROM audio_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+          }
+          return jsonResponse({ success: true, message: "Audio d\xE9plac\xE9 dans la corbeille" }, 200, origin);
+        }
+      }
+      if (path === "/api/cloud/images") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        if (method === "GET") {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM image_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+          `).bind(reqUserId).all();
+          const formatted = (results || []).map((img) => ({
+            id: img.id,
+            userId: img.user_id,
+            name: img.name,
+            size: img.size || "0 o",
+            sizeBytes: Number(img.size_bytes || 0),
+            width: Number(img.width || 0),
+            height: Number(img.height || 0),
+            extension: img.extension || "jpg",
+            date: img.date_formatted || "",
+            r2Key: img.r2_key || "",
+            previewUrl: img.image_url || "",
+            url: img.image_url || "",
+            thumbnailUrl: img.thumbnail_url || "",
+            category: "images",
+            isImage: true,
+            isFavorite: Boolean(img.is_favorite),
+            isPinned: Boolean(img.is_pinned)
+          }));
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+        if (method === "POST") {
+          const body = await request.json().catch(() => ({}));
+          const id = body.id || "img_" + crypto.randomUUID().substring(0, 10);
+          const name = String(body.name || "Image").trim();
+          const size = body.size || "0 o";
+          const sizeBytes = Number(body.sizeBytes || 0);
+          const width = Number(body.width || 0);
+          const height = Number(body.height || 0);
+          const extension = body.extension || "jpg";
+          const dateFormatted = body.date || body.dateFormatted || "";
+          const r2Key = body.r2Key || "";
+          const imageUrl = body.imageUrl || body.url || body.previewUrl || "";
+          const thumbnailUrl = body.thumbnailUrl || "";
+          await env.DB.prepare(`
+            INSERT INTO image_files (
+              id, user_id, name, size, size_bytes, width, height, extension,
+              date_formatted, r2_key, image_url, thumbnail_url, is_favorite, is_pinned, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              size_bytes = excluded.size_bytes,
+              image_url = excluded.image_url,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id,
+            reqUserId,
+            name,
+            size,
+            sizeBytes,
+            width,
+            height,
+            extension,
+            dateFormatted,
+            r2Key,
+            imageUrl,
+            thumbnailUrl
+          ).run();
+          return jsonResponse({ success: true, message: "Image enregistr\xE9e" }, 200, origin);
+        }
+        if (method === "DELETE") {
+          const fileId = url.searchParams.get("id");
+          if (!fileId) return errorResponse("id manquant", 400, origin);
+          const file = await env.DB.prepare(`
+            SELECT * FROM image_files WHERE id = ? AND user_id = ?
+          `).bind(fileId, reqUserId).first();
+          if (file) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, 'images', ?, 'images', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              file.id,
+              reqUserId,
+              file.name,
+              file.size,
+              file.size_bytes,
+              file.extension,
+              JSON.stringify({ width: file.width, height: file.height }),
+              file.date_formatted,
+              file.r2_key,
+              file.image_url
+            ).run();
+            await env.DB.prepare(`DELETE FROM image_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+          }
+          return jsonResponse({ success: true, message: "Image d\xE9plac\xE9e dans la corbeille" }, 200, origin);
+        }
+      }
+      if (path === "/api/cloud/videos") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        if (method === "GET") {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM video_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+          `).bind(reqUserId).all();
+          const formatted = (results || []).map((v) => ({
+            id: v.id,
+            userId: v.user_id,
+            name: v.name,
+            size: v.size || "0 o",
+            sizeBytes: Number(v.size_bytes || 0),
+            durationSec: Number(v.duration_sec || 0),
+            resolution: v.resolution || "1080p",
+            extension: v.extension || "mp4",
+            date: v.date_formatted || "",
+            r2Key: v.r2_key || "",
+            videoUrl: v.video_url || "",
+            url: v.video_url || "",
+            thumbnailUrl: v.thumbnail_url || "",
+            category: "videos",
+            isVideo: true,
+            isFavorite: Boolean(v.is_favorite),
+            isPinned: Boolean(v.is_pinned)
+          }));
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+        if (method === "POST") {
+          const body = await request.json().catch(() => ({}));
+          const id = body.id || "vid_" + crypto.randomUUID().substring(0, 10);
+          const name = String(body.name || "Vid\xE9o").trim();
+          const size = body.size || "0 o";
+          const sizeBytes = Number(body.sizeBytes || 0);
+          const durationSec = Number(body.durationSec || 0);
+          const resolution = body.resolution || "1080p";
+          const extension = body.extension || "mp4";
+          const dateFormatted = body.date || body.dateFormatted || "";
+          const r2Key = body.r2Key || "";
+          const videoUrl = body.videoUrl || body.url || "";
+          const thumbnailUrl = body.thumbnailUrl || "";
+          await env.DB.prepare(`
+            INSERT INTO video_files (
+              id, user_id, name, size, size_bytes, duration_sec, resolution, extension,
+              date_formatted, r2_key, video_url, thumbnail_url, is_favorite, is_pinned, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              size_bytes = excluded.size_bytes,
+              video_url = excluded.video_url,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id,
+            reqUserId,
+            name,
+            size,
+            sizeBytes,
+            durationSec,
+            resolution,
+            extension,
+            dateFormatted,
+            r2Key,
+            videoUrl,
+            thumbnailUrl
+          ).run();
+          return jsonResponse({ success: true, message: "Vid\xE9o enregistr\xE9e" }, 200, origin);
+        }
+        if (method === "DELETE") {
+          const fileId = url.searchParams.get("id");
+          if (!fileId) return errorResponse("id manquant", 400, origin);
+          const file = await env.DB.prepare(`
+            SELECT * FROM video_files WHERE id = ? AND user_id = ?
+          `).bind(fileId, reqUserId).first();
+          if (file) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, 'videos', ?, 'videos', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              file.id,
+              reqUserId,
+              file.name,
+              file.size,
+              file.size_bytes,
+              file.extension,
+              JSON.stringify({ durationSec: file.duration_sec, resolution: file.resolution }),
+              file.date_formatted,
+              file.r2_key,
+              file.video_url
+            ).run();
+            await env.DB.prepare(`DELETE FROM video_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+          }
+          return jsonResponse({ success: true, message: "Vid\xE9o d\xE9plac\xE9e dans la corbeille" }, 200, origin);
+        }
+      }
+      if (path === "/api/cloud/documents") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        if (method === "GET") {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM document_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
+          `).bind(reqUserId).all();
+          const formatted = (results || []).map((d) => ({
+            id: d.id,
+            userId: d.user_id,
+            name: d.name,
+            size: d.size || "0 o",
+            sizeBytes: Number(d.size_bytes || 0),
+            extension: d.extension || "pdf",
+            documentCategory: d.document_category || "COURS",
+            pageCount: Number(d.page_count || 1),
+            date: d.date_formatted || "",
+            source: d.source || "StudyCloud",
+            r2Key: d.r2_key || "",
+            previewUrl: d.preview_url || "",
+            url: d.file_url || "",
+            category: "documents",
+            isFavorite: Boolean(d.is_favorite),
+            isPinned: Boolean(d.is_pinned)
+          }));
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+        if (method === "POST") {
+          const body = await request.json().catch(() => ({}));
+          const id = body.id || "doc_" + crypto.randomUUID().substring(0, 10);
+          const name = String(body.name || "Document").trim();
+          const size = body.size || "0 o";
+          const sizeBytes = Number(body.sizeBytes || 0);
+          const extension = body.extension || "pdf";
+          const documentCategory = body.documentCategory || "COURS";
+          const pageCount = Number(body.pageCount || 1);
+          const dateFormatted = body.date || body.dateFormatted || "";
+          const source = body.source || "StudyCloud";
+          const r2Key = body.r2Key || "";
+          const fileUrl = body.fileUrl || body.url || "";
+          const previewUrl = body.previewUrl || "";
+          await env.DB.prepare(`
+            INSERT INTO document_files (
+              id, user_id, name, size, size_bytes, extension, document_category,
+              page_count, date_formatted, source, r2_key, file_url, preview_url,
+              is_favorite, is_pinned, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              size_bytes = excluded.size_bytes,
+              document_category = excluded.document_category,
+              file_url = excluded.file_url,
+              updated_at = CURRENT_TIMESTAMP
+          `).bind(
+            id,
+            reqUserId,
+            name,
+            size,
+            sizeBytes,
+            extension,
+            documentCategory,
+            pageCount,
+            dateFormatted,
+            source,
+            r2Key,
+            fileUrl,
+            previewUrl
+          ).run();
+          return jsonResponse({ success: true, message: "Document enregistr\xE9" }, 200, origin);
+        }
+        if (method === "DELETE") {
+          const fileId = url.searchParams.get("id");
+          if (!fileId) return errorResponse("id manquant", 400, origin);
+          const file = await env.DB.prepare(`
+            SELECT * FROM document_files WHERE id = ? AND user_id = ?
+          `).bind(fileId, reqUserId).first();
+          if (file) {
+            await env.DB.prepare(`
+              INSERT INTO trash_files (
+                id, user_id, name, size, size_bytes, category, extension,
+                source_category, original_folder_id, metadata_json, date_formatted,
+                r2_key, file_url, deleted_at
+              ) VALUES (?, ?, ?, ?, ?, 'documents', ?, 'documents', '', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            `).bind(
+              file.id,
+              reqUserId,
+              file.name,
+              file.size,
+              file.size_bytes,
+              file.extension,
+              JSON.stringify({ documentCategory: file.document_category, pageCount: file.page_count }),
+              file.date_formatted,
+              file.r2_key,
+              file.file_url
+            ).run();
+            await env.DB.prepare(`DELETE FROM document_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
+          }
+          return jsonResponse({ success: true, message: "Document d\xE9plac\xE9 dans la corbeille" }, 200, origin);
+        }
+      }
+      if (path === "/api/cloud/downloads") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        if (method === "GET") {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM download_files WHERE user_id = ? ORDER BY downloaded_at DESC
+          `).bind(reqUserId).all();
+          const formatted = (results || []).map((dl) => ({
+            id: dl.id,
+            userId: dl.user_id,
+            name: dl.name,
+            size: dl.size || "0 o",
+            sizeBytes: Number(dl.size_bytes || 0),
+            type: dl.type || "document",
+            extension: dl.extension || "",
+            sourceUrl: dl.source_url || "",
+            source: dl.source || "Web",
+            r2Key: dl.r2_key || "",
+            url: dl.file_url || "",
+            downloadedAt: dl.downloaded_at,
+            date: dl.downloaded_at,
+            category: "downloads"
+          }));
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+        if (method === "POST") {
+          const body = await request.json().catch(() => ({}));
+          const id = body.id || "dl_" + crypto.randomUUID().substring(0, 10);
+          const name = String(body.name || "T\xE9l\xE9chargement").trim();
+          const size = body.size || "0 o";
+          const sizeBytes = Number(body.sizeBytes || 0);
+          const type = body.type || "document";
+          const extension = body.extension || "";
+          const sourceUrl = body.sourceUrl || "";
+          const source = body.source || "Web";
+          const r2Key = body.r2Key || "";
+          const fileUrl = body.fileUrl || body.url || "";
+          await env.DB.prepare(`
+            INSERT INTO download_files (
+              id, user_id, name, size, size_bytes, type, extension,
+              source_url, source, r2_key, file_url, downloaded_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO UPDATE SET
+              name = excluded.name,
+              size = excluded.size,
+              size_bytes = excluded.size_bytes
+          `).bind(
+            id,
+            reqUserId,
+            name,
+            size,
+            sizeBytes,
+            type,
+            extension,
+            sourceUrl,
+            source,
+            r2Key,
+            fileUrl
+          ).run();
+          return jsonResponse({ success: true, message: "T\xE9l\xE9chargement enregistr\xE9" }, 200, origin);
+        }
+        if (method === "DELETE") {
+          const fileId = url.searchParams.get("id");
+          if (!fileId) return errorResponse("id manquant", 400, origin);
+          await env.DB.prepare(`
+            DELETE FROM download_files WHERE id = ? AND user_id = ?
+          `).bind(fileId, reqUserId).run();
+          return jsonResponse({ success: true, message: "T\xE9l\xE9chargement retir\xE9 de l'historique" }, 200, origin);
+        }
+      }
+      if (path === "/api/cloud/secure/config" && method === "GET") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const config = await env.DB.prepare(`
+          SELECT user_id, updated_at FROM secure_folder_config WHERE user_id = ?
+        `).bind(reqUserId).first();
+        return jsonResponse({
+          success: true,
+          isConfigured: !!config
+        }, 200, origin);
+      }
+      if (path === "/api/cloud/secure/set-pin" && method === "POST") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const body = await request.json().catch(() => ({}));
+        const pin = String(body.pin || "").trim();
+        const oldPin = body.oldPin ? String(body.oldPin).trim() : null;
+        if (pin.length < 4) {
+          return errorResponse("Le code PIN doit comporter au moins 4 caract\xE8res", 400, origin);
+        }
+        const existing = await env.DB.prepare(`
+          SELECT pin_hash FROM secure_folder_config WHERE user_id = ?
+        `).bind(reqUserId).first();
+        if (existing && existing.pin_hash) {
+          if (!oldPin) {
+            return errorResponse("Ancien code PIN requis pour modifier le code", 400, origin);
+          }
+          const isOldValid = await verifyPassword(oldPin, existing.pin_hash);
+          if (!isOldValid) {
+            return errorResponse("Ancien code PIN incorrect", 403, origin);
+          }
+        }
+        const pinHash = await hashPassword(pin);
+        await env.DB.prepare(`
+          INSERT INTO secure_folder_config (user_id, pin_hash, is_locked, updated_at)
+          VALUES (?, ?, 1, CURRENT_TIMESTAMP)
+          ON CONFLICT(user_id) DO UPDATE SET
+            pin_hash = excluded.pin_hash,
+            updated_at = CURRENT_TIMESTAMP
+        `).bind(reqUserId, pinHash).run();
+        return jsonResponse({
+          success: true,
+          message: "Code PIN s\xE9curis\xE9 configur\xE9 avec succ\xE8s"
+        }, 200, origin);
+      }
+      if (path === "/api/cloud/secure/verify-pin" && method === "POST") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const body = await request.json().catch(() => ({}));
+        const pin = String(body.pin || "").trim();
+        const existing = await env.DB.prepare(`
+          SELECT pin_hash FROM secure_folder_config WHERE user_id = ?
+        `).bind(reqUserId).first();
+        if (!existing || !existing.pin_hash) {
+          return errorResponse("Aucun code PIN configur\xE9 pour cet utilisateur", 404, origin);
+        }
+        const isValid = await verifyPassword(pin, existing.pin_hash);
+        if (!isValid) {
+          return jsonResponse({ success: false, error: "Code PIN incorrect", verified: false }, 401, origin);
+        }
+        return jsonResponse({ success: true, verified: true, message: "Dossier s\xE9curis\xE9 d\xE9verrouill\xE9" }, 200, origin);
+      }
+      if (path === "/api/cloud/secure/files") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        if (method === "GET") {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM secure_files WHERE user_id = ? ORDER BY created_at DESC
+          `).bind(reqUserId).all();
+          const formatted = (results || []).map((s) => ({
+            id: s.id,
+            userId: s.user_id,
+            name: s.name,
+            size: s.size || "0 o",
+            sizeBytes: Number(s.size_bytes || 0),
+            category: s.category || "documents",
+            extension: s.extension || "",
+            originalCategory: s.original_category || "documents",
+            originalFolderId: s.original_folder_id || "",
+            date: s.date_formatted || "",
+            metadata: s.metadata_json ? JSON.parse(s.metadata_json) : {},
+            r2Key: s.r2_key || "",
+            url: s.file_url || "",
+            previewUrl: s.file_url || "",
+            isSecure: true
+          }));
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+        if (method === "POST") {
+          const body = await request.json().catch(() => ({}));
+          const { file, fromCategory, fromFolderId } = body;
+          if (!file?.id) return errorResponse("Informations de fichier manquantes", 400, origin);
+          const id = file.id;
+          const name = file.name || "Fichier s\xE9curis\xE9";
+          const size = file.size || "0 o";
+          const sizeBytes = Number(file.sizeBytes || 0);
+          const category = file.category || fromCategory || "documents";
+          const extension = file.extension || "";
+          const originalCategory = fromCategory || file.category || "documents";
+          const originalFolderId = fromFolderId || file.originalFolderId || "";
+          const dateFormatted = file.date || "";
+          const r2Key = file.r2Key || "";
+          const fileUrl = file.url || file.previewUrl || "";
+          const metaJson = JSON.stringify(file);
+          await env.DB.prepare(`
+            INSERT INTO secure_files (
+              id, user_id, name, size, size_bytes, category, extension,
+              original_category, original_folder_id, date_formatted, metadata_json,
+              r2_key, file_url, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+            ON CONFLICT(id) DO NOTHING
+          `).bind(
+            id,
+            reqUserId,
+            name,
+            size,
+            sizeBytes,
+            category,
+            extension,
+            originalCategory,
+            originalFolderId,
+            dateFormatted,
+            metaJson,
+            r2Key,
+            fileUrl
+          ).run();
+          if (fromFolderId) {
+            await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
+          } else if (originalCategory === "audio") {
+            await env.DB.prepare("DELETE FROM audio_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
+          } else if (originalCategory === "images") {
+            await env.DB.prepare("DELETE FROM image_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
+          } else if (originalCategory === "videos") {
+            await env.DB.prepare("DELETE FROM video_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
+          } else if (originalCategory === "documents") {
+            await env.DB.prepare("DELETE FROM document_files WHERE id = ? AND user_id = ?").bind(id, reqUserId).run();
+          }
+          return jsonResponse({ success: true, message: "Fichier d\xE9plac\xE9 dans le dossier s\xE9curis\xE9" }, 200, origin);
+        }
+        if (method === "DELETE") {
+          const body = await request.json().catch(() => ({}));
+          const id = body.id || url.searchParams.get("id");
+          if (!id) return errorResponse("id manquant", 400, origin);
+          const secFile = await env.DB.prepare(`
+            SELECT * FROM secure_files WHERE id = ? AND user_id = ?
+          `).bind(id, reqUserId).first();
+          if (secFile) {
+            const origCat = secFile.original_category || "documents";
+            const origFolder = secFile.original_folder_id || "";
+            if (origFolder) {
+              await env.DB.prepare(`
+                INSERT INTO classeur_files (
+                  id, user_id, folder_id, name, size, size_bytes, category, extension,
+                  date_formatted, r2_key, file_url, updated_at
+                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO NOTHING
+              `).bind(
+                secFile.id,
+                reqUserId,
+                origFolder,
+                secFile.name,
+                secFile.size,
+                secFile.size_bytes,
+                secFile.category,
+                secFile.extension,
+                secFile.date_formatted,
+                secFile.r2_key,
+                secFile.file_url
+              ).run();
+            } else if (origCat === "audio") {
+              await env.DB.prepare(`
+                INSERT INTO audio_files (id, user_id, name, size, size_bytes, audio_url, date_formatted, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO NOTHING
+              `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
+            } else if (origCat === "images") {
+              await env.DB.prepare(`
+                INSERT INTO image_files (id, user_id, name, size, size_bytes, image_url, date_formatted, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO NOTHING
+              `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
+            } else if (origCat === "videos") {
+              await env.DB.prepare(`
+                INSERT INTO video_files (id, user_id, name, size, size_bytes, video_url, date_formatted, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO NOTHING
+              `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
+            } else {
+              await env.DB.prepare(`
+                INSERT INTO document_files (id, user_id, name, size, size_bytes, file_url, date_formatted, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                ON CONFLICT(id) DO NOTHING
+              `).bind(secFile.id, reqUserId, secFile.name, secFile.size, secFile.size_bytes, secFile.file_url, secFile.date_formatted).run();
+            }
+            await env.DB.prepare(`DELETE FROM secure_files WHERE id = ? AND user_id = ?`).bind(id, reqUserId).run();
+          }
+          return jsonResponse({ success: true, message: "Fichier retir\xE9 du dossier s\xE9curis\xE9" }, 200, origin);
+        }
+      }
+      if (path === "/api/cloud/trash") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        if (method === "GET") {
+          const { results } = await env.DB.prepare(`
+            SELECT * FROM trash_files WHERE user_id = ? ORDER BY deleted_at DESC
+          `).bind(reqUserId).all();
+          const formatted = (results || []).map((t) => ({
+            id: t.id,
+            userId: t.user_id,
+            name: t.name,
+            size: t.size || "0 o",
+            sizeBytes: Number(t.size_bytes || 0),
+            category: t.category || "documents",
+            extension: t.extension || "",
+            sourceCategory: t.source_category || "documents",
+            originalFolderId: t.original_folder_id || "",
+            date: t.date_formatted || "",
+            deletedAt: t.deleted_at,
+            metadata: t.metadata_json ? JSON.parse(t.metadata_json) : {},
+            r2Key: t.r2_key || "",
+            url: t.file_url || "",
+            previewUrl: t.file_url || ""
+          }));
+          return jsonResponse({ success: true, data: formatted }, 200, origin);
+        }
+        if (method === "POST") {
+          const body = await request.json().catch(() => ({}));
+          const targetIds = Array.isArray(body.ids) ? body.ids : body.id ? [body.id] : [];
+          if (targetIds.length === 0) return errorResponse("Aucun identifiant fourni pour la restauration", 400, origin);
+          for (const tid of targetIds) {
+            const item = await env.DB.prepare(`
+              SELECT * FROM trash_files WHERE id = ? AND user_id = ?
+            `).bind(tid, reqUserId).first();
+            if (item) {
+              const srcCat = item.source_category || item.category || "documents";
+              const origFolder = item.original_folder_id || "";
+              const meta = item.metadata_json ? JSON.parse(item.metadata_json) : {};
+              if (origFolder || srcCat === "classeur") {
+                await env.DB.prepare(`
+                  INSERT INTO classeur_files (
+                    id, user_id, folder_id, name, size, size_bytes, category, extension,
+                    date_formatted, is_notepad, notepad_title, notepad_content, r2_key, file_url, updated_at
+                  ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO NOTHING
+                `).bind(
+                  item.id,
+                  reqUserId,
+                  origFolder || "default",
+                  item.name,
+                  item.size,
+                  item.size_bytes,
+                  item.category,
+                  item.extension,
+                  item.date_formatted,
+                  meta.isNotepad ? 1 : 0,
+                  meta.notepadTitle || "",
+                  meta.content || "",
+                  item.r2_key,
+                  item.file_url
+                ).run();
+              } else if (srcCat === "audio") {
+                await env.DB.prepare(`
+                  INSERT INTO audio_files (id, user_id, name, artist, duration_sec, size, size_bytes, audio_url, date_formatted, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO NOTHING
+                `).bind(
+                  item.id,
+                  reqUserId,
+                  item.name,
+                  meta.artist || "Artiste inconnu",
+                  Number(meta.durationSec || 0),
+                  item.size,
+                  item.size_bytes,
+                  item.file_url,
+                  item.date_formatted
+                ).run();
+              } else if (srcCat === "images") {
+                await env.DB.prepare(`
+                  INSERT INTO image_files (id, user_id, name, size, size_bytes, image_url, date_formatted, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO NOTHING
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+              } else if (srcCat === "videos") {
+                await env.DB.prepare(`
+                  INSERT INTO video_files (id, user_id, name, size, size_bytes, video_url, date_formatted, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO NOTHING
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+              } else {
+                await env.DB.prepare(`
+                  INSERT INTO document_files (id, user_id, name, size, size_bytes, file_url, date_formatted, updated_at)
+                  VALUES (?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+                  ON CONFLICT(id) DO NOTHING
+                `).bind(item.id, reqUserId, item.name, item.size, item.size_bytes, item.file_url, item.date_formatted).run();
+              }
+              await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(tid, reqUserId).run();
+            }
+          }
+          return jsonResponse({ success: true, message: `${targetIds.length} \xE9l\xE9ment(s) restaur\xE9(s) avec succ\xE8s` }, 200, origin);
+        }
+        if (method === "DELETE") {
+          const body = await request.json().catch(() => ({}));
+          const isEmptyAll = url.searchParams.get("empty") === "true" || body.empty === true;
+          const targetIds = Array.isArray(body.ids) ? body.ids : url.searchParams.get("id") ? [url.searchParams.get("id")] : [];
+          let itemsToDelete = [];
+          if (isEmptyAll) {
+            const { results } = await env.DB.prepare(`SELECT id, r2_key, category FROM trash_files WHERE user_id = ?`).bind(reqUserId).all();
+            itemsToDelete = results || [];
+            await env.DB.prepare("DELETE FROM trash_files WHERE user_id = ?").bind(reqUserId).run();
+          } else if (targetIds.length > 0) {
+            for (const tid of targetIds) {
+              const item = await env.DB.prepare(`SELECT id, r2_key, category FROM trash_files WHERE id = ? AND user_id = ?`).bind(tid, reqUserId).first();
+              if (item) {
+                itemsToDelete.push(item);
+                await env.DB.prepare("DELETE FROM trash_files WHERE id = ? AND user_id = ?").bind(tid, reqUserId).run();
+              }
+            }
+          }
+          for (const item of itemsToDelete) {
+            if (item.r2_key) {
+              const catBucket = getBucketForCategory(rawEnv, item.category);
+              if (catBucket) await catBucket.delete(item.r2_key).catch(() => {
+              });
+            }
+          }
+          return jsonResponse({ success: true, message: "\xC9l\xE9ments d\xE9finitivement supprim\xE9s" }, 200, origin);
+        }
       }
       if (path.startsWith("/api/shares") && env.DB && !isSchemaInitialized) {
         await ensureDatabaseSchema(env.DB);
@@ -5010,8 +5962,7 @@ var src_default = {
             totalSize,
             files
           } = body;
-          if (!id || !userId || !title)
-            return errorResponse("id, userId et title requis", 400, origin);
+          if (!id || !userId || !title) return errorResponse("id, userId et title requis", 400, origin);
           const finalShareCode = shareCode || generateCleanShareCode();
           const finalShareUrl = shareUrl || `${url.origin}/s/${finalShareCode}`;
           const finalQrCodeData = qrCodeData || finalShareUrl;
@@ -5083,8 +6034,7 @@ var src_default = {
       if (path.startsWith("/api/shares/code/") && method === "GET") {
         const code = decodeURIComponent(path.split("/")[4]);
         const folder = await env.DB.prepare("SELECT * FROM shared_folders WHERE share_code = ?").bind(code).first();
-        if (!folder)
-          return errorResponse("Code de partage introuvable", 404, origin);
+        if (!folder) return errorResponse("Code de partage introuvable", 404, origin);
         await env.DB.prepare("UPDATE shared_folders SET views_count = views_count + 1 WHERE id = ?").bind(folder.id).run();
         const { results: files } = await env.DB.prepare("SELECT * FROM shared_folder_files WHERE shared_folder_id = ?").bind(folder.id).all();
         return jsonResponse({
@@ -5162,8 +6112,7 @@ var src_default = {
       if (path.startsWith("/api/shares/") && method === "GET") {
         const shareId = path.split("/")[3];
         const folder = await env.DB.prepare("SELECT * FROM shared_folders WHERE id = ?").bind(shareId).first();
-        if (!folder)
-          return errorResponse("Partage introuvable", 404, origin);
+        if (!folder) return errorResponse("Partage introuvable", 404, origin);
         await env.DB.prepare("UPDATE shared_folders SET views_count = views_count + 1 WHERE id = ?").bind(shareId).run();
         const { results: files } = await env.DB.prepare("SELECT * FROM shared_folder_files WHERE shared_folder_id = ?").bind(shareId).all();
         return jsonResponse({
@@ -5180,8 +6129,7 @@ var src_default = {
         const shareId = path.split("/")[3];
         const { pin } = await request.json();
         const folder = await env.DB.prepare("SELECT * FROM shared_folders WHERE id = ?").bind(shareId).first();
-        if (!folder)
-          return errorResponse("Dossier partag\xE9 introuvable", 404, origin);
+        if (!folder) return errorResponse("Dossier partag\xE9 introuvable", 404, origin);
         if (folder.password_hash !== pin) {
           return errorResponse("Code PIN incorrect", 401, origin);
         }
@@ -5191,8 +6139,7 @@ var src_default = {
       if (path === "/api/shares/check-user" && method === "POST") {
         const body = await request.json().catch(() => ({}));
         const { userId } = body;
-        if (!userId || !env.DB)
-          return jsonResponse({ success: true, exists: false }, 200, origin);
+        if (!userId || !env.DB) return jsonResponse({ success: true, exists: false }, 200, origin);
         const user = await env.DB.prepare("SELECT id, name, email FROM users WHERE id = ?").bind(userId).first();
         return jsonResponse({
           success: true,
@@ -5203,16 +6150,13 @@ var src_default = {
       if (path === "/api/shares/quick-auth" && method === "POST") {
         const body = await request.json().catch(() => ({}));
         const { mode, email, password, name, school, country } = body;
-        if (!email || !password)
-          return errorResponse("Email et mot de passe requis", 400, origin);
+        if (!email || !password) return errorResponse("Email et mot de passe requis", 400, origin);
         const cleanEmail = email.toLowerCase().trim();
         if (mode === "login") {
           const user = await env.DB.prepare("SELECT * FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
-          if (!user)
-            return errorResponse("Aucun compte associ\xE9 \xE0 cet email", 404, origin);
+          if (!user) return errorResponse("Aucun compte associ\xE9 \xE0 cet email", 404, origin);
           const valid = user.password_hash ? await verifyPassword(password, user.password_hash) : false;
-          if (!valid)
-            return errorResponse("Mot de passe incorrect", 401, origin);
+          if (!valid) return errorResponse("Mot de passe incorrect", 401, origin);
           return jsonResponse({
             success: true,
             message: "Connexion r\xE9ussie",
@@ -5222,9 +6166,8 @@ var src_default = {
           }, 200, origin);
         } else {
           const existing = await env.DB.prepare("SELECT id FROM users WHERE LOWER(TRIM(email)) = ?").bind(cleanEmail).first();
-          if (existing)
-            return errorResponse("Un compte existe d\xE9j\xE0 avec cet email. Veuillez vous connecter.", 409, origin);
-          const newUserId = generateId3();
+          if (existing) return errorResponse("Un compte existe d\xE9j\xE0 avec cet email. Veuillez vous connecter.", 409, origin);
+          const newUserId = generateId2();
           const pwdHash = await hashPassword(password);
           const cleanName = (name || cleanEmail.split("@")[0] || "\xC9tudiant").trim();
           const cleanCountry = country || "C\xF4te d'Ivoire";
@@ -5247,11 +6190,9 @@ var src_default = {
         const shareId = path.split("/")[3];
         const body = await request.json().catch(() => ({}));
         const { userId } = body;
-        if (!userId)
-          return errorResponse("userId requis", 400, origin);
+        if (!userId) return errorResponse("userId requis", 400, origin);
         const folder = await env.DB.prepare("SELECT * FROM shared_folders WHERE id = ?").bind(shareId).first();
-        if (!folder)
-          return errorResponse("Dossier partag\xE9 introuvable", 404, origin);
+        if (!folder) return errorResponse("Dossier partag\xE9 introuvable", 404, origin);
         const { results: sharedFiles } = await env.DB.prepare("SELECT * FROM shared_folder_files WHERE shared_folder_id = ?").bind(shareId).all();
         if (!sharedFiles || sharedFiles.length === 0) {
           return errorResponse("Aucun fichier associ\xE9 \xE0 ce partage", 400, origin);
@@ -5259,7 +6200,7 @@ var src_default = {
         const folderTitle = folder.title || "Partages re\xE7us";
         let matiere = await env.DB.prepare("SELECT id FROM matieres WHERE user_id = ? AND name = ?").bind(userId, folderTitle).first();
         if (!matiere) {
-          const matiereId = "mat-" + generateId3().substring(0, 8);
+          const matiereId = "mat-" + generateId2().substring(0, 8);
           await env.DB.prepare(`
             INSERT INTO matieres (id, user_id, name, color, icon, updated_at)
             VALUES (?, ?, ?, '#2563eb', 'Folder', CURRENT_TIMESTAMP)
@@ -5268,7 +6209,7 @@ var src_default = {
         }
         let copiedCount = 0;
         for (const sf of sharedFiles) {
-          const newFileId = "file-" + generateId3();
+          const newFileId = "file-" + generateId2();
           const ext = sf.name && sf.name.includes(".") ? sf.name.split(".").pop() || "" : "";
           await env.DB.prepare(`
             INSERT INTO files (id, user_id, matiere_id, name, size, type, extension, r2_key, file_url, is_favorite, is_imported, is_study_session, last_imported, updated_at)
@@ -5301,7 +6242,7 @@ var src_default = {
         const shareId = path.split("/")[3];
         await env.DB.prepare("UPDATE shared_folders SET downloads_count = downloads_count + 1 WHERE id = ? OR share_code = ?").bind(shareId, shareId).run();
         try {
-          const dlId = "dl-" + generateId3();
+          const dlId = "dl-" + generateId2();
           const clientIp = request.headers.get("cf-connecting-ip") || "unknown";
           await env.DB.prepare(`
             INSERT INTO shared_folder_downloads (id, shared_folder_id, ip_address, created_at)
@@ -5319,8 +6260,7 @@ var src_default = {
       if (path === "/api/schedule/config") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           const config = await env.DB.prepare("SELECT * FROM schedule_config WHERE user_id = ?").bind(userId).first();
           return jsonResponse({ success: true, data: config }, 200, origin);
         }
@@ -5341,8 +6281,7 @@ var src_default = {
       if (path === "/api/schedule/slots") {
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM schedule_slots WHERE user_id = ?").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -5377,8 +6316,7 @@ var src_default = {
       if (path === "/api/grades") {
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM grades WHERE user_id = ?").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -5399,8 +6337,7 @@ var src_default = {
         }
         if (method === "DELETE") {
           const id = url.searchParams.get("id");
-          if (id)
-            await env.DB.prepare("DELETE FROM grades WHERE id = ?").bind(id).run();
+          if (id) await env.DB.prepare("DELETE FROM grades WHERE id = ?").bind(id).run();
           return jsonResponse({ success: true, message: "Note supprim\xE9e" }, 200, origin);
         }
       }
@@ -5412,8 +6349,7 @@ var src_default = {
       if (path === "/api/notes") {
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM notes WHERE user_id = ? ORDER BY is_pinned DESC, updated_at DESC").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -5442,8 +6378,7 @@ var src_default = {
       if (path === "/api/calendar") {
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM calendar_events WHERE user_id = ? ORDER BY start_date ASC").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -5467,8 +6402,7 @@ var src_default = {
         }
         if (method === "DELETE") {
           const id = url.searchParams.get("id");
-          if (id)
-            await env.DB.prepare("DELETE FROM calendar_events WHERE id = ?").bind(id).run();
+          if (id) await env.DB.prepare("DELETE FROM calendar_events WHERE id = ?").bind(id).run();
           return jsonResponse({ success: true, message: "\xC9v\xE9nement supprim\xE9" }, 200, origin);
         }
       }
@@ -5480,8 +6414,7 @@ var src_default = {
       if (path === "/api/alarms") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM alarms WHERE user_id = ? ORDER BY time ASC").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -5501,8 +6434,7 @@ var src_default = {
         }
         if (method === "DELETE") {
           const id = url.searchParams.get("id");
-          if (id)
-            await env.DB.prepare("DELETE FROM alarms WHERE id = ?").bind(id).run();
+          if (id) await env.DB.prepare("DELETE FROM alarms WHERE id = ?").bind(id).run();
           return jsonResponse({ success: true, message: "Alarme supprim\xE9e" }, 200, origin);
         }
       }
@@ -5514,8 +6446,7 @@ var src_default = {
       if (path === "/api/study-sessions") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM study_sessions WHERE user_id = ? ORDER BY completed_at DESC").bind(userId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -5533,8 +6464,7 @@ var src_default = {
         await ensureShopAndProductTables(env.DB);
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           const profile = await env.DB.prepare("SELECT * FROM shop_profiles WHERE user_id = ?").bind(userId).first();
           let subscriberCount = 0;
           try {
@@ -5586,8 +6516,7 @@ var src_default = {
         }
         if (!shop && shopName) {
           shop = await env.DB.prepare("SELECT * FROM shop_profiles WHERE LOWER(shop_name) = LOWER(?)").bind(shopName).first();
-          if (shop && !userId)
-            userId = shop.user_id;
+          if (shop && !userId) userId = shop.user_id;
         }
         if (userId) {
           await env.DB.prepare(`
@@ -5616,8 +6545,7 @@ var src_default = {
       if (path === "/api/shop/analytics" && method === "GET") {
         await ensureShopAndProductTables(env.DB);
         const userId = url.searchParams.get("userId");
-        if (!userId)
-          return errorResponse("userId requis", 400, origin);
+        if (!userId) return errorResponse("userId requis", 400, origin);
         const totalsRes = await env.DB.prepare(
           "SELECT COALESCE(SUM(views), 0) as total_views, COALESCE(SUM(sales), 0) as total_sales FROM products WHERE seller_id = ?"
         ).bind(userId).first().catch(() => ({ total_views: 0, total_sales: 0 }));
@@ -5750,7 +6678,6 @@ var src_default = {
           console.warn("[ensureShopAndProductTables warning]", e);
         }
       }
-      __name(ensureShopAndProductTables, "ensureShopAndProductTables");
       if (path === "/api/products") {
         if (method === "GET") {
           await ensureShopAndProductTables(env.DB);
@@ -5836,8 +6763,7 @@ var src_default = {
                 for (const kw of uniqueUserKeywords) {
                   if (pTitle.includes(kw) || pDesc.includes(kw) || pCategory.includes(kw)) {
                     matchedKws++;
-                    if (matchedKws >= 3)
-                      break;
+                    if (matchedKws >= 3) break;
                   }
                 }
                 score += matchedKws * 10;
@@ -6065,13 +6991,11 @@ var src_default = {
         await ensureShopAndProductTables(env.DB);
         const id = path.split("/")[3];
         const product = await env.DB.prepare("SELECT * FROM products WHERE id = ?").bind(id).first();
-        if (!product)
-          return new Response("Produit introuvable", { status: 404 });
+        if (!product) return new Response("Produit introuvable", { status: 404 });
         let imgUrl = "";
         try {
           const imgs = JSON.parse(product.image_urls_json || "[]");
-          if (imgs && imgs.length > 0)
-            imgUrl = imgs[0];
+          if (imgs && imgs.length > 0) imgUrl = imgs[0];
         } catch (e) {
         }
         const title = escapeHtml(product.title || "Produit StudyCloud");
@@ -6161,8 +7085,7 @@ var src_default = {
         await ensureShopAndProductTables(env.DB);
         const id = path.split("/")[3];
         const product = await env.DB.prepare("SELECT * FROM products WHERE id = ?").bind(id).first();
-        if (!product)
-          return errorResponse("Produit introuvable", 404, origin);
+        if (!product) return errorResponse("Produit introuvable", 404, origin);
         const [sellerUser, sellerShop] = await Promise.all([
           env.DB.prepare("SELECT id, name, phone, country FROM users WHERE id = ?").bind(product.seller_id).first(),
           env.DB.prepare("SELECT shop_name, shop_phone, shop_whatsapp FROM shop_profiles WHERE user_id = ?").bind(product.seller_id).first()
@@ -6234,8 +7157,7 @@ Lien vers le produit : ${productShareUrl}`;
         await ensureShopAndProductTables(env.DB);
         if (method === "GET") {
           const userId = url.searchParams.get("userId");
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT seller_id FROM seller_follows WHERE user_id = ?").bind(userId).all();
           const followedSellerIds = (results || []).map((r) => r.seller_id);
           return jsonResponse({ success: true, followedSellerIds }, 200, origin);
@@ -6243,8 +7165,7 @@ Lien vers le produit : ${productShareUrl}`;
         if (method === "POST") {
           const body = await request.json();
           const { userId, sellerId, action } = body;
-          if (!userId || !sellerId)
-            return errorResponse("userId et sellerId requis", 400, origin);
+          if (!userId || !sellerId) return errorResponse("userId et sellerId requis", 400, origin);
           const existing = await env.DB.prepare("SELECT id FROM seller_follows WHERE user_id = ? AND seller_id = ?").bind(userId, sellerId).first();
           let isFollowing = false;
           if (action === "unfollow" || action !== "follow" && existing) {
@@ -6289,8 +7210,7 @@ Lien vers le produit : ${productShareUrl}`;
       if (path === "/api/cart") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           const { results } = await env.DB.prepare(`
             SELECT c.id as cart_item_id, c.quantity, p.*
             FROM cart_items c
@@ -6361,8 +7281,7 @@ Lien vers le produit : ${productShareUrl}`;
         for (const file of files) {
           const fileName = file.name || file.fileName || "";
           const fileSize = file.size || file.fileSize || 0;
-          if (!fileName)
-            continue;
+          if (!fileName) continue;
           const normName = fileName.trim().toLowerCase();
           const reqKey = `${normName}_${fileSize}`;
           if (seenInRequest.has(normName) || fileSize > 0 && seenInRequest.has(reqKey)) {
@@ -6375,8 +7294,7 @@ Lien vers le produit : ${productShareUrl}`;
             continue;
           }
           seenInRequest.add(normName);
-          if (fileSize > 0)
-            seenInRequest.add(reqKey);
+          if (fileSize > 0) seenInRequest.add(reqKey);
           const existing = await env.DB.prepare(`
             SELECT id, title, file_name, file_size 
             FROM published_documents 
@@ -6405,13 +7323,11 @@ Lien vers le produit : ${productShareUrl}`;
           const schoolsSet = /* @__PURE__ */ new Set();
           (userSchoolsRes?.results || []).forEach((r) => {
             const s = (r.school || "").trim();
-            if (s && s.toLowerCase() !== "null" && s.toLowerCase() !== "undefined")
-              schoolsSet.add(s);
+            if (s && s.toLowerCase() !== "null" && s.toLowerCase() !== "undefined") schoolsSet.add(s);
           });
           (pubSchoolsRes?.results || []).forEach((r) => {
             const s = (r.school || "").trim();
-            if (s && s.toLowerCase() !== "null" && s.toLowerCase() !== "undefined")
-              schoolsSet.add(s);
+            if (s && s.toLowerCase() !== "null" && s.toLowerCase() !== "undefined") schoolsSet.add(s);
           });
           const schools = Array.from(schoolsSet).sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
           const pubMatieresRes = await env.DB.prepare(
@@ -6420,8 +7336,7 @@ Lien vers le produit : ${productShareUrl}`;
           const matieresSet = /* @__PURE__ */ new Set();
           (pubMatieresRes?.results || []).forEach((r) => {
             const m = (r.matiere_name || "").trim();
-            if (m && m.toLowerCase() !== "null" && m.toLowerCase() !== "undefined")
-              matieresSet.add(m);
+            if (m && m.toLowerCase() !== "null" && m.toLowerCase() !== "undefined") matieresSet.add(m);
           });
           const matieres = Array.from(matieresSet).sort((a, b) => a.localeCompare(b, "fr", { sensitivity: "base" }));
           const pubCatsRes = await env.DB.prepare(
@@ -6440,8 +7355,7 @@ Lien vers le produit : ${productShareUrl}`;
           const categoriesSet = /* @__PURE__ */ new Set();
           (pubCatsRes?.results || []).forEach((r) => {
             const c = (r.category || "").trim();
-            if (c && c.toLowerCase() !== "null" && c.toLowerCase() !== "undefined")
-              categoriesSet.add(c);
+            if (c && c.toLowerCase() !== "null" && c.toLowerCase() !== "undefined") categoriesSet.add(c);
           });
           (undetectedRes?.results || []).forEach((r) => {
             const fname = (r.file_name || "").toLowerCase().replace(/[_\-.]/g, " ");
@@ -6602,8 +7516,7 @@ Lien vers le produit : ${productShareUrl}`;
                 });
                 uniqueUserKeywords = Array.from(new Set(userKeywords)).slice(0, 40);
                 (interactionsRes?.results || []).forEach((i) => {
-                  if (i.document_id)
-                    interactedDocIds.add(i.document_id);
+                  if (i.document_id) interactedDocIds.add(i.document_id);
                 });
               }
               const scoredDocs = docsList.map((doc) => {
@@ -6631,8 +7544,7 @@ Lien vers le produit : ${productShareUrl}`;
                 for (const kw of uniqueUserKeywords) {
                   if (dTitle.includes(kw) || dDesc.includes(kw) || dTags.includes(kw) || dMatiere.includes(kw)) {
                     matchedKws++;
-                    if (matchedKws >= 3)
-                      break;
+                    if (matchedKws >= 3) break;
                   }
                 }
                 score += matchedKws * 10;
@@ -6918,8 +7830,7 @@ Lien vers le produit : ${productShareUrl}`;
       if (path === "/api/notifications") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           if (env.DB) {
             await ensureNotificationsTable(env.DB);
             try {
@@ -6948,8 +7859,7 @@ Lien vers le produit : ${productShareUrl}`;
         if (method === "POST") {
           const body = await request.json();
           const { id, userId: targetUserId, title, description, itemRef, type } = body;
-          if (!targetUserId || !title)
-            return errorResponse("userId et title requis", 400, origin);
+          if (!targetUserId || !title) return errorResponse("userId et title requis", 400, origin);
           if (env.DB) {
             await ensureNotificationsTable(env.DB);
             await env.DB.prepare(`
@@ -6962,8 +7872,7 @@ Lien vers le produit : ${productShareUrl}`;
         if (method === "DELETE") {
           const notifId = url.searchParams.get("id");
           const all = url.searchParams.get("all") === "true";
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           if (env.DB) {
             await ensureNotificationsTable(env.DB);
             if (all) {
@@ -6978,8 +7887,7 @@ Lien vers le produit : ${productShareUrl}`;
       if (path === "/api/notifications/read" && (method === "POST" || method === "PATCH")) {
         const body = await request.json().catch(() => ({}));
         const { userId, notificationId, all } = body;
-        if (!userId)
-          return errorResponse("userId requis", 400, origin);
+        if (!userId) return errorResponse("userId requis", 400, origin);
         if (env.DB) {
           await ensureNotificationsTable(env.DB);
           if (all) {
@@ -7015,8 +7923,7 @@ Lien vers le produit : ${productShareUrl}`;
         if (method === "POST" || method === "PUT") {
           const body = await request.json().catch(() => ({}));
           const { id, url: linkUrl, name, description } = body;
-          if (!id)
-            return errorResponse("id requis", 400, origin);
+          if (!id) return errorResponse("id requis", 400, origin);
           const safeUrl = (linkUrl || "").trim();
           if (env.DB) {
             await env.DB.prepare(`
@@ -7038,8 +7945,7 @@ Lien vers le produit : ${productShareUrl}`;
         if (env.DB) {
           await ensureAppLinksTable(env.DB);
           const link = await env.DB.prepare("SELECT url FROM app_external_links WHERE id = ?").bind(linkId).first();
-          if (link?.url && link.url.trim())
-            targetUrl = link.url.trim();
+          if (link?.url && link.url.trim()) targetUrl = link.url.trim();
         }
         if (targetUrl) {
           return Response.redirect(targetUrl, 302);
@@ -7050,8 +7956,7 @@ Lien vers le produit : ${productShareUrl}`;
         const userId = url.searchParams.get("userId");
         const sessionId = url.searchParams.get("sessionId");
         if (method === "GET") {
-          if (!userId || !sessionId)
-            return errorResponse("userId et sessionId requis", 400, origin);
+          if (!userId || !sessionId) return errorResponse("userId et sessionId requis", 400, origin);
           const { results } = await env.DB.prepare("SELECT * FROM chat_messages WHERE user_id = ? AND session_id = ? ORDER BY created_at ASC").bind(userId, sessionId).all();
           return jsonResponse({ success: true, data: results }, 200, origin);
         }
@@ -7068,8 +7973,7 @@ Lien vers le produit : ${productShareUrl}`;
       if (path === "/api/subscriptions") {
         const userId = url.searchParams.get("userId");
         if (method === "GET") {
-          if (!userId)
-            return errorResponse("userId requis", 400, origin);
+          if (!userId) return errorResponse("userId requis", 400, origin);
           const sub = await env.DB.prepare('SELECT * FROM user_subscriptions WHERE user_id = ? AND status = "active"').bind(userId).first();
           return jsonResponse({ success: true, data: sub || { plan_name: "free", status: "active" } }, 200, origin);
         }
@@ -7093,8 +7997,7 @@ Lien vers le produit : ${productShareUrl}`;
       if (path === "/api/sync/backup" && method === "POST") {
         const body = await request.json();
         const { userId, userProfile, matieres, notes, scheduleSlots, scheduleConfig, alarms, shopProfile } = body;
-        if (!userId)
-          return errorResponse("userId requis", 400, origin);
+        if (!userId) return errorResponse("userId requis", 400, origin);
         if (userProfile) {
           const cleanEmail = (userProfile.email || `${userId}@studycloud.app`).toLowerCase().trim();
           const existing = await env.DB.prepare(
@@ -7211,8 +8114,7 @@ Lien vers le produit : ${productShareUrl}`;
       }
       if (path === "/api/sync/restore" && method === "GET") {
         const userId = url.searchParams.get("userId");
-        if (!userId)
-          return errorResponse("userId requis", 400, origin);
+        if (!userId) return errorResponse("userId requis", 400, origin);
         const [
           user,
           { results: matieres },
@@ -7250,33 +8152,28 @@ Lien vers le produit : ${productShareUrl}`;
         }, 200, origin);
       }
       if ((path === "/api/referrals/my-status" || path === "/api/referrals/status") && method === "GET") {
-        if (!env.DB)
-          return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
+        if (!env.DB) return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
         await ensureReferralsTables(env.DB);
         let userId = null;
         const authHeader = request.headers.get("Authorization") || "";
         const token = authHeader.startsWith("Bearer ") ? authHeader.slice(7) : null;
         if (token) {
           const payload = await verifyJWT(token);
-          if (payload?.userId)
-            userId = payload.userId;
+          if (payload?.userId) userId = payload.userId;
         }
         if (!userId) {
           userId = url.searchParams.get("userId");
         }
-        if (!userId)
-          return errorResponse("Identifiant utilisateur requis", 401, origin);
+        if (!userId) return errorResponse("Identifiant utilisateur requis", 401, origin);
         let user = await env.DB.prepare("SELECT * FROM users WHERE id = ?").bind(userId).first();
-        if (!user)
-          return errorResponse("Compte utilisateur introuvable", 404, origin);
+        if (!user) return errorResponse("Compte utilisateur introuvable", 404, origin);
         let referralCode = user.referral_code;
         if (!referralCode) {
           let isUnique = false;
           while (!isUnique) {
             referralCode = generateReferralCode();
             const existing = await env.DB.prepare("SELECT id FROM users WHERE referral_code = ?").bind(referralCode).first();
-            if (!existing)
-              isUnique = true;
+            if (!existing) isUnique = true;
           }
           await env.DB.prepare("UPDATE users SET referral_code = ? WHERE id = ?").bind(referralCode, user.id).run();
           user.referral_code = referralCode;
@@ -7342,8 +8239,7 @@ Lien vers le produit : ${productShareUrl}`;
         }, 200, origin);
       }
       if (path === "/api/referrals/config" && (method === "PUT" || method === "POST")) {
-        if (!env.DB)
-          return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
+        if (!env.DB) return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
         await ensureReferralsTables(env.DB);
         const body = await request.json().catch(() => ({}));
         const { daysPerReferral, milestones, rules } = body;
@@ -7370,823 +8266,6 @@ Lien vers le produit : ${productShareUrl}`;
           }
         }, 200, origin);
       }
-      if (path === "/api/user/storage" && method === "GET") {
-        if (!env.DB) {
-          return errorResponse("Base de donn\xE9es indisponible", 500, origin);
-        }
-        let userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
-        if (!userId) {
-          const authHeader = request.headers.get("Authorization");
-          if (authHeader && authHeader.startsWith("Bearer ")) {
-            try {
-              const token = authHeader.substring(7);
-              const payload = JSON.parse(atob(token.split(".")[1]));
-              userId = payload.sub || payload.userId || payload.id;
-            } catch (e) {}
-          }
-        }
-        if (!userId) {
-          return errorResponse("Identifiant utilisateur (userId) manquant", 400, origin);
-        }
-
-        const storageData = await getUserStorageDetails(env.DB, userId);
-        return jsonResponse({
-          success: true,
-          data: storageData
-        }, 200, origin);
-      }
-      if (path === "/api/user/storage/upgrade-request" && method === "POST") {
-        if (!env.DB) {
-          return errorResponse("Base de donn\xE9es indisponible", 500, origin);
-        }
-        let userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
-        const body = await request.json().catch(() => ({}));
-        userId = userId || body.userId;
-        if (!userId) {
-          return errorResponse("Identifiant utilisateur requis", 400, origin);
-        }
-
-        await ensureStorageTables(env.DB);
-        const requestId = generateCleanShareCode();
-        const packId = body.packId || "custom";
-        const packName = body.packName || "Pack Personnalisé";
-        const additionalMb = Number(body.additionalMb || 1024);
-        const additionalWords = Number(body.additionalWords || 100000);
-        const contactPhone = body.contactPhone || body.userPhone || "";
-        const userWhatsapp = body.whatsappNumber || body.userWhatsapp || "";
-        const rawNotes = body.notes || "";
-        const notes = [rawNotes, userWhatsapp ? `WhatsApp: ${userWhatsapp}` : ""].filter(Boolean).join(" | ");
-        const userName = body.userName || "";
-        const userEmail = body.userEmail || "";
-        const pricePaid = Number(body.pricePaid || body.price || 0);
-        const currency = body.currency || "FCFA";
-        const paymentMethod = body.paymentMethod || "Wave / Orange / Moov / MTN";
-        const paymentReference = body.paymentReference || "";
-        const receiptImageUrl = body.receiptImageUrl || body.receiptUrl || "";
-        const receiptR2Key = body.receiptR2Key || (receiptImageUrl ? `storage-receipts/${userId}/recu_${requestId}.jpg` : "");
-
-        const storageDisplay = body.storageDisplay || (additionalMb >= 1024 ? `${(additionalMb / 1024).toFixed(additionalMb % 1024 === 0 ? 0 : 1)} Go (${additionalMb} Mo)` : `${additionalMb} Mo`);
-        const priceDisplay = body.priceDisplay || `${pricePaid} ${currency}`;
-        const billingCycle = body.billingCycle || "annual";
-        const requestType = body.requestType || (body.isRenewal || (packName && packName.toLowerCase().includes('renouvellement')) ? 'renewal' : 'upgrade');
-
-        let finalReceiptUrl = receiptImageUrl;
-        // Si l'image est un Data URI Base64, l'extraire et l'enregistrer dans R2 si possible
-        if (receiptImageUrl && receiptImageUrl.startsWith("data:")) {
-          try {
-            const mimeMatch = receiptImageUrl.match(/^data:([^;]+);base64,/);
-            const contentType = mimeMatch ? mimeMatch[1] : "image/jpeg";
-            const base64Content = receiptImageUrl.replace(/^data:[^;]+;base64,/, "");
-
-            if (env.BUCKET) {
-              const binStr = atob(base64Content);
-              const len = binStr.length;
-              const bytes = new Uint8Array(len);
-              for (let i = 0; i < len; i++) {
-                bytes[i] = binStr.charCodeAt(i);
-              }
-              await env.BUCKET.put(receiptR2Key, bytes.buffer, {
-                httpMetadata: { contentType }
-              });
-              finalReceiptUrl = `${url.origin}/api/storage/file/${encodeURIComponent(receiptR2Key)}`;
-            } else if (receiptImageUrl.length > 500000) {
-              finalReceiptUrl = receiptImageUrl.slice(0, 500000);
-            }
-          } catch (imgErr) {
-            console.warn("Erreur traitement image reçu R2:", imgErr);
-            if (receiptImageUrl.length > 500000) {
-              finalReceiptUrl = receiptImageUrl.slice(0, 500000);
-            }
-          }
-        }
-
-        try {
-          await env.DB.prepare(`
-            INSERT INTO storage_upgrade_requests (
-              id, user_id, user_name, user_phone, user_email, pack_id, pack_name,
-              additional_mb, additional_words, price_paid, currency, payment_method, payment_reference,
-              receipt_image_url, receipt_r2_key, contact_phone, user_whatsapp,
-              storage_display, price_display, billing_cycle,
-              notes, request_type, status, created_at, updated_at
-            )
-            VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-          `).bind(
-            requestId, userId, userName, contactPhone, userEmail, packId, packName,
-            additionalMb, additionalWords, pricePaid, currency, paymentMethod, paymentReference,
-            finalReceiptUrl, receiptR2Key, contactPhone, userWhatsapp,
-            storageDisplay, priceDisplay, billingCycle,
-            notes, requestType
-          ).run();
-        } catch (insertErr) {
-          console.error("Erreur insertion storage_upgrade_requests:", insertErr);
-          try {
-            await ensureStorageTables(env.DB);
-            await env.DB.prepare(`
-              INSERT OR REPLACE INTO storage_upgrade_requests (
-                id, user_id, user_name, pack_id, pack_name, additional_mb, price_paid,
-                currency, contact_phone, user_whatsapp, receipt_image_url, receipt_r2_key,
-                storage_display, price_display, billing_cycle, notes, status
-              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending')
-            `).bind(
-              requestId, userId, userName, packId, packName, additionalMb, pricePaid,
-              currency, contactPhone, userWhatsapp, finalReceiptUrl, receiptR2Key,
-              storageDisplay, priceDisplay, billingCycle, notes
-            ).run();
-          } catch (retryErr) {
-            console.error("Erreur critique de secours insertion commande:", retryErr);
-            return errorResponse("Impossible d'enregistrer la commande dans la base: " + (retryErr.message || insertErr.message), 500, origin);
-          }
-        }
-
-        return jsonResponse({
-          success: true,
-          message: "Demande d'augmentation de stockage enregistrée avec succès",
-          requestId
-        }, 200, origin);
-      }
-
-      // Route utilisateur : Récupération des demandes de stockage et de renouvellement
-      if (path === "/api/user/storage/upgrade-requests" && method === "GET") {
-        if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
-        const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
-        if (!userId) return errorResponse("userId requis", 400, origin);
-        await ensureStorageTables(env.DB);
-        const includeDeleted = url.searchParams.get("includeDeleted") === "true";
-        const query = "SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC";
-        const reqs = await env.DB.prepare(query).bind(userId).all();
-        const list = (reqs && reqs.results) ? reqs.results : [];
-        const filtered = includeDeleted ? list : list.filter(r => !r.user_deleted_at);
-        return jsonResponse({
-          success: true,
-          requests: filtered
-        }, 200, origin);
-      }
-
-      // Route utilisateur : Demande de suppression de l'historique (Purge définitive différée à 1 mois / 30 jours)
-      if (path === "/api/user/storage/delete-history-item" && method === "POST") {
-        if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
-        const body = await request.json().catch(() => ({}));
-        const requestId = body.requestId;
-        const userId = body.userId || url.searchParams.get("userId") || request.headers.get("x-user-id");
-        if (!requestId || !userId) return errorResponse("requestId et userId requis", 400, origin);
-
-        await ensureStorageTables(env.DB);
-        const nowISO = new Date().toISOString();
-        const purgeDateISO = new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-        const purgeId = "purge_" + Math.random().toString(36).substring(2, 10);
-
-        try {
-          await env.DB.prepare(`
-            INSERT INTO user_requests_history_purge (id, request_id, user_id, requested_at, purge_effective_at, status, created_at)
-            VALUES (?, ?, ?, ?, ?, 'pending_purge', ?)
-          `).bind(purgeId, requestId, userId, nowISO, purgeDateISO, nowISO).run();
-        } catch (e) {}
-
-        try {
-          await env.DB.prepare(`
-            UPDATE storage_upgrade_requests 
-            SET user_deleted_at = ?, purge_scheduled_at = ? 
-            WHERE id = ? AND user_id = ?
-          `).bind(nowISO, purgeDateISO, requestId, userId).run();
-        } catch (e) {}
-
-        try {
-          await env.DB.prepare(`
-            UPDATE user_purchases_history 
-            SET user_deleted_at = ?, purge_scheduled_at = ? 
-            WHERE (id = ? OR id = ? OR id = ?) AND user_id = ?
-          `).bind(nowISO, purgeDateISO, requestId, "PUR_" + requestId, requestId.replace("PUR_", ""), userId).run();
-        } catch (e) {}
-
-        return jsonResponse({
-          success: true,
-          message: "Votre demande de suppression a été enregistrée. Conformément à la réglementation de traçabilité comptable, la suppression définitive de cet historique sera effective après 1 mois (30 jours)."
-        }, 200, origin);
-      }
-
-      // Route utilisateur : Récupération de l'historique complet des achats et paiements
-      if (path === "/api/user/purchases-history" && method === "GET") {
-        if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
-        const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
-        if (!userId) return errorResponse("userId requis", 400, origin);
-
-        await ensureStorageTables(env.DB);
-
-        // 1. Récupérer dans la table officielle user_purchases_history
-        let purchasesRes = await env.DB.prepare(`
-          SELECT * FROM user_purchases_history 
-          WHERE user_id = ? AND (user_deleted_at IS NULL OR user_deleted_at = '') 
-          ORDER BY purchased_at DESC, created_at DESC
-        `).bind(userId).all();
-        let purchases = (purchasesRes && purchasesRes.results) ? purchasesRes.results : [];
-
-        // 2. Synchronisation automatique de secours si la table est encore vide
-        if (purchases.length === 0) {
-          const subsRes = await env.DB.prepare(`SELECT * FROM user_subscriptions WHERE user_id = ? ORDER BY created_at DESC`).bind(userId).all();
-          const userSubs = (subsRes && subsRes.results) ? subsRes.results : [];
-
-          const reqsRes = await env.DB.prepare(`SELECT * FROM storage_upgrade_requests WHERE user_id = ? AND status = 'approved' AND (user_deleted_at IS NULL OR user_deleted_at = '') ORDER BY created_at DESC`).bind(userId).all();
-          const approvedReqs = (reqsRes && reqsRes.results) ? reqsRes.results : [];
-
-          for (const req of approvedReqs) {
-            const purId = "PUR_" + (req.id ? req.id.replace(/[^a-zA-Z0-9]/g, "") : Math.random().toString(36).substring(2, 10));
-            const addMb = Number(req.additional_mb || 1024);
-            const price = Number(req.price_paid || 1000);
-            const dateVal = req.confirmed_start_date || req.confirmed_at || req.updated_at || req.created_at || new Date().toISOString();
-            const renDate = req.confirmed_end_date || "";
-            try {
-              await env.DB.prepare(`
-                INSERT OR IGNORE INTO user_purchases_history (
-                  id, user_id, user_name, user_phone, user_email, pack_name,
-                  storage_bought_mb, total_storage_mb, price_paid, currency,
-                  payment_method, payment_reference, billing_cycle, renewal_date,
-                  status, purchased_at, confirmed_at, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)
-              `).bind(
-                purId, userId, req.user_name || "", req.user_phone || req.contact_phone || "", req.user_email || "",
-                req.pack_name || "Pack Stockage StudyCloud", addMb, addMb + 30, price, req.currency || "FCFA",
-                req.payment_method || "Mobile Money", req.payment_reference || req.id || "",
-                req.billing_cycle || "monthly", renDate, dateVal, dateVal, dateVal
-              ).run();
-            } catch (e) {}
-          }
-
-          for (const sub of userSubs) {
-            const purId = "PUR_" + (sub.id ? sub.id.replace(/[^a-zA-Z0-9]/g, "") : Math.random().toString(36).substring(2, 10));
-            const totMb = Number(sub.total_storage_mb || 1024);
-            const boughtMb = sub.storage_added_mb ? Number(sub.storage_added_mb) : Math.max(0, totMb - 30);
-            const price = Number(sub.monthly_price || 1000);
-            const dateVal = sub.start_date || sub.created_at || new Date().toISOString();
-            const renDate = sub.end_date || "";
-            try {
-              await env.DB.prepare(`
-                INSERT OR IGNORE INTO user_purchases_history (
-                  id, user_id, user_name, user_phone, user_email, pack_name,
-                  storage_bought_mb, total_storage_mb, price_paid, currency,
-                  payment_method, payment_reference, billing_cycle, renewal_date,
-                  status, purchased_at, confirmed_at, created_at
-                ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, ?)
-              `).bind(
-                purId, userId, sub.user_name || "", sub.user_phone || "", sub.user_email || "",
-                sub.plan_name || "Abonnement StudyCloud", boughtMb, totMb, price, sub.currency || "FCFA",
-                "Mobile Money", sub.request_id || sub.id, "monthly", renDate, dateVal, dateVal, dateVal
-              ).run();
-            } catch (e) {}
-          }
-
-          purchasesRes = await env.DB.prepare(`
-            SELECT * FROM user_purchases_history 
-            WHERE user_id = ? AND (user_deleted_at IS NULL OR user_deleted_at = '') 
-            ORDER BY purchased_at DESC, created_at DESC
-          `).bind(userId).all();
-          purchases = (purchasesRes && purchasesRes.results) ? purchasesRes.results : [];
-        }
-
-        return jsonResponse({
-          success: true,
-          purchases
-        }, 200, origin);
-      }
-
-      // Route administrateur : Confirmation et activation d'une demande de stockage dans la BDD
-      if (path === "/api/storage-requests/approve" && method === "POST") {
-        if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
-        const body = await request.json().catch(() => ({}));
-        const requestId = body.requestId;
-        if (!requestId) return errorResponse("requestId requis", 400, origin);
-
-        await ensureStorageTables(env.DB);
-        const reqRow = await env.DB.prepare("SELECT * FROM storage_upgrade_requests WHERE id = ?").bind(requestId).first();
-        if (!reqRow) return errorResponse("Demande introuvable", 404, origin);
-
-        const userId = reqRow.user_id;
-        const addMb = Number(body.allocatedMb !== undefined ? body.allocatedMb : (reqRow.additional_mb || 1024));
-        const pricePaid = Number(body.pricePaid !== undefined ? body.pricePaid : (reqRow.price_paid || 0));
-        const startDate = body.startDate || new Date().toISOString();
-        const endDate = body.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
-        const gracePeriodDays = Number(body.gracePeriodDays || 5);
-
-        // 1. Marquer la demande approuvée
-        await env.DB.prepare(`
-          UPDATE storage_upgrade_requests 
-          SET status = 'approved', 
-              confirmed_start_date = ?, 
-              confirmed_end_date = ?, 
-              grace_period_days = ?, 
-              updated_at = CURRENT_TIMESTAMP 
-          WHERE id = ?
-        `).bind(startDate, endDate, gracePeriodDays, requestId).run();
-
-        // 2. Allouer le stockage dans user_storage_quotas
-        const currentQuota = await env.DB.prepare("SELECT * FROM user_storage_quotas WHERE user_id = ?").bind(userId).first();
-        const currentPaid = currentQuota ? Number(currentQuota.paid_total_mb || 0) : 0;
-        const isRenewalReq = (reqRow.request_type === 'renewal') || (reqRow.pack_name && reqRow.pack_name.toLowerCase().includes('renouvellement'));
-        let newPaid = currentPaid + addMb;
-        if (isRenewalReq && (body.allocatedMb === undefined || body.allocatedMb === 0)) {
-          newPaid = currentPaid > 0 ? currentPaid : addMb;
-        }
-        const wTotal = currentQuota ? Number(currentQuota.welcome_total_mb || 30) : 30;
-
-        await env.DB.prepare(`
-          INSERT INTO user_storage_quotas (user_id, welcome_total_mb, welcome_r2_mb, welcome_d1_mb, paid_total_mb, paid_r2_mb, paid_d1_mb, plan_name, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, 'payant', CURRENT_TIMESTAMP)
-          ON CONFLICT(user_id) DO UPDATE SET
-            paid_total_mb = excluded.paid_total_mb,
-            paid_r2_mb = excluded.paid_r2_mb,
-            paid_d1_mb = excluded.paid_d1_mb,
-            plan_name = 'payant',
-            updated_at = CURRENT_TIMESTAMP
-        `).bind(userId, wTotal, Math.round(wTotal/3), Math.round(wTotal*2/3), newPaid, Math.round(newPaid/2), Math.round(newPaid/2)).run();
-
-        // 3. Insérer ou activer l'abonnement dans user_subscriptions
-        const subId = "sub_" + Math.random().toString(36).substring(2, 10);
-        await env.DB.prepare(`
-          UPDATE user_subscriptions 
-          SET status = 'renewed', updated_at = CURRENT_TIMESTAMP 
-          WHERE user_id = ? AND status = 'active'
-        `).bind(userId).run();
-
-        await env.DB.prepare(`
-          INSERT INTO user_subscriptions (id, user_id, user_name, user_phone, user_email, plan_name, total_storage_mb, monthly_price, currency, status, start_date, end_date, grace_period_days, request_id, created_at, updated_at)
-          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'active', ?, ?, ?, ?, CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
-        `).bind(
-          subId, userId, reqRow.user_name || "", reqRow.user_phone || "", reqRow.user_email || "",
-          reqRow.pack_name || "Pack Stockage", wTotal + newPaid, pricePaid, reqRow.currency || "FCFA",
-          startDate, endDate, gracePeriodDays, requestId
-        ).run();
-
-        // 4. Enregistrer immédiatement l'achat dans user_purchases_history
-        const purchaseId = "PUR_" + Math.random().toString(36).substring(2, 10).toUpperCase();
-        try {
-          await env.DB.prepare(`
-            INSERT INTO user_purchases_history (
-              id, user_id, user_name, user_phone, user_email, pack_name,
-              storage_bought_mb, total_storage_mb, price_paid, currency,
-              payment_method, payment_reference, billing_cycle, renewal_date,
-              status, purchased_at, confirmed_at, created_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, CURRENT_TIMESTAMP)
-          `).bind(
-            purchaseId, userId, reqRow.user_name || "", reqRow.user_phone || "", reqRow.user_email || "",
-            reqRow.pack_name || "Pack Stockage", addMb, wTotal + newPaid, pricePaid, reqRow.currency || "FCFA",
-            reqRow.payment_method || "Mobile Money", reqRow.payment_reference || reqRow.id || "",
-            reqRow.billing_cycle || "monthly", endDate, startDate, startDate
-          ).run();
-        } catch (e) {}
-
-        return jsonResponse({
-          success: true,
-          requestId,
-          userId,
-          newPaidTotalMb: newPaid,
-          message: "Abonnement confirmé et stockage alloué avec succès dans la base de données"
-        }, 200, origin);
-      }
-
-      // Route administrateur : Rejet d'une demande de stockage
-      if (path === "/api/storage-requests/reject" && method === "POST") {
-        if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
-        const body = await request.json().catch(() => ({}));
-        const requestId = body.requestId;
-        const reason = body.reason || "Paiement non confirmé";
-        if (!requestId) return errorResponse("requestId requis", 400, origin);
-
-        await env.DB.prepare(`UPDATE storage_upgrade_requests SET status = 'rejected', admin_notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(reason, requestId).run();
-        return jsonResponse({ success: true, requestId, message: "Demande rejetée" }, 200, origin);
-      }
-
-      // Route utilisateur : Récupération des abonnements actifs et passés
-      if (path === "/api/user/subscriptions" && method === "GET") {
-        if (!env.DB) return errorResponse("Base de données indisponible", 500, origin);
-        const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
-        if (!userId) return errorResponse("userId requis", 400, origin);
-        await ensureStorageTables(env.DB);
-        const subs = await env.DB.prepare(
-          "SELECT * FROM user_subscriptions WHERE user_id = ? ORDER BY created_at DESC"
-        ).bind(userId).all();
-        const quota = await env.DB.prepare(
-          "SELECT * FROM user_storage_quotas WHERE user_id = ?"
-        ).bind(userId).first();
-        return jsonResponse({
-          success: true,
-          subscriptions: (subs && subs.results) ? subs.results : [],
-          quota: quota || null
-        }, 200, origin);
-      }
-
-      // Route publique : Informations professionnelles de l'entreprise et comptes marchands
-      if (path === "/api/company-profile" && method === "GET") {
-        const defaultProfile = {
-          id: 'main',
-          company_name: 'DKD Technologies',
-          activity: 'Technologies & Éducation Numérique',
-          location: 'Abidjan, Côte d\'Ivoire',
-          address: 'Abidjan, Côte d\'Ivoire',
-          phone_contact: '+225 0101007978',
-          phone_contact_secondary: '',
-          phone_whatsapp: '+225 0101007978',
-          email: 'contact@dkd-technologies.com',
-          website: 'https://studycloud.dkd-technologies.com',
-          wave_number: '+225 07 00 00 00 00',
-          wave_name: 'StudyCloud CI',
-          wave_enabled: 1,
-          wave_show_number: 1,
-          wave_show_image: 1,
-          wave_image_url: '',
-          orange_number: '+225 07 00 00 00 00',
-          orange_name: 'Orange Money Côte d\'Ivoire',
-          orange_enabled: 1,
-          orange_show_number: 1,
-          orange_show_image: 1,
-          orange_image_url: '',
-          mtn_number: '+225 05 00 00 00 00',
-          mtn_name: 'MTN Mobile Money CI',
-          mtn_enabled: 1,
-          mtn_show_number: 1,
-          mtn_show_image: 1,
-          mtn_image_url: '',
-          moov_number: '+225 01 00 00 00 00',
-          moov_name: 'Moov Money Côte d\'Ivoire',
-          moov_enabled: 1,
-          moov_show_number: 1,
-          moov_show_image: 1,
-          moov_image_url: '',
-          payment_instructions: 'Transférez le montant exact sur l\'un de nos numéros officiels ci-dessous, puis importez une capture claire de votre reçu affichant la date et le numéro de transaction.',
-          about_text: 'Plateforme d\'apprentissage et de gestion documentaire intelligente pour étudiants et professionnels.',
-          notes: ''
-        };
-
-        if (!env.DB) {
-          return jsonResponse({ success: true, profile: defaultProfile }, 200, origin);
-        }
-
-        try {
-          await ensureStorageTables(env.DB);
-          const row = await env.DB.prepare(`SELECT * FROM company_profile WHERE id = 'main'`).first();
-          if (row) {
-            if (!row.mtn_name || row.mtn_name === 'Paiement Mobile National' || row.mtn_name.includes('Moov')) {
-              row.mtn_name = 'MTN Mobile Money CI';
-            }
-            if (!row.moov_number) {
-              row.moov_number = '+225 01 00 00 00 00';
-            }
-            if (!row.moov_name) {
-              row.moov_name = "Moov Money Côte d'Ivoire";
-            }
-            if (row.wave_enabled === undefined || row.wave_enabled === null) row.wave_enabled = 1;
-            if (row.wave_show_number === undefined || row.wave_show_number === null) row.wave_show_number = 1;
-            if (row.wave_show_image === undefined || row.wave_show_image === null) row.wave_show_image = 1;
-            if (row.orange_enabled === undefined || row.orange_enabled === null) row.orange_enabled = 1;
-            if (row.orange_show_number === undefined || row.orange_show_number === null) row.orange_show_number = 1;
-            if (row.orange_show_image === undefined || row.orange_show_image === null) row.orange_show_image = 1;
-            if (row.mtn_enabled === undefined || row.mtn_enabled === null) row.mtn_enabled = 1;
-            if (row.mtn_show_number === undefined || row.mtn_show_number === null) row.mtn_show_number = 1;
-            if (row.mtn_show_image === undefined || row.mtn_show_image === null) row.mtn_show_image = 1;
-            if (row.moov_enabled === undefined || row.moov_enabled === null) row.moov_enabled = 1;
-            if (row.moov_show_number === undefined || row.moov_show_number === null) row.moov_show_number = 1;
-            if (row.moov_show_image === undefined || row.moov_show_image === null) row.moov_show_image = 1;
-          }
-          return jsonResponse({ success: true, profile: row || defaultProfile }, 200, origin);
-        } catch (e) {
-          return jsonResponse({ success: true, profile: defaultProfile }, 200, origin);
-        }
-      }
-
-      // Route de mise à jour des informations professionnelles (individuelle ou globale)
-      if (path === "/api/company-profile/update" && method === "POST") {
-        if (!env.DB) {
-          return errorResponse("Base de données D1 indisponible", 500, origin);
-        }
-        await ensureStorageTables(env.DB);
-        const body = await request.json().catch(() => ({}));
-        const allowedCols = [
-          'company_name', 'activity', 'location', 'address', 'website', 'email',
-          'phone_contact', 'phone_whatsapp', 'phone_contact_secondary', 'about_text',
-          'wave_number', 'wave_name', 'wave_enabled', 'wave_show_number', 'wave_show_image', 'wave_image_url',
-          'orange_number', 'orange_name', 'orange_enabled', 'orange_show_number', 'orange_show_image', 'orange_image_url',
-          'mtn_number', 'mtn_name', 'mtn_enabled', 'mtn_show_number', 'mtn_show_image', 'mtn_image_url',
-          'moov_number', 'moov_name', 'moov_enabled', 'moov_show_number', 'moov_show_image', 'moov_image_url',
-          'payment_instructions', 'notes'
-        ];
-
-        // S'assurer que la ligne 'main' existe
-        await env.DB.prepare(`INSERT OR IGNORE INTO company_profile (id) VALUES ('main')`).run();
-
-        if (body.field && allowedCols.includes(body.field)) {
-          const colName = body.field;
-          const colValue = typeof body.value === 'number' ? body.value : String(body.value ?? '');
-          await env.DB.prepare(`
-            UPDATE company_profile SET ${colName} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'
-          `).bind(colValue).run();
-        } else {
-          const updates = [];
-          const values = [];
-          for (const col of allowedCols) {
-            if (body[col] !== undefined) {
-              updates.push(`${col} = ?`);
-              values.push(typeof body[col] === 'number' ? body[col] : String(body[col] ?? ''));
-            }
-          }
-          if (updates.length > 0) {
-            updates.push(`updated_at = CURRENT_TIMESTAMP`);
-            await env.DB.prepare(`
-              UPDATE company_profile SET ${updates.join(', ')} WHERE id = 'main'
-            `).bind(...values).run();
-          }
-        }
-
-        const updatedProfile = await env.DB.prepare(`SELECT * FROM company_profile WHERE id = 'main'`).first();
-        return jsonResponse({
-          success: true,
-          message: "Informations professionnelles enregistrées avec succès",
-          profile: updatedProfile
-        }, 200, origin);
-      }
-
-      // Route d'upload direct d'image de paiement (Carte commerçant / QR) vers Cloudflare R2
-      if (path === "/api/company-profile/upload-payment-image" && method === "POST") {
-        if (!env.DB) {
-          return errorResponse("Base de données D1 indisponible", 500, origin);
-        }
-        await ensureStorageTables(env.DB);
-        const body = await request.json().catch(() => ({}));
-        const network = (body.network || '').toLowerCase().trim();
-        const validNetworks = ['wave', 'orange', 'mtn', 'moov'];
-        if (!validNetworks.includes(network)) {
-          return errorResponse("Réseau de paiement invalide (wave, orange, mtn, moov)", 400, origin);
-        }
-
-        const rawData = body.image || '';
-        if (!rawData) {
-          return errorResponse("Image manquante", 400, origin);
-        }
-
-        let imageUrl = rawData;
-        const ext = (body.ext || 'png').toLowerCase().replace(/[^a-z0-9]/g, '') || 'png';
-        const r2Key = `payment-methods/${network}_merchant_${Date.now()}.${ext}`;
-        const bucket = env.BUCKET || env.MON_R2_STUDYCLOUD;
-
-        if (bucket && rawData.startsWith('data:')) {
-          try {
-            const parts = rawData.split(',');
-            const mimeMatch = parts[0].match(/:(.*?);/);
-            const mimeType = mimeMatch ? mimeMatch[1] : 'image/png';
-            const base64Data = parts[1];
-            const binaryString = atob(base64Data);
-            const len = binaryString.length;
-            const bytes = new Uint8Array(len);
-            for (let i = 0; i < len; i++) {
-              bytes[i] = binaryString.charCodeAt(i);
-            }
-
-            await bucket.put(r2Key, bytes, {
-              httpMetadata: { contentType: mimeType }
-            });
-
-            const workerOrigin = (url && url.origin) ? url.origin : 'https://studycloud-worker.delmaskouassidibi.workers.dev';
-            imageUrl = `${workerOrigin}/api/payment-methods/image/${encodeURIComponent(r2Key)}`;
-          } catch (r2Err) {
-            console.warn('[STUDYCLOUD R2 Upload Error Fallback base64]:', r2Err);
-            imageUrl = rawData;
-          }
-        }
-
-        const fieldName = `${network}_image_url`;
-        await env.DB.prepare(`INSERT OR IGNORE INTO company_profile (id) VALUES ('main')`).run();
-        await env.DB.prepare(`UPDATE company_profile SET ${fieldName} = ?, updated_at = CURRENT_TIMESTAMP WHERE id = 'main'`).bind(imageUrl).run();
-
-        return jsonResponse({
-          success: true,
-          url: imageUrl,
-          key: r2Key,
-          message: "Carte commerçant / QR enregistré avec succès dans R2"
-        }, 200, origin);
-      }
-
-      // Route de streaming image de paiement depuis R2
-      if (path.startsWith("/api/payment-methods/image/") && method === "GET") {
-        const key = decodeURIComponent(path.replace('/api/payment-methods/image/', ''));
-        const bucket = env.BUCKET || env.MON_R2_STUDYCLOUD;
-        if (bucket && key) {
-          try {
-            const object = await bucket.get(key);
-            if (object) {
-              const headers = new Headers();
-              object.writeHttpMetadata(headers);
-              headers.set('etag', object.httpEtag);
-              headers.set('Cache-Control', 'public, max-age=31536000, immutable');
-              headers.set('Access-Control-Allow-Origin', origin);
-              return new Response(object.body, { headers });
-            }
-          } catch (e) {}
-        }
-        return errorResponse("Image de paiement introuvable dans R2", 404, origin);
-      }
-
-      // ----------------------------------------------------------------------
-      // ROUTE GET : /api/subscription-plans (Plans de stockage et IA)
-      // ----------------------------------------------------------------------
-      if (path === "/api/subscription-plans" && method === "GET") {
-        if (!env.DB) {
-          return errorResponse("Base de données D1 indisponible", 500, origin);
-        }
-        await ensureStorageTables(env.DB);
-        const onlyActive = url.searchParams.get("active_only") === "1";
-        const storageQuery = onlyActive
-          ? "SELECT * FROM storage_subscription_plans WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC"
-          : "SELECT * FROM storage_subscription_plans ORDER BY sort_order ASC, created_at ASC";
-        const aiQuery = onlyActive
-          ? "SELECT * FROM ai_subscription_plans WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC"
-          : "SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC";
-
-        const storageRes = await env.DB.prepare(storageQuery).all();
-        const aiRes = await env.DB.prepare(aiQuery).all();
-
-        return jsonResponse({
-          success: true,
-          storagePlans: (storageRes && storageRes.results) ? storageRes.results : [],
-          aiPlans: (aiRes && aiRes.results) ? aiRes.results : []
-        }, 200, origin);
-      }
-
-      // ----------------------------------------------------------------------
-      // ROUTE POST : /api/subscription-plans/save
-      // ----------------------------------------------------------------------
-      if (path === "/api/subscription-plans/save" && method === "POST") {
-        if (!env.DB) {
-          return errorResponse("Base de données D1 indisponible", 500, origin);
-        }
-        await ensureStorageTables(env.DB);
-        const body = await request.json().catch(() => ({}));
-        const category = body.category === "ai" ? "ai" : "storage";
-        const plan = body.plan || {};
-
-        const planId = String(plan.id || (category + "_plan_" + Date.now())).trim();
-        const name = String(plan.name || "Nouveau Forfait").trim();
-        const badge = String(plan.badge || "").trim();
-        const description = String(plan.description || "").trim();
-        const price = Number(plan.price) || 0;
-        const primaryCurrency = String(plan.primary_currency || "USD").trim();
-        const currenciesEnabled = typeof plan.currencies_enabled === "string" ? plan.currencies_enabled : JSON.stringify(plan.currencies_enabled || ["USD", "XOF", "EUR"]);
-        const currencyConversions = typeof plan.currency_conversions === "string" ? plan.currency_conversions : JSON.stringify(plan.currency_conversions || {});
-        const yearlyPrice = Number(plan.yearly_price) || 0;
-        const yearlyDiscountPct = Number(plan.yearly_discount_pct) || 10;
-        const features = typeof plan.features === "string" ? plan.features : JSON.stringify(plan.features || []);
-        const isAutoBilling = plan.is_auto_billing ? 1 : 0;
-        const isActive = plan.is_active !== undefined ? (plan.is_active ? 1 : 0) : 1;
-        const sortOrder = Number(plan.sort_order) || 1;
-
-        if (category === "ai") {
-          const creditsOrWords = String(plan.credits_or_words || "100 000 mots IA").trim();
-          const creditsCount = Number(plan.credits_count) || 100000;
-          await env.DB.prepare(`
-            INSERT INTO ai_subscription_plans (
-              id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
-              currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
-              is_auto_billing, is_active, sort_order, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(id) DO UPDATE SET
-              name = excluded.name,
-              badge = excluded.badge,
-              description = excluded.description,
-              credits_or_words = excluded.credits_or_words,
-              credits_count = excluded.credits_count,
-              price = excluded.price,
-              primary_currency = excluded.primary_currency,
-              currencies_enabled = excluded.currencies_enabled,
-              currency_conversions = excluded.currency_conversions,
-              yearly_price = excluded.yearly_price,
-              yearly_discount_pct = excluded.yearly_discount_pct,
-              features = excluded.features,
-              is_auto_billing = excluded.is_auto_billing,
-              is_active = excluded.is_active,
-              sort_order = excluded.sort_order,
-              updated_at = CURRENT_TIMESTAMP
-          `).bind(
-            planId, name, badge, description, creditsOrWords, creditsCount, price, primaryCurrency,
-            currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
-            isAutoBilling, isActive, sortOrder
-          ).run();
-
-          const updatedPlan = await env.DB.prepare("SELECT * FROM ai_subscription_plans WHERE id = ?").bind(planId).first();
-          return jsonResponse({ success: true, plan: updatedPlan }, 200, origin);
-        } else {
-          const storageAmount = String(plan.storage_amount || "10 Go").trim();
-          const storageMb = Number(plan.storage_mb) || 10240;
-          await env.DB.prepare(`
-            INSERT INTO storage_subscription_plans (
-              id, name, badge, description, storage_amount, storage_mb, price, primary_currency,
-              currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
-              is_auto_billing, is_active, sort_order, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
-            ON CONFLICT(id) DO UPDATE SET
-              name = excluded.name,
-              badge = excluded.badge,
-              description = excluded.description,
-              storage_amount = excluded.storage_amount,
-              storage_mb = excluded.storage_mb,
-              price = excluded.price,
-              primary_currency = excluded.primary_currency,
-              currencies_enabled = excluded.currencies_enabled,
-              currency_conversions = excluded.currency_conversions,
-              yearly_price = excluded.yearly_price,
-              yearly_discount_pct = excluded.yearly_discount_pct,
-              features = excluded.features,
-              is_auto_billing = excluded.is_auto_billing,
-              is_active = excluded.is_active,
-              sort_order = excluded.sort_order,
-              updated_at = CURRENT_TIMESTAMP
-          `).bind(
-            planId, name, badge, description, storageAmount, storageMb, price, primaryCurrency,
-            currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
-            isAutoBilling, isActive, sortOrder
-          ).run();
-
-          const updatedPlan = await env.DB.prepare("SELECT * FROM storage_subscription_plans WHERE id = ?").bind(planId).first();
-          return jsonResponse({ success: true, plan: updatedPlan }, 200, origin);
-        }
-      }
-
-      // ----------------------------------------------------------------------
-      // ROUTE POST : /api/subscription-plans/delete
-      // ----------------------------------------------------------------------
-      if (path === "/api/subscription-plans/delete" && method === "POST") {
-        if (!env.DB) {
-          return errorResponse("Base de données D1 indisponible", 500, origin);
-        }
-        await ensureStorageTables(env.DB);
-        const body = await request.json().catch(() => ({}));
-        const category = body.category === "ai" ? "ai" : "storage";
-        const planId = String(body.id || "").trim();
-        const tableName = category === "ai" ? "ai_subscription_plans" : "storage_subscription_plans";
-
-        await env.DB.prepare(`DELETE FROM ${tableName} WHERE id = ?`).bind(planId).run();
-        return jsonResponse({ success: true, id: planId }, 200, origin);
-      }
-
-      // ----------------------------------------------------------------------
-      // ROUTE POST : /api/subscription-plans/toggle-active
-      // ----------------------------------------------------------------------
-      if (path === "/api/subscription-plans/toggle-active" && method === "POST") {
-        if (!env.DB) {
-          return errorResponse("Base de données D1 indisponible", 500, origin);
-        }
-        await ensureStorageTables(env.DB);
-        const body = await request.json().catch(() => ({}));
-        const category = body.category === "ai" ? "ai" : "storage";
-        const planId = String(body.id || "").trim();
-        const tableName = category === "ai" ? "ai_subscription_plans" : "storage_subscription_plans";
-
-        if (body.is_active !== undefined) {
-          const newVal = body.is_active ? 1 : 0;
-          await env.DB.prepare(`UPDATE ${tableName} SET is_active = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(newVal, planId).run();
-        } else {
-          await env.DB.prepare(`UPDATE ${tableName} SET is_active = CASE WHEN is_active = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
-        }
-        const row = await env.DB.prepare(`SELECT is_active FROM ${tableName} WHERE id = ?`).bind(planId).first();
-        return jsonResponse({ success: true, is_active: row ? row.is_active : 1 }, 200, origin);
-      }
-
-      // ----------------------------------------------------------------------
-      // ROUTE POST : /api/subscription-plans/toggle-auto-billing
-      // ----------------------------------------------------------------------
-      if (path === "/api/subscription-plans/toggle-auto-billing" && method === "POST") {
-        if (!env.DB) {
-          return errorResponse("Base de données D1 indisponible", 500, origin);
-        }
-        await ensureStorageTables(env.DB);
-        const body = await request.json().catch(() => ({}));
-        const category = body.category === "ai" ? "ai" : "storage";
-        const planId = String(body.id || "").trim();
-        const tableName = category === "ai" ? "ai_subscription_plans" : "storage_subscription_plans";
-
-        if (body.is_auto_billing !== undefined) {
-          const newVal = body.is_auto_billing ? 1 : 0;
-          await env.DB.prepare(`UPDATE ${tableName} SET is_auto_billing = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(newVal, planId).run();
-        } else {
-          await env.DB.prepare(`UPDATE ${tableName} SET is_auto_billing = CASE WHEN is_auto_billing = 1 THEN 0 ELSE 1 END, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(planId).run();
-        }
-        const row = await env.DB.prepare(`SELECT is_auto_billing FROM ${tableName} WHERE id = ?`).bind(planId).first();
-        return jsonResponse({ success: true, is_auto_billing: row ? row.is_auto_billing : 0 }, 200, origin);
-      }
-
-      // ----------------------------------------------------------------------
-      // ROUTE POST : /api/subscription-plans/update-badge
-      // ----------------------------------------------------------------------
-      if (path === "/api/subscription-plans/update-badge" && method === "POST") {
-        if (!env.DB) {
-          return errorResponse("Base de données D1 indisponible", 500, origin);
-        }
-        await ensureStorageTables(env.DB);
-        const body = await request.json().catch(() => ({}));
-        const category = body.category === "ai" ? "ai" : "storage";
-        const planId = String(body.id || "").trim();
-        const badge = String(body.badge || "").trim();
-        const tableName = category === "ai" ? "ai_subscription_plans" : "storage_subscription_plans";
-
-        await env.DB.prepare(`UPDATE ${tableName} SET badge = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`).bind(badge, planId).run();
-        return jsonResponse({ success: true, id: planId, badge }, 200, origin);
-      }
-
       return errorResponse(`Route non trouv\xE9e : ${method} ${path}`, 404, origin);
     } catch (err) {
       console.error("Worker API Error:", err);
@@ -8214,6 +8293,6 @@ Lien vers le produit : ${productShareUrl}`;
   }
 };
 export {
-  src_default as default,
+  index_default as default,
   generateCleanShareCode
 };
