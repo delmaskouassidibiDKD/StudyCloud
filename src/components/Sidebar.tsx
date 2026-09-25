@@ -15,7 +15,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
   const desktopNavItems: Array<{ id: NavigationTab; label: string; icon: any; highlight?: boolean; badge?: string | number }> = [
     { id: 'folders' as NavigationTab, label: 'Tableau de bord', icon: LayoutDashboard },
     { id: 'storage-menu' as NavigationTab, label: 'Mon stockage', icon: HardDrive },
-    { id: 'ai-subscriptions' as NavigationTab, label: 'Abonnements IA', icon: Sparkles },
+    { id: 'ai-subscriptions' as NavigationTab, label: 'Crédits IA', icon: Sparkles },
     { id: 'upload' as NavigationTab, label: 'Partager', icon: Upload, highlight: true },
     { id: 'shared' as NavigationTab, label: 'Liens Actifs', icon: Share2 },
     { id: 'library' as NavigationTab, label: 'Bibliothèque', icon: BookOpen },

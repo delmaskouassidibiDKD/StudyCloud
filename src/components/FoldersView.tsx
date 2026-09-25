@@ -676,7 +676,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         break;
 
       case 'ai-subscriptions':
-        label = 'Abonnements IA';
+        label = 'Crédits IA';
         defaultAction = () => {
           setTab('ai-subscriptions');
         };

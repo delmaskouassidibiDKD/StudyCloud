@@ -12,6 +12,7 @@ import { SharedLinksView } from './components/SharedLinksView';
 import { SettingsView } from './components/SettingsView';
 import { AiSubscriptionsView } from './components/AiSubscriptionsView';
 import { StorageMenuView } from './components/StorageMenuView';
+import { PricingView } from './components/PricingView';
 import { CreateShareLinkModal } from './components/CreateShareLinkModal';
 import { PublishFileView } from './components/PublishFileView';
 import { INITIAL_FOLDERS } from './data/initialData';
@@ -593,6 +594,8 @@ export default function App() {
   });
   const [isRightFullscreen, setIsRightFullscreen] = useState(false);
   const [isAssistantOpen, setIsAssistantOpen] = useState(false);
+  const [showPricingModal, setShowPricingModal] = useState<boolean>(false);
+  const [pricingModalTab, setPricingModalTab] = useState<'storage' | 'ai' | 'renewal'>('ai');
 
   // Determine if actually running on a mobile touch screen or desktop
   const [isMobileScreen, setIsMobileScreen] = useState<boolean>(() => {
@@ -1499,12 +1502,19 @@ export default function App() {
           ) : currentTab === 'settings' ? (
             <SettingsView />
           ) : currentTab === 'ai-subscriptions' ? (
-            <AiSubscriptionsView />
+            <AiSubscriptionsView
+              onBack={() => handleSetTab('folders')}
+              onOpenPricing={(tab = 'ai') => {
+                setPricingModalTab(tab);
+                setShowPricingModal(true);
+              }}
+            />
           ) : currentTab === 'storage-menu' ? (
             <StorageMenuView
               onBack={() => handleSetTab('folders')}
               onOpenPricing={(tab = 'storage') => {
-                handleSetTab('ai-subscriptions');
+                setPricingModalTab(tab);
+                setShowPricingModal(true);
               }}
             />
           ) : null}
@@ -1968,6 +1978,17 @@ export default function App() {
           }}
           onStartBackgroundCreation={handleStartBackgroundCreation}
         />
+      )}
+
+      {/* Modale plein écran de tarification officielle (connectée au worker tableau de bord) */}
+      {showPricingModal && (
+        <div className="fixed inset-0 z-[100000] bg-[#F8F6F0] dark:bg-[#0b0f19] overflow-y-auto">
+          <PricingView
+            initialTab={pricingModalTab}
+            onBack={() => setShowPricingModal(false)}
+            onSelectPlan={(_plan) => {}}
+          />
+        </div>
       )}
 
       {/* Bannière et bouton d'installation PWA sur l'écran d'accueil */}

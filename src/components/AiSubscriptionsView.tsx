@@ -1,89 +1,44 @@
 import React, { useState, useEffect } from 'react';
 import { 
-  Sparkles, Bot, Zap, CheckCircle2, AlertCircle, Clock, ShieldCheck, 
-  ArrowRight, ThumbsUp, ThumbsDown, CreditCard, RefreshCw, Upload, Eye, Check, X, Search, User
+  Sparkles, Zap, ArrowLeft, RefreshCw, Clock, CheckCircle2, XCircle, 
+  HelpCircle, CreditCard, ChevronRight, FileText, ArrowRight, ShieldCheck, 
+  ExternalLink, Info
 } from 'lucide-react';
 import { useAuth } from '../context/AuthContext';
-import { StudyCloudAPI, getWorkerApiUrl } from '../services/api';
+import { 
+  getUserStorageQuota, 
+  getUserStorageRequests, 
+  getUserPurchasesHistory, 
+  deleteUserRequestHistory,
+  UserStorageQuotaDetails 
+} from '../services/api';
+import { PricingView } from './PricingView';
 
-export interface AiCreditPack {
-  id: string;
-  name: string;
-  credits: number;
-  tokensEstimate: string;
-  priceFcfa: number;
-  badge?: string;
-  highlight?: boolean;
-  features: string[];
+interface AiSubscriptionsViewProps {
+  onBack?: () => void;
+  onOpenPricing?: (tab?: 'storage' | 'ai' | 'renewal') => void;
 }
 
-export const AI_CREDIT_PACKS: AiCreditPack[] = [
-  {
-    id: 'pack_decouverte_100',
-    name: 'Pack Découverte',
-    credits: 100,
-    tokensEstimate: '~100 000 mots IA',
-    priceFcfa: 1000,
-    badge: 'DÉMARRAGE',
-    features: [
-      '100 Crédits de création IA',
-      'Résumés, Quiz & Fiches mémoires',
-      'Analyse de vos documents PDF joints',
-      'Accès modèle Llama 3.3 70B Rapide',
-      'Crédits valables sans limite de temps'
-    ]
-  },
-  {
-    id: 'pack_revision_300',
-    name: 'Pack Révision & Devoirs',
-    credits: 300,
-    tokensEstimate: '~350 000 mots IA',
-    priceFcfa: 2500,
-    badge: 'POPULAIRE',
-    highlight: true,
-    features: [
-      '300 Crédits de création IA',
-      'Créations illimitées de questionnaires',
-      'Cartes mentales & devoirs complets',
-      'Traitement prioritaire de gros documents',
-      'Support pédagogique complet 7j/7'
-    ]
-  },
-  {
-    id: 'pack_examen_750',
-    name: 'Pack Réussite Examen',
-    credits: 750,
-    tokensEstimate: '~1 000 000 mots IA',
-    priceFcfa: 5000,
-    badge: 'MEILLEUR RAPPORT',
-    features: [
-      '750 Crédits de création IA intensive',
-      'Idéal pour tout un semestre universitaire',
-      'Analyse de livres et fascicules complets',
-      'Explications pas à pas & formules LaTeX',
-      'Assistance prioritaire DKD Technologies'
-    ]
-  }
-];
-
-export const AiSubscriptionsView: React.FC = () => {
+export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({ 
+  onBack, 
+  onOpenPricing 
+}) => {
   const { user } = useAuth();
-  const isAdmin = user?.email?.toLowerCase().includes('delmaskouassidibi') || 
-                  user?.email?.toLowerCase().includes('dkd-technologies') ||
-                  (user as any)?.role === 'admin';
+  const currentUserId = user?.id || localStorage.getItem('unifolder_user_id') || 'default-user';
 
-  const [activeTab, setActiveTab] = useState<'packs' | 'my-usage' | 'admin-requests'>('packs');
-  const [selectedPack, setSelectedPack] = useState<AiCreditPack | null>(null);
+  // Navigation interne pour afficher directement les formules connectées au worker tableau de bord
+  const [showPricingView, setShowPricingView] = useState(false);
   
-  // États de demande manuelle d'achat (Wave / Orange Money)
-  const [studentPhone, setStudentPhone] = useState(user?.phone || '');
-  const [studentWhatsapp, setStudentWhatsapp] = useState('');
-  const [receiptImage, setReceiptImage] = useState<string>('');
-  const [paymentRef, setPaymentRef] = useState('');
-  const [isSubmitting, setIsSubmitting] = useState(false);
-  const [submitSuccess, setSubmitSuccess] = useState(false);
+  // Onglets pour l'utilisateur : "Demandes en cours" vs "Achats validés & Refus"
+  const [activeTab, setActiveTab] = useState<'pending' | 'history'>('pending');
 
-  // Solde et statistiques de l'utilisateur
+  const [loading, setLoading] = useState(true);
+  const [refreshing, setRefreshing] = useState(false);
+
+  // Quota de stockage et mots IA
+  const [quotaData, setQuotaData] = useState<UserStorageQuotaDetails | null>(null);
+
+  // Solde de crédits de l'utilisateur
   const [userCredits, setUserCredits] = useState<{
     balance: number;
     tokensUsed: number;
@@ -91,498 +46,434 @@ export const AiSubscriptionsView: React.FC = () => {
     plan: string;
   }>(() => {
     try {
-      const saved = localStorage.getItem(`studycloud_user_credits_${user?.id}`);
+      const saved = localStorage.getItem(`studycloud_user_credits_${currentUserId}`);
       if (saved) return JSON.parse(saved);
     } catch {}
-    return { balance: 50, tokensUsed: 1250, totalPurchased: 0, plan: 'gratuit' };
+    return { balance: 50, tokensUsed: 1250, totalPurchased: 0, plan: 'Étudiant Gratuit' };
   });
 
-  // Liste des demandes d'achat (synchronisée en local / API)
-  const [requestsList, setRequestsList] = useState<any[]>(() => {
+  // Liste globale de toutes les demandes utilisateur
+  const [allRequests, setAllRequests] = useState<any[]>([]);
+
+  // Chargement des données synchronisées (serveur et local)
+  const loadData = async (showSpin = false) => {
+    if (showSpin) setRefreshing(true);
+    else setLoading(true);
+
     try {
-      const saved = localStorage.getItem('studycloud_ai_credit_requests');
-      if (saved) return JSON.parse(saved);
-    } catch {}
-    return [];
-  });
+      // 1. Quota de stockage et mots IA
+      const quotaRes = await getUserStorageQuota(currentUserId);
+      if (quotaRes.success && quotaRes.data) {
+        setQuotaData(quotaRes.data);
+      }
 
-  // Sauvegarder les demandes
-  const saveRequests = (newList: any[]) => {
-    setRequestsList(newList);
-    localStorage.setItem('studycloud_ai_credit_requests', JSON.stringify(newList));
-  };
+      // 2. Demandes enregistrées sur le serveur
+      const reqRes = await getUserStorageRequests(currentUserId);
+      let serverReqs: any[] = [];
+      if (reqRes && reqRes.success && Array.isArray(reqRes.requests)) {
+        serverReqs = reqRes.requests;
+      }
 
-  // Traitement d'une demande par l'admin
-  const handleApproveRequest = (reqId: string) => {
-    const req = requestsList.find(r => r.id === reqId);
-    if (!req) return;
+      // 3. Achats enregistrés sur le serveur
+      const purRes = await getUserPurchasesHistory(currentUserId);
+      let serverPurs: any[] = [];
+      if (purRes && purRes.success && Array.isArray(purRes.purchases)) {
+        serverPurs = purRes.purchases;
+      }
 
-    const updated = requestsList.map(r => 
-      r.id === reqId 
-        ? { ...r, status: 'completed', approved_at: new Date().toISOString() } 
-        : r
-    );
-    saveRequests(updated);
+      // 4. Demandes locales (sauvegardées lors des soumissions)
+      let localReqs: any[] = [];
+      try {
+        const saved = localStorage.getItem('studycloud_ai_credit_requests');
+        if (saved) localReqs = JSON.parse(saved);
+      } catch {}
 
-    // Mettre à jour les crédits du compte cible
-    if (req.user_id === user?.id) {
+      // Fusionner en éliminant les doublons d'identifiant
+      const allMap = new Map<string, any>();
+      [...localReqs, ...serverReqs, ...serverPurs].forEach((item) => {
+        if (item && (item.id || item.requestId)) {
+          const key = item.id || item.requestId;
+          allMap.set(key, item);
+        }
+      });
+
+      const combined = Array.from(allMap.values()).sort(
+        (a, b) => new Date(b.created_at || b.purchased_at || 0).getTime() - new Date(a.created_at || a.purchased_at || 0).getTime()
+      );
+
+      setAllRequests(combined);
+
+      // Calcul dynamique des crédits achetés validés
+      const totalApprovedCredits = combined
+        .filter(r => r.status === 'completed' || r.status === 'approved' || r.status === 'active' || r.status === 'confirmed')
+        .reduce((sum, r) => sum + (Number(r.credits_amount) || Number(r.additional_words ? r.additional_words / 1000 : 0) || 0), 0);
+
       setUserCredits(prev => {
         const next = {
           ...prev,
-          balance: prev.balance + (req.credits_amount || 0),
-          totalPurchased: prev.totalPurchased + (req.credits_amount || 0),
-          plan: 'étudiant'
+          balance: 50 + totalApprovedCredits,
+          totalPurchased: totalApprovedCredits,
+          plan: totalApprovedCredits > 0 ? 'IA Pro Étudiant' : 'Étudiant Gratuit'
         };
-        localStorage.setItem(`studycloud_user_credits_${user?.id}`, JSON.stringify(next));
+        try {
+          localStorage.setItem(`studycloud_user_credits_${currentUserId}`, JSON.stringify(next));
+        } catch {}
         return next;
       });
+
+    } catch (err) {
+      console.warn('[AiSubscriptionsView] Erreur lors du chargement des données:', err);
+    } finally {
+      setLoading(false);
+      setRefreshing(false);
     }
   };
 
-  const handleRejectRequest = (reqId: string) => {
-    const updated = requestsList.map(r => 
-      r.id === reqId 
-        ? { ...r, status: 'rejected', updated_at: new Date().toISOString() } 
-        : r
+  useEffect(() => {
+    loadData();
+  }, [currentUserId]);
+
+  // Filtrage : Demandes en cours
+  const pendingRequests = allRequests.filter(r => {
+    const st = (r.status || '').toLowerCase();
+    return st === 'pending' || st === 'en_attente' || st === 'traitement' || st === 'soumis';
+  });
+
+  // Filtrage : Achats validés
+  const approvedPurchases = allRequests.filter(r => {
+    const st = (r.status || '').toLowerCase();
+    return st === 'completed' || st === 'approved' || st === 'active' || st === 'confirmed';
+  });
+
+  // Filtrage : Demandes refusées
+  const rejectedRequests = allRequests.filter(r => {
+    const st = (r.status || '').toLowerCase();
+    return st === 'rejected' || st === 'refused' || st === 'refusé' || st === 'annule' || st === 'annulé';
+  });
+
+  // Ouverture du menu officiel de tarification connecté au worker tableau de bord
+  const handleOpenPricing = () => {
+    if (onOpenPricing) {
+      onOpenPricing('ai');
+    } else {
+      setShowPricingView(true);
+    }
+  };
+
+  // Si l'utilisateur clique sur "Recharger", afficher le menu officiel de tarification
+  if (showPricingView) {
+    return (
+      <PricingView 
+        initialTab="ai" 
+        onBack={() => {
+          setShowPricingView(false);
+          loadData();
+        }} 
+        onSelectPlan={(plan) => {}} 
+      />
     );
-    saveRequests(updated);
-  };
+  }
 
-  // Envoi de la demande d'achat avec preuve
-  const handleSubmitPurchase = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedPack) return;
-
-    setIsSubmitting(true);
-    setTimeout(() => {
-      const newReq = {
-        id: `aicp-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
-        user_id: user?.id || 'anonymous',
-        user_name: user?.name || 'Étudiant StudyCloud',
-        user_email: user?.email || '',
-        user_phone: studentPhone.trim(),
-        user_whatsapp: studentWhatsapp.trim(),
-        pack_id: selectedPack.id,
-        pack_name: selectedPack.name,
-        credits_amount: selectedPack.credits,
-        price_paid: selectedPack.priceFcfa,
-        currency: 'FCFA',
-        payment_method: 'Mobile Money (Wave / Orange Money / MTN)',
-        payment_reference: paymentRef.trim(),
-        receipt_image_url: receiptImage,
-        status: 'pending',
-        created_at: new Date().toISOString()
-      };
-
-      saveRequests([newReq, ...requestsList]);
-      setIsSubmitting(false);
-      setSubmitSuccess(true);
-    }, 600);
-  };
+  const wordsRemainingFormatted = quotaData?.wordsUsage?.formatted || `${(userCredits.balance * 1000).toLocaleString('fr-FR')} mots restants`;
 
   return (
-    <div className="w-full max-w-7xl mx-auto space-y-8 animate-fadeIn">
-      {/* En-tête principal */}
-      <div className="bg-white dark:bg-[#111827] border-2 border-stone-800 dark:border-slate-700 rounded-3xl p-6 sm:p-8 shadow-[4px_4px_0px_0px_#1c1917] dark:shadow-none">
-        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6">
-          <div className="space-y-2">
-            <div className="inline-flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-orange-100 dark:bg-orange-950/60 border border-orange-300 dark:border-orange-800 text-orange-700 dark:text-orange-300 text-xs font-bold uppercase tracking-wider">
-              <Sparkles className="w-4 h-4 text-orange-600" />
-              <span>Cerveau Pédagogique DKD & Monétisation IA</span>
+    <div className="w-full max-w-6xl mx-auto space-y-6 pb-20 animate-fadeIn">
+      {/* ========================================================================= */}
+      {/* BARRE SUPÉRIEURE : Bouton Retour (gauche), Titre (centre), Recharger (droite) */}
+      {/* ========================================================================= */}
+      <div className="flex items-center justify-between gap-2 pt-2 px-1">
+        {/* Bouton Retour à gauche */}
+        <div className="flex items-center gap-2">
+          {onBack && (
+            <button
+              onClick={onBack}
+              className="flex items-center gap-1.5 px-3 py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-xs rounded-xl border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
+              title="Retour au tableau de bord"
+            >
+              <ArrowLeft className="w-3.5 h-3.5" />
+              <span className="hidden sm:inline">Retour</span>
+            </button>
+          )}
+
+          <button
+            onClick={() => loadData(true)}
+            disabled={refreshing || loading}
+            className="p-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white rounded-xl border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[2px_2px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer disabled:opacity-50"
+            title="Actualiser les crédits"
+          >
+            <RefreshCw className={`w-3.5 h-3.5 ${refreshing ? 'animate-spin text-amber-600' : ''}`} />
+          </button>
+        </div>
+
+        {/* Titre au centre */}
+        <h1 className="font-sans text-xs sm:text-sm md:text-base font-extrabold text-stone-900 dark:text-stone-900 bg-amber-400 dark:bg-amber-500 px-3.5 py-1.5 rounded-xl border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs truncate">
+          Mes Crédits IA
+        </h1>
+
+        {/* Bouton "Recharger mes crédits" dans l'angle supérieur droit */}
+        <div>
+          <button
+            onClick={handleOpenPricing}
+            className="flex items-center gap-1.5 px-3 sm:px-4 py-1.5 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-extrabold text-xs sm:text-sm rounded-xl border-2 border-stone-900 shadow-[2px_2px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer animate-pulse hover:animate-none"
+            title="Choisir une formule ou demander des crédits"
+          >
+            <Zap className="w-3.5 h-3.5 fill-current text-white" />
+            <span>Recharger mes crédits</span>
+          </button>
+        </div>
+      </div>
+
+      {/* ========================================================================= */}
+      {/* CARTE PRINCIPALE : SOLDE DE CRÉDITS IA RESTANTS & CONSOMMATION */}
+      {/* ========================================================================= */}
+      <div className="bg-white dark:bg-[#131b2e] rounded-3xl p-5 sm:p-7 border-2 border-stone-800 dark:border-slate-800 shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none transition-all">
+        <div className="flex flex-col md:flex-row md:items-center justify-between gap-6 pb-6 border-b border-stone-200 dark:border-slate-800">
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-2">
+              <span className="p-2 rounded-xl bg-orange-100 dark:bg-orange-950/60 text-orange-600 dark:text-orange-400 border border-orange-300 dark:border-orange-800">
+                <Sparkles className="w-5 h-5" />
+              </span>
+              <div>
+                <h2 className="text-lg sm:text-xl font-extrabold text-stone-900 dark:text-white">
+                  Portefeuille de Crédits IA
+                </h2>
+                <p className="text-xs text-stone-500 dark:text-slate-400">
+                  Surveillez vos crédits disponibles pour discuter avec Delmas IA et générer vos modules de cours
+                </p>
+              </div>
             </div>
-            <h1 className="text-2xl sm:text-3xl font-black text-stone-900 dark:text-white tracking-tight">
-              Abonnements & Crédits IA StudyCloud
-            </h1>
-            <p className="text-sm text-stone-600 dark:text-slate-300 max-w-2xl">
-              Chaque utilisateur dispose de son propre portefeuille de crédits étanche. Recharger des crédits permet de débloquer la génération illimitée de modules pédagogiques et la discussion avec Delmas IA.
-            </p>
           </div>
 
-          {/* Badge Solde Actuel */}
-          <div className="bg-gradient-to-br from-orange-50 to-amber-100 dark:from-[#1e293b] dark:to-[#0f172a] border-2 border-stone-800 dark:border-orange-500/40 rounded-2xl p-4 sm:p-5 shadow-[3px_3px_0px_0px_#1c1917] shrink-0 text-center min-w-[200px]">
-            <div className="text-xs font-bold uppercase tracking-wider text-stone-600 dark:text-slate-400">
-              Votre Solde Actuel
+          {/* Affichage Chiffré du Solde Actuel */}
+          <div className="bg-gradient-to-br from-amber-50 to-orange-100 dark:from-[#1e293b] dark:to-[#0f172a] border-2 border-stone-800 dark:border-orange-500/50 rounded-2xl p-4 sm:p-5 shadow-[2px_2px_0px_0px_#1c1917] text-center min-w-[220px]">
+            <div className="text-[11px] font-bold uppercase tracking-wider text-stone-600 dark:text-slate-400">
+              Solde Restant Disponible
             </div>
             <div className="text-3xl sm:text-4xl font-black text-orange-600 dark:text-orange-400 mt-1">
               {userCredits.balance} <span className="text-sm font-bold text-stone-700 dark:text-slate-300">Crédits</span>
             </div>
-            <div className="text-[11px] text-stone-500 dark:text-slate-400 mt-1 font-medium">
-              ~{userCredits.tokensUsed.toLocaleString()} tokens Llama consommés
+            <div className="text-xs font-semibold text-emerald-600 dark:text-emerald-400 mt-1">
+              ✨ {wordsRemainingFormatted}
             </div>
           </div>
         </div>
 
-        {/* Onglets de navigation */}
-        <div className="flex flex-wrap items-center gap-2 mt-6 pt-6 border-t border-stone-200 dark:border-slate-800">
-          <button
-            onClick={() => { setActiveTab('packs'); setSelectedPack(null); setSubmitSuccess(false); }}
-            className={`px-4 py-2 rounded-xl font-bold text-xs transition-all border-2 ${
-              activeTab === 'packs'
-                ? 'bg-orange-500 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
-                : 'bg-stone-100 dark:bg-slate-800 text-stone-700 dark:text-slate-300 border-transparent hover:bg-stone-200'
-            }`}
-          >
-            Formules & Packs de Crédits
-          </button>
-          <button
-            onClick={() => setActiveTab('my-usage')}
-            className={`px-4 py-2 rounded-xl font-bold text-xs transition-all border-2 ${
-              activeTab === 'my-usage'
-                ? 'bg-orange-500 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
-                : 'bg-stone-100 dark:bg-slate-800 text-stone-700 dark:text-slate-300 border-transparent hover:bg-stone-200'
-            }`}
-          >
-            Historique & Mes Demandes
-          </button>
-          {isAdmin && (
-            <button
-              onClick={() => setActiveTab('admin-requests')}
-              className={`px-4 py-2 rounded-xl font-bold text-xs transition-all border-2 flex items-center gap-1.5 ${
-                activeTab === 'admin-requests'
-                  ? 'bg-emerald-600 text-white border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]'
-                  : 'bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border-emerald-300 hover:bg-emerald-100'
-              }`}
-            >
-              <ShieldCheck className="w-4 h-4" />
-              <span>Gestion Admin ({requestsList.filter(r => r.status === 'pending').length} en attente)</span>
-            </button>
-          )}
+        {/* Détails et badges de répartition */}
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 pt-5">
+          <div className="p-3.5 bg-stone-50 dark:bg-slate-900/60 rounded-2xl border border-stone-200 dark:border-slate-800 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-emerald-100 dark:bg-emerald-950/50 text-emerald-600 flex items-center justify-center font-bold text-sm shrink-0">
+              🎁
+            </div>
+            <div>
+              <div className="text-[11px] font-bold text-stone-500 dark:text-slate-400 uppercase tracking-wider">
+                Crédits Offerts
+              </div>
+              <div className="text-sm font-black text-stone-800 dark:text-white">
+                50 Crédits Gratuits
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3.5 bg-stone-50 dark:bg-slate-900/60 rounded-2xl border border-stone-200 dark:border-slate-800 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-blue-100 dark:bg-blue-950/50 text-blue-600 flex items-center justify-center font-bold text-sm shrink-0">
+              ⚡
+            </div>
+            <div>
+              <div className="text-[11px] font-bold text-stone-500 dark:text-slate-400 uppercase tracking-wider">
+                Consommation
+              </div>
+              <div className="text-sm font-black text-stone-800 dark:text-white">
+                ~{userCredits.tokensUsed.toLocaleString('fr-FR')} tokens Llama
+              </div>
+            </div>
+          </div>
+
+          <div className="p-3.5 bg-stone-50 dark:bg-slate-900/60 rounded-2xl border border-stone-200 dark:border-slate-800 flex items-center gap-3">
+            <div className="w-9 h-9 rounded-xl bg-purple-100 dark:bg-purple-950/50 text-purple-600 flex items-center justify-center font-bold text-sm shrink-0">
+              🎓
+            </div>
+            <div>
+              <div className="text-[11px] font-bold text-stone-500 dark:text-slate-400 uppercase tracking-wider">
+                Formule Active
+              </div>
+              <div className="text-sm font-black text-stone-800 dark:text-white">
+                {userCredits.plan}
+              </div>
+            </div>
+          </div>
         </div>
       </div>
 
-      {/* VUE 1 : GRILLE DES PACKS DE CRÉDITS */}
-      {activeTab === 'packs' && !selectedPack && (
-        <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
-          {AI_CREDIT_PACKS.map((pack) => (
-            <div
-              key={pack.id}
-              className={`relative bg-white dark:bg-[#111827] border-3 border-stone-800 dark:border-slate-700 rounded-3xl p-6 flex flex-col justify-between transition-all hover:scale-[1.02] shadow-[5px_5px_0px_0px_#1c1917] ${
-                pack.highlight ? 'ring-3 ring-orange-500 ring-offset-2' : ''
-              }`}
-            >
-              {pack.badge && (
-                <div className="absolute -top-3.5 right-6 px-3 py-1 bg-orange-600 text-white text-[10px] font-black uppercase tracking-widest rounded-full border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917]">
-                  {pack.badge}
-                </div>
-              )}
+      {/* ========================================================================= */}
+      {/* SÉLECTEUR D'ONGLETS UTILISATEUR (Demandes en cours vs Achats & Refus) */}
+      {/* ========================================================================= */}
+      <div className="flex items-center gap-2 border-b-2 border-stone-300 dark:border-slate-800 pb-2">
+        <button
+          onClick={() => setActiveTab('pending')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-black text-xs sm:text-sm transition-all border-2 cursor-pointer ${
+            activeTab === 'pending'
+              ? 'bg-amber-500 text-white border-stone-900 shadow-[2px_2px_0px_0px_#1c1917]'
+              : 'bg-white dark:bg-slate-800 text-stone-700 dark:text-slate-300 border-stone-300 dark:border-slate-700 hover:bg-stone-100'
+          }`}
+        >
+          <Clock className="w-4 h-4" />
+          <span>Mes demandes en cours</span>
+          <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-black ${
+            activeTab === 'pending'
+              ? 'bg-white text-stone-900'
+              : 'bg-amber-500/20 text-amber-600 dark:text-amber-400'
+          }`}>
+            {pendingRequests.length}
+          </span>
+        </button>
 
-              <div className="space-y-4">
-                <div className="w-12 h-12 rounded-2xl bg-orange-100 dark:bg-orange-950/80 border-2 border-stone-800 flex items-center justify-center text-orange-600 shadow-[2px_2px_0px_0px_#1c1917]">
-                  <Zap className="w-6 h-6" />
-                </div>
-                <div>
-                  <h3 className="text-xl font-black text-stone-900 dark:text-white">
-                    {pack.name}
-                  </h3>
-                  <div className="text-xs text-orange-600 dark:text-orange-400 font-bold mt-0.5">
-                    {pack.tokensEstimate}
-                  </div>
-                </div>
+        <button
+          onClick={() => setActiveTab('history')}
+          className={`flex items-center gap-2 px-4 py-2.5 rounded-2xl font-black text-xs sm:text-sm transition-all border-2 cursor-pointer ${
+            activeTab === 'history'
+              ? 'bg-amber-500 text-white border-stone-900 shadow-[2px_2px_0px_0px_#1c1917]'
+              : 'bg-white dark:bg-slate-800 text-stone-700 dark:text-slate-300 border-stone-300 dark:border-slate-700 hover:bg-stone-100'
+          }`}
+        >
+          <CheckCircle2 className="w-4 h-4" />
+          <span>Mes achats validés & Refus</span>
+          <span className={`ml-1 px-2 py-0.5 rounded-full text-xs font-black ${
+            activeTab === 'history'
+              ? 'bg-white text-stone-900'
+              : 'bg-stone-200 dark:bg-slate-700 text-stone-700 dark:text-white'
+          }`}>
+            {approvedPurchases.length + rejectedRequests.length}
+          </span>
+        </button>
+      </div>
 
-                <div className="flex items-baseline gap-1 py-2 border-y border-stone-100 dark:border-slate-800">
-                  <span className="text-3xl font-black text-stone-900 dark:text-white">
-                    {pack.priceFcfa.toLocaleString()}
-                  </span>
-                  <span className="text-sm font-bold text-stone-500">FCFA</span>
-                  <span className="text-xs text-stone-400 ml-auto">/ {pack.credits} crédits</span>
-                </div>
-
-                <ul className="space-y-2.5 pt-2">
-                  {pack.features.map((feat, idx) => (
-                    <li key={idx} className="flex items-start gap-2 text-xs text-stone-700 dark:text-slate-300 font-medium">
-                      <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                      <span>{feat}</span>
-                    </li>
-                  ))}
-                </ul>
+      {/* ========================================================================= */}
+      {/* ONGLET 1 : MES DEMANDES EN COURS DE VALIDATION */}
+      {/* ========================================================================= */}
+      {activeTab === 'pending' && (
+        <div className="space-y-4">
+          {pendingRequests.length === 0 ? (
+            <div className="bg-white dark:bg-[#131b2e] rounded-3xl p-8 sm:p-12 text-center border-2 border-dashed border-stone-300 dark:border-slate-800 space-y-4">
+              <div className="w-16 h-16 rounded-full bg-amber-50 dark:bg-amber-950/40 text-amber-500 mx-auto flex items-center justify-center">
+                <Clock className="w-8 h-8" />
               </div>
-
-              <div className="mt-8 pt-4">
-                <button
-                  onClick={() => setSelectedPack(pack)}
-                  className={`w-full py-3 px-4 rounded-xl border-2 border-stone-800 font-bold text-xs uppercase tracking-wider flex items-center justify-center gap-2 shadow-[3px_3px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer ${
-                    pack.highlight
-                      ? 'bg-orange-500 hover:bg-orange-600 text-white'
-                      : 'bg-[#F5F1E9] dark:bg-slate-800 hover:bg-stone-200 text-stone-900 dark:text-white'
-                  }`}
-                >
-                  <CreditCard className="w-4 h-4" />
-                  <span>Acheter ce pack</span>
-                </button>
-              </div>
-            </div>
-          ))}
-        </div>
-      )}
-
-      {/* FORMULAIRE DE PAIEMENT SUR DEMANDE (WAVE / ORANGE MONEY) */}
-      {activeTab === 'packs' && selectedPack && (
-        <div className="bg-white dark:bg-[#111827] border-3 border-stone-800 dark:border-slate-700 rounded-3xl p-6 sm:p-8 shadow-[6px_6px_0px_0px_#1c1917] max-w-2xl mx-auto space-y-6">
-          <div className="flex items-center justify-between border-b border-stone-200 dark:border-slate-800 pb-4">
-            <div>
-              <div className="text-xs uppercase font-bold text-orange-600 tracking-wider">Souscription par Mobile Money</div>
-              <h2 className="text-xl font-black text-stone-900 dark:text-white mt-0.5">
-                Commander le {selectedPack.name} ({selectedPack.priceFcfa.toLocaleString()} FCFA)
-              </h2>
-            </div>
-            <button
-              onClick={() => setSelectedPack(null)}
-              className="p-2 hover:bg-stone-100 dark:hover:bg-slate-800 rounded-xl text-stone-600 cursor-pointer"
-            >
-              <X className="w-5 h-5" />
-            </button>
-          </div>
-
-          {submitSuccess ? (
-            <div className="text-center py-8 space-y-4">
-              <div className="w-16 h-16 rounded-full bg-emerald-100 text-emerald-600 border-2 border-stone-800 flex items-center justify-center mx-auto shadow-[3px_3px_0px_0px_#1c1917]">
-                <Check className="w-8 h-8" />
-              </div>
-              <h3 className="text-lg font-black text-stone-900 dark:text-white">Demande envoyée avec succès !</h3>
-              <p className="text-xs text-stone-600 dark:text-slate-300 max-w-md mx-auto">
-                Votre reçu a été transmis à l'équipe DKD Technologies. Dès validation par l'administration, vos <strong>{selectedPack.credits} crédits</strong> seront immédiatement ajoutés à votre compte.
+              <h3 className="text-lg font-extrabold text-stone-900 dark:text-white">
+                Aucune demande en cours de validation
+              </h3>
+              <p className="text-xs sm:text-sm text-stone-500 dark:text-slate-400 max-w-md mx-auto">
+                Lorsque vous souscrivez à une formule d'abonnement ou effectuez une demande de crédits supplémentaires, elle s'affiche ici pendant la vérification de votre reçu de paiement.
               </p>
               <button
-                onClick={() => { setSelectedPack(null); setActiveTab('my-usage'); }}
-                className="px-6 py-2.5 bg-orange-500 text-white font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer"
+                onClick={handleOpenPricing}
+                className="inline-flex items-center gap-2 px-5 py-2.5 bg-orange-600 hover:bg-orange-500 text-white font-extrabold text-xs sm:text-sm rounded-xl border-2 border-stone-900 shadow-[2px_2px_0px_0px_#1c1917] transition-all cursor-pointer"
               >
-                Voir mes demandes
+                <Zap className="w-4 h-4" />
+                <span>Découvrir les formules IA</span>
               </button>
             </div>
           ) : (
-            <form onSubmit={handleSubmitPurchase} className="space-y-5">
-              {/* Instructions de paiement */}
-              <div className="bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-800 rounded-2xl p-4 text-xs space-y-2 text-stone-800 dark:text-slate-200">
-                <div className="font-black flex items-center gap-1.5 text-amber-800 dark:text-amber-300">
-                  <AlertCircle className="w-4 h-4" />
-                  <span>Instructions pour le paiement manuel (Wave / Orange Money) :</span>
-                </div>
-                <p>1. Effectuez le transfert de <strong>{selectedPack.priceFcfa.toLocaleString()} FCFA</strong> vers l'un des numéros officiels :</p>
-                <div className="bg-white dark:bg-slate-900 p-2.5 rounded-xl border border-stone-300 dark:border-slate-700 space-y-1 font-mono text-[11px]">
-                  <div>🔵 <strong>Wave :</strong> +225 07 00 00 00 00 (StudyCloud / DKD)</div>
-                  <div>🟠 <strong>Orange Money :</strong> +225 07 00 00 00 00</div>
-                  <div>🟡 <strong>MTN / Moov :</strong> +225 05 00 00 00 00</div>
-                </div>
-                <p>2. Prenez une capture d'écran du reçu avec la date et le numéro de transaction et joignez-la ci-dessous.</p>
-              </div>
-
-              {/* Téléphone & WhatsApp */}
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="block text-xs font-bold text-stone-700 dark:text-slate-300 mb-1">
-                    Numéro de téléphone émetteur *
-                  </label>
-                  <input
-                    type="text"
-                    required
-                    value={studentPhone}
-                    onChange={(e) => setStudentPhone(e.target.value)}
-                    placeholder="Ex: 0701020304"
-                    className="w-full bg-[#F5F1E9] dark:bg-slate-800 border-2 border-stone-800 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-stone-900 dark:text-white outline-none font-medium"
-                  />
-                </div>
-                <div>
-                  <label className="block text-xs font-bold text-stone-700 dark:text-slate-300 mb-1">
-                    WhatsApp pour confirmation (optionnel)
-                  </label>
-                  <input
-                    type="text"
-                    value={studentWhatsapp}
-                    onChange={(e) => setStudentWhatsapp(e.target.value)}
-                    placeholder="Ex: +225 0701020304"
-                    className="w-full bg-[#F5F1E9] dark:bg-slate-800 border-2 border-stone-800 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-stone-900 dark:text-white outline-none font-medium"
-                  />
-                </div>
-              </div>
-
-              {/* Référence ou ID de transaction */}
-              <div>
-                <label className="block text-xs font-bold text-stone-700 dark:text-slate-300 mb-1">
-                  ID de Transaction ou Référence Wave / Orange (optionnel)
-                </label>
-                <input
-                  type="text"
-                  value={paymentRef}
-                  onChange={(e) => setPaymentRef(e.target.value)}
-                  placeholder="Ex: TX-98471203"
-                  className="w-full bg-[#F5F1E9] dark:bg-slate-800 border-2 border-stone-800 dark:border-slate-700 rounded-xl px-3 py-2 text-xs text-stone-900 dark:text-white outline-none font-mono"
-                />
-              </div>
-
-              {/* Capture du Reçu */}
-              <div>
-                <label className="block text-xs font-bold text-stone-700 dark:text-slate-300 mb-1">
-                  Capture d'écran du reçu de paiement *
-                </label>
-                <div className="border-2 border-dashed border-stone-800 dark:border-slate-700 rounded-2xl p-4 text-center bg-stone-50 dark:bg-slate-900">
-                  {receiptImage ? (
-                    <div className="space-y-2">
-                      <img src={receiptImage} alt="Reçu" className="max-h-40 mx-auto rounded-xl border border-stone-300" />
-                      <button
-                        type="button"
-                        onClick={() => setReceiptImage('')}
-                        className="text-xs text-red-500 font-bold hover:underline"
-                      >
-                        Changer de reçu
-                      </button>
-                    </div>
-                  ) : (
-                    <label className="cursor-pointer flex flex-col items-center justify-center gap-2 py-4">
-                      <Upload className="w-8 h-8 text-orange-500" />
-                      <span className="text-xs font-bold text-stone-700 dark:text-slate-300">
-                        Cliquez pour joindre la capture du reçu Mobile Money
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              {pendingRequests.map((req, idx) => (
+                <div 
+                  key={req.id || idx}
+                  className="bg-white dark:bg-[#131b2e] rounded-2xl p-5 border-2 border-amber-500/80 dark:border-amber-500/60 shadow-[3px_3px_0px_0px_#f59e0b] dark:shadow-none space-y-3"
+                >
+                  <div className="flex items-start justify-between gap-2">
+                    <div>
+                      <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                        ⏳ En cours de validation
                       </span>
-                      <span className="text-[10px] text-stone-400">PNG, JPG, JPEG</span>
-                      <input
-                        type="file"
-                        accept="image/*"
-                        required
-                        className="hidden"
-                        onChange={(e) => {
-                          const file = e.target.files?.[0];
-                          if (file) {
-                            const reader = new FileReader();
-                            reader.onload = () => setReceiptImage(reader.result as string);
-                            reader.readAsDataURL(file);
-                          }
-                        }}
-                      />
-                    </label>
-                  )}
-                </div>
-              </div>
+                      <h4 className="text-base font-black text-stone-900 dark:text-white mt-1.5">
+                        {req.pack_name || req.packName || 'Demande de Crédits IA'}
+                      </h4>
+                    </div>
+                    <span className="text-sm font-black text-orange-600 dark:text-orange-400">
+                      {req.price_display || `${(req.price_paid || req.pricePaid || 0).toLocaleString('fr-FR')} FCFA`}
+                    </span>
+                  </div>
 
-              {/* Bouton d'envoi */}
-              <div className="flex items-center justify-end gap-3 pt-4 border-t border-stone-200 dark:border-slate-800">
-                <button
-                  type="button"
-                  onClick={() => setSelectedPack(null)}
-                  className="px-4 py-2.5 text-xs font-bold text-stone-600 dark:text-slate-300 hover:bg-stone-100 rounded-xl"
-                >
-                  Annuler
-                </button>
-                <button
-                  type="submit"
-                  disabled={isSubmitting}
-                  className="px-6 py-2.5 bg-orange-500 hover:bg-orange-600 text-white font-bold text-xs rounded-xl border-2 border-stone-800 shadow-[2px_2px_0px_0px_#1c1917] cursor-pointer disabled:opacity-50"
-                >
-                  {isSubmitting ? 'Transmission en cours...' : 'Envoyer ma demande pour validation'}
-                </button>
-              </div>
-            </form>
+                  <div className="text-xs text-stone-600 dark:text-slate-300 space-y-1 bg-stone-50 dark:bg-slate-900/60 p-3 rounded-xl border border-stone-200 dark:border-slate-800">
+                    <div className="flex justify-between">
+                      <span className="text-stone-400">Date de soumission :</span>
+                      <span className="font-bold">{req.created_at ? new Date(req.created_at).toLocaleDateString('fr-FR', { day: '2-digit', month: 'short', year: 'numeric', hour: '2-digit', minute: '2-digit' }) : 'Récemment'}</span>
+                    </div>
+                    {req.payment_method && (
+                      <div className="flex justify-between">
+                        <span className="text-stone-400">Moyen de paiement :</span>
+                        <span className="font-bold">{req.payment_method}</span>
+                      </div>
+                    )}
+                    {req.payment_reference && (
+                      <div className="flex justify-between">
+                        <span className="text-stone-400">Référence / Reçu :</span>
+                        <span className="font-mono font-bold text-amber-600 dark:text-amber-400">{req.payment_reference}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-2 text-[11px] text-amber-700 dark:text-amber-300/90 bg-amber-50 dark:bg-amber-950/30 p-2.5 rounded-xl border border-amber-200 dark:border-amber-900/50">
+                    <Info className="w-4 h-4 shrink-0" />
+                    <span>Votre reçu est en cours d'inspection par l'équipe DKD Technologies. Vos crédits seront crédités dès validation.</span>
+                  </div>
+                </div>
+              ))}
+            </div>
           )}
         </div>
       )}
 
-      {/* VUE 2 : HISTORIQUE DE L'UTILISATEUR */}
-      {activeTab === 'my-usage' && (
+      {/* ========================================================================= */}
+      {/* ONGLET 2 : MES ACHATS VALIDÉS & REFUS */}
+      {/* ========================================================================= */}
+      {activeTab === 'history' && (
         <div className="space-y-6">
-          <div className="bg-white dark:bg-[#111827] border-2 border-stone-800 dark:border-slate-700 rounded-3xl p-6 shadow-[4px_4px_0px_0px_#1c1917]">
-            <h3 className="text-lg font-black text-stone-900 dark:text-white mb-4">Mes Demandes de Crédits</h3>
-            {requestsList.filter(r => r.user_id === user?.id).length === 0 ? (
-              <p className="text-xs text-stone-500 italic py-6 text-center">
-                Vous n'avez aucune demande d'achat en cours. Choisissez un pack pour recharger vos crédits.
-              </p>
-            ) : (
-              <div className="space-y-3">
-                {requestsList.filter(r => r.user_id === user?.id).map((req) => (
-                  <div key={req.id} className="flex flex-col sm:flex-row sm:items-center justify-between p-4 bg-stone-50 dark:bg-slate-800 rounded-2xl border border-stone-200 dark:border-slate-700 gap-3">
-                    <div>
-                      <div className="font-bold text-sm text-stone-900 dark:text-white">{req.pack_name} ({req.credits_amount} crédits)</div>
-                      <div className="text-xs text-stone-500 mt-0.5">
-                        {req.price_paid} {req.currency} via {req.payment_method} • {new Date(req.created_at).toLocaleDateString()}
-                      </div>
-                    </div>
-                    <span className={`px-3 py-1 rounded-full text-xs font-bold uppercase tracking-wider self-start sm:self-auto ${
-                      req.status === 'completed'
-                        ? 'bg-emerald-100 text-emerald-700 border border-emerald-300'
-                        : req.status === 'rejected'
-                        ? 'bg-red-100 text-red-700 border border-red-300'
-                        : 'bg-amber-100 text-amber-700 border border-amber-300'
-                    }`}>
-                      {req.status === 'completed' ? 'Validé & Crédité' : req.status === 'rejected' ? 'Rejeté' : 'En attente de vérification'}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
+          {/* Section 1 : Achats validés et actifs */}
+          <div className="space-y-3">
+            <h3 className="text-xs font-black uppercase tracking-wider text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5 px-1">
+              <CheckCircle2 className="w-4 h-4" />
+              <span>Achats validés & Formules actives ({approvedPurchases.length})</span>
+            </h3>
 
-      {/* VUE 3 : PANNEAU ADMINISTRATEUR (DELMAS) */}
-      {activeTab === 'admin-requests' && isAdmin && (
-        <div className="space-y-6">
-          <div className="bg-white dark:bg-[#111827] border-2 border-stone-800 dark:border-slate-700 rounded-3xl p-6 shadow-[4px_4px_0px_0px_#1c1917]">
-            <div className="flex items-center justify-between mb-6">
-              <div>
-                <h3 className="text-xl font-black text-stone-900 dark:text-white">Panneau Administrateur : Validation des Paiements</h3>
-                <p className="text-xs text-stone-500">Vérifiez les reçus Mobile Money envoyés par les étudiants et créditez leurs comptes en 1 clic.</p>
+            {approvedPurchases.length === 0 ? (
+              <div className="bg-white dark:bg-[#131b2e] rounded-2xl p-6 text-center border border-stone-200 dark:border-slate-800 text-stone-500 dark:text-slate-400 text-xs">
+                Aucun achat validé pour le moment.
               </div>
-              <span className="px-3 py-1 bg-emerald-100 text-emerald-800 font-bold text-xs rounded-xl border border-emerald-300">
-                Mode Gérant DKD Actif
-              </span>
-            </div>
-
-            {requestsList.length === 0 ? (
-              <p className="text-xs text-stone-500 italic py-8 text-center">Aucune demande reçue pour le moment.</p>
             ) : (
-              <div className="space-y-4">
-                {requestsList.map((req) => (
-                  <div key={req.id} className="p-5 bg-stone-50 dark:bg-slate-800 rounded-2xl border-2 border-stone-200 dark:border-slate-700 space-y-4">
-                    <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-stone-200 dark:border-slate-700 pb-3">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {approvedPurchases.map((pur, idx) => (
+                  <div 
+                    key={pur.id || idx}
+                    className="bg-white dark:bg-[#131b2e] rounded-2xl p-5 border-2 border-emerald-500/70 shadow-[3px_3px_0px_0px_#10b981] dark:shadow-none space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
                       <div>
-                        <span className="text-xs font-mono font-bold text-orange-600">{req.id}</span>
-                        <h4 className="text-base font-black text-stone-900 dark:text-white">{req.user_name} ({req.user_email || 'Sans email'})</h4>
-                        <div className="text-xs text-stone-500">
-                          Tél : <strong>{req.user_phone}</strong> {req.user_whatsapp ? `• WhatsApp : ${req.user_whatsapp}` : ''}
-                        </div>
+                        <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                          ✅ Achat Validé & Activé
+                        </span>
+                        <h4 className="text-base font-black text-stone-900 dark:text-white mt-1.5">
+                          {pur.pack_name || pur.packName || 'Abonnement IA StudyCloud'}
+                        </h4>
                       </div>
-
-                      <div className="text-right">
-                        <div className="text-base font-black text-emerald-600">{req.price_paid} {req.currency}</div>
-                        <div className="text-xs font-bold text-stone-600 dark:text-slate-300">{req.pack_name} (+{req.credits_amount} crédits)</div>
-                      </div>
+                      <span className="text-sm font-black text-emerald-600 dark:text-emerald-400">
+                        {pur.price_display || `${(pur.price_paid || pur.pricePaid || 0).toLocaleString('fr-FR')} FCFA`}
+                      </span>
                     </div>
 
-                    {/* Reçu et informations */}
-                    <div className="flex flex-col md:flex-row gap-4 items-start">
-                      {req.receipt_image_url && (
-                        <div className="w-full md:w-48 shrink-0">
-                          <div className="text-[10px] font-bold uppercase text-stone-500 mb-1">Preuve de paiement :</div>
-                          <img
-                            src={req.receipt_image_url}
-                            alt="Preuve"
-                            className="w-full max-h-48 object-cover rounded-xl border-2 border-stone-300 dark:border-slate-600 cursor-pointer"
-                            onClick={() => window.open(req.receipt_image_url, '_blank')}
-                          />
-                        </div>
-                      )}
-
-                      <div className="flex-1 space-y-2 text-xs text-stone-700 dark:text-slate-300">
-                        <div><strong>Méthode déclarée :</strong> {req.payment_method}</div>
-                        <div><strong>Réf de transaction :</strong> {req.payment_reference || 'Non renseignée'}</div>
-                        <div><strong>Date de réception :</strong> {new Date(req.created_at).toLocaleString()}</div>
-                        <div><strong>Statut actuel :</strong> <span className="font-bold uppercase">{req.status}</span></div>
+                    <div className="text-xs text-stone-600 dark:text-slate-300 space-y-1 bg-stone-50 dark:bg-slate-900/60 p-3 rounded-xl border border-stone-200 dark:border-slate-800">
+                      <div className="flex justify-between">
+                        <span className="text-stone-400">Activé le :</span>
+                        <span className="font-bold">{pur.confirmed_at || pur.updated_at || pur.created_at ? new Date(pur.confirmed_at || pur.updated_at || pur.created_at).toLocaleDateString('fr-FR') : 'Confirmé'}</span>
                       </div>
-
-                      {/* Boutons d'action pour l'admin */}
-                      {req.status === 'pending' && (
-                        <div className="flex sm:flex-col gap-2 shrink-0 self-end sm:self-center">
-                          <button
-                            onClick={() => handleApproveRequest(req.id)}
-                            className="px-4 py-2 bg-emerald-600 hover:bg-emerald-700 text-white font-bold text-xs rounded-xl border border-emerald-800 shadow-[2px_2px_0px_0px_#1c1917] flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <Check className="w-4 h-4" />
-                            <span>Valider & Créditer</span>
-                          </button>
-                          <button
-                            onClick={() => handleRejectRequest(req.id)}
-                            className="px-4 py-2 bg-red-100 hover:bg-red-200 text-red-700 font-bold text-xs rounded-xl border border-red-300 flex items-center gap-1.5 cursor-pointer"
-                          >
-                            <X className="w-4 h-4" />
-                            <span>Rejeter</span>
-                          </button>
+                      {pur.additional_words ? (
+                        <div className="flex justify-between">
+                          <span className="text-stone-400">Volume accordé :</span>
+                          <span className="font-bold text-emerald-600">+{Number(pur.additional_words).toLocaleString('fr-FR')} mots IA</span>
+                        </div>
+                      ) : null}
+                      {pur.payment_reference && (
+                        <div className="flex justify-between">
+                          <span className="text-stone-400">Réf transaction :</span>
+                          <span className="font-mono text-stone-700 dark:text-slate-300">{pur.payment_reference}</span>
                         </div>
                       )}
                     </div>
@@ -591,8 +482,81 @@ export const AiSubscriptionsView: React.FC = () => {
               </div>
             )}
           </div>
+
+          {/* Section 2 : Demandes refusées */}
+          <div className="space-y-3 pt-4 border-t border-stone-200 dark:border-slate-800">
+            <h3 className="text-xs font-black uppercase tracking-wider text-red-600 dark:text-red-400 flex items-center gap-1.5 px-1">
+              <XCircle className="w-4 h-4" />
+              <span>Demandes non validées ou refusées ({rejectedRequests.length})</span>
+            </h3>
+
+            {rejectedRequests.length === 0 ? (
+              <div className="bg-white dark:bg-[#131b2e] rounded-2xl p-6 text-center border border-stone-200 dark:border-slate-800 text-stone-500 dark:text-slate-400 text-xs">
+                Aucune demande refusée.
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {rejectedRequests.map((rej, idx) => (
+                  <div 
+                    key={rej.id || idx}
+                    className="bg-white dark:bg-[#131b2e] rounded-2xl p-5 border-2 border-red-400/60 dark:border-red-500/40 shadow-[3px_3px_0px_0px_#ef4444] dark:shadow-none space-y-3"
+                  >
+                    <div className="flex items-start justify-between gap-2">
+                      <div>
+                        <span className="inline-block px-2.5 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-red-100 text-red-800 dark:bg-red-950 dark:text-red-300 border border-red-300 dark:border-red-700">
+                          ❌ Demande non validée
+                        </span>
+                        <h4 className="text-base font-black text-stone-900 dark:text-white mt-1.5">
+                          {rej.pack_name || rej.packName || 'Demande de Crédits'}
+                        </h4>
+                      </div>
+                      <span className="text-sm font-bold text-stone-500">
+                        {rej.price_display || `${(rej.price_paid || rej.pricePaid || 0).toLocaleString('fr-FR')} FCFA`}
+                      </span>
+                    </div>
+
+                    <p className="text-xs text-stone-600 dark:text-slate-300 bg-red-50 dark:bg-red-950/30 p-3 rounded-xl border border-red-200 dark:border-red-900/50">
+                      {rej.admin_notes || rej.notes || "Le reçu ou la référence de transaction n'a pas pu être vérifié avec les données de paiement Mobile Money. Vous pouvez réitérer votre demande avec une capture claire."}
+                    </p>
+
+                    <div className="flex justify-end pt-1">
+                      <button
+                        onClick={handleOpenPricing}
+                        className="px-3.5 py-1.5 bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs rounded-xl transition-all cursor-pointer"
+                      >
+                        Réitérer la demande
+                      </button>
+                    </div>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
         </div>
       )}
+
+      {/* ========================================================================= */}
+      {/* BANNIÈRE D'APPEL À L'ACTION : RECHARGER VIA LE WORKER TABLEAU DE BORD */}
+      {/* ========================================================================= */}
+      <div className="bg-gradient-to-r from-amber-500/10 via-orange-500/15 to-purple-500/10 dark:from-amber-950/30 dark:via-orange-950/40 dark:to-purple-950/30 border-2 border-stone-800 dark:border-slate-700 rounded-3xl p-6 sm:p-8 flex flex-col sm:flex-row items-center justify-between gap-6 shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-none">
+        <div className="space-y-1.5 text-center sm:text-left">
+          <h3 className="text-base sm:text-lg font-black text-stone-900 dark:text-white">
+            Besoin de recharger vos crédits ou de passer à l'offre Pro ?
+          </h3>
+          <p className="text-xs sm:text-sm text-stone-600 dark:text-slate-300 max-w-xl">
+            Retrouvez toutes les formules d'abonnements assistante StudyCloud configurées en direct sur le tableau de bord avec activation instantanée par Mobile Money.
+          </p>
+        </div>
+
+        <button
+          onClick={handleOpenPricing}
+          className="shrink-0 flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white font-black text-sm rounded-2xl border-2 border-stone-900 shadow-[3px_3px_0px_0px_#1c1917] active:translate-x-0.5 active:translate-y-0.5 transition-all cursor-pointer"
+        >
+          <Zap className="w-4 h-4 fill-current" />
+          <span>Accéder aux formules & Abonnements</span>
+          <ArrowRight className="w-4 h-4" />
+        </button>
+      </div>
     </div>
   );
 };
