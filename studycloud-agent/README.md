@@ -78,6 +78,6 @@ Wrangler va provisionner :
 ## 🔗 Connexion avec l'application StudyCloud
 
 Dans StudyCloud (`src/services/studyAgentService.ts` et `src/services/api.ts`) :
-- L'URL de l'agent est configurée par défaut sur votre Worker (`https://studycloud-agent.delmaskouassidibi.workers.dev`).
+- L'URL de l'agent est configurée par défaut sur votre domaine personnalisé (`https://agent.delmas.dkd-technologies.com`) ou le worker (`https://studycloud-agent.delmaskouassidibi.workers.dev`).
 - Si l'agent est en ligne, StudyCloud lui délègue automatiquement et en priorité toutes les créations et causeries.
 - Si l'agent est en attente de déploiement, StudyCloud bascule automatiquement en douceur sur le worker standard.
