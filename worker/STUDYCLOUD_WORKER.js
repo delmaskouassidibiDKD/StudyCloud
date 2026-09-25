@@ -8853,6 +8853,260 @@ Lien vers le produit : ${productShareUrl}`;
           }
         }, 200, origin);
       }
+      if (path === "/api/user/storage" && method === "GET") {
+        const userId = url.searchParams.get("userId") || request.headers.get("x-user-id") || "default-user";
+        let totalFilesCount = 0;
+        let totalFilesBytes = 0;
+        let totalDataCount = 0;
+        let totalDataBytes = 0;
+        let purchasedMb = 0;
+        let purchasedWords = 0;
+        if (env.DB) {
+          try {
+            const filesStat = await env.DB.prepare(
+              "SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as totalBytes FROM files WHERE user_id = ?"
+            ).bind(userId).first();
+            if (filesStat) {
+              totalFilesCount = Number(filesStat.count || 0);
+              totalFilesBytes = Number(filesStat.totalBytes || 0);
+            }
+            const matieresStat = await env.DB.prepare(
+              "SELECT COUNT(*) as count FROM matieres WHERE user_id = ?"
+            ).bind(userId).first();
+            const notesStat = await env.DB.prepare(
+              "SELECT COUNT(*) as count FROM notes WHERE user_id = ?"
+            ).bind(userId).first();
+            totalDataCount = Number(matieresStat?.count || 0) + Number(notesStat?.count || 0);
+            totalDataBytes = totalDataCount * 2048;
+            try {
+              const reqs = await env.DB.prepare(
+                'SELECT COALESCE(SUM(additional_mb), 0) as totalMb, COALESCE(SUM(additional_words), 0) as totalWords FROM storage_upgrade_requests WHERE user_id = ? AND status = "active"'
+              ).bind(userId).first();
+              if (reqs) {
+                purchasedMb = Number(reqs.totalMb || 0);
+                purchasedWords = Number(reqs.totalWords || 0);
+              }
+            } catch (e) {
+            }
+            try {
+              const aiCred = await env.DB.prepare(
+                "SELECT remaining_credits FROM user_ai_credits WHERE user_id = ?"
+              ).bind(userId).first();
+              if (aiCred) {
+                purchasedWords += Number(aiCred.remaining_credits || 0);
+              }
+            } catch (e) {
+            }
+          } catch (dbErr) {
+            console.warn("[Storage Route] Erreur lecture DB:", dbErr);
+          }
+        }
+        const welcomeMb = 30;
+        const totalAllowedMb = welcomeMb + purchasedMb;
+        const usedFilesMb = Number((totalFilesBytes / (1024 * 1024)).toFixed(2));
+        const usedDataMb = Number((totalDataBytes / (1024 * 1024)).toFixed(2));
+        const totalUsedMb = Number((usedFilesMb + usedDataMb).toFixed(2));
+        const totalPercentage = Math.min(100, Math.round(totalUsedMb / totalAllowedMb * 100));
+        const formatSize = (bytes) => {
+          if (bytes < 1024) return `${bytes} o`;
+          if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+          return `${(bytes / (1024 * 1024)).toFixed(2)} Mo`;
+        };
+        const resultData = {
+          userId,
+          planName: purchasedMb > 0 ? "Plan Avanc\xE9" : "Plan \xC9tudiant Gratuit",
+          welcomeStorage: {
+            totalMb: welcomeMb,
+            filesMb: 25,
+            dataMb: 5,
+            formatted: `${welcomeMb} Mo`
+          },
+          paidStorage: {
+            totalMb: purchasedMb,
+            filesMb: purchasedMb,
+            dataMb: 0,
+            formatted: `${purchasedMb} Mo`
+          },
+          bonusStorage: {
+            totalMb: 0,
+            formatted: "0 Mo"
+          },
+          totalAllowedMb,
+          totalAllowedFormatted: `${totalAllowedMb} Mo`,
+          totalUsedBytes: totalFilesBytes + totalDataBytes,
+          totalUsedMb,
+          totalUsedFormatted: formatSize(totalFilesBytes + totalDataBytes),
+          totalPercentage,
+          filesStorage: {
+            name: "Stockage Documents & Fichiers",
+            subtitle: "Vos cours personnels, devoirs, polycopi\xE9s et documents PDF t\xE9l\xE9vers\xE9s",
+            count: totalFilesCount,
+            usedBytes: totalFilesBytes,
+            usedMb: usedFilesMb,
+            usedFormatted: formatSize(totalFilesBytes),
+            allowedMb: totalAllowedMb,
+            allowedFormatted: `${totalAllowedMb} Mo`,
+            percentage: Math.min(100, Math.round(usedFilesMb / totalAllowedMb * 100)),
+            freeNote: "Partage libre / Sur quota global"
+          },
+          dataStorage: {
+            name: "Espace Donn\xE9es & Fiches d'\xC9tude",
+            subtitle: "Vos fiches m\xE9moires, notes de cours, emploi du temps, relev\xE9s et contenus",
+            count: totalDataCount,
+            usedBytes: totalDataBytes,
+            usedMb: usedDataMb,
+            usedFormatted: formatSize(totalDataBytes),
+            allowedMb: totalAllowedMb,
+            allowedFormatted: `${totalAllowedMb} Mo`,
+            percentage: Math.min(100, Math.round(usedDataMb / totalAllowedMb * 100)),
+            freeNote: "Partage libre / Sur quota global"
+          },
+          wordsUsage: {
+            name: "Cr\xE9dits Mots IA",
+            subtitle: "Mots pour vos discussions et analyses avec l'IA",
+            usedWords: 0,
+            maxWords: 5e4 + purchasedWords,
+            remainingWords: 5e4 + purchasedWords,
+            percentage: 0,
+            formatted: `${(5e4 + purchasedWords).toLocaleString("fr-FR")} mots restants`
+          }
+        };
+        return jsonResponse({ success: true, data: resultData }, 200, origin);
+      }
+      if (path === "/api/user/storage/upgrade-request" && method === "POST") {
+        const body = await request.json().catch(() => ({}));
+        const userId = body.userId || request.headers.get("x-user-id");
+        if (!userId) return errorResponse("userId requis", 400, origin);
+        const requestId = "REQ_" + Math.random().toString(36).substring(2, 10).toUpperCase();
+        if (env.DB) {
+          try {
+            await env.DB.prepare(`
+              INSERT INTO storage_upgrade_requests (
+                id, user_id, user_name, user_phone, user_email, pack_id, pack_name,
+                additional_mb, additional_words, price_paid, currency, contact_phone,
+                notes, status, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            `).bind(
+              requestId,
+              userId,
+              body.userName || "",
+              body.contactPhone || "",
+              body.userEmail || "",
+              body.packId || "pack_custom",
+              body.packName || "Pack Stockage",
+              Number(body.additionalMb || 1024),
+              Number(body.additionalWords || 1e5),
+              Number(body.pricePaid || 0),
+              body.currency || "FCFA",
+              body.contactPhone || "",
+              body.notes || ""
+            ).run();
+          } catch (dbErr) {
+            console.warn("[Upgrade Request] Erreur DB:", dbErr);
+          }
+        }
+        return jsonResponse({
+          success: true,
+          message: "Votre demande d'augmentation de stockage a \xE9t\xE9 envoy\xE9e avec succ\xE8s.",
+          requestId
+        }, 200, origin);
+      }
+      if (path === "/api/user/storage/upgrade-requests" && method === "GET") {
+        const userId = url.searchParams.get("userId") || request.headers.get("x-user-id");
+        if (!userId) return errorResponse("userId requis", 400, origin);
+        let list = [];
+        if (env.DB) {
+          try {
+            const { results } = await env.DB.prepare(
+              "SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC"
+            ).bind(userId).all();
+            list = results || [];
+          } catch (e) {
+          }
+        }
+        return jsonResponse({ success: true, requests: list }, 200, origin);
+      }
+      if (path === "/api/subscription-plans" && method === "GET") {
+        const onlyActive = url.searchParams.get("active_only") === "1";
+        let storagePlans = [];
+        let aiPlans = [];
+        if (env.DB) {
+          try {
+            const storageQuery = onlyActive ? "SELECT * FROM storage_subscription_plans WHERE is_active = 1 OR is_active IS NULL ORDER BY sort_order ASC, created_at ASC" : "SELECT * FROM storage_subscription_plans ORDER BY sort_order ASC, created_at ASC";
+            const aiQuery = onlyActive ? "SELECT * FROM ai_subscription_plans WHERE is_active = 1 OR is_active IS NULL ORDER BY sort_order ASC, created_at ASC" : "SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC";
+            const storageRes = await env.DB.prepare(storageQuery).all();
+            const aiRes = await env.DB.prepare(aiQuery).all();
+            storagePlans = storageRes && storageRes.results ? storageRes.results : [];
+            aiPlans = aiRes && aiRes.results ? aiRes.results : [];
+          } catch (dbErr) {
+            console.warn("[Subscription Plans Query Error]", dbErr);
+            try {
+              await env.DB.prepare(`
+                CREATE TABLE IF NOT EXISTS storage_subscription_plans (
+                  id TEXT PRIMARY KEY,
+                  name TEXT NOT NULL,
+                  badge TEXT DEFAULT '',
+                  description TEXT DEFAULT '',
+                  storage_amount TEXT NOT NULL,
+                  storage_mb REAL DEFAULT 0,
+                  price REAL NOT NULL,
+                  primary_currency TEXT DEFAULT 'USD',
+                  currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
+                  currency_conversions TEXT DEFAULT '{}',
+                  yearly_price REAL DEFAULT 0,
+                  yearly_discount_pct REAL DEFAULT 10,
+                  features TEXT DEFAULT '[]',
+                  is_auto_billing INTEGER DEFAULT 0,
+                  is_active INTEGER DEFAULT 1,
+                  sort_order INTEGER DEFAULT 0,
+                  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+              `).run();
+              await env.DB.prepare(`
+                CREATE TABLE IF NOT EXISTS ai_subscription_plans (
+                  id TEXT PRIMARY KEY,
+                  name TEXT NOT NULL,
+                  badge TEXT DEFAULT '',
+                  description TEXT DEFAULT '',
+                  credits_or_words TEXT NOT NULL,
+                  credits_count REAL DEFAULT 0,
+                  price REAL NOT NULL,
+                  primary_currency TEXT DEFAULT 'USD',
+                  currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
+                  currency_conversions TEXT DEFAULT '{}',
+                  yearly_price REAL DEFAULT 0,
+                  yearly_discount_pct REAL DEFAULT 10,
+                  features TEXT DEFAULT '[]',
+                  is_auto_billing INTEGER DEFAULT 0,
+                  is_active INTEGER DEFAULT 1,
+                  sort_order INTEGER DEFAULT 0,
+                  pricing_model TEXT DEFAULT 'subscription',
+                  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+              `).run();
+              try {
+                await env.DB.prepare("ALTER TABLE ai_subscription_plans ADD COLUMN pricing_model TEXT DEFAULT 'subscription'").run();
+              } catch (e) {
+              }
+              const storageQuery = onlyActive ? "SELECT * FROM storage_subscription_plans WHERE is_active = 1 OR is_active IS NULL ORDER BY sort_order ASC, created_at ASC" : "SELECT * FROM storage_subscription_plans ORDER BY sort_order ASC, created_at ASC";
+              const aiQuery = onlyActive ? "SELECT * FROM ai_subscription_plans WHERE is_active = 1 OR is_active IS NULL ORDER BY sort_order ASC, created_at ASC" : "SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC";
+              const storageRes = await env.DB.prepare(storageQuery).all();
+              const aiRes = await env.DB.prepare(aiQuery).all();
+              storagePlans = storageRes && storageRes.results ? storageRes.results : [];
+              aiPlans = aiRes && aiRes.results ? aiRes.results : [];
+            } catch (initErr) {
+              console.warn("[Subscription Plans Init Error]", initErr);
+            }
+          }
+        }
+        return jsonResponse({
+          success: true,
+          storagePlans,
+          aiPlans
+        }, 200, origin);
+      }
       return errorResponse(`Route non trouv\xE9e : ${method} ${path}`, 404, origin);
     } catch (err) {
       console.error("Worker API Error:", err);

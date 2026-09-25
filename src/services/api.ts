@@ -2354,14 +2354,17 @@ export async function getSubscriptionPlans(): Promise<{
 }> {
   const t = Date.now();
 
-  // Liste de tous les endpoints Cloudflare Workers synchronisés sur la même base D1
-  // On priorise le Worker du tableau de bord où l'administrateur crée les cartes en direct
+  // Liste des endpoints Cloudflare Workers synchronisés sur la base D1
+  // On priorise le Worker principal (api-worker / getWorkerApiUrl) où l'application est connectée
+  const mainWorkerUrl = getWorkerApiUrl().replace(/\/+$/, '');
   const candidateUrls = [
-    `https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev/api/subscription-plans?active_only=1&_t=${t}`,
+    `${mainWorkerUrl}/api/subscription-plans?active_only=1&_t=${t}`,
     `https://api-worker.dkd-technologies.com/api/subscription-plans?active_only=1&_t=${t}`,
     `https://studycloud-worker.delmaskouassidibi.workers.dev/api/subscription-plans?active_only=1&_t=${t}`,
-    `${getWorkerApiUrl().replace(/\/+$/, '')}/api/subscription-plans?active_only=1&_t=${t}`
+    `https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev/api/subscription-plans?active_only=1&_t=${t}`
   ];
+
+  let firstValidResult: { storagePlans: SubscriptionPlan[]; aiPlans: SubscriptionPlan[] } | null = null;
 
   for (const url of candidateUrls) {
     try {
@@ -2377,6 +2380,9 @@ export async function getSubscriptionPlans(): Promise<{
         if (data && data.success) {
           const sPlans = Array.isArray(data.storagePlans) ? data.storagePlans : [];
           const aPlans = Array.isArray(data.aiPlans) ? data.aiPlans : [];
+          if (!firstValidResult) {
+            firstValidResult = { storagePlans: sPlans, aiPlans: aPlans };
+          }
           // Si cet endpoint a renvoyé des cartes, on les retourne immédiatement
           if (sPlans.length > 0 || aPlans.length > 0) {
             return {
@@ -2390,6 +2396,14 @@ export async function getSubscriptionPlans(): Promise<{
     } catch (e) {
       console.warn('[API] Essai connecteur forfaits échoué sur ' + url, e);
     }
+  }
+
+  if (firstValidResult) {
+    return {
+      success: true,
+      storagePlans: firstValidResult.storagePlans,
+      aiPlans: firstValidResult.aiPlans
+    };
   }
 
   // Dernier recours : requête standard relative

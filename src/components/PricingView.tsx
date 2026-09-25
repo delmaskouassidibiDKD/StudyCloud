@@ -181,11 +181,15 @@ export const PricingView: React.FC<PricingViewProps> = ({
     getSubscriptionPlans()
       .then((res) => {
         if (isMounted && res && res.success) {
-          if (res.storagePlans && res.storagePlans.length > 0) {
-            setDbStoragePlans(res.storagePlans);
-          }
-          if (res.aiPlans && res.aiPlans.length > 0) {
-            setDbAiPlans(res.aiPlans);
+          const sPlans = Array.isArray(res.storagePlans) ? res.storagePlans : [];
+          const aPlans = Array.isArray(res.aiPlans) ? res.aiPlans : [];
+          setDbStoragePlans(sPlans);
+          setDbAiPlans(aPlans);
+
+          // Si l'administrateur a créé uniquement des cartes IA et aucun stockage,
+          // basculer intelligemment sur l'onglet 'ai' pour que la carte s'affiche directement
+          if (sPlans.length === 0 && aPlans.length > 0 && activeTab === 'storage') {
+            setActiveTab('ai');
           }
         }
       })

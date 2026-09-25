@@ -10371,67 +10371,11 @@ export default {
 
         if (env.DB) {
           try {
-            await env.DB.prepare(`
-              CREATE TABLE IF NOT EXISTS storage_subscription_plans (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                badge TEXT DEFAULT '',
-                description TEXT DEFAULT '',
-                storage_amount TEXT NOT NULL,
-                storage_mb REAL DEFAULT 0,
-                price REAL NOT NULL,
-                primary_currency TEXT DEFAULT 'USD',
-                currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
-                currency_conversions TEXT DEFAULT '{}',
-                yearly_price REAL DEFAULT 0,
-                yearly_discount_pct REAL DEFAULT 10,
-                features TEXT DEFAULT '[]',
-                is_auto_billing INTEGER DEFAULT 0,
-                is_active INTEGER DEFAULT 1,
-                sort_order INTEGER DEFAULT 0,
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-              )
-            `).run();
-
-            await env.DB.prepare(`
-              CREATE TABLE IF NOT EXISTS ai_subscription_plans (
-                id TEXT PRIMARY KEY,
-                name TEXT NOT NULL,
-                badge TEXT DEFAULT '',
-                description TEXT DEFAULT '',
-                credits_or_words TEXT NOT NULL,
-                credits_count REAL DEFAULT 0,
-                price REAL NOT NULL,
-                primary_currency TEXT DEFAULT 'USD',
-                currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
-                currency_conversions TEXT DEFAULT '{}',
-                yearly_price REAL DEFAULT 0,
-                yearly_discount_pct REAL DEFAULT 10,
-                features TEXT DEFAULT '[]',
-                is_auto_billing INTEGER DEFAULT 0,
-                is_active INTEGER DEFAULT 1,
-                sort_order INTEGER DEFAULT 0,
-                pricing_model TEXT DEFAULT 'subscription',
-                created_at TEXT DEFAULT CURRENT_TIMESTAMP,
-                updated_at TEXT DEFAULT CURRENT_TIMESTAMP
-              )
-            `).run();
-
-            try {
-              await env.DB.prepare("ALTER TABLE ai_subscription_plans ADD COLUMN pricing_model TEXT DEFAULT 'subscription'").run();
-            } catch (e) {}
-
-            try {
-              await env.DB.prepare("DELETE FROM storage_subscription_plans WHERE id IN ('storage_plan_basique', 'storage_plan_pro', 'storage_plan_entreprise')").run();
-              await env.DB.prepare("DELETE FROM ai_subscription_plans WHERE id IN ('ai_plan_basique', 'ai_plan_pro', 'ai_plan_master')").run();
-            } catch (e) {}
-
             const storageQuery = onlyActive 
-              ? "SELECT * FROM storage_subscription_plans WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC"
+              ? "SELECT * FROM storage_subscription_plans WHERE is_active = 1 OR is_active IS NULL ORDER BY sort_order ASC, created_at ASC"
               : "SELECT * FROM storage_subscription_plans ORDER BY sort_order ASC, created_at ASC";
             const aiQuery = onlyActive
-              ? "SELECT * FROM ai_subscription_plans WHERE is_active = 1 ORDER BY sort_order ASC, created_at ASC"
+              ? "SELECT * FROM ai_subscription_plans WHERE is_active = 1 OR is_active IS NULL ORDER BY sort_order ASC, created_at ASC"
               : "SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC";
 
             const storageRes = await env.DB.prepare(storageQuery).all();
@@ -10439,8 +10383,75 @@ export default {
 
             storagePlans = (storageRes && storageRes.results) ? storageRes.results : [];
             aiPlans = (aiRes && aiRes.results) ? aiRes.results : [];
-          } catch (dbErr) {
-            console.warn('[Subscription Plans Error]', dbErr);
+          } catch (dbErr: any) {
+            console.warn('[Subscription Plans Query Error]', dbErr);
+            try {
+              await env.DB.prepare(`
+                CREATE TABLE IF NOT EXISTS storage_subscription_plans (
+                  id TEXT PRIMARY KEY,
+                  name TEXT NOT NULL,
+                  badge TEXT DEFAULT '',
+                  description TEXT DEFAULT '',
+                  storage_amount TEXT NOT NULL,
+                  storage_mb REAL DEFAULT 0,
+                  price REAL NOT NULL,
+                  primary_currency TEXT DEFAULT 'USD',
+                  currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
+                  currency_conversions TEXT DEFAULT '{}',
+                  yearly_price REAL DEFAULT 0,
+                  yearly_discount_pct REAL DEFAULT 10,
+                  features TEXT DEFAULT '[]',
+                  is_auto_billing INTEGER DEFAULT 0,
+                  is_active INTEGER DEFAULT 1,
+                  sort_order INTEGER DEFAULT 0,
+                  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+              `).run();
+
+              await env.DB.prepare(`
+                CREATE TABLE IF NOT EXISTS ai_subscription_plans (
+                  id TEXT PRIMARY KEY,
+                  name TEXT NOT NULL,
+                  badge TEXT DEFAULT '',
+                  description TEXT DEFAULT '',
+                  credits_or_words TEXT NOT NULL,
+                  credits_count REAL DEFAULT 0,
+                  price REAL NOT NULL,
+                  primary_currency TEXT DEFAULT 'USD',
+                  currencies_enabled TEXT DEFAULT '["USD","XOF","EUR"]',
+                  currency_conversions TEXT DEFAULT '{}',
+                  yearly_price REAL DEFAULT 0,
+                  yearly_discount_pct REAL DEFAULT 10,
+                  features TEXT DEFAULT '[]',
+                  is_auto_billing INTEGER DEFAULT 0,
+                  is_active INTEGER DEFAULT 1,
+                  sort_order INTEGER DEFAULT 0,
+                  pricing_model TEXT DEFAULT 'subscription',
+                  created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+                  updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+                )
+              `).run();
+
+              try {
+                await env.DB.prepare("ALTER TABLE ai_subscription_plans ADD COLUMN pricing_model TEXT DEFAULT 'subscription'").run();
+              } catch (e) {}
+
+              const storageQuery = onlyActive 
+                ? "SELECT * FROM storage_subscription_plans WHERE is_active = 1 OR is_active IS NULL ORDER BY sort_order ASC, created_at ASC"
+                : "SELECT * FROM storage_subscription_plans ORDER BY sort_order ASC, created_at ASC";
+              const aiQuery = onlyActive
+                ? "SELECT * FROM ai_subscription_plans WHERE is_active = 1 OR is_active IS NULL ORDER BY sort_order ASC, created_at ASC"
+                : "SELECT * FROM ai_subscription_plans ORDER BY sort_order ASC, created_at ASC";
+
+              const storageRes = await env.DB.prepare(storageQuery).all();
+              const aiRes = await env.DB.prepare(aiQuery).all();
+
+              storagePlans = (storageRes && storageRes.results) ? storageRes.results : [];
+              aiPlans = (aiRes && aiRes.results) ? aiRes.results : [];
+            } catch (initErr) {
+              console.warn('[Subscription Plans Init Error]', initErr);
+            }
           }
         }
 
