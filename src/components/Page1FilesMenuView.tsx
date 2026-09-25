@@ -218,6 +218,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [newFolderNameInput, setNewFolderNameInput] = useState('');
   const [folderCreationToast, setFolderCreationToast] = useState<string | null>(null);
 
+  // État du modal de déplacement / copie (Question préliminaire & Sélection de dossiers)
+  const [isTransferPromptOpen, setIsTransferPromptOpen] = useState(false);
+  const [isTransferModalOpen, setIsTransferModalOpen] = useState(false);
+  const [transferMode, setTransferMode] = useState<'move' | 'copy'>('move');
+  const [itemsToTransfer, setItemsToTransfer] = useState<FileItem[]>([]);
+  const [transferSelectedFolderIds, setTransferSelectedFolderIds] = useState<string[]>([]);
+  const [transferNavFolderId, setTransferNavFolderId] = useState<string | null>(null);
+  const [transferSearchQuery, setTransferSearchQuery] = useState('');
+  const [isTransferring, setIsTransferring] = useState(false);
+
   // État de glisser-déposer pour le réordonnancement des fichiers dans un dossier du classeur
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
   const [dragOverFileId, setDragOverFileId] = useState<string | null>(null);
@@ -2295,9 +2305,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         break;
       }
 
-      case 'move':
-        showToast(`Fichier "${file.name}" prêt à être déplacé !`);
+      case 'move': {
+        const items = isSelectionMode && selectedItemIds.includes(file.id) && selectedItemIds.length > 1
+          ? currentCategoryList.filter(f => selectedItemIds.includes(f.id))
+          : [file];
+        setItemsToTransfer(items);
+        setTransferSelectedFolderIds([]);
+        setTransferNavFolderId(null);
+        setTransferSearchQuery('');
+        setIsTransferPromptOpen(true);
         break;
+      }
 
       case 'lock_file':
       case 'secure_folder': {
@@ -3788,6 +3806,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <span>Créer un lien</span>
               </button>
 
+              {/* Déplacer / Créer une copie */}
+              <button
+                type="button"
+                onClick={() => {
+                  const selectedFiles = currentCategoryList.filter(f => selectedItemIds.includes(f.id));
+                  if (selectedFiles.length > 0) {
+                    setItemsToTransfer(selectedFiles);
+                    setTransferSelectedFolderIds([]);
+                    setTransferNavFolderId(null);
+                    setTransferSearchQuery('');
+                    setIsTransferPromptOpen(true);
+                  }
+                }}
+                className="px-2.5 py-1.5 rounded-xl bg-amber-600 hover:bg-amber-700 text-white text-xs font-bold flex items-center gap-1.5 transition-all shadow-xs cursor-pointer active:scale-95"
+                title="Déplacer ou Créer une copie"
+              >
+                <FolderInput className="w-3.5 h-3.5" />
+                <span>Déplacer / Créer une copie</span>
+              </button>
+
               {/* Si dans dossier sécurisé : Déverrouiller / Tout déverrouiller. Sinon : Verrouiller / Tout verrouiller */}
               {(currentSubView?.id === 'studycloud-collection-secure-folder' || (isCloudView && cloudActiveTab === 'secure-folder')) ? (
                 <button
@@ -4072,7 +4110,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-slate-100 hover:bg-white/10 transition-colors cursor-pointer text-left"
               >
                 <FolderInput className="w-3.5 h-3.5 shrink-0 text-amber-400" />
-                <span>Le déplacer</span>
+                <span>Le déplacer / Créer une copie</span>
               </button>
             </div>
 
@@ -7335,6 +7373,488 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   // =========================================================================
+  // MODAL DE PROPOSITION : DÉPLACER OU CRÉER UNE COPIE ?
+  // =========================================================================
+  const renderTransferPromptModal = () => {
+    if (!isTransferPromptOpen) return null;
+
+    const count = itemsToTransfer.length;
+    const titleText = count === 1 
+      ? `Que souhaitez-vous faire avec "${itemsToTransfer[0]?.name}" ?`
+      : `Que souhaitez-vous faire avec ces ${count} éléments ?`;
+
+    const content = (
+      <div 
+        className="fixed inset-0 z-[2700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-150 pointer-events-auto"
+        onClick={() => setIsTransferPromptOpen(false)}
+      >
+        <div 
+          className="relative w-full max-w-[420px] bg-[#0A0F1D] border-2 border-amber-500/40 rounded-3xl p-5 sm:p-6 shadow-[0_25px_60px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)] text-white animate-in zoom-in-95 duration-150 flex flex-col gap-4"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* En-tête */}
+          <div className="flex items-start justify-between gap-3 pb-3 border-b border-white/10">
+            <div className="flex items-center gap-3 min-w-0">
+              <div className="w-10 h-10 rounded-2xl bg-amber-500/20 border border-amber-400/40 text-amber-300 flex items-center justify-center shadow-inner shrink-0">
+                <FolderInput className="w-5 h-5 stroke-[2.2]" />
+              </div>
+              <div className="min-w-0">
+                <h3 className="text-base font-black text-white leading-tight">Déplacer ou Copier</h3>
+                <p className="text-[11px] text-slate-400 font-medium truncate mt-0.5" title={titleText}>
+                  {titleText}
+                </p>
+              </div>
+            </div>
+            <button
+              type="button"
+              onClick={() => setIsTransferPromptOpen(false)}
+              className="p-1.5 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer shrink-0"
+              title="Fermer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* Choix 1 : Déplacer */}
+          <div className="grid grid-cols-1 gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setTransferMode('move');
+                setIsTransferPromptOpen(false);
+                setIsTransferModalOpen(true);
+                CloudStorageAPI.getClasseurFolders().then(folders => {
+                  if (folders && Array.isArray(folders)) setClasseur3DFolders(folders);
+                }).catch(() => {});
+              }}
+              className="group p-4 rounded-2xl bg-amber-500/10 hover:bg-amber-500/20 border border-amber-500/30 hover:border-amber-400/60 transition-all text-left flex items-start gap-3.5 cursor-pointer shadow-md active:scale-98"
+            >
+              <div className="w-10 h-10 rounded-xl bg-amber-500/25 border border-amber-400/40 text-amber-300 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <FolderInput className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-black text-amber-200 group-hover:text-amber-100">Déplacer</span>
+                  <span className="text-[10px] font-bold text-rose-400 bg-rose-500/15 border border-rose-500/30 px-2 py-0.5 rounded-full">
+                    Retiré d'ici
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                  Transfère {count > 1 ? 'ces fichiers' : 'ce fichier'} vers le(s) dossier(s) choisi(s) et l'efface de son emplacement d'origine.
+                </p>
+              </div>
+            </button>
+
+            {/* Choix 2 : Créer une copie */}
+            <button
+              type="button"
+              onClick={() => {
+                setTransferMode('copy');
+                setIsTransferPromptOpen(false);
+                setIsTransferModalOpen(true);
+                CloudStorageAPI.getClasseurFolders().then(folders => {
+                  if (folders && Array.isArray(folders)) setClasseur3DFolders(folders);
+                }).catch(() => {});
+              }}
+              className="group p-4 rounded-2xl bg-emerald-500/10 hover:bg-emerald-500/20 border border-emerald-500/30 hover:border-emerald-400/60 transition-all text-left flex items-start gap-3.5 cursor-pointer shadow-md active:scale-98"
+            >
+              <div className="w-10 h-10 rounded-xl bg-emerald-500/25 border border-emerald-400/40 text-emerald-300 flex items-center justify-center shrink-0 group-hover:scale-105 transition-transform">
+                <Copy className="w-5 h-5" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-black text-emerald-200 group-hover:text-emerald-100">Créer une copie</span>
+                  <span className="text-[10px] font-bold text-emerald-400 bg-emerald-500/15 border border-emerald-500/30 px-2 py-0.5 rounded-full">
+                    Conserve l'original
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-300 mt-1 leading-snug">
+                  Garde l'original intact dans ce menu et ajoute une nouvelle copie dans le(s) dossier(s) choisi(s).
+                </p>
+              </div>
+            </button>
+          </div>
+
+          {/* Bouton Annuler */}
+          <div className="flex justify-end pt-1">
+            <button
+              type="button"
+              onClick={() => setIsTransferPromptOpen(false)}
+              className="px-4 py-2 rounded-xl text-xs font-semibold text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+
+    return typeof document !== 'undefined' ? createPortal(content, document.body) : null;
+  };
+
+  // =========================================================================
+  // MODAL DE SÉLECTION DU DOSSIER RÉCEPTEUR
+  // =========================================================================
+  const renderTransferFolderModal = () => {
+    if (!isTransferModalOpen) return null;
+
+    let displayedFolders = classeur3DFolders;
+    if (transferSearchQuery.trim()) {
+      const q = transferSearchQuery.trim().toLowerCase();
+      displayedFolders = classeur3DFolders.filter(f => f.name.toLowerCase().includes(q));
+    } else if (transferNavFolderId) {
+      displayedFolders = classeur3DFolders.filter(f => f.parentId === transferNavFolderId);
+    } else {
+      displayedFolders = classeur3DFolders.filter(f => !f.parentId);
+    }
+
+    const currentNavFolder = transferNavFolderId ? classeur3DFolders.find(f => f.id === transferNavFolderId) : null;
+    const parentNavFolder = currentNavFolder?.parentId ? classeur3DFolders.find(f => f.id === currentNavFolder.parentId) : null;
+
+    const toggleFolderCheck = (folderId: string) => {
+      setTransferSelectedFolderIds(prev => 
+        prev.includes(folderId) ? prev.filter(id => id !== folderId) : [...prev, folderId]
+      );
+    };
+
+    const handleExecuteTransfer = async () => {
+      if (transferSelectedFolderIds.length === 0 || itemsToTransfer.length === 0 || isTransferring) return;
+      setIsTransferring(true);
+
+      try {
+        await CloudStorageAPI.moveOrCopyItems(itemsToTransfer, transferSelectedFolderIds, transferMode);
+
+        setFolderFilesMap(prev => {
+          const next = { ...prev };
+          for (const targetFolderId of transferSelectedFolderIds) {
+            const existing = next[targetFolderId] || [];
+            const newFiles = itemsToTransfer.map(item => ({
+              ...item,
+              id: transferMode === 'move' ? item.id : `cfile-${Date.now()}-${Math.random().toString(36).slice(2, 7)}`,
+              originalFolderId: targetFolderId,
+            }));
+            next[targetFolderId] = [...newFiles, ...existing];
+          }
+          return next;
+        });
+
+        if (transferMode === 'move') {
+          const idsToRemove = new Set(itemsToTransfer.map(i => i.id));
+          setDocumentsList(prev => prev.filter(d => !idsToRemove.has(d.id)));
+          setImagesList(prev => prev.filter(img => !idsToRemove.has(img.id)));
+          setVideosList(prev => prev.filter(v => !idsToRemove.has(v.id)));
+          setAudioList(prev => prev.filter(a => !idsToRemove.has(a.id)));
+          setDownloadedItems(prev => prev.filter(dl => !idsToRemove.has(dl.id)));
+          setSecureFolderFiles(prev => prev.filter(s => !idsToRemove.has(s.id)));
+          setCloudRecentFiles(prev => prev.filter(c => !idsToRemove.has(c.id)));
+          
+          if (opened3DFolder) {
+            setFolderFilesMap(prev => ({
+              ...prev,
+              [opened3DFolder.id]: (prev[opened3DFolder.id] || []).filter(f => !idsToRemove.has(f.id))
+            }));
+          }
+
+          setSelectedItemIds(prev => prev.filter(id => !idsToRemove.has(id)));
+          if (selectedItemIds.length <= itemsToTransfer.length) {
+            setIsSelectionMode(false);
+          }
+          if (splitSelectedFile && idsToRemove.has(splitSelectedFile.id)) {
+            setSplitSelectedFile(null);
+          }
+        }
+
+        const successMsg = transferMode === 'move'
+          ? `${itemsToTransfer.length} élément(s) déplacé(s) vers ${transferSelectedFolderIds.length} dossier(s) avec succès !`
+          : `${itemsToTransfer.length} élément(s) copié(s) dans ${transferSelectedFolderIds.length} dossier(s) avec succès !`;
+        showProfileToast(successMsg);
+
+        setIsTransferModalOpen(false);
+        setTransferSelectedFolderIds([]);
+        setTransferNavFolderId(null);
+        setTransferSearchQuery('');
+        setItemsToTransfer([]);
+      } catch (err: any) {
+        console.error('Erreur lors du transfert:', err);
+        showProfileToast('Erreur lors du traitement du transfert');
+      } finally {
+        setIsTransferring(false);
+      }
+    };
+
+    const isSelectionActive = transferSelectedFolderIds.length > 0;
+
+    const content = (
+      <div 
+        className="fixed inset-0 z-[2700] bg-black/60 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 animate-in fade-in duration-200 pointer-events-auto"
+        onClick={() => {
+          setIsTransferModalOpen(false);
+          setTransferNavFolderId(null);
+          setTransferSearchQuery('');
+        }}
+      >
+        <div 
+          className="relative w-full max-w-[440px] max-h-[82vh] bg-[#0A0F1D] border-2 border-amber-500/40 rounded-3xl shadow-[0_25px_60px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.1)] flex flex-col overflow-hidden text-white animate-in zoom-in-95 duration-200"
+          onClick={(e) => e.stopPropagation()}
+        >
+          {/* 1. En-tête : Titre & Bouton de fermeture */}
+          <div className="px-5 py-3.5 border-b border-white/10 flex items-center justify-between gap-3 bg-[#070B14] shrink-0">
+            <div className="flex items-center gap-2.5">
+              <div className={`w-8 h-8 rounded-xl ${transferMode === 'move' ? 'bg-amber-500/20 text-amber-400 border-amber-500/30' : 'bg-emerald-500/20 text-emerald-400 border-emerald-500/30'} border flex items-center justify-center`}>
+                {transferMode === 'move' ? <FolderInput className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+              </div>
+              <h3 className="text-sm sm:text-base font-black text-white">
+                {transferMode === 'move' ? 'Déplacer vers un dossier' : 'Créer une copie dans...'}
+              </h3>
+            </div>
+            <button
+              type="button"
+              onClick={() => {
+                setIsTransferModalOpen(false);
+                setTransferNavFolderId(null);
+                setTransferSearchQuery('');
+              }}
+              className="p-1 rounded-xl text-slate-400 hover:text-white hover:bg-white/10 transition-colors cursor-pointer"
+              title="Fermer"
+            >
+              <X className="w-4 h-4" />
+            </button>
+          </div>
+
+          {/* 2. Barre de recherche et compteurs */}
+          <div className="p-3.5 border-b border-white/10 bg-[#0E1526] space-y-2.5 shrink-0">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                value={transferSearchQuery}
+                onChange={(e) => setTransferSearchQuery(e.target.value)}
+                placeholder="Trouver un dossier rapidement..."
+                className="w-full bg-[#0A0F1D] border border-white/10 rounded-xl pl-9 pr-8 py-2 text-xs text-white placeholder-slate-500 focus:outline-none focus:border-amber-400 transition-colors"
+              />
+              {transferSearchQuery && (
+                <button
+                  type="button"
+                  onClick={() => setTransferSearchQuery('')}
+                  className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-white p-0.5"
+                >
+                  <X className="w-3.5 h-3.5" />
+                </button>
+              )}
+            </div>
+
+            {/* Compteurs : nombre de coches et nombre d'éléments à déplacer */}
+            <div className="flex items-center justify-between gap-2 text-xs">
+              <span className="px-2.5 py-1 rounded-lg bg-amber-500/15 border border-amber-500/30 text-amber-300 font-bold flex items-center gap-1.5">
+                <CheckSquare className="w-3.5 h-3.5 text-amber-400" />
+                {transferSelectedFolderIds.length} dossier{transferSelectedFolderIds.length > 1 ? 's' : ''} coché{transferSelectedFolderIds.length > 1 ? 's' : ''}
+              </span>
+              <span className="px-2.5 py-1 rounded-lg bg-white/5 border border-white/10 text-slate-300 font-semibold flex items-center gap-1.5">
+                {itemsToTransfer.length} élément{itemsToTransfer.length > 1 ? 's' : ''} à {transferMode === 'move' ? 'déplacer' : 'copier'}
+              </span>
+            </div>
+
+            {/* 3. Fil d'Ariane / Navigation dans les dossiers */}
+            {!transferSearchQuery && (
+              <div className="flex items-center gap-2 pt-1 border-t border-white/5 text-xs overflow-x-auto no-scrollbar">
+                {transferNavFolderId && (
+                  <button
+                    type="button"
+                    onClick={() => setTransferNavFolderId(currentNavFolder?.parentId || null)}
+                    className="p-1 rounded-lg bg-white/5 hover:bg-white/10 text-amber-400 transition-colors flex items-center gap-1 shrink-0 cursor-pointer"
+                    title="Retour"
+                  >
+                    <ArrowLeft className="w-3.5 h-3.5" />
+                    <span className="text-[11px] font-bold">Retour</span>
+                  </button>
+                )}
+                
+                <div className="flex items-center gap-1.5 min-w-0 flex-1 truncate">
+                  {/* Nom du dossier principal en transparent / estompé */}
+                  {parentNavFolder ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setTransferNavFolderId(parentNavFolder.id)}
+                        className="text-[11px] font-semibold text-white/40 hover:text-white/60 truncate cursor-pointer transition-colors"
+                        title={parentNavFolder.name}
+                      >
+                        {parentNavFolder.name}
+                      </button>
+                      <span className="text-white/30 text-xs">/</span>
+                    </>
+                  ) : currentNavFolder ? (
+                    <>
+                      <button
+                        type="button"
+                        onClick={() => setTransferNavFolderId(null)}
+                        className="text-[11px] font-semibold text-white/40 hover:text-white/60 truncate cursor-pointer transition-colors"
+                      >
+                        Classeur
+                      </button>
+                      <span className="text-white/30 text-xs">/</span>
+                    </>
+                  ) : (
+                    <span className="text-[11px] font-semibold text-slate-400">Racine du Classeur</span>
+                  )}
+
+                  {/* Nom du dossier actuel bien visible avec sa couleur */}
+                  {currentNavFolder && (
+                    <span
+                      className="text-[11px] font-black px-2 py-0.5 rounded-md border truncate shadow-xs"
+                      style={{
+                        color: currentNavFolder.primaryColor || '#F59E0B',
+                        borderColor: `${currentNavFolder.primaryColor || '#F59E0B'}40`,
+                        backgroundColor: `${currentNavFolder.primaryColor || '#F59E0B'}15`
+                      }}
+                    >
+                      {currentNavFolder.name}
+                    </span>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+
+          {/* 4. Liste verticale des dossiers */}
+          <div className="flex-1 overflow-y-auto p-3 space-y-2 min-h-[220px] max-h-[380px]">
+            {displayedFolders.length === 0 ? (
+              <div className="py-12 text-center text-slate-400 space-y-1">
+                <FolderArchive className="w-8 h-8 mx-auto text-slate-600 mb-2" />
+                <p className="text-xs font-semibold text-slate-300">Aucun dossier trouvé</p>
+                <p className="text-[11px] text-slate-500">
+                  {transferSearchQuery ? 'Aucun résultat pour cette recherche' : 'Ce dossier ne contient aucun sous-dossier'}
+                </p>
+              </div>
+            ) : (
+              displayedFolders.map(folder => {
+                const isChecked = transferSelectedFolderIds.includes(folder.id);
+                const subCount = classeur3DFolders.filter(f => f.parentId === folder.id).length;
+
+                return (
+                  <div
+                    key={folder.id}
+                    onClick={() => {
+                      if (!transferSearchQuery) {
+                        setTransferNavFolderId(folder.id);
+                      }
+                    }}
+                    className={`group flex items-center justify-between gap-2.5 p-2.5 rounded-2xl transition-all border cursor-pointer ${
+                      isChecked
+                        ? 'bg-amber-500/15 border-amber-500/40 shadow-sm'
+                        : 'bg-slate-900/60 hover:bg-slate-800/80 border-white/5 hover:border-white/15'
+                    }`}
+                  >
+                    <div className="flex items-center gap-2.5 min-w-0 flex-1">
+                      {/* Bouton carré à cocher une à une (devant le logo) */}
+                      <button
+                        type="button"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          toggleFolderCheck(folder.id);
+                        }}
+                        className="p-1 rounded-lg hover:bg-white/10 transition-colors text-slate-400 hover:text-white shrink-0 cursor-pointer"
+                        title={isChecked ? 'Décocher ce dossier' : 'Cocher ce dossier'}
+                      >
+                        {isChecked ? (
+                          <CheckSquare className="w-5 h-5 text-amber-400 fill-amber-400/20" />
+                        ) : (
+                          <Square className="w-5 h-5 text-slate-400 hover:text-white" />
+                        )}
+                      </button>
+
+                      {/* Logo / Forme miniature du dossier */}
+                      <div
+                        className="w-8 h-8 rounded-xl flex items-center justify-center shrink-0 shadow-sm border"
+                        style={{
+                          backgroundColor: folder.primaryColor || '#E76239',
+                          borderColor: lightenColor(folder.primaryColor || '#E76239', 20),
+                          color: folder.textDark ? '#0F172A' : '#FFFFFF'
+                        }}
+                      >
+                        <FolderArchive className="w-4 h-4 stroke-[2.2]" />
+                      </div>
+
+                      {/* Nom du dossier */}
+                      <span className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-amber-200 transition-colors">
+                        {folder.name}
+                      </span>
+                    </div>
+
+                    {/* Écriture à la fin du nom pour dire s'il contient un sous-dossier et le nombre */}
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {subCount > 0 ? (
+                        <div className="flex items-center gap-1">
+                          <span className="text-[10px] sm:text-[11px] font-bold text-amber-300 bg-amber-500/15 border border-amber-500/30 px-2 py-0.5 rounded-full">
+                            {subCount} sous-dossier{subCount > 1 ? 's' : ''}
+                          </span>
+                          {!transferSearchQuery && (
+                            <ChevronRight className="w-3.5 h-3.5 text-slate-500 group-hover:text-amber-300 transition-colors" />
+                          )}
+                        </div>
+                      ) : (
+                        <span className="text-[10px] sm:text-[11px] font-medium text-slate-500 px-1">
+                          0 sous-dossier
+                        </span>
+                      )}
+                    </div>
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* 5. Bouton en bas qui s'active quand on coche */}
+          <div className="p-3.5 border-t border-white/10 bg-[#070B14] shrink-0 flex items-center justify-between gap-3">
+            <button
+              type="button"
+              onClick={() => {
+                setIsTransferModalOpen(false);
+                setTransferNavFolderId(null);
+                setTransferSearchQuery('');
+              }}
+              className="px-3.5 py-2.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-300 text-xs font-semibold transition-colors cursor-pointer"
+            >
+              Annuler
+            </button>
+
+            <button
+              type="button"
+              disabled={!isSelectionActive || isTransferring}
+              onClick={handleExecuteTransfer}
+              className={`px-4 sm:px-5 py-2.5 rounded-xl font-black text-xs sm:text-sm flex items-center gap-2 transition-all shadow-lg ${
+                isSelectionActive && !isTransferring
+                  ? 'bg-gradient-to-r from-amber-500 to-orange-500 hover:from-amber-600 hover:to-orange-600 text-white cursor-pointer active:scale-95 shadow-amber-500/25'
+                  : 'bg-white/10 text-slate-500 cursor-not-allowed border border-white/5'
+              }`}
+            >
+              {isTransferring ? (
+                <>
+                  <div className="w-3.5 h-3.5 border-2 border-white border-t-transparent rounded-full animate-spin" />
+                  <span>Traitement...</span>
+                </>
+              ) : isSelectionActive ? (
+                <>
+                  {transferMode === 'move' ? <FolderInput className="w-4 h-4" /> : <Copy className="w-4 h-4" />}
+                  <span>
+                    {transferMode === 'move'
+                      ? `Déplacer vers ${transferSelectedFolderIds.length} dossier${transferSelectedFolderIds.length > 1 ? 's' : ''}`
+                      : `Créer une copie dans ${transferSelectedFolderIds.length} dossier${transferSelectedFolderIds.length > 1 ? 's' : ''}`}
+                  </span>
+                </>
+              ) : (
+                <span>Sélectionnez un dossier</span>
+              )}
+            </button>
+          </div>
+        </div>
+      </div>
+    );
+
+    return typeof document !== 'undefined' ? createPortal(content, document.body) : null;
+  };
+
+  // =========================================================================
   // PETIT MODAL POUR NOMMER ET CRÉER UN FICHIER BLOC-NOTES (TXT)
   // Conforme à la demande : "un petit menu apparaît pour donner un nom au fichier
   // qui sera crée pour écrire dedans et quand il écrit le nom et appui créer un fichier apparaît"
@@ -10041,6 +10561,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
       {/* Grand modal de propositions de création de dossier (Modèles 3D) */}
       {renderCreateFolderModal()}
+
+      {/* Modal de question préliminaire : Déplacer ou Créer une copie */}
+      {renderTransferPromptModal()}
+
+      {/* Modal de sélection des dossiers de destination pour Déplacer / Créer une copie */}
+      {renderTransferFolderModal()}
 
       {/* Petit modal pour nommer et créer un fichier Bloc-notes (TXT) */}
       {renderNewNoteModal()}

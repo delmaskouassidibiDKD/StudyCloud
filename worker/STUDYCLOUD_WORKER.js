@@ -6363,6 +6363,97 @@ var index_default = {
         `).bind(newId, reqUserId, finalName, orig.size, orig.size_bytes, orig.r2_key, orig.file_url, orig.date_formatted).run();
         return jsonResponse({ success: true, data: { ...orig, id: newId, name: finalName } }, 200, origin);
       }
+      if (path === "/api/cloud/move" && method === "POST") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const body = await request.json().catch(() => ({}));
+        const rawItems = Array.isArray(body.items) ? body.items : body.item ? [body.item] : [];
+        const targetFolderIds = Array.isArray(body.targetFolderIds) ? body.targetFolderIds : body.targetFolderId ? [body.targetFolderId] : [];
+        const mode = body.mode === "copy" ? "copy" : "move";
+        if (rawItems.length === 0) return errorResponse("Aucun \xE9l\xE9ment sp\xE9cifi\xE9", 400, origin);
+        if (targetFolderIds.length === 0) return errorResponse("Aucun dossier r\xE9cepteur s\xE9lectionn\xE9", 400, origin);
+        const createdResults = [];
+        for (const item of rawItems) {
+          const itemId = item.id;
+          const itemName = item.name || "Fichier";
+          const itemCat = item.category || "documents";
+          const itemSize = item.size || "0 o";
+          const itemSizeBytes = Number(item.sizeBytes || item.size_bytes || 0);
+          const itemExt = item.extension || (itemName.includes(".") ? itemName.split(".").pop() : "txt");
+          const isNotepad = item.isNotepad ? 1 : 0;
+          const contentText = item.content || item.content_text || "";
+          const r2Key = item.r2Key || item.r2_key || "";
+          const fileUrl = item.url || item.file_url || item.previewUrl || "";
+          const previewUrl = item.previewUrl || item.preview_url || fileUrl;
+          const dateText = item.date || "Aujourd'hui";
+          for (const folderId of targetFolderIds) {
+            const newFileId = `cf_${Date.now()}_${Math.random().toString(36).substring(2, 8)}`;
+            await env.DB.prepare(`
+              INSERT INTO classeur_files (
+                id, user_id, folder_id, name, size, size_bytes, category, extension,
+                source, date_formatted, position_x, position_y, display_order,
+                is_notepad, notepad_title, notepad_content, preview_url, r2_key,
+                file_url, is_pinned, is_favorite, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0, 0, ?, ?, ?, ?, ?, ?, 0, 0, CURRENT_TIMESTAMP)
+            `).bind(
+              newFileId,
+              reqUserId,
+              folderId,
+              itemName,
+              itemSize,
+              itemSizeBytes,
+              itemCat,
+              itemExt,
+              item.source || "transfer",
+              dateText,
+              isNotepad,
+              itemName,
+              contentText,
+              previewUrl,
+              r2Key,
+              fileUrl
+            ).run();
+            createdResults.push({
+              id: newFileId,
+              folderId,
+              name: itemName,
+              category: itemCat
+            });
+          }
+          if (mode === "move") {
+            const origCat = (item.originalCategory || item.category || "").toLowerCase();
+            const sourceFolderId = item.originalFolderId || item.folderId;
+            if (sourceFolderId || origCat.includes("classeur")) {
+              await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+              });
+            }
+            if (origCat === "images" || item.isImage) {
+              await env.DB.prepare("DELETE FROM image_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+              });
+            } else if (origCat === "videos" || item.videoUrl) {
+              await env.DB.prepare("DELETE FROM video_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+              });
+            } else if (origCat === "audio" || item.audioUrl) {
+              await env.DB.prepare("DELETE FROM audio_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+              });
+            } else if (origCat === "downloads") {
+              await env.DB.prepare("DELETE FROM download_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+              });
+            } else {
+              await env.DB.prepare("DELETE FROM document_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+              });
+              await env.DB.prepare("DELETE FROM classeur_files WHERE id = ? AND user_id = ?").bind(itemId, reqUserId).run().catch(() => {
+              });
+            }
+          }
+        }
+        return jsonResponse({
+          success: true,
+          mode,
+          count: createdResults.length,
+          data: createdResults
+        }, 200, origin);
+      }
       if (path.startsWith("/api/shares") && env.DB && !isSchemaInitialized) {
         await ensureDatabaseSchema(env.DB);
       }

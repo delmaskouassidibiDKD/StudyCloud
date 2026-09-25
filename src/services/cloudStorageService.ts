@@ -910,4 +910,23 @@ export const CloudStorageAPI = {
       return null;
     }
   },
+
+  // --------------------------------------------------------------------------
+  // 14. DÉPLACER OU COPIER VERS DES DOSSIERS (/api/cloud/move)
+  // --------------------------------------------------------------------------
+  async moveOrCopyItems(items: any[], targetFolderIds: string[], mode: 'move' | 'copy' = 'move'): Promise<boolean> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetch(`${baseUrl}/api/cloud/move?userId=${getUserIdParam()}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ items, targetFolderIds, mode }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[CloudStorageAPI] moveOrCopyItems error:', e);
+      return false;
+    }
+  },
 };
+
