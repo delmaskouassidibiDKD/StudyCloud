@@ -2353,42 +2353,20 @@ export async function getSubscriptionPlans(): Promise<{
   aiPlans: SubscriptionPlan[];
 }> {
   const t = Date.now();
-  const endpoint = `/api/subscription-plans?active_only=1&_t=${t}`;
 
-  // 1. Essai via le connecteur d'API standard du Worker
-  try {
-    const res = await request<{
-      success: boolean;
-      storagePlans?: SubscriptionPlan[];
-      aiPlans?: SubscriptionPlan[];
-    }>(endpoint, {
-      method: 'GET',
-      headers: {
-        'Cache-Control': 'no-cache, no-store, must-revalidate',
-        'Pragma': 'no-cache'
-      }
-    });
-    if (res && res.success && (res.storagePlans || res.aiPlans)) {
-      return {
-        success: true,
-        storagePlans: res.storagePlans || [],
-        aiPlans: res.aiPlans || []
-      };
-    }
-  } catch (err) {
-    console.warn('[API] getSubscriptionPlans via baseUrl a échoué, essai fallback:', err);
-  }
-
-  // 2. Fallback direct vers les endpoints Cloudflare Workers
-  const fallbackUrls = [
-    `https://api-worker.dkd-technologies.com/api/subscription-plans?active_only=1&_t=${t}`,
+  // Liste de tous les endpoints Cloudflare Workers synchronisés sur la même base D1
+  // On priorise le Worker du tableau de bord où l'administrateur crée les cartes en direct
+  const candidateUrls = [
     `https://worker-tableaux-de-bord.delmaskouassidibi.workers.dev/api/subscription-plans?active_only=1&_t=${t}`,
-    `https://studycloud-worker.delmaskouassidibi.workers.dev/api/subscription-plans?active_only=1&_t=${t}`
+    `https://api-worker.dkd-technologies.com/api/subscription-plans?active_only=1&_t=${t}`,
+    `https://studycloud-worker.delmaskouassidibi.workers.dev/api/subscription-plans?active_only=1&_t=${t}`,
+    `${getWorkerApiUrl().replace(/\/+$/, '')}/api/subscription-plans?active_only=1&_t=${t}`
   ];
 
-  for (const url of fallbackUrls) {
+  for (const url of candidateUrls) {
     try {
       const resp = await fetch(url, {
+        method: 'GET',
         headers: {
           'Cache-Control': 'no-cache, no-store, must-revalidate',
           'Pragma': 'no-cache'
@@ -2397,17 +2375,46 @@ export async function getSubscriptionPlans(): Promise<{
       if (resp.ok) {
         const data = await resp.json();
         if (data && data.success) {
-          return {
-            success: true,
-            storagePlans: data.storagePlans || [],
-            aiPlans: data.aiPlans || []
-          };
+          const sPlans = Array.isArray(data.storagePlans) ? data.storagePlans : [];
+          const aPlans = Array.isArray(data.aiPlans) ? data.aiPlans : [];
+          // Si cet endpoint a renvoyé des cartes, on les retourne immédiatement
+          if (sPlans.length > 0 || aPlans.length > 0) {
+            return {
+              success: true,
+              storagePlans: sPlans,
+              aiPlans: aPlans
+            };
+          }
         }
       }
-    } catch (e) {}
+    } catch (e) {
+      console.warn('[API] Essai connecteur forfaits échoué sur ' + url, e);
+    }
   }
 
-  return { success: false, storagePlans: [], aiPlans: [] };
+  // Dernier recours : requête standard relative
+  try {
+    const res = await request<{
+      success: boolean;
+      storagePlans?: SubscriptionPlan[];
+      aiPlans?: SubscriptionPlan[];
+    }>(`/api/subscription-plans?active_only=1&_t=${t}`, {
+      method: 'GET',
+      headers: {
+        'Cache-Control': 'no-cache, no-store, must-revalidate',
+        'Pragma': 'no-cache'
+      }
+    });
+    if (res && res.success) {
+      return {
+        success: true,
+        storagePlans: res.storagePlans || [],
+        aiPlans: res.aiPlans || []
+      };
+    }
+  } catch (err) {}
+
+  return { success: true, storagePlans: [], aiPlans: [] };
 }
 
 

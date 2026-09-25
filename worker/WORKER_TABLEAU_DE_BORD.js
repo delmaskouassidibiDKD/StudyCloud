@@ -473,10 +473,10 @@ async function ensureStorageTables(db) {
       await db.prepare("ALTER TABLE ai_subscription_plans ADD COLUMN pricing_model TEXT DEFAULT 'subscription'").run();
     } catch (e) {}
 
-    // Nettoyer tous les faux plans pour que la base de données soit 100% vierge tant que l'admin n'a pas créé de cartes
+    // Nettoyer uniquement les anciens faux plans de démonstration codés en dur
     try {
-      await db.prepare("DELETE FROM storage_subscription_plans WHERE id LIKE 'storage_plan_%' OR id IN ('storage_plan_basique', 'storage_plan_pro', 'storage_plan_entreprise')").run();
-      await db.prepare("DELETE FROM ai_subscription_plans WHERE id LIKE 'ai_plan_%' OR id IN ('ai_plan_basique', 'ai_plan_pro', 'ai_plan_master')").run();
+      await db.prepare("DELETE FROM storage_subscription_plans WHERE id IN ('storage_plan_basique', 'storage_plan_pro', 'storage_plan_entreprise')").run();
+      await db.prepare("DELETE FROM ai_subscription_plans WHERE id IN ('ai_plan_basique', 'ai_plan_pro', 'ai_plan_master')").run();
     } catch (e) {}
   } catch (e) {
     console.warn('[Storage Tables Init]', e);
@@ -8760,7 +8760,7 @@ function renderDashboardHtml(data) {
       const isOneTime = pricingModel === 'one_time' || pricingModel === 'pack';
 
       const planData = {
-        id: planId || (category + '_plan_' + Date.now()),
+        id: planId || ((category === 'ai' ? 'ai_card_' : 'storage_card_') + Date.now() + '_' + Math.random().toString(36).substring(2, 6)),
         name,
         badge,
         description: desc,
@@ -10390,7 +10390,7 @@ export default {
         const category = body.category === 'ai' ? 'ai' : 'storage';
         const plan = body.plan || {};
 
-        const planId = String(plan.id || (category + '_plan_' + Date.now())).trim();
+        const planId = String(plan.id || ((category === 'ai' ? 'ai_card_' : 'storage_card_') + Date.now() + '_' + Math.random().toString(36).substring(2, 6))).trim();
         const name = String(plan.name || 'Nouveau Forfait').trim();
         const badge = String(plan.badge || '').trim();
         const description = String(plan.description || '').trim();
