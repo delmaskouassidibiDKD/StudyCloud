@@ -1,4 +1,5 @@
 name = "studycloud-agent"
+account_id = "c80164ed977e6535efd1b67a54741ed6"
 main = "src/server.ts"
 compatibility_date = "2026-06-11"
 compatibility_flags = ["nodejs_compat"]
