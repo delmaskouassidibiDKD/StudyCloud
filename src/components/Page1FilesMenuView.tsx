@@ -83,12 +83,6 @@ import {
 } from 'lucide-react';
 import { getDownloadedFiles, recordDownloadedFile, DownloadedItem } from '../services/downloadsManager';
 import { 
-  DEFAULT_IMAGES_LIST, 
-  DEFAULT_VIDEOS_LIST, 
-  DEFAULT_AUDIO_LIST, 
-  DEFAULT_DOCUMENTS_LIST 
-} from '../data/categoryFilesData';
-import { 
   MODEL_1_FOLDERS, 
   MODEL_2_FOLDERS, 
   MODEL_3_FOLDERS, 
@@ -1094,9 +1088,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     async function loadCloudBackendData() {
       try {
+        // 0. Aperçu général et récents
+        const overview = await CloudStorageAPI.getOverview();
+        if (isMounted && overview && Array.isArray(overview.recentFiles)) {
+          setCloudRecentFiles(overview.recentFiles);
+        }
+
         // 1. Dossiers 3D du Classeur
         const cloudFolders = await CloudStorageAPI.getClasseurFolders();
-        if (isMounted && cloudFolders && cloudFolders.length > 0) {
+        if (isMounted && cloudFolders) {
           setClasseur3DFolders(cloudFolders);
 
           // 2. Fichiers et bloc-notes de chaque dossier
@@ -1107,45 +1107,45 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               filesMap[folder.id] = files;
             }
           }
-          if (isMounted && Object.keys(filesMap).length > 0) {
-            setFolderFilesMap(prev => ({ ...prev, ...filesMap }));
+          if (isMounted) {
+            setFolderFilesMap(filesMap);
           }
         }
 
         // 3. Corbeille
         const trash = await CloudStorageAPI.getTrashFiles();
-        if (isMounted && trash && trash.length > 0) {
+        if (isMounted && trash) {
           setTrashFiles(trash);
         }
 
         // 4. Dossier Sécurisé
         const secFiles = await CloudStorageAPI.getSecureFiles();
-        if (isMounted && secFiles && secFiles.length > 0) {
+        if (isMounted && secFiles) {
           setSecureFolderFiles(secFiles);
         }
 
         // 5. Audio
         const audio = await CloudStorageAPI.getAudioList();
-        if (isMounted && audio && audio.length > 0) {
-          setAudioList(prev => [...audio, ...prev.filter(p => !audio.some(a => a.id === p.id))]);
+        if (isMounted && audio) {
+          setAudioList(audio);
         }
 
         // 6. Images
         const images = await CloudStorageAPI.getImagesList();
-        if (isMounted && images && images.length > 0) {
-          setImagesList(prev => [...images, ...prev.filter(p => !images.some(i => i.id === p.id))]);
+        if (isMounted && images) {
+          setImagesList(images);
         }
 
         // 7. Vidéos
         const videos = await CloudStorageAPI.getVideosList();
-        if (isMounted && videos && videos.length > 0) {
-          setVideosList(prev => [...videos, ...prev.filter(p => !videos.some(v => v.id === p.id))]);
+        if (isMounted && videos) {
+          setVideosList(videos);
         }
 
         // 8. Documents
         const docs = await CloudStorageAPI.getDocumentsList();
-        if (isMounted && docs && docs.length > 0) {
-          setDocumentsList(prev => [...docs, ...prev.filter(p => !docs.some(d => d.id === p.id))]);
+        if (isMounted && docs) {
+          setDocumentsList(docs);
         }
       } catch (e) {
         console.warn('[Page1FilesMenuView] Chargement D1/R2 local fallback:', e);
@@ -1194,91 +1194,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const isCloudView = currentSubView?.id === 'studycloud-collection-cloud-storage';
 
   // Fiches et dossiers pédagogiques pour le Classeur
-  const [classeurFolders, setClasseurFolders] = useState([
-    {
-      id: 'folder-elec',
-      name: 'Électronique & Circuits',
-      count: '4 modules • 18 cours',
-      iconColor: 'text-orange-400',
-      badge: 'Sciences'
-    },
-    {
-      id: 'folder-math',
-      name: 'Mathématiques Avancées',
-      count: '6 modules • 24 fiches',
-      iconColor: 'text-blue-400',
-      badge: 'Analyse'
-    },
-    {
-      id: 'folder-eco',
-      name: 'Économie & Gestion',
-      count: '3 modules • 12 synthèses',
-      iconColor: 'text-emerald-400',
-      badge: 'Gestion'
-    },
-    {
-      id: 'folder-tp',
-      name: 'Fascicules & Travaux Pratiques',
-      count: '5 fascicules complets',
-      iconColor: 'text-rose-400',
-      badge: 'Pratique'
-    }
-  ]);
+  const [classeurFolders, setClasseurFolders] = useState<any[]>([]);
 
-  const [classeurExtraDocs] = useState<FileItem[]>([
-    {
-      id: 'classeur-doc-1',
-      name: 'Fascicule complet - Circuits Électroniques & Lois de Kirchhoff.pdf',
-      category: 'documents',
-      documentCategory: 'COURS',
-      source: 'Classeur StudyCloud',
-      size: '1.8 Mo',
-      sizeBytes: 1887436,
-      date: "Aujourd'hui, 09:30",
-      extension: 'PDF',
-      downloadsCount: 4,
-      isPinned: true
-    },
-    {
-      id: 'classeur-doc-2',
-      name: 'Cahier de Révision - Mathématiques & Algèbre Linéaire.pdf',
-      category: 'documents',
-      documentCategory: 'COURS',
-      source: 'Classeur StudyCloud',
-      size: '2.4 Mo',
-      sizeBytes: 2516582,
-      date: "Aujourd'hui, 08:15",
-      extension: 'PDF',
-      downloadsCount: 2,
-      isPinned: false
-    },
-    {
-      id: 'classeur-doc-3',
-      name: 'Synthèse Pédagogique - Macroéconomie & Marchés Financiers.pdf',
-      category: 'documents',
-      documentCategory: 'COURS',
-      source: 'Classeur StudyCloud',
-      size: '980 Ko',
-      sizeBytes: 1003520,
-      date: 'Hier, 16:40',
-      extension: 'PDF',
-      downloadsCount: 5,
-      isPinned: false
-    },
-    {
-      id: 'classeur-doc-4',
-      name: 'Guide d\'Étude & Travaux Pratiques - Électronique Appliquée.pdf',
-      category: 'documents',
-      documentCategory: 'COURS',
-      source: 'Classeur StudyCloud',
-      size: '3.1 Mo',
-      sizeBytes: 3250585,
-      date: 'Hier, 11:10',
-      extension: 'PDF',
-      downloadsCount: 1,
-      isPinned: true
-    }
-  ]);
+  const [classeurExtraDocs] = useState<FileItem[]>([]);
 
   // Applications éducatives disponibles
   const studyAppsList = [
@@ -1422,633 +1340,100 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     showProfileToast("Fond d'écran et photo de profil d'origine restaurés !");
   };
 
-  // =========================================================================
-  // DONNÉES RICHES CONFORMENT EXACTEMENT AUX IMAGES FOURNIES PAR L'UTILISATEUR
-  // =========================================================================
+  // Helper pour filtrer tout résidu de faux fichiers / mock dans le stockage local
+  const isMockFile = (f: any): boolean => {
+    if (!f || !f.id) return true;
+    const id = String(f.id);
+    if (/^(doc|img|vid|aud|rec-cld|sec-doc|dl)-\d+/i.test(id)) return true;
+    if (id.startsWith('aud-img3-')) return true;
+    if (id.startsWith('classeur-doc-')) return true;
+    if (f.videoUrl && f.videoUrl.includes('commondatastorage.googleapis.com')) return true;
+    if (f.audioUrl && f.audioUrl.includes('soundhelix.com')) return true;
+    return false;
+  };
 
-  // IMAGE 1 : DOCUMENTS (PDF, WORD,...) CODES COULEURS EN FONCTION DU FORMAT
-  const [documentsList, setDocumentsList] = useState<FileItem[]>([
-    {
-      id: 'doc-1',
-      name: 'CHI_AOP_LINEAIRE_MONT_BASE (1) (1).pdf',
-      category: 'documents',
-      documentCategory: 'COURS',
-      source: 'StudyCloud',
-      size: '647.5 Ko',
-      sizeBytes: 663040,
-      date: "Aujourd'hui, 11:20",
-      extension: 'PDF',
-      downloadsCount: 0
-    },
-    {
-      id: 'doc-2',
-      name: 'CHI_AOP_LINEAIRE_MONT_BASE (1).pdf',
-      category: 'documents',
-      documentCategory: 'COURS',
-      source: 'StudyCloud',
-      size: '642.5 Ko',
-      sizeBytes: 657920,
-      date: "Aujourd'hui, 10:45",
-      extension: 'PDF',
-      downloadsCount: 0
-    },
-    {
-      id: 'doc-3',
-      name: 'TD_PREPA_ANA_2MIT.pdf',
-      category: 'documents',
-      documentCategory: "PAS D'INF...",
-      source: 'StudyCloud',
-      size: '512.0 Ko',
-      sizeBytes: 524288,
-      date: 'Hier, 15:30',
-      extension: 'PDF',
-      downloadsCount: 0
-    },
-    {
-      id: 'doc-4',
-      name: 'CHI_AOP_LINEAIRE_APPLICATIONS.pdf',
-      category: 'documents',
-      documentCategory: 'COURS',
-      source: 'StudyCloud',
-      size: '720.0 Ko',
-      sizeBytes: 737280,
-      date: 'Hier, 14:15',
-      extension: 'PDF',
-      downloadsCount: 3
-    },
-    {
-      id: 'doc-5',
-      name: 'Synthese_Cours_Semestre_1.docx',
-      category: 'documents',
-      documentCategory: 'COURS',
-      source: 'StudyCloud',
-      size: '1.1 Mo',
-      sizeBytes: 1153433,
-      date: "Aujourd'hui, 09:30",
-      extension: 'DOCX',
-      downloadsCount: 5
-    },
-    {
-      id: 'doc-6',
-      name: 'Devoir_Economie_Appliquee.pdf',
-      category: 'documents',
-      documentCategory: 'DEVOIRS',
-      source: 'StudyCloud',
-      size: '2.8 Mo',
-      sizeBytes: 2936012,
-      date: 'Hier, 18:20',
-      extension: 'PDF',
-      downloadsCount: 2
-    },
-    {
-      id: 'doc-7',
-      name: 'TD_Mathematiques_Algebre.pdf',
-      category: 'documents',
-      documentCategory: 'TD',
-      source: 'StudyCloud',
-      size: '1.7 Mo',
-      sizeBytes: 1782579,
-      date: '20 Sept, 11:20',
-      extension: 'PDF',
-      downloadsCount: 7
-    },
-    {
-      id: 'doc-8',
-      name: 'Tableau_Budget_Gestion_Projet.xlsx',
-      category: 'documents',
-      documentCategory: 'COURS',
-      source: 'StudyCloud',
-      size: '890.0 Ko',
-      sizeBytes: 911360,
-      date: '19 Sept, 16:00',
-      extension: 'XLSX',
-      downloadsCount: 4
-    },
-    {
-      id: 'doc-9',
-      name: 'Cours_Supply_Chain_Logistique.pdf',
-      category: 'documents',
-      documentCategory: 'COURS',
-      source: 'StudyCloud',
-      size: '4.2 Mo',
-      sizeBytes: 4404019,
-      date: "Aujourd'hui, 10:15",
-      extension: 'PDF',
-      downloadsCount: 2
-    },
-    {
-      id: 'doc-10',
-      name: 'Notes_Revision_Semestre_1.pdf',
-      category: 'documents',
-      documentCategory: 'COURS',
-      source: 'StudyCloud',
-      size: '950 Ko',
-      sizeBytes: 972800,
-      date: '21 Sept, 14:00',
-      extension: 'PDF',
-      downloadsCount: 1
-    },
-    {
-      id: 'doc-11',
-      name: 'Fiche_TD_Mathematiques.pdf',
-      category: 'documents',
-      documentCategory: 'TD',
-      source: 'StudyCloud',
-      size: '1.7 Mo',
-      sizeBytes: 1782579,
-      date: '20 Sept, 11:20',
-      extension: 'PDF',
-      downloadsCount: 3
-    }
-  ]);
+  // 1. DOCUMENTS (Stockage réel Cloudflare D1/R2)
+  const [documentsList, setDocumentsList] = useState<FileItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_documents_files');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
+      }
+    } catch {}
+    return [];
+  });
 
-  // IMAGE 2 : IMAGES (GRILLE 3 COLONNES AVEC TAILLES EXACTES EN HAUT À DROITE)
-  const [imagesList, setImagesList] = useState<FileItem[]>([
-    {
-      id: 'img-1',
-      name: 'Capture_ecran_Dashboard.png',
-      category: 'images',
-      source: 'WhatsApp Images',
-      size: '2,18 Mo',
-      sizeBytes: 2285895,
-      date: '21 Sept',
-      isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1551288049-bebda4e38f71?auto=format&fit=crop&w=1200&q=85'
-    },
-    {
-      id: 'img-2',
-      name: 'Architecture_Cloud_Diagramme.png',
-      category: 'images',
-      source: 'WhatsApp Images',
-      size: '2,00 Mo',
-      sizeBytes: 2097152,
-      date: '21 Sept',
-      isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1544383835-bda2bc66a55d?auto=format&fit=crop&w=1200&q=85'
-    },
-    {
-      id: 'img-3',
-      name: 'Schema_Reseau_Entreprise.png',
-      category: 'images',
-      source: 'WhatsApp Images',
-      size: '2,61 Mo',
-      sizeBytes: 2736783,
-      date: '20 Sept',
-      isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=1200&q=85'
-    },
-    {
-      id: 'img-4',
-      name: 'Citation_Bague_Promesse.png',
-      category: 'images',
-      source: 'WhatsApp Images',
-      size: '292 ko',
-      sizeBytes: 299008,
-      date: '19 Sept',
-      isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1516589178581-6cd7833ae3b2?auto=format&fit=crop&w=1200&q=85'
-    },
-    {
-      id: 'img-5',
-      name: 'Interface_StudyCloud_Dark.png',
-      category: 'images',
-      source: 'WhatsApp Images',
-      size: '2,55 Mo',
-      sizeBytes: 2673868,
-      date: '18 Sept',
-      isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1618005182384-a83a8bd57fbe?auto=format&fit=crop&w=1200&q=85'
-    },
-    {
-      id: 'img-6',
-      name: 'Fond_Ecran_Paysage_Nature.png',
-      category: 'images',
-      source: 'WhatsApp Images',
-      size: '2,90 Mo',
-      sizeBytes: 3040870,
-      date: '18 Sept',
-      isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1506744038136-46273834b3fb?auto=format&fit=crop&w=1200&q=85'
-    },
-    {
-      id: 'img-7',
-      name: 'IMG-20260923-WA0012.jpg',
-      category: 'images',
-      source: 'WhatsApp Images',
-      size: '503 ko',
-      sizeBytes: 515072,
-      date: '17 Sept',
-      isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1434030216411-0b793f4b4173?auto=format&fit=crop&w=1200&q=85'
-    },
-    {
-      id: 'img-8',
-      name: 'Dossier_Roblox_Projet.png',
-      category: 'images',
-      source: 'WhatsApp Images',
-      size: '2,33 Mo',
-      sizeBytes: 2443182,
-      date: '16 Sept',
-      isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1511512578047-dfb367046420?auto=format&fit=crop&w=1200&q=85'
-    },
-    {
-      id: 'img-9',
-      name: 'Menu_Applications_Grille.png',
-      category: 'images',
-      source: 'WhatsApp Images',
-      size: '521 ko',
-      sizeBytes: 533504,
-      date: '15 Sept',
-      isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1460925895917-afdab827c52f?auto=format&fit=crop&w=1200&q=85'
-    },
-    {
-      id: 'img-10',
-      name: 'Dossier_Supply_Chain_Jaune.png',
-      category: 'images',
-      source: 'WhatsApp Images',
-      size: '41,33 ko',
-      sizeBytes: 42321,
-      date: '15 Sept',
-      isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1586528116311-ad8dd3c8310d?auto=format&fit=crop&w=1200&q=85'
-    },
-    {
-      id: 'img-11',
-      name: 'Dashboard_Navigation_Home.png',
-      category: 'images',
-      source: 'WhatsApp Images',
-      size: '2,56 Mo',
-      sizeBytes: 2684354,
-      date: '14 Sept',
-      isImage: true,
-      previewUrl: 'https://images.unsplash.com/photo-1551836022-d5d88e9218df?auto=format&fit=crop&w=1200&q=85'
-    }
-  ]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_documents_files', JSON.stringify(documentsList));
+    } catch {}
+  }, [documentsList]);
 
-  // IMAGE 3 : VIDÉOS (GRILLE 3 COLONNES AVEC BOUTON PLAY BLANC AU CENTRE ET TAILLES EXACTES)
-  const [videosList, setVideosList] = useState<FileItem[]>([
-    {
-      id: 'vid-1',
-      name: 'Labyrinthe_Psychologie_Societe.mp4',
-      category: 'videos',
-      source: 'TikTok',
-      size: '2,79 Mo',
-      sizeBytes: 2925527,
-      date: '21 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
-    },
-    {
-      id: 'vid-2',
-      name: 'Animation_Monde_Imaginaire.mp4',
-      category: 'videos',
-      source: 'TikTok',
-      size: '5,28 Mo',
-      sizeBytes: 5536481,
-      date: '21 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1509198397868-475647b2a1e5?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4'
-    },
-    {
-      id: 'vid-3',
-      name: 'Tutoriel_Debuter_En_Code.mp4',
-      category: 'videos',
-      source: 'YouTube',
-      size: '39,07 Mo',
-      sizeBytes: 40967864,
-      date: '20 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1526374965328-7f61d4dc18c5?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
-    },
-    {
-      id: 'vid-4',
-      name: 'Rick_And_Morty_Extrait.mp4',
-      category: 'videos',
-      source: 'TikTok',
-      size: '3,22 Mo',
-      sizeBytes: 3376414,
-      date: '20 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1534447677768-be436bb09401?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ElephantsDream.mp4'
-    },
-    {
-      id: 'vid-5',
-      name: 'Arrete_De_Payer_Des_Tokens.mp4',
-      category: 'videos',
-      source: 'TikTok',
-      size: '7,34 Mo',
-      sizeBytes: 7696547,
-      date: '19 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1534528741775-53994a69daeb?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerFun.mp4'
-    },
-    {
-      id: 'vid-6',
-      name: 'Gala_Costume_Ceremonie.mp4',
-      category: 'videos',
-      source: 'TikTok',
-      size: '3,45 Mo',
-      sizeBytes: 3617587,
-      date: '19 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerJoyBlazes.mp4'
-    },
-    {
-      id: 'vid-7',
-      name: 'Robot_Humanoide_Laboratoire.mp4',
-      category: 'videos',
-      source: 'TikTok',
-      size: '6,72 Mo',
-      sizeBytes: 7046430,
-      date: '18 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1485827404703-89b55fcc595e?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerMeltdowns.mp4'
-    },
-    {
-      id: 'vid-8',
-      name: 'Inde_Voyage_Reportage.mp4',
-      category: 'videos',
-      source: 'TikTok',
-      size: '1,35 Mo',
-      sizeBytes: 1415577,
-      date: '18 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1524492412937-b28074a5d7da?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/Sintel.mp4'
-    },
-    {
-      id: 'vid-9',
-      name: 'Promenade_Foret_Nuit.mp4',
-      category: 'videos',
-      source: 'TikTok',
-      size: '1,42 Mo',
-      sizeBytes: 1488977,
-      date: '17 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1448375240586-882707db888b?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/SubaruOutbackSeeTheWorld.mp4'
-    },
-    {
-      id: 'vid-10',
-      name: 'Orang_Outan_Tronc_Arbre.mp4',
-      category: 'videos',
-      source: 'TikTok',
-      size: '2,14 Mo',
-      sizeBytes: 2243952,
-      date: '17 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1540573133985-87b6da6d54a9?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/TearsOfSteel.mp4'
-    },
-    {
-      id: 'vid-11',
-      name: 'Concert_Violoncelle_Orchestre.mp4',
-      category: 'videos',
-      source: 'TikTok',
-      size: '6,95 Mo',
-      sizeBytes: 7287603,
-      date: '16 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1511192336575-5a79af67a629?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WeAreGoingOnBullrun.mp4'
-    },
-    {
-      id: 'vid-12',
-      name: 'Parade_Militaire_Foule.mp4',
-      category: 'videos',
-      source: 'TikTok',
-      size: '11,01 Mo',
-      sizeBytes: 11544821,
-      date: '16 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1508873696983-2df5293cb32f?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/WhatCarCanYouGetForAGrand.mp4'
-    },
-    {
-      id: 'vid-13',
-      name: 'Bebe_Sourire_Famille.mp4',
-      category: 'videos',
-      source: 'TikTok',
-      size: '1,55 Mo',
-      sizeBytes: 1625292,
-      date: '15 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1519689680058-324335c77eba?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerBlazes.mp4'
-    },
-    {
-      id: 'vid-14',
-      name: 'Chorale_Enfants_Chant.mp4',
-      category: 'videos',
-      source: 'TikTok',
-      size: '4,16 Mo',
-      sizeBytes: 4362076,
-      date: '15 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1465847899084-d164df4dedc6?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/ForBiggerEscapes.mp4'
-    },
-    {
-      id: 'vid-15',
-      name: 'Diogo_Almeida_Interview_AI.mp4',
-      category: 'videos',
-      source: 'YouTube',
-      size: '20,91 Mo',
-      sizeBytes: 21925724,
-      date: '14 Sept',
-      previewUrl: 'https://images.unsplash.com/photo-1500648767791-00dcc994a43e?auto=format&fit=crop&w=800&q=80',
-      videoUrl: 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'
-    }
-  ]);
+  // 2. IMAGES (Stockage réel Cloudflare D1/R2)
+  const [imagesList, setImagesList] = useState<FileItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_images_files');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
+      }
+    } catch {}
+    return [];
+  });
 
-  // IMAGE 3 & IMAGE 2 : AUDIO / MUSIQUE (LISTE IMAGE 3 AVEC VIGNETTES, ARTISTES, DATES ET LECTEUR IMAGE 2)
-  const [audioList, setAudioList] = useState<FileItem[]>([
-    {
-      id: 'aud-img3-1',
-      name: 'Another Love X Memories (Lyrics)',
-      artist: '<unknown> - Another Love X Memories...',
-      category: 'audio',
-      source: 'StudyCloud Audio',
-      size: '4,12 Mo',
-      sizeBytes: 4320140,
-      date: '09-16',
-      durationSec: 225,
-      previewUrl: 'https://images.unsplash.com/photo-1518709268805-4e9042af9f23?auto=format&fit=crop&w=400&q=80',
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-1.mp3',
-      lyricsSnippet: "I wanna take you somewhere so you know I care / But it's so cold and I don't know where to go...",
-      fullLyrics: [
-        "I wanna take you somewhere so you know I care",
-        "But it's so cold and I don't know where to go",
-        "I brought you daffodils in a pretty string",
-        "But they won't flower like they did last spring",
-        "And all my tears have been used up",
-        "On another love, another love"
-      ]
-    },
-    {
-      id: 'aud-img3-2',
-      name: 'Raindance (Lyrics)',
-      artist: 'Dave & Tems - Dave & Tems',
-      category: 'audio',
-      source: 'StudyCloud Audio',
-      size: '5,80 Mo',
-      sizeBytes: 6081740,
-      date: '09-16',
-      durationSec: 219,
-      previewUrl: 'https://images.unsplash.com/photo-1518770660439-4636190af475?auto=format&fit=crop&w=400&q=80',
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3',
-      lyricsSnippet: "And really when I think of it / Growing up, I didn't ever see marriages / No weddings, no horse, no carriages / I wanna do things different...",
-      fullLyrics: [
-        "And really when I think of it",
-        "Growing up, I didn't ever see marriages",
-        "No weddings, no horse, no carriages",
-        "I wanna do things different and right",
-        "Pray for me through the day and the night",
-        "When the rain falls on our souls",
-        "We will dance and we will heal..."
-      ]
-    },
-    {
-      id: 'aud-img3-3',
-      name: 'Davy One (Paroles)',
-      artist: "T'es Une Étoile - T'es Une Étoile",
-      category: 'audio',
-      source: 'StudyCloud Audio',
-      size: '3,84 Mo',
-      sizeBytes: 4026531,
-      date: '09-16',
-      durationSec: 192,
-      previewUrl: 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?auto=format&fit=crop&w=400&q=80',
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-3.mp3',
-      lyricsSnippet: "Prends soin de vous, prends soin de toi... T'es une étoile qui brille dans le noir...",
-      fullLyrics: [
-        "Prends soin de vous, prends soin de toi",
-        "T'es une étoile qui brille dans la nuit",
-        "Ne laisse personne éteindre ta flamme",
-        "Garde la foi, même sous la pluie"
-      ]
-    },
-    {
-      id: 'aud-img3-4',
-      name: "On s'fait du mal (Clip officiel)",
-      artist: 'Black M - Black M',
-      category: 'audio',
-      source: 'StudyCloud Audio',
-      size: '4,56 Mo',
-      sizeBytes: 4781506,
-      date: '09-16',
-      durationSec: 214,
-      previewUrl: 'https://images.unsplash.com/photo-1507676184212-d03ab07a01bf?auto=format&fit=crop&w=400&q=80',
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-4.mp3',
-      lyricsSnippet: "On s'fait du mal, pourquoi on se déchire encore quand on s'aime au fond...",
-      fullLyrics: [
-        "On s'fait du mal, pourquoi on se déchire",
-        "Quand on s'aime au fond de nos cœurs",
-        "Les regrets ne font que grandir",
-        "Mais on cherche encore le bonheur"
-      ]
-    },
-    {
-      id: 'aud-img3-5',
-      name: 'RUN (Paroles/Lyrics)',
-      artist: "Rim'K x SDM - Rim'K x SDM",
-      category: 'audio',
-      source: 'StudyCloud Audio',
-      size: '3,45 Mo',
-      sizeBytes: 3617587,
-      date: '08-26',
-      durationSec: 178,
-      previewUrl: 'https://images.unsplash.com/photo-1511671782779-c97d3d27a1d4?auto=format&fit=crop&w=400&q=80',
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-5.mp3',
-      lyricsSnippet: "Moi qui t'ai tant donné derrière le rideau... J'ai pas changé pour les tales...",
-      fullLyrics: [
-        "Moi qui t'ai tant donné derrière le rideau",
-        "J'laisse des gens derrière, j'ai juste peur de m'égarer",
-        "J'ai pas changé pour les tales, j'fais des tales étape par étape",
-        "Mais l'État veut me voir éteindre, j'fais des tales..."
-      ]
-    },
-    {
-      id: 'aud-img3-6',
-      name: "Je M'Excuse (Lyrics Video Official)",
-      artist: "Blam'S - Blam'S",
-      category: 'audio',
-      source: 'StudyCloud Audio',
-      size: '4,10 Mo',
-      sizeBytes: 4299161,
-      date: '08-24',
-      durationSec: 200,
-      previewUrl: 'https://images.unsplash.com/photo-1493225457124-a3eb161ffa5f?auto=format&fit=crop&w=400&q=80',
-      audioUrl: 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-6.mp3',
-      lyricsSnippet: "Car non jamais je ne te laisserai tomber, pardonne mes erreurs...",
-      fullLyrics: [
-        "Car non jamais je ne te laisserai tomber",
-        "Pardonne mes erreurs et mes silences",
-        "Si j'ai fait mal à tes pensées",
-        "Je demande juste une nouvelle chance"
-      ]
-    }
-  ]);
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_images_files', JSON.stringify(imagesList));
+    } catch {}
+  }, [imagesList]);
 
-  // FICHIERS RÉCENTS : STUDYCLOUD (Strictement 6 éléments maximum, 1 seule ligne, FIFO)
-  const DEFAULT_RECENT_FILES: FileItem[] = [
-    {
-      id: 'rec-cld-1',
-      name: 'Cours_Supply_Chain_Logistique.pdf',
-      category: 'documents',
-      source: 'StudyCloud',
-      size: '4,2 Mo',
-      sizeBytes: 4404019,
-      date: "Aujourd'hui, 10:15"
-    },
-    {
-      id: 'rec-cld-2',
-      name: 'Synthese_Cours_Semestre_1.docx',
-      category: 'documents',
-      source: 'StudyCloud',
-      size: '1,1 Mo',
-      sizeBytes: 1153433,
-      date: "Aujourd'hui, 09:30"
-    },
-    {
-      id: 'rec-cld-3',
-      name: 'Devoir_Economie_Appliquee.pdf',
-      category: 'documents',
-      source: 'StudyCloud',
-      size: '2,8 Mo',
-      sizeBytes: 2936012,
-      date: 'Hier, 18:20'
-    },
-    {
-      id: 'rec-cld-4',
-      name: 'Projet_Algorithmique_V2.zip',
-      category: 'downloads',
-      source: 'StudyCloud',
-      size: '6,4 Mo',
-      sizeBytes: 6710886,
-      date: 'Hier, 16:45'
-    },
-    {
-      id: 'rec-cld-5',
-      name: 'Notes_Revision_Semestre_1.pdf',
-      category: 'documents',
-      source: 'StudyCloud',
-      size: '950 Ko',
-      sizeBytes: 972800,
-      date: '21 Sept, 14:00'
-    },
-    {
-      id: 'rec-cld-6',
-      name: 'Fiche_TD_Mathematiques.pdf',
-      category: 'documents',
-      source: 'StudyCloud',
-      size: '1,7 Mo',
-      sizeBytes: 1782579,
-      date: '20 Sept, 11:20'
-    }
-  ];
+  // 3. VIDÉOS (Stockage réel Cloudflare D1/R2)
+  const [videosList, setVideosList] = useState<FileItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_videos_files');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
+      }
+    } catch {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_videos_files', JSON.stringify(videosList));
+    } catch {}
+  }, [videosList]);
+
+  // 4. AUDIO / MUSIQUE (Stockage réel Cloudflare D1/R2)
+  const [audioList, setAudioList] = useState<FileItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_audio_files');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
+      }
+    } catch {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_audio_files', JSON.stringify(audioList));
+    } catch {}
+  }, [audioList]);
+
+  // FICHIERS RÉCENTS : STUDYCLOUD (Strictement fichiers réels de l'utilisateur, 6 éléments max)
+  const DEFAULT_RECENT_FILES: FileItem[] = [];
 
   // État des fichiers récents avec persistance locale
   const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>(() => {
     try {
       const saved = localStorage.getItem('studycloud_recent_files');
       if (saved !== null) {
-        return JSON.parse(saved);
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
       }
     } catch {
       // ignore
@@ -2064,6 +1449,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       // ignore
     }
   }, [cloudRecentFiles]);
+
 
   // Retirer un élément de la liste des récents sans supprimer le fichier
   const handleRemoveRecentFile = (fileId: string) => {
@@ -2116,33 +1502,24 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (fileInputRef.current) fileInputRef.current.value = '';
   };
 
-  // DOSSIER SÉCURISÉ (Fichiers protégés par coffre-fort et isolés)
-  const [secureFolderFiles, setSecureFolderFiles] = useState<FileItem[]>([
-    {
-      id: 'sec-doc-1',
-      name: 'Diplome_Baccalaureat_Authentifie.pdf',
-      category: 'documents',
-      documentCategory: 'COURS',
-      source: 'Dossier Sécurisé',
-      size: '1.4 Mo',
-      sizeBytes: 1468006,
-      date: 'Hier, 16:30',
-      extension: 'PDF',
-      isSecure: true
-    },
-    {
-      id: 'sec-doc-2',
-      name: 'Releve_Notes_Semestre_Confidentiel.pdf',
-      category: 'documents',
-      documentCategory: 'DEVOIRS',
-      source: 'Dossier Sécurisé',
-      size: '890 Ko',
-      sizeBytes: 911360,
-      date: '18 Sept',
-      extension: 'PDF',
-      isSecure: true
-    }
-  ]);
+  // DOSSIER SÉCURISÉ (Fichiers protégés par coffre-fort et isolés réels)
+  const [secureFolderFiles, setSecureFolderFiles] = useState<FileItem[]>(() => {
+    try {
+      const saved = localStorage.getItem('studycloud_secure_files');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
+      }
+    } catch {}
+    return [];
+  });
+
+  useEffect(() => {
+    try {
+      localStorage.setItem('studycloud_secure_files', JSON.stringify(secureFolderFiles));
+    } catch {}
+  }, [secureFolderFiles]);
+
 
   const getStoredPin = () => localStorage.getItem('studycloud_secure_folder_pin');
 
@@ -3533,13 +2910,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     let sourceList: any[] = [];
     const norm = menuName.toLowerCase();
     if (norm.includes('image')) {
-      sourceList = filteredImages.length > 0 ? filteredImages : (imagesList.length > 0 ? imagesList : DEFAULT_IMAGES_LIST);
+      sourceList = filteredImages;
     } else if (norm.includes('vid')) {
-      sourceList = filteredVideos.length > 0 ? filteredVideos : (videosList.length > 0 ? videosList : DEFAULT_VIDEOS_LIST);
+      sourceList = filteredVideos;
     } else if (norm.includes('musiq') || norm.includes('audio') || norm.includes('son')) {
-      sourceList = filteredAudio.length > 0 ? filteredAudio : (audioList.length > 0 ? audioList : DEFAULT_AUDIO_LIST);
+      sourceList = filteredAudio;
     } else if (norm.includes('doc')) {
-      sourceList = filteredDocuments.length > 0 ? filteredDocuments : (documentsList.length > 0 ? documentsList : DEFAULT_DOCUMENTS_LIST);
+      sourceList = filteredDocuments;
     } else if (currentSubView?.id === 'studycloud-category-downloads') {
       sourceList = [...downloadDocs, ...downloadImages, ...downloadVideos, ...downloadAudio, ...downloadOthers];
     } else if (currentSubView?.id === 'studycloud-collection-secure-folder') {
@@ -8681,7 +8058,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     <div className="w-full h-full flex-1 flex items-center justify-center relative p-1 sm:p-2 overflow-hidden bg-black/80 rounded-2xl border border-white/10 shadow-2xl">
                       <video
                         ref={videoRef}
-                        src={splitSelectedFile.videoUrl || (splitSelectedFile as any).url || 'https://commondatastorage.googleapis.com/gtv-videos-bucket/sample/BigBuckBunny.mp4'}
+                        src={splitSelectedFile.videoUrl || (splitSelectedFile as any).url || ''}
                         poster={splitSelectedFile.previewUrl}
                         className={`w-full h-full object-contain rounded-xl select-none bg-black transition-all ${
                           isViewerMaximized 
@@ -8703,7 +8080,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       {/* Élément audio HTML5 natif invisible pour la lecture réelle */}
                       <audio
                         ref={audioRef}
-                        src={splitSelectedFile.audioUrl || (splitSelectedFile as any).url || 'https://www.soundhelix.com/examples/mp3/SoundHelix-Song-2.mp3'}
+                        src={splitSelectedFile.audioUrl || (splitSelectedFile as any).url || ''}
                         autoPlay={isAudioPlaying}
                         loop={isAudioRepeat === 'one'}
                         onEnded={() => {
