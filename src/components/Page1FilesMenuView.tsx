@@ -132,6 +132,9 @@ export interface FileItem {
   durationSec?: number;
   isNotepad?: boolean;
   content?: string;
+  originalCategory?: string;
+  originalSource?: string;
+  url?: string;
 }
 
 interface SubMenuView {
@@ -314,11 +317,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // Importer des fichiers dans le dossier ouvert
   const handleFolderFileUpload = (e: React.ChangeEvent<HTMLInputElement>, folderId: string) => {
     if (!e.target.files || e.target.files.length === 0) return;
-    const files = Array.from(e.target.files);
+    const files = Array.from(e.target.files) as File[];
     const targetFolder = classeur3DFolders.find(f => f.id === folderId);
     const folderName = targetFolder ? targetFolder.name : 'Dossier';
 
-    const newFiles: FileItem[] = files.map((f, idx) => {
+    const newFiles: FileItem[] = files.map((f: File, idx) => {
       const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || '' : '';
       let category: FileItem['category'] = 'documents';
       if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) category = 'images';
@@ -352,11 +355,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   const handleDirectFilesImportToFolder = (fileList: FileList, folderId: string) => {
-    const files = Array.from(fileList);
+    const files = Array.from(fileList) as File[];
     const targetFolder = classeur3DFolders.find(f => f.id === folderId);
     const folderName = targetFolder ? targetFolder.name : 'Dossier';
 
-    const newFiles: FileItem[] = files.map((f, idx) => {
+    const newFiles: FileItem[] = files.map((f: File, idx) => {
       const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || '' : '';
       let category: FileItem['category'] = 'documents';
       if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) category = 'images';
@@ -439,38 +442,63 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setNewNoteNameInput('');
     showToast(`Document "${finalName}" créé !`);
 
-    // Ouvrir immédiatement le bloc-notes pour écrire dedans
-    setActiveEditingNote(newNoteFile);
+    // Ouvrir immédiatement le bloc-notes dans le volet divisé pour écrire dedans
+    handleSelectFile(newNoteFile);
     setNoteTextContent('');
     setIsNoteSavedIndicator(true);
   };
 
-  const handleUpdateNoteContent = (newText: string) => {
-    if (!activeEditingNote || !opened3DFolder) return;
+  const handleUpdateNoteContent = (newText: string, fileId?: string) => {
+    const targetId = fileId || splitSelectedFile?.id || activeEditingNote?.id;
+    if (!targetId) return;
+
     const byteLength = new Blob([newText]).size;
     const k = 1024;
     const sizes = ['o', 'Ko', 'Mo', 'Go'];
     const i = byteLength > 0 ? Math.floor(Math.log(byteLength) / Math.log(k)) : 0;
     const sizeStr = byteLength > 0 ? parseFloat((byteLength / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i] : '0 o';
 
-    setFolderFilesMap(prev => {
-      const currentList = prev[opened3DFolder.id] || [];
-      const updatedList = currentList.map(f => {
-        if (f.id === activeEditingNote.id) {
-          return {
-            ...f,
-            content: newText,
-            size: sizeStr,
-            sizeBytes: byteLength,
-          };
-        }
-        return f;
+    if (opened3DFolder) {
+      setFolderFilesMap(prev => {
+        const currentList = prev[opened3DFolder.id] || [];
+        const updatedList = currentList.map(f => {
+          if (f.id === targetId) {
+            return {
+              ...f,
+              content: newText,
+              size: sizeStr,
+              sizeBytes: byteLength,
+            };
+          }
+          return f;
+        });
+        return {
+          ...prev,
+          [opened3DFolder.id]: updatedList,
+        };
       });
-      return {
+    }
+
+    setDocumentsList(prev => prev.map(f => {
+      if (f.id === targetId) {
+        return {
+          ...f,
+          content: newText,
+          size: sizeStr,
+          sizeBytes: byteLength
+        };
+      }
+      return f;
+    }));
+
+    if (splitSelectedFile && splitSelectedFile.id === targetId) {
+      setSplitSelectedFile(prev => prev ? {
         ...prev,
-        [opened3DFolder.id]: updatedList,
-      };
-    });
+        content: newText,
+        size: sizeStr,
+        sizeBytes: byteLength
+      } : null);
+    }
 
     setIsNoteSavedIndicator(true);
   };
@@ -1771,7 +1799,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
-    const newItems: FileItem[] = Array.from(files).map((file, idx) => {
+    const newItems: FileItem[] = (Array.from(files) as File[]).map((file: File, idx) => {
       const isImg = file.type.startsWith('image/');
       let category: FileItem['category'] = 'documents';
       if (isImg) category = 'images';
@@ -2070,6 +2098,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         setVideosList(prev => prev.filter(vid => vid.id !== file.id));
         setAudioList(prev => prev.filter(aud => aud.id !== file.id));
         setDownloadedItems(prev => prev.filter(dl => dl.id !== file.id));
+        if (opened3DFolder) {
+          setFolderFilesMap(prev => ({
+            ...prev,
+            [opened3DFolder.id]: (prev[opened3DFolder.id] || []).filter(f => f.id !== file.id)
+          }));
+        }
         if (splitSelectedFile?.id === file.id) {
           setSplitSelectedFile(null);
         }
@@ -2113,6 +2147,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         setAudioList(prev => prev.filter(aud => aud.id !== file.id));
         setDownloadedItems(prev => prev.filter(dl => dl.id !== file.id));
         setCloudRecentFiles(prev => prev.filter(f => f.id !== file.id));
+        if (opened3DFolder) {
+          setFolderFilesMap(prev => ({
+            ...prev,
+            [opened3DFolder.id]: (prev[opened3DFolder.id] || []).filter(f => f.id !== file.id)
+          }));
+        }
 
         if (splitSelectedFile?.id === file.id) {
           setSplitSelectedFile(null);
@@ -2165,6 +2205,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         } else if (file.category === 'audio') {
           setAudioList(prev => [newFile, ...prev]);
         }
+        if (opened3DFolder) {
+          setFolderFilesMap(prev => ({
+            ...prev,
+            [opened3DFolder.id]: [newFile, ...(prev[opened3DFolder.id] || [])]
+          }));
+        }
         showToast(`Fichier dupliqué : "${newFile.name}" !`);
         break;
       }
@@ -2176,6 +2222,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         else if (file.category === 'images') setImagesList(toggleFav);
         else if (file.category === 'videos') setVideosList(toggleFav);
         else if (file.category === 'audio') setAudioList(toggleFav);
+        if (opened3DFolder) {
+          setFolderFilesMap(prev => ({
+            ...prev,
+            [opened3DFolder.id]: (prev[opened3DFolder.id] || []).map(f => f.id === file.id ? { ...f, isFavorite: !f.isFavorite } : f)
+          }));
+        }
         showToast(file.isFavorite ? 'Retiré des favoris' : 'Ajouté aux favoris !');
         break;
       }
@@ -2187,6 +2239,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         else if (file.category === 'images') setImagesList(togglePin);
         else if (file.category === 'videos') setVideosList(togglePin);
         else if (file.category === 'audio') setAudioList(togglePin);
+        if (opened3DFolder) {
+          setFolderFilesMap(prev => {
+            const list = prev[opened3DFolder.id] || [];
+            const newPin = !file.isPinned;
+            const updated = list.map(f => f.id === file.id ? { ...f, isPinned: newPin } : f);
+            if (newPin) {
+              const item = updated.find(f => f.id === file.id);
+              if (item) {
+                return { ...prev, [opened3DFolder.id]: [item, ...updated.filter(f => f.id !== file.id)] };
+              }
+            }
+            return { ...prev, [opened3DFolder.id]: updated };
+          });
+        }
         showToast(file.isPinned ? `"${file.name}" désépinglé` : `"${file.name}" épinglé au début !`);
         break;
       }
@@ -2194,13 +2260,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       case 'rename': {
         const newName = window.prompt('Modifier le nom du fichier :', file.name);
         if (newName && newName.trim() && newName.trim() !== file.name) {
+          const trimmed = newName.trim();
+          const finalName = (file.isNotepad && !trimmed.toLowerCase().endsWith('.txt')) ? `${trimmed}.txt` : trimmed;
           const renameIn = (list: FileItem[]) =>
-            list.map(f => f.id === file.id ? { ...f, name: newName.trim() } : f);
+            list.map(f => f.id === file.id ? { ...f, name: finalName } : f);
           if (file.category === 'documents') setDocumentsList(renameIn);
           else if (file.category === 'images') setImagesList(renameIn);
           else if (file.category === 'videos') setVideosList(renameIn);
           else if (file.category === 'audio') setAudioList(renameIn);
-          showToast(`Fichier renommé en "${newName.trim()}" !`);
+
+          if (opened3DFolder) {
+            setFolderFilesMap(prev => ({
+              ...prev,
+              [opened3DFolder.id]: (prev[opened3DFolder.id] || []).map(f => f.id === file.id ? { ...f, name: finalName } : f)
+            }));
+          }
+          if (splitSelectedFile?.id === file.id) {
+            setSplitSelectedFile(prev => prev ? { ...prev, name: finalName } : null);
+          }
+          showToast(`Fichier renommé en "${finalName}" !`);
         }
         break;
       }
@@ -2314,6 +2392,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setViewerZoom(1);
     setViewerRotation(0);
     setDocCurrentPage(1);
+
+    if (file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt')) {
+      setNoteTextContent(file.content || '');
+      setIsNoteSavedIndicator(true);
+    }
 
     // Si audio, démarrer l'écouteur et ouvrir le lecteur mobile si sur téléphone
     if (file.category === 'audio') {
@@ -3656,7 +3739,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             {subFolders.map((subF) => (
               <div
                 key={subF.id}
-                onClick={() => setOpened3DFolder(subF)}
+                onClick={() => {
+                  setOpened3DFolder(subF);
+                  setSplitSelectedFile(null);
+                  setSubSearchQuery('');
+                }}
                 className="group relative p-2.5 sm:p-3 rounded-2xl transition-all select-none border bg-[#0E1526]/85 hover:bg-[#141E34] border-white/10 hover:border-orange-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 cursor-pointer flex flex-col justify-between"
               >
                 {/* Bouton 3 traits & menu d'options */}
@@ -3675,7 +3762,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black' 
                         : 'border-white/30 opacity-90 group-hover:opacity-100'
                     }`}
-                    title="Options du sous-dossier"
+                    title="Options du sous-dossier (3 traits)"
                   >
                     <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
                   </button>
@@ -3691,100 +3778,48 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             {/* 2. Fichiers du dossier (Bloc-notes TXT modèle Image 2 et autres fichiers importés - taille fixe 4) */}
             {files.map((file) => {
               const isTxtNote = file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt');
+              const isSelected = splitSelectedFile?.id === file.id;
+              const isMenuOpen = activeMenuFileId === file.id;
 
               if (isTxtNote) {
                 return (
                   <div
                     key={file.id}
-                    onClick={() => {
-                      setActiveEditingNote(file);
-                      setNoteTextContent(file.content || '');
-                      setIsNoteSavedIndicator(true);
-                    }}
-                    className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border border-white/10 hover:border-cyan-400/50 shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col justify-between select-none ${
-                      menuOpenId === file.id ? 'z-50 relative' : 'z-10'
-                    }`}
+                    onClick={() => handleSelectFile(file)}
+                    className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col justify-between select-none ${
+                      isSelected
+                        ? 'border-cyan-400 ring-2 ring-cyan-400/40 bg-[#14233C]'
+                        : 'border-white/10 hover:border-cyan-400/50'
+                    } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
                   >
-                    {/* Haut de carte : Badge TXT et Bouton 3 petits points verticaux */}
+                    {/* Haut de carte : Badge TXT et Bouton 3 traits identique aux dossiers et fichiers */}
                     <div className="flex items-center justify-between w-full mb-1">
                       <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                         TXT
                       </span>
 
-                      <div className="relative">
+                      <div 
+                        className="relative studycloud-menu-trigger"
+                        onClick={(e) => e.stopPropagation()}
+                      >
                         <button
                           type="button"
                           onClick={(e) => {
                             e.stopPropagation();
-                            setMenuOpenId(menuOpenId === file.id ? null : file.id);
+                            setActiveMenuFileId(isMenuOpen ? null : file.id);
                           }}
-                          className="studycloud-menu-trigger w-6 h-6 rounded-full bg-black/75 hover:bg-black flex items-center justify-center text-white transition-colors cursor-pointer shadow-md border border-white/20"
-                          title="Options de la note"
+                          className={`p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm ${
+                            isMenuOpen
+                              ? 'border-cyan-400 ring-2 ring-cyan-400/50 opacity-100 bg-black'
+                              : 'border-white/30 opacity-90 group-hover:opacity-100'
+                          }`}
+                          title="Options de la note (3 traits)"
                         >
-                          <MoreVertical className="w-3.5 h-3.5" />
+                          <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
                         </button>
 
-                        {/* Menu contextuel pour le fichier TXT */}
-                        {menuOpenId === file.id && (
-                          <div 
-                            onClick={(e) => e.stopPropagation()}
-                            className="studycloud-file-menu-panel absolute top-8 right-0 z-50 w-44 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95)] py-1.5 text-xs font-semibold text-white animate-in fade-in zoom-in-95 overflow-hidden divide-y divide-white/10"
-                          >
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleDeleteFileFromFolder(folder.id, file.id);
-                                setMenuOpenId(null);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-rose-500/20 flex items-center gap-2 cursor-pointer text-rose-400 hover:text-rose-300 transition-colors"
-                            >
-                              <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Supprimer
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRenameFileInFolder(folder.id, file);
-                                setMenuOpenId(null);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-cyan-300 transition-colors"
-                            >
-                              <Pencil className="w-3.5 h-3.5 text-cyan-400" /> Renommer
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                const blob = new Blob([file.content || ''], { type: 'text/plain;charset=utf-8' });
-                                const url = URL.createObjectURL(blob);
-                                const a = document.createElement('a');
-                                a.href = url;
-                                a.download = file.name;
-                                document.body.appendChild(a);
-                                a.click();
-                                document.body.removeChild(a);
-                                URL.revokeObjectURL(url);
-                                setMenuOpenId(null);
-                                showToast(`"${file.name}" téléchargé !`);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
-                            >
-                              <Download className="w-3.5 h-3.5 text-amber-400" /> Télécharger
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleShareFile(file);
-                                setMenuOpenId(null);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
-                            >
-                              <Share2 className="w-3.5 h-3.5 text-emerald-400" /> Partager
-                            </button>
-                          </div>
-                        )}
+                        {/* Menu de propositions identique pour les fichiers */}
+                        {renderFileOptionsMenu(file, files, 'right')}
                       </div>
                     </div>
 
@@ -3795,14 +3830,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       </div>
                     </div>
 
-                    {/* Bas de carte : Titre et détails */}
+                    {/* Bas de carte : Titre et détails (suppression de 'Cliquer pour écrire' comme entouré en rouge) */}
                     <div className="p-1.5 flex flex-col justify-between bg-black/30 rounded-xl mt-1.5">
                       <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-cyan-300 transition-colors" title={file.name}>
                         {file.name}
                       </p>
                       <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
                         <span className="truncate">{file.size || '0 o'}</span>
-                        <span className="shrink-0 text-cyan-400/80 font-mono text-[9px]">Cliquer pour écrire</span>
                       </div>
                     </div>
                   </div>
@@ -3814,9 +3848,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <div
                   key={file.id}
                   onClick={() => handleSelectFile(file)}
-                  className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border border-white/10 hover:border-orange-500/50 rounded-2xl shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col ${
-                    menuOpenId === file.id ? 'z-50 relative' : 'z-10'
-                  }`}
+                  className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl hover:-translate-y-1 transition-all duration-200 cursor-pointer flex flex-col ${
+                    isSelected
+                      ? 'border-orange-400 ring-2 ring-orange-400/40 bg-[#192238]'
+                      : 'border-white/10 hover:border-orange-500/50'
+                  } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
                 >
                   <div className="w-full h-24 sm:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center overflow-hidden">
                     {file.previewUrl ? (
@@ -3837,66 +3873,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       </div>
                     )}
 
-                    <div className="relative">
+                    <div 
+                      className="relative studycloud-menu-trigger"
+                      onClick={(e) => e.stopPropagation()}
+                    >
                       <button
                         type="button"
                         onClick={(e) => {
                           e.stopPropagation();
-                          setMenuOpenId(menuOpenId === file.id ? null : file.id);
+                          setActiveMenuFileId(isMenuOpen ? null : file.id);
                         }}
-                        className="studycloud-menu-trigger absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/75 hover:bg-black flex items-center justify-center text-white transition-colors cursor-pointer shadow-md z-20 border border-white/20"
-                        title="Options du fichier"
+                        className={`absolute top-1.5 right-1.5 p-1 sm:p-1.5 rounded-lg bg-black/75 hover:bg-black text-white border transition-all cursor-pointer active:scale-90 flex items-center justify-center shadow-lg backdrop-blur-sm z-20 ${
+                          isMenuOpen
+                            ? 'border-orange-400 ring-2 ring-orange-400/50 opacity-100 bg-black'
+                            : 'border-white/30 opacity-90 group-hover:opacity-100'
+                        }`}
+                        title="Options du fichier (3 traits)"
                       >
-                        <MoreVertical className="w-3.5 h-3.5" />
+                        <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
                       </button>
 
-                      {menuOpenId === file.id && (
-                        <div 
-                          onClick={(e) => e.stopPropagation()}
-                          className="studycloud-file-menu-panel absolute top-8 right-1.5 z-50 w-44 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95)] py-1.5 text-xs font-semibold text-white animate-in fade-in zoom-in-95 overflow-hidden divide-y divide-white/10"
-                        >
-                          <button
-                            type="button"
-                            onClick={(e) => {
-                              e.stopPropagation();
-                              handleDeleteFileFromFolder(folder.id, file.id);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full px-3 py-2 text-left hover:bg-rose-500/20 flex items-center gap-2 cursor-pointer text-rose-400 hover:text-rose-300 transition-colors"
-                          >
-                            <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Supprimer
-                          </button>
-                          <button
-                            onClick={() => {
-                              handleShareFile(file);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
-                          >
-                            <Share2 className="w-3.5 h-3.5 text-emerald-400" /> Partager
-                          </button>
-                          <button
-                            onClick={() => {
-                              handleDownloadFile(file);
-                              setMenuOpenId(null);
-                            }}
-                            className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
-                          >
-                            <Download className="w-3.5 h-3.5 text-amber-400" /> Télécharger
-                          </button>
-                          {onOpenStudySpace && (
-                            <button
-                              onClick={() => {
-                                onOpenStudySpace(file, folder.name, files);
-                                setMenuOpenId(null);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-emerald-300 transition-colors"
-                            >
-                              <BookOpen className="w-3.5 h-3.5 text-emerald-400" /> Espace d'étude
-                            </button>
-                          )}
-                        </div>
-                      )}
+                      {/* Menu de propositions identique pour les fichiers */}
+                      {renderFileOptionsMenu(file, files, 'right')}
                     </div>
                   </div>
 
@@ -3991,7 +3989,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               className="w-full px-3 py-1.5 flex items-center gap-2.5 text-[11px] sm:text-xs font-semibold text-rose-400 hover:bg-rose-500/15 transition-colors cursor-pointer text-left"
             >
               <Trash2 className="w-3.5 h-3.5 shrink-0" />
-              <span>Supprimer le fichier</span>
+              <span>Supprimer le dossier</span>
             </button>
             <button
               type="button"
@@ -6199,6 +6197,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       } else {
                         setOpened3DFolder(null);
                       }
+                      setSplitSelectedFile(null);
                       setSubSearchQuery('');
                     }}
                     className="flex items-center gap-1 px-2.5 sm:px-3 py-1 sm:py-1.5 bg-[#E8DFD0] hover:bg-[#D4C9B5] text-[#2D4A3E] dark:bg-[#1e293b] dark:hover:bg-[#283852] dark:text-white font-bold text-[11px] sm:text-xs rounded-lg border-2 border-[#2D4A3E] dark:border-[#334155] shadow-[1px_1px_0px_0px_#1c1917] dark:shadow-none transition-all cursor-pointer active:translate-x-0.5 active:translate-y-0.5"
@@ -6219,14 +6218,51 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   </button>
                 </div>
 
-                {/* MILIEU : Nom du dossier au milieu collé à l'en-tête sur la ligne horizontale (exactement comme dans Mes dossiers de l'écran 1) */}
+                {/* MILIEU : Nom du dossier avec la couleur du dossier ouvert, et fil d'Ariane parent transparent si dossier dans un dossier */}
                 <div className="flex-1 flex justify-center items-center px-1 min-w-0">
-                  <h1 
-                    className="font-sans text-xs sm:text-sm font-bold text-stone-900 bg-amber-400 dark:bg-amber-500 px-3.5 py-1 rounded-lg border-2 border-stone-800 dark:border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] truncate max-w-[180px] sm:max-w-xs md:max-w-md text-center"
-                    title={opened3DFolder.name}
-                  >
-                    {opened3DFolder.name}
-                  </h1>
+                  {opened3DFolder.parentId ? (() => {
+                    const parentFolder = classeur3DFolders.find(f => f.id === opened3DFolder.parentId);
+                    return (
+                      <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+                        {parentFolder && (
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setOpened3DFolder(parentFolder);
+                              setSplitSelectedFile(null);
+                              setSubSearchQuery('');
+                            }}
+                            className="font-sans text-xs sm:text-sm font-bold text-stone-800 dark:text-stone-200 bg-black/10 dark:bg-white/10 hover:bg-black/20 dark:hover:bg-white/20 px-2.5 sm:px-3 py-1 rounded-lg border-2 border-dashed border-stone-600/60 dark:border-stone-400/60 shadow-xs truncate max-w-[120px] sm:max-w-[160px] text-center cursor-pointer transition-all active:scale-95 flex items-center gap-1"
+                            title={`Retourner au dossier parent « ${parentFolder.name} »`}
+                          >
+                            <span className="truncate">{parentFolder.name}</span>
+                          </button>
+                        )}
+                        <span className="text-stone-400 dark:text-slate-500 font-bold select-none text-xs sm:text-sm">/</span>
+                        <h1 
+                          className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-lg border-2 border-stone-800 dark:border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] truncate max-w-[140px] sm:max-w-[200px] md:max-w-xs text-center"
+                          style={{
+                            backgroundColor: opened3DFolder.primaryColor || '#FFC400',
+                            color: opened3DFolder.textDark ? '#1c1917' : '#FFFFFF'
+                          }}
+                          title={opened3DFolder.name}
+                        >
+                          {opened3DFolder.name}
+                        </h1>
+                      </div>
+                    );
+                  })() : (
+                    <h1 
+                      className="font-sans text-xs sm:text-sm font-bold px-3.5 py-1 rounded-lg border-2 border-stone-800 dark:border-stone-800 shadow-[1px_1px_0px_0px_#1c1917] truncate max-w-[180px] sm:max-w-xs md:max-w-md text-center"
+                      style={{
+                        backgroundColor: opened3DFolder.primaryColor || '#FFC400',
+                        color: opened3DFolder.textDark ? '#1c1917' : '#FFFFFF'
+                      }}
+                      title={opened3DFolder.name}
+                    >
+                      {opened3DFolder.name}
+                    </h1>
+                  )}
                 </div>
 
                 {/* DROITE : Les 2 boutons séparés (Créer un dossier + Bloc-notes) devant le champ de recherche et plein écran */}
@@ -7294,7 +7330,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           {filteredSecureFiles.map((file, idx) => {
                             if (file.category === 'images') return renderImageCard(file, idx);
                             if (file.category === 'videos') return renderVideoCard(file, idx);
-                            if (file.category === 'audio') return renderAudioItem(file, false);
+                            if (file.category === 'audio') return renderAudioItem(file);
                             return renderDocumentCard(file);
                           })}
                         </div>
@@ -7340,7 +7376,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       {favoriteFiles.map((file, idx) => {
                         if (file.category === 'images') return renderImageCard(file, idx);
                         if (file.category === 'videos') return renderVideoCard(file, idx);
-                        if (file.category === 'audio') return renderAudioItem(file, false);
+                        if (file.category === 'audio') return renderAudioItem(file);
                         return renderDocumentCard(file);
                       })}
                     </div>
@@ -7729,7 +7765,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
 
                 {/* CORPS DU LECTEUR GRAND FORMAT SELON LE TYPE DE MÉDIA (Prend tout l'espace disponible) */}
-                <div className={`flex-1 w-full h-full flex flex-col items-center justify-center ${splitSelectedFile.category === 'documents' ? 'p-0 overflow-hidden bg-white' : 'p-1 sm:p-2 sm:px-4 overflow-hidden'} relative`}>
+                <div className={`flex-1 w-full h-full flex flex-col items-center justify-center ${splitSelectedFile.category === 'documents' && !splitSelectedFile.isNotepad && !splitSelectedFile.name.toLowerCase().endsWith('.txt') ? 'p-0 overflow-hidden bg-white' : 'p-1 sm:p-2 sm:px-4 overflow-hidden'} relative`}>
 
                   {/* 1. LECTEUR IMAGE GRAND FORMAT (Prend tout l'espace avec Zoom & Rotation) */}
                   {(splitSelectedFile.category === 'images' || splitSelectedFile.isImage) && (
@@ -8020,8 +8056,100 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   )}
 
-                  {/* 4. LECTEUR DOCUMENT GRAND FORMAT (Prend tout l'espace disponible, sans bandes noires ni creux) */}
-                  {splitSelectedFile.category === 'documents' && (
+                  {/* 4. LECTEUR / ÉDITEUR BLOC-NOTES TXT GRAND FORMAT (Prend tout l'espace, design soigné, lecture et écriture synchronisée) */}
+                  {(splitSelectedFile.isNotepad || splitSelectedFile.extension === 'txt' || splitSelectedFile.name.toLowerCase().endsWith('.txt')) && (
+                    <div className="w-full h-full flex-1 flex flex-col overflow-hidden bg-[#0A0F1D] text-white rounded-2xl border border-white/10 shadow-2xl animate-in fade-in duration-150">
+                      {/* Barre d'outils du bloc-notes */}
+                      <div className="px-3 sm:px-4 py-2 bg-slate-900/90 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
+                        <div className="flex items-center gap-2 min-w-0">
+                          <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30 shrink-0">
+                            TXT
+                          </span>
+                          <span className="text-[11px] text-slate-400 font-mono hidden sm:inline">
+                            {noteTextContent.length} car. • {noteTextContent.trim() ? noteTextContent.trim().split(/\s+/).length : 0} mots
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 shrink-0">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              navigator.clipboard?.writeText(noteTextContent);
+                              showToast('Texte copié dans le presse-papiers !');
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                            title="Copier tout le texte"
+                          >
+                            <Copy className="w-3.5 h-3.5 text-cyan-400" />
+                            <span className="hidden sm:inline">Copier</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              const blob = new Blob([noteTextContent], { type: 'text/plain;charset=utf-8' });
+                              const url = URL.createObjectURL(blob);
+                              const a = document.createElement('a');
+                              a.href = url;
+                              a.download = splitSelectedFile.name;
+                              document.body.appendChild(a);
+                              a.click();
+                              document.body.removeChild(a);
+                              URL.revokeObjectURL(url);
+                              showToast(`"${splitSelectedFile.name}" téléchargé !`);
+                            }}
+                            className="px-2.5 py-1 rounded-lg bg-white/10 hover:bg-white/20 text-white font-semibold text-[11px] flex items-center gap-1.5 transition-colors cursor-pointer"
+                            title="Télécharger le fichier .txt"
+                          >
+                            <Download className="w-3.5 h-3.5 text-amber-400" />
+                            <span className="hidden sm:inline">Télécharger</span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => {
+                              handleUpdateNoteContent(noteTextContent);
+                              showToast('Note enregistrée !');
+                            }}
+                            className="px-3 py-1 rounded-lg bg-cyan-600 hover:bg-cyan-500 text-white font-bold text-[11px] flex items-center gap-1.5 shadow-sm transition-all active:scale-95 cursor-pointer"
+                            title="Enregistrer la note"
+                          >
+                            <Check className="w-3.5 h-3.5 stroke-[2.5]" />
+                            <span>Enregistrer</span>
+                          </button>
+                        </div>
+                      </div>
+
+                      {/* Zone de saisie et de lecture */}
+                      <div className="flex-1 w-full p-3 sm:p-5 overflow-y-auto">
+                        <textarea
+                          value={noteTextContent}
+                          onChange={(e) => {
+                            const newText = e.target.value;
+                            setNoteTextContent(newText);
+                            handleUpdateNoteContent(newText);
+                          }}
+                          placeholder="Commencez à écrire votre note ici..."
+                          className="w-full h-full min-h-[350px] bg-transparent text-slate-100 placeholder-slate-500 text-xs sm:text-sm font-mono leading-relaxed border-none outline-none resize-none focus:ring-0 selection:bg-cyan-500/30"
+                          style={{
+                            fontSize: `${Math.max(11, Math.round(14 * viewerZoom))}px`
+                          }}
+                        />
+                      </div>
+
+                      {/* Bas de page du lecteur */}
+                      <div className="px-4 py-2 bg-slate-900/60 border-t border-white/5 flex items-center justify-between text-[10px] text-slate-400 font-mono">
+                        <span className="flex items-center gap-1.5">
+                          <span className="w-2 h-2 rounded-full bg-emerald-400 inline-block animate-pulse" />
+                          Sauvegarde automatique activée
+                        </span>
+                        <span>{splitSelectedFile.name}</span>
+                      </div>
+                    </div>
+                  )}
+
+                  {/* 5. LECTEUR DOCUMENT GRAND FORMAT (Prend tout l'espace disponible, sans bandes noires ni creux) */}
+                  {splitSelectedFile.category === 'documents' && !splitSelectedFile.isNotepad && !splitSelectedFile.name.toLowerCase().endsWith('.txt') && (
                     <div className="w-full h-full flex-1 flex flex-col overflow-y-auto overflow-x-hidden bg-white text-stone-900 select-text">
                       <div 
                         className="w-full flex-1 flex flex-col p-4 sm:p-8 md:p-10 pb-36 transition-transform duration-200"

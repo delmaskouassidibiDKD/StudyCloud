@@ -80,6 +80,8 @@ export interface ClasseurCreatedFolder {
   dateText: string;
   createdAt: number;
   parentId?: string;
+  isFavorite?: boolean;
+  isPinned?: boolean;
 }
 
 // MODÈLE 1 : Onglets Index Pastel (Image 1 - 12 dossiers)
