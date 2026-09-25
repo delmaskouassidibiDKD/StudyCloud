@@ -29,12 +29,12 @@ export const generateCleanShareCode = (): string => {
   return 'sec_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
 };
 
-// URL du Worker Cloudflare Workers AI dédié à l'assistante IA StudyCloud
+// URL du Worker Cloudflare Agent Neuronal dédié à l'assistante IA StudyCloud
 export const getAiWorkerUrl = (): string => {
   return (
     (import.meta as any).env?.VITE_AI_WORKER_URL ||
     localStorage.getItem('studycloud_ai_worker_url') ||
-    'https://studycloud-ai.delmaskouassidibi.workers.dev'
+    getStudyAgentUrl()
   );
 };
 
@@ -272,18 +272,27 @@ export async function sendChatMessageToAi(params: {
     fileName: extractedDocName,
   };
 
-  // Le Worker IA dédié (studycloud-ai) gère tout en interne :
-  // - Si Mode Puissant actif : il utilise la clé StudyCloud-gemini pour Google Gemini 2.0 Flash
-  // - Si Mode Puissant inactif : il utilise l'IA principale (Workers AI Llama)
-  // Le Worker principal n'est pas interrogé.
-  const response = await fetch(dedicatedAiUrl, {
-    method: 'POST',
-    headers: {
-      'Content-Type': 'application/json',
-      'x-user-id': currentUserId,
-    },
-    body: JSON.stringify(payload),
-  });
+  // Appel vers le Neurone d'Agent StudyCloud (Durable Objects & Llama 70B) :
+  let response: Response;
+  try {
+    response = await fetch(`${dedicatedAiUrl}/api/ai/chat`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': currentUserId,
+      },
+      body: JSON.stringify(payload),
+    });
+  } catch (_netErr) {
+    response = await fetch(dedicatedAiUrl, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        'x-user-id': currentUserId,
+      },
+      body: JSON.stringify(payload),
+    });
+  }
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: response.statusText }));
@@ -430,22 +439,20 @@ export async function generateDirectAiCreation(params: {
   const dedicatedAiUrl = getAiWorkerUrl().replace(/\/+$/, '');
   const currentUserId = params.userId || localStorage.getItem('unifolder_user_id') || 'default-user';
 
-  // 1. Tente en priorité le cerveau neuronal Cloudflare Agent (Durable Objects)
-  if (!isPowerMode) {
-    try {
-      const agentRes = await generateAgentCreation({
-        toolType: params.toolType,
-        docName: params.docName,
-        docContent: params.docContent,
-        prompt: params.prompt,
-        userId: currentUserId,
-      });
-      if (agentRes && agentRes.success && agentRes.creation_data) {
-        return agentRes;
-      }
-    } catch (agentErr) {
-      console.warn('[StudyCloud API] Agent Cloudflare distant en attente de déploiement, bascule automatique sur Worker standard:', agentErr);
+  // 1. Cerveau neuronal Cloudflare Agent (Durable Objects & Llama 70B)
+  try {
+    const agentRes = await generateAgentCreation({
+      toolType: params.toolType,
+      docName: params.docName,
+      docContent: params.docContent,
+      prompt: params.prompt,
+      userId: currentUserId,
+    });
+    if (agentRes && agentRes.success && agentRes.creation_data) {
+      return agentRes;
     }
+  } catch (agentErr) {
+    console.warn('[StudyCloud API] Agent Cloudflare distant en attente de déploiement, tentative de secours via URL dédiée:', agentErr);
   }
 
   const payload = {

@@ -7,3 +7,4 @@ coverage/
 !.env.example
 .wrangler/
 studycloud-agent/dist/
+workers agent ia/dist/

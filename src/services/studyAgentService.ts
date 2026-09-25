@@ -8,7 +8,7 @@ export const getStudyAgentUrl = (): string => {
   return (
     (import.meta as any).env?.VITE_STUDY_AGENT_URL ||
     localStorage.getItem('studycloud_agent_url') ||
-    'https://agent.delmas.dkd-technologies.com'
+    'https://studycloud-agent.delmaskouassidibi.workers.dev'
   ).replace(/\/+$/, '');
 };
 
