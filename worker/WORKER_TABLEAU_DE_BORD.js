@@ -7763,7 +7763,7 @@ function renderDashboardHtml(data) {
             }
           }, 3500);
         }
-        showToast('⚠️ Erreur lors de l\'enregistrement : ' + (err.message || 'Échec'));
+        showToast("⚠️ Erreur lors de l'enregistrement : " + (err.message || "Échec"));
       }
     }
     window.saveFieldEditModal = saveFieldEditModal;
@@ -9246,7 +9246,7 @@ function renderDashboardHtml(data) {
       burgerBtn.addEventListener('click', (e) => {
         e.preventDefault();
         e.stopPropagation();
-        toggleSidebar(true);
+        toggleSidebar();
       });
     }
 
