@@ -3702,12 +3702,20 @@ function renderDashboardHtml(data) {
       setTimeout(() => t.classList.add('hidden'), 3500);
     }
 
+    let lastSidebarToggleTime = 0;
     function toggleSidebar(forceState) {
+      const isForced = (typeof forceState === 'boolean');
+      const now = Date.now();
+      if (!isForced && now - lastSidebarToggleTime < 250) {
+        return; // Ignore les double-clics ou doubles-événements tactiles en moins de 250ms
+      }
+      lastSidebarToggleTime = now;
+
       const drawer = document.getElementById('sidebar-drawer');
       const backdrop = document.getElementById('sidebar-backdrop');
       if (!drawer || !backdrop) return;
       const isOpen = drawer.classList.contains('open');
-      const willOpen = (typeof forceState === 'boolean') ? forceState : !isOpen;
+      const willOpen = isForced ? forceState : !isOpen;
 
       if (willOpen) {
         drawer.classList.add('open');
@@ -9241,14 +9249,7 @@ function renderDashboardHtml(data) {
       }
     });
 
-    const burgerBtn = document.getElementById('btn-hamburger');
-    if (burgerBtn) {
-      burgerBtn.addEventListener('click', (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        toggleSidebar();
-      });
-    }
+// Gestionnaire unique par onclick direct sur le bouton hamburger
 
     // AUCUNE boucle infinie ni polling continu en arrière-plan :
     // L'écoute est 100% intelligente et événementielle (très économique pour vos quotas Cloudflare) :
