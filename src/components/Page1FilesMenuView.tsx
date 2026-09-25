@@ -2688,6 +2688,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (id === 'cloud-storage') {
       setCloudActiveTab('classeur');
       setSplitSelectedFile(null);
+      setOpened3DFolder(null);
       setSelectedClasseurFolder(null);
     } else {
       setSplitSelectedFile(null);
@@ -2805,14 +2806,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Fichiers favoris
   const favoriteFiles = useMemo(() => {
-    const all = [...documentsList, ...imagesList, ...videosList, ...audioList, ...classeurExtraDocs];
+    const folderFiles = Object.values(folderFilesMap).flat();
+    const all = [...documentsList, ...imagesList, ...videosList, ...audioList, ...folderFiles];
     const unique = all.filter((f, idx, arr) => arr.findIndex(x => x.id === f.id) === idx);
     const favs = unique.filter(f => f.isFavorite || f.isPinned);
     if (subSearchQuery.trim() !== '') {
       return applySorting(favs.filter(f => f.name.toLowerCase().includes(subSearchQuery.toLowerCase())));
     }
     return applySorting(favs);
-  }, [documentsList, imagesList, videosList, audioList, classeurExtraDocs, subSearchQuery, sortOption]);
+  }, [documentsList, imagesList, videosList, audioList, folderFilesMap, subSearchQuery, sortOption]);
 
   // Fichiers de la corbeille
   const filteredTrashFiles = useMemo(() => {
@@ -3151,7 +3153,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       return filteredTrashFiles;
     }
     if (isCloudView) {
-      if (cloudActiveTab === 'classeur') return displayedClasseurDocuments;
+      if (cloudActiveTab === 'classeur') return opened3DFolder ? (folderFilesMap[opened3DFolder.id] || []) : [];
       if (cloudActiveTab === 'documents') return filteredDocuments;
       if (cloudActiveTab === 'images') return filteredImages;
       if (cloudActiveTab === 'videos') return filteredVideos;
@@ -3160,7 +3162,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       if (cloudActiveTab === 'secure-folder') return filteredSecureFiles;
       if (cloudActiveTab === 'favorites') return favoriteFiles;
       if (cloudActiveTab === 'trash') return filteredTrashFiles;
-      return displayedClasseurDocuments;
+      return displayedFiles;
     }
     return displayedFiles;
   }, [
@@ -3177,7 +3179,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     downloadImages,
     downloadVideos,
     downloadAudio,
-    displayedClasseurDocuments,
     filteredSecureFiles,
     favoriteFiles,
     filteredTrashFiles,
@@ -7044,7 +7045,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           {/* ========================================================================= */}
           {isCloudView && (
             <div className={`w-full bg-[#EAECEF] dark:bg-[#070B14] border-b border-stone-300/80 dark:border-white/10 px-3 sm:px-6 md:px-10 lg:px-12 py-2.5 sm:py-3 select-none ${
-              isViewerMaximized ? 'hidden' : ''
+              isViewerMaximized || opened3DFolder ? 'hidden' : ''
             }`}>
               <div className="relative flex items-center">
                 {/* Flèche gauche pour défilement rapide sur grand écran */}
@@ -7072,6 +7073,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     onClick={() => {
                       setCloudActiveTab('classeur');
                       setSplitSelectedFile(null);
+                      setOpened3DFolder(null);
                       setIsSecureFolderUnlocked(false);
                       setSecurePinInput('');
                       setSecurePinError(null);
@@ -7100,6 +7102,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         key={item.id}
                         type="button"
                         onClick={() => {
+                          setOpened3DFolder(null);
                           if (item.id === 'secure-folder') {
                             if (isSecureFolderUnlocked) {
                               setCloudActiveTab(item.id);
@@ -7179,8 +7182,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     ? 'w-full md:w-5/12 lg:w-5/12 xl:w-4/12 border-b md:border-b-0 md:border-r border-stone-300/80 dark:border-slate-800/80' 
                     : 'w-full px-3 sm:px-6 md:px-10 lg:px-12'
             }`}>
-              {/* 0. CLASSEUR PRINCIPAL (BOUTON DE LA PAGE 1 : SOUS-MENU CLASSEUR 3D) */}
-              {currentSubView.id === 'studycloud-classeur-classeur' && (
+              {/* 0. CLASSEUR PRINCIPAL (BOUTON DE LA PAGE 1 ET ONGLE CLASSEUR DANS ESPACE CLOUD) */}
+              {(currentSubView.id === 'studycloud-classeur-classeur' || (isCloudView && cloudActiveTab === 'classeur')) && (
                 <div className="w-full">
                   {opened3DFolder ? (
                     renderOpened3DFolderView(opened3DFolder)
@@ -7326,94 +7329,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       </div>
                     </div>
                   )}
-                </div>
-              )}
-
-              {/* 0. CLASSEUR (SÉLECTIONNÉ PAR DÉFAUT DANS ESPACE CLOUD) */}
-              {isCloudView && cloudActiveTab === 'classeur' && (
-                <div className="space-y-5 animate-in fade-in duration-200">
-                  {/* Dossiers / Matières du classeur */}
-                  <div className="space-y-2.5">
-                    <div className="flex items-center justify-between">
-                      <h3 className="text-xs sm:text-sm font-black text-stone-900 dark:text-white tracking-wide flex items-center gap-2">
-                        <span>Dossiers & Matières du Classeur</span>
-                        <span className="text-[11px] font-bold text-stone-400">({classeurFolders.length})</span>
-                      </h3>
-                      {selectedClasseurFolder && (
-                        <button
-                          type="button"
-                          onClick={() => setSelectedClasseurFolder(null)}
-                          className="px-2.5 py-1 rounded-full bg-[#04060A] text-white text-[11px] font-bold border border-white/10 hover:border-orange-400/50 flex items-center gap-1 cursor-pointer transition-all active:scale-95"
-                        >
-                          <X className="w-3 h-3 text-orange-400" />
-                          <span>Voir tout</span>
-                        </button>
-                      )}
-                    </div>
-                    <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2.5 sm:gap-3">
-                      {classeurFolders.map(folder => {
-                        const isFolderActive = selectedClasseurFolder === folder.id;
-                        return (
-                          <div
-                            key={folder.id}
-                            onClick={() => setSelectedClasseurFolder(isFolderActive ? null : folder.id)}
-                            className={`p-3.5 rounded-2xl border transition-all duration-200 cursor-pointer select-none relative group ${
-                              isFolderActive
-                                ? 'bg-gradient-to-br from-orange-500/20 to-black border-orange-400 ring-2 ring-orange-400/50 shadow-lg scale-[1.01]'
-                                : 'bg-[#04060A] hover:bg-[#0A0E18] border-white/10 hover:border-orange-400/40 shadow-sm'
-                            }`}
-                          >
-                            <div className="flex items-start justify-between gap-2">
-                              <div className={`p-2 rounded-xl bg-black border border-white/10 ${folder.iconColor} group-hover:scale-110 transition-transform`}>
-                                <FolderArchive className="w-5 h-5 stroke-[2.2]" />
-                              </div>
-                              <span className="text-[10px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-white/5 border border-white/10 text-slate-300">
-                                {folder.badge}
-                              </span>
-                            </div>
-                            <div className="mt-2.5">
-                              <h4 className="text-xs sm:text-sm font-black text-white group-hover:text-orange-400 transition-colors truncate">
-                                {folder.name}
-                              </h4>
-                              <p className="text-[11px] font-medium text-slate-400 mt-0.5">
-                                {folder.count}
-                              </p>
-                            </div>
-                          </div>
-                        );
-                      })}
-                    </div>
-                  </div>
-
-                  {/* Documents et fiches de cours du classeur */}
-                  <div className="space-y-3">
-                    <div className="flex items-center justify-between">
-                      <span className="text-[11px] sm:text-xs font-bold text-stone-500 dark:text-slate-400">
-                        {displayedClasseurDocuments.length} document{displayedClasseurDocuments.length > 1 ? 's' : ''} dans le classeur
-                        {selectedClasseurFolder && ` • Filtré par matière`}
-                      </span>
-                    </div>
-
-                    {renderSelectionBanner(displayedClasseurDocuments)}
-
-                    {displayedClasseurDocuments.length === 0 ? (
-                      <div className="py-16 text-center text-stone-500 dark:text-slate-400">
-                        <FolderArchive className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-orange-400" />
-                        <p className="text-sm font-semibold">Aucun document dans le classeur</p>
-                        <p className="text-xs opacity-70 mt-1 max-w-sm mx-auto">
-                          Ce dossier ne contient aucun document pour le moment.
-                        </p>
-                      </div>
-                    ) : (
-                      <div className={`grid gap-2.5 sm:gap-3.5 ${
-                        splitSelectedFile 
-                          ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' 
-                          : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
-                      }`}>
-                        {displayedClasseurDocuments.map(doc => renderDocumentCard(doc))}
-                      </div>
-                    )}
-                  </div>
                 </div>
               )}
 
