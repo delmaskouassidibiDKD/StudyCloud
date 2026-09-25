@@ -700,20 +700,20 @@ export const CloudStorageAPI = {
   },
 
   // --------------------------------------------------------------------------
-  // 10. UPLOAD DIRECT R2 PAR CATÉGORIE DÉDIÉE (Option B)
+  // 10. UPLOAD DIRECT R2 ET D1 PAR CATÉGORIE (Validation & Routage Intelligent)
   // --------------------------------------------------------------------------
-  async uploadFileToCategoryR2(
+  async uploadFile(
     file: File | Blob,
-    category: 'classeur' | 'audio' | 'images' | 'videos' | 'documents' | 'downloads' | 'secure',
+    category: 'auto' | 'classeur' | 'audio' | 'images' | 'videos' | 'documents',
     fileName: string,
     folderId?: string
-  ): Promise<{ success: boolean; id?: string; key?: string; url?: string; error?: string }> {
+  ): Promise<{ success: boolean; category?: string; detectedCategory?: string; file?: FileItem; error?: string }> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const uploadUrl = `${baseUrl}/api/cloud/upload?category=${encodeURIComponent(category)}&name=${encodeURIComponent(fileName)}&folderId=${encodeURIComponent(folderId || '')}&userId=${getUserIdParam()}`;
       
       const res = await fetch(uploadUrl, {
-        method: 'PUT',
+        method: 'POST',
         headers: {
           'Content-Type': file.type || 'application/octet-stream',
           'x-user-id': getCurrentUserId() || 'default-user',
@@ -722,15 +722,40 @@ export const CloudStorageAPI = {
       });
 
       if (!res.ok) {
-        const errorText = await res.text().catch(() => 'Erreur upload R2');
-        return { success: false, error: errorText };
+        let errorMsg = 'Erreur lors du téléversement';
+        try {
+          const errJson = await res.json();
+          if (errJson && errJson.error) errorMsg = errJson.error;
+        } catch {
+          const errText = await res.text();
+          if (errText) errorMsg = errText;
+        }
+        return { success: false, error: errorMsg };
       }
 
       const json = await res.json();
       return json;
     } catch (e: any) {
-      console.error('[CloudStorageAPI] uploadFileToCategoryR2 error:', e);
+      console.error('[CloudStorageAPI] uploadFile error:', e);
       return { success: false, error: e.message || 'Erreur réseau lors du téléversement' };
     }
+  },
+
+  async uploadFileToCategoryR2(
+    file: File | Blob,
+    category: 'classeur' | 'audio' | 'images' | 'videos' | 'documents' | 'downloads' | 'secure',
+    fileName: string,
+    folderId?: string
+  ): Promise<{ success: boolean; id?: string; key?: string; url?: string; error?: string }> {
+    const res = await this.uploadFile(file, category as any, fileName, folderId);
+    if (!res.success) {
+      return { success: false, error: res.error };
+    }
+    return {
+      success: true,
+      id: res.file?.id,
+      key: (res.file as any)?.r2Key || res.file?.id,
+      url: res.file?.url,
+    };
   },
 };

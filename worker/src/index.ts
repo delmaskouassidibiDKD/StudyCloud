@@ -5524,46 +5524,151 @@ export default {
       }
 
       // ----------------------------------------------------------------------
-      // Upload Direct R2 par Catégorie (Partitionné par user_id)
+      // Upload Direct R2 & Enregistrement D1 (Intelligent & Strictement typé par menu)
       // ----------------------------------------------------------------------
       if (path === '/api/cloud/upload' && (method === 'PUT' || method === 'POST')) {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse('Authentification requise pour téléverser un fichier', 401, origin);
 
-        const category = url.searchParams.get('category') || 'documents';
+        const requestedCategory = (url.searchParams.get('category') || 'auto').toLowerCase().trim();
         const fileName = url.searchParams.get('name') || 'fichier_' + Date.now();
         const folderId = url.searchParams.get('folderId') || '';
-        const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
-        const fileId = 'f_' + crypto.randomUUID().substring(0, 12);
-        const storageKey = `${reqUserId}/${category}/${fileId}_${sanitizedName}`;
+        const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
 
-        const categoryBucket = getBucketForCategory(rawEnv, category);
-        if (!categoryBucket) {
-          return errorResponse('Bucket de stockage non configuré pour la catégorie ' + category, 503, origin);
+        // 1. Détection automatique de la nature du fichier
+        const normMime = (contentType || '').toLowerCase().trim();
+        const ext = fileName.includes('.') ? (fileName.split('.').pop() || '').toLowerCase().trim() : '';
+
+        const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'heif', 'avif', 'raw'];
+        const videoExts = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', '3gp', 'm4v', 'ts', 'ogv', 'mpg', 'mpeg'];
+        const audioExts = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'opus', 'aiff', 'alac', 'mid', 'midi'];
+
+        let detectedNature: 'images' | 'videos' | 'audio' | 'documents' = 'documents';
+        if (normMime.startsWith('image/') || imageExts.includes(ext)) {
+          detectedNature = 'images';
+        } else if (normMime.startsWith('video/') || videoExts.includes(ext)) {
+          detectedNature = 'videos';
+        } else if (normMime.startsWith('audio/') || audioExts.includes(ext)) {
+          detectedNature = 'audio';
         }
 
-        const contentType = request.headers.get('Content-Type') || 'application/octet-stream';
-        const fileData = request.body || (await request.arrayBuffer());
+        // 2. Routage et validation stricte
+        let finalCategory: 'images' | 'videos' | 'audio' | 'documents' | 'classeur';
 
-        await categoryBucket.put(storageKey, fileData as any, {
+        if (requestedCategory === 'auto' || requestedCategory === '' || requestedCategory === 'all') {
+          // Accueil : routage automatique dans son menu respectif (JAMAIS dans le classeur !)
+          finalCategory = detectedNature;
+        } else if (requestedCategory === 'classeur') {
+          // Classeur : accepte tout type de fichier à l'intérieur des dossiers créés
+          finalCategory = 'classeur';
+        } else if (requestedCategory === 'images' || requestedCategory === 'photos') {
+          if (detectedNature !== 'images') {
+            return errorResponse("Ce fichier ne correspond pas au menu Images. Veuillez importer une image (PNG, JPG, SVG, WebP...).", 400, origin);
+          }
+          finalCategory = 'images';
+        } else if (requestedCategory === 'videos') {
+          if (detectedNature !== 'videos') {
+            return errorResponse("Ce fichier ne correspond pas au menu Vidéos. Veuillez importer une vidéo (MP4, MKV, AVI, WebM...).", 400, origin);
+          }
+          finalCategory = 'videos';
+        } else if (requestedCategory === 'audio' || requestedCategory === 'musique') {
+          if (detectedNature !== 'audio') {
+            return errorResponse("Ce fichier ne correspond pas au menu Audio. Veuillez importer un fichier audio (MP3, WAV, FLAC, M4A...).", 400, origin);
+          }
+          finalCategory = 'audio';
+        } else if (requestedCategory === 'documents' || requestedCategory === 'docs') {
+          if (detectedNature !== 'documents') {
+            return errorResponse("Ce fichier ne correspond pas au menu Documents. Veuillez importer un document (PDF, Word, Excel, texte...).", 400, origin);
+          }
+          finalCategory = 'documents';
+        } else {
+          finalCategory = detectedNature;
+        }
+
+        // 3. Stockage dans le bucket R2 dédié
+        const categoryBucket = getBucketForCategory(rawEnv, finalCategory === 'classeur' ? 'classeur' : finalCategory);
+        if (!categoryBucket) {
+          return errorResponse('Bucket de stockage non configuré pour la catégorie ' + finalCategory, 503, origin);
+        }
+
+        const sanitizedName = fileName.replace(/[^a-zA-Z0-9._-]/g, '_');
+        const fileId = 'f_' + crypto.randomUUID().substring(0, 12);
+        const storageKey = `${reqUserId}/${finalCategory}/${fileId}_${sanitizedName}`;
+
+        const fileBuffer = await request.arrayBuffer();
+        const sizeBytes = fileBuffer.byteLength;
+        const sizeFormatted = formatBytes(sizeBytes);
+        const extUpper = ext.toUpperCase() || 'FICHIER';
+
+        const now = new Date();
+        const timeStr = now.toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+        const dateFormatted = `Aujourd'hui, ${timeStr}`;
+
+        await categoryBucket.put(storageKey, fileBuffer, {
           httpMetadata: { contentType },
           customMetadata: {
             userId: reqUserId,
             originalName: fileName,
-            category,
+            category: finalCategory,
             folderId
           }
         });
 
-        const fileUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(category)}/${encodeURIComponent(storageKey)}`;
+        const fileUrl = `${url.origin}/api/cloud/file/${encodeURIComponent(finalCategory)}/${encodeURIComponent(storageKey)}`;
+
+        // 4. Enregistrement direct dans la table D1 correspondante
+        if (env.DB) {
+          try {
+            if (finalCategory === 'images') {
+              await env.DB.prepare(`
+                INSERT INTO image_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, image_url, thumbnail_url, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+            } else if (finalCategory === 'videos') {
+              await env.DB.prepare(`
+                INSERT INTO video_files (id, user_id, name, size, size_bytes, extension, date_formatted, r2_key, video_url, thumbnail_url, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+            } else if (finalCategory === 'audio') {
+              await env.DB.prepare(`
+                INSERT INTO audio_files (id, user_id, name, title, artist, size, size_bytes, date_formatted, r2_key, audio_url, updated_at)
+                VALUES (?, ?, ?, ?, 'Artiste inconnu', ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, fileName, fileName, sizeFormatted, sizeBytes, dateFormatted, storageKey, fileUrl).run();
+            } else if (finalCategory === 'documents') {
+              await env.DB.prepare(`
+                INSERT INTO document_files (id, user_id, name, size, size_bytes, extension, document_category, date_formatted, r2_key, file_url, preview_url, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, 'COURS', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, fileName, sizeFormatted, sizeBytes, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+            } else if (finalCategory === 'classeur') {
+              await env.DB.prepare(`
+                INSERT INTO classeur_files (id, user_id, folder_id, name, size, size_bytes, category, extension, source, date_formatted, r2_key, file_url, preview_url, updated_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, 'Classeur', ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              `).bind(fileId, reqUserId, folderId || 'default-folder', fileName, sizeFormatted, sizeBytes, detectedNature, extUpper, dateFormatted, storageKey, fileUrl, fileUrl).run();
+            }
+          } catch (d1Err) {
+            console.warn('[CloudWorker] Erreur insertion D1 upload:', d1Err);
+          }
+        }
+
         return jsonResponse({
           success: true,
-          id: fileId,
-          key: storageKey,
-          url: fileUrl,
-          name: fileName,
-          category,
-          folderId
+          category: finalCategory,
+          detectedCategory: detectedNature,
+          file: {
+            id: fileId,
+            name: fileName,
+            size: sizeFormatted,
+            sizeBytes: sizeBytes,
+            extension: extUpper,
+            category: finalCategory === 'classeur' ? detectedNature : finalCategory,
+            url: fileUrl,
+            previewUrl: (finalCategory === 'images' || detectedNature === 'images') ? fileUrl : undefined,
+            videoUrl: (finalCategory === 'videos' || detectedNature === 'videos') ? fileUrl : undefined,
+            audioUrl: (finalCategory === 'audio' || detectedNature === 'audio') ? fileUrl : undefined,
+            date: dateFormatted,
+            folderId: folderId || undefined,
+            source: finalCategory === 'classeur' ? 'Classeur' : 'StudyCloud'
+          }
         }, 200, origin);
       }
 

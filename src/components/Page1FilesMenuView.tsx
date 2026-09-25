@@ -1043,8 +1043,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     };
   }, [activeMenuFileId, docMenuOpenId, audioMenuSongId, menuOpenId, isPlayerMenuOpen, isHeaderMenuOpen, activeFolderMenuId]);
 
-  // Référence pour l'import de fichier
+  // Références et état pour l'import de fichier
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const categoryFileInputRef = useRef<HTMLInputElement>(null);
+  const [isUploading, setIsUploading] = useState(false);
 
   // Sous-page ouverte
   const [currentSubView, setCurrentSubView] = useState<SubMenuView | null>(null);
@@ -1457,49 +1459,193 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     showToast("Élément retiré des récents");
   };
 
-  // Déclencher le sélecteur de fichier
+  // Déclencher le sélecteur de fichier pour l'Accueil
   const handleTriggerImport = () => {
     fileInputRef.current?.click();
   };
 
-  // Traiter les fichiers importés
-  const handleFileSelected = (e: React.ChangeEvent<HTMLInputElement>) => {
-    const files = e.target.files;
-    if (!files || files.length === 0) return;
+  // Configuration dynamique du bouton "+ Importer" selon le menu actif
+  const getMenuImportConfig = () => {
+    const isCloud = isCloudView;
+    const currentTab = isCloud ? cloudActiveTab : null;
+    const viewId = currentSubView?.id || '';
 
-    const newItems: FileItem[] = (Array.from(files) as File[]).map((file: File, idx) => {
-      const isImg = file.type.startsWith('image/');
-      let category: FileItem['category'] = 'documents';
-      if (isImg) category = 'images';
-      else if (file.type.startsWith('audio/')) category = 'audio';
-      else if (file.type.startsWith('video/')) category = 'videos';
+    // Exclusions strictes demandées : "sauf le menu téléchargement, favoris, applications, dossier sécurisé et corbeille"
+    if (viewId === 'studycloud-category-downloads' || currentTab === 'downloads') return null;
+    if (viewId === 'studycloud-collection-favorites' || currentTab === 'favorites') return null;
+    if (viewId === 'studycloud-category-applications' || currentTab === 'apps') return null;
+    if (viewId === 'studycloud-collection-secure-folder' || currentTab === 'secure-folder') return null;
+    if (viewId === 'studycloud-collection-trash' || currentTab === 'trash') return null;
 
-      const blobUrl = URL.createObjectURL(file);
-
+    // Classeur : "ne doit pas être où on créer les dossiers mais a l'intérieur des dossiers créer"
+    if (viewId === 'studycloud-classeur-classeur' || currentTab === 'classeur' || currentSubView?.type === 'classeur') {
+      if (!opened3DFolder) return null;
       return {
-        id: `rec-imp-${Date.now()}-${idx}`,
-        name: file.name,
-        category,
-        source: 'StudyCloud',
-        size: `${(file.size / (1024 * 1024)).toFixed(1)} Mo`,
-        sizeBytes: file.size,
-        date: "Aujourd'hui, " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
-        previewUrl: isImg ? blobUrl : undefined,
-        videoUrl: file.type.startsWith('video/') ? blobUrl : undefined,
-        audioUrl: file.type.startsWith('audio/') ? blobUrl : undefined,
-        isImage: isImg
+        category: 'classeur' as const,
+        accept: '*/*',
+        label: 'Importer',
+        fullLabel: 'Importer un fichier',
+        title: `Importer un fichier dans « ${opened3DFolder.name} »`,
+        colorClass: 'border-orange-500/40 hover:border-orange-400 text-orange-400',
+        iconColor: 'text-orange-400',
+        folderId: opened3DFolder.id
       };
-    });
+    }
 
-    setCloudRecentFiles(prev => [...newItems, ...prev].slice(0, 6));
-    newItems.forEach(item => {
-      if (item.category === 'images') setImagesList(prev => [item, ...prev]);
-      else if (item.category === 'videos') setVideosList(prev => [item, ...prev]);
-      else if (item.category === 'audio') setAudioList(prev => [item, ...prev]);
-      else setDocumentsList(prev => [item, ...prev]);
-    });
-    showToast(`${files.length} fichier(s) importé(s) dans StudyCloud !`);
+    // Images (Prend la couleur émeraude du logo Images)
+    if (viewId === 'studycloud-category-images' || currentTab === 'images') {
+      return {
+        category: 'images' as const,
+        accept: 'image/*',
+        label: 'Importer',
+        fullLabel: 'Importer une image',
+        title: 'Importer une image dans Images',
+        colorClass: 'border-emerald-500/40 hover:border-emerald-400 text-emerald-400',
+        iconColor: 'text-emerald-400'
+      };
+    }
+
+    // Vidéos (Prend la couleur violette du logo Vidéos)
+    if (viewId === 'studycloud-category-videos' || currentTab === 'videos') {
+      return {
+        category: 'videos' as const,
+        accept: 'video/*',
+        label: 'Importer',
+        fullLabel: 'Importer une vidéo',
+        title: 'Importer une vidéo dans Vidéos',
+        colorClass: 'border-purple-500/40 hover:border-purple-400 text-purple-400',
+        iconColor: 'text-purple-400'
+      };
+    }
+
+    // Audio / Musique (Prend la couleur ambre/orange du logo Audio)
+    if (viewId === 'studycloud-category-audio' || currentTab === 'audio') {
+      return {
+        category: 'audio' as const,
+        accept: 'audio/*',
+        label: 'Importer',
+        fullLabel: 'Importer un audio',
+        title: 'Importer un fichier audio dans Musique',
+        colorClass: 'border-amber-500/40 hover:border-amber-400 text-amber-400',
+        iconColor: 'text-amber-400'
+      };
+    }
+
+    // Documents (Prend la couleur bleue/cyan du logo Documents)
+    if (viewId === 'studycloud-category-documents' || currentTab === 'documents') {
+      return {
+        category: 'documents' as const,
+        accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.odt,.rtf',
+        label: 'Importer',
+        fullLabel: 'Importer un document',
+        title: 'Importer un document dans Documents',
+        colorClass: 'border-blue-500/40 hover:border-blue-400 text-blue-400',
+        iconColor: 'text-blue-400'
+      };
+    }
+
+    return null;
+  };
+
+  const menuImportConfig = getMenuImportConfig();
+
+  // 1. Traiter les fichiers importés depuis l'Accueil (Analyse auto par le worker, jamais classeur)
+  const handleHomeFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList) as File[];
+
+    setIsUploading(true);
+    let successCount = 0;
+
+    for (const file of files) {
+      try {
+        const res = await CloudStorageAPI.uploadFile(file, 'auto', file.name);
+        if (res.success && res.file) {
+          const cat = res.category || res.file.category;
+          if (cat === 'images') {
+            setImagesList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
+          } else if (cat === 'videos') {
+            setVideosList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
+          } else if (cat === 'audio') {
+            setAudioList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
+          } else {
+            setDocumentsList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
+          }
+
+          setCloudRecentFiles(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)].slice(0, 6));
+          successCount++;
+        } else {
+          showToast(res.error || `Erreur lors de l'import de ${file.name}`);
+        }
+      } catch (err: any) {
+        showToast(`Erreur réseau lors de l'import de ${file.name}`);
+      }
+    }
+
+    setIsUploading(false);
+    if (successCount > 0) {
+      showToast(`${successCount} fichier(s) classé(s) automatiquement dans vos menus !`);
+    }
     if (fileInputRef.current) fileInputRef.current.value = '';
+  };
+
+  // 2. Traiter les fichiers importés depuis un sous-menu spécifique (Validation stricte par le worker)
+  const handleMenuFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList) as File[];
+
+    const importConfig = getMenuImportConfig();
+    if (!importConfig) return;
+
+    setIsUploading(true);
+    let successCount = 0;
+
+    for (const file of files) {
+      try {
+        const res = await CloudStorageAPI.uploadFile(
+          file, 
+          importConfig.category, 
+          file.name, 
+          importConfig.folderId
+        );
+
+        if (!res.success) {
+          // Bloqué par le worker car le fichier ne correspond pas au menu
+          showToast(res.error || `Ce fichier ne correspond pas au menu ${importConfig.label}.`);
+          continue;
+        }
+
+        if (res.file) {
+          if (importConfig.category === 'images') {
+            setImagesList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
+          } else if (importConfig.category === 'videos') {
+            setVideosList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
+          } else if (importConfig.category === 'audio') {
+            setAudioList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
+          } else if (importConfig.category === 'documents') {
+            setDocumentsList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
+          } else if (importConfig.category === 'classeur' && importConfig.folderId) {
+            setFolderFilesMap(prev => ({
+              ...prev,
+              [importConfig.folderId!]: [res.file!, ...(prev[importConfig.folderId!] || []).filter(f => f.id !== res.file!.id)]
+            }));
+          }
+
+          setCloudRecentFiles(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)].slice(0, 6));
+          successCount++;
+        }
+      } catch (err: any) {
+        showToast(`Erreur lors de l'import : ${err.message || 'Échec réseau'}`);
+      }
+    }
+
+    setIsUploading(false);
+    if (successCount > 0) {
+      showToast(`${successCount} fichier(s) importé(s) avec succès !`);
+    }
+    if (categoryFileInputRef.current) categoryFileInputRef.current.value = '';
   };
 
   // DOSSIER SÉCURISÉ (Fichiers protégés par coffre-fort et isolés réels)
@@ -6608,11 +6754,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         : 'fixed top-[64px] md:top-[68px] bottom-0 left-0 md:left-64 right-0 z-30 min-h-[calc(100vh-68px)]'
     }`}>
       
-      {/* Input de sélection de fichier caché */}
+      {/* Input de sélection de fichier caché pour l'Accueil (mode auto) */}
       <input
         type="file"
         ref={fileInputRef}
-        onChange={handleFileSelected}
+        onChange={handleHomeFileSelected}
+        multiple
+        className="hidden"
+      />
+
+      {/* Input de sélection de fichier caché pour les sous-menus spécifiques (validation stricte) */}
+      <input
+        type="file"
+        ref={categoryFileInputRef}
+        accept={menuImportConfig?.accept || '*/*'}
+        onChange={handleMenuFileSelected}
         multiple
         className="hidden"
       />
@@ -6866,6 +7022,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     >
                       <FolderPlus className="w-4 h-4 stroke-[2.4] group-hover:scale-110 transition-transform text-white shrink-0" />
                       <span className="whitespace-nowrap">Créer un dossier</span>
+                    </button>
+                  )}
+
+                  {/* BOUTON + IMPORTER UN FICHIER DANS LES MENUS AUTORISÉS (Prend la couleur du logo du menu) */}
+                  {menuImportConfig && (
+                    <button
+                      type="button"
+                      onClick={() => categoryFileInputRef.current?.click()}
+                      disabled={isUploading}
+                      className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border ${menuImportConfig.colorClass} transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      title={menuImportConfig.title}
+                    >
+                      {isUploading ? (
+                        <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin shrink-0" />
+                      ) : (
+                        <Plus className={`w-4 h-4 ${menuImportConfig.iconColor} stroke-[2.5]`} />
+                      )}
+                      <span className="hidden xs:inline">{menuImportConfig.fullLabel}</span>
+                      <span className="xs:hidden">{menuImportConfig.label}</span>
                     </button>
                   )}
 
@@ -8680,10 +8855,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <button
                   type="button"
                   onClick={handleTriggerImport}
-                  className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-blue-400/40 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black"
+                  disabled={isUploading}
+                  className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-blue-400/40 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
                   title="Importer un fichier dans StudyCloud"
                 >
-                  <Plus className="w-4 h-4 text-blue-400 stroke-[2.5]" />
+                  {isUploading ? (
+                    <div className="w-4 h-4 border-2 border-white/20 border-t-blue-400 rounded-full animate-spin shrink-0" />
+                  ) : (
+                    <Plus className="w-4 h-4 text-blue-400 stroke-[2.5]" />
+                  )}
                   <span className="hidden xs:inline">Importer un fichier</span>
                   <span className="xs:hidden">Importer</span>
                 </button>
