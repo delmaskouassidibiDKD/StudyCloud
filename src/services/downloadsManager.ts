@@ -19,6 +19,8 @@ export interface DownloadedItem {
   audioUrl?: string;
   isImage?: boolean;
   documentCategory?: 'COURS' | 'TD' | 'DEVOIRS' | "PAS D'INF...";
+  isFavorite?: boolean;
+  isPinned?: boolean;
 }
 
 const STORAGE_KEY = 'studycloud_downloaded_files';

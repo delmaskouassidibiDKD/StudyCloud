@@ -1115,17 +1115,34 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           setCloudRecentFiles(overview.recentFiles);
         }
 
+        // Favoris et Épinglés réels depuis Cloudflare D1
+        const [cloudFavorites, cloudPinned] = await Promise.all([
+          CloudStorageAPI.getFavorites().catch(() => []),
+          CloudStorageAPI.getPinned().catch(() => [])
+        ]);
+        const favIdSet = new Set((cloudFavorites || []).map((f: any) => f.item_id || f.id));
+        const pinIdSet = new Set((cloudPinned || []).map((p: any) => p.item_id || p.id));
+
         // 1. Dossiers 3D du Classeur
         const cloudFolders = await CloudStorageAPI.getClasseurFolders();
         if (isMounted && cloudFolders) {
-          setClasseur3DFolders(cloudFolders);
+          const mappedFolders = cloudFolders.map(f => ({
+            ...f,
+            isFavorite: favIdSet.has(f.id),
+            isPinned: pinIdSet.has(f.id)
+          }));
+          setClasseur3DFolders(mappedFolders);
 
           // 2. Fichiers et bloc-notes de chaque dossier
           const filesMap: Record<string, FileItem[]> = {};
-          for (const folder of cloudFolders) {
+          for (const folder of mappedFolders) {
             const files = await CloudStorageAPI.getClasseurFiles(folder.id);
             if (files && files.length > 0) {
-              filesMap[folder.id] = files;
+              filesMap[folder.id] = files.map(file => ({
+                ...file,
+                isFavorite: favIdSet.has(file.id),
+                isPinned: pinIdSet.has(file.id)
+              }));
             }
           }
           if (isMounted) {
@@ -1148,25 +1165,41 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         // 5. Audio
         const audio = await CloudStorageAPI.getAudioList();
         if (isMounted && audio) {
-          setAudioList(audio);
+          setAudioList(audio.map(a => ({
+            ...a,
+            isFavorite: favIdSet.has(a.id),
+            isPinned: pinIdSet.has(a.id)
+          })));
         }
 
         // 6. Images
         const images = await CloudStorageAPI.getImagesList();
         if (isMounted && images) {
-          setImagesList(images);
+          setImagesList(images.map(img => ({
+            ...img,
+            isFavorite: favIdSet.has(img.id),
+            isPinned: pinIdSet.has(img.id)
+          })));
         }
 
         // 7. Vidéos
         const videos = await CloudStorageAPI.getVideosList();
         if (isMounted && videos) {
-          setVideosList(videos);
+          setVideosList(videos.map(v => ({
+            ...v,
+            isFavorite: favIdSet.has(v.id),
+            isPinned: pinIdSet.has(v.id)
+          })));
         }
 
         // 8. Documents
         const docs = await CloudStorageAPI.getDocumentsList();
         if (isMounted && docs) {
-          setDocumentsList(docs);
+          setDocumentsList(docs.map(d => ({
+            ...d,
+            isFavorite: favIdSet.has(d.id),
+            isPinned: pinIdSet.has(d.id)
+          })));
         }
 
         // 9. Téléchargements réels depuis Cloudflare D1
@@ -1188,6 +1221,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               videoUrl: dl.videoUrl || dl.url,
               audioUrl: dl.audioUrl || dl.url,
               documentCategory: dl.documentCategory || 'COURS',
+              isFavorite: favIdSet.has(dl.id),
+              isPinned: pinIdSet.has(dl.id),
             }));
             setDownloadedItems(mapped);
           } else {
@@ -2145,6 +2180,27 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
   };
 
+  // Calcul du nouveau nom de duplication avec incrémentation numérique (ex: noté 2., 3.. ou nom 2, nom 3)
+  const computeDuplicateName = (originalName: string, existingNames: string[]): string => {
+    const hasExt = originalName.includes('.');
+    const ext = hasExt ? originalName.substring(originalName.lastIndexOf('.')) : '';
+    const base = hasExt ? originalName.substring(0, originalName.lastIndexOf('.')) : originalName;
+
+    // Détecter un éventuel numéro ou suffixe de copie à la fin (ex: "Cours 2", "Cours (2)", "Cours (Copie)")
+    const regex = /^(.*?)(?:\s+(?:(?:\()?(\d+)(?:\))?|\(Copie\)))?$/;
+    const match = base.match(regex);
+    const cleanBase = (match && match[1]) ? match[1].trim() : base;
+
+    let counter = 2;
+    let candidate = `${cleanBase} ${counter}${ext}`;
+    const lowerNames = existingNames.map(n => n.toLowerCase());
+    while (lowerNames.includes(candidate.toLowerCase())) {
+      counter++;
+      candidate = `${cleanBase} ${counter}${ext}`;
+    }
+    return candidate;
+  };
+
   // Actions du menu universel (3 traits) pour tous les fichiers :
   // Cocher, Tout cocher, Télécharger, Supprimer, Partager, Créer un lien, Déplacer, Dupliquer, Favoris, Épingler, Renommer
   const handleGenericFileAction = (action: string, file: FileItem, currentCategoryList: FileItem[]) => {
@@ -2319,13 +2375,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
 
       case 'duplicate': {
-        const ext = file.extension || (file.name.includes('.') ? file.name.split('.').pop() : 'fichier');
-        const nameWithoutExt = file.name.replace(/\.[^/.]+$/, '');
+        const currentNames = currentCategoryList.map(f => f.name);
+        const newName = computeDuplicateName(file.name, currentNames);
         const newFile: FileItem = {
           ...file,
           id: `${file.category || 'item'}-dup-${Date.now()}`,
-          name: `${nameWithoutExt} (Copie).${ext}`,
-          date: "Aujourd'hui, " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+          name: newName,
+          date: "Aujourd'hui, " + new Date().toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }),
+          isPinned: false
         };
         if (file.category === 'documents') {
           setDocumentsList(prev => [newFile, ...prev]);
@@ -2335,6 +2392,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           setVideosList(prev => [newFile, ...prev]);
         } else if (file.category === 'audio') {
           setAudioList(prev => [newFile, ...prev]);
+        } else if (file.category === 'downloads') {
+          setDownloadedItems(prev => [newFile as any, ...prev]);
         }
         if (opened3DFolder) {
           setFolderFilesMap(prev => ({
@@ -2342,38 +2401,58 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             [opened3DFolder.id]: [newFile, ...(prev[opened3DFolder.id] || [])]
           }));
         }
+        // Écriture du doublon dans la table D1 correspondante
+        CloudStorageAPI.duplicateItem(file.id, file.category, opened3DFolder?.id, newName).catch(console.error);
         showToast(`Fichier dupliqué : "${newFile.name}" !`);
         break;
       }
 
       case 'favorite': {
+        const newFav = !file.isFavorite;
         const toggleFav = (list: FileItem[]) =>
-          list.map(f => f.id === file.id ? { ...f, isFavorite: !f.isFavorite } : f);
+          list.map(f => f.id === file.id ? { ...f, isFavorite: newFav } : f);
         if (file.category === 'documents') setDocumentsList(toggleFav);
         else if (file.category === 'images') setImagesList(toggleFav);
         else if (file.category === 'videos') setVideosList(toggleFav);
         else if (file.category === 'audio') setAudioList(toggleFav);
+        setDownloadedItems(prev => prev.map(f => f.id === file.id ? { ...f, isFavorite: newFav } : f));
         if (opened3DFolder) {
           setFolderFilesMap(prev => ({
             ...prev,
-            [opened3DFolder.id]: (prev[opened3DFolder.id] || []).map(f => f.id === file.id ? { ...f, isFavorite: !f.isFavorite } : f)
+            [opened3DFolder.id]: (prev[opened3DFolder.id] || []).map(f => f.id === file.id ? { ...f, isFavorite: newFav } : f)
           }));
         }
-        showToast(file.isFavorite ? 'Retiré des favoris' : 'Ajouté aux favoris !');
+        // Persistance dans la table user_favorites D1
+        if (newFav) {
+          CloudStorageAPI.addFavorite(file.id, file.category, file.name).catch(console.error);
+          showToast('Ajouté aux favoris !');
+        } else {
+          CloudStorageAPI.removeFavorite(file.id, file.category).catch(console.error);
+          showToast('Retiré des favoris');
+        }
         break;
       }
 
       case 'pin': {
-        const togglePin = (list: FileItem[]) =>
-          list.map(f => f.id === file.id ? { ...f, isPinned: !f.isPinned } : f);
+        const newPin = !file.isPinned;
+        const togglePin = (list: FileItem[]) => {
+          const updated = list.map(f => f.id === file.id ? { ...f, isPinned: newPin } : f);
+          if (newPin) {
+            const item = updated.find(f => f.id === file.id);
+            if (item) {
+              return [item, ...updated.filter(f => f.id !== file.id)];
+            }
+          }
+          return updated;
+        };
         if (file.category === 'documents') setDocumentsList(togglePin);
         else if (file.category === 'images') setImagesList(togglePin);
         else if (file.category === 'videos') setVideosList(togglePin);
         else if (file.category === 'audio') setAudioList(togglePin);
+        setDownloadedItems(prev => prev.map(f => f.id === file.id ? { ...f, isPinned: newPin } : f));
         if (opened3DFolder) {
           setFolderFilesMap(prev => {
             const list = prev[opened3DFolder.id] || [];
-            const newPin = !file.isPinned;
             const updated = list.map(f => f.id === file.id ? { ...f, isPinned: newPin } : f);
             if (newPin) {
               const item = updated.find(f => f.id === file.id);
@@ -2384,7 +2463,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             return { ...prev, [opened3DFolder.id]: updated };
           });
         }
-        showToast(file.isPinned ? `"${file.name}" désépinglé` : `"${file.name}" épinglé au début !`);
+        // Persistance dans la table pinned_items D1
+        if (newPin) {
+          CloudStorageAPI.addPinned(file.id, file.category).catch(console.error);
+          showToast(`"${file.name}" épinglé au début !`);
+        } else {
+          CloudStorageAPI.removePinned(file.id, file.category).catch(console.error);
+          showToast(`"${file.name}" désépinglé`);
+        }
         break;
       }
 
@@ -2399,6 +2485,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           else if (file.category === 'images') setImagesList(renameIn);
           else if (file.category === 'videos') setVideosList(renameIn);
           else if (file.category === 'audio') setAudioList(renameIn);
+          setDownloadedItems(prev => prev.map(f => f.id === file.id ? { ...f, name: finalName } : f));
 
           if (opened3DFolder) {
             setFolderFilesMap(prev => ({
@@ -2409,6 +2496,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           if (splitSelectedFile?.id === file.id) {
             setSplitSelectedFile(prev => prev ? { ...prev, name: finalName } : null);
           }
+          // Mise à jour directe dans la table D1
+          CloudStorageAPI.renameItem(file.id, finalName, file.category, opened3DFolder?.id).catch(console.error);
           showToast(`Fichier renommé en "${finalName}" !`);
         }
         break;
@@ -2947,17 +3036,56 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return applySorting(docs);
   }, [classeurExtraDocs, filteredDocuments, selectedClasseurFolder, subSearchQuery, sortOption]);
 
-  // Fichiers favoris
+  // Conversion d'un DownloadedItem en FileItem pour l'affichage riche et le lecteur
+  const toFileItem = (item: DownloadedItem): FileItem => ({
+    id: item.id,
+    name: item.name,
+    category: item.category,
+    source: 'Téléchargements',
+    size: item.size,
+    sizeBytes: item.sizeBytes || 0,
+    date: item.date,
+    previewUrl: item.previewUrl,
+    videoUrl: item.videoUrl,
+    audioUrl: item.audioUrl,
+    isImage: item.isImage || item.category === 'images',
+    documentCategory: item.documentCategory || 'COURS',
+    extension: item.extension || 'PDF',
+    isFavorite: item.isFavorite,
+    isPinned: item.isPinned,
+  });
+
+  // Fichiers et dossiers favoris
   const favoriteFiles = useMemo(() => {
     const folderFiles = Object.values(folderFilesMap).flat();
-    const all = [...documentsList, ...imagesList, ...videosList, ...audioList, ...folderFiles];
+    const downloadFiles = downloadedItems.map(toFileItem);
+    const all = [...documentsList, ...imagesList, ...videosList, ...audioList, ...folderFiles, ...downloadFiles];
     const unique = all.filter((f, idx, arr) => arr.findIndex(x => x.id === f.id) === idx);
-    const favs = unique.filter(f => f.isFavorite || f.isPinned);
+    const favFiles = unique.filter(f => Boolean(f.isFavorite));
+
+    // Inclure également les dossiers 3D marqués comme favoris
+    const favFolders: FileItem[] = classeur3DFolders
+      .filter(f => Boolean(f.isFavorite))
+      .map(folder => ({
+        id: folder.id,
+        name: folder.name,
+        category: 'classeur' as any,
+        source: 'classeur_folder',
+        originalCategory: 'classeur_folder',
+        size: 'Dossier 3D',
+        sizeBytes: 1024,
+        date: folder.dateText,
+        isFavorite: true,
+        isPinned: folder.isPinned,
+        isFolder: true,
+      } as any));
+
+    const combined = [...favFolders, ...favFiles];
     if (subSearchQuery.trim() !== '') {
-      return applySorting(favs.filter(f => f.name.toLowerCase().includes(subSearchQuery.toLowerCase())));
+      return applySorting(combined.filter(f => f.name.toLowerCase().includes(subSearchQuery.toLowerCase())));
     }
-    return applySorting(favs);
-  }, [documentsList, imagesList, videosList, audioList, folderFilesMap, subSearchQuery, sortOption]);
+    return applySorting(combined);
+  }, [documentsList, imagesList, videosList, audioList, folderFilesMap, downloadedItems, classeur3DFolders, subSearchQuery, sortOption]);
 
   // Fichiers de la corbeille
   const filteredTrashFiles = useMemo(() => {
@@ -3218,22 +3346,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
   }, [isAudioPlaying, splitSelectedFile]);
 
-  // Conversion d'un DownloadedItem en FileItem pour l'affichage riche et le lecteur
-  const toFileItem = (item: DownloadedItem): FileItem => ({
-    id: item.id,
-    name: item.name,
-    category: item.category,
-    source: 'Téléchargements',
-    size: item.size,
-    sizeBytes: item.sizeBytes || 0,
-    date: item.date,
-    previewUrl: item.previewUrl,
-    videoUrl: item.videoUrl,
-    audioUrl: item.audioUrl,
-    isImage: item.isImage || item.category === 'images',
-    documentCategory: item.documentCategory || 'COURS',
-    extension: item.extension || 'PDF'
-  });
+
 
   // Catégorisation des téléchargements pour l'affichage selon le type d'origine
   const downloadDocs = useMemo(() => {
@@ -4162,19 +4275,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
 
       case 'duplicate': {
+        const existingNames = classeur3DFolders.map(f => f.name);
+        const newName = computeDuplicateName(folder.name, existingNames);
         const duplicatedFolder: ClasseurCreatedFolder = {
           ...folder,
           id: `c3d-dup-${Date.now()}`,
-          name: `${folder.name} (Copie)`,
+          name: newName,
           createdAt: Date.now(),
+          isPinned: false
         };
         setClasseur3DFolders(prev => [duplicatedFolder, ...prev]);
-        if (folderFilesMap[folder.id]) {
-          setFolderFilesMap(prev => ({
-            ...prev,
-            [duplicatedFolder.id]: [...(prev[folder.id] || [])]
-          }));
-        }
+        // Le dossier dupliqué est créé complètement vide (aucun contenu copié selon la demande)
+        setFolderFilesMap(prev => ({
+          ...prev,
+          [duplicatedFolder.id]: []
+        }));
+        // Sauvegarde de la copie du dossier dans Cloudflare D1
+        CloudStorageAPI.duplicateItem(folder.id, 'classeur_folder', undefined, newName).catch(console.error);
         showToast(`Dossier dupliqué : "${duplicatedFolder.name}" !`);
         break;
       }
@@ -4184,7 +4301,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         setClasseur3DFolders(prev =>
           prev.map(f => f.id === folder.id ? { ...f, isFavorite: newFav } : f)
         );
-        showToast(newFav ? 'Ajouté aux favoris !' : 'Retiré des favoris');
+        if (newFav) {
+          CloudStorageAPI.addFavorite(folder.id, 'classeur_folder', folder.name).catch(console.error);
+          showToast('Ajouté aux favoris !');
+        } else {
+          CloudStorageAPI.removeFavorite(folder.id, 'classeur_folder').catch(console.error);
+          showToast('Retiré des favoris');
+        }
         break;
       }
 
@@ -4201,7 +4324,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           }
           return updated;
         });
-        showToast(newPin ? `"${folder.name}" épinglé au début !` : `"${folder.name}" désépinglé`);
+        if (newPin) {
+          CloudStorageAPI.addPinned(folder.id, 'classeur_folder').catch(console.error);
+          showToast(`"${folder.name}" épinglé au début !`);
+        } else {
+          CloudStorageAPI.removePinned(folder.id, 'classeur_folder').catch(console.error);
+          showToast(`"${folder.name}" désépinglé`);
+        }
         break;
       }
 
@@ -4218,6 +4347,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           if (opened3DFolder?.id === folder.id) {
             setOpened3DFolder(prev => prev ? { ...prev, name: trimmed } : null);
           }
+          // Mise à jour directe dans la table classeur_folders D1
+          CloudStorageAPI.renameItem(folder.id, trimmed, 'classeur_folder').catch(console.error);
           showToast(`Dossier renommé en "${trimmed}" !`);
         }
         break;
@@ -4240,9 +4371,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const files = (folderFilesMap[folder.id] || []).filter(f =>
       !subSearchQuery.trim() || f.name.toLowerCase().includes(subSearchQuery.toLowerCase().trim())
     );
+
+    const sortedSubFolders = (() => {
+      let list = [...subFolders];
+      if (sortOption === 'pinned') {
+        list.sort((a, b) => {
+          if (a.isPinned && !b.isPinned) return -1;
+          if (!a.isPinned && b.isPinned) return 1;
+          return 0;
+        });
+      } else if (sortOption === 'oldest') {
+        list.reverse();
+      }
+      return list;
+    })();
+    const sortedFiles = applySorting(files);
+
     const totalItems = subFolders.length + files.length;
     const allOpenedFolderItems: FileItem[] = [
-      ...subFolders.map(sf => ({
+      ...sortedSubFolders.map(sf => ({
         id: sf.id,
         name: sf.name,
         category: 'classeur',
@@ -4250,7 +4397,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         sizeBytes: 1024,
         date: sf.dateText,
       } as FileItem)),
-      ...files
+      ...sortedFiles
     ];
 
     return (
@@ -4473,7 +4620,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             }}
           >
             {/* 1. Sous-dossiers créés dans ce dossier (dossier dans dossier - taille fixe 4) */}
-            {subFolders.map((subF) => {
+            {sortedSubFolders.map((subF) => {
               const isSubFolderSelected = selectedItemIds.includes(subF.id);
               return (
                 <div
@@ -4521,6 +4668,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   )}
 
+                  {/* Badges Épinglé et Favori */}
+                  {(subF.isPinned || subF.isFavorite) && (
+                    <div className={`absolute top-2 ${isSelectionMode ? 'left-9 sm:left-10' : 'left-2'} z-20 flex items-center gap-1 pointer-events-none`}>
+                      {subF.isPinned && (
+                        <span className="p-1 rounded-md bg-black/80 border border-blue-400/60 shadow-md flex items-center justify-center text-blue-400 backdrop-blur-sm" title="Épinglé">
+                          <Pin className="w-3 h-3 rotate-45" />
+                        </span>
+                      )}
+                      {subF.isFavorite && (
+                        <span className="p-1 rounded-md bg-black/80 border border-amber-400/60 shadow-md flex items-center justify-center text-amber-400 backdrop-blur-sm" title="Favori">
+                          <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                        </span>
+                      )}
+                    </div>
+                  )}
+
                   {/* Bouton 3 traits & menu d'options */}
                   <div 
                     className="absolute top-2 right-2 z-30 studycloud-menu-trigger scale-90 origin-top-right"
@@ -4552,7 +4715,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             })}
 
             {/* 2. Fichiers du dossier (Bloc-notes TXT modèle Image 2 et autres fichiers importés - taille fixe 4) */}
-            {files.map((file) => {
+            {sortedFiles.map((file) => {
               const isTxtNote = file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt');
               const isSelected = splitSelectedFile?.id === file.id;
               const isChecked = selectedItemIds.includes(file.id);
@@ -4666,6 +4829,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-cyan-500/20 text-cyan-300 border border-cyan-500/30">
                           TXT
                         </span>
+                        {file.isPinned && (
+                          <span className="p-0.5 rounded bg-black/60 text-blue-300 border border-blue-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
+                            <Pin className="w-3 h-3 rotate-45" />
+                          </span>
+                        )}
+                        {file.isFavorite && (
+                          <span className="p-0.5 rounded bg-black/60 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
+                            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                          </span>
+                        )}
                       </div>
 
                       <div 
@@ -4775,6 +4948,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           <Square className="w-3.5 h-3.5 text-white/90" />
                         )}
                       </button>
+                    )}
+
+                    {/* Badges Épinglé et Favori */}
+                    {(file.isPinned || file.isFavorite) && (
+                      <div className={`absolute top-1.5 ${isSelectionMode ? 'left-9 sm:left-10' : 'left-1.5'} z-20 flex items-center gap-1 pointer-events-none`}>
+                        {file.isPinned && (
+                          <span className="p-1 rounded-md bg-black/75 text-blue-400 border border-blue-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
+                            <Pin className="w-3 h-3 rotate-45" />
+                          </span>
+                        )}
+                        {file.isFavorite && (
+                          <span className="p-1 rounded-md bg-black/75 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
+                            <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                          </span>
+                        )}
+                      </div>
                     )}
 
                     {file.category === 'images' ? (
@@ -5294,6 +5483,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 )}
               </button>
             )}
+
+            {/* Badges Épinglé et Favori */}
+            {doc.isPinned && (
+              <span className="p-0.5 rounded bg-black/60 text-blue-300 border border-blue-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
+                <Pin className="w-3 h-3 rotate-45" />
+              </span>
+            )}
+            {doc.isFavorite && (
+              <span className="p-0.5 rounded bg-black/60 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
+                <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+              </span>
+            )}
           </div>
 
           <span className="text-[7.5px] sm:text-[8px] font-bold bg-black/40 text-white border border-black/20 px-1.5 py-0.5 rounded shadow-sm">
@@ -5544,6 +5745,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               )}
             </button>
           )}
+
+          {/* Badges Épinglé et Favori */}
+          {img.isPinned && (
+            <span className="p-1 rounded-md bg-black/75 text-blue-400 border border-blue-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
+              <Pin className="w-3 h-3 rotate-45" />
+            </span>
+          )}
+          {img.isFavorite && (
+            <span className="p-1 rounded-md bg-black/75 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
+              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+            </span>
+          )}
         </div>
 
         {/* Haut droit : Taille */}
@@ -5636,6 +5849,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <Square className="w-4 h-4 text-white" />
               )}
             </button>
+          )}
+
+          {/* Badges Épinglé et Favori */}
+          {vid.isPinned && (
+            <span className="p-1 rounded-md bg-black/75 text-blue-400 border border-blue-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
+              <Pin className="w-3 h-3 rotate-45" />
+            </span>
+          )}
+          {vid.isFavorite && (
+            <span className="p-1 rounded-md bg-black/75 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
+              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+            </span>
           )}
         </div>
 
@@ -5758,6 +5983,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               )}
             </button>
           )}
+
+          {/* Badges Épinglé et Favori */}
+          {aud.isPinned && (
+            <span className="p-1 rounded-md bg-black/75 text-blue-400 border border-blue-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Épinglé">
+              <Pin className="w-3 h-3 rotate-45" />
+            </span>
+          )}
+          {aud.isFavorite && (
+            <span className="p-1 rounded-md bg-black/75 text-amber-400 border border-amber-400/40 shadow-sm flex items-center justify-center backdrop-blur-sm" title="Favori">
+              <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+            </span>
+          )}
         </div>
 
         {/* Haut droit : Taille */}
@@ -5839,6 +6076,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <span className={`w-1 rounded-full bg-yellow-400 ${isAudioPlaying ? 'music-bar-3' : ''}`} style={{ height: isAudioPlaying ? undefined : '9px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
               <span className={`w-1 rounded-full bg-amber-400 ${isAudioPlaying ? 'music-bar-4' : ''}`} style={{ height: isAudioPlaying ? undefined : '4px', animationPlayState: isAudioPlaying ? 'running' : 'paused' }} />
             </div>
+          )}
+
+          {/* Badges Épinglé et Favori */}
+          {track.isPinned && (
+            <span className="p-1 rounded-md bg-blue-500/20 text-blue-400 border border-blue-400/30 shrink-0" title="Épinglé">
+              <Pin className="w-3.5 h-3.5 rotate-45" />
+            </span>
+          )}
+          {track.isFavorite && (
+            <span className="p-1 rounded-md bg-amber-500/20 text-amber-400 border border-amber-400/30 shrink-0" title="Favori">
+              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+            </span>
           )}
 
           {/* Bouton 3 traits */}
@@ -5927,6 +6176,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         </div>
 
         <div className="flex items-center gap-1.5 shrink-0">
+          {/* Badges Épinglé et Favori */}
+          {item.isPinned && (
+            <span className="p-1 rounded-md bg-blue-500/20 text-blue-400 border border-blue-400/30 shrink-0" title="Épinglé">
+              <Pin className="w-3.5 h-3.5 rotate-45" />
+            </span>
+          )}
+          {item.isFavorite && (
+            <span className="p-1 rounded-md bg-amber-500/20 text-amber-400 border border-amber-400/30 shrink-0" title="Favori">
+              <Star className="w-3.5 h-3.5 fill-amber-400 text-amber-400" />
+            </span>
+          )}
+
           {/* Bouton 3 traits */}
           <div className="relative studycloud-menu-trigger">
             <button
@@ -7879,9 +8140,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           gap: `${folderGridGap}px`
                         }}
                       >
-                        {classeur3DFolders
-                          .filter(f => !f.parentId && (!subSearchQuery.trim() || f.name.toLowerCase().includes(subSearchQuery.toLowerCase().trim())))
-                          .map((folder) => {
+                        {(() => {
+                          let list = classeur3DFolders.filter(f => !f.parentId && (!subSearchQuery.trim() || f.name.toLowerCase().includes(subSearchQuery.toLowerCase().trim())));
+                          if (sortOption === 'pinned') {
+                            list = [...list].sort((a, b) => {
+                              if (a.isPinned && !b.isPinned) return -1;
+                              if (!a.isPinned && b.isPinned) return 1;
+                              return 0;
+                            });
+                          } else if (sortOption === 'oldest') {
+                            list = [...list].reverse();
+                          }
+                          return list;
+                        })().map((folder) => {
                             const isBeingDragged = folderDragState?.folder.id === folder.id;
                             const isBeingHeld = holdingFolderId === folder.id;
                             const isFolderSelected = selectedItemIds.includes(folder.id);
@@ -7938,6 +8209,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                         <Square className="w-3.5 h-3.5 stroke-[2]" />
                                       )}
                                     </button>
+                                  </div>
+                                )}
+
+                                {/* Badges Épinglé et Favori */}
+                                {(folder.isPinned || folder.isFavorite) && (
+                                  <div className={`absolute top-2 ${isSelectionMode ? 'left-9 sm:left-10' : 'left-2'} z-20 flex items-center gap-1 pointer-events-none`}>
+                                    {folder.isPinned && (
+                                      <span className="p-1 rounded-md bg-black/80 border border-blue-400/60 shadow-md flex items-center justify-center text-blue-400 backdrop-blur-sm" title="Épinglé">
+                                        <Pin className="w-3 h-3 rotate-45" />
+                                      </span>
+                                    )}
+                                    {folder.isFavorite && (
+                                      <span className="p-1 rounded-md bg-black/80 border border-amber-400/60 shadow-md flex items-center justify-center text-amber-400 backdrop-blur-sm" title="Favori">
+                                        <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                                      </span>
+                                    )}
                                   </div>
                                 )}
 
@@ -8455,6 +8742,38 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                       }`}>
                         {favoriteFiles.map((file, idx) => {
+                          if ((file as any).isFolder) {
+                            const folder = classeur3DFolders.find(f => f.id === file.id);
+                            if (folder) {
+                              return (
+                                <div
+                                  key={folder.id}
+                                  onClick={() => {
+                                    setOpened3DFolder(folder);
+                                    setCloudActiveTab('classeur');
+                                    handleOpenSubView('classeur', 'cloud-storage', 'Espace Cloud', Cloud, 'from-amber-600 to-amber-700');
+                                  }}
+                                  className="cursor-pointer group relative select-none rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border border-white/10 hover:border-orange-400/50 p-2 sm:p-2.5 shadow-lg hover:shadow-2xl transition-all"
+                                  title={`Ouvrir le dossier « ${folder.name} »`}
+                                >
+                                  {/* Badges Épinglé & Favori sur le dossier en Favoris */}
+                                  <div className="absolute top-1.5 left-2 flex items-center gap-1 z-20 pointer-events-none">
+                                    {folder.isPinned && (
+                                      <span className="p-1 rounded-md bg-black/80 border border-blue-400/60 shadow-md flex items-center justify-center text-blue-400" title="Épinglé">
+                                        <Pin className="w-3 h-3 rotate-45" />
+                                      </span>
+                                    )}
+                                    <span className="p-1 rounded-md bg-black/80 border border-amber-400/60 shadow-md flex items-center justify-center text-amber-400" title="Favori">
+                                      <Star className="w-3 h-3 fill-amber-400 text-amber-400" />
+                                    </span>
+                                  </div>
+                                  <div className="pt-6 pb-1 w-full">
+                                    <Classeur3DFolderCard folder={folder} />
+                                  </div>
+                                </div>
+                              );
+                            }
+                          }
                           if (file.category === 'images') return renderImageCard(file, idx);
                           if (file.category === 'videos') return renderVideoCard(file, idx);
                           if (file.category === 'audio') return renderAudioItem(file);

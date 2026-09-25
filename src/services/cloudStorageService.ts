@@ -772,4 +772,142 @@ export const CloudStorageAPI = {
       url: res.file?.url,
     };
   },
+
+  // --------------------------------------------------------------------------
+  // 10. FAVORIS (/api/cloud/favorites)
+  // --------------------------------------------------------------------------
+  async getFavorites(): Promise<{ itemId: string; category: string }[]> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetch(`${baseUrl}/api/cloud/favorites?userId=${getUserIdParam()}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return (json.data || []).map((row: any) => ({
+        itemId: row.item_id || row.itemId || row.id,
+        category: row.category || 'documents'
+      }));
+    } catch (e) {
+      console.error('[CloudStorageAPI] getFavorites error:', e);
+      return [];
+    }
+  },
+
+  async addFavorite(itemId: string, category: string): Promise<boolean> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetch(`${baseUrl}/api/cloud/favorites?userId=${getUserIdParam()}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ itemId, category }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[CloudStorageAPI] addFavorite error:', e);
+      return false;
+    }
+  },
+
+  async removeFavorite(itemId: string): Promise<boolean> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetch(`${baseUrl}/api/cloud/favorites?itemId=${encodeURIComponent(itemId)}&userId=${getUserIdParam()}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[CloudStorageAPI] removeFavorite error:', e);
+      return false;
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // 11. ÉPINGLÉS (/api/cloud/pinned)
+  // --------------------------------------------------------------------------
+  async getPinned(): Promise<{ itemId: string; category: string }[]> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetch(`${baseUrl}/api/cloud/pinned?userId=${getUserIdParam()}`, {
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return [];
+      const json = await res.json();
+      return (json.data || []).map((row: any) => ({
+        itemId: row.item_id || row.itemId || row.id,
+        category: row.category || 'documents'
+      }));
+    } catch (e) {
+      console.error('[CloudStorageAPI] getPinned error:', e);
+      return [];
+    }
+  },
+
+  async addPinned(itemId: string, category: string): Promise<boolean> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetch(`${baseUrl}/api/cloud/pinned?userId=${getUserIdParam()}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ itemId, category }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[CloudStorageAPI] addPinned error:', e);
+      return false;
+    }
+  },
+
+  async removePinned(itemId: string): Promise<boolean> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetch(`${baseUrl}/api/cloud/pinned?itemId=${encodeURIComponent(itemId)}&userId=${getUserIdParam()}`, {
+        method: 'DELETE',
+        headers: getAuthHeaders(),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[CloudStorageAPI] removePinned error:', e);
+      return false;
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // 12. RENOMMER (/api/cloud/rename)
+  // --------------------------------------------------------------------------
+  async renameItem(id: string, name: string, category: string, folderId?: string): Promise<boolean> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetch(`${baseUrl}/api/cloud/rename?userId=${getUserIdParam()}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ id, name, category, folderId }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.error('[CloudStorageAPI] renameItem error:', e);
+      return false;
+    }
+  },
+
+  // --------------------------------------------------------------------------
+  // 13. DUPLIQUER (/api/cloud/duplicate)
+  // --------------------------------------------------------------------------
+  async duplicateItem(id: string, category: string, folderId?: string, name?: string): Promise<any> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetch(`${baseUrl}/api/cloud/duplicate?userId=${getUserIdParam()}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ id, category, folderId, name }),
+      });
+      if (!res.ok) return null;
+      const json = await res.json();
+      return json.data || null;
+    } catch (e) {
+      console.error('[CloudStorageAPI] duplicateItem error:', e);
+      return null;
+    }
+  },
 };
