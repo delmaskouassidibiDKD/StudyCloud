@@ -462,10 +462,16 @@ async function ensureStorageTables(db) {
         is_auto_billing INTEGER DEFAULT 0,
         is_active INTEGER DEFAULT 1,
         sort_order INTEGER DEFAULT 0,
+        pricing_model TEXT DEFAULT 'subscription',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+
+    // Migration pour pricing_model si table existante
+    try {
+      await db.prepare("ALTER TABLE ai_subscription_plans ADD COLUMN pricing_model TEXT DEFAULT 'subscription'").run();
+    } catch (e) {}
 
     // Insérer les plans de stockage par défaut si vides
     try {
@@ -486,11 +492,11 @@ async function ensureStorageTables(db) {
       const countAi = await db.prepare("SELECT COUNT(*) as c FROM ai_subscription_plans").first();
       if (!countAi || countAi.c === 0) {
         await db.prepare(`
-          INSERT INTO ai_subscription_plans (id, name, badge, description, credits_or_words, credits_count, price, primary_currency, currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features, is_auto_billing, is_active, sort_order)
+          INSERT INTO ai_subscription_plans (id, name, badge, description, credits_or_words, credits_count, price, primary_currency, currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features, is_auto_billing, is_active, sort_order, pricing_model)
           VALUES 
-          ('ai_plan_basique', 'IA Basique', '', 'Pour réviser, poser des questions et comprendre rapidement vos cours au quotidien.', '100 000 mots IA', 100000, 10, 'USD', '["USD","XOF","EUR"]', '{"USD":10,"XOF":6500,"EUR":9.2}', 90, 10, '[{"text":"100 000 mots IA générés par mois","enabled":true},{"text":"Résumés automatiques de cours et PDF","enabled":true},{"text":"Création instantanée de cartes mémoires (Flashcards)","enabled":true},{"text":"Aide aux devoirs et explications pas à pas","enabled":true},{"text":"Support par e-mail","enabled":true}]', 0, 1, 1),
-          ('ai_plan_pro', 'IA Pro Étudiant', 'Populaire', 'L''assistant d''apprentissage complet pour exceller et réussir tous vos examens.', '1 000 000 mots IA', 1000000, 32, 'USD', '["USD","XOF","EUR"]', '{"USD":32,"XOF":20000,"EUR":29.5}', 290, 10, '[{"text":"1 000 000 mots IA avec priorité maximale","enabled":true},{"text":"Génération de Quiz interactifs & examens blancs","enabled":true},{"text":"Synthèse vocale & lecture audio de vos fiches","enabled":true},{"text":"Analyse intelligente de documents scannés et photos","enabled":true},{"text":"Support prioritaire 24/7","enabled":true}]', 0, 1, 2),
-          ('ai_plan_master', 'IA Recherche & Master', '', 'Pour les doctorants, thèses, mémoires volumineux et laboratoires universitaires.', 'Mots IA illimités', 10000000, 89, 'USD', '["USD","XOF","EUR"]', '{"USD":89,"XOF":55000,"EUR":82}', 790, 10, '[{"text":"Mots IA illimités avec accès modèles avancés","enabled":true},{"text":"Traitement prioritaire ultra-rapide","enabled":true},{"text":"Export complet des synthèses & fiches en PDF/Word","enabled":true},{"text":"Analyse illimitée de livres et thèses entières","enabled":true},{"text":"Accès API assistante pour vos projets de recherche","enabled":true}]', 0, 1, 3)
+          ('ai_plan_basique', 'IA Basique', '', 'Pour réviser, poser des questions et comprendre rapidement vos cours au quotidien.', '100 000 crédits IA', 100000, 10, 'USD', '["USD","XOF","EUR"]', '{"USD":10,"XOF":6500,"EUR":9.2}', 90, 10, '[{"text":"100 000 crédits IA par mois","enabled":true},{"text":"Résumés automatiques de cours et PDF","enabled":true},{"text":"Création instantanée de cartes mémoires (Flashcards)","enabled":true},{"text":"Aide aux devoirs et explications pas à pas","enabled":true},{"text":"Support par e-mail","enabled":true}]', 0, 1, 1, 'subscription'),
+          ('ai_plan_pro', 'IA Pro Étudiant', 'Populaire', 'L''assistant d''apprentissage complet pour exceller et réussir tous vos examens.', '1 000 000 crédits IA', 1000000, 32, 'USD', '["USD","XOF","EUR"]', '{"USD":32,"XOF":20000,"EUR":29.5}', 290, 10, '[{"text":"1 000 000 crédits IA avec priorité maximale","enabled":true},{"text":"Génération de Quiz interactifs & examens blancs","enabled":true},{"text":"Synthèse vocale & lecture audio de vos fiches","enabled":true},{"text":"Analyse intelligente de documents scannés et photos","enabled":true},{"text":"Support prioritaire 24/7","enabled":true}]', 0, 1, 2, 'subscription'),
+          ('ai_plan_master', 'IA Recherche & Master', '', 'Pour les doctorants, thèses, mémoires volumineux et laboratoires universitaires.', 'Crédits IA illimités', 10000000, 89, 'USD', '["USD","XOF","EUR"]', '{"USD":89,"XOF":55000,"EUR":82}', 790, 10, '[{"text":"Crédits IA illimités avec accès modèles avancés","enabled":true},{"text":"Traitement prioritaire ultra-rapide","enabled":true},{"text":"Export complet des synthèses & fiches en PDF/Word","enabled":true},{"text":"Analyse illimitée de livres et thèses entières","enabled":true},{"text":"Accès API assistante pour vos projets de recherche","enabled":true}]', 0, 1, 3, 'subscription')
         `).run();
       }
     } catch (e) {}
@@ -3447,7 +3453,7 @@ function renderDashboardHtml(data) {
         <div class="p-3.5 bg-slate-950/60 rounded-xl border border-slate-800 space-y-3">
           <div class="grid grid-cols-1 sm:grid-cols-2 gap-3">
             <div>
-              <label class="text-[11px] font-bold text-slate-300 block mb-1">Prix de base mensuel *</label>
+              <label class="text-[11px] font-bold text-slate-300 block mb-1" id="sub-plan-price-label">Prix de base mensuel *</label>
               <input type="number" step="any" min="0" id="sub-plan-price" required value="10" oninput="updateSubscriptionPricingCalculations()" class="w-full bg-slate-900 border border-slate-700 rounded-xl px-3 py-2 text-white font-mono font-bold text-base focus:border-orange-500 outline-none" />
             </div>
             <div>
@@ -3481,16 +3487,16 @@ function renderDashboardHtml(data) {
         </div>
 
         <!-- 3. Encadré Récapitulatif : Prix par Mois & Prix par An avec Réduction -->
-        <div class="p-3.5 bg-gradient-to-r from-slate-900 to-slate-950 rounded-xl border border-slate-700/80 grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
+        <div id="sub-pricing-recap-box" class="p-3.5 bg-gradient-to-r from-slate-900 to-slate-950 rounded-xl border border-slate-700/80 grid grid-cols-1 sm:grid-cols-2 gap-3 items-center">
           <!-- Côté Gauche : Prix Mois -->
           <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800">
-            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1">Tarif par Mois</span>
+            <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider block mb-1" id="sub-preview-left-title">Tarif par Mois</span>
             <div class="text-xl font-extrabold text-white" id="sub-preview-monthly-primary">$ 10 / mois</div>
             <div class="text-[11px] text-amber-400 font-medium mt-0.5" id="sub-preview-monthly-conversions">≈ 6 500 FCFA • ≈ 9.20 €</div>
           </div>
 
           <!-- Côté Droit : Prix An & Réduction -->
-          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-1.5">
+          <div id="sub-preview-yearly-container" class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 space-y-1.5">
             <div class="flex items-center justify-between">
               <span class="text-[10px] font-bold text-slate-400 uppercase tracking-wider">Tarif par An (12 mois)</span>
               <div class="flex items-center gap-1">
@@ -3528,7 +3534,7 @@ function renderDashboardHtml(data) {
             </div>
             <div class="grid grid-cols-1 sm:grid-cols-2 gap-2 pt-1">
               <input type="text" id="sub-plan-main-feature-text" required placeholder="Ex: 50 Go supplémentaires (+ 51 200 Mo)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-semibold text-xs focus:border-orange-500 outline-none" />
-              <input type="number" id="sub-plan-main-feature-val" required placeholder="Valeur numérique (Mo ou Mots)" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:border-orange-500 outline-none" />
+              <input type="number" id="sub-plan-main-feature-val" required placeholder="Nombre de crédits ou Mo" class="w-full bg-slate-900 border border-slate-700 rounded-lg px-2.5 py-1.5 text-white font-mono text-xs focus:border-orange-500 outline-none" />
             </div>
           </div>
 
@@ -6652,7 +6658,7 @@ function renderDashboardHtml(data) {
             isOnline: user ? user.user.isOnline : false,
             packName: sub.plan_name || 'Abonnement IA',
             amountWords: sub.additional_words || 100000,
-            storageDisplay: sub.additional_words ? (Number(sub.additional_words).toLocaleString('fr-FR') + ' mots IA') : '100 000 mots IA',
+            storageDisplay: sub.additional_words ? (Number(sub.additional_words).toLocaleString('fr-FR') + ' crédits IA') : '100 000 crédits IA',
             pricePaid: sub.monthly_price || 0,
             currency: sub.currency || 'FCFA',
             status: 'active',
@@ -6922,16 +6928,16 @@ function renderDashboardHtml(data) {
       const finalWords = currentTotalWords + addedWords;
 
       const addedEl = document.getElementById('admin-preview-ia-added-words');
-      if (addedEl) addedEl.textContent = (addedWords >= 0 ? '+' : '') + addedWords.toLocaleString('fr-FR') + ' mots';
+      if (addedEl) addedEl.textContent = (addedWords >= 0 ? '+' : '') + addedWords.toLocaleString('fr-FR') + ' crédits';
 
       const totalEl = document.getElementById('admin-preview-ia-total-words');
-      if (totalEl) totalEl.textContent = finalWords.toLocaleString('fr-FR') + ' mots';
+      if (totalEl) totalEl.textContent = finalWords.toLocaleString('fr-FR') + ' crédits';
 
       const futureFormattedEl = document.getElementById('admin-preview-ia-future-formatted');
-      if (futureFormattedEl) futureFormattedEl.textContent = finalWords.toLocaleString('fr-FR') + ' mots IA';
+      if (futureFormattedEl) futureFormattedEl.textContent = finalWords.toLocaleString('fr-FR') + ' crédits IA';
 
       const btnText = document.getElementById('admin-confirm-ia-submit-btn-text');
-      if (btnText) btnText.textContent = 'Confirmer & Valider la demande IA (+ ' + addedWords.toLocaleString('fr-FR') + ' mots)';
+      if (btnText) btnText.textContent = 'Confirmer & Valider la demande IA (+ ' + addedWords.toLocaleString('fr-FR') + ' crédits)';
     }
 
     function setAdminIaWords(words, currentTotalWords) {
@@ -7055,7 +7061,7 @@ function renderDashboardHtml(data) {
             <!-- GRILLE RÉCAPITULATIF PACK IA -->
             <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
               <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
-                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Mots IA Inclus</span>
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Crédits IA Inclus</span>
                 <div class="text-base font-black text-orange-400 font-mono">\${item.storageDisplay || formatAiWords(item.amountWords)}</div>
               </div>
               <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
@@ -7127,9 +7133,9 @@ function renderDashboardHtml(data) {
               <div class="space-y-4 pt-2">
                 <div class="border-b border-slate-800 pb-2">
                   <h4 class="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
-                    <span>⚡</span> Validation Administrative & Attribution des Mots IA
+                    <span>⚡</span> Validation Administrative & Attribution des Crédits IA
                   </h4>
-                  <p class="text-[11px] text-slate-400 mt-0.5">Définissez la durée d'activation et le quota de mots IA à allouer au compte de l'étudiant.</p>
+                  <p class="text-[11px] text-slate-400 mt-0.5">Définissez la durée d'activation et le quota de crédits IA à allouer au compte de l'étudiant.</p>
                 </div>
 
                 <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
@@ -7173,7 +7179,7 @@ function renderDashboardHtml(data) {
                     <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
                       <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800 space-y-1.5">
                         <div class="flex items-center justify-between">
-                          <span class="text-slate-300 font-bold text-xs">Mots IA à allouer :</span>
+                          <span class="text-slate-300 font-bold text-xs">Crédits IA à allouer :</span>
                           <span class="text-[10px] text-orange-400 font-mono">Crédits</span>
                         </div>
                         <input 
@@ -7226,7 +7232,7 @@ function renderDashboardHtml(data) {
                       <div class="bg-gradient-to-br from-orange-950/30 via-slate-950 to-emerald-950/30 p-3.5 rounded-xl border-2 border-orange-500/50 shadow-lg space-y-2">
                         <div class="flex items-center justify-between">
                           <span class="text-[10px] uppercase font-black text-orange-400 tracking-wider">
-                            🤖 Mots IA Alloués
+                            🤖 Crédits IA Alloués
                           </span>
                           <span class="text-[10px] px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 font-mono font-bold border border-orange-500/30">
                             Après Validation
@@ -7234,7 +7240,7 @@ function renderDashboardHtml(data) {
                         </div>
 
                         <div class="bg-slate-950/90 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
-                          <span class="text-xs font-bold text-white">Total Mots IA Crédités :</span>
+                          <span class="text-xs font-bold text-white">Total Crédits IA Alloués :</span>
                           <span id="admin-preview-ia-future-formatted" class="text-base font-black text-orange-400 font-mono">
                             \${formatAiWords(item.amountWords || 100000)}
                           </span>
@@ -7307,7 +7313,7 @@ function renderDashboardHtml(data) {
       const allocatedWords = wordsInput ? (parseInt(wordsInput.value, 10) || 100000) : 100000;
       const pricePaid = priceInput ? (parseFloat(priceInput.value) || 0) : 0;
 
-      if (!confirm("Confirmer la validation de cette demande de crédits IA (" + allocatedWords.toLocaleString('fr-FR') + " mots alloués) ?")) return;
+      if (!confirm("Confirmer la validation de cette demande de crédits IA (" + allocatedWords.toLocaleString('fr-FR') + " crédits alloués) ?")) return;
 
       try {
         const resp = await fetch('/api/ai-requests/approve', {
@@ -7338,7 +7344,7 @@ function renderDashboardHtml(data) {
             allSubscriptions.unshift(res.subscription);
           }
 
-          showToast("Demande IA validée avec succès ! +" + allocatedWords.toLocaleString('fr-FR') + " mots alloués.");
+          showToast("Demande IA validée avec succès ! +" + allocatedWords.toLocaleString('fr-FR') + " crédits IA alloués.");
           updateDemandesIaTabCounts();
           renderDemandesIaLeftList();
 
@@ -8040,6 +8046,63 @@ function renderDashboardHtml(data) {
       return { USD: usd, XOF: xof, EUR: eur };
     }
 
+    function setSubscriptionPricingModel(model) {
+      const hiddenInput = document.getElementById('sub-plan-pricing-model');
+      if (hiddenInput) hiddenInput.value = model;
+
+      const btnSub = document.getElementById('sub-model-btn-subscription');
+      const btnOne = document.getElementById('sub-model-btn-onetime');
+      const priceLabel = document.getElementById('sub-plan-price-label');
+      const leftTitle = document.getElementById('sub-preview-left-title');
+      const yearlyContainer = document.getElementById('sub-preview-yearly-container');
+      const recapBox = document.getElementById('sub-pricing-recap-box');
+
+      const isOneTime = model === 'one_time' || model === 'pack';
+
+      if (btnSub && btnOne) {
+        if (isOneTime) {
+          btnOne.className = "p-2.5 rounded-xl border-2 border-cyan-500 bg-cyan-950/50 text-cyan-200 text-left transition-all cursor-pointer flex flex-col justify-between shadow-md shadow-cyan-950/40";
+          btnSub.className = "p-2.5 rounded-xl border border-slate-700 bg-slate-900/60 text-slate-400 text-left transition-all cursor-pointer flex flex-col justify-between hover:border-slate-600";
+        } else {
+          btnSub.className = "p-2.5 rounded-xl border-2 border-orange-500 bg-orange-950/50 text-orange-200 text-left transition-all cursor-pointer flex flex-col justify-between shadow-md shadow-orange-950/40";
+          btnOne.className = "p-2.5 rounded-xl border border-slate-700 bg-slate-900/60 text-slate-400 text-left transition-all cursor-pointer flex flex-col justify-between hover:border-slate-600";
+        }
+      }
+
+      if (priceLabel) {
+        priceLabel.textContent = isOneTime ? "Prix du pack de crédits (Vente unique) *" : "Prix de base mensuel *";
+      }
+      if (leftTitle) {
+        leftTitle.textContent = isOneTime ? "Prix d'achat direct" : "Tarif par Mois";
+      }
+      if (yearlyContainer) {
+        if (isOneTime) {
+          yearlyContainer.classList.add('hidden');
+          if (recapBox) recapBox.className = "p-3.5 bg-gradient-to-r from-slate-900 to-slate-950 rounded-xl border border-slate-700/80";
+        } else {
+          yearlyContainer.classList.remove('hidden');
+          if (recapBox) recapBox.className = "p-3.5 bg-gradient-to-r from-slate-900 to-slate-950 rounded-xl border border-slate-700/80 grid grid-cols-1 sm:grid-cols-2 gap-3 items-center";
+        }
+      }
+
+      updateSubscriptionPricingCalculations();
+    }
+    window.setSubscriptionPricingModel = setSubscriptionPricingModel;
+
+    async function toggleSubscriptionPlanPricingModel(planId, newModel) {
+      const plan = (allAiPlans || []).find(p => p.id === planId);
+      if (!plan) return;
+      plan.pricing_model = newModel;
+      try {
+        await safeSubPlansApi('/api/subscription-plans/save', { category: 'ai', plan });
+        renderSubscriptionPlansCards('ai');
+        showToast("✓ Modèle mis à jour : " + (newModel === 'one_time' ? "Vente unique / Pack" : "Abonnement récurrent"));
+      } catch (e) {
+        showToast("⚠️ Erreur lors du changement de modèle");
+      }
+    }
+    window.toggleSubscriptionPlanPricingModel = toggleSubscriptionPlanPricingModel;
+
     function updateSubscriptionPricingCalculations() {
       const priceInput = document.getElementById('sub-plan-price');
       const currSelect = document.getElementById('sub-plan-primary-curr');
@@ -8320,7 +8383,7 @@ function renderDashboardHtml(data) {
         const discPct = Number(plan.yearly_discount_pct) || 0;
         const fullYearly = monthlyP * 12;
 
-        if (yearlyP > 0 || discPct > 0) {
+        if (!isOneTime && (yearlyP > 0 || discPct > 0)) {
           const activeYearly = yearlyP > 0 ? yearlyP : Math.round(fullYearly * (1 - (discPct / 100)) * 100) / 100;
           const yrRow = document.createElement('div');
           yrRow.className = 'pt-2 mt-2 border-t border-slate-800 space-y-1';
@@ -8368,7 +8431,7 @@ function renderDashboardHtml(data) {
         featBox.className = 'space-y-1.5 pt-1';
 
         // 1ère ligne verrouillée (stockage ou IA)
-        const mainAmount = plan.storage_amount || plan.credits_or_words || (targetCat === 'ai' ? 'Crédits IA' : 'Stockage cloud');
+        const mainAmount = targetCat === 'ai' ? (plan.credits_or_words || (plan.credits_count ? plan.credits_count.toLocaleString('fr-FR') + ' crédits IA' : 'Crédits IA')) : (plan.storage_amount || 'Stockage cloud');
         const mainFeat = document.createElement('div');
         mainFeat.className = 'flex items-center gap-2 p-1.5 rounded-lg bg-orange-500/10 border border-orange-500/20 text-orange-200 text-xs font-bold';
         mainFeat.innerHTML = '<span>🔒</span><span>' + mainAmount + '</span>';
@@ -8486,6 +8549,7 @@ function renderDashboardHtml(data) {
         document.getElementById('sub-plan-price').value = existing.price || 10;
         document.getElementById('sub-plan-primary-curr').value = existing.primary_currency || 'USD';
         document.getElementById('sub-plan-discount').value = existing.yearly_discount_pct !== undefined ? existing.yearly_discount_pct : 10;
+        setSubscriptionPricingModel(existing.pricing_model || 'subscription');
 
         document.getElementById('sub-plan-main-feature-text').value = existing.storage_amount || existing.credits_or_words || '';
         document.getElementById('sub-plan-main-feature-val').value = existing.storage_mb || existing.credits_count || 0;
@@ -10296,14 +10360,15 @@ export default {
         const sortOrder = Number(plan.sort_order) || 1;
 
         if (category === 'ai') {
-          const creditsOrWords = String(plan.credits_or_words || '100 000 mots IA').trim();
+          const creditsOrWords = String(plan.credits_or_words || '100 000 crédits IA').trim();
           const creditsCount = Number(plan.credits_count) || 100000;
+          const pricingModel = String(plan.pricing_model || 'subscription').trim();
           await db.prepare(`
             INSERT INTO ai_subscription_plans (
               id, name, badge, description, credits_or_words, credits_count, price, primary_currency,
               currencies_enabled, currency_conversions, yearly_price, yearly_discount_pct, features,
-              is_auto_billing, is_active, sort_order, updated_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+              is_auto_billing, is_active, sort_order, pricing_model, updated_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
             ON CONFLICT(id) DO UPDATE SET
               name = excluded.name,
               badge = excluded.badge,
@@ -10320,11 +10385,12 @@ export default {
               is_auto_billing = excluded.is_auto_billing,
               is_active = excluded.is_active,
               sort_order = excluded.sort_order,
+              pricing_model = excluded.pricing_model,
               updated_at = CURRENT_TIMESTAMP
           `).bind(
             planId, name, badge, description, creditsOrWords, creditsCount, price, primaryCurrency,
             currenciesEnabled, currencyConversions, yearlyPrice, yearlyDiscountPct, features,
-            isAutoBilling, isActive, sortOrder
+            isAutoBilling, isActive, sortOrder, pricingModel
           ).run();
 
           const updatedPlan = await db.prepare("SELECT * FROM ai_subscription_plans WHERE id = ?").bind(planId).first();

@@ -2034,13 +2034,13 @@ export function computeFallbackUserStorage(userId: string): UserStorageQuotaDeta
       freeNote: 'Partage libre / Sur quota global',
     },
     wordsUsage: {
-      name: 'Crédits Mots IA',
-      subtitle: "Mots pour vos discussions et analyses avec l'IA",
+      name: 'Crédits IA',
+      subtitle: "Crédits pour vos discussions et analyses avec l'IA",
       usedWords: 0,
       maxWords: 50000,
       remainingWords: 50000,
       percentage: 0,
-      formatted: '50 000 mots restants',
+      formatted: '50 000 crédits restants',
     },
   };
 }
@@ -2340,6 +2340,7 @@ export interface SubscriptionPlan {
   is_auto_billing: number;
   is_active: number;
   sort_order?: number;
+  pricing_model?: 'subscription' | 'one_time' | 'pack';
 }
 
 /**

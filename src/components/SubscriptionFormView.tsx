@@ -28,7 +28,7 @@ export interface SelectedPlan {
   price: number;
   priceFcfa: number;
   currency: string;
-  billingCycle: 'annual' | 'monthly';
+  billingCycle: 'annual' | 'monthly' | 'one_time';
   mb?: number;
   words?: number;
 }
@@ -256,7 +256,7 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
 
         {/* Badge récapitulatif */}
         <div className="shrink-0 bg-[#2D4A3E] dark:bg-emerald-600 text-[#F5F0E8] dark:text-white text-[10px] sm:text-xs font-bold px-2.5 py-1 rounded-lg">
-          {plan.billingCycle === 'annual' ? 'Annuel' : 'Mensuel'}
+          {plan.billingCycle === 'annual' ? 'Annuel' : plan.billingCycle === 'one_time' ? 'Achat unique' : 'Mensuel'}
         </div>
       </div>
 
@@ -471,7 +471,7 @@ export const SubscriptionFormView: React.FC<SubscriptionFormViewProps> = ({
                       {plan.priceDisplay}
                     </span>
                     <span className="block text-[10px] text-[#5C6B5A] dark:text-slate-400 mt-0.5">
-                      Cycle : {plan.billingCycle === 'annual' ? 'Facturation annuelle (-10%)' : 'Facturation mensuelle'}
+                      Cycle : {plan.billingCycle === 'annual' ? 'Facturation annuelle (-10%)' : plan.billingCycle === 'one_time' ? 'Paiement unique (Pack de crédits)' : 'Facturation mensuelle'}
                     </span>
                   </div>
                   <span className="text-[10px] uppercase px-2 py-1 bg-emerald-500/15 text-emerald-800 dark:text-emerald-300 rounded-md font-extrabold shrink-0">

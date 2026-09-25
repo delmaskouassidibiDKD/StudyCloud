@@ -35,7 +35,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
 
-  // Quota de stockage et mots IA
+  // Quota de stockage et crédits IA
   const [quotaData, setQuotaData] = useState<UserStorageQuotaDetails | null>(null);
 
   // Solde de crédits de l'utilisateur
@@ -61,7 +61,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     else setLoading(true);
 
     try {
-      // 1. Quota de stockage et mots IA
+      // 1. Quota de stockage et crédits IA
       const quotaRes = await getUserStorageQuota(currentUserId);
       if (quotaRes.success && quotaRes.data) {
         setQuotaData(quotaRes.data);
@@ -181,7 +181,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
     );
   }
 
-  const wordsRemainingFormatted = quotaData?.wordsUsage?.formatted || `${(userCredits.balance * 1000).toLocaleString('fr-FR')} mots restants`;
+  const wordsRemainingFormatted = quotaData?.wordsUsage?.formatted || `${(userCredits.balance * 1000).toLocaleString('fr-FR')} crédits restants`;
 
   return (
     <div className="w-full max-w-6xl mx-auto space-y-6 pb-20 animate-fadeIn">
@@ -484,7 +484,7 @@ export const AiSubscriptionsView: React.FC<AiSubscriptionsViewProps> = ({
                       {pur.additional_words ? (
                         <div className="flex justify-between">
                           <span className="text-stone-400">Volume accordé :</span>
-                          <span className="font-bold text-emerald-600">+{Number(pur.additional_words).toLocaleString('fr-FR')} mots IA</span>
+                          <span className="font-bold text-emerald-600">+{Number(pur.additional_words).toLocaleString('fr-FR')} crédits IA</span>
                         </div>
                       ) : null}
                       {pur.payment_reference && (

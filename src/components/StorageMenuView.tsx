@@ -711,7 +711,7 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
                   Augmenter mon stockage
                 </h3>
                 <p className="text-xs text-stone-500 dark:text-slate-400">
-                  Choisissez la formule idéale pour débloquer plus d'espace et de mots IA
+                  Choisissez la formule idéale pour débloquer plus d'espace et de crédits IA
                 </p>
               </div>
             </div>
@@ -750,7 +750,7 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
                         <span className="px-2 py-0.5 bg-stone-100 dark:bg-slate-800 text-[10px] font-bold rounded-md text-stone-600 dark:text-slate-400">+1 Go</span>
                       </div>
                       <p className="text-[11px] text-stone-500 dark:text-slate-400 mt-0.5">
-                        +1 024 Mo de documents & fiches + 100 000 mots IA
+                        +1 024 Mo de documents & fiches + 100 000 crédits IA
                       </p>
                     </div>
                     <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selectedPack === 'pack_1gb' ? 'border-amber-500 bg-amber-500' : 'border-stone-400'}`}>
@@ -776,7 +776,7 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
                         <span className="px-2 py-0.5 bg-amber-100 dark:bg-amber-900/60 text-[10px] font-bold rounded-md text-amber-800 dark:text-amber-300">+5 Go</span>
                       </div>
                       <p className="text-[11px] text-stone-500 dark:text-slate-400 mt-0.5">
-                        +5 120 Mo de documents & fiches + 500 000 mots IA
+                        +5 120 Mo de documents & fiches + 500 000 crédits IA
                       </p>
                     </div>
                     <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selectedPack === 'pack_5gb' ? 'border-amber-500 bg-amber-500' : 'border-stone-400'}`}>
@@ -799,7 +799,7 @@ export const StorageMenuView: React.FC<StorageMenuViewProps> = ({ onBack, onOpen
                         <span className="px-2 py-0.5 bg-purple-100 dark:bg-purple-900/60 text-[10px] font-bold rounded-md text-purple-800 dark:text-purple-300">+10 Go</span>
                       </div>
                       <p className="text-[11px] text-stone-500 dark:text-slate-400 mt-0.5">
-                        +10 240 Mo de documents & fiches + 1 000 000 mots IA
+                        +10 240 Mo de documents & fiches + 1 000 000 crédits IA
                       </p>
                     </div>
                     <div className={`w-4 h-4 rounded-full border-2 flex items-center justify-center ${selectedPack === 'pack_10gb' ? 'border-amber-500 bg-amber-500' : 'border-stone-400'}`}>

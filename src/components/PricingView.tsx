@@ -94,7 +94,7 @@ const DEFAULT_AI_PLANS: SubscriptionPlan[] = [
     name: 'IA Basique',
     badge: '',
     description: 'Pour réviser, poser des questions et comprendre rapidement vos cours au quotidien.',
-    credits_or_words: '100 000 mots IA',
+    credits_or_words: '100 000 crédits IA',
     credits_count: 100000,
     price: 10,
     primary_currency: 'USD',
@@ -103,7 +103,7 @@ const DEFAULT_AI_PLANS: SubscriptionPlan[] = [
     yearly_price: 90,
     yearly_discount_pct: 10,
     features: [
-      { text: "100 000 mots IA générés par mois", enabled: true },
+      { text: "100 000 crédits IA par mois", enabled: true },
       { text: "Résumés automatiques de cours et PDF", enabled: true },
       { text: "Création instantanée de cartes mémoires (Flashcards)", enabled: true },
       { text: "Aide aux devoirs et explications pas à pas", enabled: true },
@@ -111,14 +111,15 @@ const DEFAULT_AI_PLANS: SubscriptionPlan[] = [
     ],
     is_auto_billing: 0,
     is_active: 1,
-    sort_order: 1
+    sort_order: 1,
+    pricing_model: 'subscription'
   },
   {
     id: 'ai_plan_pro',
     name: 'IA Pro Étudiant',
     badge: 'Populaire',
     description: 'L\'assistant d\'apprentissage complet pour exceller et réussir tous vos examens.',
-    credits_or_words: '1 000 000 mots IA',
+    credits_or_words: '1 000 000 crédits IA',
     credits_count: 1000000,
     price: 32,
     primary_currency: 'USD',
@@ -127,7 +128,7 @@ const DEFAULT_AI_PLANS: SubscriptionPlan[] = [
     yearly_price: 290,
     yearly_discount_pct: 10,
     features: [
-      { text: "1 000 000 mots IA avec priorité maximale", enabled: true },
+      { text: "1 000 000 crédits IA avec priorité maximale", enabled: true },
       { text: "Génération de Quiz interactifs & examens blancs", enabled: true },
       { text: "Synthèse vocale & lecture audio de vos fiches", enabled: true },
       { text: "Analyse intelligente de documents scannés et photos", enabled: true },
@@ -135,14 +136,15 @@ const DEFAULT_AI_PLANS: SubscriptionPlan[] = [
     ],
     is_auto_billing: 0,
     is_active: 1,
-    sort_order: 2
+    sort_order: 2,
+    pricing_model: 'subscription'
   },
   {
     id: 'ai_plan_master',
     name: 'IA Recherche & Master',
     badge: '',
     description: 'Pour les doctorants, thèses, mémoires volumineux et laboratoires universitaires.',
-    credits_or_words: 'Mots IA illimités',
+    credits_or_words: 'Crédits IA illimités',
     credits_count: 10000000,
     price: 89,
     primary_currency: 'USD',
@@ -151,7 +153,7 @@ const DEFAULT_AI_PLANS: SubscriptionPlan[] = [
     yearly_price: 790,
     yearly_discount_pct: 10,
     features: [
-      { text: "Mots IA illimités avec accès modèles avancés", enabled: true },
+      { text: "Crédits IA illimités avec accès modèles avancés", enabled: true },
       { text: "Traitement prioritaire ultra-rapide", enabled: true },
       { text: "Export complet des synthèses & fiches en PDF/Word", enabled: true },
       { text: "Analyse illimitée de livres et thèses entières", enabled: true },
@@ -159,7 +161,8 @@ const DEFAULT_AI_PLANS: SubscriptionPlan[] = [
     ],
     is_auto_billing: 0,
     is_active: 1,
-    sort_order: 3
+    sort_order: 3,
+    pricing_model: 'subscription'
   }
 ];
 
@@ -213,6 +216,10 @@ function calculateConversions(price: number, primaryCurr: string) {
 }
 
 function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean) {
+  const isOneTime = plan.pricing_model === 'one_time' || plan.pricing_model === 'pack';
+  if (isOneTime) {
+    isAnnual = false;
+  }
   const primaryCurr = plan.primary_currency || 'USD';
   const monthlyPrice = Number(plan.price) || 0;
   const discountPct = Number(plan.yearly_discount_pct) || 10;
@@ -284,7 +291,8 @@ function getCardPricingAndConversions(plan: SubscriptionPlan, isAnnual: boolean)
     primaryCurr,
     secondaryParts,
     secondaryString: secondaryParts.map(s => `= ${s.formatted}`).join(' • '),
-    priceFcfa: finalPriceFcfa
+    priceFcfa: finalPriceFcfa,
+    isOneTime
   };
 }
 
@@ -439,13 +447,16 @@ export const PricingView: React.FC<PricingViewProps> = ({
 
   // Rendu des cartes avec les couleurs authentiques du thème (Beige, Vert Forêt & Or)
   const renderCard = (plan: SubscriptionPlan, type: 'storage' | 'ai') => {
+    const isOneTime = plan.pricing_model === 'one_time' || plan.pricing_model === 'pack';
     const isPopular = !!(plan.badge && plan.badge.trim());
-    const isAnnual = billingCycle === 'annual';
+    const isAnnual = isOneTime ? false : billingCycle === 'annual';
     const pricing = getCardPricingAndConversions(plan, isAnnual);
 
     // Première ligne verrouillée (stockage ou IA)
     const lockedPerkText = type === 'ai'
-      ? (plan.credits_or_words || `${(plan.credits_count || 100000).toLocaleString('fr-FR')} mots IA / mois`)
+      ? (plan.credits_or_words || (isOneTime 
+          ? `${(plan.credits_count || 100000).toLocaleString('fr-FR')} crédits IA`
+          : `${(plan.credits_count || 100000).toLocaleString('fr-FR')} crédits IA / mois`))
       : (plan.storage_amount || (plan.storage_mb ? `${plan.storage_mb / 1024} Go` : '10 Go'));
 
     // Autres avantages filtrés
@@ -455,7 +466,7 @@ export const PricingView: React.FC<PricingViewProps> = ({
       const t = (f.text || '').toLowerCase().trim();
       const lockedLower = lockedPerkText.toLowerCase().trim();
       if (t === lockedLower) return false;
-      if (type === 'ai' && (t.includes('mots ia') || t.includes('mots générés'))) return false;
+      if (type === 'ai' && (t.includes('mots ia') || t.includes('mots générés') || t.includes('crédits ia') || t.includes('crédits générés'))) return false;
       return true;
     });
 
@@ -476,11 +487,18 @@ export const PricingView: React.FC<PricingViewProps> = ({
             <h3 className={`text-2xl sm:text-3xl font-serif font-normal ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E]'}`}>
               {plan.name}
             </h3>
-            {isPopular && (
-              <span className="bg-[#C9B896] text-[#2D4A3E] text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-xs">
-                {plan.badge}
-              </span>
-            )}
+            <div className="flex items-center gap-1.5 flex-wrap justify-end">
+              {isOneTime && (
+                <span className="bg-cyan-700 dark:bg-cyan-600 text-white text-[11px] font-extrabold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-xs">
+                  ⚡ Pack
+                </span>
+              )}
+              {isPopular && (
+                <span className="bg-[#C9B896] text-[#2D4A3E] text-xs font-bold px-2.5 py-1 rounded-full uppercase tracking-wider shadow-xs">
+                  {plan.badge}
+                </span>
+              )}
+            </div>
           </div>
 
           {/* Description */}
@@ -493,8 +511,8 @@ export const PricingView: React.FC<PricingViewProps> = ({
           {/* Bloc Prix Principal & Conversions secondaires */}
           <div className="mb-4 sm:mb-6">
             <div className={`flex items-baseline flex-wrap gap-x-2.5 gap-y-1 ${isPopular ? 'text-[#F5F0E8]' : 'text-[#2D4A3E]'}`}>
-              {/* Vrai prix annuel barré si paiement par an avec réduction */}
-              {isAnnual && (pricing.fullYearlyPrice > pricing.activePrice || pricing.discountPct > 0) && (
+              {/* Vrai prix annuel barré si paiement par an avec réduction (uniquement abonnement) */}
+              {!isOneTime && isAnnual && (pricing.fullYearlyPrice > pricing.activePrice || pricing.discountPct > 0) && (
                 <span className={`text-2xl sm:text-3xl font-serif font-semibold line-through decoration-rose-500/80 decoration-2 opacity-75 mr-1 ${isPopular ? 'text-[#E8DFD0]' : 'text-slate-500'}`}>
                   {getCurrencySymbol(pricing.primaryCurr)} {pricing.primaryCurr === 'XOF' ? (pricing.fullYearlyPrice || Math.round(pricing.activePrice * 1.15)).toLocaleString('fr-FR') : (pricing.fullYearlyPrice || Math.round(pricing.activePrice * 1.15))}
                 </span>
@@ -502,28 +520,36 @@ export const PricingView: React.FC<PricingViewProps> = ({
               <span className="text-5xl sm:text-6xl font-serif font-normal">
                 {getCurrencySymbol(pricing.primaryCurr)} {pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice}
               </span>
-              <span className="text-lg sm:text-xl font-sans ml-1 opacity-90">
-                {isAnnual ? '/an' : '/mois'}
-              </span>
-              {isAnnual && pricing.discountPct > 0 && (
+              {!isOneTime && (
+                <span className="text-lg sm:text-xl font-sans ml-1 opacity-90">
+                  {isAnnual ? '/an' : '/mois'}
+                </span>
+              )}
+              {!isOneTime && isAnnual && pricing.discountPct > 0 && (
                 <span className={`ml-1 text-xs font-black px-2 py-0.5 rounded-full ${isPopular ? 'bg-[#C9B896] text-[#2D4A3E]' : 'bg-[#2D4A3E] text-[#F5F0E8]'}`}>
                   -{pricing.discountPct}%
                 </span>
               )}
             </div>
 
-            {/* Conversions secondaires en petit en dessous (= 58 500 FCFA • = 82.8 €) avec vrai prix barré si annuel */}
+            {/* Conversions secondaires en dessous (= 6 500 FCFA • = 9.2 €) */}
             {pricing.secondaryParts && pricing.secondaryParts.length > 0 && (
               <div className={`text-xs font-semibold mt-1.5 flex flex-wrap items-center gap-x-2 gap-y-1 ${isPopular ? 'text-[#E8DFD0]/90' : 'text-[#5C6B5A]'}`}>
                 {pricing.secondaryParts.map((sec, idx) => (
                   <span key={sec.curr} className="inline-flex items-center gap-1">
                     {idx > 0 && <span className="opacity-40">•</span>}
-                    {isAnnual && sec.fullVal && (sec.fullVal > sec.finalVal || pricing.discountPct > 0) && (
+                    {!isOneTime && isAnnual && sec.fullVal && (sec.fullVal > sec.finalVal || pricing.discountPct > 0) && (
                       <span className="line-through decoration-rose-500/70 decoration-1 opacity-65">{sec.fullFormatted}</span>
                     )}
                     <span>= {sec.formatted}</span>
                   </span>
                 ))}
+              </div>
+            )}
+
+            {isOneTime && (
+              <div className={`text-[11px] font-bold mt-2 inline-flex items-center gap-1 px-2.5 py-0.5 rounded-md ${isPopular ? 'bg-[#C9B896]/20 text-[#C9B896] border border-[#C9B896]/30' : 'bg-cyan-50 text-cyan-800 dark:bg-cyan-950/40 dark:text-cyan-300 border border-cyan-200 dark:border-cyan-800/40'}`}>
+                <span>⚡ Paiement unique • Crédits utilisables à votre rythme</span>
               </div>
             )}
           </div>
@@ -571,11 +597,13 @@ export const PricingView: React.FC<PricingViewProps> = ({
             name: `${plan.name} ${type === 'ai' ? 'IA' : 'Stockage'}`,
             type: type,
             storageDisplay: lockedPerkText,
-            priceDisplay: `${getCurrencySymbol(pricing.primaryCurr)} ${pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice} / ${isAnnual ? 'an' : 'mois'} ${pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''}`,
+            priceDisplay: isOneTime 
+              ? `${getCurrencySymbol(pricing.primaryCurr)} ${pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice} ${pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''}`
+              : `${getCurrencySymbol(pricing.primaryCurr)} ${pricing.primaryCurr === 'XOF' ? pricing.activePrice.toLocaleString('fr-FR') : pricing.activePrice} / ${isAnnual ? 'an' : 'mois'} ${pricing.secondaryString ? '(' + pricing.secondaryString + ')' : ''}`,
             price: pricing.activePrice,
             priceFcfa: pricing.priceFcfa,
             currency: getCurrencySymbol(pricing.primaryCurr),
-            billingCycle: billingCycle,
+            billingCycle: isOneTime ? 'one_time' : billingCycle,
             mb: plan.storage_mb,
             words: plan.credits_count
           })}
