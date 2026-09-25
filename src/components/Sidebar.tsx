@@ -1,5 +1,5 @@
 import React, { useState, useEffect, useRef } from 'react';
-import { Folder, Upload, Share2, BarChart3, Settings, BookOpen, LogOut, LayoutDashboard, UserCircle, Sparkles } from 'lucide-react';
+import { Folder, Upload, Share2, BarChart3, Settings, BookOpen, LogOut, LayoutDashboard, UserCircle, Sparkles, HardDrive } from 'lucide-react';
 import { DnaLogo } from './DnaLogo';
 import { NavigationTab } from '../types';
 
@@ -12,11 +12,20 @@ interface SidebarProps {
 }
 
 export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCount, onOpenUpload, publishStatus }) => {
-  const navItems: Array<{ id: NavigationTab; label: string; icon: any; highlight?: boolean; badge?: string | number }> = [
+  const desktopNavItems: Array<{ id: NavigationTab; label: string; icon: any; highlight?: boolean; badge?: string | number }> = [
     { id: 'folders' as NavigationTab, label: 'Tableau de bord', icon: LayoutDashboard },
+    { id: 'storage-menu' as NavigationTab, label: 'Mon stockage', icon: HardDrive },
     { id: 'ai-subscriptions' as NavigationTab, label: 'Abonnements IA', icon: Sparkles },
     { id: 'upload' as NavigationTab, label: 'Partager', icon: Upload, highlight: true },
     { id: 'shared' as NavigationTab, label: 'Liens Actifs', icon: Share2 },
+    { id: 'library' as NavigationTab, label: 'Bibliothèque', icon: BookOpen },
+    { id: 'settings' as NavigationTab, label: 'Profil', icon: UserCircle },
+  ];
+
+  const mobileNavItems: Array<{ id: NavigationTab; label: string; icon: any }> = [
+    { id: 'folders' as NavigationTab, label: 'Accueil', icon: LayoutDashboard },
+    { id: 'upload' as NavigationTab, label: 'Partager', icon: Upload },
+    { id: 'shared' as NavigationTab, label: 'Liens', icon: Share2 },
     { id: 'library' as NavigationTab, label: 'Bibliothèque', icon: BookOpen },
     { id: 'settings' as NavigationTab, label: 'Profil', icon: UserCircle },
   ];
@@ -46,7 +55,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
           <p className="text-[12px] font-black uppercase tracking-widest px-2 mb-2 sidebar-nav-heading">
             Navigation
           </p>
-          {navItems.map((item) => {
+          {desktopNavItems.map((item) => {
             const Icon = item.icon;
             const isActive = currentTab === item.id;
             return (
@@ -88,7 +97,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
       <div 
         className="mobile-fixed-bottom bottom-nav bg-[#F5F1E9] dark:bg-[#070a13] border-t-3 border-stone-800 dark:border-[#1e293b] px-3 py-0 z-[99999] flex items-center justify-around shadow-[0px_-4px_10px_rgba(0,0,0,0.05)] md:!hidden transition-colors duration-300"
       >
-        {navItems.map((item) => {
+        {mobileNavItems.map((item) => {
           const Icon = item.icon;
           const isActive = currentTab === item.id;
           return (
@@ -102,7 +111,7 @@ export const Sidebar: React.FC<SidebarProps> = ({ currentTab, setTab, foldersCou
               }`}
             >
               <Icon className="w-5 h-5 md:w-6 md:h-6 mb-0" />
-              <span className="text-[10px] md:text-xs leading-tight">{item.label.split(' ')[0]}</span>
+              <span className="text-[10px] md:text-xs leading-tight">{item.label}</span>
             </button>
           );
         })}

@@ -675,9 +675,53 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
         );
         break;
 
+      case 'ai-subscriptions':
+        label = 'Abonnements IA';
+        defaultAction = () => {
+          setTab('ai-subscriptions');
+        };
+        iconContent = (
+          <div className="w-full h-full p-2 flex items-center justify-center">
+            <svg className="w-full h-full drop-shadow-md" viewBox="0 0 100 100" fill="none" xmlns="http://www.w3.org/2000/svg">
+              <rect x="8" y="8" width="84" height="84" rx="22" fill="url(#aiAppCardGrad)" />
+              <defs>
+                <linearGradient id="aiAppCardGrad" x1="8" y1="8" x2="92" y2="92" gradientUnits="userSpaceOnUse">
+                  <stop stopColor="#6366F1" />
+                  <stop offset="50%" stopColor="#8B5CF6" />
+                  <stop offset="100%" stopColor="#EC4899" />
+                </linearGradient>
+              </defs>
+              {/* Grand éclat / Étoile centrale brillante */}
+              <path
+                d="M 50 16 L 54 36 L 74 40 L 54 44 L 50 64 L 46 44 L 26 40 L 46 36 Z"
+                fill="#FFFFFF"
+                className="drop-shadow-[0_2px_10px_rgba(255,255,255,0.8)]"
+              />
+              {/* Petite étoile dorée en haut à droite */}
+              <path
+                d="M 76 22 L 78 29 L 85 31 L 78 33 L 76 40 L 74 33 L 67 31 L 74 29 Z"
+                fill="#FDE047"
+              />
+              {/* Petite étoile cyan en bas à gauche */}
+              <path
+                d="M 26 56 L 28 62 L 34 64 L 28 66 L 26 72 L 24 66 L 18 64 L 24 62 Z"
+                fill="#38BDF8"
+              />
+              {/* Anneau subtil */}
+              <circle cx="50" cy="48" r="30" stroke="#FFFFFF" strokeWidth="1.8" strokeDasharray="3 3" opacity="0.45" />
+              {/* Badge IA PRO en bas */}
+              <rect x="30" y="69" width="40" height="15" rx="4" fill="#0F172A" stroke="#FDE047" strokeWidth="1.2" />
+              <text x="50" y="80" fill="#FDE047" fontSize="8" fontWeight="900" textAnchor="middle" letterSpacing="1">IA PRO</text>
+            </svg>
+          </div>
+        );
+        break;
+
       default:
         return null;
     }
+
+    const isMobileOnlyApp = id === 'storage' || id === 'ai-subscriptions';
 
     return (
       <div 
@@ -690,7 +734,7 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
           }
           defaultAction();
         }}
-        className="group flex flex-col items-center cursor-pointer w-full max-w-[94px] sm:max-w-[102px] md:w-24 lg:w-26 md:shrink-0 transition-all duration-200 hover:scale-105"
+        className={`${isMobileOnlyApp ? 'flex md:hidden' : 'flex'} group flex-col items-center cursor-pointer w-full max-w-[94px] sm:max-w-[102px] md:w-24 lg:w-26 md:shrink-0 transition-all duration-200 hover:scale-105`}
       >
         <div className="w-full aspect-square bg-stone-900 dark:bg-slate-800/80 dark:backdrop-blur-xl border-2 border-stone-800 dark:border-white/15 rounded-2xl shadow-[3px_3px_0px_0px_#1c1917] dark:shadow-[0_8px_25px_rgba(0,0,0,0.45)] dark:hover:border-blue-400/40 dark:hover:shadow-[0_12px_30px_rgba(37,99,235,0.25)] flex items-center justify-center group-hover:translate-x-0.5 group-hover:translate-y-0.5 group-hover:shadow-[1px_1px_0px_0px_#1c1917] transition-all relative">
           {iconContent}
@@ -1630,9 +1674,9 @@ export const FoldersView: React.FC<FoldersViewProps> = ({
 
               {/* PAGE 1 : Écran d'accueil principal à droite */}
               <div className="w-1/2 shrink-0 px-1 sm:px-4">
-                {/* Sur mobile : 3 blocs par ligne | Sur desktop : 9 colonnes centrées avec la 2ème ligne commençant sous "Mes fichiers" */}
+                {/* Sur mobile : 3 blocs par ligne (inclut Mon stockage et Abonnements IA) | Sur desktop : 9 colonnes centrées avec accès stockage et IA sur la barre latérale gauche */}
                 <div className="grid grid-cols-3 md:grid-cols-9 gap-y-6 gap-x-2 sm:gap-x-4 md:gap-4 lg:gap-6 justify-items-center w-fit max-w-full mx-auto md:overflow-x-auto md:pb-4 md:pt-1 md:no-scrollbar">
-                  {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage'].map((id, index) => renderBlock(id, index))}
+                  {['files', 'favorites', 'schedule', 'notes', 'grades', 'level', 'calendar', 'clock', 'calculator', 'storage', 'ai-subscriptions'].map((id, index) => renderBlock(id, index))}
                 </div>
               </div>
             </div>

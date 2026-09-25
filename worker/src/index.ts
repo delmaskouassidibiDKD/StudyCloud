@@ -10174,6 +10174,193 @@ export default {
         }, 200, origin);
       }
 
+      // ----------------------------------------------------------------------
+      // 28. QUOTA DE STOCKAGE & SUIVI UTILISATEUR (/api/user/storage)
+      // ----------------------------------------------------------------------
+      if (path === '/api/user/storage' && method === 'GET') {
+        const userId = url.searchParams.get('userId') || request.headers.get('x-user-id') || 'default-user';
+
+        let totalFilesCount = 0;
+        let totalFilesBytes = 0;
+        let totalDataCount = 0;
+        let totalDataBytes = 0;
+        let purchasedMb = 0;
+        let purchasedWords = 0;
+
+        if (env.DB) {
+          try {
+            const filesStat: any = await env.DB.prepare(
+              'SELECT COUNT(*) as count, COALESCE(SUM(size), 0) as totalBytes FROM files WHERE user_id = ?'
+            ).bind(userId).first();
+            if (filesStat) {
+              totalFilesCount = Number(filesStat.count || 0);
+              totalFilesBytes = Number(filesStat.totalBytes || 0);
+            }
+
+            const matieresStat: any = await env.DB.prepare(
+              'SELECT COUNT(*) as count FROM matieres WHERE user_id = ?'
+            ).bind(userId).first();
+            const notesStat: any = await env.DB.prepare(
+              'SELECT COUNT(*) as count FROM notes WHERE user_id = ?'
+            ).bind(userId).first();
+            totalDataCount = Number(matieresStat?.count || 0) + Number(notesStat?.count || 0);
+            totalDataBytes = totalDataCount * 2048;
+
+            try {
+              const reqs: any = await env.DB.prepare(
+                'SELECT COALESCE(SUM(additional_mb), 0) as totalMb, COALESCE(SUM(additional_words), 0) as totalWords FROM storage_upgrade_requests WHERE user_id = ? AND status = "active"'
+              ).bind(userId).first();
+              if (reqs) {
+                purchasedMb = Number(reqs.totalMb || 0);
+                purchasedWords = Number(reqs.totalWords || 0);
+              }
+            } catch (e) {}
+
+            try {
+              const aiCred: any = await env.DB.prepare(
+                'SELECT remaining_credits FROM user_ai_credits WHERE user_id = ?'
+              ).bind(userId).first();
+              if (aiCred) {
+                purchasedWords += Number(aiCred.remaining_credits || 0);
+              }
+            } catch (e) {}
+          } catch (dbErr) {
+            console.warn('[Storage Route] Erreur lecture DB:', dbErr);
+          }
+        }
+
+        const welcomeMb = 30;
+        const totalAllowedMb = welcomeMb + purchasedMb;
+        const usedFilesMb = Number((totalFilesBytes / (1024 * 1024)).toFixed(2));
+        const usedDataMb = Number((totalDataBytes / (1024 * 1024)).toFixed(2));
+        const totalUsedMb = Number((usedFilesMb + usedDataMb).toFixed(2));
+        const totalPercentage = Math.min(100, Math.round((totalUsedMb / totalAllowedMb) * 100));
+
+        const formatSize = (bytes: number): string => {
+          if (bytes < 1024) return `${bytes} o`;
+          if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+          return `${(bytes / (1024 * 1024)).toFixed(2)} Mo`;
+        };
+
+        const resultData = {
+          userId,
+          planName: purchasedMb > 0 ? 'Plan Avancé' : 'Plan Étudiant Gratuit',
+          welcomeStorage: {
+            totalMb: welcomeMb,
+            filesMb: 25,
+            dataMb: 5,
+            formatted: `${welcomeMb} Mo`
+          },
+          paidStorage: {
+            totalMb: purchasedMb,
+            filesMb: purchasedMb,
+            dataMb: 0,
+            formatted: `${purchasedMb} Mo`
+          },
+          bonusStorage: {
+            totalMb: 0,
+            formatted: '0 Mo'
+          },
+          totalAllowedMb,
+          totalAllowedFormatted: `${totalAllowedMb} Mo`,
+          totalUsedBytes: totalFilesBytes + totalDataBytes,
+          totalUsedMb,
+          totalUsedFormatted: formatSize(totalFilesBytes + totalDataBytes),
+          totalPercentage,
+          filesStorage: {
+            name: 'Stockage Documents & Fichiers',
+            subtitle: 'Vos cours personnels, devoirs, polycopiés et documents PDF téléversés',
+            count: totalFilesCount,
+            usedBytes: totalFilesBytes,
+            usedMb: usedFilesMb,
+            usedFormatted: formatSize(totalFilesBytes),
+            allowedMb: totalAllowedMb,
+            allowedFormatted: `${totalAllowedMb} Mo`,
+            percentage: Math.min(100, Math.round((usedFilesMb / totalAllowedMb) * 100)),
+            freeNote: 'Partage libre / Sur quota global'
+          },
+          dataStorage: {
+            name: "Espace Données & Fiches d'Étude",
+            subtitle: 'Vos fiches mémoires, notes de cours, emploi du temps, relevés et contenus',
+            count: totalDataCount,
+            usedBytes: totalDataBytes,
+            usedMb: usedDataMb,
+            usedFormatted: formatSize(totalDataBytes),
+            allowedMb: totalAllowedMb,
+            allowedFormatted: `${totalAllowedMb} Mo`,
+            percentage: Math.min(100, Math.round((usedDataMb / totalAllowedMb) * 100)),
+            freeNote: 'Partage libre / Sur quota global'
+          },
+          wordsUsage: {
+            name: 'Crédits Mots IA',
+            subtitle: "Mots pour vos discussions et analyses avec l'IA",
+            usedWords: 0,
+            maxWords: 50000 + purchasedWords,
+            remainingWords: 50000 + purchasedWords,
+            percentage: 0,
+            formatted: `${(50000 + purchasedWords).toLocaleString('fr-FR')} mots restants`
+          }
+        };
+
+        return jsonResponse({ success: true, data: resultData }, 200, origin);
+      }
+
+      if (path === '/api/user/storage/upgrade-request' && method === 'POST') {
+        const body: any = await request.json().catch(() => ({}));
+        const userId = body.userId || request.headers.get('x-user-id');
+        if (!userId) return errorResponse('userId requis', 400, origin);
+
+        const requestId = 'REQ_' + Math.random().toString(36).substring(2, 10).toUpperCase();
+        if (env.DB) {
+          try {
+            await env.DB.prepare(`
+              INSERT INTO storage_upgrade_requests (
+                id, user_id, user_name, user_phone, user_email, pack_id, pack_name,
+                additional_mb, additional_words, price_paid, currency, contact_phone,
+                notes, status, created_at, updated_at
+              ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+            `).bind(
+              requestId,
+              userId,
+              body.userName || '',
+              body.contactPhone || '',
+              body.userEmail || '',
+              body.packId || 'pack_custom',
+              body.packName || 'Pack Stockage',
+              Number(body.additionalMb || 1024),
+              Number(body.additionalWords || 100000),
+              Number(body.pricePaid || 0),
+              body.currency || 'FCFA',
+              body.contactPhone || '',
+              body.notes || ''
+            ).run();
+          } catch (dbErr) {
+            console.warn('[Upgrade Request] Erreur DB:', dbErr);
+          }
+        }
+
+        return jsonResponse({
+          success: true,
+          message: 'Votre demande d\'augmentation de stockage a été envoyée avec succès.',
+          requestId
+        }, 200, origin);
+      }
+
+      if (path === '/api/user/storage/upgrade-requests' && method === 'GET') {
+        const userId = url.searchParams.get('userId') || request.headers.get('x-user-id');
+        if (!userId) return errorResponse('userId requis', 400, origin);
+        let list: any[] = [];
+        if (env.DB) {
+          try {
+            const { results } = await env.DB.prepare(
+              'SELECT * FROM storage_upgrade_requests WHERE user_id = ? ORDER BY created_at DESC'
+            ).bind(userId).all();
+            list = results || [];
+          } catch (e) {}
+        }
+        return jsonResponse({ success: true, requests: list }, 200, origin);
+      }
+
       // Route 404 par défaut
       return errorResponse(`Route non trouvée : ${method} ${path}`, 404, origin);
 

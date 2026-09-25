@@ -11,6 +11,7 @@ import { UploadView } from './components/UploadView';
 import { SharedLinksView } from './components/SharedLinksView';
 import { SettingsView } from './components/SettingsView';
 import { AiSubscriptionsView } from './components/AiSubscriptionsView';
+import { StorageMenuView } from './components/StorageMenuView';
 import { CreateShareLinkModal } from './components/CreateShareLinkModal';
 import { PublishFileView } from './components/PublishFileView';
 import { INITIAL_FOLDERS } from './data/initialData';
@@ -1499,6 +1500,13 @@ export default function App() {
             <SettingsView />
           ) : currentTab === 'ai-subscriptions' ? (
             <AiSubscriptionsView />
+          ) : currentTab === 'storage-menu' ? (
+            <StorageMenuView
+              onBack={() => handleSetTab('folders')}
+              onOpenPricing={(tab = 'storage') => {
+                handleSetTab('ai-subscriptions');
+              }}
+            />
           ) : null}
 
           {/* Persistent PublishFileView: keeps in-progress uploads, drafts, rejected files & status intact */}
