@@ -126,6 +126,16 @@ async function ensureStorageTables(db) {
       )
     `).run();
 
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_ai_credits (
+        user_id TEXT PRIMARY KEY,
+        total_credits REAL DEFAULT 0,
+        remaining_credits REAL DEFAULT 0,
+        used_credits REAL DEFAULT 0,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run();
+
     // 1. Colonnes indispensables sur 'users' (garantit qu'aucun SELECT ne plantera)
     const userAlterCols = [
       "ALTER TABLE users ADD COLUMN phone TEXT DEFAULT ''",
@@ -216,7 +226,10 @@ async function ensureStorageTables(db) {
       "ALTER TABLE storage_upgrade_requests ADD COLUMN billing_cycle TEXT DEFAULT 'annual'",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN user_deleted_at TEXT DEFAULT ''",
       "ALTER TABLE storage_upgrade_requests ADD COLUMN purge_scheduled_at TEXT DEFAULT ''",
-      "ALTER TABLE storage_upgrade_requests ADD COLUMN request_type TEXT DEFAULT 'upgrade'"
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN request_type TEXT DEFAULT 'upgrade'",
+      "ALTER TABLE storage_upgrade_requests ADD COLUMN credits_amount REAL DEFAULT 0",
+      "ALTER TABLE user_purchases_history ADD COLUMN credits_amount REAL DEFAULT 0",
+      "ALTER TABLE user_purchases_history ADD COLUMN additional_words INTEGER DEFAULT 0"
     ];
     for (const sql of upgradeReqCols) {
       try { await db.prepare(sql).run(); } catch (e) {}
@@ -1778,6 +1791,15 @@ function renderDashboardHtml(data) {
       </button>
 
       <button 
+        onclick="switchView('demandes-ia')" 
+        id="nav-btn-demandes-ia"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+      >
+        <span class="text-base">🤖</span>
+        <span>Demandes de crédits IA</span>
+      </button>
+
+      <button 
         onclick="switchView('distribution')" 
         id="nav-btn-distribution"
         class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
@@ -2083,6 +2105,86 @@ function renderDashboardHtml(data) {
             <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">📥</div>
             <h3 class="text-sm font-bold text-slate-300">Aucune demande ou abonnement sélectionné</h3>
             <p class="text-xs text-slate-500 mt-1 max-w-sm">Choisissez un élément dans la colonne de gauche pour afficher les informations de l'étudiant, l'offre souscrite, le reçu de paiement et allouer le stockage.</p>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+    <!-- ================================================================== -->
+    <!-- VUE : DEMANDES DE CRÉDITS IA (VALIDATION, REÇUS R2, ATTRIBUTION DE MOTS IA) -->
+    <!-- ================================================================== -->
+    <div id="view-demandes-ia" class="hidden w-full h-full flex flex-col min-h-0 overflow-hidden">
+      <!-- DEUX COLONNES SCROLLABLES INDÉPENDANTES (PAGE FIXE) -->
+      <div class="grid grid-cols-1 md:grid-cols-12 gap-3 h-full min-h-0 overflow-hidden">
+        
+        <!-- COLONNE GAUCHE (4/12) : FILTRES ONGLETS, RECHERCHE ET LISTE DÉFILANTE -->
+        <div class="md:col-span-4 neo-card h-full flex flex-col min-h-0 overflow-hidden">
+          
+          <!-- Filtres onglets en haut -->
+          <div class="p-2.5 border-b border-slate-800 space-y-2 shrink-0">
+            <div class="grid grid-cols-2 gap-1 text-[11px] font-bold">
+              <button 
+                onclick="setDemandesIaTab('pending')" 
+                id="demande-ia-tab-pending"
+                class="px-2 py-1.5 rounded-lg bg-orange-600 text-white flex items-center justify-between transition-all cursor-pointer shadow-sm"
+              >
+                <span>🟡 En attente</span>
+                <span id="tab-ia-count-pending" class="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px] font-mono">0</span>
+              </button>
+              <button 
+                onclick="setDemandesIaTab('active')" 
+                id="demande-ia-tab-active"
+                class="px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700/80 flex items-center justify-between transition-all cursor-pointer"
+              >
+                <span>🟢 Validés</span>
+                <span id="tab-ia-count-active" class="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px] font-mono">0</span>
+              </button>
+              <button 
+                onclick="setDemandesIaTab('cancelled')" 
+                id="demande-ia-tab-cancelled"
+                class="px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700/80 flex items-center justify-between transition-all cursor-pointer"
+              >
+                <span>🔴 Refusés</span>
+                <span id="tab-ia-count-cancelled" class="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px] font-mono">0</span>
+              </button>
+              <button 
+                onclick="setDemandesIaTab('all')" 
+                id="demande-ia-tab-all"
+                class="px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700/80 flex items-center justify-between transition-all cursor-pointer"
+              >
+                <span>👥 Tous</span>
+                <span id="tab-ia-count-all" class="px-1.5 py-0.2 rounded-full bg-black/30 text-[10px] font-mono">0</span>
+              </button>
+            </div>
+
+            <!-- Barre de recherche -->
+            <div class="relative">
+              <input 
+                type="text" 
+                id="demandes-ia-search-input" 
+                placeholder="Rechercher nom, numéro, pack IA..." 
+                oninput="filterDemandesIaLeft()"
+                class="w-full bg-slate-900 text-slate-200 placeholder-slate-500 text-xs rounded-lg px-3 py-2 pl-8 border border-slate-700 focus:outline-none focus:border-orange-500"
+              >
+              <span class="absolute left-2.5 top-2.5 text-slate-500 text-xs">🔍</span>
+            </div>
+
+            <div class="flex items-center justify-between text-[10px] text-slate-400">
+              <span id="demandes-ia-filter-label" class="font-medium text-amber-400">Demandes de crédits IA en attente de validation</span>
+            </div>
+          </div>
+
+          <!-- LISTE SCROLLABLE GAUCHE (PAGE FIXE, SEULE LA LISTE DÉFILE) -->
+          <div id="demandes-ia-left-items-list" class="flex-1 min-h-0 overflow-y-auto divide-y divide-slate-800/60 text-xs font-medium overscroll-contain"></div>
+        </div>
+
+        <!-- COLONNE DROITE (8/12) : DÉTAILS DEMANDE IA, REÇU R2, VALIDATION & ALLOCATION -->
+        <div class="md:col-span-8 neo-card p-4 space-y-4 h-full min-h-0 overflow-y-auto overscroll-contain" id="demandes-ia-right-detail-panel">
+          <div class="h-full flex flex-col items-center justify-center text-center text-slate-500 py-20">
+            <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">🤖</div>
+            <h3 class="text-sm font-bold text-slate-300">Aucune demande de crédits IA sélectionnée</h3>
+            <p class="text-xs text-slate-500 mt-1 max-w-sm">Choisissez un élément dans la colonne de gauche pour afficher les informations de l'étudiant, le pack IA souscrit, le reçu de paiement et allouer les crédits IA.</p>
           </div>
         </div>
 
@@ -3523,6 +3625,9 @@ function renderDashboardHtml(data) {
     let currentDemandeTab = 'pending'; // 'pending' | 'active' | 'cancelled' | 'all'
     let selectedDemandeId = null;
     let selectedDemandeType = 'request'; // 'request' | 'subscription'
+    let currentDemandeIaTab = 'pending'; // 'pending' | 'active' | 'cancelled' | 'all'
+    let selectedDemandeIaId = null;
+    let selectedDemandeIaType = 'request'; // 'request' | 'subscription'
     let activeHistoryUserId = null;
     let activeHistoryTab = 'requests';
 
@@ -3577,8 +3682,8 @@ function renderDashboardHtml(data) {
 
     function switchView(viewName) {
       currentView = viewName;
-      const flexViews = ['users', 'demandes', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques'];
-      ['global', 'users', 'demandes', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro'].forEach(v => {
+      const flexViews = ['users', 'demandes', 'demandes-ia', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques'];
+      ['global', 'users', 'demandes', 'demandes-ia', 'distribution', 'messages', 'signalements', 'abonnements', 'statistiques', 'profil-pro'].forEach(v => {
         const el = document.getElementById('view-' + v);
         const navBtn = document.getElementById('nav-btn-' + v);
         if (!el) return;
@@ -3603,6 +3708,7 @@ function renderDashboardHtml(data) {
           global: 'Vue Globale',
           users: 'Tous les Utilisateurs',
           demandes: 'Demandes de Stockage',
+          'demandes-ia': 'Demandes de Crédits IA',
           distribution: 'Distribution de Stockage',
           messages: 'Messages',
           signalements: 'Signalements & Retours',
@@ -3632,6 +3738,14 @@ function renderDashboardHtml(data) {
           renderDemandeDetail(selectedDemandeId, selectedDemandeType);
         } else {
           autoSelectFirstDemande();
+        }
+      } else if (viewName === 'demandes-ia') {
+        updateDemandesIaTabCounts();
+        renderDemandesIaLeftList();
+        if (selectedDemandeIaId) {
+          renderDemandeIaDetail(selectedDemandeIaId, selectedDemandeIaType);
+        } else {
+          autoSelectFirstDemandeIa();
         }
       } else if (viewName === 'distribution') {
         renderDistributionUsersList();
@@ -4444,6 +4558,32 @@ function renderDashboardHtml(data) {
     }
 
     // ========================================================================
+    // HELPER : DÉTECTION DEMANDES & ABONNEMENTS IA VS STOCKAGE
+    // ========================================================================
+    function isAiRequest(r) {
+      if (!r) return false;
+      const reqType = String(r.request_type || '').toLowerCase();
+      if (reqType === 'ai' || reqType === 'credits' || reqType === 'ia' || reqType === 'ai_subscription') return true;
+      const packId = String(r.pack_id || '').toLowerCase();
+      if (packId.includes('ai') || packId.includes('ia') || packId.includes('credit')) return true;
+      const packName = String(r.pack_name || '').toLowerCase();
+      if (packName.includes('ia') || packName.includes('delmas') || packName.includes('mots') || packName.includes('assistante') || packName.includes('credit')) return true;
+      const storageDisplay = String(r.storage_display || '').toLowerCase();
+      if (storageDisplay.includes('mots') || storageDisplay.includes('ia') || storageDisplay.includes('credit') || storageDisplay.includes('token')) return true;
+      if (Number(r.additional_words || 0) > 0 && Number(r.additional_mb || 0) <= 0) return true;
+      return false;
+    }
+
+    function isAiSubscription(s) {
+      if (!s) return false;
+      const planName = String(s.plan_name || '').toLowerCase();
+      if (planName.includes('ia') || planName.includes('delmas') || planName.includes('mots') || planName.includes('credit') || planName.includes('assistante')) return true;
+      const id = String(s.id || '').toLowerCase();
+      if (id.includes('ai') || id.includes('ia')) return true;
+      return false;
+    }
+
+    // ========================================================================
     // NOUVELLE VUE : GESTION DES DEMANDES DE STOCKAGE & ABONNEMENTS (V2)
     // ========================================================================
     function setDemandesTab(tab) {
@@ -4475,9 +4615,9 @@ function renderDashboardHtml(data) {
     }
 
     function updateDemandesTabCounts() {
-      const pendingCount = allRequests.filter(r => r.status === 'pending').length;
-      const activeCount = allSubscriptions.filter(s => s.status === 'active').length;
-      const cancelledCount = allSubscriptions.filter(s => s.status === 'cancelled').length;
+      const pendingCount = allRequests.filter(r => r.status === 'pending' && !isAiRequest(r)).length;
+      const activeCount = allSubscriptions.filter(s => s.status === 'active' && !isAiSubscription(s)).length;
+      const cancelledCount = allSubscriptions.filter(s => s.status === 'cancelled' && !isAiSubscription(s)).length;
       const allUsersCount = allUsers.length;
 
       const pEl = document.getElementById('tab-count-pending');
@@ -4508,13 +4648,11 @@ function renderDashboardHtml(data) {
         selectedDemandeId = null;
         const panel = document.getElementById('demandes-right-detail-panel');
         if (panel) {
-          panel.innerHTML = \`
-            <div class="h-full flex flex-col items-center justify-center text-center text-slate-500 py-20">
-              <div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">📥</div>
-              <h3 class="text-sm font-bold text-slate-300">Aucun élément dans cette section</h3>
-              <p class="text-xs text-slate-500 mt-1 max-w-sm">Aucune demande ou utilisateur ne correspond au filtre sélectionné.</p>
-            </div>
-          \`;
+          panel.innerHTML = '<div class="h-full flex flex-col items-center justify-center text-center text-slate-500 py-20">' +
+            '<div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">📥</div>' +
+            '<h3 class="text-sm font-bold text-slate-300">Aucun élément dans cette section</h3>' +
+            '<p class="text-xs text-slate-500 mt-1 max-w-sm">Aucune demande ou utilisateur ne correspond au filtre sélectionné.</p>' +
+          '</div>';
         }
       }
     }
@@ -4522,9 +4660,9 @@ function renderDashboardHtml(data) {
     function getFilteredDemandesList(q = '') {
       let combined = [];
 
-      // 1. ONGLET 'pending' : UNIQUEMENT les demandes d'augmentation en attente réelles
+      // 1. ONGLET 'pending' : UNIQUEMENT les demandes d'augmentation en attente réelles (hors IA)
       if (currentDemandeTab === 'pending') {
-        allRequests.filter(r => r.status === 'pending').forEach(req => {
+        allRequests.filter(r => r.status === 'pending' && !isAiRequest(r)).forEach(req => {
           const user = allUsers.find(u => u.user.id === req.user_id);
           const isRenewal = req.request_type === 'renewal' ||
             (req.pack_name && req.pack_name.toLowerCase().includes('renouvellement')) ||
@@ -4558,9 +4696,9 @@ function renderDashboardHtml(data) {
         });
       }
 
-      // 2. ONGLET 'active' : Abonnements actifs
+      // 2. ONGLET 'active' : Abonnements actifs (hors IA)
       else if (currentDemandeTab === 'active') {
-        allSubscriptions.filter(s => s.status === 'active').forEach(sub => {
+        allSubscriptions.filter(s => s.status === 'active' && !isAiSubscription(s)).forEach(sub => {
           const user = allUsers.find(u => u.user.id === sub.user_id);
           combined.push({
             id: sub.id,
@@ -4585,9 +4723,9 @@ function renderDashboardHtml(data) {
         });
       }
 
-      // 3. ONGLET 'cancelled' : Abonnements annulés / résiliés
+      // 3. ONGLET 'cancelled' : Abonnements annulés / résiliés (hors IA)
       else if (currentDemandeTab === 'cancelled') {
-        allSubscriptions.filter(s => s.status === 'cancelled').forEach(sub => {
+        allSubscriptions.filter(s => s.status === 'cancelled' && !isAiSubscription(s)).forEach(sub => {
           const user = allUsers.find(u => u.user.id === sub.user_id);
           combined.push({
             id: sub.id,
@@ -4616,10 +4754,10 @@ function renderDashboardHtml(data) {
       // 4. ONGLET 'all' : TOUS LES UTILISATEURS INSCRITS (DONNÉES RÉELLES DE LA BASE)
       else if (currentDemandeTab === 'all') {
         allUsers.forEach(u => {
-          const activeSub = allSubscriptions.find(s => s.user_id === u.user.id && s.status === 'active');
-          const cancelledSubs = allSubscriptions.filter(s => s.user_id === u.user.id && s.status === 'cancelled');
-          const totalSubsCount = allSubscriptions.filter(s => s.user_id === u.user.id).length;
-          const pendingReqsCount = allRequests.filter(r => r.user_id === u.user.id && r.status === 'pending').length;
+          const activeSub = allSubscriptions.find(s => s.user_id === u.user.id && s.status === 'active' && !isAiSubscription(s));
+          const cancelledSubs = allSubscriptions.filter(s => s.user_id === u.user.id && s.status === 'cancelled' && !isAiSubscription(s));
+          const totalSubsCount = allSubscriptions.filter(s => s.user_id === u.user.id && !isAiSubscription(s)).length;
+          const pendingReqsCount = allRequests.filter(r => r.user_id === u.user.id && r.status === 'pending' && !isAiRequest(r)).length;
 
           const totalAllowedBytes = u.quotaConfig.totalAllowedBytes || (30 * 1024 * 1024);
           const usedBytes = u.storage.net ? (u.storage.net.totalBytes || 0) : (u.storage.totalBytes || 0);
@@ -6374,8 +6512,880 @@ function renderDashboardHtml(data) {
       }
     }
 
+    // ========================================================================
+    // NOUVELLE VUE : GESTION DES DEMANDES DE CRÉDITS IA (V1)
+    // ========================================================================
+    function formatAiWords(words) {
+      const n = Number(words || 0);
+      if (n <= 0) return '0 mot';
+      return n.toLocaleString('fr-FR') + ' mots IA';
+    }
 
-        async function saveUserQuota(userId) {
+    function setDemandesIaTab(tab) {
+      currentDemandeIaTab = tab;
+      ['pending', 'active', 'cancelled', 'all'].forEach(t => {
+        const btn = document.getElementById('demande-ia-tab-' + t);
+        if (!btn) return;
+        if (t === tab) {
+          btn.className = "px-2 py-1.5 rounded-lg bg-orange-600 text-white flex items-center justify-between transition-all cursor-pointer shadow-sm";
+        } else {
+          btn.className = "px-2 py-1.5 rounded-lg bg-slate-800 text-slate-300 hover:bg-slate-700/80 flex items-center justify-between transition-all cursor-pointer";
+        }
+      });
+
+      const label = document.getElementById('demandes-ia-filter-label');
+      if (label) {
+        const labels = {
+          pending: "Demandes de crédits IA en attente de validation",
+          active: "Abonnements et packs IA validés / actifs",
+          cancelled: "Demandes IA refusées ou abonnements résiliés",
+          all: "Tous les utilisateurs inscrits & Bilans crédits IA"
+        };
+        label.textContent = labels[tab] || '';
+      }
+
+      updateDemandesIaTabCounts();
+      renderDemandesIaLeftList();
+      autoSelectFirstDemandeIa();
+    }
+
+    function updateDemandesIaTabCounts() {
+      const pendingCount = allRequests.filter(r => r.status === 'pending' && isAiRequest(r)).length;
+      const activeCount = allSubscriptions.filter(s => s.status === 'active' && isAiSubscription(s)).length + allRequests.filter(r => (r.status === 'approved' || r.status === 'active') && isAiRequest(r)).length;
+      const cancelledCount = allSubscriptions.filter(s => s.status === 'cancelled' && isAiSubscription(s)).length + allRequests.filter(r => r.status === 'rejected' && isAiRequest(r)).length;
+      const allUsersCount = allUsers.length;
+
+      const pEl = document.getElementById('tab-ia-count-pending');
+      const aEl = document.getElementById('tab-ia-count-active');
+      const cEl = document.getElementById('tab-ia-count-cancelled');
+      const allEl = document.getElementById('tab-ia-count-all');
+
+      if (pEl) pEl.textContent = pendingCount;
+      if (aEl) aEl.textContent = activeCount;
+      if (cEl) cEl.textContent = cancelledCount;
+      if (allEl) allEl.textContent = allUsersCount;
+    }
+
+    function filterDemandesIaLeft() {
+      renderDemandesIaLeftList();
+    }
+
+    function autoSelectFirstDemandeIa() {
+      const q = (document.getElementById('demandes-ia-search-input')?.value || '').toLowerCase().trim();
+      let list = getFilteredDemandesIaList(q);
+      if (list.length > 0) {
+        const first = list[0];
+        selectedDemandeIaId = first.id;
+        selectedDemandeIaType = first.itemType;
+        renderDemandeIaDetail(first.id, first.itemType);
+        renderDemandesIaLeftList();
+      } else {
+        selectedDemandeIaId = null;
+        const panel = document.getElementById('demandes-ia-right-detail-panel');
+        if (panel) {
+          panel.innerHTML = '<div class="h-full flex flex-col items-center justify-center text-center text-slate-500 py-20">' +
+            '<div class="w-16 h-16 rounded-2xl bg-slate-800/60 text-3xl flex items-center justify-center mb-3">🤖</div>' +
+            '<h3 class="text-sm font-bold text-slate-300">Aucun élément dans cette section</h3>' +
+            '<p class="text-xs text-slate-500 mt-1 max-w-sm">Aucune demande de crédits IA ne correspond au filtre sélectionné.</p>' +
+          '</div>';
+        }
+      }
+    }
+
+    function getFilteredDemandesIaList(q = '') {
+      let combined = [];
+
+      // 1. ONGLET 'pending' : Demandes IA en attente
+      if (currentDemandeIaTab === 'pending') {
+        allRequests.filter(r => r.status === 'pending' && isAiRequest(r)).forEach(req => {
+          const user = allUsers.find(u => u.user.id === req.user_id);
+          const isRenewal = req.request_type === 'renewal' ||
+            (req.pack_name && req.pack_name.toLowerCase().includes('renouvellement')) ||
+            (req.notes && req.notes.toLowerCase().includes('renouvellement'));
+          combined.push({
+            id: req.id,
+            itemType: 'request',
+            raw: req,
+            isRenewal: Boolean(isRenewal),
+            requestType: isRenewal ? 'renewal' : (req.request_type || 'upgrade'),
+            userId: req.user_id,
+            userName: req.user_name || (user ? user.user.name : 'Utilisateur'),
+            userPhone: req.contact_phone || req.user_phone || (user ? user.user.phone : ''),
+            contactPhone: req.contact_phone || req.user_phone || (user ? user.user.phone : ''),
+            userWhatsapp: req.user_whatsapp || '',
+            storageDisplay: req.storage_display || '',
+            priceDisplay: req.price_display || '',
+            billingCycle: req.billing_cycle || 'annual',
+            notes: req.notes || '',
+            userAvatar: user ? user.user.avatar_url : '',
+            isOnline: user ? user.user.isOnline : false,
+            packName: req.pack_name || 'Pack IA',
+            amountWords: req.additional_words || (req.additional_mb ? req.additional_mb * 1000 : 100000),
+            pricePaid: req.price_paid || 0,
+            currency: req.currency || 'FCFA',
+            status: 'pending',
+            date: req.created_at,
+            receiptUrl: req.receipt_image_url || '',
+            receiptR2Key: req.receipt_r2_key || '',
+            paymentMethod: req.payment_method || 'Mobile Money',
+            paymentReference: req.payment_reference || ''
+          });
+        });
+      }
+
+      // 2. ONGLET 'active' : Abonnements et demandes validées IA
+      else if (currentDemandeIaTab === 'active') {
+        const addedIds = new Set();
+        allSubscriptions.filter(s => s.status === 'active' && isAiSubscription(s)).forEach(sub => {
+          const user = allUsers.find(u => u.user.id === sub.user_id);
+          addedIds.add(sub.request_id || sub.id);
+          combined.push({
+            id: sub.id,
+            itemType: 'subscription',
+            raw: sub,
+            userId: sub.user_id,
+            userName: sub.user_name || (user ? user.user.name : 'Abonné IA'),
+            userPhone: sub.user_phone || (user ? user.user.phone : ''),
+            contactPhone: sub.user_phone || (user ? user.user.phone : ''),
+            userWhatsapp: '',
+            userAvatar: user ? user.user.avatar_url : '',
+            isOnline: user ? user.user.isOnline : false,
+            packName: sub.plan_name || 'Abonnement IA',
+            amountWords: sub.additional_words || 100000,
+            storageDisplay: sub.additional_words ? (Number(sub.additional_words).toLocaleString('fr-FR') + ' mots IA') : '100 000 mots IA',
+            pricePaid: sub.monthly_price || 0,
+            currency: sub.currency || 'FCFA',
+            status: 'active',
+            date: sub.start_date || sub.created_at,
+            endDate: sub.end_date || '',
+            gracePeriodDays: sub.grace_period_days || 5,
+            receiptUrl: '',
+            receiptR2Key: '',
+            paymentMethod: 'Mobile Money',
+            paymentReference: ''
+          });
+        });
+
+        allRequests.filter(r => (r.status === 'approved' || r.status === 'active') && isAiRequest(r)).forEach(req => {
+          if (!addedIds.has(req.id)) {
+            const user = allUsers.find(u => u.user.id === req.user_id);
+            combined.push({
+              id: req.id,
+              itemType: 'request',
+              raw: req,
+              userId: req.user_id,
+              userName: req.user_name || (user ? user.user.name : 'Utilisateur'),
+              userPhone: req.contact_phone || req.user_phone || (user ? user.user.phone : ''),
+              contactPhone: req.contact_phone || req.user_phone || (user ? user.user.phone : ''),
+              userWhatsapp: req.user_whatsapp || '',
+              storageDisplay: req.storage_display || '',
+              priceDisplay: req.price_display || '',
+              userAvatar: user ? user.user.avatar_url : '',
+              isOnline: user ? user.user.isOnline : false,
+              packName: req.pack_name || 'Pack IA',
+              amountWords: req.additional_words || 100000,
+              pricePaid: req.price_paid || 0,
+              currency: req.currency || 'FCFA',
+              status: 'approved',
+              date: req.updated_at || req.created_at,
+              endDate: req.confirmed_end_date || '',
+              receiptUrl: req.receipt_image_url || '',
+              receiptR2Key: req.receipt_r2_key || '',
+              paymentMethod: req.payment_method || 'Mobile Money',
+              paymentReference: req.payment_reference || ''
+            });
+          }
+        });
+      }
+
+      // 3. ONGLET 'cancelled' : Demandes IA rejetées ou abonnements annulés
+      else if (currentDemandeIaTab === 'cancelled') {
+        allSubscriptions.filter(s => s.status === 'cancelled' && isAiSubscription(s)).forEach(sub => {
+          const user = allUsers.find(u => u.user.id === sub.user_id);
+          combined.push({
+            id: sub.id,
+            itemType: 'subscription',
+            raw: sub,
+            userId: sub.user_id,
+            userName: sub.user_name || (user ? user.user.name : 'Abonné IA'),
+            userPhone: sub.user_phone || (user ? user.user.phone : ''),
+            contactPhone: sub.user_phone || (user ? user.user.phone : ''),
+            userWhatsapp: '',
+            userAvatar: user ? user.user.avatar_url : '',
+            isOnline: user ? user.user.isOnline : false,
+            packName: sub.plan_name || 'Abonnement IA',
+            amountWords: sub.additional_words || 0,
+            storageDisplay: '',
+            pricePaid: sub.monthly_price || 0,
+            currency: sub.currency || 'FCFA',
+            status: 'cancelled',
+            date: sub.created_at || sub.start_date,
+            cancelledAt: sub.cancelled_at || '',
+            cancelReason: sub.cancel_reason || '',
+            receiptUrl: '',
+            receiptR2Key: '',
+            paymentMethod: 'Mobile Money',
+            paymentReference: ''
+          });
+        });
+
+        allRequests.filter(r => r.status === 'rejected' && isAiRequest(r)).forEach(req => {
+          const user = allUsers.find(u => u.user.id === req.user_id);
+          combined.push({
+            id: req.id,
+            itemType: 'request',
+            raw: req,
+            userId: req.user_id,
+            userName: req.user_name || (user ? user.user.name : 'Utilisateur'),
+            userPhone: req.contact_phone || req.user_phone || (user ? user.user.phone : ''),
+            contactPhone: req.contact_phone || req.user_phone || (user ? user.user.phone : ''),
+            userWhatsapp: req.user_whatsapp || '',
+            storageDisplay: req.storage_display || '',
+            priceDisplay: req.price_display || '',
+            userAvatar: user ? user.user.avatar_url : '',
+            isOnline: user ? user.user.isOnline : false,
+            packName: req.pack_name || 'Pack IA',
+            amountWords: req.additional_words || 0,
+            pricePaid: req.price_paid || 0,
+            currency: req.currency || 'FCFA',
+            status: 'rejected',
+            date: req.updated_at || req.created_at,
+            receiptUrl: req.receipt_image_url || '',
+            receiptR2Key: req.receipt_r2_key || '',
+            paymentMethod: req.payment_method || 'Mobile Money',
+            paymentReference: req.payment_reference || '',
+            adminNotes: req.admin_notes || ''
+          });
+        });
+      }
+
+      // 4. ONGLET 'all' : TOUS LES UTILISATEURS (Vue Crédits IA)
+      else if (currentDemandeIaTab === 'all') {
+        allUsers.forEach(u => {
+          const activeSub = allSubscriptions.find(s => s.user_id === u.user.id && s.status === 'active' && isAiSubscription(s));
+          const pendingReqsCount = allRequests.filter(r => r.user_id === u.user.id && r.status === 'pending' && isAiRequest(r)).length;
+          const totalAiReqsCount = allRequests.filter(r => r.user_id === u.user.id && isAiRequest(r)).length;
+
+          combined.push({
+            id: 'user_ia_' + u.user.id,
+            itemType: 'user_ia',
+            raw: u,
+            userId: u.user.id,
+            userName: u.user.name,
+            userPhone: u.user.phone,
+            userAvatar: u.user.avatar_url,
+            isOnline: u.user.isOnline,
+            registeredAt: u.user.created_at,
+            activeSub: activeSub || null,
+            pendingReqsCount: pendingReqsCount,
+            totalAiReqsCount: totalAiReqsCount,
+            date: u.user.created_at
+          });
+        });
+      }
+
+      // Tri antéchronologique
+      combined.sort((a, b) => new Date(b.date || 0) - new Date(a.date || 0));
+
+      if (!q) return combined;
+
+      return combined.filter(item => {
+        const text = (item.userName + ' ' + (item.userPhone || '') + ' ' + (item.packName || '') + ' ' + (item.status || '') + ' ' + item.userId).toLowerCase();
+        return text.includes(q);
+      });
+    }
+
+    function renderDemandesIaLeftList() {
+      const container = document.getElementById('demandes-ia-left-items-list');
+      if (!container) return;
+
+      const q = (document.getElementById('demandes-ia-search-input')?.value || '').toLowerCase().trim();
+      const list = getFilteredDemandesIaList(q);
+
+      if (list.length === 0) {
+        let emptyMsg = "Aucune demande de crédits IA trouvée.";
+        if (currentDemandeIaTab === 'pending') emptyMsg = "Aucune demande de crédits IA en attente.";
+        else if (currentDemandeIaTab === 'active') emptyMsg = "Aucun pack ou abonnement IA validé.";
+        else if (currentDemandeIaTab === 'cancelled') emptyMsg = "Aucune demande IA refusée.";
+        else if (currentDemandeIaTab === 'all') emptyMsg = "Aucun utilisateur trouvé.";
+
+        container.innerHTML = \`
+          <div class="p-6 text-center text-slate-500 text-xs">
+            \${emptyMsg}
+          </div>
+        \`;
+        return;
+      }
+
+      container.innerHTML = list.map(item => {
+        const isSelected = item.id === selectedDemandeIaId;
+
+        // CAS A : UTILISATEUR DANS ONGLET TOUS
+        if (item.itemType === 'user_ia') {
+          let userBadge = item.activeSub 
+            ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">🟢 Abonné IA</span>'
+            : (item.totalAiReqsCount > 0 
+                ? '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-blue-500/20 text-blue-400 border border-blue-500/30">🤖 Client IA</span>'
+                : '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700">Mode Gratuit</span>');
+
+          return \`
+            <div 
+              onclick="selectDemandeIaItem('\${item.id}', 'user_ia')"
+              class="p-2.5 cursor-pointer transition-all flex items-center justify-between \${isSelected ? 'bg-orange-600/15 border-l-4 border-l-orange-500' : 'hover:bg-slate-800/40'}"
+            >
+              <div class="flex items-center gap-2.5 overflow-hidden">
+                <div class="relative w-9 h-9 rounded-xl bg-slate-800 text-orange-400 font-bold flex items-center justify-center text-xs shrink-0 border border-slate-700">
+                  \${item.userAvatar ? '<img src="' + item.userAvatar + '" class="w-full h-full rounded-xl object-cover" onerror="this.remove()">' : item.userName.charAt(0).toUpperCase()}
+                  <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 \${item.isOnline ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-slate-600'}" title="\${item.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
+                </div>
+                <div class="truncate">
+                  <div class="font-bold text-white truncate text-xs flex items-center gap-1.5">
+                    <span class="truncate">\${item.userName}</span>
+                  </div>
+                  <div class="text-[10px] text-slate-400 truncate">
+                    📞 \${item.userPhone || 'Sans numéro'}
+                  </div>
+                  <div class="text-[9px] text-slate-500 font-mono mt-0.5">
+                    Inscrit le \${formatShortDateFrench(item.registeredAt)}
+                  </div>
+                </div>
+              </div>
+
+              <div class="text-right shrink-0 space-y-1">
+                \${userBadge}
+                \${item.pendingReqsCount > 0 ? \`<div class="text-[9px] font-mono font-bold text-amber-400">\${item.pendingReqsCount} en attente</div>\` : ''}
+              </div>
+            </div>
+          \`;
+        }
+
+        // CAS B : DEMANDE OU ABONNEMENT IA
+        let badgeHtml = '';
+        if (item.status === 'pending') {
+          badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-amber-500/20 text-amber-400 border border-amber-500/30">🟡 En attente</span>';
+        } else if (item.status === 'active' || item.status === 'approved') {
+          badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-emerald-500/20 text-emerald-400 border border-emerald-500/30">🟢 Validé</span>';
+        } else if (item.status === 'rejected') {
+          badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-red-500/20 text-red-400 border border-red-500/30">🔴 Refusé</span>';
+        } else {
+          badgeHtml = '<span class="px-1.5 py-0.5 rounded text-[9px] font-bold bg-slate-800 text-slate-400 border border-slate-700">⚪ Annulé</span>';
+        }
+
+        const wordsLabel = item.storageDisplay || formatAiWords(item.amountWords);
+
+        return \`
+          <div 
+            onclick="selectDemandeIaItem('\${item.id}', '\${item.itemType}')"
+            class="p-2.5 cursor-pointer transition-all flex items-center justify-between \${isSelected ? 'bg-orange-600/15 border-l-4 border-l-orange-500' : 'hover:bg-slate-800/40'}"
+          >
+            <div class="flex items-center gap-2.5 overflow-hidden">
+              <div class="relative w-9 h-9 rounded-xl bg-slate-800 text-orange-400 font-bold flex items-center justify-center text-xs shrink-0 border border-slate-700">
+                \${item.userAvatar ? '<img src="' + item.userAvatar + '" class="w-full h-full rounded-xl object-cover" onerror="this.remove()">' : item.userName.charAt(0).toUpperCase()}
+                <span class="absolute -bottom-0.5 -right-0.5 w-2.5 h-2.5 rounded-full border-2 border-slate-950 \${item.isOnline ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-slate-600'}" title="\${item.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
+              </div>
+              <div class="truncate">
+                <div class="font-bold text-white truncate text-xs flex items-center gap-1.5">
+                  <span class="truncate">\${item.userName}</span>
+                </div>
+                <div class="text-[10px] text-slate-400 truncate flex items-center gap-1">
+                  <span>📞 \${item.userPhone || 'Sans numéro'}</span>
+                  <span>•</span>
+                  <span class="text-orange-400 font-medium truncate">\${item.packName}</span>
+                </div>
+                <div class="text-[9px] text-slate-500 font-mono mt-0.5">
+                  \${formatShortDateFrench(item.date)}
+                </div>
+              </div>
+            </div>
+
+            <div class="text-right shrink-0 space-y-1">
+              \${badgeHtml}
+              <div class="text-xs font-mono font-bold text-white">\${wordsLabel}</div>
+              \${item.pricePaid > 0 ? \`<div class="text-[10px] font-mono text-emerald-400 font-semibold">\${Number(item.pricePaid).toLocaleString('fr-FR')} \${item.currency}</div>\` : ''}
+            </div>
+          </div>
+        \`;
+      }).join('');
+    }
+
+    function selectDemandeIaItem(id, itemType) {
+      selectedDemandeIaId = id;
+      selectedDemandeIaType = itemType;
+      renderDemandesIaLeftList();
+      renderDemandeIaDetail(id, itemType);
+    }
+
+    function updateAdminLiveIaPreview(currentTotalWords) {
+      const input = document.getElementById('admin-confirm-allocated-ia-words');
+      if (!input) return;
+      const addedWords = parseInt(input.value, 10) || 0;
+      const finalWords = currentTotalWords + addedWords;
+
+      const addedEl = document.getElementById('admin-preview-ia-added-words');
+      if (addedEl) addedEl.textContent = (addedWords >= 0 ? '+' : '') + addedWords.toLocaleString('fr-FR') + ' mots';
+
+      const totalEl = document.getElementById('admin-preview-ia-total-words');
+      if (totalEl) totalEl.textContent = finalWords.toLocaleString('fr-FR') + ' mots';
+
+      const futureFormattedEl = document.getElementById('admin-preview-ia-future-formatted');
+      if (futureFormattedEl) futureFormattedEl.textContent = finalWords.toLocaleString('fr-FR') + ' mots IA';
+
+      const btnText = document.getElementById('admin-confirm-ia-submit-btn-text');
+      if (btnText) btnText.textContent = 'Confirmer & Valider la demande IA (+ ' + addedWords.toLocaleString('fr-FR') + ' mots)';
+    }
+
+    function setAdminIaWords(words, currentTotalWords) {
+      const input = document.getElementById('admin-confirm-allocated-ia-words');
+      if (!input) return;
+      input.value = words;
+      updateAdminLiveIaPreview(currentTotalWords);
+    }
+
+    function renderDemandeIaDetail(id, itemType) {
+      const panel = document.getElementById('demandes-ia-right-detail-panel');
+      if (!panel) return;
+
+      try {
+        const q = (document.getElementById('demandes-ia-search-input')?.value || '').toLowerCase().trim();
+        const list = getFilteredDemandesIaList(q);
+        const item = list.find(x => String(x.id) === String(id)) || list.find(x => x.id == id) || list[0];
+
+        if (!item) {
+          panel.innerHTML = '<div class="p-8 text-center text-slate-500 text-xs">Élément introuvable.</div>';
+          return;
+        }
+
+        const userDetail = allUsers.find(u => u.user.id === item.userId);
+        const u = userDetail ? userDetail.user : {
+          id: item.userId,
+          name: item.userName || 'Étudiant',
+          phone: item.userPhone || '',
+          email: '',
+          school: '',
+          filiere: '',
+          avatar_url: item.userAvatar || '',
+          isOnline: item.isOnline || false,
+          created_at: item.date || ''
+        };
+
+        const req = item.raw || {};
+        const receiptUrl = item.receiptUrl || req.receipt_image_url || '';
+        const paymentMethod = req.payment_method || item.paymentMethod || 'Wave / Mobile Money';
+        const paymentRef = (req && req.payment_reference) ? req.payment_reference : ('TXN_' + String(item.id || '').slice(0, 8).toUpperCase());
+
+        window.currentViewedReceiptUrl = receiptUrl;
+        window.currentViewedReceiptCaption = 'Reçu de paiement IA - ' + (u.name || 'Étudiant');
+
+        const now = new Date();
+        const defaultStartISO = formatDatetimeLocal(now);
+        const defaultEnd = new Date(now.getTime() + 30 * 24 * 60 * 60 * 1000);
+        const defaultEndISO = formatDatetimeLocal(defaultEnd);
+
+        const currentTotalWords = Number(req.additional_words || 0);
+        const futureTotalWords = currentTotalWords + (item.amountWords || 100000);
+
+        panel.innerHTML = \`
+          <!-- EN-TÊTE PROFIL ÉTUDIANT & HISTORIQUE -->
+          <div class="flex flex-col sm:flex-row sm:items-start justify-between gap-4 pb-4 border-b border-slate-800">
+            <div class="flex items-start gap-3.5">
+              <div class="relative w-12 h-12 rounded-2xl bg-orange-500/20 text-orange-400 font-black flex items-center justify-center border border-orange-500/30 text-lg shrink-0 mt-0.5">
+                \${u.avatar_url ? '<img src="' + u.avatar_url + '" class="w-full h-full rounded-2xl object-cover" onerror="this.remove()">' : u.name.charAt(0).toUpperCase()}
+                <span class="absolute -bottom-1 -right-1 w-3.5 h-3.5 rounded-full border-2 border-slate-950 \${u.isOnline ? 'bg-emerald-500 shadow-sm shadow-emerald-500/50' : 'bg-slate-600'}" title="\${u.isOnline ? 'En ligne' : 'Hors ligne'}"></span>
+              </div>
+              <div class="space-y-1 text-xs">
+                <div class="flex items-center gap-2 flex-wrap">
+                  <span class="text-base font-extrabold text-white">\${u.name}</span>
+                  <span class="text-[10px] px-2 py-0.5 rounded-full bg-slate-800 text-slate-300 font-mono">ID: \${u.id}</span>
+                  \${u.isOnline ? \`
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-bold bg-emerald-500/15 text-emerald-400 border border-emerald-500/30">
+                      <span class="w-1.5 h-1.5 rounded-full bg-emerald-400 animate-pulse"></span> En ligne
+                    </span>
+                  \` : \`
+                    <span class="inline-flex items-center gap-1 px-2 py-0.5 rounded-md text-[10px] font-medium bg-slate-800 text-slate-400 border border-slate-700/60">
+                      <span class="w-1.5 h-1.5 rounded-full bg-slate-500"></span> Hors ligne
+                    </span>
+                  \`}
+                </div>
+                <div class="flex items-center gap-3 text-slate-300 flex-wrap">
+                  <span class="font-mono">📞 Appel/SMS : <strong>\${item.contactPhone || req.contact_phone || u.phone || 'Non renseigné'}</strong></span>
+                  \${(item.userWhatsapp || req.user_whatsapp) ? \`
+                    <span>•</span>
+                    <a href="https://wa.me/\${(item.userWhatsapp || req.user_whatsapp).replace(/[^0-9]/g, '')}" target="_blank" class="inline-flex items-center gap-1 font-mono text-emerald-400 hover:text-emerald-300 underline font-bold bg-emerald-950/40 px-2 py-0.5 rounded-lg border border-emerald-500/30">
+                      <span>💬 WhatsApp : \${item.userWhatsapp || req.user_whatsapp}</span>
+                    </a>
+                  \` : ''}
+                  <span>•</span>
+                  <span class="font-mono text-slate-400">✉️ \${u.email || 'Non renseigné'}</span>
+                </div>
+                <div class="text-slate-400">
+                  🏛️ <strong>\${u.school || 'École non renseignée'}</strong> \${u.filiere ? '(' + u.filiere + ')' : ''}
+                </div>
+              </div>
+            </div>
+
+            <!-- BOUTON HISTORIQUE -->
+            <div class="relative inline-block text-left shrink-0">
+              <button 
+                onclick="openUserHistoryModal('\${u.id}', 'requests')"
+                class="px-3 py-1.5 rounded-xl bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 flex items-center gap-2 text-xs font-bold transition-all cursor-pointer shadow-md"
+              >
+                <span>📜</span>
+                <span>Historique</span>
+              </button>
+            </div>
+          </div>
+
+          <!-- DÉTAILS DU PACK IA SOUMIS -->
+          <div class="bg-gradient-to-br from-slate-900 via-[#11192e] to-slate-900 border border-slate-800 rounded-2xl p-4 space-y-4">
+            <div class="flex items-center justify-between border-b border-slate-800/80 pb-3 flex-wrap gap-2">
+              <h4 class="text-xs sm:text-sm font-extrabold text-white flex items-center gap-2">
+                <span>🤖</span>
+                <span>Pack IA Souscrit : <span class="text-orange-400">\${item.packName}</span></span>
+              </h4>
+              <div class="flex items-center gap-2">
+                <span class="px-2 py-0.5 rounded text-[10px] font-bold bg-blue-500/20 text-blue-300 border border-blue-500/30">
+                  \${(req.billing_cycle === 'monthly' ? 'Facturation mensuelle' : 'Facturation annuelle')}
+                </span>
+                <span class="px-2.5 py-1 rounded-lg text-xs font-bold \${item.status === 'pending' ? 'bg-amber-500/20 text-amber-300 border border-amber-500/40' : (item.status === 'approved' || item.status === 'active' ? 'bg-emerald-500/20 text-emerald-300 border border-emerald-500/40' : 'bg-red-500/20 text-red-300 border border-red-500/40')} flex items-center gap-1.5">
+                  <span>\${item.status === 'pending' ? '🟡 En attente de validation' : (item.status === 'approved' || item.status === 'active' ? '🟢 Validé / Actif' : '🔴 Refusé')}</span>
+                </span>
+              </div>
+            </div>
+
+            <!-- GRILLE RÉCAPITULATIF PACK IA -->
+            <div class="grid grid-cols-2 sm:grid-cols-4 gap-3 text-xs">
+              <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Mots IA Inclus</span>
+                <div class="text-base font-black text-orange-400 font-mono">\${item.storageDisplay || formatAiWords(item.amountWords)}</div>
+              </div>
+              <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Montant Payé</span>
+                <div class="text-base font-black text-emerald-400 font-mono">\${Number(item.pricePaid || 0).toLocaleString('fr-FR')} \${item.currency || 'FCFA'}</div>
+              </div>
+              <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Mode de paiement</span>
+                <div class="text-xs font-bold text-slate-200 truncate">\${paymentMethod}</div>
+              </div>
+              <div class="bg-slate-950/70 p-3 rounded-xl border border-slate-800">
+                <span class="text-[10px] uppercase font-bold text-slate-400 block mb-0.5">Référence / Date</span>
+                <div class="text-[11px] font-mono text-slate-300 truncate">\${paymentRef}</div>
+                <div class="text-[9px] text-slate-500 font-mono">\${formatShortDateFrench(item.date)}</div>
+              </div>
+            </div>
+
+            <!-- REÇU DE PAIEMENT JOINT (PREVIEW AVEC ZOOM IDENTIQUE AU MENU STOCKAGE) -->
+            <div class="bg-slate-950/80 p-4 rounded-xl border border-slate-800 space-y-3">
+              <div class="flex items-center justify-between">
+                <span class="text-xs font-bold text-white flex items-center gap-1.5">
+                  <span>🧾</span> Reçu de paiement joint par l'étudiant
+                </span>
+                \${receiptUrl ? \`
+                  <button 
+                    onclick="openCurrentReceiptZoom()" 
+                    class="text-xs text-orange-400 hover:text-orange-300 font-bold flex items-center gap-1 cursor-pointer bg-orange-500/10 px-2.5 py-1 rounded-lg border border-orange-500/30 transition"
+                  >
+                    <span>🔍</span> Agrandir / Zoomer le reçu
+                  </button>
+                \` : ''}
+              </div>
+
+              \${receiptUrl ? \`
+                <div class="flex flex-col sm:flex-row items-center gap-4">
+                  <div class="relative group cursor-pointer w-44 h-44 rounded-xl overflow-hidden border-2 border-slate-700 bg-black/60 shrink-0" onclick="openCurrentReceiptZoom()">
+                    <img src="\${receiptUrl}" class="w-full h-full object-contain transition-transform duration-300 group-hover:scale-105" alt="Reçu de paiement" />
+                    <div class="absolute inset-0 bg-black/40 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center text-white font-bold text-xs gap-1.5">
+                      <span>🔍 Cliquer pour zoomer</span>
+                    </div>
+                  </div>
+                  <div class="space-y-2 text-xs text-slate-300">
+                    <div class="text-emerald-400 font-bold flex items-center gap-1">
+                      <span>✓</span> Fichier reçu accessible et vérifiable
+                    </div>
+                    <div class="text-slate-400 text-[11px]">
+                      Vérifiez soigneusement la conformité du montant (\${Number(item.pricePaid || 0).toLocaleString('fr-FR')} \${item.currency || 'FCFA'}), la date de transaction et le numéro de compte avant toute attribution.
+                    </div>
+                    <div>
+                      <button 
+                        type="button"
+                        onclick="openCurrentReceiptZoom()"
+                        class="px-3 py-1.5 bg-slate-800 hover:bg-slate-700 text-slate-200 border border-slate-700 rounded-lg text-xs font-bold transition cursor-pointer flex items-center gap-1.5"
+                      >
+                        <span>👁️</span> Ouvrir en plein écran
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              \` : \`
+                <div class="p-4 bg-slate-900/60 rounded-xl border border-dashed border-slate-800 text-center text-slate-500 text-xs">
+                  <span>⚠️ Aucun fichier de reçu téléversé pour cette demande.</span>
+                </div>
+              \`}
+            </div>
+
+            \${item.status === 'pending' ? \`
+              <!-- FORMULAIRE DE VALIDATION ADMINISTRATIVE & ATTRIBUTION DES MOTS IA -->
+              <div class="space-y-4 pt-2">
+                <div class="border-b border-slate-800 pb-2">
+                  <h4 class="text-xs font-bold text-emerald-400 uppercase tracking-wider flex items-center gap-1.5">
+                    <span>⚡</span> Validation Administrative & Attribution des Mots IA
+                  </h4>
+                  <p class="text-[11px] text-slate-400 mt-0.5">Définissez la durée d'activation et le quota de mots IA à allouer au compte de l'étudiant.</p>
+                </div>
+
+                <div class="grid grid-cols-1 lg:grid-cols-12 gap-4">
+                  <!-- COLONNE GAUCHE (7/12) : DATES & ALLOCATION -->
+                  <div class="lg:col-span-7 space-y-3">
+                    
+                    <!-- 1. DATE D'ACTIVATION -->
+                    <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800 space-y-2">
+                      <div class="flex items-center justify-between">
+                        <label class="text-slate-200 font-bold text-xs">1. Date d'activation :</label>
+                        <span class="text-[10px] text-emerald-400 font-mono">Date de départ</span>
+                      </div>
+                      <input 
+                        type="datetime-local" 
+                        id="admin-confirm-ia-start-date" 
+                        value="\${defaultStartISO}"
+                        class="w-full bg-slate-950 text-white font-mono text-xs px-3 py-2 rounded-xl border border-slate-700 focus:border-emerald-500 focus:outline-none"
+                      >
+                    </div>
+
+                    <!-- 2. DATE DE FIN / VALIDITÉ -->
+                    <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800 space-y-2">
+                      <div class="flex items-center justify-between">
+                        <label class="text-slate-200 font-bold text-xs">2. Date d'échéance :</label>
+                        <span class="text-[10px] text-amber-400 font-mono">Expiration</span>
+                      </div>
+                      <input 
+                        type="datetime-local" 
+                        id="admin-confirm-ia-end-date" 
+                        value="\${defaultEndISO}"
+                        class="w-full bg-slate-950 text-white font-mono text-xs px-3 py-2 rounded-xl border border-slate-700 focus:border-emerald-500 focus:outline-none"
+                      >
+                      <div class="flex items-center gap-1.5 flex-wrap pt-1 text-[10px]">
+                        <button type="button" onclick="setAdminEndDateDaysCustom('admin-confirm-ia-start-date', 'admin-confirm-ia-end-date', 30)" class="px-2 py-1 bg-emerald-500/20 hover:bg-emerald-500/30 text-emerald-300 font-mono rounded cursor-pointer">+1 Mois (30j)</button>
+                        <button type="button" onclick="setAdminEndDateDaysCustom('admin-confirm-ia-start-date', 'admin-confirm-ia-end-date', 90)" class="px-2 py-1 bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono rounded cursor-pointer">+3 Mois</button>
+                        <button type="button" onclick="setAdminEndDateDaysCustom('admin-confirm-ia-start-date', 'admin-confirm-ia-end-date', 365)" class="px-2 py-1 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 font-mono rounded cursor-pointer">+1 An</button>
+                      </div>
+                    </div>
+
+                    <!-- 3. MOTS IA À ALLOUER & PRIX -->
+                    <div class="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                      <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800 space-y-1.5">
+                        <div class="flex items-center justify-between">
+                          <span class="text-slate-300 font-bold text-xs">Mots IA à allouer :</span>
+                          <span class="text-[10px] text-orange-400 font-mono">Crédits</span>
+                        </div>
+                        <input 
+                          type="number" 
+                          id="admin-confirm-allocated-ia-words" 
+                          value="\${item.amountWords || 100000}" 
+                          oninput="updateAdminLiveIaPreview(0)"
+                          class="w-full bg-slate-950 text-orange-400 font-black font-mono text-sm px-3 py-1.5 rounded-lg border border-slate-700 text-center focus:border-orange-500 focus:outline-none"
+                        >
+                        <div class="flex items-center justify-between gap-1 pt-1 flex-wrap text-[10px]">
+                          <button type="button" onclick="setAdminIaWords(50000, 0)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono cursor-pointer">50k</button>
+                          <button type="button" onclick="setAdminIaWords(100000, 0)" class="px-1.5 py-0.5 rounded bg-orange-500/20 text-orange-300 font-mono font-bold cursor-pointer">100k</button>
+                          <button type="button" onclick="setAdminIaWords(250000, 0)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono cursor-pointer">250k</button>
+                          <button type="button" onclick="setAdminIaWords(500000, 0)" class="px-1.5 py-0.5 rounded bg-slate-800 hover:bg-slate-700 text-slate-300 font-mono cursor-pointer">500k</button>
+                        </div>
+                      </div>
+
+                      <div class="bg-slate-900/70 p-3 rounded-xl border border-slate-800 space-y-1.5">
+                        <div class="flex items-center justify-between">
+                          <span class="text-slate-300 font-bold text-xs">Prix confirmé :</span>
+                          <span class="text-[10px] text-emerald-400 font-mono">Encaissé</span>
+                        </div>
+                        <div class="flex items-center gap-1.5">
+                          <input 
+                            type="number" 
+                            id="admin-confirm-ia-price" 
+                            value="\${item.pricePaid || 0}" 
+                            class="w-full bg-slate-950 text-emerald-400 font-black font-mono text-sm px-3 py-1.5 rounded-lg border border-slate-700 text-center focus:border-emerald-500 focus:outline-none"
+                          >
+                          <span class="font-bold text-emerald-400 font-mono text-xs">\${item.currency || 'FCFA'}</span>
+                        </div>
+                        <div class="text-[10px] text-slate-500 text-right">
+                          Montant encaissé
+                        </div>
+                      </div>
+                    </div>
+
+                  </div>
+
+                  <!-- COLONNE DROITE (5/12) : SITUATION & TOTAL FINAL -->
+                  <div class="lg:col-span-5 bg-gradient-to-b from-slate-900/90 to-slate-950 p-4 rounded-2xl border border-slate-800 space-y-3 flex flex-col justify-between shadow-xl">
+                    <div class="space-y-3">
+                      <div class="flex items-center justify-between border-b border-slate-800 pb-2">
+                        <span class="text-xs font-black text-white flex items-center gap-1.5">
+                          <span>📊</span> Situation & Impact Client
+                        </span>
+                        <span class="text-[10px] text-slate-400 font-mono">ID: \${u.id}</span>
+                      </div>
+
+                      <div class="bg-gradient-to-br from-orange-950/30 via-slate-950 to-emerald-950/30 p-3.5 rounded-xl border-2 border-orange-500/50 shadow-lg space-y-2">
+                        <div class="flex items-center justify-between">
+                          <span class="text-[10px] uppercase font-black text-orange-400 tracking-wider">
+                            🤖 Mots IA Alloués
+                          </span>
+                          <span class="text-[10px] px-2 py-0.5 rounded bg-orange-500/20 text-orange-300 font-mono font-bold border border-orange-500/30">
+                            Après Validation
+                          </span>
+                        </div>
+
+                        <div class="bg-slate-950/90 p-2.5 rounded-xl border border-slate-800 flex items-center justify-between">
+                          <span class="text-xs font-bold text-white">Total Mots IA Crédités :</span>
+                          <span id="admin-preview-ia-future-formatted" class="text-base font-black text-orange-400 font-mono">
+                            \${formatAiWords(item.amountWords || 100000)}
+                          </span>
+                        </div>
+
+                        <p class="text-[10px] text-slate-400 leading-tight">
+                          Les crédits IA seront immédiatement débloqués pour l'étudiant dans l'application StudyCloud.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div class="pt-2 text-[10px] text-slate-500 text-center font-mono">
+                      ✓ Attribution sécurisée D1
+                    </div>
+                  </div>
+                </div>
+
+                <!-- BOUTONS D'ACTION FINALE -->
+                <div class="pt-3 border-t border-slate-800 flex items-center justify-between flex-wrap gap-3">
+                  <button 
+                    type="button"
+                    onclick="rejectAiRequest('\${item.id}')" 
+                    class="px-4 py-2.5 bg-amber-500/20 hover:bg-amber-500/30 text-amber-300 border border-amber-500/40 font-bold text-xs rounded-xl transition cursor-pointer flex items-center gap-1.5 active:scale-95"
+                  >
+                    <span>❌</span> Rejeter la demande
+                  </button>
+
+                  <button 
+                    type="button"
+                    onclick="confirmAndApproveAiRequest('\${item.id}')" 
+                    class="px-6 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white font-extrabold text-xs sm:text-sm rounded-xl shadow-xl shadow-emerald-600/30 transition cursor-pointer flex items-center gap-2 active:scale-95"
+                  >
+                    <span>✅</span> <span id="admin-confirm-ia-submit-btn-text">Confirmer & Valider la demande IA (+ \${formatAiWords(item.amountWords || 100000)})</span>
+                  </button>
+                </div>
+
+              </div>
+            \` : \`
+              <div class="p-3 bg-slate-950/60 rounded-xl border border-slate-800 text-xs text-slate-400 flex items-center justify-between">
+                <span>Statut de la demande : <strong class="text-white">\${item.status === 'approved' || item.status === 'active' ? 'Validé' : 'Non modifiable'}</strong></span>
+                <span class="text-[11px] font-mono text-slate-500">\${formatFullDateFrench(item.date)}</span>
+              </div>
+            \`}
+
+          </div>
+        \`;
+      } catch (err) {
+        console.error("Erreur lors de l'affichage des détails IA:", err);
+        panel.innerHTML = '<div class="p-8 text-center text-red-400 text-xs font-mono">Erreur lors de l\\\'affichage des détails IA : ' + (err.message || err) + '</div>';
+      }
+    }
+
+    function setAdminEndDateDaysCustom(startInputId, endInputId, days) {
+      const startInput = document.getElementById(startInputId);
+      const endInput = document.getElementById(endInputId);
+      if (!endInput) return;
+      const start = startInput && startInput.value ? new Date(startInput.value) : new Date();
+      const end = new Date(start.getTime() + days * 24 * 60 * 60 * 1000);
+      endInput.value = formatDatetimeLocal(end);
+    }
+
+    async function confirmAndApproveAiRequest(requestId) {
+      const startInput = document.getElementById('admin-confirm-ia-start-date');
+      const endInput = document.getElementById('admin-confirm-ia-end-date');
+      const wordsInput = document.getElementById('admin-confirm-allocated-ia-words');
+      const priceInput = document.getElementById('admin-confirm-ia-price');
+
+      const startDate = startInput ? startInput.value : new Date().toISOString();
+      const endDate = endInput ? endInput.value : new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+      const allocatedWords = wordsInput ? (parseInt(wordsInput.value, 10) || 100000) : 100000;
+      const pricePaid = priceInput ? (parseFloat(priceInput.value) || 0) : 0;
+
+      if (!confirm("Confirmer la validation de cette demande de crédits IA (" + allocatedWords.toLocaleString('fr-FR') + " mots alloués) ?")) return;
+
+      try {
+        const resp = await fetch('/api/ai-requests/approve', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            requestId,
+            startDate,
+            endDate,
+            gracePeriodDays: 5,
+            allocatedWords,
+            pricePaid
+          })
+        });
+
+        const res = await resp.json();
+        if (res.success) {
+          const req = allRequests.find(r => String(r.id) === String(requestId));
+          if (req) {
+            req.status = 'approved';
+            req.additional_words = allocatedWords;
+            req.price_paid = pricePaid;
+            req.confirmed_start_date = startDate;
+            req.confirmed_end_date = endDate;
+          }
+
+          if (res.subscription) {
+            allSubscriptions.unshift(res.subscription);
+          }
+
+          showToast("Demande IA validée avec succès ! +" + allocatedWords.toLocaleString('fr-FR') + " mots alloués.");
+          updateDemandesIaTabCounts();
+          renderDemandesIaLeftList();
+
+          if (res.subscription) {
+            setDemandesIaTab('active');
+            selectDemandeIaItem(res.subscription.id, 'subscription');
+          } else {
+            renderDemandeIaDetail(requestId, 'request');
+          }
+        } else {
+          alert("Erreur: " + (res.error || "Impossible de valider la demande IA"));
+        }
+      } catch (err) {
+        alert("Erreur réseau lors de la confirmation IA");
+      }
+    }
+
+    async function rejectAiRequest(requestId) {
+      const reason = prompt("Motif du refus de la demande de crédits IA :", "Paiement non confirmé ou reçu non valide");
+      if (reason === null) return;
+
+      try {
+        const resp = await fetch('/api/ai-requests/reject', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ requestId, reason })
+        });
+        const res = await resp.json();
+        if (res.success) {
+          const req = allRequests.find(r => String(r.id) === String(requestId));
+          if (req) {
+            req.status = 'rejected';
+            req.admin_notes = reason;
+          }
+          showToast("Demande IA rejetée.");
+          updateDemandesIaTabCounts();
+          renderDemandesIaLeftList();
+          autoSelectFirstDemandeIa();
+        } else {
+          alert("Erreur: " + (res.error || "Échec"));
+        }
+      } catch (err) {
+        alert("Erreur réseau lors du rejet IA");
+      }
+    }
+
+    async function saveUserQuota(userId) {
       const wTotal = parseFloat(document.getElementById('user-edit-w-total').value) || 0;
       const pTotal = parseFloat(document.getElementById('user-edit-p-total').value) || 0;
 
@@ -8646,6 +9656,159 @@ export default {
         await safeRun(db, `UPDATE storage_upgrade_requests SET status = 'rejected', admin_notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [reason, requestId]);
 
         return new Response(JSON.stringify({ success: true, requestId, message: 'Demande rejetée' }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/ai-requests/approve (Validation & Attribution de Crédits IA)
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/ai-requests/approve') {
+        const body = await request.json().catch(() => ({}));
+        const requestId = body.requestId;
+        const startDate = body.startDate || new Date().toISOString();
+        const endDate = body.endDate || new Date(Date.now() + 30 * 24 * 60 * 60 * 1000).toISOString();
+        const gracePeriodDays = Number(body.gracePeriodDays || 5);
+        const allocatedWords = Number(body.allocatedWords || 100000);
+        const pricePaid = Number(body.pricePaid || 0);
+
+        if (!requestId) {
+          return new Response(JSON.stringify({ success: false, error: 'requestId requis' }), { status: 400, headers: corsHeaders(origin) });
+        }
+
+        const reqRow = await safeFirst(db, `SELECT * FROM storage_upgrade_requests WHERE id = ?`, [requestId]);
+        if (!reqRow) {
+          return new Response(JSON.stringify({ success: false, error: 'Demande introuvable' }), { status: 404, headers: corsHeaders(origin) });
+        }
+
+        const userId = reqRow.user_id;
+
+        // 1. Mettre à jour la demande dans storage_upgrade_requests
+        await safeRun(db, `
+          UPDATE storage_upgrade_requests 
+          SET status = 'approved', 
+              additional_words = ?,
+              price_paid = ?,
+              confirmed_start_date = ?, 
+              confirmed_end_date = ?, 
+              grace_period_days = ?, 
+              updated_at = CURRENT_TIMESTAMP 
+          WHERE id = ?
+        `, [allocatedWords, pricePaid, startDate, endDate, gracePeriodDays, requestId]);
+
+        // 2. Allouer les crédits dans user_ai_credits
+        await safeRun(db, `
+          CREATE TABLE IF NOT EXISTS user_ai_credits (
+            user_id TEXT PRIMARY KEY,
+            total_credits REAL DEFAULT 0,
+            remaining_credits REAL DEFAULT 0,
+            used_credits REAL DEFAULT 0,
+            updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+          )
+        `);
+
+        await safeRun(db, `
+          INSERT INTO user_ai_credits (user_id, total_credits, remaining_credits, used_credits, updated_at)
+          VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP)
+          ON CONFLICT(user_id) DO UPDATE SET
+            total_credits = total_credits + excluded.total_credits,
+            remaining_credits = remaining_credits + excluded.remaining_credits,
+            updated_at = CURRENT_TIMESTAMP
+        `, [userId, allocatedWords, allocatedWords]);
+
+        // 3. Mettre à jour user_word_counts
+        await safeRun(db, `
+          INSERT INTO user_word_counts (id, user_id, word_count, token_count, updated_at)
+          VALUES (?, ?, ?, 0, CURRENT_TIMESTAMP)
+          ON CONFLICT(id) DO UPDATE SET
+            word_count = word_count + excluded.word_count,
+            updated_at = CURRENT_TIMESTAMP
+        `, ['words_' + userId, userId, allocatedWords]);
+
+        // 4. Créer ou activer la souscription dans user_subscriptions
+        const subId = 'sub_ia_' + Math.random().toString(36).substring(2, 10);
+        const subData = {
+          id: subId,
+          user_id: userId,
+          user_name: reqRow.user_name || '',
+          user_phone: reqRow.user_phone || reqRow.contact_phone || '',
+          user_email: reqRow.user_email || '',
+          plan_name: reqRow.pack_name || 'Pack IA',
+          total_storage_mb: 0,
+          monthly_price: pricePaid,
+          currency: reqRow.currency || 'FCFA',
+          status: 'active',
+          start_date: startDate,
+          end_date: endDate,
+          grace_period_days: gracePeriodDays,
+          request_id: requestId,
+          created_at: new Date().toISOString(),
+          updated_at: new Date().toISOString()
+        };
+
+        // Marquer les anciens abonnements IA actifs comme 'renewed'
+        await safeRun(db, `
+          UPDATE user_subscriptions 
+          SET status = 'renewed', updated_at = CURRENT_TIMESTAMP 
+          WHERE user_id = ? AND status = 'active' AND (plan_name LIKE '%ia%' OR plan_name LIKE '%mots%' OR plan_name LIKE '%credit%')
+        `, [userId]);
+
+        await safeRun(db, `
+          INSERT INTO user_subscriptions (id, user_id, user_name, user_phone, user_email, plan_name, total_storage_mb, monthly_price, currency, status, start_date, end_date, grace_period_days, request_id, created_at, updated_at)
+          VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        `, [
+          subData.id, subData.user_id, subData.user_name, subData.user_phone, subData.user_email,
+          subData.plan_name, subData.total_storage_mb, subData.monthly_price, subData.currency,
+          subData.status, subData.start_date, subData.end_date, subData.grace_period_days,
+          subData.request_id, subData.created_at, subData.updated_at
+        ]);
+
+        // 5. Enregistrer l'achat dans user_purchases_history
+        const purchaseId = 'PUR_IA_' + Math.random().toString(36).substring(2, 10).toUpperCase();
+        try {
+          await safeRun(db, `
+            INSERT INTO user_purchases_history (
+              id, user_id, user_name, user_phone, user_email, pack_name,
+              additional_words, storage_bought_mb, total_storage_mb, price_paid, currency,
+              payment_method, payment_reference, billing_cycle, renewal_date,
+              status, purchased_at, confirmed_at, created_at
+            ) VALUES (?, ?, ?, ?, ?, ?, ?, 0, 0, ?, ?, ?, ?, ?, ?, 'confirmed', ?, ?, CURRENT_TIMESTAMP)
+          `, [
+            purchaseId, userId, reqRow.user_name || '', reqRow.user_phone || reqRow.contact_phone || '', reqRow.user_email || '',
+            reqRow.pack_name || 'Pack IA', allocatedWords, pricePaid, reqRow.currency || 'FCFA',
+            reqRow.payment_method || 'Mobile Money', reqRow.payment_reference || reqRow.id || '',
+            reqRow.billing_cycle || 'monthly', endDate, startDate, startDate
+          ]);
+        } catch (e) {}
+
+        return new Response(JSON.stringify({
+          success: true,
+          requestId,
+          userId,
+          allocatedWords,
+          subscription: subData,
+          message: 'Demande de crédits IA confirmée et allouée avec succès'
+        }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/ai-requests/reject (Rejet d'une demande de crédits IA)
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/ai-requests/reject') {
+        const body = await request.json().catch(() => ({}));
+        const requestId = body.requestId;
+        const reason = body.reason || 'Paiement non confirmé';
+        if (!requestId) {
+          return new Response(JSON.stringify({ success: false, error: 'requestId requis' }), { status: 400, headers: corsHeaders(origin) });
+        }
+
+        await safeRun(db, `UPDATE storage_upgrade_requests SET status = 'rejected', admin_notes = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?`, [reason, requestId]);
+
+        return new Response(JSON.stringify({ success: true, requestId, message: 'Demande IA rejetée' }), {
           status: 200,
           headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
         });
