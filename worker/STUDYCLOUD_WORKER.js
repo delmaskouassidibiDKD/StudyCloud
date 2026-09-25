@@ -2130,10 +2130,20 @@ async function ensureCloudMediaTables(db) {
         preview_url TEXT DEFAULT '',
         is_favorite INTEGER DEFAULT 0,
         is_pinned INTEGER DEFAULT 0,
+        notepad_title TEXT DEFAULT '',
+        notepad_content TEXT DEFAULT '',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+    try {
+      await db.prepare("ALTER TABLE document_files ADD COLUMN notepad_title TEXT DEFAULT ''").run();
+    } catch {
+    }
+    try {
+      await db.prepare("ALTER TABLE document_files ADD COLUMN notepad_content TEXT DEFAULT ''").run();
+    } catch {
+    }
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS download_files (
         id TEXT PRIMARY KEY,
@@ -5195,12 +5205,45 @@ var index_default = {
           if (fields.length > 0) {
             fields.push("updated_at = CURRENT_TIMESTAMP");
             values.push(body.id, reqUserId);
-            await env.DB.prepare(`
+            const updateRes = await env.DB.prepare(`
               UPDATE classeur_files SET ${fields.join(", ")}
               WHERE id = ? AND user_id = ?
             `).bind(...values).run();
+            if (updateRes.meta?.changes === 0) {
+              const docFields = [];
+              const docValues = [];
+              if (body.name !== void 0) {
+                docFields.push("name = ?");
+                docValues.push(body.name);
+              }
+              if (body.size !== void 0) {
+                docFields.push("size = ?");
+                docValues.push(body.size);
+              }
+              if (body.sizeBytes !== void 0) {
+                docFields.push("size_bytes = ?");
+                docValues.push(Number(body.sizeBytes));
+              }
+              if (body.noteTitle !== void 0 || body.notepadTitle !== void 0) {
+                docFields.push("notepad_title = ?");
+                docValues.push(body.noteTitle !== void 0 ? body.noteTitle : body.notepadTitle);
+              }
+              if (body.content !== void 0 || body.notepadContent !== void 0) {
+                docFields.push("notepad_content = ?");
+                docValues.push(body.content !== void 0 ? body.content : body.notepadContent);
+              }
+              if (docFields.length > 0) {
+                docFields.push("updated_at = CURRENT_TIMESTAMP");
+                docValues.push(body.id, reqUserId);
+                await env.DB.prepare(`
+                  UPDATE document_files SET ${docFields.join(", ")}
+                  WHERE id = ? AND user_id = ?
+                `).bind(...docValues).run().catch(() => {
+                });
+              }
+            }
           }
-          return jsonResponse({ success: true, message: "Fichier classeur mis \xE0 jour" }, 200, origin);
+          return jsonResponse({ success: true, message: "Fichier sauvegard\xE9" }, 200, origin);
         }
         if (method === "DELETE") {
           const fileId = url.searchParams.get("id");
@@ -5564,6 +5607,9 @@ var index_default = {
             previewUrl: d.preview_url || "",
             url: d.file_url || "",
             category: "documents",
+            isNotepad: d.extension === "txt" || Boolean(d.notepad_content),
+            noteTitle: d.notepad_title || "",
+            content: d.notepad_content || "",
             isFavorite: Boolean(d.is_favorite),
             isPinned: Boolean(d.is_pinned)
           }));

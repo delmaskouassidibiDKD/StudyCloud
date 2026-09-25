@@ -193,6 +193,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const selectedAudioIds = selectedItemIds;
   const setSelectedAudioIds = setSelectedItemIds;
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const noteSaveTimeoutRef = useRef<any>(null);
 
   // État de verrouillage du Dossier Sécurisé & code PIN (> 4 caractères)
   const [isSecureFolderUnlocked, setIsSecureFolderUnlocked] = useState(false);
@@ -530,36 +531,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const i = byteLength > 0 ? Math.floor(Math.log(byteLength) / Math.log(k)) : 0;
     const sizeStr = byteLength > 0 ? parseFloat((byteLength / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i] : '0 o';
 
-    if (opened3DFolder) {
-      setFolderFilesMap(prev => {
-        const currentList = prev[opened3DFolder.id] || [];
-        const updatedList = currentList.map(f => {
-          if (f.id === targetId) {
-            return {
-              ...f,
-              content: newText,
-              noteTitle: titleToSave,
-              size: sizeStr,
-              sizeBytes: byteLength,
-            };
-          }
-          return f;
-        });
-        return {
-          ...prev,
-          [opened3DFolder.id]: updatedList,
-        };
-      });
+    // 1. Mettre à jour folderFilesMap pour tous les dossiers contenant cette note
+    setFolderFilesMap(prev => {
+      let changed = false;
+      const next = { ...prev };
+      for (const [folderId, files] of Object.entries(next)) {
+        if (files.some(f => f.id === targetId)) {
+          next[folderId] = files.map(f => f.id === targetId ? {
+            ...f,
+            content: newText,
+            noteTitle: titleToSave,
+            size: sizeStr,
+            sizeBytes: byteLength
+          } : f);
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
 
-      // Persister la mise à jour de contenu et de taille dans Cloudflare D1 classeur_files
-      CloudStorageAPI.updateClasseurFile(targetId, {
-        noteTitle: titleToSave,
-        content: newText,
-        size: sizeStr,
-        sizeBytes: byteLength
-      }).catch(() => {});
-    }
-
+    // 2. Mettre à jour la liste des documents
     setDocumentsList(prev => prev.map(f => {
       if (f.id === targetId) {
         return {
@@ -573,6 +564,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       return f;
     }));
 
+    // 3. Mettre à jour les fichiers récents Cloud si présent
+    setCloudRecentFiles(prev => prev.map(f => {
+      if (f.id === targetId) {
+        return {
+          ...f,
+          content: newText,
+          noteTitle: titleToSave,
+          size: sizeStr,
+          sizeBytes: byteLength
+        };
+      }
+      return f;
+    }));
+
+    // 4. Mettre à jour dans le visualiseur actif
     if (splitSelectedFile && splitSelectedFile.id === targetId) {
       setSplitSelectedFile(prev => prev ? {
         ...prev,
@@ -584,11 +590,31 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
 
     setIsNoteSavedIndicator(true);
+
+    // 5. Sauvegarde automatique fiable dans Cloudflare D1 avec debounce 300ms
+    if (noteSaveTimeoutRef.current) {
+      clearTimeout(noteSaveTimeoutRef.current);
+    }
+    noteSaveTimeoutRef.current = setTimeout(() => {
+      CloudStorageAPI.updateClasseurFile(targetId, {
+        noteTitle: titleToSave,
+        content: newText,
+        size: sizeStr,
+        sizeBytes: byteLength
+      }).catch(err => console.error('[StudyCloud Note AutoSave Error]', err));
+    }, 300);
   };
 
   const handleSaveAndCloseNote = () => {
-    if (activeEditingNote && opened3DFolder) {
-      handleUpdateNoteContent(noteTextContent, noteTitleContent);
+    if (activeEditingNote) {
+      handleUpdateNoteContent(noteTextContent, noteTitleContent, activeEditingNote.id);
+      if (noteSaveTimeoutRef.current) {
+        clearTimeout(noteSaveTimeoutRef.current);
+      }
+      CloudStorageAPI.updateClasseurFile(activeEditingNote.id, {
+        noteTitle: noteTitleContent,
+        content: noteTextContent,
+      }).catch(() => {});
     }
     setActiveEditingNote(null);
     setNoteTextContent('');
@@ -981,7 +1007,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Navigation clavier pour le mode horizontal (Flèches gauche / droite)
   useEffect(() => {
-    if (docLayoutMode !== 'horizontal' || splitSelectedFile?.category !== 'documents') return;
+    const isDoc = Boolean(
+      splitSelectedFile &&
+      (splitSelectedFile.category === 'documents' || /\.(pdf|docx?|pptx?|xlsx?|odt|rtf)$/i.test(splitSelectedFile.name)) &&
+      !splitSelectedFile.isNotepad &&
+      !splitSelectedFile.name.toLowerCase().endsWith('.txt')
+    );
+    if (docLayoutMode !== 'horizontal' || !isDoc) return;
     const handleDocKeyDown = (e: KeyboardEvent) => {
       if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
       if (e.key === 'ArrowRight' || e.key === 'PageDown') {
@@ -2807,14 +2839,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setViewerRotation(0);
     setDocCurrentPage(1);
 
-    if (file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt')) {
+    const isNotepad = Boolean(file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt'));
+    const isAudio = Boolean(file.category === 'audio' || file.isAudio || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name));
+    const isVideo = Boolean(file.category === 'videos' || file.isVideo || Boolean(file.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv)$/i.test(file.name));
+
+    if (isNotepad) {
       setNoteTextContent(file.content || '');
       setNoteTitleContent(file.noteTitle || '');
       setIsNoteSavedIndicator(true);
     }
 
     // Si audio, démarrer l'écouteur et ouvrir le lecteur mobile si sur téléphone
-    if (file.category === 'audio') {
+    if (isAudio) {
       setIsAudioPlaying(true);
       setAudioCurrentTime(0);
       setAudioDuration(file.durationSec || 219);
@@ -2824,7 +2860,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
 
     // Si vidéo, réinitialiser
-    if (file.category === 'videos') {
+    if (isVideo) {
       setIsVideoPlaying(true);
       setVideoCurrentTime(0);
     } else {
@@ -3505,29 +3541,72 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const canNavigatePrev = currentSplitIndex > 0;
   const canNavigateNext = currentSplitIndex >= 0 && currentSplitIndex < currentSplitList.length - 1;
 
+  // Détection universelle du type de fichier sélectionné dans le visualiseur divisé
+  const isSelectedNotepad = !!splitSelectedFile && (
+    splitSelectedFile.isNotepad || 
+    splitSelectedFile.extension === 'txt' || 
+    splitSelectedFile.name.toLowerCase().endsWith('.txt')
+  );
+  const isSelectedImage = !!splitSelectedFile && (
+    splitSelectedFile.category === 'images' || 
+    splitSelectedFile.isImage || 
+    /\.(jpe?g|png|gif|webp|svg|avif|bmp)$/i.test(splitSelectedFile.name)
+  );
+  const isSelectedVideo = !!splitSelectedFile && (
+    splitSelectedFile.category === 'videos' || 
+    Boolean(splitSelectedFile.videoUrl) || 
+    /\.(mp4|webm|mkv|mov|avi|flv)$/i.test(splitSelectedFile.name)
+  );
+  const isSelectedAudio = !!splitSelectedFile && (
+    splitSelectedFile.category === 'audio' || 
+    Boolean(splitSelectedFile.audioUrl) || 
+    /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(splitSelectedFile.name)
+  );
+  const isSelectedDoc = !!splitSelectedFile && 
+    !isSelectedNotepad && 
+    !isSelectedImage && 
+    !isSelectedVideo && 
+    !isSelectedAudio && (
+      splitSelectedFile.category === 'documents' || 
+      /\.(pdf|docx?|pptx?|xlsx?|odt|rtf)$/i.test(splitSelectedFile.name)
+    );
+
   // NAVIGATION PRÉCÉDENT / SUIVANT DANS LA VUE DIVISÉE (STRICTEMENT DANS LE MENU ACTUEL)
   const handleNavigateSplit = (direction: 'prev' | 'next') => {
     if (!splitSelectedFile || currentSplitList.length === 0) return;
-    if (direction === 'prev' && canNavigatePrev) {
-      const nextFile = currentSplitList[currentSplitIndex - 1];
-      setSplitSelectedFile(nextFile);
-      if (nextFile.isNotepad || nextFile.extension === 'txt' || nextFile.name.toLowerCase().endsWith('.txt')) {
-        setNoteTextContent(nextFile.content || '');
-        setNoteTitleContent(nextFile.noteTitle || '');
-      }
-      setViewerZoom(1);
-      setViewerRotation(0);
-      setDocCurrentPage(1);
-    } else if (direction === 'next' && canNavigateNext) {
-      const nextFile = currentSplitList[currentSplitIndex + 1];
-      setSplitSelectedFile(nextFile);
-      if (nextFile.isNotepad || nextFile.extension === 'txt' || nextFile.name.toLowerCase().endsWith('.txt')) {
-        setNoteTextContent(nextFile.content || '');
-        setNoteTitleContent(nextFile.noteTitle || '');
-      }
-      setViewerZoom(1);
-      setViewerRotation(0);
-      setDocCurrentPage(1);
+    const nextFile = direction === 'prev' 
+      ? (canNavigatePrev ? currentSplitList[currentSplitIndex - 1] : null)
+      : (canNavigateNext ? currentSplitList[currentSplitIndex + 1] : null);
+    if (!nextFile) return;
+
+    setSplitSelectedFile(nextFile);
+    setViewerZoom(1);
+    setViewerRotation(0);
+    setDocCurrentPage(1);
+
+    const isNotepad = Boolean(nextFile.isNotepad || nextFile.extension === 'txt' || nextFile.name.toLowerCase().endsWith('.txt'));
+    const isAudio = Boolean(nextFile.category === 'audio' || nextFile.isAudio || Boolean(nextFile.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(nextFile.name));
+    const isVideo = Boolean(nextFile.category === 'videos' || nextFile.isVideo || Boolean(nextFile.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv)$/i.test(nextFile.name));
+
+    if (isNotepad) {
+      setNoteTextContent(nextFile.content || '');
+      setNoteTitleContent(nextFile.noteTitle || '');
+      setIsNoteSavedIndicator(true);
+    }
+
+    if (isAudio) {
+      setIsAudioPlaying(true);
+      setAudioCurrentTime(0);
+      setAudioDuration(nextFile.durationSec || 219);
+    } else {
+      setIsAudioPlaying(false);
+    }
+
+    if (isVideo) {
+      setIsVideoPlaying(true);
+      setVideoCurrentTime(0);
+    } else {
+      setIsVideoPlaying(false);
     }
   };
 
@@ -9410,7 +9489,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <div className={`transition-all duration-300 flex flex-col bg-[#04060A] ${
                 isViewerMaximized 
                   ? 'w-full flex-1 h-full min-h-[calc(100vh-68px)]' 
-                  : (currentSubView.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio') || splitSelectedFile?.category === 'audio')
+                  : (currentSubView.id === 'studycloud-category-audio' || (isCloudView && cloudActiveTab === 'audio') || isSelectedAudio)
                     ? `${isMobilePlayerOpen ? 'flex w-full min-h-[calc(100vh-120px)]' : 'hidden md:flex'} md:w-7/12 lg:w-7/12 xl:w-7/12 border-t md:border-t-0 md:border-l border-white/10`
                     : 'w-full md:w-7/12 lg:w-7/12 xl:w-8/12 min-h-[500px] border-t md:border-t-0 md:border-l border-white/10'
               }`}>
@@ -9455,7 +9534,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   <div className="flex items-center gap-1 sm:gap-1.5 shrink-0 flex-wrap justify-end">
                     
                     {/* Zoom & Rotation (pour images et documents) - PLACÉS DEVANT */}
-                    {(splitSelectedFile.category === 'images' || splitSelectedFile.isImage || splitSelectedFile.category === 'documents') && (
+                    {(isSelectedImage || isSelectedDoc) && (
                       <>
                         <button
                           type="button"
@@ -9482,6 +9561,37 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           <RotateCw className="w-3.5 h-3.5" />
                         </button>
                       </>
+                    )}
+
+                    {/* BOUTON DÉFILEMENT HORIZONTAL / VERTICAL (UNIQUEMENT POUR LES DOCUMENTS) */}
+                    {isSelectedDoc && (
+                      <button
+                        type="button"
+                        onClick={() => {
+                          const nextMode = docLayoutMode === 'vertical' ? 'horizontal' : 'vertical';
+                          setDocLayoutMode(nextMode);
+                          setDocCurrentPage(1);
+                          showToast(nextMode === 'horizontal' ? 'Mode défilement horizontal activé' : 'Mode défilement vertical activé');
+                        }}
+                        className={`h-7 sm:h-8 px-2.5 sm:px-3 rounded-full flex items-center gap-1.5 text-xs font-bold border transition-all cursor-pointer shadow-sm active:scale-95 ${
+                          docLayoutMode === 'horizontal'
+                            ? 'bg-amber-500/20 text-amber-300 border-amber-500/50 hover:bg-amber-500/30 ring-1 ring-amber-400/40'
+                            : 'bg-blue-500/20 text-blue-300 border-blue-500/50 hover:bg-blue-500/30 ring-1 ring-blue-400/40'
+                        }`}
+                        title={docLayoutMode === 'vertical' ? "Défilement vertical (Cliquer pour passer en défilement horizontal)" : "Défilement horizontal (Cliquer pour passer en défilement vertical)"}
+                      >
+                        {docLayoutMode === 'vertical' ? (
+                          <>
+                            <SlidersHorizontal className="w-3.5 h-3.5 rotate-90 text-blue-400" />
+                            <span className="text-[11px] font-black">Vertical</span>
+                          </>
+                        ) : (
+                          <>
+                            <SlidersHorizontal className="w-3.5 h-3.5 text-amber-400" />
+                            <span className="text-[11px] font-black">Horizontal</span>
+                          </>
+                        )}
+                      </button>
                     )}
 
                     {/* Partager */}
@@ -9515,7 +9625,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </button>
 
                     {/* BOUTON 3 TRAITS D'OPTIONS AUDIO OU AGRANDIR POUR AUTRES FORMATS */}
-                    {splitSelectedFile.category === 'audio' ? (
+                    {isSelectedAudio ? (
                       <div className="relative studycloud-menu-trigger">
                         <button
                           type="button"
@@ -9626,6 +9736,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     <button
                       type="button"
                       onClick={() => {
+                        if (noteSaveTimeoutRef.current) {
+                          clearTimeout(noteSaveTimeoutRef.current);
+                        }
+                        if (isSelectedNotepad && splitSelectedFile) {
+                          CloudStorageAPI.updateClasseurFile(splitSelectedFile.id, {
+                            noteTitle: noteTitleContent,
+                            content: noteTextContent,
+                          }).catch(() => {});
+                        }
                         setSplitSelectedFile(null);
                         setIsAudioPlaying(false);
                         setIsMobilePlayerOpen(false);
@@ -9642,10 +9761,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 </div>
 
                 {/* CORPS DU LECTEUR GRAND FORMAT SELON LE TYPE DE MÉDIA (Prend tout l'espace disponible) */}
-                <div className={`flex-1 w-full h-full flex flex-col items-center justify-center ${splitSelectedFile.category === 'documents' && !splitSelectedFile.isNotepad && !splitSelectedFile.name.toLowerCase().endsWith('.txt') ? 'p-0 overflow-hidden bg-white' : 'p-1 sm:p-2 sm:px-4 overflow-hidden'} relative`}>
+                <div className={`flex-1 w-full h-full flex flex-col items-center justify-center ${isSelectedDoc ? 'p-0 overflow-hidden bg-white' : 'p-1 sm:p-2 sm:px-4 overflow-hidden'} relative`}>
 
                   {/* 1. LECTEUR IMAGE GRAND FORMAT (Prend tout l'espace avec Zoom & Rotation) */}
-                  {(splitSelectedFile.category === 'images' || splitSelectedFile.isImage) && (
+                  {isSelectedImage && !isSelectedVideo && !isSelectedAudio && (
                     <div className="w-full h-full flex-1 flex flex-col items-center justify-center relative overflow-hidden rounded-2xl bg-black/80 border border-white/10 p-1 sm:p-2 shadow-2xl">
                       <div 
                         className="transition-transform duration-200 flex items-center justify-center w-full h-full"
@@ -9670,11 +9789,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   )}
 
                   {/* 2. LECTEUR VIDÉO GRAND FORMAT INTERACTIF (Prend tout l'espace de l'écran, tout format vidéo) */}
-                  {splitSelectedFile.category === 'videos' && (
+                  {isSelectedVideo && !isSelectedAudio && (
                     <div className="w-full h-full flex-1 flex items-center justify-center relative p-1 sm:p-2 overflow-hidden bg-black/80 rounded-2xl border border-white/10 shadow-2xl">
                       <video
                         ref={videoRef}
-                        src={splitSelectedFile.videoUrl || (splitSelectedFile as any).url || ''}
+                        src={splitSelectedFile.videoUrl || (splitSelectedFile as any).url || splitSelectedFile.previewUrl || ''}
                         poster={splitSelectedFile.previewUrl}
                         className={`w-full h-full object-contain rounded-xl select-none bg-black transition-all ${
                           isViewerMaximized 
@@ -9690,7 +9809,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   )}
 
                   {/* 3. LECTEUR AUDIO GRAND FORMAT INTERACTIF (IMAGE 2 : LECTEUR MUSICAL DESIGN PREMIUM) */}
-                  {splitSelectedFile.category === 'audio' && (
+                  {isSelectedAudio && (
                     <div className="relative w-full h-full flex-1 flex flex-col justify-between p-3 sm:p-6 md:p-8 bg-[#090D1A] text-white overflow-hidden select-none rounded-2xl">
                       
                       {/* Élément audio HTML5 natif invisible pour la lecture réelle */}
@@ -9934,7 +10053,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   )}
 
                   {/* 4. LECTEUR / ÉDITEUR BLOC-NOTES TXT GRAND FORMAT (Prend tout l'espace, design soigné, lecture et écriture synchronisée) */}
-                  {(splitSelectedFile.isNotepad || splitSelectedFile.extension === 'txt' || splitSelectedFile.name.toLowerCase().endsWith('.txt')) && (
+                  {isSelectedNotepad && (
                     <div className="w-full h-full flex-1 flex flex-col overflow-hidden bg-[#0A0F1D] text-white rounded-2xl border border-white/10 shadow-2xl animate-in fade-in duration-150">
                       {/* Barre d'outils du bloc-notes */}
                       <div className="px-3 sm:px-4 py-2 bg-slate-900/90 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
@@ -10045,7 +10164,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   )}
 
                   {/* 5. LECTEUR DOCUMENT GRAND FORMAT (Prend tout l'espace disponible, sans bandes noires ni creux) */}
-                  {splitSelectedFile.category === 'documents' && !splitSelectedFile.isNotepad && !splitSelectedFile.name.toLowerCase().endsWith('.txt') && (
+                  {isSelectedDoc && (
                     <div className="w-full h-full flex-1 flex flex-col overflow-y-auto overflow-x-hidden bg-white text-stone-900 select-text">
                       <div 
                         className="w-full flex-1 flex flex-col p-4 sm:p-8 md:p-10 pb-36 transition-transform duration-200"
@@ -10173,8 +10292,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     </div>
                   )}
 
-                  {/* 5. FICHIERS DIVERS / ARCHIVES */}
-                  {!['images', 'videos', 'audio', 'documents'].includes(splitSelectedFile.category) && !splitSelectedFile.isImage && (
+                  {/* 6. FICHIERS DIVERS / ARCHIVES */}
+                  {!isSelectedImage && !isSelectedVideo && !isSelectedAudio && !isSelectedNotepad && !isSelectedDoc && (
                     <div className={`w-full bg-[#121826] border border-white/10 rounded-3xl p-8 text-center space-y-5 ${
                       isViewerMaximized ? 'max-w-xl my-auto' : 'max-w-md my-auto'
                     }`}>

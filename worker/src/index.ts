@@ -2660,10 +2660,19 @@ async function ensureCloudMediaTables(db: any) {
         preview_url TEXT DEFAULT '',
         is_favorite INTEGER DEFAULT 0,
         is_pinned INTEGER DEFAULT 0,
+        notepad_title TEXT DEFAULT '',
+        notepad_content TEXT DEFAULT '',
         created_at TEXT DEFAULT CURRENT_TIMESTAMP,
         updated_at TEXT DEFAULT CURRENT_TIMESTAMP
       )
     `).run();
+
+    try {
+      await db.prepare("ALTER TABLE document_files ADD COLUMN notepad_title TEXT DEFAULT ''").run();
+    } catch {}
+    try {
+      await db.prepare("ALTER TABLE document_files ADD COLUMN notepad_content TEXT DEFAULT ''").run();
+    } catch {}
 
     // 7. Téléchargements
     await db.prepare(`
@@ -6138,13 +6147,38 @@ export default {
           if (fields.length > 0) {
             fields.push('updated_at = CURRENT_TIMESTAMP');
             values.push(body.id, reqUserId);
-            await env.DB.prepare(`
+            const updateRes = await env.DB.prepare(`
               UPDATE classeur_files SET ${fields.join(', ')}
               WHERE id = ? AND user_id = ?
             `).bind(...values).run();
+
+            // Si le fichier n'est pas dans classeur_files (ex: note dans documents généraux), mettre à jour également dans document_files
+            if (updateRes.meta?.changes === 0) {
+              const docFields: string[] = [];
+              const docValues: any[] = [];
+              if (body.name !== undefined) { docFields.push('name = ?'); docValues.push(body.name); }
+              if (body.size !== undefined) { docFields.push('size = ?'); docValues.push(body.size); }
+              if (body.sizeBytes !== undefined) { docFields.push('size_bytes = ?'); docValues.push(Number(body.sizeBytes)); }
+              if (body.noteTitle !== undefined || body.notepadTitle !== undefined) {
+                docFields.push('notepad_title = ?');
+                docValues.push(body.noteTitle !== undefined ? body.noteTitle : body.notepadTitle);
+              }
+              if (body.content !== undefined || body.notepadContent !== undefined) {
+                docFields.push('notepad_content = ?');
+                docValues.push(body.content !== undefined ? body.content : body.notepadContent);
+              }
+              if (docFields.length > 0) {
+                docFields.push('updated_at = CURRENT_TIMESTAMP');
+                docValues.push(body.id, reqUserId);
+                await env.DB.prepare(`
+                  UPDATE document_files SET ${docFields.join(', ')}
+                  WHERE id = ? AND user_id = ?
+                `).bind(...docValues).run().catch(() => {});
+              }
+            }
           }
 
-          return jsonResponse({ success: true, message: 'Fichier classeur mis à jour' }, 200, origin);
+          return jsonResponse({ success: true, message: 'Fichier sauvegardé' }, 200, origin);
         }
 
         if (method === 'DELETE') {
@@ -6502,6 +6536,9 @@ export default {
             previewUrl: d.preview_url || '',
             url: d.file_url || '',
             category: 'documents',
+            isNotepad: d.extension === 'txt' || Boolean(d.notepad_content),
+            noteTitle: d.notepad_title || '',
+            content: d.notepad_content || '',
             isFavorite: Boolean(d.is_favorite),
             isPinned: Boolean(d.is_pinned)
           }));
