@@ -98,7 +98,7 @@ import {
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
-import { generatePdfThumbnail, generateVideoThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
+import { generatePdfThumbnail, generateVideoThumbnail, extractAudioCover, generateAudioCreatorCover, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { storeFileBlob, getFileBlobUrl, getFileBlob } from '../services/localFileStorage';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernImageViewer } from './ModernImageViewer';
@@ -1734,16 +1734,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         else if (normName.match(/\.(mp4|mov|webm|avi|mkv|flv|wmv|3gp|m4v)$/)) autoCat = 'videos';
         else if (normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma)$/)) autoCat = 'audio';
 
-        // Pré-générer les aperçus instantanés pour les vidéos et documents
+        // Pré-générer les aperçus instantanés réels pour les vidéos, audios et documents
         let previewDataUrl: string | null = null;
         if (autoCat === 'videos') {
-          previewDataUrl = await generateVideoThumbnail(file, file.name);
+          previewDataUrl = await generateVideoThumbnail(file, file.name, file.name);
+        } else if (autoCat === 'audio') {
+          previewDataUrl = await extractAudioCover(file, file.name, 'Créateur StudyCloud');
         } else if (normName.endsWith('.pdf')) {
           previewDataUrl = await generatePdfThumbnail(file, file.name);
         }
 
-        // Tenter l'envoi cloud
-        const res = await CloudStorageAPI.uploadFile(file, 'auto', file.name);
+        // Tenter l'envoi cloud avec miniature pour D1
+        const res = await CloudStorageAPI.uploadFile(file, 'auto', file.name, undefined, previewDataUrl || undefined);
         const fileId = res?.file?.id || `cf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
         // Stocker impérativement dans IndexedDB pour que le binaire persiste au rechargement
@@ -1782,6 +1784,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         } else if (finalItem.category === 'audio' || autoCat === 'audio') {
           finalItem.audioUrl = finalItem.audioUrl && !finalItem.audioUrl.startsWith('blob:') ? finalItem.audioUrl : workerStreamUrl;
           finalItem.url = finalItem.audioUrl;
+          finalItem.coverUrl = previewDataUrl || undefined;
+          finalItem.previewUrl = previewDataUrl || undefined;
         } else if (finalItem.category === 'images' || autoCat === 'images') {
           finalItem.previewUrl = finalItem.previewUrl && !finalItem.previewUrl.startsWith('blob:') ? finalItem.previewUrl : workerStreamUrl;
           finalItem.url = finalItem.previewUrl;
@@ -1791,6 +1795,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
         if (previewDataUrl) {
           setCachedMediaThumbnail(finalItem.id, previewDataUrl);
+          // Persister immédiatement la miniature ou la pochette créateur dans D1
+          CloudStorageAPI.saveMediaThumbnail(finalItem.id, autoCat, previewDataUrl).catch(() => {});
         }
 
         const cat = finalItem.category;
@@ -1836,10 +1842,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         const normName = file.name.toLowerCase();
         const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
 
-        // Pré-générer les aperçus instantanés pour les vidéos et documents
+        // Pré-générer les aperçus instantanés réels pour les vidéos, audio et documents
         let previewDataUrl: string | null = null;
-        if (normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) {
-          previewDataUrl = await generateVideoThumbnail(file, file.name);
+        if (importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) {
+          previewDataUrl = await generateVideoThumbnail(file, file.name, file.name);
+        } else if (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/)) {
+          previewDataUrl = await extractAudioCover(file, file.name, 'Créateur StudyCloud');
         } else if (normName.endsWith('.pdf')) {
           previewDataUrl = await generatePdfThumbnail(file, file.name);
         }
@@ -1848,7 +1856,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           file, 
           importConfig.category, 
           file.name, 
-          importConfig.folderId
+          importConfig.folderId,
+          previewDataUrl || undefined
         );
 
         const fileId = res?.file?.id || `cf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
@@ -1889,6 +1898,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         } else if (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/)) {
           finalItem.audioUrl = finalItem.audioUrl && !finalItem.audioUrl.startsWith('blob:') ? finalItem.audioUrl : workerStreamUrl;
           finalItem.url = finalItem.audioUrl;
+          finalItem.coverUrl = previewDataUrl || undefined;
+          finalItem.previewUrl = previewDataUrl || undefined;
         } else if (importConfig.category === 'images' || normName.match(/\.(jpg|jpeg|png|gif|webp|svg)$/)) {
           finalItem.previewUrl = finalItem.previewUrl && !finalItem.previewUrl.startsWith('blob:') ? finalItem.previewUrl : workerStreamUrl;
           finalItem.url = finalItem.previewUrl;
@@ -1898,6 +1909,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
         if (previewDataUrl) {
           setCachedMediaThumbnail(finalItem.id, previewDataUrl);
+          // Persister immédiatement dans D1
+          CloudStorageAPI.saveMediaThumbnail(finalItem.id, importConfig.category, previewDataUrl).catch(() => {});
         }
 
         if (importConfig.category === 'images') {
@@ -6286,11 +6299,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           )}
 
           <div className="w-12 h-12 rounded-2xl bg-black border border-white/10 relative overflow-hidden flex items-center justify-center shrink-0 shadow-sm">
-            {track.previewUrl && (
-              <img src={track.previewUrl} alt={track.name} className="absolute inset-0 w-full h-full object-cover opacity-40" />
+            {(track.coverUrl || track.previewUrl || getCachedMediaThumbnail(track.id)) ? (
+              <img 
+                src={track.coverUrl || track.previewUrl || getCachedMediaThumbnail(track.id)!} 
+                alt={track.name} 
+                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" 
+              />
+            ) : (
+              <div className="w-full h-full bg-gradient-to-br from-amber-600/30 to-stone-900 flex items-center justify-center">
+                <Music className="w-6 h-6 text-amber-400 stroke-[2.2] relative z-10 drop-shadow-md" />
+              </div>
             )}
-            <div className="absolute inset-0 bg-black/40" />
-            <Music className="w-6 h-6 text-white stroke-[2.2] relative z-10 drop-shadow-md" />
           </div>
           <div className="min-w-0">
             <h3 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-amber-400 transition-colors">{track.name}</h3>
@@ -9148,9 +9167,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           {/* Gauche : Vignette album carrée + Titre + Artiste + Détails */}
                           <div className="flex items-center gap-3 min-w-0 flex-1">
                             <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-stone-900 border border-stone-200 dark:border-white/10 relative shadow-sm">
-                              {track.previewUrl ? (
+                              {(track.coverUrl || track.previewUrl || getCachedMediaThumbnail(track.id)) ? (
                                 <img 
-                                  src={track.previewUrl} 
+                                  src={track.coverUrl || track.previewUrl || getCachedMediaThumbnail(track.id)!} 
                                   alt={track.name} 
                                   className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" 
                                 />
@@ -9977,9 +9996,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       {/* PARTIE SUPÉRIEURE : Pochette album centrée (paroles supprimées comme entouré en rouge) */}
                       <div className="relative z-10 w-full flex items-center justify-center max-w-sm mx-auto my-auto pt-2 sm:pt-4">
                         <div className="relative w-44 sm:w-56 md:w-64 aspect-square rounded-2xl overflow-hidden shrink-0 shadow-[0_20px_45px_rgba(0,0,0,0.85)] border border-white/20 bg-black group">
-                          {splitSelectedFile.previewUrl ? (
+                          {(splitSelectedFile.coverUrl || splitSelectedFile.previewUrl || getCachedMediaThumbnail(splitSelectedFile.id)) ? (
                             <img 
-                              src={splitSelectedFile.previewUrl} 
+                              src={splitSelectedFile.coverUrl || splitSelectedFile.previewUrl || getCachedMediaThumbnail(splitSelectedFile.id)!} 
                               alt={splitSelectedFile.name} 
                               className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" 
                             />

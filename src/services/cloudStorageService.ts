@@ -305,7 +305,14 @@ export const CloudStorageAPI = {
       });
       if (!res.ok) return [];
       const json = await res.json();
-      return json.success && Array.isArray(json.data) ? json.data : [];
+      if (json.success && Array.isArray(json.data)) {
+        return json.data.map((a: any) => ({
+          ...a,
+          previewUrl: a.coverUrl || a.previewUrl || '',
+          coverUrl: a.coverUrl || a.previewUrl || '',
+        }));
+      }
+      return [];
     } catch (e) {
       console.warn('[CloudStorageAPI] getAudioList error:', e);
       return [];
@@ -401,7 +408,18 @@ export const CloudStorageAPI = {
       });
       if (!res.ok) return [];
       const json = await res.json();
-      return json.success && Array.isArray(json.data) ? json.data : [];
+      if (json.success && Array.isArray(json.data)) {
+        return json.data.map((v: any) => {
+          const isRealThumb = v.thumbnailUrl && !v.thumbnailUrl.endsWith('.mp4') && !v.thumbnailUrl.endsWith('.webm') && !v.thumbnailUrl.endsWith('.mov') && !v.thumbnailUrl.endsWith('.avi');
+          const thumb = isRealThumb ? v.thumbnailUrl : (v.previewUrl && !v.previewUrl.endsWith('.mp4') ? v.previewUrl : '');
+          return {
+            ...v,
+            thumbnailUrl: thumb,
+            previewUrl: thumb,
+          };
+        });
+      }
+      return [];
     } catch (e) {
       console.warn('[CloudStorageAPI] getVideosList error:', e);
       return [];
@@ -716,22 +734,43 @@ export const CloudStorageAPI = {
   // --------------------------------------------------------------------------
   // 10. UPLOAD DIRECT R2 ET D1 PAR CATÉGORIE (Validation & Routage Intelligent)
   // --------------------------------------------------------------------------
+  async saveMediaThumbnail(fileId: string, category: string, dataUrl: string): Promise<boolean> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const res = await fetch(`${baseUrl}/api/cloud/thumbnail?userId=${getUserIdParam()}`, {
+        method: 'POST',
+        headers: getAuthHeaders(),
+        body: JSON.stringify({ fileId, category, dataUrl }),
+      });
+      return res.ok;
+    } catch (e) {
+      console.warn('[CloudStorageAPI] saveMediaThumbnail error:', e);
+      return false;
+    }
+  },
+
   async uploadFile(
     file: File | Blob,
     category: 'auto' | 'classeur' | 'audio' | 'images' | 'videos' | 'documents',
     fileName: string,
-    folderId?: string
+    folderId?: string,
+    thumbnailDataUrl?: string
   ): Promise<{ success: boolean; category?: string; detectedCategory?: string; file?: FileItem; error?: string }> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
       const uploadUrl = `${baseUrl}/api/cloud/upload?category=${encodeURIComponent(category)}&name=${encodeURIComponent(fileName)}&folderId=${encodeURIComponent(folderId || '')}&userId=${getUserIdParam()}`;
       
+      const headers: Record<string, string> = {
+        'Content-Type': file.type || 'application/octet-stream',
+        'x-user-id': getCurrentUserId() || 'default-user',
+      };
+      if (thumbnailDataUrl && thumbnailDataUrl.startsWith('data:image')) {
+        headers['x-thumbnail-data'] = thumbnailDataUrl;
+      }
+
       const res = await fetch(uploadUrl, {
         method: 'POST',
-        headers: {
-          'Content-Type': file.type || 'application/octet-stream',
-          'x-user-id': getCurrentUserId() || 'default-user',
-        },
+        headers,
         body: file,
       });
 
