@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import {
   Maximize,
   Minimize,
@@ -22,25 +22,19 @@ import {
   AlertCircle,
   RotateCcw,
   ExternalLink,
-  ArrowLeftRight
+  ArrowLeftRight,
+  ThumbsUp,
+  ThumbsDown,
+  Copy,
+  Check
 } from 'lucide-react';
 import { StudyCloudAPI, generateDirectAiCreation } from '../services/api';
 import { extractDocumentText } from '../services/documentTextExtractor';
 import { parseOrBuildAiCreation } from '../services/aiCreationGenerator';
 import { DnaLogo } from './DnaLogo';
+import { MathText } from './MathText';
 import { AiCreation, ModuleId } from './ai-creations/types';
-import Questionnaire from './ai-creations/Questionnaire';
-import QuestionnaireTest from './ai-creations/QuestionnaireTest';
-import VraiOuFaux from './ai-creations/VraiOuFaux';
-import VraiOuFauxTest from './ai-creations/VraiOuFauxTest';
-import CarteMentale from './ai-creations/CarteMentale';
-import CarteMentaleConceptuelle from './ai-creations/CarteMentaleConceptuelle';
-import CarteMemoire from './ai-creations/CarteMemoire';
-import Resume from './ai-creations/Resume';
-import Pdf from './ai-creations/Pdf';
-import Infographie from './ai-creations/Infographie';
-import ExercicesEcrits from './ai-creations/ExercicesEcrits';
-import DevoirComplet, { normalizeExamData } from './ai-creations/DevoirComplet';
+import { normalizeExamData } from './ai-creations/DevoirComplet';
 
 interface RightMenuProps {
   isRightFullscreen: boolean;
@@ -194,6 +188,520 @@ export const CATEGORY_TABS = [
   { id: 'redaction', label: 'Rédaction & PDF' },
 ];
 
+// =========================================================================
+// CONVERTISSEUR DE CRÉATION EN MARKDOWN ACADÉMIQUE AVEC FORMULES LATEX
+// Structure identique au flux conversationnel de l'Assistant Chat (gauche)
+// =========================================================================
+export function formatCreationToMarkdown(toolType: string, data: any, title?: string, sourceFileName?: string): string {
+  if (!data) return "Aucun contenu disponible pour cette création.";
+
+  // Si data est une chaîne directe (texte brut ou Markdown déjà formaté par l'IA)
+  if (typeof data === 'string') {
+    return data.trim();
+  }
+
+  if (data.markdown && typeof data.markdown === 'string') {
+    return data.markdown.trim();
+  }
+  if (data.rawText && typeof data.rawText === 'string') {
+    return data.rawText.trim();
+  }
+
+  const effectiveTitle = title || data.title || data.root_title || "Création IA";
+  const normType = (toolType || '').toLowerCase();
+
+  // 1. QUESTIONNAIRE / QCM / QUIZ / QUESTIONNAIRE-TEST
+  if (normType.includes('questionnaire') || normType === 'quiz' || (data.questions && Array.isArray(data.questions) && data.questions[0]?.options)) {
+    const questions = data.questions || [];
+    let md = `# 📋 ${effectiveTitle}\n\n`;
+    if (sourceFileName) {
+      md += `*Document support : ${sourceFileName}*\n\n`;
+    }
+    if (data.instructions) {
+      md += `> 📌 **Consigne :** ${data.instructions}\n\n`;
+    }
+    md += `Ce questionnaire comporte **${questions.length} questions** d'évaluation active avec corrigés analytiques et calculs scientifiques.\n\n---\n\n`;
+
+    questions.forEach((q: any, i: number) => {
+      const qNum = q.number || i + 1;
+      const qText = q.question || q.texte || q.enonce || `Question ${qNum}`;
+      md += `### ❓ Question ${qNum} : ${qText}\n\n`;
+      
+      const options = q.options || q.propositions || [];
+      const letters = ['A', 'B', 'C', 'D', 'E', 'F'];
+      if (Array.isArray(options) && options.length > 0) {
+        options.forEach((opt: string, optIdx: number) => {
+          const letter = letters[optIdx] || `${optIdx + 1}`;
+          md += `- **${letter})** ${opt}\n`;
+        });
+        md += `\n`;
+      }
+
+      const correctIdx = typeof q.correctIndex === 'number' ? q.correctIndex : (typeof q.correct_index === 'number' ? q.correct_index : 0);
+      const correctLetter = letters[correctIdx] || 'A';
+      const correctOpt = Array.isArray(options) ? (options[correctIdx] || '') : '';
+      const explanation = q.explanation || q.explication || q.sampleAnswer || '';
+
+      if (correctOpt) {
+        md += `> 💡 **Bonne réponse :** **${correctLetter})** ${correctOpt}\n`;
+      }
+      if (explanation) {
+        md += `>\n> 📝 **Explication & Démonstration :**\n> ${explanation.replace(/\n/g, '\n> ')}\n`;
+      }
+      md += `\n---\n\n`;
+    });
+
+    return md.trim();
+  }
+
+  // 2. VRAI OU FAUX / VRAI OU FAUX TEST
+  if (normType.includes('vrai-ou-faux') || normType.includes('true-false') || (data.affirmations && Array.isArray(data.affirmations))) {
+    const affirmations = data.affirmations || (Array.isArray(data.questions) ? data.questions : []);
+    let md = `# ⚖️ ${effectiveTitle}\n\n`;
+    if (sourceFileName) {
+      md += `*Document support : ${sourceFileName}*\n\n`;
+    }
+    md += `Test de discrimination conceptuelle composé de **${affirmations.length} affirmations** avec corrections pas à pas.\n\n---\n\n`;
+
+    affirmations.forEach((item: any, i: number) => {
+      const num = item.number || i + 1;
+      const statement = item.statement || item.texte || item.affirmation || item.question || `Affirmation ${num}`;
+      const isTrue = item.isTrue !== undefined ? Boolean(item.isTrue) : (item.correct_answer !== undefined ? Boolean(item.correct_answer) : (item.correctIndex === 0));
+      const explanation = item.explanation || item.explication || item.justification || '';
+
+      md += `### 🔍 Affirmation ${num} :\n${statement}\n\n`;
+      md += `> 🎯 **Verdict :** ${isTrue ? '✅ **VRAI**' : '❌ **FAUX**'}\n`;
+      if (explanation) {
+        md += `>\n> 📝 **Justification détaillée :**\n> ${explanation.replace(/\n/g, '\n> ')}\n`;
+      }
+      md += `\n---\n\n`;
+    });
+
+    return md.trim();
+  }
+
+  // 3. DEVOIR COMPLET (ÉPREUVE OFFICIELLE NOTÉE SUR 20 POINTS)
+  if (normType.includes('devoir') || (data.sections && Array.isArray(data.sections) && data.baremeTotal)) {
+    let md = `# 📝 ${effectiveTitle}\n\n`;
+    md += `⏱️ **Durée recommandée :** ${data.duree || data.duration || '2h00'} | 🎯 **Barème total :** ${data.baremeTotal || 20} points\n\n`;
+    if (sourceFileName) {
+      md += `*Sujet officiel d'examen basé sur : ${sourceFileName}*\n\n`;
+    }
+    if (data.instructions) {
+      md += `> 📌 **Instructions officielles :**\n> ${data.instructions}\n\n`;
+    }
+    md += `---\n\n`;
+
+    const sections = data.sections || [];
+    sections.forEach((sec: any, sIdx: number) => {
+      md += `## 📌 ${sec.title || `EXERCICE ${sIdx + 1}`}\n\n`;
+      if (sec.problem_statement) {
+        md += `> 📖 **Énoncé du problème & Données :**\n> ${sec.problem_statement.replace(/\n/g, '\n> ')}\n\n`;
+      }
+
+      if (Array.isArray(sec.questions)) {
+        sec.questions.forEach((q: any, qIdx: number) => {
+          const qNum = q.number || `${qIdx + 1}.`;
+          const pts = q.points ? ` (${q.points} pt${q.points > 1 ? 's' : ''})` : '';
+          md += `### ❓ Question ${qNum}${pts} : ${q.texte || q.question || ''}\n\n`;
+
+          if (q.options && Array.isArray(q.options)) {
+            const letters = ['A', 'B', 'C', 'D'];
+            q.options.forEach((opt: string, oIdx: number) => {
+              md += `- **${letters[oIdx] || oIdx + 1})** ${opt}\n`;
+            });
+            md += `\n`;
+          }
+
+          if (q.sampleAnswer || q.explication || q.explanation) {
+            const ans = q.sampleAnswer || q.explication || q.explanation;
+            md += `> 💡 **Corrigé attendu :**\n> ${ans.replace(/\n/g, '\n> ')}\n\n`;
+          } else if (q.correct_answer !== undefined) {
+            md += `> 🎯 **Réponse attendue :** ${q.correct_answer ? '✅ VRAI' : '❌ FAUX'}\n\n`;
+          }
+        });
+      }
+
+      if (sec.correction) {
+        md += `### 💡 Synthèse et Démonstration de l'Exercice :\n`;
+        if (sec.correction.steps) {
+          md += `${sec.correction.steps}\n\n`;
+        }
+        if (Array.isArray(sec.correction.examples) && sec.correction.examples.length > 0) {
+          md += `**Exemples concrets d'application :**\n`;
+          sec.correction.examples.forEach((ex: string) => {
+            md += `- ${ex}\n`;
+          });
+          md += `\n`;
+        }
+      }
+      md += `---\n\n`;
+    });
+
+    return md.trim();
+  }
+
+  // 4. EXERCICES ÉCRITS
+  if (normType.includes('exercices-ecrits') || data.context || (data.questions && data.correction && data.correction.steps)) {
+    let md = `# ✍️ ${effectiveTitle}\n\n`;
+    if (sourceFileName) {
+      md += `*Document support : ${sourceFileName}*\n\n`;
+    }
+
+    if (data.context) {
+      md += `## 📖 Énoncé & Contexte du Problème\n\n`;
+      md += `${data.context}\n\n---\n\n`;
+    }
+
+    if (Array.isArray(data.questions) && data.questions.length > 0) {
+      md += `## ❓ Questions à Résoudre\n\n`;
+      data.questions.forEach((q: any, i: number) => {
+        const text = typeof q === 'string' ? q : (q.texte || q.question || '');
+        md += `### Question ${i + 1} :\n${text}\n\n`;
+      });
+      md += `---\n\n`;
+    }
+
+    if (data.correction) {
+      md += `## 💡 Corrigé Détaillé & Démonstration\n\n`;
+      if (data.correction.steps) {
+        md += `${data.correction.steps}\n\n`;
+      }
+      if (Array.isArray(data.correction.examples) && data.correction.examples.length > 0) {
+        md += `### 🔍 Exemples d'application en situation réelle :\n\n`;
+        data.correction.examples.forEach((ex: string, i: number) => {
+          md += `- **Exemple ${i + 1} :** ${ex}\n`;
+        });
+        md += `\n`;
+      }
+    }
+
+    return md.trim();
+  }
+
+  // 5. CARTE MENTALE / MINDMAP / CARTE-MENTALE-2
+  if (normType.includes('carte-mentale') || normType === 'mindmap' || data.root_title || data.branches) {
+    const root = data.root_title || effectiveTitle;
+    let md = `# 🧠 Carte Mentale : ${root}\n\n`;
+    if (sourceFileName) {
+      md += `*Document support : ${sourceFileName}*\n\n`;
+    }
+    md += `> 🎯 **Concept Central :** **${root}**\n\n---\n\n`;
+
+    const branches = data.branches || [];
+    branches.forEach((b: any, bIdx: number) => {
+      const bTitle = b.title || `Axe ${bIdx + 1}`;
+      md += `## 🌿 Axe ${bIdx + 1} : ${bTitle}\n\n`;
+      if (b.description) {
+        md += `${b.description}\n\n`;
+      }
+
+      const subBranches = b.subBranches || b.sub_branches || b.points || [];
+      if (Array.isArray(subBranches) && subBranches.length > 0) {
+        md += `**Sous-branches & Notions associées :**\n`;
+        subBranches.forEach((sub: any) => {
+          const subText = typeof sub === 'string' ? sub : (sub.title || sub.label || JSON.stringify(sub));
+          md += `- 🔹 ${subText}\n`;
+        });
+        md += `\n`;
+      }
+      md += `---\n\n`;
+    });
+
+    return md.trim();
+  }
+
+  // 6. CARTE MÉMOIRE / FLASHCARDS
+  if (normType.includes('carte-memoire') || normType.includes('flashcard') || data.cards || data.flashcards) {
+    const cards = data.cards || data.flashcards || [];
+    let md = `# 🗂️ ${effectiveTitle}\n\n`;
+    if (sourceFileName) {
+      md += `*Document support : ${sourceFileName}*\n\n`;
+    }
+    md += `Jeu de **${cards.length} cartes de mémorisation active** (Flashcards) avec rappel théorique et application.\n\n---\n\n`;
+
+    cards.forEach((card: any, i: number) => {
+      const front = card.front || card.recto || card.question || `Carte ${i + 1}`;
+      const back = card.back || card.verso || card.answer || card.response || '';
+
+      md += `### 🏷️ Carte ${i + 1} :\n**Question / Notion :** ${front}\n\n`;
+      md += `> 💡 **Réponse / Verso :**\n> ${back.replace(/\n/g, '\n> ')}\n\n`;
+      md += `---\n\n`;
+    });
+
+    return md.trim();
+  }
+
+  // 7. RÉSUMÉ / SUMMARY
+  if (normType.includes('resume') || normType === 'summary' || data.overview || (data.sections && data.keyPoints)) {
+    let md = `# 📚 ${effectiveTitle}\n\n`;
+    if (sourceFileName) {
+      md += `*Fiche de synthèse basée sur : ${sourceFileName}*\n\n`;
+    }
+
+    if (data.overview) {
+      md += `> 💡 **Vue d'ensemble synthétique :**\n> ${data.overview.replace(/\n/g, '\n> ')}\n\n---\n\n`;
+    }
+
+    if (Array.isArray(data.keyPoints) && data.keyPoints.length > 0) {
+      md += `## 🎯 Points Clés à Retenir\n\n`;
+      data.keyPoints.forEach((kp: string) => {
+        md += `- 📌 ${kp}\n`;
+      });
+      md += `\n---\n\n`;
+    }
+
+    const sections = data.sections || [];
+    sections.forEach((sec: any, sIdx: number) => {
+      const sTitle = sec.section_title || sec.title || `Partie ${sIdx + 1}`;
+      md += `## 📖 ${sTitle}\n\n`;
+      if (sec.content) {
+        md += `${sec.content}\n\n`;
+      }
+    });
+
+    return md.trim();
+  }
+
+  // 8. PDF / DOCUMENT D'ÉTUDE
+  if (normType.includes('pdf') || normType.includes('document') || data.chapters) {
+    let md = `# 📄 ${effectiveTitle}\n\n`;
+    if (sourceFileName) {
+      md += `*Document d'étude officiel : ${sourceFileName}*\n\n---\n\n`;
+    }
+
+    const chapters = data.chapters || data.sections || [];
+    chapters.forEach((ch: any, cIdx: number) => {
+      const heading = ch.heading || ch.title || `Chapitre ${cIdx + 1}`;
+      md += `## 📑 ${heading}\n\n`;
+      if (ch.content) {
+        md += `${ch.content}\n\n`;
+      }
+      md += `---\n\n`;
+    });
+
+    return md.trim();
+  }
+
+  // 9. INFOGRAPHIE / INFOGRAPHIC
+  if (normType.includes('infographie') || normType.includes('infographic') || data.metrics || data.steps) {
+    let md = `# 📊 ${effectiveTitle}\n\n`;
+    if (data.subtitle) {
+      md += `*${data.subtitle}*\n\n`;
+    }
+    if (sourceFileName) {
+      md += `*Document support : ${sourceFileName}*\n\n`;
+    }
+    md += `---\n\n`;
+
+    if (Array.isArray(data.metrics) && data.metrics.length > 0) {
+      md += `## 📈 Repères & Métriques Clés\n\n`;
+      data.metrics.forEach((m: any) => {
+        md += `- 🔹 **${m.value}** : ${m.label}\n`;
+      });
+      md += `\n---\n\n`;
+    }
+
+    if (Array.isArray(data.steps) && data.steps.length > 0) {
+      md += `## 🚀 Étapes & Processus Clés\n\n`;
+      data.steps.forEach((st: any, i: number) => {
+        const stepNum = st.step || i + 1;
+        const heading = st.heading || `Étape ${stepNum}`;
+        const badge = st.badge ? ` *[${st.badge}]*` : '';
+        md += `### Étape ${stepNum} : ${heading}${badge}\n\n`;
+        if (st.description) {
+          md += `${st.description}\n\n`;
+        }
+      });
+      md += `---\n\n`;
+    }
+
+    if (Array.isArray(data.highlights) && data.highlights.length > 0) {
+      md += `## 💡 Points de Vigilance & Conseils Méthodologiques\n\n`;
+      data.highlights.forEach((h: any) => {
+        md += `> ⚠️ **${h.title || 'Conseil'} :** ${h.text || h.description || ''}\n\n`;
+      });
+    }
+
+    if (data.conclusion) {
+      md += `## 🎯 Bilan Synthétique\n\n${data.conclusion}\n\n`;
+    }
+
+    return md.trim();
+  }
+
+  // 10. Fallback générique
+  let md = `# 📄 ${effectiveTitle}\n\n`;
+  for (const [k, v] of Object.entries(data)) {
+    if (k === 'title' || k === 'error' || k === 'canRetry' || k === 'failedModId') continue;
+    if (typeof v === 'string') {
+      md += `### ${k.toUpperCase()} :\n${v}\n\n`;
+    } else if (Array.isArray(v)) {
+      md += `### ${k.toUpperCase()} :\n`;
+      v.forEach((item: any) => {
+        if (typeof item === 'string') {
+          md += `- ${item}\n`;
+        } else {
+          md += `- ${JSON.stringify(item)}\n`;
+        }
+      });
+      md += `\n`;
+    }
+  }
+  return md.trim() || JSON.stringify(data, null, 2);
+}
+
+// =========================================================================
+// RENDU VISUEL D'UN MESSAGE DE CRÉATION STYLE BULLE CHAT AVEC MathText
+// =========================================================================
+const CreationChatMessageText: React.FC<{ markdown: string }> = ({ markdown }) => {
+  const normalizedText = useMemo(() => {
+    if (!markdown) return '';
+    let cleaned = markdown;
+    cleaned = cleaned
+      .replace(/\${3,}/g, '$$')
+      .replace(/\\\[([\s\S]*?)\\\]/g, '$$$$$1$$$$')
+      .replace(/\\\(([\s\S]*?)\\\)/g, '$$$1$$');
+    cleaned = cleaned.replace(/\$\$([\s\S]*?)\$\$/g, (_match, eq) => {
+      return '$$' + eq.replace(/\r?\n/g, ' ') + '$$';
+    });
+    return cleaned;
+  }, [markdown]);
+
+  const elements = useMemo(() => {
+    const rawLines = normalizedText.split('\n');
+    const nodes: React.ReactNode[] = [];
+    let inCode = false;
+    let codeBuffer: string[] = [];
+
+    for (let idx = 0; idx < rawLines.length; idx++) {
+      const line = rawLines[idx];
+      const trimmed = line.trim();
+
+      if (trimmed.startsWith('```')) {
+        if (inCode) {
+          nodes.push(
+            <pre key={`code-${idx}`} className="bg-[#121317] border border-zinc-800 p-3 rounded-xl overflow-x-auto text-xs font-mono text-emerald-300 my-2.5 leading-normal shadow-inner">
+              <code>{codeBuffer.join('\n')}</code>
+            </pre>
+          );
+          codeBuffer = [];
+          inCode = false;
+        } else {
+          inCode = true;
+        }
+        continue;
+      }
+
+      if (inCode) {
+        codeBuffer.push(line);
+        continue;
+      }
+
+      // H1
+      if (trimmed.startsWith('# ')) {
+        nodes.push(
+          <h1 key={idx} className="text-xl sm:text-2xl font-black text-orange-400 pt-4 pb-2 border-b border-zinc-700/60 w-full tracking-tight">
+            <MathText text={trimmed.slice(2)} inline={true} />
+          </h1>
+        );
+        continue;
+      }
+
+      // H2
+      if (trimmed.startsWith('## ')) {
+        nodes.push(
+          <h2 key={idx} className="text-base sm:text-lg font-black text-white pt-4 pb-1.5 border-b border-zinc-800 w-full flex items-center gap-2">
+            <MathText text={trimmed.slice(3)} inline={true} />
+          </h2>
+        );
+        continue;
+      }
+
+      // H3
+      if (trimmed.startsWith('### ')) {
+        nodes.push(
+          <h3 key={idx} className="text-sm sm:text-base font-bold text-orange-200 pt-3 pb-1 w-full">
+            <MathText text={trimmed.slice(4)} inline={true} />
+          </h3>
+        );
+        continue;
+      }
+
+      // H4
+      if (trimmed.startsWith('#### ')) {
+        nodes.push(
+          <h4 key={idx} className="text-xs sm:text-sm font-bold text-zinc-300 pt-2 pb-0.5 w-full">
+            <MathText text={trimmed.slice(5)} inline={true} />
+          </h4>
+        );
+        continue;
+      }
+
+      // Separator
+      if (trimmed === '---' || trimmed === '***' || trimmed === '___') {
+        nodes.push(<hr key={idx} className="border-zinc-800/80 my-3 w-full" />);
+        continue;
+      }
+
+      // Blockquote
+      if (trimmed.startsWith('>')) {
+        const quoteContent = trimmed.startsWith('> ') ? trimmed.slice(2) : trimmed.slice(1).trim();
+        nodes.push(
+          <div key={idx} className="border-l-3 border-orange-500/80 bg-[#252832] px-3.5 py-2.5 rounded-r-xl my-2 text-zinc-200 text-[13px] sm:text-sm leading-relaxed shadow-xs w-full">
+            <MathText text={quoteContent} inline={true} />
+          </div>
+        );
+        continue;
+      }
+
+      // Bullet lists
+      if (trimmed.startsWith('- ') || trimmed.startsWith('* ') || trimmed.startsWith('• ')) {
+        nodes.push(
+          <div key={idx} className="flex items-start gap-2.5 pl-2 text-zinc-200 py-0.5">
+            <span className="text-orange-400 text-sm mt-0.5 shrink-0">•</span>
+            <div className="flex-1 whitespace-pre-wrap break-words">
+              <MathText text={trimmed.slice(2)} inline={true} />
+            </div>
+          </div>
+        );
+        continue;
+      }
+
+      // Empty line
+      if (!trimmed) {
+        nodes.push(<div key={idx} className="h-1.5" />);
+        continue;
+      }
+
+      // Regular text with KaTeX
+      nodes.push(
+        <div key={idx} className="whitespace-pre-wrap break-words">
+          <MathText text={line} inline={true} />
+        </div>
+      );
+    }
+
+    if (inCode && codeBuffer.length > 0) {
+      nodes.push(
+        <pre key="code-end" className="bg-[#121317] border border-zinc-800 p-3 rounded-xl overflow-x-auto text-xs font-mono text-emerald-300 my-2.5 leading-normal shadow-inner">
+          <code>{codeBuffer.join('\n')}</code>
+        </pre>
+      );
+    }
+
+    return nodes;
+  }, [normalizedText]);
+
+  return (
+    <div className="flex flex-col w-full items-start">
+      <div className="space-y-2 text-zinc-200 text-left w-full leading-relaxed font-medium">
+        {elements}
+      </div>
+    </div>
+  );
+};
+
 export function RightMenu({ 
   isRightFullscreen, 
   setIsRightFullscreen, 
@@ -210,6 +718,13 @@ export function RightMenu({
   const [generatingInfo, setGeneratingInfo] = useState<{ type: string; title: string; subtitle?: string } | null>(null);
   const [selectedCategory, setSelectedCategory] = useState<string>('all');
   const abortControllerRef = useRef<AbortController | null>(null);
+  const [reaction, setReaction] = useState<'like' | 'dislike' | null>(null);
+  const [isCopied, setIsCopied] = useState(false);
+
+  useEffect(() => {
+    setReaction(null);
+    setIsCopied(false);
+  }, [activeCreation?.id]);
   
   const [historyItems, setHistoryItems] = useState<any[]>(() => {
     try {
@@ -850,11 +1365,13 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
     }
   };
 
-  // Rendu du composant correspondant au module actif
+  // Rendu de la création active : Structure identique au fil de discussion IA du menu Chat
   const renderActiveCreation = () => {
-    const currentType = activeCreation?.toolType || activeTabModule;
+    const currentType = (activeCreation?.toolType || activeTabModule || 'questionnaire') as ModuleId;
     const currentData = activeCreation?.content;
     const currentTitle = activeCreation?.title;
+    const currentDoc = activeCreation?.sourceFileName;
+    const currentMod = MODULES.find(m => m.id === currentType) || MODULES[0];
 
     // Si la génération a échoué, afficher un écran d'erreur clair avec bouton Réessayer
     if (currentData?.error) {
@@ -893,42 +1410,154 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
       );
     }
 
-    switch (currentType) {
-      case 'questionnaire':
-        return <Questionnaire data={currentData} />;
-      case 'questionnaire-test':
-        return <QuestionnaireTest data={currentData} />;
-      case 'vrai-ou-faux':
-        return <VraiOuFaux data={currentData} />;
-      case 'vrai-ou-faux-test':
-        return <VraiOuFauxTest data={currentData} />;
-      case 'carte-mentale':
-        return <CarteMentale data={currentData} title={currentTitle} />;
-      case 'carte-mentale-2':
-        return <CarteMentaleConceptuelle data={currentData} title={currentTitle} />;
-      case 'carte-memoire':
-      case 'flashcards':
-        return <CarteMemoire data={currentData} />;
-      case 'resume':
-      case 'summary':
-        return <Resume data={currentData} title={currentTitle} sourceFileName={activeCreation?.sourceFileName} />;
-      case 'pdf':
-      case 'document':
-        return <Pdf data={currentData} title={currentTitle} />;
-      case 'infographie':
-      case 'infographic':
-        return <Infographie data={currentData} title={currentTitle} />;
-      case 'exercices-ecrits':
-        return <ExercicesEcrits data={currentData} title={currentTitle} />;
-      case 'devoir-complet':
-        return <DevoirComplet data={currentData} title={currentTitle} />;
-      case 'quiz':
-        return <Questionnaire data={currentData} />;
-      case 'mindmap':
-        return <CarteMentale data={currentData} title={currentTitle} />;
-      default:
-        return <Questionnaire data={currentData} />;
-    }
+    const markdownContent = formatCreationToMarkdown(currentType, currentData, currentTitle, currentDoc);
+
+    return (
+      <div className="w-full flex flex-col items-center animate-fadeIn min-h-0">
+        {/* Barre de navigation rapide des 12 modules (accès 1-clic direct sans écrire) */}
+        <div className="w-full bg-[#1e2024] border-b border-zinc-700/60 px-3 py-2 overflow-x-auto custom-scrollbar flex items-center gap-1.5 shrink-0 sticky top-0 z-20 shadow-xs">
+          <span className="text-[10px] font-bold text-zinc-400 uppercase tracking-wider shrink-0 mr-1 flex items-center gap-1">
+            <Sparkles className="w-3 h-3 text-orange-400" />
+            Modules :
+          </span>
+          {MODULES.map((mod) => {
+            const IconComp = mod.icon;
+            const isCurrent = currentType === mod.id;
+            return (
+              <button
+                key={mod.id}
+                type="button"
+                onClick={() => handleProposalClick(mod)}
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-semibold shrink-0 transition-all cursor-pointer border active:scale-95 ${
+                  isCurrent
+                    ? 'bg-orange-500/20 text-orange-300 border-orange-500/60 shadow-xs'
+                    : 'bg-[#252830] text-zinc-300 border-zinc-700/60 hover:bg-[#2e323c] hover:border-zinc-500 hover:text-white'
+                }`}
+                title={`Générer ${mod.label}`}
+              >
+                <IconComp className="w-3.5 h-3.5" style={{ color: mod.borderColor }} />
+                <span>{mod.label}</span>
+              </button>
+            );
+          })}
+        </div>
+
+        {/* Zone de contenu : Rendu dans la structure exacte de bulle Chat de l'IA (comme à gauche) */}
+        <div className="w-full p-3 sm:p-5 md:p-6 flex flex-col items-center">
+          <div className="w-full max-w-4xl bg-[#1e2024] rounded-2xl border border-zinc-700/70 p-4 sm:p-6 shadow-xl text-zinc-100 flex flex-col">
+            
+            {/* En-tête de message IA (ADN, Titre IA, Badge Module, Document) */}
+            <div className="mb-4 flex items-center justify-between flex-wrap gap-2 pb-3 border-b border-zinc-700/60">
+              <div className="flex items-center gap-2.5">
+                <DnaLogo className="w-5 h-5 drop-shadow-[0_0_2px_rgba(0,0,0,1)] text-orange-500" glow={true} />
+                <span className="text-xs font-bold text-orange-500/90 tracking-wide uppercase">Assistant StudyCloud</span>
+                {currentMod && (
+                  <span
+                    className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-bold uppercase tracking-wider"
+                    style={{
+                      backgroundColor: `${currentMod.borderColor}20`,
+                      color: currentMod.borderColor,
+                      border: `1px solid ${currentMod.borderColor}40`
+                    }}
+                  >
+                    {currentMod.badge}
+                  </span>
+                )}
+              </div>
+
+              {currentDoc && (
+                <div className="flex items-center gap-1.5 flex-wrap">
+                  <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-orange-500/15 border border-orange-500/30 text-[10px] font-semibold text-orange-300">
+                    <FileText className="w-3 h-3 text-orange-400 shrink-0" />
+                    <span className="truncate max-w-[140px] sm:max-w-[220px]">{currentDoc}</span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            {/* Corps du message formaté (Markdown riche + KaTeX MathText) */}
+            <div className="text-[13px] sm:text-sm leading-relaxed font-medium text-zinc-200 pl-1">
+              <CreationChatMessageText markdown={markdownContent} />
+            </div>
+
+            {/* Barre d'actions sous le message (Like, Dislike, Copier, Regénérer, Retour) */}
+            <div className="flex items-center justify-between mt-6 pt-3 border-t border-zinc-700/60 text-zinc-400 flex-wrap gap-2">
+              <div className="flex items-center gap-1 sm:gap-2">
+                <button
+                  type="button"
+                  onClick={() => setReaction(prev => prev === 'like' ? null : 'like')}
+                  className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                    reaction === 'like'
+                      ? 'text-emerald-400 bg-emerald-500/20'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                  title="Bonne réponse (j'aime)"
+                >
+                  <ThumbsUp className="w-4 h-4" />
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setReaction(prev => prev === 'dislike' ? null : 'dislike')}
+                  className={`p-2 rounded-xl transition-colors cursor-pointer ${
+                    reaction === 'dislike'
+                      ? 'text-rose-400 bg-rose-500/20'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800'
+                  }`}
+                  title="Mauvaise réponse"
+                >
+                  <ThumbsDown className="w-4 h-4" />
+                </button>
+                <div className="w-px h-4 bg-zinc-700 mx-1" />
+                <button
+                  type="button"
+                  onClick={() => {
+                    navigator.clipboard.writeText(markdownContent);
+                    setIsCopied(true);
+                    setTimeout(() => setIsCopied(false), 2000);
+                  }}
+                  className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-xl transition-colors cursor-pointer text-zinc-400 hover:text-white flex items-center gap-1.5 text-xs font-semibold"
+                  title="Copier la réponse"
+                >
+                  {isCopied ? (
+                    <>
+                      <Check className="w-4 h-4 text-emerald-400" />
+                      <span className="text-[11px] font-bold text-emerald-400">Copié</span>
+                    </>
+                  ) : (
+                    <>
+                      <Copy className="w-4 h-4" />
+                      <span className="hidden sm:inline">Copier</span>
+                    </>
+                  )}
+                </button>
+
+                {currentMod && (
+                  <button
+                    type="button"
+                    onClick={() => handleProposalClick(currentMod)}
+                    className="p-1.5 sm:p-2 hover:bg-zinc-800 rounded-xl transition-colors cursor-pointer text-zinc-400 hover:text-orange-400 flex items-center gap-1.5 text-xs font-semibold"
+                    title="Regénérer cette création"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5" />
+                    <span className="hidden sm:inline">Regénérer</span>
+                  </button>
+                )}
+              </div>
+
+              <button
+                type="button"
+                onClick={() => setActiveCreation(null)}
+                className="px-3 py-1.5 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 hover:text-white transition-all cursor-pointer border border-zinc-700 flex items-center gap-1.5 active:scale-95"
+              >
+                <Plus className="w-3.5 h-3.5 text-orange-400" />
+                <span>Nouveau module</span>
+              </button>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    );
   };
 
   return (
@@ -1058,12 +1687,8 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
             </div>
           </div>
         ) : activeCreation ? (
-          /* ÉTAT 2 : CRÉATION ACTIVE INTERACTIVE (RENDU DU MODULE SÉLECTIONNÉ) */
-          <div className="w-full h-full flex flex-col animate-fadeIn min-h-0 bg-[#16181f]">
-            <div className="flex-1 w-full overflow-y-auto custom-scrollbar scroll-smooth min-h-0">
-              {renderActiveCreation()}
-            </div>
-          </div>
+          /* ÉTAT 2 : CRÉATION ACTIVE FORMAT CHAT IA (STRUCTURE IDENTIQUE AU CHAT DE GAUCHE) */
+          renderActiveCreation()
         ) : (
           /* ÉTAT 3 : LES 12 BOUTONS OFFICIELS DE CRÉATION 1-CLIC */
           <div className="w-full max-w-5xl mx-auto p-3 sm:p-5 lg:p-6 space-y-4 sm:space-y-5">
