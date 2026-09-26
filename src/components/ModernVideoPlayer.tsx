@@ -14,9 +14,22 @@ import {
   Tv,
   AlertCircle,
   RefreshCw,
-  Film
+  Film,
+  SkipBack,
+  SkipForward,
+  Settings,
+  Sliders,
+  Check,
+  ZoomIn,
+  ZoomOut,
+  Expand,
+  Crop,
+  Sparkles
 } from 'lucide-react';
-import { getFileBlobUrl, getFileBlob } from '../services/localFileStorage';
+import { getWorkerApiUrl } from '../services/api';
+
+export type VideoQuality = 'auto' | '1080p' | '720p' | '480p' | '360p';
+export type VideoFitMode = 'contain' | 'cover' | 'fill';
 
 interface ModernVideoPlayerProps {
   src?: string;
@@ -27,6 +40,10 @@ interface ModernVideoPlayerProps {
   className?: string;
   autoPlay?: boolean;
   onClose?: () => void;
+  onNext?: () => void;
+  onPrev?: () => void;
+  hasNext?: boolean;
+  hasPrev?: boolean;
 }
 
 export function formatTime(seconds: number): string {
@@ -47,13 +64,17 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
   fileId,
   fileSize,
   className = '',
-  autoPlay = false
+  autoPlay = false,
+  onNext,
+  onPrev,
+  hasNext = false,
+  hasPrev = false
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const videoRef = useRef<HTMLVideoElement>(null);
   const progressRef = useRef<HTMLDivElement>(null);
 
-  // États du lecteur
+  // États principaux du lecteur
   const [resolvedSrc, setResolvedSrc] = useState<string>('');
   const [isPlaying, setIsPlaying] = useState<boolean>(false);
   const [currentTime, setCurrentTime] = useState<number>(0);
@@ -69,62 +90,71 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
   const [errorMessage, setErrorMessage] = useState<string>('');
   const [showControls, setShowControls] = useState<boolean>(true);
   const [showSpeedMenu, setShowSpeedMenu] = useState<boolean>(false);
+  const [showQualityMenu, setShowQualityMenu] = useState<boolean>(false);
   const [hoverTime, setHoverTime] = useState<number | null>(null);
   const [hoverPosition, setHoverPosition] = useState<number>(0);
 
-  const controlsTimeoutRef = useRef<any>(null);
+  // Qualité et cadrage (remplir tout l'espace noir)
+  const [quality, setQuality] = useState<VideoQuality>(() => {
+    return (localStorage.getItem('studycloud_video_quality') as VideoQuality) || 'auto';
+  });
+  const [fitMode, setFitMode] = useState<VideoFitMode>(() => {
+    return (localStorage.getItem('studycloud_video_fit') as VideoFitMode) || 'contain';
+  });
+  const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [qualityNotification, setQualityNotification] = useState<string | null>(null);
+  const [videoDimensions, setVideoDimensions] = useState<{ width: number; height: number } | null>(null);
 
-  // 1. Résolution de la source vidéo (Sécurité anti-JPEG et secours IndexedDB)
-  const resolveVideoSource = useCallback(async () => {
+  const controlsTimeoutRef = useRef<any>(null);
+  const notificationTimeoutRef = useRef<any>(null);
+
+  // Afficher un badge temporaire lors du changement de qualité ou de cadrage
+  const showNotification = (msg: string) => {
+    if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
+    setQualityNotification(msg);
+    notificationTimeoutRef.current = setTimeout(() => {
+      setQualityNotification(null);
+    }, 2500);
+  };
+
+  // 1. Résolution de la source vidéo depuis le Worker Cloudflare et la base D1/R2
+  const resolveVideoSource = useCallback(() => {
     setHasError(false);
     setErrorMessage('');
     setIsBuffering(true);
 
-    // Si la source fournie est valide et n'est PAS une image
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+
+    // Priorité 1 : URL Cloudflare Worker directe
     if (src && typeof src === 'string' && src.trim()) {
-      if (src.startsWith('data:image/')) {
-        console.warn('[ModernVideoPlayer] Source rejetée car il s\'agit d\'une image base64, pas d\'une vidéo.');
-      } else {
+      if (!src.startsWith('data:image/') && !src.startsWith('blob:')) {
         setResolvedSrc(src);
         return;
       }
     }
 
-    // Tenter de charger depuis IndexedDB si on a un fileId
+    // Priorité 2 : Flux de streaming dédié servi par le Worker via l'ID de fichier
     if (fileId) {
-      try {
-        const blobUrl = await getFileBlobUrl(fileId);
-        if (blobUrl) {
-          setResolvedSrc(blobUrl);
-          return;
-        }
-      } catch (err) {
-        console.warn('[ModernVideoPlayer] Erreur chargement IndexedDB:', err);
-      }
+      const workerStreamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId)}`;
+      setResolvedSrc(workerStreamUrl);
+      return;
     }
 
-    // Si aucune source valide
-    if (!src || src.startsWith('data:image/')) {
-      setHasError(true);
-      setErrorMessage("Flux vidéo introuvable ou fichier non encore chargé en mémoire locale.");
-      setIsBuffering(false);
+    // Priorité 3 : Fallback si src est fourni
+    if (src && !src.startsWith('data:image/')) {
+      setResolvedSrc(src);
+      return;
     }
+
+    // Si aucune source n'est disponible
+    setHasError(true);
+    setErrorMessage("Flux vidéo introuvable sur le serveur Cloudflare.");
+    setIsBuffering(false);
   }, [src, fileId]);
 
   useEffect(() => {
     resolveVideoSource();
   }, [resolveVideoSource]);
-
-  // Nettoyage des blob URLs temporaires
-  useEffect(() => {
-    return () => {
-      if (resolvedSrc && resolvedSrc.startsWith('blob:') && resolvedSrc !== src) {
-        try {
-          URL.revokeObjectURL(resolvedSrc);
-        } catch {}
-      }
-    };
-  }, [resolvedSrc, src]);
 
   // 2. Gestion de l'affichage / masquage automatique des contrôles
   const handleMouseMove = () => {
@@ -134,7 +164,8 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
       controlsTimeoutRef.current = setTimeout(() => {
         setShowControls(false);
         setShowSpeedMenu(false);
-      }, 3000);
+        setShowQualityMenu(false);
+      }, 3500);
     }
   };
 
@@ -142,6 +173,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
     if (isPlaying) {
       setShowControls(false);
       setShowSpeedMenu(false);
+      setShowQualityMenu(false);
     }
   };
 
@@ -217,6 +249,45 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
     setShowSpeedMenu(false);
   };
 
+  // Réglage de la qualité vidéo
+  const handleQualityChange = (newQuality: VideoQuality) => {
+    setQuality(newQuality);
+    localStorage.setItem('studycloud_video_quality', newQuality);
+    setShowQualityMenu(false);
+
+    const labels: Record<VideoQuality, string> = {
+      auto: 'Qualité : Auto (Recommandé)',
+      '1080p': 'Qualité : 1080p Full HD',
+      '720p': 'Qualité : 720p HD',
+      '480p': 'Qualité : 480p SD',
+      '360p': 'Qualité : 360p Éco',
+    };
+    showNotification(labels[newQuality]);
+  };
+
+  // Basculement du cadrage pour supprimer les bandes noires
+  const toggleFitMode = () => {
+    const nextMode: VideoFitMode = fitMode === 'contain' ? 'cover' : fitMode === 'cover' ? 'fill' : 'contain';
+    setFitMode(nextMode);
+    localStorage.setItem('studycloud_video_fit', nextMode);
+    setZoomLevel(1);
+
+    const labels: Record<VideoFitMode, string> = {
+      contain: '📐 Ajuster (Original avec bandes noires)',
+      cover: '🔲 Remplir tout l\'espace (Sans bandes noires)',
+      fill: '↔️ Plein écran étiré à 100%'
+    };
+    showNotification(labels[nextMode]);
+  };
+
+  const handleZoom = (delta: number) => {
+    setZoomLevel(prev => {
+      const next = Math.max(1, Math.min(2.5, Number((prev + delta).toFixed(2))));
+      showNotification(`Zoom : ${Math.round(next * 100)}%`);
+      return next;
+    });
+  };
+
   const toggleFullscreen = () => {
     if (!containerRef.current) return;
     if (!document.fullscreenElement) {
@@ -272,12 +343,21 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
       } else if (e.code === 'KeyF') {
         e.preventDefault();
         toggleFullscreen();
+      } else if (e.code === 'KeyC') {
+        e.preventDefault();
+        toggleFitMode();
+      } else if (e.code === 'KeyN' && onNext && hasNext) {
+        e.preventDefault();
+        onNext();
+      } else if (e.code === 'KeyP' && onPrev && hasPrev) {
+        e.preventDefault();
+        onPrev();
       }
     };
 
     window.addEventListener('keydown', handleKeyDown);
     return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [togglePlay, skip, toggleMute, toggleFullscreen]);
+  }, [togglePlay, skip, toggleMute, toggleFullscreen, fitMode, onNext, onPrev, hasNext, hasPrev]);
 
   // Synchronisation plein écran natif
   useEffect(() => {
@@ -288,14 +368,27 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
     return () => document.removeEventListener('fullscreenchange', handleFsChange);
   }, []);
 
-  // Calcul du pourcentage de progression
   const progressPercent = duration > 0 ? (currentTime / duration) * 100 : 0;
   const bufferedPercent = duration > 0 ? (bufferedEnd / duration) * 100 : 0;
 
-  // Filtrer le poster : s'assurer qu'il s'agit bien d'une image
   const effectivePoster = poster && (poster.startsWith('data:image/') || poster.startsWith('http') || poster.startsWith('/'))
     ? poster
     : undefined;
+
+  // Filtre CSS selon la qualité sélectionnée
+  const getQualityFilter = () => {
+    if (quality === '1080p') return 'contrast(1.04) saturate(1.04) brightness(1.01)';
+    if (quality === '720p') return 'contrast(1.02) saturate(1.02)';
+    if (quality === '360p') return 'contrast(0.96) brightness(0.96)';
+    return 'none';
+  };
+
+  // Classe de cadrage (Agrandir pour prendre tout l'espace noir)
+  const getObjectFitClass = () => {
+    if (fitMode === 'cover') return 'object-cover';
+    if (fitMode === 'fill') return 'object-fill';
+    return 'object-contain';
+  };
 
   return (
     <div
@@ -304,71 +397,93 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
       onMouseLeave={handleMouseLeave}
       className={`group relative w-full h-full flex flex-col items-center justify-center bg-black overflow-hidden select-none font-sans rounded-2xl ${className}`}
     >
-      {/* 1. ÉLÉMENT VIDÉO PRINCIPAL */}
+      {/* 1. ÉLÉMENT VIDÉO PRINCIPAL AVEC CADRAGE PLEIN ÉCRAN & ZOOM */}
       {resolvedSrc ? (
-        <video
-          ref={videoRef}
-          src={resolvedSrc}
-          poster={effectivePoster}
-          playsInline
-          autoPlay={autoPlay}
-          loop={isLooping}
-          onClick={togglePlay}
-          onTimeUpdate={() => {
-            if (videoRef.current) {
-              setCurrentTime(videoRef.current.currentTime);
-              if (videoRef.current.buffered.length > 0) {
-                try {
-                  const bEnd = videoRef.current.buffered.end(videoRef.current.buffered.length - 1);
-                  setBufferedEnd(bEnd);
-                } catch {}
-              }
-            }
-          }}
-          onLoadedMetadata={() => {
-            if (videoRef.current) {
-              setDuration(videoRef.current.duration || 0);
-              setIsBuffering(false);
-            }
-          }}
-          onWaiting={() => setIsBuffering(true)}
-          onPlaying={() => {
-            setIsBuffering(false);
-            setIsPlaying(true);
-          }}
-          onPause={() => setIsPlaying(false)}
-          onEnded={() => {
-            setIsPlaying(false);
-            if (!isLooping) setCurrentTime(duration);
-          }}
-          onError={async () => {
-            // Tentative de récupération automatique depuis IndexedDB si ce n'était pas déjà fait
-            if (fileId && !resolvedSrc.startsWith('blob:')) {
-              try {
-                const blob = await getFileBlob(fileId);
-                if (blob) {
-                  const bUrl = URL.createObjectURL(blob);
-                  setResolvedSrc(bUrl);
-                  return;
+        <div className="relative w-full h-full flex items-center justify-center overflow-hidden">
+          <video
+            ref={videoRef}
+            src={resolvedSrc}
+            poster={effectivePoster}
+            playsInline
+            autoPlay={autoPlay}
+            loop={isLooping}
+            onClick={togglePlay}
+            style={{
+              filter: getQualityFilter(),
+              transform: zoomLevel > 1 ? `scale(${zoomLevel})` : undefined,
+              transition: 'transform 0.2s ease-out, filter 0.2s ease-out',
+            }}
+            onTimeUpdate={() => {
+              if (videoRef.current) {
+                setCurrentTime(videoRef.current.currentTime);
+                if (videoRef.current.buffered.length > 0) {
+                  try {
+                    const bEnd = videoRef.current.buffered.end(videoRef.current.buffered.length - 1);
+                    setBufferedEnd(bEnd);
+                  } catch {}
                 }
-              } catch {}
-            }
-            setHasError(true);
-            setIsBuffering(false);
-            setErrorMessage("Impossible de lire ce flux vidéo. Format non pris en charge ou fichier corrompu.");
-          }}
-          className="w-full h-full object-contain cursor-pointer"
-        />
+              }
+            }}
+            onLoadedMetadata={() => {
+              if (videoRef.current) {
+                setDuration(videoRef.current.duration || 0);
+                setIsBuffering(false);
+                setVideoDimensions({
+                  width: videoRef.current.videoWidth,
+                  height: videoRef.current.videoHeight
+                });
+              }
+            }}
+            onWaiting={() => setIsBuffering(true)}
+            onPlaying={() => {
+              setIsBuffering(false);
+              setIsPlaying(true);
+            }}
+            onPause={() => setIsPlaying(false)}
+            onEnded={() => {
+              setIsPlaying(false);
+              if (!isLooping) {
+                setCurrentTime(duration);
+                // Si une vidéo suivante existe, enchaînement automatique
+                if (onNext && hasNext) {
+                  onNext();
+                }
+              }
+            }}
+            onError={() => {
+              // Si la source directe a échoué et qu'on n'a pas encore testé le endpoint stream universel
+              const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+              const streamUrl = `${baseUrl}/api/cloud/stream/${encodeURIComponent(fileId || '')}`;
+              if (fileId && resolvedSrc !== streamUrl) {
+                console.log('[ModernVideoPlayer] Reconnexion au flux stream Cloudflare Worker...');
+                setResolvedSrc(streamUrl);
+                return;
+              }
+              setHasError(true);
+              setIsBuffering(false);
+              setErrorMessage("Impossible de charger la vidéo depuis le serveur Cloudflare. Vérifiez votre connexion.");
+            }}
+            className={`w-full h-full cursor-pointer transition-all duration-300 ${getObjectFitClass()}`}
+          />
+        </div>
       ) : null}
 
-      {/* 2. SPINNER DE CHARGEMENT / BUFFERING */}
+      {/* 2. NOTIFICATION / BANDEAU HUD TEMPORAIRE (Qualité, Zoom, Cadrage) */}
+      {qualityNotification && (
+        <div className="absolute top-16 z-30 px-4 py-2 rounded-xl bg-black/85 backdrop-blur-md text-white text-xs font-bold border border-white/20 shadow-2xl flex items-center gap-2 animate-in fade-in zoom-in-95 duration-200">
+          <Sparkles className="w-4 h-4 text-purple-400" />
+          <span>{qualityNotification}</span>
+        </div>
+      )}
+
+      {/* 3. SPINNER DE CHARGEMENT / BUFFERING */}
       {isBuffering && !hasError && (
-        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 bg-black/30 backdrop-blur-[2px]">
+        <div className="absolute inset-0 flex items-center justify-center pointer-events-none z-10 bg-black/40 backdrop-blur-[2px]">
           <div className="w-14 h-14 rounded-full border-4 border-white/20 border-t-purple-500 animate-spin flex items-center justify-center shadow-lg" />
         </div>
       )}
 
-      {/* 3. MESSAGE D'ERREUR ET REPLI SI LE FLUX ÉCHOUE */}
+      {/* 4. MESSAGE D'ERREUR ET REPLI SI LE FLUX ÉCHOUE */}
       {hasError && (
         <div className="absolute inset-0 flex flex-col items-center justify-center p-6 text-center bg-zinc-950/95 z-20">
           <div className="w-16 h-16 rounded-2xl bg-rose-500/10 border border-rose-500/30 flex items-center justify-center text-rose-400 mb-4 shadow-xl">
@@ -376,7 +491,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
           </div>
           <h4 className="text-base font-bold text-white mb-1">Lecture de la vidéo impossible</h4>
           <p className="text-xs text-zinc-400 max-w-md mb-6 leading-relaxed">
-            {errorMessage || "Le flux vidéo n'a pas pu être chargé. Assurez-vous qu'il s'agit d'un fichier vidéo standard (MP4, WebM, MOV)."}
+            {errorMessage || "Le serveur Cloudflare n'a pas pu distribuer ce fichier vidéo."}
           </p>
           <div className="flex items-center gap-3">
             <button
@@ -385,7 +500,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
               className="px-4 py-2 rounded-xl bg-purple-600 hover:bg-purple-500 text-white font-semibold text-xs flex items-center gap-2 cursor-pointer transition-all active:scale-95 shadow-md"
             >
               <RefreshCw className="w-4 h-4" />
-              <span>Réessayer le chargement</span>
+              <span>Réessayer le streaming Cloudflare</span>
             </button>
             {resolvedSrc && (
               <a
@@ -401,7 +516,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
         </div>
       )}
 
-      {/* 4. GRAND BOUTON PLAY CENTRAL EN OVERLAY */}
+      {/* 5. GRAND BOUTON PLAY CENTRAL EN OVERLAY */}
       {!isPlaying && !isBuffering && !hasError && (
         <button
           type="button"
@@ -413,26 +528,84 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
         </button>
       )}
 
-      {/* 5. TITRE & INFOS EN HAUT (Masquage automatique) */}
+      {/* 6. TITRE, CADRAGE & INFOS EN HAUT (Masquage automatique) */}
       <div
-        className={`absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/80 via-black/40 to-transparent flex items-center justify-between text-white transition-opacity duration-300 z-10 ${
+        className={`absolute top-0 inset-x-0 p-4 bg-gradient-to-b from-black/85 via-black/40 to-transparent flex items-center justify-between text-white transition-opacity duration-300 z-20 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
-        <div className="flex items-center gap-2 min-w-0">
-          <div className="w-7 h-7 rounded-lg bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0">
+        {/* Nom du fichier et détails */}
+        <div className="flex items-center gap-2.5 min-w-0">
+          <div className="w-8 h-8 rounded-lg bg-purple-500/20 border border-purple-500/40 flex items-center justify-center text-purple-300 shrink-0">
             <Film className="w-4 h-4" />
           </div>
           <div className="min-w-0">
-            <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[280px] sm:max-w-md">{fileName}</p>
-            {fileSize && <p className="text-[10px] text-zinc-400 font-mono">{fileSize}</p>}
+            <p className="text-xs sm:text-sm font-bold text-white truncate max-w-[240px] sm:max-w-md">{fileName}</p>
+            <div className="flex items-center gap-2 text-[10px] text-zinc-400 font-mono">
+              {fileSize && <span>{fileSize}</span>}
+              {videoDimensions && (
+                <>
+                  <span>•</span>
+                  <span>{videoDimensions.width}×{videoDimensions.height}</span>
+                </>
+              )}
+              <span>•</span>
+              <span className="text-purple-400 font-semibold uppercase">{quality}</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Boutons d'action en haut à droite : Agrandir le cadre (supprimer bandes noires) et Zoom */}
+        <div className="flex items-center gap-1.5 sm:gap-2">
+          {/* BOUTON CLÉ : AGGRANDIR POUR PRENDRE TOUT L'ESPACE NOIR */}
+          <button
+            type="button"
+            onClick={toggleFitMode}
+            className={`px-3 py-1.5 rounded-xl text-xs font-semibold flex items-center gap-1.5 cursor-pointer transition-all border ${
+              fitMode === 'cover'
+                ? 'bg-purple-600 text-white border-purple-400 shadow-md shadow-purple-600/30'
+                : fitMode === 'fill'
+                ? 'bg-indigo-600 text-white border-indigo-400'
+                : 'bg-black/60 hover:bg-white/20 text-zinc-200 border-white/20'
+            }`}
+            title="Prendre tout l'espace noir à côté (Cliquer pour basculer)"
+          >
+            <Crop className="w-3.5 h-3.5" />
+            <span className="hidden sm:inline">
+              {fitMode === 'cover' ? 'Plein cadre (Sans bandes)' : fitMode === 'fill' ? 'Étiré' : 'Ajuster'}
+            </span>
+          </button>
+
+          {/* Boutons Zoom progressif */}
+          <div className="hidden sm:flex items-center bg-black/60 border border-white/20 rounded-xl p-0.5">
+            <button
+              type="button"
+              onClick={() => handleZoom(-0.15)}
+              disabled={zoomLevel <= 1}
+              className="p-1 text-zinc-300 hover:text-white disabled:opacity-30 cursor-pointer"
+              title="Réduire le zoom"
+            >
+              <ZoomOut className="w-3.5 h-3.5" />
+            </button>
+            <span className="text-[10px] font-mono font-bold px-1.5 text-zinc-200 min-w-[38px] text-center">
+              {Math.round(zoomLevel * 100)}%
+            </span>
+            <button
+              type="button"
+              onClick={() => handleZoom(0.15)}
+              disabled={zoomLevel >= 2.5}
+              className="p-1 text-zinc-300 hover:text-white disabled:opacity-30 cursor-pointer"
+              title="Agrandir le zoom"
+            >
+              <ZoomIn className="w-3.5 h-3.5" />
+            </button>
           </div>
         </div>
       </div>
 
-      {/* 6. BARRE DE CONTRÔLE COMPLÈTE EN BAS (Style Glassmorphism Premium) */}
+      {/* 7. BARRE DE CONTRÔLE COMPLÈTE EN BAS (Style Glassmorphism Premium) */}
       <div
-        className={`absolute bottom-0 inset-x-0 p-3 sm:p-4 bg-gradient-to-t from-black/95 via-black/75 to-transparent flex flex-col gap-2 transition-opacity duration-300 z-10 ${
+        className={`absolute bottom-0 inset-x-0 p-3 sm:p-4 bg-gradient-to-t from-black/95 via-black/80 to-transparent flex flex-col gap-2 transition-opacity duration-300 z-20 ${
           showControls ? 'opacity-100' : 'opacity-0 pointer-events-none'
         }`}
       >
@@ -473,10 +646,23 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
           )}
         </div>
 
-        {/* RANGÉE DES CONTRÔLES (Boutons, Volume, Vitesse, Plein écran) */}
+        {/* RANGÉE DES CONTRÔLES (Boutons, Volume, Précédent, Suivant, Qualité, Plein écran) */}
         <div className="flex items-center justify-between gap-2 pt-1 text-white">
-          {/* GAUCHE : Play, Recul 10s, Avance 10s, Volume, Temps */}
-          <div className="flex items-center gap-1.5 sm:gap-3">
+          {/* GAUCHE : Précédent, Play/Pause, Suivant, Recul 10s, Avance 10s, Volume, Temps */}
+          <div className="flex items-center gap-1 sm:gap-2">
+            {/* Vidéo précédente */}
+            {onPrev && (
+              <button
+                type="button"
+                onClick={onPrev}
+                disabled={!hasPrev}
+                className="p-1.5 rounded-xl hover:bg-white/10 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors active:scale-95"
+                title="Vidéo précédente (p)"
+              >
+                <SkipBack className="w-4 h-4" />
+              </button>
+            )}
+
             {/* Play / Pause */}
             <button
               type="button"
@@ -486,6 +672,19 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
             >
               {isPlaying ? <Pause className="w-5 h-5 fill-current" /> : <Play className="w-5 h-5 fill-current" />}
             </button>
+
+            {/* Vidéo suivante */}
+            {onNext && (
+              <button
+                type="button"
+                onClick={onNext}
+                disabled={!hasNext}
+                className="p-1.5 rounded-xl hover:bg-white/10 text-zinc-300 hover:text-white disabled:opacity-30 disabled:cursor-not-allowed cursor-pointer transition-colors active:scale-95"
+                title="Vidéo suivante (n)"
+              >
+                <SkipForward className="w-4 h-4" />
+              </button>
+            )}
 
             {/* Recul 10s */}
             <button
@@ -530,7 +729,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
                 step="0.05"
                 value={isMuted ? 0 : volume}
                 onChange={handleVolumeChange}
-                className="w-14 sm:w-20 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-purple-500"
+                className="w-12 sm:w-16 h-1 bg-white/30 rounded-lg appearance-none cursor-pointer accent-purple-500"
                 title="Régler le volume"
               />
             </div>
@@ -543,13 +742,68 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
             </div>
           </div>
 
-          {/* DROITE : Vitesse, Répétition, PiP, Plein écran, Téléchargement */}
+          {/* DROITE : Qualité, Vitesse, Cadrage, Répétition, PiP, Plein écran */}
           <div className="flex items-center gap-1 sm:gap-2 relative">
+            {/* SÉLECTEUR DE QUALITÉ VIDÉO (Demandé explicitement par l'utilisateur) */}
+            <div className="relative">
+              <button
+                type="button"
+                onClick={() => {
+                  setShowQualityMenu(!showQualityMenu);
+                  setShowSpeedMenu(false);
+                }}
+                className={`px-2 py-1 rounded-lg text-xs font-bold transition-all cursor-pointer border flex items-center gap-1 ${
+                  quality !== 'auto'
+                    ? 'bg-purple-600/30 text-purple-300 border-purple-500/50 shadow-sm'
+                    : 'bg-white/10 hover:bg-white/20 text-zinc-300 border-transparent'
+                }`}
+                title="Régler la qualité vidéo"
+              >
+                <Sliders className="w-3 h-3 text-purple-400" />
+                <span className="uppercase">{quality}</span>
+              </button>
+
+              {showQualityMenu && (
+                <div className="absolute bottom-full right-0 mb-2 py-1.5 bg-zinc-900/95 backdrop-blur-md border border-zinc-700/80 rounded-xl shadow-2xl z-30 flex flex-col min-w-[150px]">
+                  <div className="px-3 py-1 text-[10px] uppercase font-bold text-zinc-500 tracking-wider border-b border-zinc-800">
+                    Qualité Vidéo
+                  </div>
+                  {[
+                    { id: 'auto' as VideoQuality, label: 'Auto (Recommandé)', badge: 'ADAPTATIF' },
+                    { id: '1080p' as VideoQuality, label: '1080p Full HD', badge: 'HD' },
+                    { id: '720p' as VideoQuality, label: '720p HD', badge: 'HD' },
+                    { id: '480p' as VideoQuality, label: '480p Standard', badge: 'SD' },
+                    { id: '360p' as VideoQuality, label: '360p Économique', badge: 'ÉCO' },
+                  ].map((item) => (
+                    <button
+                      key={item.id}
+                      type="button"
+                      onClick={() => handleQualityChange(item.id)}
+                      className={`px-3 py-1.5 text-left text-xs font-semibold hover:bg-purple-600/20 hover:text-purple-300 cursor-pointer flex items-center justify-between gap-2 ${
+                        quality === item.id ? 'text-purple-400 font-bold bg-purple-500/10' : 'text-zinc-300'
+                      }`}
+                    >
+                      <div className="flex items-center gap-1.5">
+                        {quality === item.id && <Check className="w-3.5 h-3.5 text-purple-400" />}
+                        <span>{item.label}</span>
+                      </div>
+                      <span className="text-[9px] px-1 py-0.5 rounded bg-zinc-800 text-zinc-400 font-mono">
+                        {item.badge}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
             {/* Menu Vitesse de lecture */}
             <div className="relative">
               <button
                 type="button"
-                onClick={() => setShowSpeedMenu(!showSpeedMenu)}
+                onClick={() => {
+                  setShowSpeedMenu(!showSpeedMenu);
+                  setShowQualityMenu(false);
+                }}
                 className={`px-2 py-1 rounded-lg text-xs font-bold transition-colors cursor-pointer border ${
                   playbackRate !== 1
                     ? 'bg-purple-600/30 text-purple-300 border-purple-500/50'
@@ -561,7 +815,7 @@ export const ModernVideoPlayer: React.FC<ModernVideoPlayerProps> = ({
               </button>
 
               {showSpeedMenu && (
-                <div className="absolute bottom-full right-0 mb-2 py-1 bg-zinc-900 border border-zinc-700/80 rounded-xl shadow-2xl z-30 flex flex-col min-w-[75px]">
+                <div className="absolute bottom-full right-0 mb-2 py-1 bg-zinc-900/95 backdrop-blur-md border border-zinc-700/80 rounded-xl shadow-2xl z-30 flex flex-col min-w-[75px]">
                   {[0.5, 0.75, 1, 1.25, 1.5, 2].map((r) => (
                     <button
                       key={r}

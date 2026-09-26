@@ -1766,16 +1766,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           };
         }
 
-        // Attacher l'URL de lecture directe
-        finalItem.url = localBlobUrl;
+        // Attacher l'URL de lecture permanente servie par le Worker Cloudflare
+        const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+        const workerStreamUrl = (finalItem.videoUrl && !finalItem.videoUrl.startsWith('blob:')) 
+          ? finalItem.videoUrl 
+          : (finalItem.url && !finalItem.url.startsWith('blob:')) 
+          ? finalItem.url 
+          : `${baseUrl}/api/cloud/stream/${finalItem.id}`;
+        
+        finalItem.url = workerStreamUrl;
         if (finalItem.category === 'videos' || autoCat === 'videos') {
-          finalItem.videoUrl = localBlobUrl;
+          finalItem.videoUrl = workerStreamUrl;
           finalItem.thumbnailUrl = previewDataUrl || undefined;
           finalItem.previewUrl = previewDataUrl || undefined;
         } else if (finalItem.category === 'audio' || autoCat === 'audio') {
-          finalItem.audioUrl = localBlobUrl;
+          finalItem.audioUrl = finalItem.audioUrl && !finalItem.audioUrl.startsWith('blob:') ? finalItem.audioUrl : workerStreamUrl;
+          finalItem.url = finalItem.audioUrl;
         } else if (finalItem.category === 'images' || autoCat === 'images') {
-          finalItem.previewUrl = localBlobUrl;
+          finalItem.previewUrl = finalItem.previewUrl && !finalItem.previewUrl.startsWith('blob:') ? finalItem.previewUrl : workerStreamUrl;
+          finalItem.url = finalItem.previewUrl;
         } else {
           finalItem.previewUrl = previewDataUrl || undefined;
         }
@@ -1864,16 +1873,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           };
         }
 
-        // Attacher l'URL de lecture directe
-        finalItem.url = localBlobUrl;
+        // Attacher l'URL de lecture permanente servie par le Worker Cloudflare
+        const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+        const workerStreamUrl = (finalItem.videoUrl && !finalItem.videoUrl.startsWith('blob:')) 
+          ? finalItem.videoUrl 
+          : (finalItem.url && !finalItem.url.startsWith('blob:')) 
+          ? finalItem.url 
+          : `${baseUrl}/api/cloud/stream/${finalItem.id}`;
+        
+        finalItem.url = workerStreamUrl;
         if (importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) {
-          finalItem.videoUrl = localBlobUrl;
+          finalItem.videoUrl = workerStreamUrl;
           finalItem.thumbnailUrl = previewDataUrl || undefined;
           finalItem.previewUrl = previewDataUrl || undefined;
         } else if (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/)) {
-          finalItem.audioUrl = localBlobUrl;
+          finalItem.audioUrl = finalItem.audioUrl && !finalItem.audioUrl.startsWith('blob:') ? finalItem.audioUrl : workerStreamUrl;
+          finalItem.url = finalItem.audioUrl;
         } else if (importConfig.category === 'images' || normName.match(/\.(jpg|jpeg|png|gif|webp|svg)$/)) {
-          finalItem.previewUrl = localBlobUrl;
+          finalItem.previewUrl = finalItem.previewUrl && !finalItem.previewUrl.startsWith('blob:') ? finalItem.previewUrl : workerStreamUrl;
+          finalItem.url = finalItem.previewUrl;
         } else {
           finalItem.previewUrl = previewDataUrl || undefined;
         }
@@ -2917,18 +2935,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isAudio = Boolean(file.category === 'audio' || file.isAudio || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name));
     const isVideo = Boolean(file.category === 'videos' || file.isVideo || Boolean(file.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv)$/i.test(file.name));
 
-    // Récupération instantanée depuis IndexedDB si l'URL est manquante ou invalide
-    if (file.id && (!file.videoUrl || file.videoUrl.startsWith('data:image/') || !file.url)) {
-      getFileBlobUrl(file.id).then(blobUrl => {
-        if (blobUrl) {
-          setSplitSelectedFile(curr => curr && curr.id === file.id ? {
-            ...curr,
-            videoUrl: isVideo ? blobUrl : curr.videoUrl,
-            audioUrl: isAudio ? blobUrl : curr.audioUrl,
-            url: blobUrl
-          } : curr);
-        }
-      }).catch(() => {});
+    // Priorité absolue au streaming permanent du Worker Cloudflare (évite l'expiration)
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const permanentWorkerUrl = `${baseUrl}/api/cloud/stream/${file.id}`;
+    if (!file.videoUrl || file.videoUrl.startsWith('data:image/') || file.videoUrl.startsWith('blob:')) {
+      file.videoUrl = (file.url && !file.url.startsWith('blob:') && !file.url.startsWith('data:image/'))
+        ? file.url
+        : permanentWorkerUrl;
+    }
+    if (!file.url || file.url.startsWith('blob:')) {
+      file.url = permanentWorkerUrl;
     }
 
     if (isNotepad) {
@@ -3671,6 +3687,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setViewerZoom(1);
     setViewerRotation(0);
     setDocCurrentPage(1);
+
+    // Priorité absolue au streaming permanent du Worker Cloudflare (évite l'expiration)
+    const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+    const permanentWorkerUrl = `${baseUrl}/api/cloud/stream/${nextFile.id}`;
+    if (!nextFile.videoUrl || nextFile.videoUrl.startsWith('data:image/') || nextFile.videoUrl.startsWith('blob:')) {
+      nextFile.videoUrl = (nextFile.url && !nextFile.url.startsWith('blob:') && !nextFile.url.startsWith('data:image/'))
+        ? nextFile.url
+        : permanentWorkerUrl;
+    }
+    if (!nextFile.url || nextFile.url.startsWith('blob:')) {
+      nextFile.url = permanentWorkerUrl;
+    }
 
     const isNotepad = Boolean(nextFile.isNotepad || nextFile.extension === 'txt' || nextFile.name.toLowerCase().endsWith('.txt'));
     const isAudio = Boolean(nextFile.category === 'audio' || nextFile.isAudio || Boolean(nextFile.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(nextFile.name));
@@ -9873,7 +9901,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {isSelectedVideo && !isSelectedAudio && (
                     <div className="w-full h-full flex-1 flex items-center justify-center relative p-1 sm:p-2 overflow-hidden rounded-2xl shadow-2xl">
                       <ModernVideoPlayer
-                        src={splitSelectedFile.videoUrl || (splitSelectedFile as any).url}
+                        src={
+                          (splitSelectedFile.videoUrl && !splitSelectedFile.videoUrl.startsWith('blob:'))
+                            ? splitSelectedFile.videoUrl
+                            : (splitSelectedFile.url && !splitSelectedFile.url.startsWith('blob:'))
+                            ? splitSelectedFile.url
+                            : `${getWorkerApiUrl().replace(/\/+$/, '')}/api/cloud/stream/${splitSelectedFile.id}`
+                        }
                         poster={splitSelectedFile.previewUrl}
                         fileName={splitSelectedFile.name}
                         fileId={splitSelectedFile.id}

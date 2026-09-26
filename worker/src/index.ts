@@ -5593,8 +5593,108 @@ export default {
           headers.set('Content-Disposition', `attachment; filename="${encodeURIComponent(downloadName)}"`);
         }
 
-        const status = rangeHeader && object.range ? 206 : 200;
-        return new Response(object.body, { status, headers });
+        // Correction automatique du type MIME pour garantir la lecture par le lecteur vidéo HTML5
+        let mime = headers.get('Content-Type');
+        if (!mime || mime.includes('octet-stream')) {
+          const ext = key.split('.').pop()?.toLowerCase();
+          const mimeMap = {
+            mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', mkv: 'video/x-matroska', avi: 'video/x-msvideo',
+            mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', flac: 'audio/flac',
+            pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',
+            svg: 'image/svg+xml', gif: 'image/gif'
+          };
+          if (ext && mimeMap[ext]) headers.set('Content-Type', mimeMap[ext]);
+        }
+
+        // Support complet RFC 7233 pour la vidéo (Content-Range et Content-Length obligatoires en 206)
+        if (rangeHeader && object.range) {
+          const start = object.range.offset;
+          const length = object.range.length;
+          const end = start + length - 1;
+          const total = object.size;
+          headers.set('Content-Range', `bytes ${start}-${end}/${total}`);
+          headers.set('Content-Length', String(length));
+          return new Response(object.body, { status: 206, headers });
+        } else {
+          headers.set('Content-Length', String(object.size));
+          return new Response(object.body, { status: 200, headers });
+        }
+      }
+
+      // ----------------------------------------------------------------------
+      // Streaming Universel Permanent par ID de Fichier (/api/cloud/stream/:fileId)
+      // Permet au lecteur vidéo/audio de lire n'importe quel fichier de la BDD D1 / R2
+      // ----------------------------------------------------------------------
+      if (path.startsWith('/api/cloud/stream/') && method === 'GET') {
+        const fileId = path.replace('/api/cloud/stream/', '').trim();
+        if (!fileId || !env.DB) return errorResponse('ID de fichier manquant ou DB inaccessible', 400, origin);
+
+        let foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "videos" as category FROM video_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        if (!foundRecord) {
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "audio" as category FROM audio_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
+        if (!foundRecord) {
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "images" as category FROM image_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
+        if (!foundRecord) {
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "documents" as category FROM document_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
+        if (!foundRecord) {
+          foundRecord = await env.DB.prepare('SELECT id, r2_key, extension, name, "classeur" as category FROM classeur_files WHERE id = ? LIMIT 1').bind(fileId).first();
+        }
+
+        if (!foundRecord || !foundRecord.r2_key) {
+          return errorResponse('Fichier introuvable dans la base de données', 404, origin);
+        }
+
+        const categoryBucket = getBucketForCategory(rawEnv, foundRecord.category);
+        if (!categoryBucket) return errorResponse('Stockage R2 indisponible pour cette catégorie', 503, origin);
+
+        const rangeHeader = request.headers.get('Range');
+        let object;
+        if (rangeHeader) {
+          try {
+            object = await categoryBucket.get(foundRecord.r2_key, { range: request.headers });
+          } catch (e) {
+            object = await categoryBucket.get(foundRecord.r2_key);
+          }
+        } else {
+          object = await categoryBucket.get(foundRecord.r2_key);
+        }
+
+        if (!object) return errorResponse('Objet binaire introuvable dans R2', 404, origin);
+
+        const headers = new Headers();
+        object.writeHttpMetadata(headers);
+        headers.set('etag', object.httpEtag);
+        headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+        headers.set('Accept-Ranges', 'bytes');
+        headers.set('Access-Control-Allow-Origin', origin);
+
+        let mime = headers.get('Content-Type');
+        const ext = (foundRecord.extension || foundRecord.name.split('.').pop() || '').toLowerCase();
+        const mimeMap = {
+          mp4: 'video/mp4', webm: 'video/webm', mov: 'video/quicktime', mkv: 'video/x-matroska', avi: 'video/x-msvideo',
+          mp3: 'audio/mpeg', wav: 'audio/wav', ogg: 'audio/ogg', m4a: 'audio/mp4', flac: 'audio/flac',
+          pdf: 'application/pdf', png: 'image/png', jpg: 'image/jpeg', jpeg: 'image/jpeg', webp: 'image/webp',
+          svg: 'image/svg+xml', gif: 'image/gif'
+        };
+        if (!mime || mime.includes('octet-stream')) {
+          if (ext && mimeMap[ext]) headers.set('Content-Type', mimeMap[ext]);
+        }
+
+        if (rangeHeader && object.range) {
+          const start = object.range.offset;
+          const length = object.range.length;
+          const end = start + length - 1;
+          const total = object.size;
+          headers.set('Content-Range', `bytes ${start}-${end}/${total}`);
+          headers.set('Content-Length', String(length));
+          return new Response(object.body, { status: 206, headers });
+        } else {
+          headers.set('Content-Length', String(object.size));
+          return new Response(object.body, { status: 200, headers });
+        }
       }
 
       // Initialisation paresseuse automatique des tables D1 dédiées
