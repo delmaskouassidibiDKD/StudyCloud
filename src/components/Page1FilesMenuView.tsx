@@ -81,7 +81,7 @@ import {
   UserCheck,
   Palette
 } from 'lucide-react';
-import { getDownloadedFiles, recordDownloadedFile, clearLegacyDownloadedFiles, DownloadedItem } from '../services/downloadsManager';
+import { getDownloadedFiles, recordDownloadedFile, removeDownloadedFile, clearLegacyDownloadedFiles, DownloadedItem } from '../services/downloadsManager';
 import { 
   MODEL_1_FOLDERS, 
   MODEL_2_FOLDERS, 
@@ -100,7 +100,7 @@ import { DocumentCardPreview } from './DocumentCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
 import { AudioCardPreview } from './AudioCardPreview';
 import { generatePdfThumbnail, generateVideoThumbnail, extractAudioCover, generateAudioCreatorCover, setCachedMediaThumbnail } from '../services/mediaPreviewService';
-import { storeFileBlob, getFileBlobUrl, getFileBlob } from '../services/localFileStorage';
+import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob } from '../services/localFileStorage';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
@@ -153,6 +153,35 @@ interface SubMenuView {
   name: string;
   icon: any;
   color: string;
+}
+
+function getLocallyDeletedFileIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem('studycloud_deleted_file_ids');
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return new Set(arr);
+    }
+  } catch {}
+  return new Set();
+}
+
+function markFileLocallyDeleted(id: string, name?: string): void {
+  try {
+    const set = getLocallyDeletedFileIds();
+    if (id) set.add(id);
+    if (name) set.add(name);
+    localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(Array.from(set).slice(-500)));
+  } catch {}
+}
+
+function unmarkFileLocallyDeleted(id: string, name?: string): void {
+  try {
+    const set = getLocallyDeletedFileIds();
+    if (id) set.delete(id);
+    if (name) set.delete(name);
+    localStorage.setItem('studycloud_deleted_file_ids', JSON.stringify(Array.from(set)));
+  } catch {}
 }
 
 export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, onOpenStudySpace, onOpenCreateShareLink }) => {
@@ -436,6 +465,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       [folderId]: [...newFiles, ...(prev[folderId] || [])]
     }));
 
+    // Les récents d'accueil affichent les fichiers nouvellement importés
+    setCloudRecentFiles(prev => {
+      const existingIds = new Set(newFiles.map(f => f.id));
+      return [...newFiles, ...prev.filter(f => !existingIds.has(f.id))].slice(0, 6);
+    });
+
     // Sauvegarde en arrière-plan dans Cloudflare R2 dédié classeur et Cloudflare D1 classeur_files
     files.forEach(async (file, idx) => {
       try {
@@ -459,11 +494,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const fileToDelete = (folderFilesMap[folderId] || []).find(f => f.id === fileId);
     if (fileToDelete) {
       setTrashFiles(prev => [{ ...fileToDelete, originalFolderId: folderId }, ...prev.filter(f => f.id !== fileId)]);
+      markFileLocallyDeleted(fileId, fileToDelete.name);
+    } else {
+      markFileLocallyDeleted(fileId);
     }
     setFolderFilesMap(prev => ({
       ...prev,
       [folderId]: (prev[folderId] || []).filter(f => f.id !== fileId)
     }));
+    setCloudRecentFiles(prev => prev.filter(f => f.id !== fileId && (!fileToDelete || f.name !== fileToDelete.name)));
+    removeDownloadedFile(fileId);
+    if (fileToDelete?.name) removeDownloadedFile(fileToDelete.name);
+    deleteFileBlob(fileId).catch(() => {});
     CloudStorageAPI.deleteClasseurFile(fileId).catch(() => {});
     showToast('Fichier déplacé dans la corbeille');
   };

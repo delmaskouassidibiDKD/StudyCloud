@@ -133,3 +133,19 @@ export function recordDownloadedFile(item: {
 
   return newItem;
 }
+
+/**
+ * Supprime complètement un fichier téléchargé du stockage local
+ */
+export function removeDownloadedFile(idOrName: string): void {
+  if (typeof window === 'undefined') return;
+  try {
+    const current = getDownloadedFiles();
+    const updated = current.filter(f => f.id !== idOrName && f.name !== idOrName);
+    localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    window.dispatchEvent(new CustomEvent('studycloud_download_updated', { detail: { id: idOrName, deleted: true } }));
+  } catch (e) {
+    console.error('[downloadsManager] Erreur suppression:', e);
+  }
+}
+
