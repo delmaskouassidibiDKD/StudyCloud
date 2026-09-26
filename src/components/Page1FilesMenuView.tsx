@@ -4482,17 +4482,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
       return (
         <div 
-          className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-50 w-60 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
+          className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-[100] w-64 bg-[#0B101D] border-2 border-rose-500/80 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(244,63,94,0.35)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
           onClick={(e) => e.stopPropagation()}
         >
-          {/* En-tête du menu */}
-          <div className="px-3 py-2 bg-slate-900 border-b border-white/10 flex items-center justify-between gap-2 shrink-0">
+          {/* En-tête du menu corbeille flottant */}
+          <div className="px-3.5 py-2.5 bg-rose-950/40 border-b border-rose-500/30 flex items-center justify-between gap-2 shrink-0">
             <div className="min-w-0">
               <p className="text-[11px] font-black text-white truncate" title={file.name}>
                 {file.name}
               </p>
-              <p className="text-[9px] font-semibold text-slate-400">
-                {file.size} • <span className="uppercase text-rose-400 font-bold">Corbeille</span>
+              <p className="text-[9px] font-semibold text-rose-300">
+                {file.size} • <span className="uppercase font-bold tracking-wider text-rose-400">Corbeille</span>
               </p>
             </div>
             <button
@@ -4503,7 +4503,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 setDocMenuOpenId(null);
                 setAudioMenuSongId(null);
               }}
-              className="p-1 rounded-md text-slate-400 hover:text-white hover:bg-white/10 transition-colors shrink-0 cursor-pointer"
+              className="p-1 rounded-md text-rose-300 hover:text-white hover:bg-rose-500/20 transition-colors shrink-0 cursor-pointer"
               title="Fermer"
             >
               <X className="w-3.5 h-3.5" />
@@ -4595,7 +4595,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     return (
       <div 
-        className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-50 w-60 bg-[#0A0F1D] border-2 border-slate-500/90 rounded-2xl shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_0_1px_rgba(255,255,255,0.15)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
+        className={`studycloud-file-menu-panel absolute ${align === 'right' ? 'right-0' : 'left-0'} top-9 z-[100] w-64 bg-[#0B101D] border-2 border-slate-600/90 shadow-[0_25px_60px_rgba(0,0,0,0.98),0_0_25px_rgba(59,130,246,0.25)] text-slate-200 animate-in fade-in zoom-in-95 duration-150 overflow-hidden flex flex-col`}
         onClick={(e) => e.stopPropagation()}
       >
           {/* En-tête de menu dédié avec nom du fichier et bouton fermeture */}
@@ -6116,13 +6116,17 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // =========================================================================
 
   // Rendu Carte Document (Image 1 : bouton 3 traits, case à cocher en mode sélection, un seul titre)
-  const renderDocumentCard = (doc: FileItem) => {
+  const renderDocumentCard = (doc: FileItem, index?: number, customList?: FileItem[]) => {
     const theme = getDocumentTheme(doc.extension || 'PDF');
     const isSelected = splitSelectedFile?.id === doc.id;
     const isMenuOpen = activeMenuFileId === doc.id || docMenuOpenId === doc.id;
     const isChecked = selectedItemIds.includes(doc.id);
     const isSaving = savingFileProgress[doc.id] !== undefined;
     const progressVal = savingFileProgress[doc.id] || 0;
+
+    // Déterminer alignement du menu
+    const isRightCol = typeof index === 'number' && ((index + 1) % (splitSelectedFile ? 3 : 5) === 0 || (index + 1) % (splitSelectedFile ? 3 : 6) === 0);
+    const menuAlign: 'left' | 'right' = isRightCol ? 'right' : 'left';
 
     return (
       <div
@@ -6131,10 +6135,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         className={`aspect-[3/4] ${theme.border} ${isSelected ? 'ring-4 ring-white shadow-2xl scale-[1.02]' : ''} ${
           isChecked ? 'ring-4 ring-amber-400 shadow-2xl' : ''
         } ${
-          isMenuOpen ? 'z-50 relative' : 'z-10'
+          isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'
         } rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${
           isSaving ? 'cursor-wait select-none' : 'cursor-pointer active:scale-98'
-        } overflow-hidden`}
+        }`}
         onClick={() => {
           if (isSaving) {
             showToast("Enregistrement du document en cours... Veuillez patienter.");
@@ -6186,7 +6190,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
               </button>
 
-              {renderFileOptionsMenu(doc, filteredDocuments, 'left')}
+              {renderFileOptionsMenu(doc, customList || filteredDocuments, menuAlign)}
             </div>
 
             {/* Case à cocher visible en mode sélection */}
@@ -6278,7 +6282,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           isSelected
             ? 'border-rose-400 ring-2 ring-rose-400/40 bg-[#1e1320]'
             : 'border-white/10 hover:border-rose-500/50'
-        } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
+        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10'}`}
       >
         {/* Barre supérieure : Bouton 3 traits, Checkbox (en mode sélection) & Taille */}
         <div className="flex items-center justify-between gap-1 z-20 relative">
@@ -6420,7 +6424,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             handleSelectFile(img);
           }
         }}
-        className={`group relative aspect-square sm:aspect-[4/5] rounded-2xl bg-[#151C2C] border transition-all duration-200 overflow-hidden ${
+        className={`group relative aspect-square sm:aspect-[4/5] rounded-2xl bg-[#151C2C] border transition-all duration-200 ${
           isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
         } ${
           isChecked
@@ -6428,7 +6432,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             : isSelected 
               ? 'border-blue-500 ring-4 ring-blue-500/50 shadow-2xl scale-[1.02]' 
               : 'border-white/10 hover:border-blue-400/50 shadow-md'
-        } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
+        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
         {/* Petit trait en haut collé à l'image qui se remplit pendant l'enregistrement */}
         {isSaving && (
@@ -6553,7 +6557,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             handleSelectFile(vid);
           }
         }}
-        className={`group relative aspect-[4/5] rounded-2xl bg-[#0A0E18] border transition-all duration-200 overflow-hidden ${
+        className={`group relative aspect-[4/5] rounded-2xl bg-[#0A0E18] border transition-all duration-200 ${
           isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
         } ${
           isChecked
@@ -6561,7 +6565,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             : isSelected 
               ? 'border-purple-500 ring-4 ring-purple-500/50 shadow-2xl scale-[1.02]' 
               : 'border-white/10 hover:border-purple-400/50 shadow-md'
-        } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
+        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
         {/* Petit trait en haut collé à la carte qui se remplit pendant l'enregistrement */}
         {isSaving && (
@@ -6664,7 +6668,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   // Rendu Carte Audio Carrée (Comme pour les vidéos, carré avec bouton 3 traits, logo musique/mélodie au centre, taille en haut à droite, titre en bas)
-  const renderAudioSquareCard = (aud: FileItem, index?: number) => {
+  const renderAudioSquareCard = (aud: FileItem, index?: number, customList?: FileItem[]) => {
     const isSelected = splitSelectedFile?.id === aud.id;
     const isMenuOpen = activeMenuFileId === aud.id || audioMenuSongId === aud.id;
     const isChecked = selectedItemIds.includes(aud.id);
@@ -6689,7 +6693,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             handleSelectFile(aud);
           }
         }}
-        className={`group relative aspect-square rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 overflow-hidden ${
+        className={`group relative aspect-square rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 ${
           isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
         } ${
           isChecked
@@ -6697,7 +6701,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             : isSelected 
               ? 'border-amber-500 ring-4 ring-amber-500/50 shadow-2xl scale-[1.02]' 
               : 'border-white/10 hover:border-amber-400/50 shadow-md'
-        } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
+        } ${isMenuOpen ? 'z-50 relative overflow-visible' : 'z-10 overflow-hidden'}`}
       >
         {/* Petit trait en haut collé à la carte qui se remplit pendant l'enregistrement */}
         {isSaving && (
@@ -6774,7 +6778,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               <Menu className="w-3.5 h-3.5 stroke-[2.2]" />
             </button>
 
-            {renderFileOptionsMenu(aud, downloadAudio, menuAlign)}
+            {renderFileOptionsMenu(aud, customList || downloadAudio, menuAlign)}
           </div>
 
           {isSelectionMode && (
@@ -6840,10 +6844,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             handleSelectFile(track);
           }
         }}
-        className={`group relative flex items-center justify-between gap-3 p-2 sm:p-2.5 rounded-2xl transition-all select-none overflow-hidden ${
+        className={`group relative flex items-center justify-between gap-3 p-2 sm:p-2.5 rounded-2xl transition-all select-none ${
           isSaving ? 'cursor-wait' : 'cursor-pointer'
         } ${
-          isMenuOpen ? 'z-50 relative' : 'relative z-10'
+          isMenuOpen ? 'z-50 relative overflow-visible' : 'relative z-10 overflow-hidden'
         } ${
           isChecked
             ? 'bg-amber-500/15 border border-amber-400 ring-2 ring-amber-400/40'
@@ -9598,7 +9602,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     <div className={`grid gap-2.5 sm:gap-3.5 ${
                       splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                     }`}>
-                      {filteredDocuments.map(doc => renderDocumentCard(doc))}
+                      {filteredDocuments.map((doc, idx) => renderDocumentCard(doc, idx))}
                     </div>
                   )}
                 </div>
@@ -9900,7 +9904,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           <div className={`grid gap-2.5 sm:gap-3.5 ${
                             splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                           }`}>
-                            {downloadDocs.map(doc => renderDocumentCard(doc))}
+                            {downloadDocs.map((doc, idx) => renderDocumentCard(doc, idx, downloadDocs))}
                           </div>
                         </div>
                       )}
@@ -9951,7 +9955,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           <div className={`grid gap-2 sm:gap-3 ${
                             splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                           }`}>
-                            {downloadAudio.map((aud, idx) => renderAudioSquareCard(aud, idx))}
+                            {downloadAudio.map((aud, idx) => renderAudioSquareCard(aud, idx, downloadAudio))}
                           </div>
                         </div>
                       )}
@@ -10008,7 +10012,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             if (file.category === 'images') return renderImageCard(file, idx);
                             if (file.category === 'videos') return renderVideoCard(file, idx);
                             if (file.category === 'audio') return renderAudioItem(file);
-                            return renderDocumentCard(file);
+                            return renderDocumentCard(file, idx, filteredSecureFiles);
                           })}
                         </div>
                       )}
@@ -10075,7 +10079,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           if (file.category === 'images') return renderImageCard(file, idx);
                           if (file.category === 'videos') return renderVideoCard(file, idx);
                           if (file.category === 'audio') return renderAudioItem(file);
-                          return renderDocumentCard(file);
+                          return renderDocumentCard(file, idx, favoriteFiles);
                         })}
                       </div>
                     </>
@@ -10117,7 +10121,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             <div className={`grid gap-2.5 sm:gap-3.5 ${
                               splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                             }`}>
-                              {trashDocs.map(doc => renderDocumentCard(doc))}
+                              {trashDocs.map((doc, idx) => renderDocumentCard(doc, idx, trashDocs))}
                             </div>
                           </div>
                         )}
@@ -10168,7 +10172,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             <div className={`grid gap-2 sm:gap-3 ${
                               splitSelectedFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                             }`}>
-                              {trashAudio.map((aud, idx) => renderAudioSquareCard(aud, idx))}
+                              {trashAudio.map((aud, idx) => renderAudioSquareCard(aud, idx, trashAudio))}
                             </div>
                           </div>
                         )}
@@ -11097,7 +11101,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           handleSelectFile(file);
                         }}
                         className={`group relative bg-[#151C2C] hover:bg-[#1A2338] border border-slate-800 hover:border-slate-700 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-200 cursor-pointer flex flex-col ${
-                          menuOpenId === file.id ? 'z-50 relative' : 'z-10'
+                          menuOpenId === file.id ? 'z-50 relative overflow-visible' : 'z-10'
                         } ${isSaving ? 'cursor-wait select-none' : ''}`}
                       >
                         {/* Petit trait de progression d'enregistrement en haut de la carte */}
@@ -11111,7 +11115,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         )}
 
                         {/* Vignette compacte */}
-                        <div className="w-full h-24 sm:h-28 md:h-28 bg-slate-900 relative rounded-t-2xl flex items-center justify-center overflow-hidden">
+                        <div className={`w-full h-24 sm:h-28 md:h-28 bg-slate-900 relative rounded-t-2xl flex items-center justify-center ${menuOpenId === file.id ? 'overflow-visible z-50' : 'overflow-hidden'}`}>
                           <div className="absolute inset-0 rounded-t-2xl overflow-hidden pointer-events-none">
                             {(file.category === 'images' || file.isImage || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name)) ? (
                               <RecentImageCardPreview file={file} />
