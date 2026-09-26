@@ -2008,7 +2008,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (viewId === 'studycloud-category-audio' || currentTab === 'audio') {
       return {
         category: 'audio' as const,
-        accept: 'audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus,.wma,.amr,.weba,.aiff,.alac,.mid,.midi,.caf,.3ga',
+        // PAS d'attribut accept restrictif sur Windows : ouvre "Tous les fichiers (*.*)" pour afficher 100% des fichiers
+        // (y compris audios WhatsApp, notes vocales .opus, .ogg, .m4a, enregistrements vocaux sans aucun camouflage)
+        accept: undefined,
         label: 'Importer',
         fullLabel: 'Importer un audio',
         title: 'Importer un fichier audio dans Musique',
@@ -2054,7 +2056,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       let autoCat: 'images' | 'videos' | 'audio' | 'documents' = 'documents';
       if (normName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/i)) autoCat = 'images';
       else if (normName.match(/\.(mp4|mov|webm|avi|mkv|flv|wmv|3gp|m4v)$/i)) autoCat = 'videos';
-      else if (normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i)) autoCat = 'audio';
+      else if (normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga|oga|spx|m4b|m4p|mp2|mp1|wv|ape|ra|voc|au|gsm|dss|act|raw)$/i) || normName.includes('whatsapp') || normName.includes('ptt-') || normName.includes('aud-')) autoCat = 'audio';
 
       // Sauvegarde binaire locale immédiate dans IndexedDB
       storeFileBlob(fileId, file).catch(() => {});
@@ -2170,7 +2172,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       // Stocker le binaire immédiatement dans IndexedDB pour que le document soit disponible instantanément
       storeFileBlob(fileId, file).catch(() => {});
 
-      const isAudio = importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i);
+      const isAudio = importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga|oga|spx|m4b|m4p|mp2|mp1|wv|ape|ra|voc|au|gsm|dss|act|raw)$/i) || normName.includes('whatsapp') || normName.includes('ptt-') || normName.includes('aud-');
       const isVideo = importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv|flv|wmv|3gp|m4v)$/i);
 
       const item: FileItem = {
@@ -2227,7 +2229,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           let previewDataUrl: string | null = null;
           if (importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/i)) {
             previewDataUrl = await generateVideoThumbnail(file, file.name, file.name);
-          } else if (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i)) {
+          } else if (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga|oga|spx|m4b|m4p|mp2|mp1|wv|ape|ra|voc|au|gsm|dss|act|raw)$/i) || normName.includes('whatsapp') || normName.includes('ptt-') || normName.includes('aud-')) {
             previewDataUrl = await extractAudioCover(file, file.name, 'Créateur StudyCloud');
           } else if (normName.endsWith('.pdf')) {
             previewDataUrl = await generatePdfThumbnail(file, file.name);
@@ -8896,7 +8898,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       <input
         type="file"
         ref={categoryFileInputRef}
-        accept={menuImportConfig?.accept || '*/*'}
+        accept={menuImportConfig?.accept}
         onChange={handleMenuFileSelected}
         multiple
         className="hidden"

@@ -146,7 +146,6 @@ export const UploadView: React.FC<UploadViewProps> = ({
               <input
                 type="file"
                 className="hidden"
-                accept="audio/*"
                 multiple
                 onChange={(e) => handleFilesSelected(e, 'Son')}
               />

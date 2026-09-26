@@ -5720,14 +5720,15 @@ export default {
 
         const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'heif', 'avif', 'raw'];
         const videoExts = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', '3gp', 'm4v', 'ts', 'ogv', 'mpg', 'mpeg'];
-        const audioExts = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'opus', 'aiff', 'alac', 'mid', 'midi'];
+        const audioExts = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'opus', 'aiff', 'alac', 'mid', 'midi', 'amr', 'weba', 'caf', '3ga', 'oga', 'spx', 'm4b', 'm4p', 'mp2', 'mp1', 'wv', 'ape', 'ra', 'voc', 'au', 'gsm', 'dss', 'act', 'raw'];
 
         let detectedNature: 'images' | 'videos' | 'audio' | 'documents' = 'documents';
+        const isAudioPattern = audioExts.includes(ext) || fileName.toLowerCase().includes('ptt-') || fileName.toLowerCase().includes('aud-') || fileName.toLowerCase().includes('whatsapp') || fileName.toLowerCase().includes('voice');
         if (normMime.startsWith('image/') || imageExts.includes(ext)) {
           detectedNature = 'images';
         } else if (normMime.startsWith('video/') || videoExts.includes(ext)) {
           detectedNature = 'videos';
-        } else if (normMime.startsWith('audio/') || audioExts.includes(ext)) {
+        } else if (normMime.startsWith('audio/') || isAudioPattern) {
           detectedNature = 'audio';
         }
 
@@ -5751,8 +5752,8 @@ export default {
           }
           finalCategory = 'videos';
         } else if (requestedCategory === 'audio' || requestedCategory === 'musique') {
-          if (detectedNature !== 'audio') {
-            return errorResponse("Ce fichier ne correspond pas au menu Audio. Veuillez importer un fichier audio (MP3, WAV, FLAC, M4A...).", 400, origin);
+          if (detectedNature === 'images' || detectedNature === 'videos') {
+            return errorResponse("Ce fichier ne correspond pas au menu Audio. Veuillez importer un fichier audio ou enregistrement sonore.", 400, origin);
           }
           finalCategory = 'audio';
         } else if (requestedCategory === 'documents' || requestedCategory === 'docs') {

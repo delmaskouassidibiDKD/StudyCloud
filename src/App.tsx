@@ -1676,7 +1676,6 @@ export default function App() {
         type="file"
         ref={audioInputRef}
         style={{ display: 'none' }}
-        accept="audio/mpeg,audio/wav,audio/ogg,audio/aac,audio/flac,audio/mp4,audio/x-m4a"
         multiple
         onChange={(e) => handleFilesSelected(e, 'Son')}
       />
