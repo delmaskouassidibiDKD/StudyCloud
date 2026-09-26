@@ -4761,7 +4761,7 @@ var index_default = {
         const ext = fileName.includes(".") ? (fileName.split(".").pop() || "").toLowerCase().trim() : "";
         const imageExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico", "tiff", "tif", "heic", "heif", "avif", "raw"];
         const videoExts = ["mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "3gp", "m4v", "ts", "ogv", "mpg", "mpeg"];
-        const audioExts = ["mp3", "wav", "ogg", "flac", "m4a", "aac", "wma", "opus", "aiff", "alac", "mid", "midi"];
+        const audioExts = ["mp3", "wav", "ogg", "flac", "m4a", "aac", "wma", "opus", "aiff", "alac", "mid", "midi", "amr", "weba", "caf", "3ga"];
         let detectedNature = "documents";
         if (normMime.startsWith("image/") || imageExts.includes(ext)) {
           detectedNature = "images";
@@ -5484,6 +5484,7 @@ var index_default = {
               duration_sec = excluded.duration_sec,
               size = excluded.size,
               size_bytes = excluded.size_bytes,
+              cover_url = CASE WHEN excluded.cover_url != '' THEN excluded.cover_url ELSE audio_files.cover_url END,
               audio_url = excluded.audio_url,
               updated_at = CURRENT_TIMESTAMP
           `).bind(
@@ -5531,8 +5532,55 @@ var index_default = {
             ).run();
             await env.DB.prepare(`DELETE FROM audio_files WHERE id = ? AND user_id = ?`).bind(fileId, reqUserId).run();
           }
-          return jsonResponse({ success: true, message: "Audio d\xE9plac\xE9 dans la corbeille" }, 200, origin);
+          return jsonResponse({ success: true, message: "Audio déplacé dans la corbeille" }, 200, origin);
         }
+      }
+      if (path === "/api/cloud/thumbnail" && method === "POST") {
+        const reqUserId = await extractRequestUserId();
+        if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
+        const body = await request.json().catch(() => ({}));
+        const { fileId, category, dataUrl } = body;
+        if (!fileId || !dataUrl) {
+          return errorResponse("fileId et dataUrl requis", 400, origin);
+        }
+
+        try {
+          if (category === "audio") {
+            await env.DB.prepare(`
+              UPDATE audio_files 
+              SET cover_url = ?, updated_at = CURRENT_TIMESTAMP 
+              WHERE id = ? AND user_id = ?
+            `).bind(dataUrl, fileId, reqUserId).run();
+          } else if (category === "videos") {
+            await env.DB.prepare(`
+              UPDATE video_files 
+              SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP 
+              WHERE id = ? AND user_id = ?
+            `).bind(dataUrl, fileId, reqUserId).run();
+          } else if (category === "images") {
+            await env.DB.prepare(`
+              UPDATE image_files 
+              SET thumbnail_url = ?, updated_at = CURRENT_TIMESTAMP 
+              WHERE id = ? AND user_id = ?
+            `).bind(dataUrl, fileId, reqUserId).run();
+          } else if (category === "documents") {
+            await env.DB.prepare(`
+              UPDATE document_files 
+              SET preview_url = ?, updated_at = CURRENT_TIMESTAMP 
+              WHERE id = ? AND user_id = ?
+            `).bind(dataUrl, fileId, reqUserId).run();
+          } else if (category === "classeur") {
+            await env.DB.prepare(`
+              UPDATE classeur_files 
+              SET preview_url = ?, updated_at = CURRENT_TIMESTAMP 
+              WHERE id = ? AND user_id = ?
+            `).bind(dataUrl, fileId, reqUserId).run();
+          }
+        } catch (thumbErr) {
+          console.warn("[CloudWorker] Erreur mise a jour miniature D1:", thumbErr);
+        }
+
+        return jsonResponse({ success: true, message: "Miniature enregistrée avec succès" }, 200, origin);
       }
       if (path === "/api/cloud/images") {
         const reqUserId = await extractRequestUserId();

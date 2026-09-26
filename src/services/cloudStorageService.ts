@@ -306,11 +306,16 @@ export const CloudStorageAPI = {
       if (!res.ok) return [];
       const json = await res.json();
       if (json.success && Array.isArray(json.data)) {
-        return json.data.map((a: any) => ({
-          ...a,
-          previewUrl: a.coverUrl || a.previewUrl || '',
-          coverUrl: a.coverUrl || a.previewUrl || '',
-        }));
+        return json.data.map((a: any) => {
+          const rawCover = a.coverUrl || a.previewUrl || '';
+          const isAudioStream = typeof rawCover === 'string' && rawCover.match(/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i);
+          const validCover = (rawCover && !isAudioStream && !rawCover.startsWith('blob:')) ? rawCover : '';
+          return {
+            ...a,
+            previewUrl: validCover,
+            coverUrl: validCover,
+          };
+        });
       }
       return [];
     } catch (e) {

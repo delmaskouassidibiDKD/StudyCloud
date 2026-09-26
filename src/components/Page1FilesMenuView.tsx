@@ -2008,7 +2008,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (viewId === 'studycloud-category-audio' || currentTab === 'audio') {
       return {
         category: 'audio' as const,
-        accept: 'audio/*',
+        accept: 'audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus,.wma,.amr,.weba,.aiff,.alac,.mid,.midi,.caf,.3ga',
         label: 'Importer',
         fullLabel: 'Importer un audio',
         title: 'Importer un fichier audio dans Musique',
@@ -2052,9 +2052,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
 
       let autoCat: 'images' | 'videos' | 'audio' | 'documents' = 'documents';
-      if (normName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/)) autoCat = 'images';
-      else if (normName.match(/\.(mp4|mov|webm|avi|mkv|flv|wmv|3gp|m4v)$/)) autoCat = 'videos';
-      else if (normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma)$/)) autoCat = 'audio';
+      if (normName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/i)) autoCat = 'images';
+      else if (normName.match(/\.(mp4|mov|webm|avi|mkv|flv|wmv|3gp|m4v)$/i)) autoCat = 'videos';
+      else if (normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i)) autoCat = 'audio';
 
       // Sauvegarde binaire locale immédiate dans IndexedDB
       storeFileBlob(fileId, file).catch(() => {});
@@ -2069,7 +2069,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
         extension: ext,
         url: localBlobUrl,
-        previewUrl: localBlobUrl,
+        previewUrl: autoCat === 'audio' ? undefined : localBlobUrl,
         videoUrl: autoCat === 'videos' ? localBlobUrl : undefined,
         audioUrl: autoCat === 'audio' ? localBlobUrl : undefined,
       };
@@ -2170,6 +2170,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       // Stocker le binaire immédiatement dans IndexedDB pour que le document soit disponible instantanément
       storeFileBlob(fileId, file).catch(() => {});
 
+      const isAudio = importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i);
+      const isVideo = importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv|flv|wmv|3gp|m4v)$/i);
+
       const item: FileItem = {
         id: fileId,
         name: file.name,
@@ -2180,9 +2183,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
         extension: ext,
         url: localBlobUrl,
-        previewUrl: localBlobUrl,
-        videoUrl: (importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) ? localBlobUrl : undefined,
-        audioUrl: (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/)) ? localBlobUrl : undefined,
+        previewUrl: isAudio ? undefined : localBlobUrl,
+        videoUrl: isVideo ? localBlobUrl : undefined,
+        audioUrl: isAudio ? localBlobUrl : undefined,
         originalFolderId: importConfig.folderId
       };
       return { file, item };
@@ -2222,9 +2225,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         try {
           const normName = file.name.toLowerCase();
           let previewDataUrl: string | null = null;
-          if (importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) {
+          if (importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/i)) {
             previewDataUrl = await generateVideoThumbnail(file, file.name, file.name);
-          } else if (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/)) {
+          } else if (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i)) {
             previewDataUrl = await extractAudioCover(file, file.name, 'Créateur StudyCloud');
           } else if (normName.endsWith('.pdf')) {
             previewDataUrl = await generatePdfThumbnail(file, file.name);
@@ -2253,7 +2256,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   url: uploadedFile.url || f.url,
                   videoUrl: uploadedFile.videoUrl || f.videoUrl,
                   audioUrl: uploadedFile.audioUrl || f.audioUrl,
-                  previewUrl: previewDataUrl || uploadedFile.previewUrl || f.previewUrl,
+                  previewUrl: (f.category === 'audio' || uploadedFile.category === 'audio') ? undefined : (previewDataUrl || uploadedFile.previewUrl || f.previewUrl),
                   thumbnailUrl: previewDataUrl || uploadedFile.thumbnailUrl || f.thumbnailUrl,
                   coverUrl: previewDataUrl || uploadedFile.coverUrl || f.coverUrl,
                 };
@@ -6721,16 +6724,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
         {/* Conteneur média interne avec overflow-hidden : arrondit l'arrière-plan sans couper le menu */}
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
-          {aud.previewUrl ? (
-            <img
-              src={aud.previewUrl}
-              alt={aud.name}
-              className="w-full h-full object-cover opacity-45 group-hover:scale-105 group-hover:opacity-65 transition-all duration-300"
-              loading="lazy"
-            />
-          ) : (
-            <div className="w-full h-full bg-gradient-to-br from-amber-950/40 via-slate-900 to-black" />
-          )}
+          <AudioCardPreview track={aud} className="w-full h-full object-cover opacity-45 group-hover:scale-105 group-hover:opacity-65 transition-all duration-300" />
           <div className="absolute inset-0 bg-gradient-to-t from-black/95 via-black/40 to-transparent" />
 
           {/* AU MILIEU : LE LOGO DE MUSIQUE / MÉLODIE DÉTAILLÉ & NET (SANS SILHOUETTE NOIRE BLOQUANTE) */}
@@ -6888,17 +6882,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           )}
 
           <div className="w-12 h-12 rounded-2xl bg-black border border-white/10 relative overflow-hidden flex items-center justify-center shrink-0 shadow-sm">
-            {(track.coverUrl || track.previewUrl || getCachedMediaThumbnail(track.id)) ? (
-              <img 
-                src={track.coverUrl || track.previewUrl || getCachedMediaThumbnail(track.id)!} 
-                alt={track.name} 
-                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" 
-              />
-            ) : (
-              <div className="w-full h-full bg-gradient-to-br from-amber-600/30 to-stone-900 flex items-center justify-center">
-                <Music className="w-6 h-6 text-amber-400 stroke-[2.2] relative z-10 drop-shadow-md" />
-              </div>
-            )}
+            <AudioCardPreview track={track} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
           </div>
           <div className="min-w-0">
             <h3 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-amber-400 transition-colors">{track.name}</h3>
@@ -9757,17 +9741,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                           {/* Gauche : Vignette album carrée + Titre + Artiste + Détails */}
                           <div className="flex items-center gap-3 min-w-0 flex-1">
                             <div className="w-12 h-12 rounded-xl overflow-hidden shrink-0 bg-stone-900 border border-stone-200 dark:border-white/10 relative shadow-sm">
-                              {(track.coverUrl || track.previewUrl || getCachedMediaThumbnail(track.id)) ? (
-                                <img 
-                                  src={track.coverUrl || track.previewUrl || getCachedMediaThumbnail(track.id)!} 
-                                  alt={track.name} 
-                                  className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" 
-                                />
-                              ) : (
-                                <div className="w-full h-full bg-gradient-to-br from-amber-600 via-stone-900 to-black flex items-center justify-center">
-                                  <Music className="w-5 h-5 text-amber-300" />
-                                </div>
-                              )}
+                              <AudioCardPreview track={track} className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-200" />
                             </div>
 
                             <div className="min-w-0 flex-1">
@@ -10586,17 +10560,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       {/* PARTIE SUPÉRIEURE : Pochette album centrée (paroles supprimées comme entouré en rouge) */}
                       <div className="relative z-10 w-full flex items-center justify-center max-w-sm mx-auto my-auto pt-2 sm:pt-4">
                         <div className="relative w-44 sm:w-56 md:w-64 aspect-square rounded-2xl overflow-hidden shrink-0 shadow-[0_20px_45px_rgba(0,0,0,0.85)] border border-white/20 bg-black group">
-                          {(splitSelectedFile.coverUrl || splitSelectedFile.previewUrl || getCachedMediaThumbnail(splitSelectedFile.id)) ? (
-                            <img 
-                              src={splitSelectedFile.coverUrl || splitSelectedFile.previewUrl || getCachedMediaThumbnail(splitSelectedFile.id)!} 
-                              alt={splitSelectedFile.name} 
-                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" 
-                            />
-                          ) : (
-                            <div className="w-full h-full bg-gradient-to-br from-amber-600 via-stone-900 to-black flex items-center justify-center">
-                              <Music className="w-14 h-14 text-amber-300" />
-                            </div>
-                          )}
+                          <AudioCardPreview track={splitSelectedFile} className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105" />
 
                           {/* Badge Parental Advisory */}
                           <div className="absolute bottom-2 left-2 px-1.5 py-0.5 bg-black/85 border border-white/25 rounded text-[7px] font-black uppercase tracking-wider text-white">
@@ -11155,7 +11119,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                               <VideoCardPreview vid={file} />
                             ) : (file.category === 'documents' || /\.(pdf|docx?|xlsx?|pptx?|txt|csv)$/i.test(file.name)) ? (
                               <DocumentCardPreview doc={file} />
-                            ) : (file.category === 'audio' || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name)) ? (
+                            ) : (file.category === 'audio' || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name)) ? (
                               <AudioCardPreview track={file} />
                             ) : file.previewUrl ? (
                               <img 

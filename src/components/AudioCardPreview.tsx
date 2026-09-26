@@ -6,29 +6,66 @@ import { FileItem } from './Page1FilesMenuView';
 
 interface AudioCardPreviewProps {
   track: FileItem;
+  className?: string;
 }
 
 function isImageCover(url?: string): boolean {
-  if (!url) return false;
+  if (!url || typeof url !== 'string') return false;
   const clean = url.toLowerCase().split('?')[0];
   if (clean.startsWith('data:image')) return true;
-  if (clean.includes('/api/cloud/thumbnail/')) return true;
-  if (clean.endsWith('.mp3') || clean.endsWith('.wav') || clean.endsWith('.ogg') || clean.endsWith('.m4a') || clean.endsWith('.aac') || clean.endsWith('.flac')) {
+  if (clean.includes('/api/cloud/thumbnail')) return true;
+  if (clean.match(/\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i)) {
     return false;
   }
-  return clean.endsWith('.jpg') || clean.endsWith('.jpeg') || clean.endsWith('.png') || clean.endsWith('.webp') || clean.endsWith('.svg');
+  if (clean.startsWith('blob:')) {
+    return false;
+  }
+  if (clean.match(/\.(jpg|jpeg|png|webp|svg|gif|avif|ico|bmp)$/i)) {
+    return true;
+  }
+  if (clean.startsWith('http://') || clean.startsWith('https://')) {
+    if (clean.match(/\.(pdf|doc|docx|xls|xlsx|txt|mp4|webm|avi|mkv|mov|zip|rar)$/i)) return false;
+    return true;
+  }
+  return false;
 }
 
-export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track }) => {
+export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track, className }) => {
   const [coverUrl, setCoverUrl] = useState<string | null>(() => {
     if (isImageCover(track.coverUrl)) return track.coverUrl!;
     if (isImageCover(track.thumbnailUrl)) return track.thumbnailUrl!;
     if (isImageCover(track.previewUrl)) return track.previewUrl!;
-    return getCachedMediaThumbnail(track.id || track.audioUrl || track.url || '');
+    const cached = getCachedMediaThumbnail(track.id || track.audioUrl || track.url || '');
+    if (isImageCover(cached || undefined)) return cached;
+    return null;
   });
 
   const [hasError, setHasError] = useState(false);
   const targetAudioUrl = track.audioUrl || track.url || '';
+  const imgClass = className || "w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none";
+
+  // Synchronisation dynamique si l'objet track change
+  useEffect(() => {
+    setHasError(false);
+    if (isImageCover(track.coverUrl)) {
+      setCoverUrl(track.coverUrl!);
+      return;
+    }
+    if (isImageCover(track.thumbnailUrl)) {
+      setCoverUrl(track.thumbnailUrl!);
+      return;
+    }
+    if (isImageCover(track.previewUrl)) {
+      setCoverUrl(track.previewUrl!);
+      return;
+    }
+    const cached = getCachedMediaThumbnail(track.id || track.audioUrl || track.url || '');
+    if (isImageCover(cached || undefined)) {
+      setCoverUrl(cached);
+      return;
+    }
+    setCoverUrl(null);
+  }, [track.id, track.coverUrl, track.thumbnailUrl, track.previewUrl]);
 
   useEffect(() => {
     let isMounted = true;
@@ -88,7 +125,7 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track }) => 
       <img
         src={coverUrl}
         alt={track.name}
-        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
+        className={imgClass}
         loading="lazy"
         onError={() => setHasError(true)}
       />
@@ -100,7 +137,7 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track }) => 
     <img
       src={fallbackSvg}
       alt={track.name}
-      className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
+      className={imgClass}
       loading="lazy"
     />
   );
