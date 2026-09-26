@@ -76,7 +76,16 @@ export default {
         return await handleChatRequest(request, env, corsHeaders);
       }
 
-      // 5. ROUTE INTROUVABLE
+      // 5. ROUTE AGENTS CLOUDFLARE (WebSockets / Durable Objects ChatAgent)
+      if (pathname.startsWith("/agents/") || pathname.startsWith("/agent/")) {
+        if (env && env.ChatAgent && typeof env.ChatAgent.idFromName === "function") {
+          const id = env.ChatAgent.idFromName("default");
+          const stub = env.ChatAgent.get(id);
+          return await stub.fetch(request);
+        }
+      }
+
+      // 6. ROUTE INTROUVABLE
       return new Response(JSON.stringify({
         error: "Route non trouvée",
         path: url.pathname,
@@ -983,3 +992,35 @@ function buildLocalDevoirGrading(devoirData, userAnswers) {
     evaluations: evals
   };
 }
+
+/**
+ * ============================================================================
+ * CLASSE DURABLE OBJECT OBLIGATOIRE POUR CLOUDFLARE : ChatAgent
+ * ============================================================================
+ * Cloudflare exige que la classe 'ChatAgent' soit exportée car la liaison
+ * Durable Objects 'ChatAgent' est active sur votre Worker Cloudflare.
+ */
+export class ChatAgent {
+  constructor(state, env) {
+    this.state = state;
+    this.env = env;
+    this.storage = state?.storage;
+  }
+
+  async fetch(request) {
+    const url = new URL(request.url);
+    return new Response(JSON.stringify({
+      status: "active",
+      agent: "ChatAgent",
+      durable_object: true,
+      path: url.pathname,
+      timestamp: new Date().toISOString()
+    }), {
+      headers: {
+        "Content-Type": "application/json; charset=utf-8",
+        "Access-Control-Allow-Origin": "*"
+      }
+    });
+  }
+}
+
