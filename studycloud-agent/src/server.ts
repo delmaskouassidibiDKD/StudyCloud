@@ -722,16 +722,50 @@ export default {
         }
 
         const message = body.message || body.prompt || "Bonjour !";
-        const history = Array.isArray(body.history) ? body.history : [];
+        const rawHistory = Array.isArray(body.history) ? body.history : (Array.isArray(body.messages) ? body.messages : []);
         const docText = body.attachedFileContent || body.documentText || body.fileContent || "";
         const workersai = createWorkersAI({ binding: env.AI });
 
-        const system = `Vous êtes Delmas IA, le tuteur d'étude universitaire de StudyCloud.
-Vous aidez l'étudiant à comprendre le cours avec des explications claires, méthodiques et pédagogiques.
+        const customSystem = body.system || rawHistory.find((h: any) => h.role === "system")?.content;
+        const defaultSystem = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Gemini / Delmas IA).
+Tu es directement connectée à l'espace d'étude de l'étudiant, avec deux modes de fonctionnement distincts selon ton analyse du prompt :
+
+1. BRANCHE DISCUSSION SIMPLE DANS LE CHAT (Mode par défaut) :
+Si l'étudiant discute, échange, pose une question, demande une explication de cours, une démonstration, une formule, une méthode ou un exemple — MÊME s'il emploie des termes comme "créer", "faire", "questions" dans un sens conversationnel (ex: "Comment créer une SARL ?", "Quelles questions penses-tu qu'on aura à l'examen ?", "Explique-moi comment faire cet exercice", "Que penses-tu de ce sujet ?") :
+-> Tu réponds DIRECTEMENT ET NATURELLEMENT DANS LE CHAT en texte Markdown fluide.
+-> Formules mathématiques et scientifiques rédigées impérativement en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).
+-> IMPORTANTISSIME : NE PRODUIS AUCUN CODE JSON, PAS D'ACCOLADES {} NI DE BALISES JSON DANS CETTE RÉPONSE. Parle directement à l'étudiant avec pédagogie, clarté et bienveillance.
+
+2. BRANCHE CRÉATION D'UN MODULE D'ÉTUDE (Dans l'espace création à droite) :
+Uniquement si l'étudiant te demande expressément et clairement de CONCEVOIR / FABRIQUER / GÉNÉRER un module d'apprentissage interactif complet parmi les 4 grandes catégories :
+- Faire un Résumé ou créer un PDF ('resume', 'pdf')
+- Questionnaire ou Carte Mentale ('questionnaire', 'questionnaire-test', 'carte-mentale', 'carte-memoire')
+- Vrai ou Faux / Exercice Écrit / Devoir Complet ('vrai-ou-faux', 'vrai-ou-faux-test', 'exercices-ecrits', 'devoir-complet')
+- Infographie ('infographie')
+
+DANS CE CAS DE CRÉATION EXCLUSIVEMENT :
+Tu réponds sous la forme d'un objet JSON strict :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "questionnaire" | "carte-mentale" | "carte-memoire" | "resume" | "pdf" | "infographie" | "vrai-ou-faux" | "exercices-ecrits" | "devoir-complet",
+  "creation_title": "Titre explicite de la création",
+  "chat_response": "Court message amical d'une phrase pour le fil de discussion (ex: J'ai conçu votre questionnaire dans l'espace Création à droite !)",
+  "creation_data": {
+    // Les données complètes selon le type demandé
+  }
+}
+\`\`\`
 ${docText ? `DOCUMENT FOURNI PAR L'ÉTUDIANT :\n"""\n${docText.slice(0, 15000)}\n"""` : ""}`;
 
+        const system = customSystem || defaultSystem;
+
         const messages = [
-          ...history.map((h: any) => ({ role: h.role === "user" ? ("user" as const) : ("assistant" as const), content: h.content })),
+          ...rawHistory.filter((h: any) => h.role !== "system").map((h: any) => ({
+            role: h.role === "user" ? ("user" as const) : ("assistant" as const),
+            content: h.content
+          })),
           { role: "user" as const, content: message }
         ];
 
@@ -739,12 +773,37 @@ ${docText ? `DOCUMENT FOURNI PAR L'ÉTUDIANT :\n"""\n${docText.slice(0, 15000)}\
           model: workersai(PRIMARY_MODEL),
           system,
           messages,
-          maxOutputTokens: 2000,
+          maxOutputTokens: 2500,
         });
+
+        // Détection si l'IA a décidé de créer un module structuré
+        const parsedCreation = extractAndSanitizeJson(textResult.text);
+        if (parsedCreation && (parsedCreation.decision === "creation" || parsedCreation.mode === "creation" || parsedCreation.creation_data)) {
+          const creationType = parsedCreation.creation_type || "questionnaire";
+          const creationTitle = parsedCreation.creation_title || `Création IA`;
+          const creationData = parsedCreation.creation_data || parsedCreation;
+          const chatMsg = parsedCreation.chat_response || parsedCreation.chat_message || `✨ J'ai généré votre ${creationTitle} directement dans l'espace Création à droite !`;
+
+          return new Response(
+            JSON.stringify({
+              success: true,
+              decision: "creation",
+              mode: "creation",
+              creation_type: creationType,
+              creation_title: creationTitle,
+              creation_data: creationData,
+              chat_response: chatMsg,
+              response: chatMsg,
+              model: "Delmas IA (Cloudflare Agent 70B)"
+            }),
+            { headers: { ...corsHeaders, "Content-Type": "application/json" } }
+          );
+        }
 
         return new Response(
           JSON.stringify({
             success: true,
+            mode: "chat",
             response: textResult.text,
             chat_response: textResult.text,
             text: textResult.text,

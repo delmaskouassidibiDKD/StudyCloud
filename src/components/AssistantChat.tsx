@@ -73,15 +73,14 @@ function cleanChatText(text: string): string {
         return msgMatch[1].replace(/\\n/g, '\n').replace(/\\"/g, '"').trim();
       }
     }
-  }
 
-  // Nettoyage radical de tout résidu de balises JSON, tags et blocs d'accolades résiduels
-  clean = clean
-    .replace(/```(?:json)?[\s\S]*?```/gi, '')
-    .replace(/```[\s\S]*?```/gi, '')
-    .replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '')
-    .replace(/\{[\s\S]*"(?:decision|creation_data|creation_type|questions|affirmations)"[\s\S]*\}/gi, '')
-    .trim();
+    // Nettoyage de résidus JSON de création
+    clean = clean
+      .replace(/```(?:json)?\s*\{[\s\S]*?"(?:decision|creation_data|creation_type)"[\s\S]*?\}\s*```/gi, '')
+      .replace(/<creation[^>]*>[\s\S]*?<\/creation>/gi, '')
+      .replace(/\{[\s\S]*"(?:decision|creation_data|creation_type|questions|affirmations)"[\s\S]*\}/gi, '')
+      .trim();
+  }
 
   return clean;
 }
@@ -580,110 +579,80 @@ export function AssistantChat({ onClose, onHasMessagesChange, activePreviewItem,
       const attachedFileR2Key = docR2Keys.join(',');
       const mainDocName = docNames[0] || activePreviewItem?.name || 'Document d\'étude';
 
-      // 2. ANALYSE ET ROUTAGE D'INTENTION DE LA DEMANDE UTILISATEUR
+      // 2. ANALYSE D'HÉSITATION ÉTUDIANTE (Suggestions d'aide douce)
       const isHesitating = /(je ne sais pas|que (peux|doit|puis)-tu|propose|id[eé]es|aide-moi à (choisir|r[eé]viser)|quelles options|que me conseilles-tu|conseille-moi|que faire)/i.test(userText);
       if (isHesitating) {
         setShowProposalBar(true);
       }
 
-      const isQuestionOrMeta = !requestedTypeOverride && (/^(pourquoi|comment|qu'est|est-ce|aide-moi|explique|quelles?|dis-moi)/i.test(userText.trim()) || /(dans le chat|dans la cr[eé]ation|dans l'interface|pourquoi l'ia)/i.test(userText));
-      const isIteration = !isQuestionOrMeta && Boolean(activeCreation && /(ajoute\s+(une?|\d+)|modifie\s+(le|la|cette|mon|ma)|supprime\s+(la|le|cette)|am[eé]liore\s+(le|la|ce)|corrige\s+(la|le)|mets?\s+à\s+jour|plus\s+de\s+questions|d[eé]taille\s+(le|la|ce))/i.test(userText));
-      
-      let isCreation = Boolean(requestedTypeOverride);
-      let targetToolType: AiCreationType = (requestedTypeOverride as AiCreationType) || 'questionnaire';
+      // AUCUN mot clé client ne déclenche ou n'intercepte la discussion.
+      // Le prompt de l'utilisateur va DIRECTEMENT à l'IA sans rien déranger.
+      // Seul un clic explicite sur un bouton d'action (override) définit explicitToolType.
+      const isExplicitOverride = Boolean(requestedTypeOverride);
+      const explicitToolType = requestedTypeOverride as AiCreationType | undefined;
 
-      if (!requestedTypeOverride && !isIteration && !isQuestionOrMeta) {
-        if (/questionnaire[- ]?test|test not[eé]/i.test(userText)) {
-          targetToolType = 'questionnaire-test';
-          isCreation = true;
-        } else if (/vrai\s+ou\s+faux\s+test|v\/f\s+test|test\s+vrai/i.test(userText)) {
-          targetToolType = 'vrai-ou-faux-test';
-          isCreation = true;
-        } else if (/vrai\s+(ou\s+)?faux|v\/f|affirmation/i.test(userText)) {
-          targetToolType = 'vrai-ou-faux';
-          isCreation = true;
-        } else if (/carte\s+mentale\s+2|conceptuelle|blocs/i.test(userText)) {
-          targetToolType = 'carte-mentale-2';
-          isCreation = true;
-        } else if (/carte\s+mentale|mind\s*map|arborescence/i.test(userText)) {
-          targetToolType = 'carte-mentale';
-          isCreation = true;
-        } else if (/carte\s+m[eé]moire|flashcard|r[eé]p[eé]tition espac[eé]e/i.test(userText)) {
-          targetToolType = 'carte-memoire';
-          isCreation = true;
-        } else if (/r[eé]sum[eé]|synth[eé]tise|fiche de synth[eè]se/i.test(userText)) {
-          targetToolType = 'resume';
-          isCreation = true;
-        } else if (/\bpdf\b|export|document officiel|polycopi[eé]/i.test(userText)) {
-          targetToolType = 'pdf';
-          isCreation = true;
-        } else if (/infographie|rep[eè]res? visuels?|chiffres? cl[eé]s?/i.test(userText)) {
-          targetToolType = 'infographie';
-          isCreation = true;
-        } else if (/exercices?\s+[eé]crits?|probl[eè]mes?|r[eé]daction/i.test(userText)) {
-          targetToolType = 'exercices-ecrits';
-          isCreation = true;
-        } else if (/devoir\s+complet|[eé]preuve\s+compl[eè]te|examen\s+20/i.test(userText)) {
-          targetToolType = 'devoir-complet';
-          isCreation = true;
-        } else if (/cr[eé]e|g[eé]n[eé]re|fais(-moi)?|pr[eé]pare|[eé]labore|con[çc]ois|quiz|qcm|questionnaire|questions/i.test(userText)) {
-          targetToolType = 'questionnaire';
-          isCreation = true;
-        }
-      }
-
-      if (isCreation) {
-        const creationTitle = `${targetToolType.toUpperCase()} : ${mainDocName}`;
+      if (isExplicitOverride && explicitToolType) {
+        const creationTitle = `${explicitToolType.toUpperCase()} : ${mainDocName}`;
         window.dispatchEvent(new CustomEvent('ai-creation-start', {
-          detail: { toolType: targetToolType, title: creationTitle, sourceFileName: mainDocName }
-        }));
-        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
-      } else if (isIteration && activeCreation) {
-        window.dispatchEvent(new CustomEvent('ai-creation-start', {
-          detail: { toolType: activeCreation.toolType, title: activeCreation.title, sourceFileName: mainDocName, isUpdate: true }
+          detail: { toolType: explicitToolType, title: creationTitle, sourceFileName: mainDocName }
         }));
         window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
       }
 
-      // 3. Contexte du document actif et prompt autonome de routage Chat / Création
-      let systemContent = `Tu es l'intelligence centrale autonome de l'application de cours StudyCloud (DKD Technologies).
-Tu es directement connectée à deux espaces distincts de l'interface de l'étudiant :
-1. LE CHAT (Fil de discussion textuel) : Pour les questions simples, les explications, les calculs et le dialogue général.
-2. L'ESPACE DE CRÉATION (Panneau droit interactif) : Réservé pour concevoir et afficher les outils interactifs :
-   - 'quiz' : Questionnaires QCM interactifs (questions, choix A/B/C/D, réponse, explication)
-   - 'mindmap' : Cartes mentales arborescentes (thème central, branches, sous-branches)
-   - 'summary' : Fiches de résumé et synthèses structurées (vue d'ensemble, points clés, définitions, règles)
-   - 'infographic' : Infographies, chiffres clés, repères visuels et notions
-   - 'document' : Fiches d'étude complètes et polycopiés
+      // 3. Contexte du document actif et prompt autonome de décision (Architecture Gemini / StudyCloud)
+      let systemContent = `Tu es l'intelligence pédagogique centrale autonome de StudyCloud (Gemini / Delmas IA).
+Tu es directement connectée à l'espace d'étude de l'étudiant, avec deux modes de fonctionnement distincts selon ton analyse du prompt :
 
-TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
-      - Analyse précisément l'intention de l'étudiant :
-        * MODE CHAT (question simple, explication, calcul, salutation ou dialogue général) :
-          -> Réponds DIRECTEMENT ET NATURELLEMENT en texte Markdown fluide (avec formules LaTeX $...$ ou $$...$$ si pertinent).
-          -> IMPORTANT : NE METS AUCUN CODE JSON, PAS D'ACCOLADES {} NI DE BALISES JSON pour les réponses de chat ! Parle directement comme un tuteur bienveillant.
-        * MODE CRÉATION (demande de QCM/quiz, carte mentale, résumé synthétique, infographie ou fiche d'étude) :
-          -> Génère obligatoirement un objet JSON structuré (dans un bloc \`\`\`json ... \`\`\`) avec ce format :
-          {
-            "mode": "creation",
-            "chat_response": "Court message amical d'accompagnement pour le fil de discussion",
-            "creation_type": "quiz" | "mindmap" | "summary" | "infographic" | "document",
-            "creation_title": "Titre explicite",
-            "creation_data": {
-              // Données détaillées selon l'outil (questions pour quiz, root pour mindmap, etc.)
-            }
-          }
+1. BRANCHE DISCUSSION SIMPLE DANS LE CHAT (Mode par défaut) :
+Si l'étudiant discute, échange, pose une question, demande une explication de cours, une démonstration, une formule, une méthode ou un exemple — MÊME s'il emploie des termes comme "créer", "faire", "questions" dans un sens conversationnel (ex: "Comment créer une SARL ?", "Quelles questions penses-tu qu'on aura à l'examen ?", "Explique-moi comment faire cet exercice", "Que penses-tu de ce sujet ?") :
+-> Tu réponds DIRECTEMENT ET NATURELLEMENT DANS LE CHAT en texte Markdown fluide.
+-> Formules mathématiques et scientifiques rédigées impérativement en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).
+-> IMPORTANTISSIME : NE PRODUIS AUCUN CODE JSON, PAS D'ACCOLADES {} NI DE BALISES JSON DANS CETTE RÉPONSE. Parle directement à l'étudiant avec pédagogie, clarté et bienveillance.
 
-      RÈGLES D'EXCELLENCE :
-      - Pas de blabla inutile ni de règles artificielles.
-      - Si un document est fourni, exploite fidèlement ses notions réelles.
-      - Rédige toutes les formules scientifiques en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).`;
-      
+2. BRANCHE CRÉATION D'UN MODULE D'ÉTUDE (Dans l'espace création à droite) :
+Uniquement si l'étudiant te demande expressément et clairement de CONCEVOIR / FABRIQUER / GÉNÉRER un module d'apprentissage interactif complet parmi les 4 grandes catégories :
+- Faire un Résumé ou créer un PDF :
+  * 'resume' : Fiche de synthèse structurée (overview, key_points, definitions, rules)
+  * 'pdf' : Polycopié ou document d'étude officiel (title, sections, content)
+- Questionnaire ou Carte Mentale :
+  * 'questionnaire' : Quiz QCM interactif (questions avec choix A/B/C/D, correct, explanation)
+  * 'questionnaire-test' : Test noté avec chronomètre et barème
+  * 'carte-mentale' : Mindmap arborescente (thème central, branches principales, sous-branches)
+  * 'carte-memoire' : Flashcards mémorisation (recto question/concept, verso réponse/détail)
+- Vrai ou Faux / Exercice Écrit / Devoir Complet :
+  * 'vrai-ou-faux' : Affirmations Vrai ou Faux avec justification détaillée
+  * 'vrai-ou-faux-test' : Épreuve Vrai/Faux notée
+  * 'exercices-ecrits' : Série d'exercices d'application avec énoncé et correction guidée
+  * 'devoir-complet' : Sujet d'examen complet avec parties, exercices et barème
+- Infographie :
+  * 'infographie' : Fiche visuelle avec repères visuels, chiffres clés, métriques, chronologie
+
+DANS CE CAS DE CRÉATION EXCLUSIVEMENT :
+Tu réponds sous la forme d'un objet JSON strict :
+\`\`\`json
+{
+  "decision": "creation",
+  "mode": "creation",
+  "creation_type": "questionnaire" | "carte-mentale" | "carte-memoire" | "resume" | "pdf" | "infographie" | "vrai-ou-faux" | "exercices-ecrits" | "devoir-complet",
+  "creation_title": "Titre explicite de la création",
+  "chat_response": "Court message amical d'une phrase pour le fil de discussion (ex: J'ai conçu votre questionnaire dans l'espace Création à droite !)",
+  "creation_data": {
+    // Les données complètes selon le type demandé
+  }
+}
+\`\`\`
+
+RÈGLES D'EXCELLENCE :
+- Pas de blabla inutile ni de règles artificielles.
+- Si un document est fourni, exploite fidèlement ses notions réelles.
+- Rédige toutes les formules scientifiques en syntaxe LaTeX standard ($...$ en ligne, $$...$$ en bloc).`;
+
       if (docNames.length > 0) {
-        systemContent += `\n\nDOCUMENTS DISPONIBLES :\nL'utilisateur a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et complet au contenu textuel de ces documents.`;
+        systemContent += `\n\nDOCUMENTS FOURNIS PAR L'ÉTUDIANT :\nL'utilisateur a ouvert ${docNames.length} document(s) d'étude : ${docNames.map(n => `"${n}"`).join(', ')}. Tu as un accès direct et complet au contenu textuel de ces documents.`;
       }
 
-      if (isIteration && activeCreation) {
-        systemContent += `\n\nL'UTILISATEUR SOUHAITE MODIFIER LA CRÉATION EXISTANTE ("${activeCreation.title}"). Voici son contenu actuel : ${JSON.stringify(activeCreation.content)}. Applique scrupuleusement la modification demandée : "${userText}". Fournis la version mise à jour en format JSON structuré.`;
+      if (activeCreation) {
+        systemContent += `\n\nCRÉATION ACTUELLE DANS L'ESPACE DE DROITE ("${activeCreation.title}", type: "${activeCreation.toolType}") : Si l'utilisateur demande explicitement de la modifier, l'enrichir ou la mettre à jour, réponds en mode création JSON avec la version actualisée.`;
       }
 
       // 4. Préparation de l'historique complet pour alimenter le RAG conversationnel
@@ -703,7 +672,7 @@ TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
         userId: currentUserId,
         sessionId: currentConversationId,
         conversationId: currentConversationId,
-        requested_type: isCreation ? targetToolType : (isIteration && activeCreation ? activeCreation.toolType : undefined),
+        requested_type: explicitToolType || undefined,
         attachedFileId,
         attachedFileName,
         attachedFileContent,
@@ -724,11 +693,11 @@ TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
 
       let fullResponseText = rawResponseText;
 
-      // 6. L'IA CHEF D'ORCHESTRE AUTONOME : DÉTECTION DU MODE CRÉATION OU MODE CHAT
+      // 6. L'IA CHEF D'ORCHESTRE AUTONOME : DÉCISION DE L'IA ENTRE CHAT ET CRÉATION
       const hasCreationClues = Boolean(
         aiResult.mode === 'creation' ||
         (aiResult.creation_type && aiResult.creation_data) ||
-        isCreation ||
+        (isExplicitOverride && explicitToolType) ||
         /"decision"\s*:\s*"creation"/i.test(rawResponseText) ||
         /"creation_data"/i.test(rawResponseText) ||
         /<creation/i.test(rawResponseText)
@@ -738,7 +707,7 @@ TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
       let companionChatMessage = '';
 
       if (aiResult.creation_data) {
-        const normType = normalizeCreationType(aiResult.creation_type || targetToolType);
+        const normType = normalizeCreationType(aiResult.creation_type || explicitToolType || 'questionnaire');
         creationParsed = {
           title: aiResult.creation_title || `${normType.toUpperCase()} : ${mainDocName}`,
           content: aiResult.creation_data,
@@ -753,7 +722,7 @@ TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
         if (parsed && typeof parsed === 'object') {
           const parsedData = parsed.creation_data || (parsed.questions || parsed.affirmations || parsed.cards || parsed.root || parsed.overview || parsed.sections || parsed.exercises || parsed.exercices || parsed.written_exercise || parsed.complete_exam ? parsed : null);
           if (parsedData) {
-            const detectedType = parsed.creation_type || (parsed.questions ? 'questionnaire' : parsed.affirmations ? 'vrai-ou-faux' : parsed.cards ? 'carte-memoire' : parsed.root ? 'carte-mentale' : parsed.overview ? 'resume' : targetToolType);
+            const detectedType = parsed.creation_type || (parsed.questions ? 'questionnaire' : parsed.affirmations ? 'vrai-ou-faux' : parsed.cards ? 'carte-memoire' : parsed.root ? 'carte-mentale' : parsed.overview ? 'resume' : explicitToolType || 'questionnaire');
             const normType = normalizeCreationType(detectedType);
             creationParsed = {
               title: parsed.creation_title || parsed.title || `${normType.toUpperCase()} : ${mainDocName}`,
@@ -764,34 +733,27 @@ TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
           }
         }
 
-        if (!creationParsed) {
-          const p = parseOrBuildAiCreation(targetToolType, rawResponseText, mainDocName, userText);
+        // Si l'utilisateur a explicitement cliqué sur un bouton d'action (override)
+        if (!creationParsed && isExplicitOverride && explicitToolType) {
+          const p = parseOrBuildAiCreation(explicitToolType, rawResponseText, mainDocName, userText);
           if (p.content && (p.content.questions?.length > 0 || p.content.overview || p.content.root || p.content.metrics || p.content.sections || p.content.affirmations || p.content.cards || p.content.exercises || p.content.exercices)) {
             creationParsed = {
               title: p.title,
               content: p.content,
-              toolType: targetToolType,
+              toolType: explicitToolType,
             };
-          } else if (isCreation) {
+          } else {
             creationParsed = {
-              title: p.title || `${targetToolType} : ${mainDocName}`,
+              title: p.title || `${explicitToolType} : ${mainDocName}`,
               content: p.content || null,
-              toolType: targetToolType,
+              toolType: explicitToolType,
             };
           }
         }
       }
 
-      if (isCreation && !creationParsed) {
-        creationParsed = {
-          title: `${targetToolType} : ${mainDocName}`,
-          content: null,
-          toolType: targetToolType,
-        };
-      }
-
       if (creationParsed && creationParsed.content) {
-        const effectiveToolType = creationParsed.toolType || targetToolType;
+        const effectiveToolType = creationParsed.toolType || explicitToolType || 'questionnaire';
         const newCreation: AiCreation = {
           id: 'ai-' + Date.now(),
           userId: currentUserId,
@@ -814,25 +776,8 @@ TON RÔLE D'AUTONOMIE & PRISE DE CONSCIENCE DE L'INTERFACE :
         fullResponseText = `${cleanIntro ? cleanIntro + '\n\n' : ''}✨ J'ai généré votre **${newCreation.title}** directement dans votre espace **Création** !
 
 👉 *Retrouvez et testez votre création dans le volet de droite (ou l'onglet Création sur mobile).*`;
-      } else if (isIteration && activeCreation) {
-        const parsed = parseOrBuildAiCreation(activeCreation.toolType, rawResponseText, mainDocName, userText);
-        const updatedCreation: AiCreation = {
-          ...activeCreation,
-          title: parsed.title,
-          content: parsed.content,
-          updatedAt: new Date().toISOString(),
-          version: (activeCreation.version || 1) + 1,
-        };
-
-        setActiveCreation(updatedCreation);
-        window.dispatchEvent(new CustomEvent('ai-creation-update', {
-          detail: { updatedContent: parsed.content, title: parsed.title }
-        }));
-        window.dispatchEvent(new CustomEvent('switch-mobile-tab', { detail: { tab: 2 } }));
-
-        const cleanIntro = cleanChatText(aiResult.chat_response || rawResponseText);
-        fullResponseText = `${cleanIntro ? cleanIntro + '\n\n' : ''}✅ Votre création a été mise à jour dans votre espace **Création** !`;
       } else {
+        // BRANCHE DISCUSSION SIMPLE DANS LE CHAT : Réponse directe sans rien déranger dans l'espace création
         const cleaned = cleanChatText(aiResult.chat_response || rawResponseText);
         fullResponseText = cleaned || "✨ Votre demande a été traitée avec succès.";
       }
