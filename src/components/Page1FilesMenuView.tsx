@@ -99,6 +99,11 @@ import { CloudStorageAPI } from '../services/cloudStorageService';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
 import { generatePdfThumbnail, generateVideoThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
+import { storeFileBlob, getFileBlobUrl, getFileBlob } from '../services/localFileStorage';
+import { ModernVideoPlayer } from './ModernVideoPlayer';
+import { ModernImageViewer } from './ModernImageViewer';
+import { ModernAudioPlayer } from './ModernAudioPlayer';
+import { ModernDocumentViewer } from './ModernDocumentViewer';
 
 interface Page1FilesMenuViewProps {
   onBack: () => void;
@@ -1719,41 +1724,81 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     for (const file of files) {
       try {
+        const localBlobUrl = URL.createObjectURL(file);
+        const normName = file.name.toLowerCase();
+        const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
+
+        // Détection de catégorie
+        let autoCat: 'images' | 'videos' | 'audio' | 'documents' = 'documents';
+        if (normName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/)) autoCat = 'images';
+        else if (normName.match(/\.(mp4|mov|webm|avi|mkv|flv|wmv|3gp|m4v)$/)) autoCat = 'videos';
+        else if (normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma)$/)) autoCat = 'audio';
+
         // Pré-générer les aperçus instantanés pour les vidéos et documents
         let previewDataUrl: string | null = null;
-        const normName = file.name.toLowerCase();
-        if (normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) {
+        if (autoCat === 'videos') {
           previewDataUrl = await generateVideoThumbnail(file, file.name);
         } else if (normName.endsWith('.pdf')) {
           previewDataUrl = await generatePdfThumbnail(file, file.name);
         }
 
+        // Tenter l'envoi cloud
         const res = await CloudStorageAPI.uploadFile(file, 'auto', file.name);
-        if (res.success && res.file && previewDataUrl) {
-          res.file.previewUrl = previewDataUrl;
-          res.file.thumbnailUrl = previewDataUrl;
-          setCachedMediaThumbnail(res.file.id, previewDataUrl);
-          if (res.file.url) setCachedMediaThumbnail(res.file.url, previewDataUrl);
-        }
-        if (res.success && res.file) {
-          const cat = res.category || res.file.category;
-          if (cat === 'images') {
-            setImagesList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
-          } else if (cat === 'videos') {
-            setVideosList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
-          } else if (cat === 'audio') {
-            setAudioList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
-          } else {
-            setDocumentsList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
-          }
+        const fileId = res?.file?.id || `cf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
 
-          setCloudRecentFiles(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)].slice(0, 6));
-          successCount++;
+        // Stocker impérativement dans IndexedDB pour que le binaire persiste au rechargement
+        await storeFileBlob(fileId, file);
+
+        let finalItem: FileItem;
+        if (res.success && res.file) {
+          finalItem = { ...res.file };
         } else {
-          showToast(res.error || `Erreur lors de l'import de ${file.name}`);
+          const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
+          finalItem = {
+            id: fileId,
+            name: file.name,
+            category: autoCat,
+            source: 'StudyCloud Local',
+            size: sizeKb,
+            sizeBytes: file.size,
+            date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+            extension: ext
+          };
         }
+
+        // Attacher l'URL de lecture directe
+        finalItem.url = localBlobUrl;
+        if (finalItem.category === 'videos' || autoCat === 'videos') {
+          finalItem.videoUrl = localBlobUrl;
+          finalItem.thumbnailUrl = previewDataUrl || undefined;
+          finalItem.previewUrl = previewDataUrl || undefined;
+        } else if (finalItem.category === 'audio' || autoCat === 'audio') {
+          finalItem.audioUrl = localBlobUrl;
+        } else if (finalItem.category === 'images' || autoCat === 'images') {
+          finalItem.previewUrl = localBlobUrl;
+        } else {
+          finalItem.previewUrl = previewDataUrl || undefined;
+        }
+
+        if (previewDataUrl) {
+          setCachedMediaThumbnail(finalItem.id, previewDataUrl);
+        }
+
+        const cat = finalItem.category;
+        if (cat === 'images') {
+          setImagesList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
+        } else if (cat === 'videos') {
+          setVideosList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
+        } else if (cat === 'audio') {
+          setAudioList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
+        } else {
+          setDocumentsList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
+        }
+
+        setCloudRecentFiles(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)].slice(0, 6));
+        successCount++;
       } catch (err: any) {
-        showToast(`Erreur réseau lors de l'import de ${file.name}`);
+        showToast(`Erreur lors de l'import de ${file.name}`);
       }
     }
 
@@ -1778,9 +1823,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     for (const file of files) {
       try {
+        const localBlobUrl = URL.createObjectURL(file);
+        const normName = file.name.toLowerCase();
+        const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
+
         // Pré-générer les aperçus instantanés pour les vidéos et documents
         let previewDataUrl: string | null = null;
-        const normName = file.name.toLowerCase();
         if (normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) {
           previewDataUrl = await generateVideoThumbnail(file, file.name);
         } else if (normName.endsWith('.pdf')) {
@@ -1793,38 +1841,64 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           file.name, 
           importConfig.folderId
         );
-        if (res.success && res.file && previewDataUrl) {
-          res.file.previewUrl = previewDataUrl;
-          res.file.thumbnailUrl = previewDataUrl;
-          setCachedMediaThumbnail(res.file.id, previewDataUrl);
-          if (res.file.url) setCachedMediaThumbnail(res.file.url, previewDataUrl);
+
+        const fileId = res?.file?.id || `cf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
+
+        // Sauvegarder dans IndexedDB
+        await storeFileBlob(fileId, file);
+
+        let finalItem: FileItem;
+        if (res.success && res.file) {
+          finalItem = { ...res.file };
+        } else {
+          const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
+          finalItem = {
+            id: fileId,
+            name: file.name,
+            category: importConfig.category === 'classeur' ? 'documents' : importConfig.category,
+            source: 'StudyCloud Local',
+            size: sizeKb,
+            sizeBytes: file.size,
+            date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+            extension: ext
+          };
         }
 
-        if (!res.success) {
-          // Bloqué par le worker car le fichier ne correspond pas au menu
-          showToast(res.error || `Ce fichier ne correspond pas au menu ${importConfig.label}.`);
-          continue;
+        // Attacher l'URL de lecture directe
+        finalItem.url = localBlobUrl;
+        if (importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) {
+          finalItem.videoUrl = localBlobUrl;
+          finalItem.thumbnailUrl = previewDataUrl || undefined;
+          finalItem.previewUrl = previewDataUrl || undefined;
+        } else if (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/)) {
+          finalItem.audioUrl = localBlobUrl;
+        } else if (importConfig.category === 'images' || normName.match(/\.(jpg|jpeg|png|gif|webp|svg)$/)) {
+          finalItem.previewUrl = localBlobUrl;
+        } else {
+          finalItem.previewUrl = previewDataUrl || undefined;
         }
 
-        if (res.file) {
-          if (importConfig.category === 'images') {
-            setImagesList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
-          } else if (importConfig.category === 'videos') {
-            setVideosList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
-          } else if (importConfig.category === 'audio') {
-            setAudioList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
-          } else if (importConfig.category === 'documents') {
-            setDocumentsList(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)]);
-          } else if (importConfig.category === 'classeur' && importConfig.folderId) {
-            setFolderFilesMap(prev => ({
-              ...prev,
-              [importConfig.folderId!]: [res.file!, ...(prev[importConfig.folderId!] || []).filter(f => f.id !== res.file!.id)]
-            }));
-          }
-
-          setCloudRecentFiles(prev => [res.file!, ...prev.filter(f => f.id !== res.file!.id)].slice(0, 6));
-          successCount++;
+        if (previewDataUrl) {
+          setCachedMediaThumbnail(finalItem.id, previewDataUrl);
         }
+
+        if (importConfig.category === 'images') {
+          setImagesList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
+        } else if (importConfig.category === 'videos') {
+          setVideosList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
+        } else if (importConfig.category === 'audio') {
+          setAudioList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
+        } else if (importConfig.category === 'documents') {
+          setDocumentsList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
+        } else if (importConfig.category === 'classeur' && importConfig.folderId) {
+          setFolderFilesMap(prev => ({
+            ...prev,
+            [importConfig.folderId!]: [finalItem, ...(prev[importConfig.folderId!] || []).filter(f => f.id !== finalItem.id)]
+          }));
+        }
+
+        setCloudRecentFiles(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)].slice(0, 6));
+        successCount++;
       } catch (err: any) {
         showToast(`Erreur lors de l'import : ${err.message || 'Échec réseau'}`);
       }
@@ -2842,6 +2916,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isNotepad = Boolean(file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt'));
     const isAudio = Boolean(file.category === 'audio' || file.isAudio || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name));
     const isVideo = Boolean(file.category === 'videos' || file.isVideo || Boolean(file.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv)$/i.test(file.name));
+
+    // Récupération instantanée depuis IndexedDB si l'URL est manquante ou invalide
+    if (file.id && (!file.videoUrl || file.videoUrl.startsWith('data:image/') || !file.url)) {
+      getFileBlobUrl(file.id).then(blobUrl => {
+        if (blobUrl) {
+          setSplitSelectedFile(curr => curr && curr.id === file.id ? {
+            ...curr,
+            videoUrl: isVideo ? blobUrl : curr.videoUrl,
+            audioUrl: isAudio ? blobUrl : curr.audioUrl,
+            url: blobUrl
+          } : curr);
+        }
+      }).catch(() => {});
+    }
 
     if (isNotepad) {
       setNoteTextContent(file.content || '');
@@ -9763,47 +9851,39 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 {/* CORPS DU LECTEUR GRAND FORMAT SELON LE TYPE DE MÉDIA (Prend tout l'espace disponible) */}
                 <div className={`flex-1 w-full h-full flex flex-col items-center justify-center ${isSelectedDoc ? 'p-0 overflow-hidden bg-white' : 'p-1 sm:p-2 sm:px-4 overflow-hidden'} relative`}>
 
-                  {/* 1. LECTEUR IMAGE GRAND FORMAT (Prend tout l'espace avec Zoom & Rotation) */}
+                  {/* 1. LECTEUR IMAGE GRAND FORMAT AVANCÉ */}
                   {isSelectedImage && !isSelectedVideo && !isSelectedAudio && (
-                    <div className="w-full h-full flex-1 flex flex-col items-center justify-center relative overflow-hidden rounded-2xl bg-black/80 border border-white/10 p-1 sm:p-2 shadow-2xl">
-                      <div 
-                        className="transition-transform duration-200 flex items-center justify-center w-full h-full"
-                        style={{
-                          transform: `scale(${viewerZoom}) rotate(${viewerRotation}deg)`
-                        }}
-                      >
-                        <img
-                          src={splitSelectedFile.previewUrl || (splitSelectedFile as any).url}
-                          alt={splitSelectedFile.name}
-                          className={`w-full h-full object-contain rounded-xl shadow-2xl select-none transition-all ${
-                            isViewerMaximized 
-                              ? 'max-h-[calc(100vh-125px)]' 
-                              : 'max-h-[calc(100vh-180px)]'
-                          }`}
-                        />
-                      </div>
-                      <div className="absolute bottom-3 left-4 bg-black/80 backdrop-blur-xs px-2.5 py-1 rounded-full text-[10px] text-slate-300 font-bold border border-white/10">
-                        Zoom : {Math.round(viewerZoom * 100)}% {viewerRotation > 0 && `• ${viewerRotation}°`}
-                      </div>
-                    </div>
-                  )}
-
-                  {/* 2. LECTEUR VIDÉO GRAND FORMAT INTERACTIF (Prend tout l'espace de l'écran, tout format vidéo) */}
-                  {isSelectedVideo && !isSelectedAudio && (
-                    <div className="w-full h-full flex-1 flex items-center justify-center relative p-1 sm:p-2 overflow-hidden bg-black/80 rounded-2xl border border-white/10 shadow-2xl">
-                      <video
-                        ref={videoRef}
-                        src={splitSelectedFile.videoUrl || (splitSelectedFile as any).url || splitSelectedFile.previewUrl || ''}
-                        poster={splitSelectedFile.previewUrl}
-                        className={`w-full h-full object-contain rounded-xl select-none bg-black transition-all ${
+                    <div className="w-full h-full flex-1 flex flex-col items-center justify-center relative overflow-hidden rounded-2xl shadow-2xl">
+                      <ModernImageViewer
+                        src={splitSelectedFile.previewUrl || (splitSelectedFile as any).url}
+                        alt={splitSelectedFile.name}
+                        fileName={splitSelectedFile.name}
+                        fileId={splitSelectedFile.id}
+                        fileSize={splitSelectedFile.size}
+                        className={`w-full h-full ${
                           isViewerMaximized 
                             ? 'max-h-[calc(100vh-125px)]' 
                             : 'max-h-[calc(100vh-180px)]'
                         }`}
-                        controls
-                        autoPlay
-                        loop
-                        playsInline
+                      />
+                    </div>
+                  )}
+
+                  {/* 2. LECTEUR VIDÉO GRAND FORMAT INTERACTIF AVANCÉ */}
+                  {isSelectedVideo && !isSelectedAudio && (
+                    <div className="w-full h-full flex-1 flex items-center justify-center relative p-1 sm:p-2 overflow-hidden rounded-2xl shadow-2xl">
+                      <ModernVideoPlayer
+                        src={splitSelectedFile.videoUrl || (splitSelectedFile as any).url}
+                        poster={splitSelectedFile.previewUrl}
+                        fileName={splitSelectedFile.name}
+                        fileId={splitSelectedFile.id}
+                        fileSize={splitSelectedFile.size}
+                        autoPlay={true}
+                        className={`w-full h-full ${
+                          isViewerMaximized 
+                            ? 'max-h-[calc(100vh-125px)]' 
+                            : 'max-h-[calc(100vh-180px)]'
+                        }`}
                       />
                     </div>
                   )}

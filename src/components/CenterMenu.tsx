@@ -13,6 +13,10 @@ import mammoth from 'mammoth';
 import * as XLSX from 'xlsx';
 import JSZip from 'jszip';
 import { getFileBlob, getFileBlobUrl, formatFileSize } from '../services/localFileStorage';
+import { ModernVideoPlayer } from './ModernVideoPlayer';
+import { ModernImageViewer } from './ModernImageViewer';
+import { ModernAudioPlayer } from './ModernAudioPlayer';
+import { ModernDocumentViewer } from './ModernDocumentViewer';
 
 // Worker configuration for pdfjsLib
 if (typeof window !== 'undefined') {
@@ -1540,12 +1544,13 @@ export function CenterMenu({
           // 5. IMAGES
           if (isImg) {
             return (
-              <div className="w-full h-full flex items-center justify-center overflow-auto p-4 bg-stone-100 dark:bg-stone-950">
-                <img
+              <div className="w-full h-full flex items-center justify-center p-2 bg-zinc-950">
+                <ModernImageViewer
                   src={currentUrl}
                   alt={activePreviewItem?.name || 'Document'}
-                  style={{ zoom: `${effectiveZoom}%`, transformOrigin: 'center center' }}
-                  className="max-w-full max-h-full object-contain transition-all select-none"
+                  fileName={activePreviewItem?.name}
+                  fileId={activePreviewItem?.id}
+                  fileSize={formatFileSize(activePreviewItem?.size)}
                 />
               </div>
             );
@@ -1554,13 +1559,14 @@ export function CenterMenu({
           // 6. VIDEO
           if (isVideo) {
             return (
-              <div className="w-full h-full flex items-center justify-center bg-black">
-                <video
+              <div className="w-full h-full flex items-center justify-center bg-black p-1 sm:p-2">
+                <ModernVideoPlayer
                   src={currentUrl}
-                  controls
-                  playsInline
-                  className="w-full max-h-full object-contain"
-                  style={{ zoom: `${effectiveZoom}%` }}
+                  poster={activePreviewItem?.previewUrl}
+                  fileName={activePreviewItem?.name}
+                  fileId={activePreviewItem?.id}
+                  fileSize={formatFileSize(activePreviewItem?.size)}
+                  autoPlay={true}
                 />
               </div>
             );
@@ -1569,15 +1575,15 @@ export function CenterMenu({
           // 7. AUDIO
           if (isAudio) {
             return (
-              <div className="w-full h-full flex flex-col items-center justify-center p-6 bg-[#FDFBF7] dark:bg-stone-950">
-                <div className="w-full max-w-md bg-white dark:bg-stone-900 rounded-2xl border border-stone-200 dark:border-stone-800 p-8 text-center shadow-sm">
-                  <div className="w-20 h-20 mx-auto rounded-2xl bg-orange-500/10 border border-orange-500/30 flex items-center justify-center mb-4 text-orange-500">
-                    <Music className="w-10 h-10 animate-pulse" />
-                  </div>
-                  <h3 className="text-base font-extrabold text-stone-900 dark:text-white mb-1 truncate px-2">{activePreviewItem.name}</h3>
-                  <p className="text-xs text-stone-500 mb-6 font-mono">{formatFileSize(activePreviewItem.size)}</p>
-                  <audio src={currentUrl} controls className="w-full rounded-lg" />
-                </div>
+              <div className="w-full h-full flex items-center justify-center p-4 bg-[#090D1A]">
+                <ModernAudioPlayer
+                  src={currentUrl}
+                  fileName={activePreviewItem?.name}
+                  fileId={activePreviewItem?.id}
+                  fileSize={formatFileSize(activePreviewItem?.size)}
+                  artist={activePreviewItem?.artist || 'StudyCloud Audio'}
+                  autoPlay={true}
+                />
               </div>
             );
           }
