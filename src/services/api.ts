@@ -29,6 +29,15 @@ export const generateCleanShareCode = (): string => {
   return 'sec_' + Math.random().toString(36).substring(2, 12) + Date.now().toString(36);
 };
 
+// Import et ré-export des connecteurs du Cerveau Neuronal Cloudflare Agent
+import {
+  getStudyAgentUrl,
+  setStudyAgentUrl,
+  generateAgentCreation,
+  sendAgentChatMessage,
+} from './studyAgentService';
+export { getStudyAgentUrl, setStudyAgentUrl };
+
 // URL du Worker Cloudflare Agent Neuronal dédié à l'assistante IA StudyCloud
 export const getAiWorkerUrl = (): string => {
   return (
@@ -41,10 +50,6 @@ export const getAiWorkerUrl = (): string => {
 export const setAiWorkerUrl = (url: string) => {
   localStorage.setItem('studycloud_ai_worker_url', url.trim());
 };
-
-// URL et connecteurs du Cerveau Neuronal Cloudflare Agent (Durable Objects)
-export { getStudyAgentUrl, setStudyAgentUrl } from './studyAgentService';
-import { generateAgentCreation, sendAgentChatMessage } from './studyAgentService';
 
 // URL du Worker Cloudflare connecté à Google Gemini (Mode Puissance)
 export const getGeminiWorkerUrl = (): string => {
