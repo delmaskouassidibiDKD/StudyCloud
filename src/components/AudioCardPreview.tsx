@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { extractAudioCover, generateAudioCreatorCover, getCachedMediaThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { CloudStorageAPI } from '../services/cloudStorageService';
+import { getFileBlob } from '../services/localFileStorage';
 import { FileItem } from './Page1FilesMenuView';
 
 interface AudioCardPreviewProps {
@@ -33,21 +34,49 @@ export const AudioCardPreview: React.FC<AudioCardPreviewProps> = ({ track }) => 
     let isMounted = true;
     if (coverUrl && isImageCover(coverUrl)) return;
 
-    const sourceToExtract = targetAudioUrl || (track as any).blobUrl || track.id;
-    if (!sourceToExtract) {
-      setCoverUrl(generateAudioCreatorCover(track.name, track.artist || track.source));
-      return;
+    async function loadCover() {
+      // 1. Tenter d'extraire la pochette ID3 directement du blob IndexedDB local
+      if (track.id) {
+        try {
+          const blob = await getFileBlob(track.id);
+          if (blob && isMounted) {
+            const url = await extractAudioCover(blob, track.name, track.artist || track.source);
+            if (isMounted && url) {
+              setCoverUrl(url);
+              setCachedMediaThumbnail(track.id, url);
+              if (track.id && !track.id.startsWith('blob:')) {
+                CloudStorageAPI.saveMediaThumbnail(track.id, 'audio', url).catch(() => {});
+              }
+              return;
+            }
+          }
+        } catch {}
+      }
+
+      // 2. Tenter avec l'URL audio distante
+      const sourceToExtract = targetAudioUrl || (track as any).blobUrl;
+      if (sourceToExtract) {
+        try {
+          const url = await extractAudioCover(sourceToExtract, track.name, track.artist || track.source);
+          if (isMounted && url) {
+            setCoverUrl(url);
+            setCachedMediaThumbnail(track.id || sourceToExtract, url);
+            if (track.id && !track.id.startsWith('blob:')) {
+              CloudStorageAPI.saveMediaThumbnail(track.id, 'audio', url).catch(() => {});
+            }
+            return;
+          }
+        } catch {}
+      }
+
+      // 3. Fallback officiel pochette vinyle haute fidélité
+      if (isMounted) {
+        const fallback = generateAudioCreatorCover(track.name, track.artist || track.source);
+        setCoverUrl(fallback);
+      }
     }
 
-    extractAudioCover(sourceToExtract, track.name, track.artist || track.source).then(url => {
-      if (isMounted && url) {
-        setCoverUrl(url);
-        setCachedMediaThumbnail(track.id, url);
-        if (track.id && !track.id.startsWith('blob:')) {
-          CloudStorageAPI.saveMediaThumbnail(track.id, 'audio', url).catch(() => {});
-        }
-      }
-    });
+    loadCover();
 
     return () => {
       isMounted = false;

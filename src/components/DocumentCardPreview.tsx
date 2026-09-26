@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { FileText, FileSpreadsheet, Presentation, FileCode, AlignLeft } from 'lucide-react';
 import { generatePdfThumbnail, getCachedMediaThumbnail } from '../services/mediaPreviewService';
+import { getFileBlob } from '../services/localFileStorage';
 import { FileItem } from './Page1FilesMenuView';
 
 interface DocumentCardPreviewProps {
@@ -31,7 +32,33 @@ export const DocumentCardPreview: React.FC<DocumentCardPreviewProps> = ({ doc })
     // Si on a déjà une image valide
     if (thumbUrl && !thumbUrl.toLowerCase().endsWith('.pdf')) return;
 
-    // Si c'est un PDF avec une URL valide, générer la miniature réelle
+    // Si c'est un PDF, vérifier d'abord dans IndexedDB (binaire local disponible immédiatement)
+    if (isPdf && doc.id) {
+      getFileBlob(doc.id).then(blob => {
+        if (!isMounted) return;
+        if (blob) {
+          generatePdfThumbnail(blob, doc.id).then(url => {
+            if (isMounted && url) {
+              setThumbUrl(url);
+            }
+          });
+          return;
+        }
+        const targetUrl = doc.url || (doc.previewUrl && doc.previewUrl.toLowerCase().endsWith('.pdf') ? doc.previewUrl : null);
+        if (targetUrl) {
+          generatePdfThumbnail(targetUrl, doc.id || targetUrl).then(url => {
+            if (isMounted && url) {
+              setThumbUrl(url);
+            }
+          });
+        }
+      });
+      return () => {
+        isMounted = false;
+      };
+    }
+
+    // Fallback URL distante si pas d'ID
     const targetUrl = doc.url || (doc.previewUrl && doc.previewUrl.toLowerCase().endsWith('.pdf') ? doc.previewUrl : null);
     if (isPdf && targetUrl) {
       generatePdfThumbnail(targetUrl, doc.id || targetUrl).then(url => {

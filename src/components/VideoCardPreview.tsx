@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { generateVideoThumbnail, generateVideoFallbackPoster, getCachedMediaThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { CloudStorageAPI } from '../services/cloudStorageService';
+import { getFileBlob } from '../services/localFileStorage';
 import { FileItem } from './Page1FilesMenuView';
 
 interface VideoCardPreviewProps {
@@ -36,22 +37,49 @@ export const VideoCardPreview: React.FC<VideoCardPreviewProps> = ({ vid }) => {
     let isMounted = true;
     if (thumbUrl && isImageThumbnail(thumbUrl)) return;
 
-    const sourceToExtract = targetVideoUrl || (vid as any).blobUrl || vid.id;
-    if (!sourceToExtract) {
-      setThumbUrl(generateVideoFallbackPoster(vid.name, vid.size));
-      return;
+    async function loadThumb() {
+      // 1. Tenter d'extraire la frame directement du blob IndexedDB local
+      if (vid.id) {
+        try {
+          const blob = await getFileBlob(vid.id);
+          if (blob && isMounted) {
+            const url = await generateVideoThumbnail(blob, vid.id, vid.name);
+            if (isMounted && url) {
+              setThumbUrl(url);
+              setCachedMediaThumbnail(vid.id, url);
+              if (vid.id && !vid.id.startsWith('blob:')) {
+                CloudStorageAPI.saveMediaThumbnail(vid.id, 'videos', url).catch(() => {});
+              }
+              return;
+            }
+          }
+        } catch {}
+      }
+
+      // 2. Tenter avec l'URL distante
+      const sourceToExtract = targetVideoUrl || (vid as any).blobUrl;
+      if (sourceToExtract) {
+        try {
+          const url = await generateVideoThumbnail(sourceToExtract, vid.id || sourceToExtract, vid.name);
+          if (isMounted && url) {
+            setThumbUrl(url);
+            setCachedMediaThumbnail(vid.id || sourceToExtract, url);
+            if (vid.id && !vid.id.startsWith('blob:')) {
+              CloudStorageAPI.saveMediaThumbnail(vid.id, 'videos', url).catch(() => {});
+            }
+            return;
+          }
+        } catch {}
+      }
+
+      // 3. Fallback poster SVG stylisé haute fidélité
+      if (isMounted) {
+        const fallback = generateVideoFallbackPoster(vid.name, vid.size);
+        setThumbUrl(fallback);
+      }
     }
 
-    generateVideoThumbnail(sourceToExtract, vid.id, vid.name).then(url => {
-      if (isMounted && url) {
-        setThumbUrl(url);
-        setCachedMediaThumbnail(vid.id, url);
-        // Persister la miniature dans la base de données D1 pour que tout vienne du cloud
-        if (vid.id && !vid.id.startsWith('blob:')) {
-          CloudStorageAPI.saveMediaThumbnail(vid.id, 'videos', url).catch(() => {});
-        }
-      }
-    });
+    loadThumb();
 
     return () => {
       isMounted = false;

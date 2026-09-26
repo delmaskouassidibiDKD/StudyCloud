@@ -99,12 +99,13 @@ import { CloudStorageAPI } from '../services/cloudStorageService';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
 import { AudioCardPreview } from './AudioCardPreview';
-import { generatePdfThumbnail, generateVideoThumbnail, extractAudioCover, generateAudioCreatorCover, setCachedMediaThumbnail } from '../services/mediaPreviewService';
+import { generatePdfThumbnail, generateVideoThumbnail, extractAudioCover, generateAudioCreatorCover, getCachedMediaThumbnail, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { storeFileBlob, getFileBlobUrl, getFileBlob, deleteFileBlob } from '../services/localFileStorage';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
 import { ModernImageViewer } from './ModernImageViewer';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
+import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 
 interface Page1FilesMenuViewProps {
   onBack: () => void;
@@ -184,6 +185,83 @@ function unmarkFileLocallyDeleted(id: string, name?: string): void {
   } catch {}
 }
 
+function getDeletedRecentIds(): Set<string> {
+  try {
+    const raw = localStorage.getItem('studycloud_deleted_recent_ids');
+    if (raw) {
+      const arr = JSON.parse(raw);
+      if (Array.isArray(arr)) return new Set(arr);
+    }
+  } catch {}
+  return new Set();
+}
+
+function markRecentLocallyDeleted(id: string, name?: string): void {
+  try {
+    const set = getDeletedRecentIds();
+    if (id) set.add(id);
+    if (name) set.add(name);
+    localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(set).slice(-500)));
+  } catch {}
+}
+
+function unmarkRecentLocallyDeleted(id: string, name?: string): void {
+  try {
+    const set = getDeletedRecentIds();
+    if (id) set.delete(id);
+    if (name) set.delete(name);
+    localStorage.setItem('studycloud_deleted_recent_ids', JSON.stringify(Array.from(set)));
+  } catch {}
+}
+
+const RecentImageCardPreview: React.FC<{ file: FileItem }> = ({ file }) => {
+  const [imgSrc, setImgSrc] = useState<string | null>(() => {
+    const cached = getCachedMediaThumbnail(file.id || file.url || '');
+    if (cached) return cached;
+    if (file.previewUrl && !file.previewUrl.startsWith('blob:')) return file.previewUrl;
+    if (file.url && !file.url.startsWith('blob:')) return file.url;
+    return file.previewUrl || file.url || null;
+  });
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    let isMounted = true;
+    if (imgSrc && !hasError && !imgSrc.startsWith('blob:')) return;
+
+    if (file.id) {
+      getFileBlobUrl(file.id).then(blobUrl => {
+        if (isMounted && blobUrl) {
+          setImgSrc(blobUrl);
+          setHasError(false);
+        }
+      }).catch(() => {});
+    }
+
+    return () => {
+      isMounted = false;
+    };
+  }, [file.id, file.url, file.previewUrl, hasError, imgSrc]);
+
+  if (imgSrc && !hasError) {
+    return (
+      <img
+        src={imgSrc}
+        alt={file.name}
+        className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
+        loading="lazy"
+        onError={() => setHasError(true)}
+      />
+    );
+  }
+
+  return (
+    <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-emerald-950/80 via-slate-900 to-slate-900 p-3">
+      <ImageIcon className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-400 stroke-[1.8]" />
+    </div>
+  );
+};
+
+
 export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, onOpenStudySpace, onOpenCreateShareLink }) => {
   const [searchQuery, setSearchQuery] = useState('');
   const [subSearchQuery, setSubSearchQuery] = useState('');
@@ -196,6 +274,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // ÉTAT DE LA DIVISION EN DEUX (SPLIT SCREEN) & LECTEUR GRAND FORMAT
   // =========================================================================
   const [splitSelectedFile, setSplitSelectedFile] = useState<FileItem | null>(null);
+  const [splitResolvedPdfUrl, setSplitResolvedPdfUrl] = useState<string>('');
   const [isViewerMaximized, setIsViewerMaximized] = useState(false);
   const [viewerZoom, setViewerZoom] = useState(1);
   const [viewerRotation, setViewerRotation] = useState(0);
@@ -369,6 +448,48 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     } catch (e) {}
   }, [folderFilesMap]);
 
+  // Progression d'enregistrement en arrière-plan des fichiers importés (fileId -> pourcentage 0 à 100)
+  const [savingFileProgress, setSavingFileProgress] = useState<Record<string, number>>({});
+
+  const startSavingAnimation = (fileIds: string[], onComplete?: () => void) => {
+    if (!fileIds || fileIds.length === 0) return;
+
+    setSavingFileProgress(prev => {
+      const next = { ...prev };
+      fileIds.forEach(id => { next[id] = 12; });
+      return next;
+    });
+
+    let current = 12;
+    const interval = setInterval(() => {
+      current += Math.floor(Math.random() * 15) + 15;
+      if (current >= 100) {
+        current = 100;
+        clearInterval(interval);
+        setSavingFileProgress(prev => {
+          const next = { ...prev };
+          fileIds.forEach(id => { next[id] = 100; });
+          return next;
+        });
+
+        setTimeout(() => {
+          setSavingFileProgress(prev => {
+            const next = { ...prev };
+            fileIds.forEach(id => { delete next[id]; });
+            return next;
+          });
+          if (onComplete) onComplete();
+        }, 400);
+      } else {
+        setSavingFileProgress(prev => {
+          const next = { ...prev };
+          fileIds.forEach(id => { next[id] = current; });
+          return next;
+        });
+      }
+    }, 350);
+  };
+
   // Importer des fichiers dans le dossier ouvert
   const handleFolderFileUpload = (e: React.ChangeEvent<HTMLInputElement>, folderId: string) => {
     if (!e.target.files || e.target.files.length === 0) return;
@@ -387,16 +508,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const sizes = ['o', 'Ko', 'Mo', 'Go'];
       const i = f.size > 0 ? Math.floor(Math.log(f.size) / Math.log(k)) : 0;
       const sizeStr = f.size > 0 ? parseFloat((f.size / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i] : '0 o';
+      const fileId = `cf-${folderId}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
+      const localBlobUrl = URL.createObjectURL(f);
+
+      // Stocker le binaire immédiatement dans IndexedDB pour lecture instantanée
+      storeFileBlob(fileId, f).catch(() => {});
 
       return {
-        id: `cf-${folderId}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+        id: fileId,
         name: f.name,
         category,
         source: folderName,
         size: sizeStr,
         sizeBytes: f.size,
         date: getDynamicCurrentDate().full,
-        previewUrl: category === 'images' ? URL.createObjectURL(f) : undefined,
+        extension: ext.toUpperCase(),
+        url: localBlobUrl,
+        previewUrl: localBlobUrl,
+        videoUrl: category === 'videos' ? localBlobUrl : undefined,
+        audioUrl: category === 'audio' ? localBlobUrl : undefined,
         positionX: idx * 25,
         positionY: 0,
         displayOrder: idx
@@ -407,6 +537,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       ...prev,
       [folderId]: [...newFiles, ...(prev[folderId] || [])]
     }));
+
+    startSavingAnimation(newFiles.map(f => f.id));
+
+    // Débloquer des récents supprimés et afficher dans les récents
+    newFiles.forEach(f => {
+      unmarkRecentLocallyDeleted(f.id, f.name);
+      unmarkFileLocallyDeleted(f.id, f.name);
+    });
+    setCloudRecentFiles(prev => {
+      const existingIds = new Set(newFiles.map(f => f.id));
+      return [...newFiles, ...prev.filter(f => !existingIds.has(f.id))].slice(0, 6);
+    });
 
     // Sauvegarde en arrière-plan dans Cloudflare R2 dédié classeur et Cloudflare D1 classeur_files
     files.forEach(async (file, idx) => {
@@ -444,16 +586,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const sizes = ['o', 'Ko', 'Mo', 'Go'];
       const i = f.size > 0 ? Math.floor(Math.log(f.size) / Math.log(k)) : 0;
       const sizeStr = f.size > 0 ? parseFloat((f.size / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i] : '0 o';
+      const fileId = `cf-${folderId}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
+      const localBlobUrl = URL.createObjectURL(f);
+
+      // Stocker le binaire immédiatement dans IndexedDB
+      storeFileBlob(fileId, f).catch(() => {});
 
       return {
-        id: `cf-${folderId}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`,
+        id: fileId,
         name: f.name,
         category,
         source: folderName,
         size: sizeStr,
         sizeBytes: f.size,
         date: getDynamicCurrentDate().full,
-        previewUrl: category === 'images' ? URL.createObjectURL(f) : undefined,
+        extension: ext.toUpperCase(),
+        url: localBlobUrl,
+        previewUrl: localBlobUrl,
+        videoUrl: category === 'videos' ? localBlobUrl : undefined,
+        audioUrl: category === 'audio' ? localBlobUrl : undefined,
         positionX: idx * 25,
         positionY: 0,
         displayOrder: idx
@@ -465,7 +616,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       [folderId]: [...newFiles, ...(prev[folderId] || [])]
     }));
 
+    startSavingAnimation(newFiles.map(f => f.id));
+
     // Les récents d'accueil affichent les fichiers nouvellement importés
+    newFiles.forEach(f => {
+      unmarkRecentLocallyDeleted(f.id, f.name);
+      unmarkFileLocallyDeleted(f.id, f.name);
+    });
     setCloudRecentFiles(prev => {
       const existingIds = new Set(newFiles.map(f => f.id));
       return [...newFiles, ...prev.filter(f => !existingIds.has(f.id))].slice(0, 6);
@@ -495,8 +652,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (fileToDelete) {
       setTrashFiles(prev => [{ ...fileToDelete, originalFolderId: folderId }, ...prev.filter(f => f.id !== fileId)]);
       markFileLocallyDeleted(fileId, fileToDelete.name);
+      markRecentLocallyDeleted(fileId, fileToDelete.name);
     } else {
       markFileLocallyDeleted(fileId);
+      markRecentLocallyDeleted(fileId);
     }
     setFolderFilesMap(prev => ({
       ...prev,
@@ -1199,10 +1358,51 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     async function loadCloudBackendData() {
       try {
-        // 0. Aperçu général et récents
+        // 0. Aperçu général et récents (filtrés strictement pour ne jamais faire revenir un fichier supprimé)
         const overview = await CloudStorageAPI.getOverview();
         if (isMounted && overview && Array.isArray(overview.recentFiles)) {
-          setCloudRecentFiles(overview.recentFiles);
+          const deletedRecentIds = getDeletedRecentIds();
+          const locallyDeletedIds = getLocallyDeletedFileIds();
+          const trashRaw = localStorage.getItem('studycloud_trash_files');
+          let trashIdSet = new Set<string>();
+          try {
+            if (trashRaw) {
+              const parsed = JSON.parse(trashRaw);
+              if (Array.isArray(parsed)) trashIdSet = new Set(parsed.map((t: any) => t.id));
+            }
+          } catch {}
+
+          const cleanRecentFiles = overview.recentFiles.filter((f: any) => 
+            !isMockFile(f) &&
+            !deletedRecentIds.has(f.id) &&
+            !deletedRecentIds.has(f.name) &&
+            !locallyDeletedIds.has(f.id) &&
+            !locallyDeletedIds.has(f.name) &&
+            !trashIdSet.has(f.id)
+          );
+
+          setCloudRecentFiles(prev => {
+            const newMap = new Map<string, FileItem>();
+            // Préserver d'abord les fichiers récents ajoutés lors de cette session
+            prev.forEach(p => {
+              if (
+                !deletedRecentIds.has(p.id) && 
+                (!p.name || !deletedRecentIds.has(p.name)) &&
+                !locallyDeletedIds.has(p.id) && 
+                (!p.name || !locallyDeletedIds.has(p.name)) &&
+                !trashIdSet.has(p.id)
+              ) {
+                newMap.set(p.id, p);
+              }
+            });
+            // Compléter avec les récents du backend non supprimés
+            cleanRecentFiles.forEach((b: any) => {
+              if (!newMap.has(b.id)) {
+                newMap.set(b.id, b);
+              }
+            });
+            return Array.from(newMap.values()).slice(0, 6);
+          });
         }
 
         // Favoris et Épinglés réels depuis Cloudflare D1
@@ -1488,6 +1688,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setSplitSelectedFile(null);
     }
     setSelectedItemIds(prev => prev.filter(i => i !== id));
+    deleteFileBlob(id).catch(() => {});
+    removeDownloadedFile(id);
+    markFileLocallyDeleted(id);
+    markRecentLocallyDeleted(id);
+    setCloudRecentFiles(prev => prev.filter(f => f.id !== id));
     CloudStorageAPI.deleteTrashPermanently([id]).catch(() => {});
     showToast('Fichier définitivement supprimé.');
   };
@@ -1495,11 +1700,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const handlePermanentDeleteSelectedFromTrash = () => {
     if (selectedItemIds.length === 0) return;
     const count = selectedItemIds.length;
-    setTrashFiles(prev => prev.filter(f => !selectedItemIds.includes(f.id)));
-    if (splitSelectedFile && selectedItemIds.includes(splitSelectedFile.id)) {
+    const ids = [...selectedItemIds];
+    setTrashFiles(prev => prev.filter(f => !ids.includes(f.id)));
+    if (splitSelectedFile && ids.includes(splitSelectedFile.id)) {
       setSplitSelectedFile(null);
     }
-    CloudStorageAPI.deleteTrashPermanently(selectedItemIds).catch(() => {});
+    ids.forEach(id => {
+      deleteFileBlob(id).catch(() => {});
+      removeDownloadedFile(id);
+      markFileLocallyDeleted(id);
+      markRecentLocallyDeleted(id);
+    });
+    setCloudRecentFiles(prev => prev.filter(f => !ids.includes(f.id)));
+    CloudStorageAPI.deleteTrashPermanently(ids).catch(() => {});
     setSelectedItemIds([]);
     setIsSelectionMode(false);
     showToast(`${count} élément(s) définitivement supprimé(s).`);
@@ -1516,12 +1729,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   const handleEmptyTrash = () => {
+    const allTrashIds = trashFiles.map(f => f.id);
     setTrashFiles([]);
-    if (splitSelectedFile && trashFiles.some(f => f.id === splitSelectedFile.id)) {
+    if (splitSelectedFile && allTrashIds.includes(splitSelectedFile.id)) {
       setSplitSelectedFile(null);
     }
     setSelectedItemIds([]);
     setIsSelectionMode(false);
+    allTrashIds.forEach(id => {
+      deleteFileBlob(id).catch(() => {});
+      removeDownloadedFile(id);
+      markFileLocallyDeleted(id);
+      markRecentLocallyDeleted(id);
+    });
+    setCloudRecentFiles(prev => prev.filter(f => !allTrashIds.includes(f.id)));
     CloudStorageAPI.emptyTrash().catch(() => {});
     showToast('Corbeille vidée.');
   };
@@ -1639,10 +1860,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // État des fichiers récents avec persistance locale
   const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>(() => {
     try {
+      const deletedRecentIds = getDeletedRecentIds();
+      const locallyDeletedIds = getLocallyDeletedFileIds();
       const saved = localStorage.getItem('studycloud_recent_files');
       if (saved !== null) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
+        if (Array.isArray(parsed)) {
+          return parsed.filter(f => 
+            !isMockFile(f) &&
+            !deletedRecentIds.has(f.id) &&
+            (!f.name || !deletedRecentIds.has(f.name)) &&
+            !locallyDeletedIds.has(f.id) &&
+            (!f.name || !locallyDeletedIds.has(f.name))
+          );
+        }
       }
     } catch {
       // ignore
@@ -1660,10 +1891,58 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   }, [cloudRecentFiles]);
 
 
-  // Retirer un élément de la liste des récents sans supprimer le fichier
-  const handleRemoveRecentFile = (fileId: string) => {
-    setCloudRecentFiles(prev => prev.filter(f => f.id !== fileId));
-    showToast("Élément retiré des récents");
+  // Effacer complètement un élément des récents et de tout le stockage local / cloud
+  const handleRemoveRecentFile = (fileId: string, fileItem?: FileItem) => {
+    const file = fileItem || cloudRecentFiles.find(f => f.id === fileId);
+    const fileName = file?.name;
+
+    // 1. Inscrire dans la liste noire persistante locale pour ne jamais revenir après rechargement
+    markRecentLocallyDeleted(fileId, fileName);
+    markFileLocallyDeleted(fileId, fileName);
+
+    // 2. Retirer immédiatement des récents
+    setCloudRecentFiles(prev => {
+      const updated = prev.filter(f => f.id !== fileId && (!fileName || f.name !== fileName));
+      try {
+        localStorage.setItem('studycloud_recent_files', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    // 3. Purger complètement le binaire local IndexedDB
+    deleteFileBlob(fileId).catch(() => {});
+    removeDownloadedFile(fileId);
+    if (fileName) removeDownloadedFile(fileName);
+
+    // 4. Retirer des listes actives du composant
+    setDocumentsList(prev => prev.filter(d => d.id !== fileId));
+    setImagesList(prev => prev.filter(img => img.id !== fileId));
+    setVideosList(prev => prev.filter(vid => vid.id !== fileId));
+    setAudioList(prev => prev.filter(aud => aud.id !== fileId));
+    setDownloadedItems(prev => prev.filter(dl => dl.id !== fileId));
+
+    if (splitSelectedFile?.id === fileId) {
+      setSplitSelectedFile(null);
+    }
+
+    // 5. Supprimer dans Cloudflare D1/R2 pour que le serveur ne le renvoie plus
+    if (file) {
+      if ((file as any).originalFolderId || (file as any).folderId) {
+        CloudStorageAPI.deleteClasseurFile(file.id).catch(console.error);
+      } else if (file.category === 'images' || file.isImage) {
+        CloudStorageAPI.deleteImage(file.id).catch(console.error);
+      } else if (file.category === 'videos' || file.videoUrl) {
+        CloudStorageAPI.deleteVideo(file.id).catch(console.error);
+      } else if (file.category === 'audio' || file.audioUrl) {
+        CloudStorageAPI.deleteAudio(file.id).catch(console.error);
+      } else if (file.category === 'downloads') {
+        CloudStorageAPI.deleteDownload(file.id).catch(console.error);
+      } else {
+        CloudStorageAPI.deleteDocument(file.id).catch(console.error);
+      }
+    }
+
+    showToast("Fichier effacé définitivement.");
   };
 
   // Déclencher le sélecteur de fichier pour l'Accueil
@@ -1762,109 +2041,111 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList) as File[];
 
-    setIsUploading(true);
-    let successCount = 0;
-
-    for (const file of files) {
-      try {
-        const localBlobUrl = URL.createObjectURL(file);
-        const normName = file.name.toLowerCase();
-        const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
-
-        // Détection de catégorie
-        let autoCat: 'images' | 'videos' | 'audio' | 'documents' = 'documents';
-        if (normName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/)) autoCat = 'images';
-        else if (normName.match(/\.(mp4|mov|webm|avi|mkv|flv|wmv|3gp|m4v)$/)) autoCat = 'videos';
-        else if (normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma)$/)) autoCat = 'audio';
-
-        // Pré-générer les aperçus instantanés réels pour les vidéos, audios et documents
-        let previewDataUrl: string | null = null;
-        if (autoCat === 'videos') {
-          previewDataUrl = await generateVideoThumbnail(file, file.name, file.name);
-        } else if (autoCat === 'audio') {
-          previewDataUrl = await extractAudioCover(file, file.name, 'Créateur StudyCloud');
-        } else if (normName.endsWith('.pdf')) {
-          previewDataUrl = await generatePdfThumbnail(file, file.name);
-        }
-
-        // Tenter l'envoi cloud avec miniature pour D1
-        const res = await CloudStorageAPI.uploadFile(file, 'auto', file.name, undefined, previewDataUrl || undefined);
-        const fileId = res?.file?.id || `cf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-
-        // Stocker impérativement dans IndexedDB pour que le binaire persiste au rechargement
-        await storeFileBlob(fileId, file);
-
-        let finalItem: FileItem;
-        if (res.success && res.file) {
-          finalItem = { ...res.file };
-        } else {
-          const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
-          finalItem = {
-            id: fileId,
-            name: file.name,
-            category: autoCat,
-            source: 'StudyCloud Local',
-            size: sizeKb,
-            sizeBytes: file.size,
-            date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
-            extension: ext
-          };
-        }
-
-        // Attacher l'URL de lecture permanente servie par le Worker Cloudflare
-        const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-        const workerStreamUrl = (finalItem.videoUrl && !finalItem.videoUrl.startsWith('blob:')) 
-          ? finalItem.videoUrl 
-          : (finalItem.url && !finalItem.url.startsWith('blob:')) 
-          ? finalItem.url 
-          : `${baseUrl}/api/cloud/stream/${finalItem.id}`;
-        
-        finalItem.url = workerStreamUrl;
-        if (finalItem.category === 'videos' || autoCat === 'videos') {
-          finalItem.videoUrl = workerStreamUrl;
-          finalItem.thumbnailUrl = previewDataUrl || undefined;
-          finalItem.previewUrl = previewDataUrl || undefined;
-        } else if (finalItem.category === 'audio' || autoCat === 'audio') {
-          finalItem.audioUrl = finalItem.audioUrl && !finalItem.audioUrl.startsWith('blob:') ? finalItem.audioUrl : workerStreamUrl;
-          finalItem.url = finalItem.audioUrl;
-          finalItem.coverUrl = previewDataUrl || undefined;
-          finalItem.previewUrl = previewDataUrl || undefined;
-        } else if (finalItem.category === 'images' || autoCat === 'images') {
-          finalItem.previewUrl = finalItem.previewUrl && !finalItem.previewUrl.startsWith('blob:') ? finalItem.previewUrl : workerStreamUrl;
-          finalItem.url = finalItem.previewUrl;
-        } else {
-          finalItem.previewUrl = previewDataUrl || undefined;
-        }
-
-        if (previewDataUrl) {
-          setCachedMediaThumbnail(finalItem.id, previewDataUrl);
-          // Persister immédiatement la miniature ou la pochette créateur dans D1
-          CloudStorageAPI.saveMediaThumbnail(finalItem.id, autoCat, previewDataUrl).catch(() => {});
-        }
-
-        const cat = finalItem.category;
-        if (cat === 'images') {
-          setImagesList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
-        } else if (cat === 'videos') {
-          setVideosList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
-        } else if (cat === 'audio') {
-          setAudioList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
-        } else {
-          setDocumentsList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
-        }
-
-        setCloudRecentFiles(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)].slice(0, 6));
-        successCount++;
-      } catch (err: any) {
-        showToast(`Erreur lors de l'import de ${file.name}`);
-      }
-    }
-
-    setIsUploading(false);
-    if (successCount > 0) {
-      showToast(`${successCount} fichier(s) classé(s) automatiquement dans vos menus !`);
-    }
     if (fileInputRef.current) fileInputRef.current.value = '';
+
+    // Créer immédiatement les objets FileItem avec prévisualisation locale et stockage IndexedDB
+    const newItemsWithFiles = files.map((file, idx) => {
+      const localBlobUrl = URL.createObjectURL(file);
+      const normName = file.name.toLowerCase();
+      const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
+      const fileId = `cf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+      const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
+
+      let autoCat: 'images' | 'videos' | 'audio' | 'documents' = 'documents';
+      if (normName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/)) autoCat = 'images';
+      else if (normName.match(/\.(mp4|mov|webm|avi|mkv|flv|wmv|3gp|m4v)$/)) autoCat = 'videos';
+      else if (normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma)$/)) autoCat = 'audio';
+
+      // Sauvegarde binaire locale immédiate dans IndexedDB
+      storeFileBlob(fileId, file).catch(() => {});
+
+      const item: FileItem = {
+        id: fileId,
+        name: file.name,
+        category: autoCat,
+        source: 'StudyCloud Local',
+        size: sizeKb,
+        sizeBytes: file.size,
+        date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+        extension: ext,
+        url: localBlobUrl,
+        previewUrl: localBlobUrl,
+        videoUrl: autoCat === 'videos' ? localBlobUrl : undefined,
+        audioUrl: autoCat === 'audio' ? localBlobUrl : undefined,
+      };
+      return { file, item };
+    });
+
+    const newItems = newItemsWithFiles.map(x => x.item);
+    const fileIds = newItems.map(x => x.id);
+
+    // Ajout immédiat aux listes respectives (affichage instantané)
+    newItems.forEach(item => {
+      unmarkRecentLocallyDeleted(item.id, item.name);
+      unmarkFileLocallyDeleted(item.id, item.name);
+      if (item.category === 'images') setImagesList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+      else if (item.category === 'videos') setVideosList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+      else if (item.category === 'audio') setAudioList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+      else setDocumentsList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+    });
+    setCloudRecentFiles(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
+
+    // Démarrer l'animation de progression sur les cartes ("un trait qui se remplit")
+    startSavingAnimation(fileIds);
+
+    // Envoi en arrière-plan vers Cloudflare D1/R2 sans bloquer l'UI
+    (async () => {
+      let successCount = 0;
+      for (const { file, item } of newItemsWithFiles) {
+        try {
+          const normName = file.name.toLowerCase();
+          let previewDataUrl: string | null = null;
+          if (item.category === 'videos') {
+            previewDataUrl = await generateVideoThumbnail(file, file.name, file.name);
+          } else if (item.category === 'audio') {
+            previewDataUrl = await extractAudioCover(file, file.name, 'Créateur StudyCloud');
+          } else if (normName.endsWith('.pdf')) {
+            previewDataUrl = await generatePdfThumbnail(file, file.name);
+          }
+
+          if (previewDataUrl) {
+            setCachedMediaThumbnail(item.id, previewDataUrl);
+            CloudStorageAPI.saveMediaThumbnail(item.id, item.category, previewDataUrl).catch(() => {});
+          }
+
+          const res = await CloudStorageAPI.uploadFile(file, 'auto', file.name, undefined, previewDataUrl || undefined);
+          if (res?.success && res.file) {
+            const uploadedFile = res.file;
+            const updateItemFn = (prev: FileItem[]) => prev.map(f => {
+              if (f.id === item.id) {
+                return {
+                  ...f,
+                  ...uploadedFile,
+                  url: uploadedFile.url || f.url,
+                  videoUrl: uploadedFile.videoUrl || f.videoUrl,
+                  audioUrl: uploadedFile.audioUrl || f.audioUrl,
+                  previewUrl: previewDataUrl || uploadedFile.previewUrl || f.previewUrl,
+                  thumbnailUrl: previewDataUrl || uploadedFile.thumbnailUrl || f.thumbnailUrl,
+                  coverUrl: previewDataUrl || uploadedFile.coverUrl || f.coverUrl,
+                };
+              }
+              return f;
+            });
+            if (item.category === 'images') setImagesList(updateItemFn);
+            else if (item.category === 'videos') setVideosList(updateItemFn);
+            else if (item.category === 'audio') setAudioList(updateItemFn);
+            else setDocumentsList(updateItemFn);
+            setCloudRecentFiles(updateItemFn);
+          }
+          successCount++;
+        } catch (err: any) {
+          console.warn('[handleHomeFileSelected] Background upload:', err);
+        }
+      }
+      if (successCount > 0) {
+        showToast(`${successCount} fichier(s) classé(s) automatiquement dans vos menus !`);
+      }
+    })();
   };
 
   // 2. Traiter les fichiers importés depuis un sous-menu spécifique (Validation stricte par le worker)
@@ -1876,113 +2157,131 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const importConfig = getMenuImportConfig();
     if (!importConfig) return;
 
-    setIsUploading(true);
-    let successCount = 0;
-
-    for (const file of files) {
-      try {
-        const localBlobUrl = URL.createObjectURL(file);
-        const normName = file.name.toLowerCase();
-        const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
-
-        // Pré-générer les aperçus instantanés réels pour les vidéos, audio et documents
-        let previewDataUrl: string | null = null;
-        if (importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) {
-          previewDataUrl = await generateVideoThumbnail(file, file.name, file.name);
-        } else if (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/)) {
-          previewDataUrl = await extractAudioCover(file, file.name, 'Créateur StudyCloud');
-        } else if (normName.endsWith('.pdf')) {
-          previewDataUrl = await generatePdfThumbnail(file, file.name);
-        }
-
-        const res = await CloudStorageAPI.uploadFile(
-          file, 
-          importConfig.category, 
-          file.name, 
-          importConfig.folderId,
-          previewDataUrl || undefined
-        );
-
-        const fileId = res?.file?.id || `cf-${Date.now()}-${Math.random().toString(36).substring(2, 7)}`;
-
-        // Sauvegarder dans IndexedDB
-        await storeFileBlob(fileId, file);
-
-        let finalItem: FileItem;
-        if (res.success && res.file) {
-          finalItem = { ...res.file };
-        } else {
-          const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
-          finalItem = {
-            id: fileId,
-            name: file.name,
-            category: importConfig.category === 'classeur' ? 'documents' : importConfig.category,
-            source: 'StudyCloud Local',
-            size: sizeKb,
-            sizeBytes: file.size,
-            date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
-            extension: ext
-          };
-        }
-
-        // Attacher l'URL de lecture permanente servie par le Worker Cloudflare
-        const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-        const workerStreamUrl = (finalItem.videoUrl && !finalItem.videoUrl.startsWith('blob:')) 
-          ? finalItem.videoUrl 
-          : (finalItem.url && !finalItem.url.startsWith('blob:')) 
-          ? finalItem.url 
-          : `${baseUrl}/api/cloud/stream/${finalItem.id}`;
-        
-        finalItem.url = workerStreamUrl;
-        if (importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) {
-          finalItem.videoUrl = workerStreamUrl;
-          finalItem.thumbnailUrl = previewDataUrl || undefined;
-          finalItem.previewUrl = previewDataUrl || undefined;
-        } else if (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/)) {
-          finalItem.audioUrl = finalItem.audioUrl && !finalItem.audioUrl.startsWith('blob:') ? finalItem.audioUrl : workerStreamUrl;
-          finalItem.url = finalItem.audioUrl;
-          finalItem.coverUrl = previewDataUrl || undefined;
-          finalItem.previewUrl = previewDataUrl || undefined;
-        } else if (importConfig.category === 'images' || normName.match(/\.(jpg|jpeg|png|gif|webp|svg)$/)) {
-          finalItem.previewUrl = finalItem.previewUrl && !finalItem.previewUrl.startsWith('blob:') ? finalItem.previewUrl : workerStreamUrl;
-          finalItem.url = finalItem.previewUrl;
-        } else {
-          finalItem.previewUrl = previewDataUrl || undefined;
-        }
-
-        if (previewDataUrl) {
-          setCachedMediaThumbnail(finalItem.id, previewDataUrl);
-          // Persister immédiatement dans D1
-          CloudStorageAPI.saveMediaThumbnail(finalItem.id, importConfig.category, previewDataUrl).catch(() => {});
-        }
-
-        if (importConfig.category === 'images') {
-          setImagesList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
-        } else if (importConfig.category === 'videos') {
-          setVideosList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
-        } else if (importConfig.category === 'audio') {
-          setAudioList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
-        } else if (importConfig.category === 'documents') {
-          setDocumentsList(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)]);
-        } else if (importConfig.category === 'classeur' && importConfig.folderId) {
-          setFolderFilesMap(prev => ({
-            ...prev,
-            [importConfig.folderId!]: [finalItem, ...(prev[importConfig.folderId!] || []).filter(f => f.id !== finalItem.id)]
-          }));
-        }
-
-        setCloudRecentFiles(prev => [finalItem, ...prev.filter(f => f.id !== finalItem.id)].slice(0, 6));
-        successCount++;
-      } catch (err: any) {
-        showToast(`Erreur lors de l'import : ${err.message || 'Échec réseau'}`);
-      }
-    }
-
-    setIsUploading(false);
-    if (successCount > 0) {
-      showToast(`${successCount} fichier(s) importé(s) avec succès !`);
-    }
     if (categoryFileInputRef.current) categoryFileInputRef.current.value = '';
+
+    // 1. Créer immédiatement les objets FileItem avec prévisualisation locale et stockage IndexedDB
+    const newItemsWithFiles = files.map((file, idx) => {
+      const localBlobUrl = URL.createObjectURL(file);
+      const normName = file.name.toLowerCase();
+      const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
+      const fileId = `cf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+      const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
+
+      // Stocker le binaire immédiatement dans IndexedDB pour que le document soit disponible instantanément
+      storeFileBlob(fileId, file).catch(() => {});
+
+      const item: FileItem = {
+        id: fileId,
+        name: file.name,
+        category: importConfig.category === 'classeur' ? 'documents' : importConfig.category,
+        source: importConfig.category === 'classeur' && opened3DFolder ? opened3DFolder.name : 'StudyCloud Local',
+        size: sizeKb,
+        sizeBytes: file.size,
+        date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+        extension: ext,
+        url: localBlobUrl,
+        previewUrl: localBlobUrl,
+        videoUrl: (importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) ? localBlobUrl : undefined,
+        audioUrl: (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/)) ? localBlobUrl : undefined,
+        originalFolderId: importConfig.folderId
+      };
+      return { file, item };
+    });
+
+    const newItems = newItemsWithFiles.map(x => x.item);
+    const fileIds = newItems.map(x => x.id);
+
+    // 2. Ajout immédiat à la liste du menu : les cartes apparaissent instantanément
+    newItems.forEach(item => {
+      unmarkRecentLocallyDeleted(item.id, item.name);
+      unmarkFileLocallyDeleted(item.id, item.name);
+    });
+    if (importConfig.category === 'images') {
+      setImagesList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
+    } else if (importConfig.category === 'videos') {
+      setVideosList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
+    } else if (importConfig.category === 'audio') {
+      setAudioList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
+    } else if (importConfig.category === 'documents') {
+      setDocumentsList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
+    } else if (importConfig.category === 'classeur' && importConfig.folderId) {
+      setFolderFilesMap(prev => ({
+        ...prev,
+        [importConfig.folderId!]: [...newItems, ...(prev[importConfig.folderId!] || []).filter(f => !fileIds.includes(f.id))]
+      }));
+    }
+    setCloudRecentFiles(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
+
+    // 3. Lancer l'animation de trait qui se remplit sur chaque fichier importé
+    startSavingAnimation(fileIds);
+
+    // 4. Téléversement et génération d'aperçus en arrière-plan sans bloquer l'UI
+    (async () => {
+      let successCount = 0;
+      for (const { file, item } of newItemsWithFiles) {
+        try {
+          const normName = file.name.toLowerCase();
+          let previewDataUrl: string | null = null;
+          if (importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/)) {
+            previewDataUrl = await generateVideoThumbnail(file, file.name, file.name);
+          } else if (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac)$/)) {
+            previewDataUrl = await extractAudioCover(file, file.name, 'Créateur StudyCloud');
+          } else if (normName.endsWith('.pdf')) {
+            previewDataUrl = await generatePdfThumbnail(file, file.name);
+          }
+
+          if (previewDataUrl) {
+            setCachedMediaThumbnail(item.id, previewDataUrl);
+            CloudStorageAPI.saveMediaThumbnail(item.id, importConfig.category, previewDataUrl).catch(() => {});
+          }
+
+          const res = await CloudStorageAPI.uploadFile(
+            file, 
+            importConfig.category, 
+            file.name, 
+            importConfig.folderId,
+            previewDataUrl || undefined
+          );
+
+          if (res?.success && res.file) {
+            const uploadedFile = res.file;
+            const updateItemFn = (prev: FileItem[]) => prev.map(f => {
+              if (f.id === item.id) {
+                return {
+                  ...f,
+                  ...uploadedFile,
+                  url: uploadedFile.url || f.url,
+                  videoUrl: uploadedFile.videoUrl || f.videoUrl,
+                  audioUrl: uploadedFile.audioUrl || f.audioUrl,
+                  previewUrl: previewDataUrl || uploadedFile.previewUrl || f.previewUrl,
+                  thumbnailUrl: previewDataUrl || uploadedFile.thumbnailUrl || f.thumbnailUrl,
+                  coverUrl: previewDataUrl || uploadedFile.coverUrl || f.coverUrl,
+                };
+              }
+              return f;
+            });
+
+            if (importConfig.category === 'images') setImagesList(updateItemFn);
+            else if (importConfig.category === 'videos') setVideosList(updateItemFn);
+            else if (importConfig.category === 'audio') setAudioList(updateItemFn);
+            else if (importConfig.category === 'documents') setDocumentsList(updateItemFn);
+            else if (importConfig.category === 'classeur' && importConfig.folderId) {
+              setFolderFilesMap(prev => ({
+                ...prev,
+                [importConfig.folderId!]: (prev[importConfig.folderId!] || []).map(f => f.id === item.id ? { ...f, ...uploadedFile } : f)
+              }));
+            }
+            setCloudRecentFiles(updateItemFn);
+          }
+          successCount++;
+        } catch (err: any) {
+          console.warn('[handleMenuFileSelected] Erreur upload arrière-plan:', err);
+        }
+      }
+      if (successCount > 0) {
+        showToast(`${successCount} fichier(s) importé(s) avec succès !`);
+      }
+    })();
   };
 
   // DOSSIER SÉCURISÉ (Fichiers protégés par coffre-fort et isolés réels)
@@ -2338,8 +2637,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
   };
 
-  // Téléchargement d'un fichier avec enregistrement dans le menu téléchargement
-  const handleDownloadFile = (file: { name: string; size?: string; sizeBytes?: number; category?: any; url?: string; previewUrl?: string; r2Key?: string; content?: string; isNotepad?: boolean; extension?: string }) => {
+  // Téléchargement d'un fichier avec enregistrement dans le menu téléchargement et mise à jour des récents
+  const handleDownloadFile = (file: { name: string; size?: string; sizeBytes?: number; category?: any; url?: string; previewUrl?: string; r2Key?: string; content?: string; isNotepad?: boolean; extension?: string; id?: string }) => {
     downloadFileDirectly(file as FileItem);
     recordDownloadedFile({
       name: file.name,
@@ -2347,6 +2646,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       sizeBytes: file.sizeBytes,
       category: file.category
     });
+
+    const fileItem = file as FileItem;
+    unmarkRecentLocallyDeleted(fileItem.id, fileItem.name);
+    unmarkFileLocallyDeleted(fileItem.id, fileItem.name);
+    setCloudRecentFiles(prev => {
+      const filtered = prev.filter(f => f.id !== fileItem.id && (!fileItem.name || f.name !== fileItem.name));
+      return [fileItem, ...filtered].slice(0, 6);
+    });
+
     showToast(`Téléchargement de "${file.name}" en cours...`);
   };
 
@@ -2430,6 +2738,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         setVideosList(prev => prev.filter(vid => vid.id !== file.id));
         setAudioList(prev => prev.filter(aud => aud.id !== file.id));
         setDownloadedItems(prev => prev.filter(dl => dl.id !== file.id));
+        setCloudRecentFiles(prev => prev.filter(f => f.id !== file.id && (!file.name || f.name !== file.name)));
+        markRecentLocallyDeleted(file.id, file.name);
+        markFileLocallyDeleted(file.id, file.name);
+        deleteFileBlob(file.id).catch(() => {});
+        removeDownloadedFile(file.id);
+        if (file.name) removeDownloadedFile(file.name);
         if (opened3DFolder) {
           setFolderFilesMap(prev => ({
             ...prev,
@@ -2843,6 +3157,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       return remaining;
     });
     setDownloadedItems(prev => prev.filter(dl => !idsToDelete.includes(dl.id)));
+    setCloudRecentFiles(prev => prev.filter(c => !idsToDelete.includes(c.id)));
+    idsToDelete.forEach(id => {
+      markRecentLocallyDeleted(id);
+      markFileLocallyDeleted(id);
+      deleteFileBlob(id).catch(() => {});
+      removeDownloadedFile(id);
+    });
     if (opened3DFolder) {
       setFolderFilesMap(prev => ({
         ...prev,
@@ -2991,16 +3312,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isAudio = Boolean(file.category === 'audio' || file.isAudio || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name));
     const isVideo = Boolean(file.category === 'videos' || file.isVideo || Boolean(file.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv)$/i.test(file.name));
 
-    // Priorité absolue au streaming permanent du Worker Cloudflare (évite l'expiration)
+    // URL de lecture : préserver le blob local s'il existe, sinon URL worker
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
     const permanentWorkerUrl = `${baseUrl}/api/cloud/stream/${file.id}`;
-    if (!file.videoUrl || file.videoUrl.startsWith('data:image/') || file.videoUrl.startsWith('blob:')) {
-      file.videoUrl = (file.url && !file.url.startsWith('blob:') && !file.url.startsWith('data:image/'))
-        ? file.url
-        : permanentWorkerUrl;
-    }
-    if (!file.url || file.url.startsWith('blob:')) {
+    if (!file.url) {
       file.url = permanentWorkerUrl;
+    }
+    if (!file.videoUrl) {
+      file.videoUrl = file.url;
     }
 
     if (isNotepad) {
@@ -3026,11 +3345,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     } else {
       setIsVideoPlaying(false);
     }
-
-    setCloudRecentFiles(prev => {
-      const withoutCurrent = prev.filter(f => f.id !== file.id);
-      return [file, ...withoutCurrent].slice(0, 6);
-    });
   };
 
   // Catégories StudyCloud
@@ -3107,16 +3421,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     }
   ];
 
-  // Filtrage selon la recherche (strictement 6 éléments maximum sur l'accueil)
+  // Filtrage selon la recherche (strictement 6 éléments maximum sur l'accueil, sans fichiers supprimés)
   const displayedFiles = useMemo(() => {
+    const deletedRecentIds = getDeletedRecentIds();
+    const locallyDeletedIds = getLocallyDeletedFileIds();
+    const trashIdSet = new Set(trashFiles.map(t => t.id));
+
     return cloudRecentFiles.filter(f => {
+      if (deletedRecentIds.has(f.id) || (f.name && deletedRecentIds.has(f.name))) return false;
+      if (locallyDeletedIds.has(f.id) || (f.name && locallyDeletedIds.has(f.name))) return false;
+      if (trashIdSet.has(f.id)) return false;
+      if (isMockFile(f)) return false;
+
       const matchQuery = searchQuery.trim() === '' || 
         f.name.toLowerCase().includes(searchQuery.toLowerCase()) ||
-        f.source.toLowerCase().includes(searchQuery.toLowerCase());
+        (f.source && f.source.toLowerCase().includes(searchQuery.toLowerCase()));
       
       return matchQuery;
     }).slice(0, 6);
-  }, [cloudRecentFiles, searchQuery]);
+  }, [cloudRecentFiles, searchQuery, trashFiles]);
 
   // Ouverture d'un sous-menu indépendant
   const handleOpenSubMenu = (
@@ -3440,19 +3763,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Suppression d'un son spécifique
   const handleDeleteAudio = (track: FileItem) => {
-    setTrashFiles(prev => [track, ...prev.filter(f => f.id !== track.id)]);
-    setAudioList(prev => prev.filter(a => a.id !== track.id));
-    if (splitSelectedFile?.id === track.id) {
-      const remaining = audioList.filter(a => a.id !== track.id);
-      if (remaining.length > 0) {
-        setSplitSelectedFile(remaining[0]);
-        setAudioDuration(remaining[0].durationSec || 219);
-        setAudioCurrentTime(0);
-      } else {
-        setSplitSelectedFile(null);
-      }
-    }
-    showToast(`"${track.name}" supprimé`);
+    handleGenericFileAction('delete', track, audioList);
   };
 
   // Gestion du mode sélection multiple pour les sons
@@ -3471,8 +3782,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const tracksToDelete = audioList.filter(a => selectedAudioIds.includes(a.id));
     if (tracksToDelete.length > 0) {
       setTrashFiles(prev => [...tracksToDelete, ...prev.filter(f => !selectedAudioIds.includes(f.id))]);
+      tracksToDelete.forEach(track => {
+        CloudStorageAPI.deleteAudio(track.id).catch(console.error);
+      });
     }
     setAudioList(prev => prev.filter(a => !selectedAudioIds.includes(a.id)));
+    setCloudRecentFiles(prev => prev.filter(c => !selectedAudioIds.includes(c.id)));
+    selectedAudioIds.forEach(id => {
+      markRecentLocallyDeleted(id);
+      markFileLocallyDeleted(id);
+      deleteFileBlob(id).catch(() => {});
+      removeDownloadedFile(id);
+    });
     if (splitSelectedFile && selectedAudioIds.includes(splitSelectedFile.id)) {
       const remaining = audioList.filter(a => !selectedAudioIds.includes(a.id));
       if (remaining.length > 0) {
@@ -3728,8 +4049,31 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     !isSelectedVideo && 
     !isSelectedAudio && (
       splitSelectedFile.category === 'documents' || 
-      /\.(pdf|docx?|pptx?|xlsx?|odt|rtf)$/i.test(splitSelectedFile.name)
+      /\.(pdf|docx?|pptx?|xlsx?|odt|rtf|txt|csv|md)$/i.test(splitSelectedFile.name)
     );
+  const isSelectedDocPdf = !!splitSelectedFile && isSelectedDoc && (
+    splitSelectedFile.extension === 'pdf' || 
+    splitSelectedFile.name.toLowerCase().endsWith('.pdf') || 
+    (splitSelectedFile.url && splitSelectedFile.url.toLowerCase().includes('.pdf')) ||
+    Boolean(splitSelectedFile.type?.includes('pdf'))
+  );
+
+  useEffect(() => {
+    let isCurrent = true;
+    if (splitSelectedFile?.id && isSelectedDocPdf) {
+      if (splitSelectedFile.url && (splitSelectedFile.url.startsWith('blob:') || splitSelectedFile.url.startsWith('http') || splitSelectedFile.url.startsWith('data:'))) {
+        setSplitResolvedPdfUrl(splitSelectedFile.url);
+      }
+      getFileBlobUrl(splitSelectedFile.id).then(blobUrl => {
+        if (isCurrent && blobUrl) {
+          setSplitResolvedPdfUrl(blobUrl);
+        }
+      }).catch(() => {});
+    } else {
+      setSplitResolvedPdfUrl('');
+    }
+    return () => { isCurrent = false; };
+  }, [splitSelectedFile?.id, isSelectedDocPdf]);
 
   // NAVIGATION PRÉCÉDENT / SUIVANT DANS LA VUE DIVISÉE (STRICTEMENT DANS LE MENU ACTUEL)
   const handleNavigateSplit = (direction: 'prev' | 'next') => {
@@ -3744,16 +4088,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setViewerRotation(0);
     setDocCurrentPage(1);
 
-    // Priorité absolue au streaming permanent du Worker Cloudflare (évite l'expiration)
+    // URL de lecture : préserver le blob local s'il existe, sinon URL worker
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
     const permanentWorkerUrl = `${baseUrl}/api/cloud/stream/${nextFile.id}`;
-    if (!nextFile.videoUrl || nextFile.videoUrl.startsWith('data:image/') || nextFile.videoUrl.startsWith('blob:')) {
-      nextFile.videoUrl = (nextFile.url && !nextFile.url.startsWith('blob:') && !nextFile.url.startsWith('data:image/'))
-        ? nextFile.url
-        : permanentWorkerUrl;
-    }
-    if (!nextFile.url || nextFile.url.startsWith('blob:')) {
+    if (!nextFile.url) {
       nextFile.url = permanentWorkerUrl;
+    }
+    if (!nextFile.videoUrl) {
+      nextFile.videoUrl = nextFile.url;
     }
 
     const isNotepad = Boolean(nextFile.isNotepad || nextFile.extension === 'txt' || nextFile.name.toLowerCase().endsWith('.txt'));
@@ -5003,7 +5345,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               );
             })}
 
-            {/* 2. Fichiers du dossier (Bloc-notes TXT modèle Image 2 et autres fichiers importés - taille fixe 4) */}
             {sortedFiles.map((file) => {
               const isTxtNote = file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt');
               const isSelected = splitSelectedFile?.id === file.id;
@@ -5011,6 +5352,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               const isMenuOpen = activeMenuFileId === file.id;
               const isBeingDragged = draggedFileId === file.id;
               const isDropTarget = dragOverFileId === file.id && draggedFileId !== file.id;
+              const isSaving = savingFileProgress[file.id] !== undefined;
+              const progressVal = savingFileProgress[file.id] || 0;
 
               const handleFileDrop = (e: React.DragEvent) => {
                 e.preventDefault();
@@ -5055,7 +5398,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 return (
                   <div
                     key={file.id}
-                    draggable={!isSelectionMode}
+                    draggable={!isSelectionMode && !isSaving}
                     onDragStart={(e) => {
                       e.stopPropagation();
                       e.dataTransfer.setData('text/plain', file.id);
@@ -5077,13 +5420,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       setDragOverFileId(null);
                     }}
                     onClick={() => {
+                      if (isSaving) {
+                        showToast("Enregistrement du fichier en cours... Veuillez patienter.");
+                        return;
+                      }
                       if (isSelectionMode) {
                         toggleItemSelection(file.id);
                         return;
                       }
                       handleSelectFile(file);
                     }}
-                    className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 cursor-pointer flex flex-col justify-between select-none ${
+                    className={`group relative p-2.5 sm:p-3 rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col justify-between select-none overflow-hidden ${
+                      isSaving ? 'cursor-wait' : 'cursor-pointer'
+                    } ${
                       isBeingDragged
                         ? 'opacity-30 scale-95 border-dashed border-cyan-400 bg-cyan-500/10 cursor-grabbing'
                         : isDropTarget
@@ -5095,6 +5444,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         : 'border-white/10 hover:border-cyan-400/50 hover:-translate-y-1'
                     } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
                   >
+                    {/* Petit trait en haut collé à la carte qui se remplit pendant l'enregistrement */}
+                    {isSaving && (
+                      <div className="absolute top-0 inset-x-0 h-1.5 bg-black/50 z-35 overflow-hidden pointer-events-none rounded-t-2xl">
+                        <div 
+                          className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
+                          style={{ width: `${progressVal}%` }}
+                        />
+                      </div>
+                    )}
+
+                    {/* Overlay d'enregistrement */}
+                    {isSaving && (
+                      <div className="absolute inset-0 z-30 bg-black/75 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-white pointer-events-none rounded-2xl animate-fadeIn">
+                        <div className="w-5 h-5 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-1.5" />
+                        <span className="text-[10px] font-black text-emerald-300 tracking-wider">
+                          {progressVal}%
+                        </span>
+                        <span className="text-[8px] font-bold text-white/90 text-center leading-tight">
+                          Enregistrement...
+                        </span>
+                      </div>
+                    )}
                     {/* Haut de carte : Case à cocher, Badge TXT et Bouton 3 traits */}
                     <div className="flex items-center justify-between w-full mb-1">
                       <div className="flex items-center gap-1.5">
@@ -5179,7 +5550,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               return (
                 <div
                   key={file.id}
-                  draggable={!isSelectionMode}
+                  draggable={!isSelectionMode && !isSaving}
                   onDragStart={(e) => {
                     e.stopPropagation();
                     e.dataTransfer.setData('text/plain', file.id);
@@ -5201,13 +5572,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     setDragOverFileId(null);
                   }}
                   onClick={() => {
+                    if (isSaving) {
+                      showToast("Enregistrement du fichier en cours... Veuillez patienter.");
+                      return;
+                    }
                     if (isSelectionMode) {
                       toggleItemSelection(file.id);
                       return;
                     }
                     handleSelectFile(file);
                   }}
-                  className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200 cursor-pointer flex flex-col ${
+                  className={`group relative bg-[#0E1526]/85 hover:bg-[#141E34] border rounded-2xl shadow-lg hover:shadow-2xl transition-all duration-200 flex flex-col overflow-hidden ${
+                    isSaving ? 'cursor-wait' : 'cursor-pointer'
+                  } ${
                     isBeingDragged
                       ? 'opacity-30 scale-95 border-dashed border-orange-400 bg-orange-500/10 cursor-grabbing'
                       : isDropTarget
@@ -5219,6 +5596,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       : 'border-white/10 hover:border-orange-500/50 hover:-translate-y-1'
                   } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
                 >
+                  {/* Petit trait en haut collé à la carte qui se remplit pendant l'enregistrement */}
+                  {isSaving && (
+                    <div className="absolute top-0 inset-x-0 h-1.5 bg-black/50 z-35 overflow-hidden pointer-events-none rounded-t-2xl">
+                      <div 
+                        className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
+                        style={{ width: `${progressVal}%` }}
+                      />
+                    </div>
+                  )}
+
+                  {/* Overlay d'enregistrement */}
+                  {isSaving && (
+                    <div className="absolute inset-0 z-30 bg-black/75 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-white pointer-events-none rounded-2xl animate-fadeIn">
+                      <div className="w-5 h-5 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-1.5" />
+                      <span className="text-[10px] font-black text-emerald-300 tracking-wider">
+                        {progressVal}%
+                      </span>
+                      <span className="text-[8px] font-bold text-white/90 text-center leading-tight">
+                        Enregistrement...
+                      </span>
+                    </div>
+                  )}
+
                   <div className="w-full h-24 sm:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center overflow-hidden">
                     {/* Case à cocher carrée quand le mode sélection est actif */}
                     {isSelectionMode && (
@@ -5718,6 +6118,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isSelected = splitSelectedFile?.id === doc.id;
     const isMenuOpen = activeMenuFileId === doc.id || docMenuOpenId === doc.id;
     const isChecked = selectedItemIds.includes(doc.id);
+    const isSaving = savingFileProgress[doc.id] !== undefined;
+    const progressVal = savingFileProgress[doc.id] || 0;
 
     return (
       <div
@@ -5727,8 +6129,14 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           isChecked ? 'ring-4 ring-amber-400 shadow-2xl' : ''
         } ${
           isMenuOpen ? 'z-50 relative' : 'z-10'
-        } rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none cursor-pointer active:scale-98`}
+        } rounded-2xl p-2 sm:p-2.5 flex flex-col justify-between ${theme.shadow} transition-all relative group select-none ${
+          isSaving ? 'cursor-wait select-none' : 'cursor-pointer active:scale-98'
+        } overflow-hidden`}
         onClick={() => {
+          if (isSaving) {
+            showToast("Enregistrement du document en cours... Veuillez patienter.");
+            return;
+          }
           if (isSelectionMode) {
             toggleItemSelection(doc.id);
           } else {
@@ -5736,6 +6144,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           }
         }}
       >
+        {/* Petit trait en haut collé au fichier qui se remplit pendant l'enregistrement */}
+        {isSaving && (
+          <div className="absolute top-0 inset-x-0 h-1.5 bg-black/40 z-35 overflow-hidden pointer-events-none rounded-t-2xl">
+            <div 
+              className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
+              style={{ width: `${progressVal}%` }}
+            />
+          </div>
+        )}
+
+        {/* Overlay au milieu du fichier qui se remplit et empêche l'ouverture */}
+        {isSaving && (
+          <div className="absolute inset-0 z-30 bg-black/60 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-white pointer-events-none animate-fadeIn rounded-2xl">
+            <div className="w-5 h-5 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-1.5" />
+            <span className="text-[10px] font-black text-emerald-300 tracking-wider">
+              {progressVal}%
+            </span>
+            <span className="text-[8px] font-bold text-white/90 text-center leading-tight">
+              Enregistrement...
+            </span>
+          </div>
+        )}
         {/* Barre supérieure : Bouton 3 traits, Checkbox (en mode sélection) & Taille */}
         <div className="flex items-center justify-between gap-1 z-20 relative">
           <div className="flex items-center gap-1.5">
@@ -5966,6 +6396,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isSelected = splitSelectedFile?.id === img.id;
     const isMenuOpen = activeMenuFileId === img.id;
     const isChecked = selectedItemIds.includes(img.id);
+    const isSaving = savingFileProgress[img.id] !== undefined;
+    const progressVal = savingFileProgress[img.id] || 0;
 
     // Déterminer alignement du menu (inverser si carte sur la droite pour ne pas déborder de l'écran)
     const isRightCol = typeof index === 'number' && ((index + 1) % (splitSelectedFile ? 3 : 5) === 0 || (index + 1) % (splitSelectedFile ? 3 : 6) === 0);
@@ -5975,13 +6407,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       <div
         key={img.id}
         onClick={() => {
+          if (isSaving) {
+            showToast("Enregistrement de l'image en cours... Veuillez patienter.");
+            return;
+          }
           if (isSelectionMode) {
             toggleItemSelection(img.id);
           } else {
             handleSelectFile(img);
           }
         }}
-        className={`group relative aspect-square sm:aspect-[4/5] rounded-2xl bg-[#151C2C] border transition-all duration-200 cursor-pointer ${
+        className={`group relative aspect-square sm:aspect-[4/5] rounded-2xl bg-[#151C2C] border transition-all duration-200 overflow-hidden ${
+          isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
+        } ${
           isChecked
             ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
             : isSelected 
@@ -5989,6 +6427,28 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               : 'border-white/10 hover:border-blue-400/50 shadow-md'
         } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
       >
+        {/* Petit trait en haut collé à l'image qui se remplit pendant l'enregistrement */}
+        {isSaving && (
+          <div className="absolute top-0 inset-x-0 h-1.5 bg-black/50 z-35 overflow-hidden pointer-events-none rounded-t-2xl">
+            <div 
+              className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
+              style={{ width: `${progressVal}%` }}
+            />
+          </div>
+        )}
+
+        {/* Overlay d'enregistrement */}
+        {isSaving && (
+          <div className="absolute inset-0 z-30 bg-black/65 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-white pointer-events-none rounded-2xl animate-fadeIn">
+            <div className="w-5 h-5 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-1.5" />
+            <span className="text-[10px] font-black text-emerald-300 tracking-wider">
+              {progressVal}%
+            </span>
+            <span className="text-[8px] font-bold text-white/90 text-center leading-tight">
+              Enregistrement...
+            </span>
+          </div>
+        )}
         {/* Conteneur média interne avec overflow-hidden : arrondit l'image et ses dégradés sans couper le menu qui dépasse */}
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
           <img
@@ -6069,6 +6529,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isSelected = splitSelectedFile?.id === vid.id;
     const isMenuOpen = activeMenuFileId === vid.id;
     const isChecked = selectedItemIds.includes(vid.id);
+    const isSaving = savingFileProgress[vid.id] !== undefined;
+    const progressVal = savingFileProgress[vid.id] || 0;
 
     // Déterminer alignement du menu
     const isRightCol = typeof index === 'number' && ((index + 1) % (splitSelectedFile ? 3 : 5) === 0 || (index + 1) % (splitSelectedFile ? 3 : 6) === 0);
@@ -6078,13 +6540,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       <div
         key={vid.id}
         onClick={() => {
+          if (isSaving) {
+            showToast("Enregistrement de la vidéo en cours... Veuillez patienter.");
+            return;
+          }
           if (isSelectionMode) {
             toggleItemSelection(vid.id);
           } else {
             handleSelectFile(vid);
           }
         }}
-        className={`group relative aspect-[4/5] rounded-2xl bg-[#0A0E18] border transition-all duration-200 cursor-pointer ${
+        className={`group relative aspect-[4/5] rounded-2xl bg-[#0A0E18] border transition-all duration-200 overflow-hidden ${
+          isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
+        } ${
           isChecked
             ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
             : isSelected 
@@ -6092,6 +6560,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               : 'border-white/10 hover:border-purple-400/50 shadow-md'
         } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
       >
+        {/* Petit trait en haut collé à la carte qui se remplit pendant l'enregistrement */}
+        {isSaving && (
+          <div className="absolute top-0 inset-x-0 h-1.5 bg-black/50 z-35 overflow-hidden pointer-events-none rounded-t-2xl">
+            <div 
+              className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
+              style={{ width: `${progressVal}%` }}
+            />
+          </div>
+        )}
+
+        {/* Overlay d'enregistrement */}
+        {isSaving && (
+          <div className="absolute inset-0 z-30 bg-black/75 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-white pointer-events-none rounded-2xl animate-fadeIn">
+            <div className="w-5 h-5 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-1.5" />
+            <span className="text-[10px] font-black text-emerald-300 tracking-wider">
+              {progressVal}%
+            </span>
+            <span className="text-[8px] font-bold text-white/90 text-center leading-tight">
+              Enregistrement...
+            </span>
+          </div>
+        )}
+
         {/* Conteneur média interne avec overflow-hidden : arrondit la vignette sans couper le menu déroulant */}
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
           <VideoCardPreview vid={vid} />
@@ -6174,6 +6665,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isSelected = splitSelectedFile?.id === aud.id;
     const isMenuOpen = activeMenuFileId === aud.id || audioMenuSongId === aud.id;
     const isChecked = selectedItemIds.includes(aud.id);
+    const isSaving = savingFileProgress[aud.id] !== undefined;
+    const progressVal = savingFileProgress[aud.id] || 0;
 
     // Déterminer alignement du menu
     const isRightCol = typeof index === 'number' && ((index + 1) % (splitSelectedFile ? 3 : 5) === 0 || (index + 1) % (splitSelectedFile ? 3 : 6) === 0);
@@ -6183,13 +6676,19 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       <div
         key={aud.id}
         onClick={() => {
+          if (isSaving) {
+            showToast("Enregistrement de l'audio en cours... Veuillez patienter.");
+            return;
+          }
           if (isSelectionMode) {
             toggleItemSelection(aud.id);
           } else {
             handleSelectFile(aud);
           }
         }}
-        className={`group relative aspect-square rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 cursor-pointer ${
+        className={`group relative aspect-square rounded-2xl bg-gradient-to-br from-[#121929] via-[#0B0F19] to-black border transition-all duration-200 overflow-hidden ${
+          isSaving ? 'cursor-wait select-none' : 'cursor-pointer'
+        } ${
           isChecked
             ? 'border-amber-400 ring-4 ring-amber-400/50 shadow-2xl scale-[1.02]'
             : isSelected 
@@ -6197,6 +6696,29 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               : 'border-white/10 hover:border-amber-400/50 shadow-md'
         } ${isMenuOpen ? 'z-50 relative' : 'z-10'}`}
       >
+        {/* Petit trait en haut collé à la carte qui se remplit pendant l'enregistrement */}
+        {isSaving && (
+          <div className="absolute top-0 inset-x-0 h-1.5 bg-black/50 z-35 overflow-hidden pointer-events-none rounded-t-2xl">
+            <div 
+              className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
+              style={{ width: `${progressVal}%` }}
+            />
+          </div>
+        )}
+
+        {/* Overlay d'enregistrement */}
+        {isSaving && (
+          <div className="absolute inset-0 z-30 bg-black/75 backdrop-blur-[2px] flex flex-col items-center justify-center p-2 text-white pointer-events-none rounded-2xl animate-fadeIn">
+            <div className="w-5 h-5 rounded-full border-2 border-white/20 border-t-emerald-400 animate-spin mb-1.5" />
+            <span className="text-[10px] font-black text-emerald-300 tracking-wider">
+              {progressVal}%
+            </span>
+            <span className="text-[8px] font-bold text-white/90 text-center leading-tight">
+              Enregistrement...
+            </span>
+          </div>
+        )}
+
         {/* Conteneur média interne avec overflow-hidden : arrondit l'arrière-plan sans couper le menu */}
         <div className="absolute inset-0 rounded-2xl overflow-hidden pointer-events-none">
           {aud.previewUrl ? (
@@ -6307,18 +6829,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const isSelected = splitSelectedFile?.id === track.id;
     const isMenuOpen = activeMenuFileId === track.id || audioMenuSongId === track.id;
     const isChecked = selectedItemIds.includes(track.id);
+    const isSaving = savingFileProgress[track.id] !== undefined;
+    const progressVal = savingFileProgress[track.id] || 0;
 
     return (
       <div
         key={track.id}
         onClick={() => {
+          if (isSaving) {
+            showToast("Enregistrement de l'audio en cours... Veuillez patienter.");
+            return;
+          }
           if (isSelectionMode) {
             toggleItemSelection(track.id);
           } else {
             handleSelectFile(track);
           }
         }}
-        className={`group flex items-center justify-between gap-3 p-2 sm:p-2.5 rounded-2xl transition-all cursor-pointer select-none ${
+        className={`group relative flex items-center justify-between gap-3 p-2 sm:p-2.5 rounded-2xl transition-all select-none overflow-hidden ${
+          isSaving ? 'cursor-wait' : 'cursor-pointer'
+        } ${
           isMenuOpen ? 'z-50 relative' : 'relative z-10'
         } ${
           isChecked
@@ -6328,6 +6858,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               : 'hover:bg-[#121826] border border-transparent'
         }`}
       >
+        {/* Petit trait en haut qui se remplit pendant l'enregistrement */}
+        {isSaving && (
+          <div className="absolute top-0 inset-x-0 h-1 bg-black/40 z-20 overflow-hidden rounded-t-2xl pointer-events-none">
+            <div 
+              className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
+              style={{ width: `${progressVal}%` }}
+            />
+          </div>
+        )}
+
         <div className="flex items-center gap-3 min-w-0">
           {/* Checkbox en mode sélection */}
           {isSelectionMode && (
@@ -6362,7 +6902,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           </div>
           <div className="min-w-0">
             <h3 className="text-xs sm:text-sm font-bold text-white truncate group-hover:text-amber-400 transition-colors">{track.name}</h3>
-            <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5">{track.size} • {track.date}</p>
+            <p className="text-[10px] sm:text-xs text-slate-400 font-medium mt-0.5">
+              {isSaving ? (
+                <span className="text-emerald-400 font-bold animate-pulse">Enregistrement... {progressVal}%</span>
+              ) : (
+                <>{track.size} • {track.date}</>
+              )}
+            </p>
           </div>
         </div>
 
@@ -8625,15 +9171,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     <button
                       type="button"
                       onClick={() => categoryFileInputRef.current?.click()}
-                      disabled={isUploading}
-                      className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border ${menuImportConfig.colorClass} transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150 ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                      className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border ${menuImportConfig.colorClass} transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black animate-in fade-in duration-150`}
                       title={menuImportConfig.title}
                     >
-                      {isUploading ? (
-                        <div className="w-4 h-4 border-2 border-white/20 border-t-white rounded-full animate-spin shrink-0" />
-                      ) : (
-                        <Plus className={`w-4 h-4 ${menuImportConfig.iconColor} stroke-[2.5]`} />
-                      )}
+                      <Plus className={`w-4 h-4 ${menuImportConfig.iconColor} stroke-[2.5]`} />
                       <span className="hidden xs:inline">{menuImportConfig.fullLabel}</span>
                       <span className="xs:hidden">{menuImportConfig.label}</span>
                     </button>
@@ -10347,130 +10888,71 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
                   {/* 5. LECTEUR DOCUMENT GRAND FORMAT (Prend tout l'espace disponible, sans bandes noires ni creux) */}
                   {isSelectedDoc && (
-                    <div className="w-full h-full flex-1 flex flex-col overflow-y-auto overflow-x-hidden bg-white text-stone-900 select-text">
-                      <div 
-                        className="w-full flex-1 flex flex-col p-4 sm:p-8 md:p-10 pb-36 transition-transform duration-200"
-                        style={{
-                          transform: viewerZoom !== 1 ? `scale(${viewerZoom})` : undefined,
-                          transformOrigin: 'top center'
-                        }}
-                      >
-                        {docLayoutMode === 'vertical' ? (
-                          <div className="w-full space-y-10">
-                            {renderDocPage1(splitSelectedFile)}
-                            
-                            <div className="w-full flex items-center gap-3 py-3 text-stone-400 select-none">
-                              <div className="flex-1 h-px bg-stone-300" />
-                              <span className="text-[10px] font-black uppercase tracking-widest text-stone-500 bg-stone-100 px-3 py-1 rounded-full border border-stone-200">
-                                Page 2 sur 4
-                              </span>
-                              <div className="flex-1 h-px bg-stone-300" />
-                            </div>
-
-                            {renderDocPage2(splitSelectedFile)}
-
-                            <div className="w-full flex items-center gap-3 py-3 text-stone-400 select-none">
-                              <div className="flex-1 h-px bg-stone-300" />
-                              <span className="text-[10px] font-black uppercase tracking-widest text-stone-500 bg-stone-100 px-3 py-1 rounded-full border border-stone-200">
-                                Page 3 sur 4
-                              </span>
-                              <div className="flex-1 h-px bg-stone-300" />
-                            </div>
-
-                            {renderDocPage3(splitSelectedFile)}
-
-                            <div className="w-full flex items-center gap-3 py-3 text-stone-400 select-none">
-                              <div className="flex-1 h-px bg-stone-300" />
-                              <span className="text-[10px] font-black uppercase tracking-widest text-stone-500 bg-stone-100 px-3 py-1 rounded-full border border-stone-200">
-                                Page 4 sur 4
-                              </span>
-                              <div className="flex-1 h-px bg-stone-300" />
-                            </div>
-
-                            {renderDocPage4(splitSelectedFile)}
-                          </div>
+                    <div className="w-full h-full flex-1 flex flex-col overflow-hidden bg-stone-100 dark:bg-stone-900 select-text">
+                      {isSelectedDocPdf ? (
+                        docLayoutMode === 'horizontal' ? (
+                          <PdfHorizontalViewer
+                            fileId={splitSelectedFile.id}
+                            file={splitSelectedFile}
+                            url={splitResolvedPdfUrl || splitSelectedFile.url}
+                            docZoom={Math.round(viewerZoom * 100)}
+                            layoutMode="horizontal"
+                            currentPage={docCurrentPage}
+                            onPageChange={setDocCurrentPage}
+                            isFullscreen={isViewerMaximized}
+                          />
                         ) : (
-                          <div 
-                            className={`w-full flex-1 overflow-x-hidden relative ${isDocDragging ? 'select-none cursor-grabbing' : 'cursor-grab'}`}
-                            onTouchStart={handleDocTouchStart}
-                            onTouchMove={handleDocTouchMove}
-                            onTouchEnd={handleDocTouchEnd}
-                            onTouchCancel={handleDocTouchEnd}
-                            onMouseDown={handleDocMouseDown}
-                            onMouseMove={handleDocMouseMove}
-                            onMouseUp={handleDocMouseUp}
-                            onMouseLeave={handleDocMouseUp}
-                            onWheel={handleDocWheel}
-                          >
-                            <div 
-                              className="flex w-[400%] will-change-transform"
-                              style={{
-                                transform: `translate3d(calc(-${(docCurrentPage - 1) * 25}% + ${docDragOffset}px), 0, 0)`,
-                                transition: isDocDragging ? 'none' : 'transform 320ms cubic-bezier(0.22, 1, 0.36, 1)'
-                              }}
-                            >
-                              <div className="w-1/4 shrink-0 px-2 sm:px-4">
-                                {renderDocPage1(splitSelectedFile)}
-                              </div>
-                              <div className="w-1/4 shrink-0 px-2 sm:px-4">
-                                {renderDocPage2(splitSelectedFile)}
-                              </div>
-                              <div className="w-1/4 shrink-0 px-2 sm:px-4">
-                                {renderDocPage3(splitSelectedFile)}
-                              </div>
-                              <div className="w-1/4 shrink-0 px-2 sm:px-4">
-                                {renderDocPage4(splitSelectedFile)}
-                              </div>
-                            </div>
+                          // Mode Vertical Natif Chromium (la barre supérieure noire complète avec zoom, dessin, compteur de pages, etc. comme dans Espace d'étude)
+                          (() => {
+                            const pdfUrl = splitResolvedPdfUrl || splitSelectedFile.url || '';
+                            const cleanPdfBase = pdfUrl.split('#')[0];
+                            const nativePdfUrl = cleanPdfBase ? `${cleanPdfBase}#toolbar=1&navpanes=0&view=FitH` : '';
 
-                            {/* Barre de navigation / pagination tactile sous le document horizontal */}
-                            <div className="w-full flex items-center justify-center gap-3 mt-10 pt-4 pb-4 select-none">
-                              <button
-                                type="button"
-                                disabled={docCurrentPage <= 1}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDocCurrentPage(prev => Math.max(1, prev - 1));
-                                }}
-                                className="px-3 py-1.5 rounded-full bg-stone-100 hover:bg-stone-200 border border-stone-300 text-stone-700 text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                              >
-                                ← Précédent
-                              </button>
+                            if (nativePdfUrl) {
+                              return (
+                                <div className="w-full h-full flex-1 flex flex-col items-center overflow-hidden bg-stone-100 dark:bg-stone-900">
+                                  <object
+                                    key={`pdf-native-${splitSelectedFile.id || cleanPdfBase}`}
+                                    data={nativePdfUrl}
+                                    type="application/pdf"
+                                    className="w-full h-full border-0 block flex-1"
+                                    style={{ width: '100%', height: '100%' }}
+                                  >
+                                    <iframe
+                                      key={`iframe-pdf-native-${splitSelectedFile.id || cleanPdfBase}`}
+                                      src={nativePdfUrl}
+                                      title={splitSelectedFile.name || 'Document PDF'}
+                                      className="w-full h-full border-0 block flex-1"
+                                      style={{ width: '100%', height: '100%' }}
+                                    />
+                                  </object>
+                                </div>
+                              );
+                            }
 
-                              <div className="flex items-center gap-1.5">
-                                {[1, 2, 3, 4].map((pNum) => (
-                                  <button
-                                    key={pNum}
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setDocCurrentPage(pNum);
-                                    }}
-                                    className={`h-2.5 rounded-full transition-all duration-300 cursor-pointer ${
-                                      docCurrentPage === pNum
-                                        ? 'w-8 bg-blue-600 shadow-sm'
-                                        : 'w-2.5 bg-stone-300 hover:bg-stone-400'
-                                    }`}
-                                    title={`Aller à la page ${pNum}`}
-                                  />
-                                ))}
-                              </div>
-
-                              <button
-                                type="button"
-                                disabled={docCurrentPage >= totalDocPages}
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setDocCurrentPage(prev => Math.min(totalDocPages, prev + 1));
-                                }}
-                                className="px-3 py-1.5 rounded-full bg-stone-100 hover:bg-stone-200 border border-stone-300 text-stone-700 text-xs font-bold disabled:opacity-30 disabled:cursor-not-allowed transition-colors"
-                              >
-                                Suivant →
-                              </button>
-                            </div>
-                          </div>
-                        )}
-                      </div>
+                            return (
+                              <PdfHorizontalViewer
+                                fileId={splitSelectedFile.id}
+                                file={splitSelectedFile}
+                                url={splitSelectedFile.url}
+                                docZoom={Math.round(viewerZoom * 100)}
+                                layoutMode="vertical"
+                                currentPage={docCurrentPage}
+                                onPageChange={setDocCurrentPage}
+                                isFullscreen={isViewerMaximized}
+                              />
+                            );
+                          })()
+                        )
+                      ) : (
+                        <ModernDocumentViewer
+                          fileId={splitSelectedFile.id}
+                          url={splitSelectedFile.url}
+                          fileName={splitSelectedFile.name}
+                          fileSize={splitSelectedFile.size}
+                          className="w-full h-full border-0 rounded-none shadow-none"
+                        />
+                      )}
                     </div>
                   )}
 
@@ -10597,15 +11079,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <button
                   type="button"
                   onClick={handleTriggerImport}
-                  disabled={isUploading}
-                  className={`flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-blue-400/40 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black ${isUploading ? 'opacity-50 cursor-not-allowed' : ''}`}
+                  className="flex items-center gap-1.5 sm:gap-2 px-3.5 sm:px-4 py-1.5 sm:py-2 rounded-full bg-[#04060A] hover:bg-[#0A0E18] text-white border border-white/15 hover:border-blue-400/40 transition-all cursor-pointer shrink-0 active:scale-95 shadow-sm text-xs sm:text-sm font-black"
                   title="Importer un fichier dans StudyCloud"
                 >
-                  {isUploading ? (
-                    <div className="w-4 h-4 border-2 border-white/20 border-t-blue-400 rounded-full animate-spin shrink-0" />
-                  ) : (
-                    <Plus className="w-4 h-4 text-blue-400 stroke-[2.5]" />
-                  )}
+                  <Plus className="w-4 h-4 text-blue-400 stroke-[2.5]" />
                   <span className="hidden xs:inline">Importer un fichier</span>
                   <span className="xs:hidden">Importer</span>
                 </button>
@@ -10641,110 +11118,139 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
                 {/* Grille STRICTEMENT sur 1 ligne : 6 colonnes sur écran moyen/grand */}
                 <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3 md:gap-3.5 overflow-x-auto md:overflow-visible no-scrollbar">
-                  {displayedFiles.map((file) => (
-                    <div
-                      key={file.id}
-                      onClick={() => handleSelectFile(file)}
-                      className={`group relative bg-[#151C2C] hover:bg-[#1A2338] border border-slate-800 hover:border-slate-700 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-200 cursor-pointer flex flex-col ${
-                        menuOpenId === file.id ? 'z-50 relative' : 'z-10'
-                      }`}
-                    >
-                      {/* Vignette compacte */}
-                      <div className="w-full h-24 sm:h-28 md:h-28 bg-slate-900/90 relative rounded-t-2xl flex items-center justify-center">
-                        <div className="absolute inset-0 rounded-t-2xl overflow-hidden pointer-events-none">
-                        {file.previewUrl ? (
-                          <img 
-                            src={file.previewUrl} 
-                            alt={file.name}
-                            className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
-                            loading="lazy"
-                          />
-                        ) : (
-                          <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-3">
-                            {file.category === 'documents' && <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-blue-400/85 stroke-[1.8]" />}
-                            {file.category === 'audio' && <Music className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400/85 stroke-[1.8]" />}
-                            {file.category === 'videos' && <Film className="w-8 h-8 sm:w-10 sm:h-10 text-purple-400/85 stroke-[1.8]" />}
-                            {file.category === 'downloads' && <Download className="w-8 h-8 sm:w-10 sm:h-10 text-sky-400/85 stroke-[1.8]" />}
-                            {file.category === 'images' && <ImageIcon className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-400/85 stroke-[1.8]" />}
-                            {file.category === 'apps' && <LayoutGrid className="w-8 h-8 sm:w-10 sm:h-10 text-pink-400/85 stroke-[1.8]" />}
+                  {displayedFiles.map((file) => {
+                    const isSaving = savingFileProgress[file.id] !== undefined;
+                    const progressVal = savingFileProgress[file.id] || 0;
+
+                    return (
+                      <div
+                        key={file.id}
+                        onClick={() => {
+                          if (isSaving) {
+                            showToast("Enregistrement du fichier en cours... Veuillez patienter.");
+                            return;
+                          }
+                          handleSelectFile(file);
+                        }}
+                        className={`group relative bg-[#151C2C] hover:bg-[#1A2338] border border-slate-800 hover:border-slate-700 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-200 cursor-pointer flex flex-col ${
+                          menuOpenId === file.id ? 'z-50 relative' : 'z-10'
+                        } ${isSaving ? 'cursor-wait select-none' : ''}`}
+                      >
+                        {/* Petit trait de progression d'enregistrement en haut de la carte */}
+                        {isSaving && (
+                          <div className="absolute top-0 inset-x-0 h-1.5 bg-black/40 z-35 overflow-hidden pointer-events-none rounded-t-2xl">
+                            <div 
+                              className="h-full bg-emerald-400 transition-all duration-300 ease-out shadow-[0_0_8px_#34d399]"
+                              style={{ width: `${progressVal}%` }}
+                            />
                           </div>
                         )}
-                        </div>
 
-                        {/* Bouton 3 petits points verticaux en haut à droite */}
-                        <button
-                          type="button"
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMenuOpenId(menuOpenId === file.id ? null : file.id);
-                          }}
-                          className="studycloud-menu-trigger absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/75 hover:bg-black flex items-center justify-center text-white transition-colors cursor-pointer shadow-md z-20 border border-white/20"
-                          title="Options du fichier"
-                        >
-                          <MoreVertical className="w-3.5 h-3.5" />
-                        </button>
+                        {/* Vignette compacte */}
+                        <div className="w-full h-24 sm:h-28 md:h-28 bg-slate-900 relative rounded-t-2xl flex items-center justify-center overflow-hidden">
+                          <div className="absolute inset-0 rounded-t-2xl overflow-hidden pointer-events-none">
+                            {(file.category === 'images' || file.isImage || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(file.name)) ? (
+                              <RecentImageCardPreview file={file} />
+                            ) : (file.category === 'videos' || Boolean(file.videoUrl) || /\.(mp4|mov|avi|webm|mkv)$/i.test(file.name)) ? (
+                              <VideoCardPreview vid={file} />
+                            ) : (file.category === 'documents' || /\.(pdf|docx?|xlsx?|pptx?|txt|csv)$/i.test(file.name)) ? (
+                              <DocumentCardPreview doc={file} />
+                            ) : (file.category === 'audio' || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name)) ? (
+                              <AudioCardPreview track={file} />
+                            ) : file.previewUrl ? (
+                              <img 
+                                src={file.previewUrl} 
+                                alt={file.name}
+                                className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300 select-none"
+                                loading="lazy"
+                              />
+                            ) : (
+                              <div className="w-full h-full flex flex-col items-center justify-center bg-gradient-to-br from-slate-900 via-slate-800 to-slate-900 p-3">
+                                {file.category === 'documents' && <FileText className="w-8 h-8 sm:w-10 sm:h-10 text-blue-400/85 stroke-[1.8]" />}
+                                {file.category === 'audio' && <Music className="w-8 h-8 sm:w-10 sm:h-10 text-amber-400/85 stroke-[1.8]" />}
+                                {file.category === 'videos' && <Film className="w-8 h-8 sm:w-10 sm:h-10 text-purple-400/85 stroke-[1.8]" />}
+                                {file.category === 'downloads' && <Download className="w-8 h-8 sm:w-10 sm:h-10 text-sky-400/85 stroke-[1.8]" />}
+                                {file.category === 'images' && <ImageIcon className="w-8 h-8 sm:w-10 sm:h-10 text-emerald-400/85 stroke-[1.8]" />}
+                                {file.category === 'apps' && <LayoutGrid className="w-8 h-8 sm:w-10 sm:h-10 text-pink-400/85 stroke-[1.8]" />}
+                              </div>
+                            )}
+                          </div>
 
-                        {/* Menu contextuel 3 points */}
-                        {menuOpenId === file.id && (
-                          <div 
-                            onClick={(e) => e.stopPropagation()}
-                            className="studycloud-file-menu-panel absolute top-9 right-1.5 z-50 w-44 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.15)] py-1.5 text-xs font-semibold text-white animate-in fade-in zoom-in-95 overflow-hidden divide-y divide-white/10"
+                          {/* Bouton 3 petits points verticaux en haut à droite */}
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMenuOpenId(menuOpenId === file.id ? null : file.id);
+                            }}
+                            className="studycloud-menu-trigger absolute top-1.5 right-1.5 w-6 h-6 rounded-full bg-black/75 hover:bg-black flex items-center justify-center text-white transition-colors cursor-pointer shadow-md z-20 border border-white/20"
+                            title="Options du fichier"
                           >
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleRemoveRecentFile(file.id);
-                                setMenuOpenId(null);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-rose-500/20 flex items-center gap-2 cursor-pointer text-rose-400 hover:text-rose-300 transition-colors"
-                              title="Retirer cet élément des récents"
-                            >
-                              <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Effacer
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleShareFile(file);
-                                setMenuOpenId(null);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
-                            >
-                              <Share2 className="w-3.5 h-3.5 text-emerald-400" /> Partager
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleDownloadFile(file);
-                                setMenuOpenId(null);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
-                            >
-                              <Download className="w-3.5 h-3.5 text-amber-400" /> Télécharger
-                            </button>
-                            <button
-                              onClick={() => {
-                                handleGenericFileAction('lock_file', file, cloudRecentFiles);
-                                setMenuOpenId(null);
-                              }}
-                              className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-amber-300 transition-colors"
-                            >
-                              <Lock className="w-3.5 h-3.5 text-amber-400" /> Verrouiller
-                            </button>
-                          </div>
-                        )}
-                      </div>
+                            <MoreVertical className="w-3.5 h-3.5" />
+                          </button>
 
-                      {/* Bas de carte avec Nom et Emplacement */}
-                      <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-[#151C2C] rounded-b-2xl">
-                        <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-blue-400 transition-colors" title={file.name}>
-                          {file.name}
-                        </p>
-                        <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
-                          <span className="truncate max-w-[85px]">{file.source}</span>
-                          <span className="shrink-0 font-medium">{file.size}</span>
+                          {/* Menu contextuel 3 points */}
+                          {menuOpenId === file.id && (
+                            <div 
+                              onClick={(e) => e.stopPropagation()}
+                              className="studycloud-file-menu-panel absolute top-9 right-1.5 z-50 w-44 bg-[#0A0F1D] border-2 border-slate-600/90 rounded-2xl shadow-[0_20px_50px_rgba(0,0,0,0.95),0_0_0_1px_rgba(255,255,255,0.15)] py-1.5 text-xs font-semibold text-white animate-in fade-in zoom-in-95 overflow-hidden divide-y divide-white/10"
+                            >
+                              <button
+                                type="button"
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  handleRemoveRecentFile(file.id, file);
+                                  setMenuOpenId(null);
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-rose-500/20 flex items-center gap-2 cursor-pointer text-rose-400 hover:text-rose-300 transition-colors"
+                                title="Supprimer définitivement ce fichier"
+                              >
+                                <Trash2 className="w-3.5 h-3.5 text-rose-400" /> Effacer
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleShareFile(file);
+                                  setMenuOpenId(null);
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
+                              >
+                                <Share2 className="w-3.5 h-3.5 text-emerald-400" /> Partager
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleDownloadFile(file);
+                                  setMenuOpenId(null);
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-white transition-colors"
+                              >
+                                <Download className="w-3.5 h-3.5 text-amber-400" /> Télécharger
+                              </button>
+                              <button
+                                onClick={() => {
+                                  handleGenericFileAction('lock_file', file, cloudRecentFiles);
+                                  setMenuOpenId(null);
+                                }}
+                                className="w-full px-3 py-2 text-left hover:bg-white/10 flex items-center gap-2 cursor-pointer text-amber-300 transition-colors"
+                              >
+                                <Lock className="w-3.5 h-3.5 text-amber-400" /> Verrouiller
+                              </button>
+                            </div>
+                          )}
+                        </div>
+
+                        {/* Bas de carte avec Nom et Emplacement */}
+                        <div className="p-2 sm:p-2.5 flex flex-col justify-between bg-[#151C2C] rounded-b-2xl">
+                          <p className="text-[11px] sm:text-xs font-bold text-white truncate group-hover:text-blue-400 transition-colors" title={file.name}>
+                            {file.name}
+                          </p>
+                          <div className="flex items-center justify-between text-[10px] text-slate-400 mt-1">
+                            <span className="truncate max-w-[85px]">{file.source}</span>
+                            <span className="shrink-0 font-medium">{file.size}</span>
+                          </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               </section>
             )}
