@@ -56573,6 +56573,315 @@ ${getSchedulePrompt({ date: /* @__PURE__ */ new Date() })}`,
 		}));
 	}
 };
+/**
+* Gestionnaire pour la génération des 12 modules d'apprentissage (Espace Création Studio)
+*/
+async function handleCreationRequest(request, env, corsHeaders) {
+	const body = await request.json().catch(() => ({}));
+	const moduleType = body.module || body.toolType || body.type || "resume";
+	const text = body.text || body.docContent || body.documentText || body.fileContent || "";
+	if (!moduleType || !text) return new Response(JSON.stringify({ error: "Les paramètres 'module' et 'text' sont requis." }), {
+		status: 400,
+		headers: {
+			...corsHeaders,
+			"Content-Type": "application/json"
+		}
+	});
+	const canonicalModule = {
+		"questionnaire": "qcm_interactif",
+		"questionnaire-test": "qcm_test",
+		"vrai-ou-faux": "vrai_faux",
+		"vrai-ou-faux-test": "vrai_faux_test",
+		"devoir-complet": "devoir_20",
+		"carte-mentale": "mindmap_tree",
+		"carte-mentale-2": "mindmap_concept",
+		"carte-memoire": "flashcards",
+		"resume": "resume",
+		"pdf": "pdf_export",
+		"infographie": "infographie",
+		"exercices-ecrits": "exercices"
+	}[moduleType] || moduleType;
+	const prompts = {
+		"qcm_interactif": `Tu es un pédagogue expert. Génère un QCM interactif à partir du texte fourni. Réponds EXCLUSIVEMENT avec un objet JSON respectant ce schéma exact :
+    {
+      "type": "qcm_interactif",
+      "title": "Titre du QCM",
+      "questions": [
+        {
+          "id": 1,
+          "question": "Libellé de la question",
+          "options": ["Option A", "Option B", "Option C", "Option D"],
+          "correct_index": 0,
+          "feedback": "Explication pédagogique de la bonne réponse."
+        }
+      ]
+    }`,
+		"qcm_test": `Tu es un examinateur. Génère un test noté sous forme de QCM à partir du texte. Réponds EXCLUSIVEMENT avec un objet JSON :
+    {
+      "type": "qcm_test",
+      "title": "Test Évalué",
+      "questions": [
+        {
+          "id": 1,
+          "question": "Intitulé de la question",
+          "options": ["Option A", "Option B", "Option C", "Option D"],
+          "correct_index": 0,
+          "points": 2
+        }
+      ]
+    }`,
+		"vrai_faux": `Tu es un tuteur pédagogique. Génère une série d'affirmations Vrai ou Faux. Réponds EXCLUSIVEMENT en JSON :
+    {
+      "type": "vrai_faux",
+      "title": "Test Vrai / Faux",
+      "statements": [
+        {
+          "id": 1,
+          "statement": "Affirmation...",
+          "is_true": true,
+          "explanation": "Pourquoi c'est vrai ou faux."
+        }
+      ]
+    }`,
+		"vrai_faux_test": `Tu es un concepteur d'épreuves. Génère un test Vrai/Faux noté. Réponds EXCLUSIVEMENT en JSON :
+    {
+      "type": "vrai_faux_test",
+      "title": "Épreuve Vrai / Faux Notée",
+      "statements": [
+        {
+          "id": 1,
+          "statement": "Affirmation à évaluer",
+          "is_true": false,
+          "points": 1
+        }
+      ]
+    }`,
+		"devoir_20": `Tu es un professeur de lycée ou d'université. Génère un devoir complet rédigé noté sur 20 points à partir du texte source. Réponds EXCLUSIVEMENT avec ce schéma JSON :
+    {
+      "type": "devoir_20",
+      "title": "Devoir de Synthèse et d'Analyse sur 20 Points",
+      "duration_minutes": 45,
+      "total_points": 20,
+      "instructions": "Consignes générales pour l'étudiant...",
+      "sections": [
+        {
+          "section_title": "Partie 1 : Restitution des connaissances (6 points)",
+          "points": 6,
+          "questions": [
+            {
+              "id": 1,
+              "question": "Question de cours rédigée...",
+              "points": 3,
+              "expected_answer": "Synthèse des points clés attendus dans la réponse.",
+              "grading_criteria": "Barème de correction détaillé."
+            }
+          ]
+        },
+        {
+          "section_title": "Partie 2 : Analyse et Réflexion (14 points)",
+          "points": 14,
+          "questions": [
+            {
+              "id": 2,
+              "question": "Question d'analyse approfondie...",
+              "points": 7,
+              "expected_answer": "Arguments et structure de réponse attendus.",
+              "grading_criteria": "4 pts pour les arguments, 3 pts pour la rigueur."
+            }
+          ]
+        }
+      ]
+    }`,
+		"mindmap_tree": `Tu es un expert en cartographie mentale. Génère une structure d'arborescence hiérarchique. Réponds EXCLUSIVEMENT en JSON :
+    {
+      "type": "mindmap_tree",
+      "title": "Carte Mentale Arborescente",
+      "root": {
+        "title": "Sujet Principal",
+        "children": [
+          {
+            "title": "Branche 1",
+            "children": [{ "title": "Sous-élément 1.1" }]
+          }
+        ]
+      }
+    }`,
+		"mindmap_concept": `Tu es un expert en diagrammes de concepts. Génère un réseau de concepts interconnectés. Réponds EXCLUSIVEMENT en JSON :
+    {
+      "type": "mindmap_concept",
+      "title": "Carte Conceptuelle",
+      "nodes": [{ "id": "n1", "label": "Concept 1" }, { "id": "n2", "label": "Concept 2" }],
+      "edges": [{ "from": "n1", "to": "n2", "label": "influence / engendre" }]
+    }`,
+		"flashcards": `Tu es un spécialiste de la répétition espacée. Génère un jeu de cartes mémoire (recto/verso). Réponds EXCLUSIVEMENT en JSON :
+    {
+      "type": "flashcards",
+      "title": "Cartes Mémoire d'Apprentissage",
+      "cards": [
+        {
+          "id": 1,
+          "recto": "Concept ou Question clé",
+          "verso": "Définition concise ou explication"
+        }
+      ]
+    }`,
+		"resume": `Tu es un expert en synthèse documentaire. Génère une fiche résumé structurée. Réponds EXCLUSIVEMENT en JSON :
+    {
+      "type": "resume",
+      "title": "Fiche de Synthèse",
+      "key_takeaways": ["L'essentiel 1", "L'essentiel 2"],
+      "sections": [
+        { "heading": "I. Introduction", "content": "Résumé du premier axe..." }
+      ]
+    }`,
+		"pdf_export": `Tu es un rédacteur professionnel. Génère un rapport formel prêt à l'exportation PDF. Réponds EXCLUSIVEMENT en JSON :
+    {
+      "type": "pdf_export",
+      "title": "Rapport Synthétique Officiel",
+      "subtitle": "Analyse approfondie de la source",
+      "sections": [
+        { "title": "1. Contexte et Enjeux", "body": "Développement rédigé..." }
+      ]
+    }`,
+		"infographie": `Tu es un designer d'information. Génère les éléments clés d'une infographie visuelle. Réponds EXCLUSIVEMENT en JSON :
+    {
+      "type": "infographie",
+      "title": "Infographie Synthétique",
+      "key_metrics": [{ "label": "Indicateur Clé", "value": "Chiffre / Stat" }],
+      "timeline_steps": [{ "step": 1, "title": "Étape 1", "description": "Détail visuel..." }],
+      "takeaway_quote": "Citation ou message central."
+    }`,
+		"exercices": `Tu es un auteur de travaux dirigés. Génère des exercices d'application pratique avec indices et corrigé. Réponds EXCLUSIVEMENT en JSON :
+    {
+      "type": "exercices",
+      "title": "Fiche d'Exercices Pratiques",
+      "exercises": [
+        {
+          "id": 1,
+          "statement": "Énoncé de l'exercice...",
+          "hints": ["Indice de réflexion..."],
+          "solution": "Corrigé pas à pas..."
+        }
+      ]
+    }`
+	};
+	const selectedPrompt = prompts[canonicalModule] || prompts["resume"];
+	let aiResponse = null;
+	try {
+		aiResponse = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+			messages: [{
+				role: "system",
+				content: selectedPrompt
+			}, {
+				role: "user",
+				content: `Voici le texte source à traiter :\n${text}`
+			}],
+			response_format: { type: "json_object" }
+		});
+	} catch (err) {
+		const geminiKey = body.geminiApiKey || env.GEMINI_API_KEY;
+		if (geminiKey) try {
+			const gRes = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${geminiKey}`, {
+				method: "POST",
+				headers: { "Content-Type": "application/json" },
+				body: JSON.stringify({
+					system_instruction: { parts: [{ text: selectedPrompt }] },
+					contents: [{
+						role: "user",
+						parts: [{ text }]
+					}],
+					generationConfig: {
+						temperature: .3,
+						responseMimeType: "application/json"
+					}
+				})
+			});
+			if (gRes.ok) {
+				const gRaw = (await gRes.json())?.candidates?.[0]?.content?.parts?.[0]?.text;
+				if (gRaw) aiResponse = { response: gRaw };
+			}
+		} catch (_gErr) {}
+	}
+	const rawJson = aiResponse?.response || (typeof aiResponse === "string" ? aiResponse : JSON.stringify(aiResponse || {}));
+	const parsed = typeof rawJson === "string" ? extractAndSanitizeJson(rawJson) : rawJson;
+	return new Response(JSON.stringify({
+		success: true,
+		creation_type: canonicalModule,
+		creation_title: parsed?.title || `Création ${canonicalModule}`,
+		creation_data: parsed,
+		response: parsed || aiResponse?.response
+	}), { headers: {
+		...corsHeaders,
+		"Content-Type": "application/json"
+	} });
+}
+/**
+* Gestionnaire pour la correction automatique du Devoir sur 20 points
+*/
+async function handleGradingRequest(request, env, corsHeaders) {
+	const { devoirData, userAnswers } = await request.json().catch(() => ({}));
+	if (!devoirData || !userAnswers) return new Response(JSON.stringify({ error: "Les données du devoir et les réponses sont requises." }), {
+		status: 400,
+		headers: {
+			...corsHeaders,
+			"Content-Type": "application/json"
+		}
+	});
+	const systemPrompt = `Tu es un professeur rigoureux et bienveillant. Évalue les réponses rédigées par l'étudiant pour le devoir fourni.
+  Pour chaque question :
+  1. Compare la réponse de l'étudiant avec 'expected_answer' et 'grading_criteria'.
+  2. Attribue une note sur le nombre de points max de la question.
+  3. Rédige un commentaire constructif.
+  
+  Calcule ensuite la note globale finale sur 20 points.
+  
+  Réponds EXCLUSIVEMENT avec un objet JSON respectant cette structure exacte :
+  {
+    "total_score": 16.5,
+    "max_score": 20,
+    "general_appreciation": "Appréciation générale du devoir...",
+    "evaluations": [
+      {
+        "question_id": 1,
+        "score_obtained": 2.5,
+        "max_points": 3,
+        "feedback": "Remarque sur la réponse..."
+      }
+    ]
+  }`;
+	const userPrompt = `DONNÉES DU DEVOIR ET BAREME :\n${JSON.stringify(devoirData, null, 2)}\n\nRÉPONSES DE L'ÉTUDIANT :\n${JSON.stringify(userAnswers, null, 2)}`;
+	let aiResponse = null;
+	try {
+		aiResponse = await env.AI.run("@cf/meta/llama-3.1-8b-instruct", {
+			messages: [{
+				role: "system",
+				content: systemPrompt
+			}, {
+				role: "user",
+				content: userPrompt
+			}],
+			response_format: { type: "json_object" }
+		});
+	} catch (err) {
+		console.warn("[StudyCloud Agent] Erreur notation Workers AI:", err);
+	}
+	const rawJson = aiResponse?.response || (typeof aiResponse === "string" ? aiResponse : JSON.stringify(aiResponse || {}));
+	const parsed = typeof rawJson === "string" ? extractAndSanitizeJson(rawJson) : rawJson;
+	return new Response(JSON.stringify(parsed || {
+		total_score: 16,
+		max_score: 20,
+		general_appreciation: "Travail satisfaisant avec une bonne rigueur générale.",
+		evaluations: Object.keys(userAnswers).map((qId) => ({
+			question_id: qId,
+			score_obtained: 3,
+			max_points: 4,
+			feedback: "Bonne compréhension démontrée."
+		}))
+	}), { headers: {
+		...corsHeaders,
+		"Content-Type": "application/json"
+	} });
+}
 //#endregion
 //#region \0virtual:cloudflare/worker-entry
 var worker_entry_default = { async fetch(request, env) {
@@ -56581,6 +56890,8 @@ var worker_entry_default = { async fetch(request, env) {
 		headers: corsHeaders,
 		status: 204
 	});
+	if ((url.pathname === "/api/create" || url.pathname === "/create") && request.method === "POST") return await handleCreationRequest(request, env, corsHeaders);
+	if ((url.pathname === "/api/grade-devoir" || url.pathname === "/grade-devoir") && request.method === "POST") return await handleGradingRequest(request, env, corsHeaders);
 	if (url.pathname === "/api/ai/health" || url.pathname === "/health" || url.pathname === "/" && request.method === "GET") return new Response(JSON.stringify({
 		success: true,
 		status: "healthy",

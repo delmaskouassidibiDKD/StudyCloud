@@ -35,6 +35,7 @@ import { DnaLogo } from './DnaLogo';
 import { MathText } from './MathText';
 import { AiCreation, ModuleId } from './ai-creations/types';
 import { normalizeExamData } from './ai-creations/DevoirComplet';
+import { CreationStudio } from './CreationStudio';
 
 interface RightMenuProps {
   isRightFullscreen: boolean;
@@ -721,10 +722,12 @@ export function RightMenu({
   const abortControllerRef = useRef<AbortController | null>(null);
   const [reaction, setReaction] = useState<'like' | 'dislike' | null>(null);
   const [isCopied, setIsCopied] = useState(false);
+  const [studioViewMode, setStudioViewMode] = useState<'studio' | 'doc'>('studio');
 
   useEffect(() => {
     setReaction(null);
     setIsCopied(false);
+    setStudioViewMode('studio');
   }, [activeCreation?.id]);
   
   const [historyItems, setHistoryItems] = useState<any[]>(() => {
@@ -1431,9 +1434,53 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
               )}
             </div>
 
-            {/* Corps du message formaté (Markdown riche + KaTeX MathText) */}
-            <div className="text-[13px] sm:text-sm leading-relaxed font-medium text-zinc-200 pl-1">
-              <CreationChatMessageText markdown={markdownContent} />
+            {/* Sélecteur de mode : Studio Interactif (Google NotebookLM) vs Fiche Markdown */}
+            <div className="mb-4 flex items-center justify-between pb-2 border-b border-zinc-700/50">
+              <div className="flex items-center gap-1.5 bg-[#141518] p-1 rounded-xl border border-zinc-700/50">
+                <button
+                  type="button"
+                  onClick={() => setStudioViewMode('studio')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    studioViewMode === 'studio'
+                      ? 'bg-indigo-600 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                  }`}
+                  title="Afficher la vue interactive Google NotebookLM Studio"
+                >
+                  <Sparkles className="w-3.5 h-3.5 text-indigo-300" />
+                  <span>Studio Interactif</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStudioViewMode('doc')}
+                  className={`px-3 py-1.5 rounded-lg text-xs font-semibold flex items-center gap-1.5 transition-all cursor-pointer ${
+                    studioViewMode === 'doc'
+                      ? 'bg-zinc-700 text-white shadow-xs'
+                      : 'text-zinc-400 hover:text-white hover:bg-zinc-800/60'
+                  }`}
+                  title="Afficher le texte complet et la fiche de cours"
+                >
+                  <FileText className="w-3.5 h-3.5 text-zinc-300" />
+                  <span>Fiche Markdown</span>
+                </button>
+              </div>
+            </div>
+
+            {/* Corps du message formaté (Studio Interactif ou Markdown riche + KaTeX MathText) */}
+            <div className="text-[13px] sm:text-sm leading-relaxed font-medium text-zinc-200">
+              {studioViewMode === 'studio' ? (
+                <CreationStudio
+                  toolType={currentType}
+                  data={effectiveRenderData}
+                  title={currentTitle}
+                  sourceDocName={currentDoc}
+                  onRegenerate={currentMod ? () => handleProposalClick(currentMod) : undefined}
+                />
+              ) : (
+                <div className="pl-1">
+                  <CreationChatMessageText markdown={markdownContent} />
+                </div>
+              )}
             </div>
 
             {/* Barre d'actions sous le message (Like, Dislike, Copier, Regénérer, Retour) */}
