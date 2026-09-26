@@ -1447,15 +1447,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         }
 
         // 4. Dossier Sécurisé
+        const deletedRecentIds = getDeletedRecentIds();
+        const locallyDeletedIds = getLocallyDeletedFileIds();
+        const isNotDeleted = (item: any) => 
+          item &&
+          !isMockFile(item) &&
+          !deletedRecentIds.has(item.id) &&
+          (!item.name || !deletedRecentIds.has(item.name)) &&
+          !locallyDeletedIds.has(item.id) &&
+          (!item.name || !locallyDeletedIds.has(item.name));
+
         const secFiles = await CloudStorageAPI.getSecureFiles();
         if (isMounted && secFiles) {
-          setSecureFolderFiles(secFiles);
+          setSecureFolderFiles(secFiles.filter(isNotDeleted));
         }
 
         // 5. Audio
         const audio = await CloudStorageAPI.getAudioList();
         if (isMounted && audio) {
-          setAudioList(audio.map(a => ({
+          setAudioList(audio.filter(isNotDeleted).map(a => ({
             ...a,
             isFavorite: favIdSet.has(a.id),
             isPinned: pinIdSet.has(a.id)
@@ -1465,7 +1475,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         // 6. Images
         const images = await CloudStorageAPI.getImagesList();
         if (isMounted && images) {
-          setImagesList(images.map(img => ({
+          setImagesList(images.filter(isNotDeleted).map(img => ({
             ...img,
             isFavorite: favIdSet.has(img.id),
             isPinned: pinIdSet.has(img.id)
@@ -1475,7 +1485,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         // 7. Vidéos
         const videos = await CloudStorageAPI.getVideosList();
         if (isMounted && videos) {
-          setVideosList(videos.map(v => ({
+          setVideosList(videos.filter(isNotDeleted).map(v => ({
             ...v,
             isFavorite: favIdSet.has(v.id),
             isPinned: pinIdSet.has(v.id)
@@ -1485,7 +1495,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         // 8. Documents
         const docs = await CloudStorageAPI.getDocumentsList();
         if (isMounted && docs) {
-          setDocumentsList(docs.map(d => ({
+          setDocumentsList(docs.filter(isNotDeleted).map(d => ({
             ...d,
             isFavorite: favIdSet.has(d.id),
             isPinned: pinIdSet.has(d.id)
@@ -1496,7 +1506,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         const cloudDownloads = await CloudStorageAPI.getDownloadsList();
         if (isMounted) {
           if (cloudDownloads && cloudDownloads.length > 0) {
-            const mapped: DownloadedItem[] = cloudDownloads.map(dl => ({
+            const mapped: DownloadedItem[] = cloudDownloads.filter(isNotDeleted).map(dl => ({
               id: dl.id,
               name: dl.name,
               category: (dl.category as any) || 'downloads',
@@ -1782,13 +1792,22 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return false;
   };
 
+  const isAllowedInitialFile = (f: any) => {
+    if (!f || isMockFile(f)) return false;
+    const delRecent = getDeletedRecentIds();
+    const delLocal = getLocallyDeletedFileIds();
+    if (delRecent.has(f.id) || (f.name && delRecent.has(f.name))) return false;
+    if (delLocal.has(f.id) || (f.name && delLocal.has(f.name))) return false;
+    return true;
+  };
+
   // 1. DOCUMENTS (Stockage réel Cloudflare D1/R2)
   const [documentsList, setDocumentsList] = useState<FileItem[]>(() => {
     try {
       const saved = localStorage.getItem('studycloud_documents_files');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
+        if (Array.isArray(parsed)) return parsed.filter(isAllowedInitialFile);
       }
     } catch {}
     return [];
@@ -1806,7 +1825,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const saved = localStorage.getItem('studycloud_images_files');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
+        if (Array.isArray(parsed)) return parsed.filter(isAllowedInitialFile);
       }
     } catch {}
     return [];
@@ -1824,7 +1843,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const saved = localStorage.getItem('studycloud_videos_files');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
+        if (Array.isArray(parsed)) return parsed.filter(isAllowedInitialFile);
       }
     } catch {}
     return [];
@@ -1842,7 +1861,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const saved = localStorage.getItem('studycloud_audio_files');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
+        if (Array.isArray(parsed)) return parsed.filter(isAllowedInitialFile);
       }
     } catch {}
     return [];
@@ -1914,22 +1933,57 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     removeDownloadedFile(fileId);
     if (fileName) removeDownloadedFile(fileName);
 
-    // 4. Retirer des listes actives du composant
-    setDocumentsList(prev => prev.filter(d => d.id !== fileId));
-    setImagesList(prev => prev.filter(img => img.id !== fileId));
-    setVideosList(prev => prev.filter(vid => vid.id !== fileId));
-    setAudioList(prev => prev.filter(aud => aud.id !== fileId));
-    setDownloadedItems(prev => prev.filter(dl => dl.id !== fileId));
+    // 4. Retirer de TOUTES les listes actives du composant
+    setDocumentsList(prev => prev.filter(d => d.id !== fileId && (!fileName || d.name !== fileName)));
+    setImagesList(prev => prev.filter(img => img.id !== fileId && (!fileName || img.name !== fileName)));
+    setVideosList(prev => prev.filter(vid => vid.id !== fileId && (!fileName || vid.name !== fileName)));
+    setAudioList(prev => prev.filter(aud => aud.id !== fileId && (!fileName || aud.name !== fileName)));
+    setDownloadedItems(prev => prev.filter(dl => dl.id !== fileId && (!fileName || dl.name !== fileName)));
+    setSecureFolderFiles(prev => prev.filter(s => s.id !== fileId && (!fileName || s.name !== fileName)));
+    setTrashFiles(prev => prev.filter(t => t.id !== fileId && (!fileName || t.name !== fileName)));
+    setFavoriteFiles(prev => prev.filter(f => f.id !== fileId && (!fileName || f.name !== fileName)));
 
-    if (splitSelectedFile?.id === fileId) {
+    // 5. Retirer de tous les dossiers du classeur 3D
+    setFolderFilesMap(prev => {
+      const updated: Record<string, FileItem[]> = {};
+      for (const [folderId, files] of Object.entries(prev)) {
+        updated[folderId] = files.filter(f => f.id !== fileId && (!fileName || f.name !== fileName));
+      }
+      try {
+        localStorage.setItem('studycloud_folder_files_map', JSON.stringify(updated));
+      } catch {}
+      return updated;
+    });
+
+    // 6. Fermer le lecteur si ce fichier était ouvert
+    if (splitSelectedFile?.id === fileId || (fileName && splitSelectedFile?.name === fileName)) {
       setSplitSelectedFile(null);
+      setIsAudioPlaying(false);
+      setIsVideoPlaying(false);
     }
 
-    // 5. Supprimer dans Cloudflare D1/R2 pour que le serveur ne le renvoie plus
+    // 7. Nettoyer immédiatement les clés localStorage pour éviter toute réapparition au F5
+    try {
+      ['studycloud_documents_files', 'studycloud_images_files', 'studycloud_videos_files', 'studycloud_audio_files', 'studycloud_downloaded_items', 'studycloud_trash_files', 'studycloud_secure_folder_files'].forEach(key => {
+        const raw = localStorage.getItem(key);
+        if (raw) {
+          try {
+            const arr = JSON.parse(raw);
+            if (Array.isArray(arr)) {
+              const filtered = arr.filter((x: any) => x.id !== fileId && (!fileName || x.name !== fileName));
+              localStorage.setItem(key, JSON.stringify(filtered));
+            }
+          } catch {}
+        }
+      });
+    } catch {}
+
+    // 8. Supprimer dans Cloudflare D1/R2 pour que le serveur ne le renvoie plus
     if (file) {
       if ((file as any).originalFolderId || (file as any).folderId) {
         CloudStorageAPI.deleteClasseurFile(file.id).catch(console.error);
-      } else if (file.category === 'images' || file.isImage) {
+      }
+      if (file.category === 'images' || file.isImage) {
         CloudStorageAPI.deleteImage(file.id).catch(console.error);
       } else if (file.category === 'videos' || file.videoUrl) {
         CloudStorageAPI.deleteVideo(file.id).catch(console.error);
@@ -1941,6 +1995,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         CloudStorageAPI.deleteDocument(file.id).catch(console.error);
       }
     }
+    // Purger définitivement de la corbeille backend aussi pour qu'il ne s'y cache pas
+    CloudStorageAPI.deleteTrashPermanently([fileId]).catch(() => {});
 
     showToast("Fichier effacé définitivement.");
   };
@@ -3312,8 +3368,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setDocCurrentPage(1);
 
     const isNotepad = Boolean(file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt'));
-    const isAudio = Boolean(file.category === 'audio' || file.isAudio || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name));
-    const isVideo = Boolean(file.category === 'videos' || file.isVideo || Boolean(file.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv)$/i.test(file.name));
+    const isAudio = Boolean(file.category === 'audio' || file.isAudio || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|opus|wma|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(file.name));
+    const isVideo = Boolean(file.category === 'videos' || file.isVideo || Boolean(file.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(file.name));
 
     // URL de lecture : préserver le blob local s'il existe, sinon URL worker
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
@@ -3349,6 +3405,89 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setIsVideoPlaying(false);
     }
   };
+
+  // CLIC SUR UN FICHIER RÉCENT :
+  // Bascule automatiquement et de manière fluide dans le menu correspondant et active le lecteur
+  const handleRecentFileClick = (file: FileItem) => {
+    const normName = (file.name || '').toLowerCase();
+    const ext = normName.includes('.') ? normName.split('.').pop() || '' : '';
+
+    const isImg = file.category === 'images' || file.isImage || ['jpg', 'jpeg', 'png', 'webp', 'gif', 'svg', 'avif'].includes(ext);
+    const isVid = file.category === 'videos' || file.isVideo || Boolean(file.videoUrl) || ['mp4', 'webm', 'mkv', 'mov', 'avi', 'flv', 'wmv', 'm4v', '3gp'].includes(ext);
+    const isAud = file.category === 'audio' || file.isAudio || Boolean(file.audioUrl) || ['mp3', 'wav', 'ogg', 'm4a', 'aac', 'flac', 'wma', 'opus', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'].includes(ext);
+    const isDl = file.category === 'downloads';
+    const isApp = file.category === 'apps';
+
+    let targetCatId = 'documents';
+    let targetName = 'Documents';
+    let targetIcon: any = FileText;
+    let targetColor = 'text-blue-400';
+
+    if (isImg) {
+      targetCatId = 'images';
+      targetName = 'Images';
+      targetIcon = ImageIcon;
+      targetColor = 'text-emerald-400';
+      setImagesList(prev => {
+        if (prev.some(i => i.id === file.id || (file.name && i.name === file.name))) return prev;
+        return [file, ...prev];
+      });
+    } else if (isVid) {
+      targetCatId = 'videos';
+      targetName = 'Vidéos';
+      targetIcon = Film;
+      targetColor = 'text-purple-400';
+      setVideosList(prev => {
+        if (prev.some(v => v.id === file.id || (file.name && v.name === file.name))) return prev;
+        return [file, ...prev];
+      });
+    } else if (isAud) {
+      targetCatId = 'audio';
+      targetName = 'Audio';
+      targetIcon = Music;
+      targetColor = 'text-amber-400';
+      setAudioList(prev => {
+        if (prev.some(a => a.id === file.id || (file.name && a.name === file.name))) return prev;
+        return [file, ...prev];
+      });
+    } else if (isDl) {
+      targetCatId = 'downloads';
+      targetName = 'Téléchargements';
+      targetIcon = Download;
+      targetColor = 'text-sky-400';
+      setDownloadedItems(prev => {
+        if (prev.some(d => d.id === file.id || (file.name && d.name === file.name))) return prev;
+        return [file as any, ...prev];
+      });
+    } else if (isApp) {
+      targetCatId = 'apps';
+      targetName = 'Applications';
+      targetIcon = LayoutGrid;
+      targetColor = 'text-pink-400';
+    } else {
+      targetCatId = 'documents';
+      targetName = 'Documents';
+      targetIcon = FileText;
+      targetColor = 'text-blue-400';
+      setDocumentsList(prev => {
+        if (prev.some(d => d.id === file.id || (file.name && d.name === file.name))) return prev;
+        return [file, ...prev];
+      });
+    }
+
+    setSubSearchQuery('');
+    setIsViewerMaximized(false);
+    setCurrentSubView({
+      id: `studycloud-category-${targetCatId}`,
+      type: 'category',
+      name: targetName,
+      icon: targetIcon,
+      color: targetColor
+    });
+
+    handleSelectFile(file);
+  };
+
 
   // Catégories StudyCloud
   const categories = [
@@ -3500,7 +3639,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Liste des documents pour le sous-menu Documents (Image 1)
   const filteredDocuments = useMemo(() => {
-    const list = [...documentsList, ...cloudRecentFiles.filter(f => f.category === 'documents' && !documentsList.some(s => s.name === f.name))];
+    const delRecent = getDeletedRecentIds();
+    const delLocal = getLocallyDeletedFileIds();
+    const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+
+    const list = [...documentsList, ...cloudRecentFiles.filter(f => (f.category === 'documents' || /\.(pdf|docx?|xlsx?|pptx?|txt|csv)$/i.test(f.name)) && !documentsList.some(s => s.id === f.id || s.name === f.name))].filter(isClean);
     const filtered = list.filter(doc => {
       return subSearchQuery.trim() === '' || doc.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
@@ -3509,7 +3652,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Liste des images pour le sous-menu Images (Image 2)
   const filteredImages = useMemo(() => {
-    const list = [...imagesList, ...cloudRecentFiles.filter(f => f.category === 'images' && !imagesList.some(s => s.name === f.name))];
+    const delRecent = getDeletedRecentIds();
+    const delLocal = getLocallyDeletedFileIds();
+    const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+
+    const list = [...imagesList, ...cloudRecentFiles.filter(f => (f.category === 'images' || f.isImage || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(f.name)) && !imagesList.some(s => s.id === f.id || s.name === f.name))].filter(isClean);
     const filtered = list.filter(img => {
       return subSearchQuery.trim() === '' || img.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
@@ -3518,7 +3665,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Liste des vidéos pour le sous-menu Vidéos (Image 3)
   const filteredVideos = useMemo(() => {
-    const list = [...videosList, ...cloudRecentFiles.filter(f => f.category === 'videos' && !videosList.some(s => s.name === f.name))];
+    const delRecent = getDeletedRecentIds();
+    const delLocal = getLocallyDeletedFileIds();
+    const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+
+    const list = [...videosList, ...cloudRecentFiles.filter(f => (f.category === 'videos' || f.isVideo || Boolean(f.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(f.name)) && !videosList.some(s => s.id === f.id || s.name === f.name))].filter(isClean);
     const filtered = list.filter(vid => {
       return subSearchQuery.trim() === '' || vid.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
@@ -3527,7 +3678,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   // Liste audio pour le sous-menu Audio (Image 4)
   const filteredAudio = useMemo(() => {
-    const list = [...audioList, ...cloudRecentFiles.filter(f => f.category === 'audio' && !audioList.some(s => s.name === f.name))];
+    const delRecent = getDeletedRecentIds();
+    const delLocal = getLocallyDeletedFileIds();
+    const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+
+    const list = [...audioList, ...cloudRecentFiles.filter(f => (f.category === 'audio' || f.isAudio || Boolean(f.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(f.name)) && !audioList.some(s => s.id === f.id || s.name === f.name))].filter(isClean);
     const filtered = list.filter(aud => {
       return subSearchQuery.trim() === '' || aud.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
@@ -11098,7 +11253,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                             showToast("Enregistrement du fichier en cours... Veuillez patienter.");
                             return;
                           }
-                          handleSelectFile(file);
+                          handleRecentFileClick(file);
                         }}
                         className={`group relative bg-[#151C2C] hover:bg-[#1A2338] border border-slate-800 hover:border-slate-700 rounded-2xl shadow-sm hover:shadow-xl transition-all duration-200 cursor-pointer flex flex-col ${
                           menuOpenId === file.id ? 'z-50 relative overflow-visible' : 'z-10'
