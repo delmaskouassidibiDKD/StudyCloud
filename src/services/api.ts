@@ -302,6 +302,55 @@ export async function sendChatMessageToAi(params: {
 
   if (!response.ok) {
     const err = await response.json().catch(() => ({ error: response.statusText }));
+    const errorText = String(err.error || response.statusText || '');
+
+    // 1. Détection du quota Cloudflare Workers AI gratuit (Erreur 4006 : 10,000 neurons épuisés)
+    const isNeuronQuotaExhausted = errorText.includes('4006') || errorText.toLowerCase().includes('neurons') || errorText.toLowerCase().includes('daily free allocation');
+
+    if (isNeuronQuotaExhausted) {
+      console.warn('[StudyCloud AI] Quota 10,000 neurones Cloudflare atteint (Erreur 4006).');
+
+      // TENTATIVE DE SECOURS DIRECT GEMINI : Si une clé est disponible
+      if (userGeminiApiKey && userGeminiApiKey.length > 10) {
+        try {
+          const geminiPrompt = `${params.prompt || params.message || 'Bonjour'}${extractedDoc ? `\n\nContenu document support ("${extractedDocName}") :\n${extractedDoc.slice(0, 35000)}` : ''}`;
+          const geminiResp = await fetch(
+            `https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key=${userGeminiApiKey}`,
+            {
+              method: 'POST',
+              headers: { 'Content-Type': 'application/json' },
+              body: JSON.stringify({
+                system_instruction: { parts: [{ text: "Tu es Delmas IA, l'assistant d'étude officiel de StudyCloud. Réponds en français structuré avec rigueur pédagogique et formules LaTeX si nécessaire." }] },
+                contents: [{ role: 'user', parts: [{ text: geminiPrompt }] }],
+                generationConfig: { temperature: 0.3 }
+              }),
+              signal: AbortSignal.timeout(30000),
+            }
+          );
+          if (geminiResp.ok) {
+            const geminiData = await geminiResp.json();
+            const gText = geminiData?.candidates?.[0]?.content?.parts?.[0]?.text || '';
+            if (gText) {
+              return {
+                success: true,
+                response: gText,
+                chat_response: gText,
+                model: 'Google Gemini (Secours Automatique)',
+              };
+            }
+          }
+        } catch (_gErr) {}
+      }
+
+      // Si aucune clé Gemini n'est configurée, afficher un message d'orientation bienveillant et clair
+      return {
+        success: true,
+        response: `💡 **Information sur le quota de calcul Cloudflare :**\n\nVotre compte gratuit Cloudflare a atteint son allocation journalière de **10 000 neurones gratuits** (Erreur 4006).\n\nPour continuer à utiliser l'IA immédiatement et sans limite :\n\n1. 🔑 **Option 100% Gratuite (Recommandée)** : Obtenez une clé API Gemini gratuite en 30 secondes sur [Google AI Studio](https://aistudio.google.com/) et collez-la dans les **Paramètres StudyCloud**. L'IA fonctionnera en illimité sans aucun frais !\n2. ⚡ **Option Cloudflare** : Passer au plan Workers Paid (5$/mois) depuis votre tableau de bord Cloudflare pour lever la limite journalière.\n3. ⏳ **Reset automatique** : Les 10 000 neurones gratuits se rechargent automatiquement chaque jour à minuit UTC.`,
+        chat_response: `💡 Quota journalier Cloudflare gratuit atteint (10 000 neurones). Ajoutez une clé API Gemini gratuite dans les Paramètres pour continuer immédiatement !`,
+        model: 'Delmas IA (Notice Quota)',
+      };
+    }
+
     throw new Error(err.error || `Erreur API Worker IA (${response.status})`);
   }
 
