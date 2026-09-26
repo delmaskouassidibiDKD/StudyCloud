@@ -95,6 +95,7 @@ import {
   getDynamicCurrentDate,
   lightenColor
 } from './Folder3DModels';
+import { getWorkerApiUrl } from '../services/api';
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
@@ -155,6 +156,43 @@ interface SubMenuView {
   icon: any;
   color: string;
 }
+
+export const isExplicitAudioFile = (fileName?: string, ext?: string, mime?: string): boolean => {
+  const norm = (fileName || '').toLowerCase();
+  const e = (ext || (norm.includes('.') ? norm.split('.').pop() || '' : '')).toLowerCase();
+  const m = (mime || '').toLowerCase();
+  const audioExts = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'opus', 'amr', 'weba', 'caf', '3ga', 'oga', 'spx', 'm4b', 'm4p', 'mp2', 'mp1', 'wv', 'ape', 'ra', 'voc', 'au', 'gsm', 'dss', 'act', 'raw'];
+  const videoExts = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', '3gp', 'm4v', 'ts', 'ogv', 'mpg', 'mpeg'];
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'heif', 'avif', 'raw'];
+
+  if (m.startsWith('audio/') || audioExts.includes(e) || norm.includes('whatsapp audio') || norm.includes('ptt-') || norm.includes('aud-')) {
+    return true;
+  }
+  if (norm.includes('whatsapp') && !videoExts.includes(e) && !imageExts.includes(e)) {
+    return true;
+  }
+  return false;
+};
+
+export const detectExactFileCategory = (file: File): 'images' | 'videos' | 'audio' | 'documents' => {
+  const norm = (file.name || '').toLowerCase();
+  const ext = (norm.includes('.') ? norm.split('.').pop() || '' : '').toLowerCase();
+  const mime = (file.type || '').toLowerCase();
+
+  const imageExts = ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'heif', 'avif', 'raw'];
+  const videoExts = ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', '3gp', 'm4v', 'ts', 'ogv', 'mpg', 'mpeg'];
+
+  if (isExplicitAudioFile(file.name, ext, mime)) {
+    return 'audio';
+  }
+  if (mime.startsWith('video/') || videoExts.includes(ext) || norm.includes('whatsapp video')) {
+    return 'videos';
+  }
+  if (mime.startsWith('image/') || imageExts.includes(ext) || norm.includes('whatsapp image')) {
+    return 'images';
+  }
+  return 'documents';
+};
 
 function getLocallyDeletedFileIds(): Set<string> {
   try {
@@ -1316,6 +1354,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const categoryFileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
 
+  // État du message centré professionnel (sans logo) lorsqu'un fichier incompatible est déposé dans un menu
+  const [invalidMenuAlert, setInvalidMenuAlert] = useState<{
+    targetCategory: string;
+    message: string;
+    fileName?: string;
+  } | null>(null);
+
   // Sous-page ouverte
   const [currentSubView, setCurrentSubView] = useState<SubMenuView | null>(null);
 
@@ -1824,7 +1869,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const saved = localStorage.getItem('studycloud_videos_files');
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
+        if (Array.isArray(parsed)) {
+          return parsed.filter(f => !isMockFile(f) && !isExplicitAudioFile(f.name, f.extension));
+        }
       }
     } catch {}
     return [];
@@ -1840,10 +1887,27 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [audioList, setAudioList] = useState<FileItem[]>(() => {
     try {
       const saved = localStorage.getItem('studycloud_audio_files');
+      const savedVideos = localStorage.getItem('studycloud_videos_files');
+      let initial: FileItem[] = [];
       if (saved) {
         const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
+        if (Array.isArray(parsed)) initial = parsed.filter(f => !isMockFile(f));
       }
+      // Reclasser automatiquement les audios qui s'étaient accidentellement retrouvés dans les vidéos
+      if (savedVideos) {
+        const parsedVids = JSON.parse(savedVideos);
+        if (Array.isArray(parsedVids)) {
+          const accidentalAudios = parsedVids
+            .filter(f => !isMockFile(f) && isExplicitAudioFile(f.name, f.extension))
+            .map(f => ({ ...f, category: 'audio' as const }));
+          for (const a of accidentalAudios) {
+            if (!initial.some(x => x.name === a.name)) {
+              initial.push(a);
+            }
+          }
+        }
+      }
+      return initial;
     } catch {}
     return [];
   });
@@ -1982,7 +2046,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (viewId === 'studycloud-category-images' || currentTab === 'images') {
       return {
         category: 'images' as const,
-        accept: 'image/*',
+        accept: 'image/*,.jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.ico,.avif,.heic',
         label: 'Importer',
         fullLabel: 'Importer une image',
         title: 'Importer une image dans Images',
@@ -1995,7 +2059,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (viewId === 'studycloud-category-videos' || currentTab === 'videos') {
       return {
         category: 'videos' as const,
-        accept: 'video/*',
+        accept: 'video/*,.mp4,.mov,.avi,.mkv,.webm,.flv,.wmv,.3gp,.m4v,.ts,.ogv',
         label: 'Importer',
         fullLabel: 'Importer une vidéo',
         title: 'Importer une vidéo dans Vidéos',
@@ -2008,8 +2072,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (viewId === 'studycloud-category-audio' || currentTab === 'audio') {
       return {
         category: 'audio' as const,
-        // PAS d'attribut accept restrictif sur Windows : ouvre "Tous les fichiers (*.*)" pour afficher 100% des fichiers
-        // (y compris audios WhatsApp, notes vocales .opus, .ogg, .m4a, enregistrements vocaux sans aucun camouflage)
+        // Pas de filtre restrictif dans le sélecteur d'OS pour afficher tous les sons (WhatsApp, notes vocales), mais filtrage strict en JS
         accept: undefined,
         label: 'Importer',
         fullLabel: 'Importer un audio',
@@ -2023,7 +2086,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (viewId === 'studycloud-category-documents' || currentTab === 'documents') {
       return {
         category: 'documents' as const,
-        accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.odt,.rtf',
+        accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.odt,.rtf,.epub,.ods,.odp,.md',
         label: 'Importer',
         fullLabel: 'Importer un document',
         title: 'Importer un document dans Documents',
@@ -2161,8 +2224,51 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     if (categoryFileInputRef.current) categoryFileInputRef.current.value = '';
 
-    // 1. Créer immédiatement les objets FileItem avec prévisualisation locale et stockage IndexedDB
-    const newItemsWithFiles = files.map((file, idx) => {
+    // =========================================================================
+    // VÉRIFICATION STRICTE DE CONFORMITÉ SELON LE MENU EN COURS
+    // =========================================================================
+    const validFiles: File[] = [];
+    let firstRejected: { name: string; targetMenu: string; acceptedTypes: string } | null = null;
+
+    const categorySpecs: Record<string, { menuName: string; acceptedTypes: string }> = {
+      videos: { menuName: 'Vidéos', acceptedTypes: 'fichiers vidéo (MP4, MKV, MOV, WebM, AVI...)' },
+      audio: { menuName: 'Musique', acceptedTypes: 'fichiers audio et enregistrements sonores (MP3, WAV, WhatsApp Audio, OGG, M4A...)' },
+      images: { menuName: 'Images', acceptedTypes: 'fichiers image (PNG, JPG, JPEG, WebP, SVG...)' },
+      documents: { menuName: 'Documents', acceptedTypes: 'documents texte et bureautique (PDF, Word, Excel, PowerPoint, TXT...)' }
+    };
+
+    for (const file of files) {
+      if (importConfig.category === 'classeur') {
+        validFiles.push(file);
+      } else {
+        const detected = detectExactFileCategory(file);
+        if (detected === importConfig.category) {
+          validFiles.push(file);
+        } else if (!firstRejected) {
+          const spec = categorySpecs[importConfig.category] || { menuName: importConfig.category, acceptedTypes: 'ce type de média' };
+          firstRejected = {
+            name: file.name,
+            targetMenu: spec.menuName,
+            acceptedTypes: spec.acceptedTypes
+          };
+        }
+      }
+    }
+
+    if (firstRejected) {
+      setInvalidMenuAlert({
+        targetCategory: importConfig.category,
+        message: `Le menu ${firstRejected.targetMenu} accepte uniquement les ${firstRejected.acceptedTypes}. Le fichier sélectionné ne peut pas être déposé dans cette catégorie.`,
+        fileName: firstRejected.name
+      });
+    }
+
+    if (validFiles.length === 0) {
+      return;
+    }
+
+    // 1. Créer immédiatement les objets FileItem pour les fichiers strictement valides
+    const newItemsWithFiles = validFiles.map((file, idx) => {
       const localBlobUrl = URL.createObjectURL(file);
       const normName = file.name.toLowerCase();
       const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
@@ -3313,9 +3419,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setViewerRotation(0);
     setDocCurrentPage(1);
 
-    const isNotepad = Boolean(file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt'));
-    const isAudio = Boolean(file.category === 'audio' || file.isAudio || Boolean(file.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(file.name));
-    const isVideo = Boolean(file.category === 'videos' || file.isVideo || Boolean(file.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv)$/i.test(file.name));
+    const isAudio = Boolean(file.category === 'audio' || file.isAudio || Boolean(file.audioUrl) || isExplicitAudioFile(file.name, file.extension));
+    const isVideo = !isAudio && Boolean(file.category === 'videos' || file.isVideo || Boolean(file.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|3gp|m4v|ts|ogv)$/i.test(file.name));
 
     // URL de lecture : préserver le blob local s'il existe, sinon URL worker
     const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
@@ -3522,6 +3627,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const filteredVideos = useMemo(() => {
     const list = [...videosList, ...cloudRecentFiles.filter(f => f.category === 'videos' && !videosList.some(s => s.name === f.name))];
     const filtered = list.filter(vid => {
+      // Éliminer de manière absolue tout fichier audio qui se serait retrouvé dans les vidéos
+      if (isExplicitAudioFile(vid.name, vid.extension)) return false;
       return subSearchQuery.trim() === '' || vid.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
     return applySorting(filtered);
@@ -4038,15 +4145,15 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     splitSelectedFile.isImage || 
     /\.(jpe?g|png|gif|webp|svg|avif|bmp)$/i.test(splitSelectedFile.name)
   );
-  const isSelectedVideo = !!splitSelectedFile && (
-    splitSelectedFile.category === 'videos' || 
-    Boolean(splitSelectedFile.videoUrl) || 
-    /\.(mp4|webm|mkv|mov|avi|flv)$/i.test(splitSelectedFile.name)
-  );
   const isSelectedAudio = !!splitSelectedFile && (
     splitSelectedFile.category === 'audio' || 
     Boolean(splitSelectedFile.audioUrl) || 
-    /\.(mp3|wav|ogg|m4a|aac|flac)$/i.test(splitSelectedFile.name)
+    isExplicitAudioFile(splitSelectedFile.name, splitSelectedFile.extension)
+  );
+  const isSelectedVideo = !!splitSelectedFile && !isSelectedAudio && (
+    splitSelectedFile.category === 'videos' || 
+    Boolean(splitSelectedFile.videoUrl) || 
+    /\.(mp4|webm|mkv|mov|avi|flv|wmv|3gp|m4v|ts|ogv)$/i.test(splitSelectedFile.name)
   );
   const isSelectedDoc = !!splitSelectedFile && 
     !isSelectedNotepad && 
@@ -11389,6 +11496,45 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           >
             <X className="w-3.5 h-3.5" />
           </button>
+        </div>,
+        document.body
+      )}
+      {/* MODAL / MESSAGE AU MILIEU DE LA PAGE EN CAS DE FICHIER INCOMPATIBLE (Sans logo, simple et professionnel) */}
+      {invalidMenuAlert && typeof document !== 'undefined' && createPortal(
+        <div 
+          className="fixed inset-0 z-[9999999] flex items-center justify-center p-4 bg-black/65 backdrop-blur-xs animate-in fade-in duration-200"
+          onClick={() => setInvalidMenuAlert(null)}
+        >
+          <div 
+            className="bg-[#0B101D] border border-white/20 text-white rounded-2xl p-6 sm:p-7 w-full max-w-md shadow-[0_25px_60px_rgba(0,0,0,0.95)] space-y-4 animate-in zoom-in-95 duration-200 select-none"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="space-y-2">
+              <h3 className="font-extrabold text-base sm:text-lg text-white tracking-wide">
+                Vous ne pouvez pas importer ce fichier dans ce menu
+              </h3>
+              <p className="text-xs sm:text-sm text-slate-300 leading-relaxed font-medium">
+                {invalidMenuAlert.message}
+              </p>
+              {invalidMenuAlert.fileName && (
+                <div className="pt-1">
+                  <p className="text-[11px] font-mono text-slate-400 bg-white/5 border border-white/10 rounded-lg px-3 py-2 truncate">
+                    {invalidMenuAlert.fileName}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <div className="flex items-center justify-end pt-3 border-t border-white/10">
+              <button
+                type="button"
+                onClick={() => setInvalidMenuAlert(null)}
+                className="px-5 py-2 rounded-xl bg-white hover:bg-slate-200 text-stone-900 font-bold text-xs sm:text-sm transition-all cursor-pointer active:scale-95 shadow-md"
+              >
+                D'accord
+              </button>
+            </div>
+          </div>
         </div>,
         document.body
       )}

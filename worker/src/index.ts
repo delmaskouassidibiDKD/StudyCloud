@@ -5723,13 +5723,18 @@ export default {
         const audioExts = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'opus', 'aiff', 'alac', 'mid', 'midi', 'amr', 'weba', 'caf', '3ga', 'oga', 'spx', 'm4b', 'm4p', 'mp2', 'mp1', 'wv', 'ape', 'ra', 'voc', 'au', 'gsm', 'dss', 'act', 'raw'];
 
         let detectedNature: 'images' | 'videos' | 'audio' | 'documents' = 'documents';
-        const isAudioPattern = audioExts.includes(ext) || fileName.toLowerCase().includes('ptt-') || fileName.toLowerCase().includes('aud-') || fileName.toLowerCase().includes('whatsapp') || fileName.toLowerCase().includes('voice');
-        if (normMime.startsWith('image/') || imageExts.includes(ext)) {
-          detectedNature = 'images';
-        } else if (normMime.startsWith('video/') || videoExts.includes(ext)) {
-          detectedNature = 'videos';
-        } else if (normMime.startsWith('audio/') || isAudioPattern) {
+        const isAudioPattern = audioExts.includes(ext) || normMime.startsWith('audio/') || fileName.toLowerCase().includes('ptt-') || fileName.toLowerCase().includes('aud-') || fileName.toLowerCase().includes('whatsapp audio') || (fileName.toLowerCase().includes('whatsapp') && !videoExts.includes(ext) && !imageExts.includes(ext));
+        const isVideoPattern = videoExts.includes(ext) || normMime.startsWith('video/') || fileName.toLowerCase().includes('whatsapp video');
+        const isImagePattern = imageExts.includes(ext) || normMime.startsWith('image/') || fileName.toLowerCase().includes('whatsapp image');
+
+        if (isAudioPattern) {
           detectedNature = 'audio';
+        } else if (isVideoPattern) {
+          detectedNature = 'videos';
+        } else if (isImagePattern) {
+          detectedNature = 'images';
+        } else {
+          detectedNature = 'documents';
         }
 
         // 2. Routage et validation stricte
@@ -5743,22 +5748,22 @@ export default {
           finalCategory = 'classeur';
         } else if (requestedCategory === 'images' || requestedCategory === 'photos') {
           if (detectedNature !== 'images') {
-            return errorResponse("Ce fichier ne correspond pas au menu Images. Veuillez importer une image (PNG, JPG, SVG, WebP...).", 400, origin);
+            return errorResponse("Vous ne pouvez pas déposer ce fichier dans ce menu. Veuillez importer une image (PNG, JPG, WebP...).", 400, origin);
           }
           finalCategory = 'images';
         } else if (requestedCategory === 'videos') {
           if (detectedNature !== 'videos') {
-            return errorResponse("Ce fichier ne correspond pas au menu Vidéos. Veuillez importer une vidéo (MP4, MKV, AVI, WebM...).", 400, origin);
+            return errorResponse("Vous ne pouvez pas déposer ce fichier dans ce menu. Veuillez importer une vidéo (MP4, MKV, AVI, WebM...).", 400, origin);
           }
           finalCategory = 'videos';
         } else if (requestedCategory === 'audio' || requestedCategory === 'musique') {
-          if (detectedNature === 'images' || detectedNature === 'videos') {
-            return errorResponse("Ce fichier ne correspond pas au menu Audio. Veuillez importer un fichier audio ou enregistrement sonore.", 400, origin);
+          if (detectedNature !== 'audio') {
+            return errorResponse("Vous ne pouvez pas déposer ce fichier dans ce menu. Veuillez importer un fichier audio (MP3, WAV, OGG, M4A...).", 400, origin);
           }
           finalCategory = 'audio';
         } else if (requestedCategory === 'documents' || requestedCategory === 'docs') {
           if (detectedNature !== 'documents') {
-            return errorResponse("Ce fichier ne correspond pas au menu Documents. Veuillez importer un document (PDF, Word, Excel, texte...).", 400, origin);
+            return errorResponse("Vous ne pouvez pas déposer ce fichier dans ce menu. Veuillez importer un document (PDF, Word, Excel, texte...).", 400, origin);
           }
           finalCategory = 'documents';
         } else {
@@ -6579,7 +6584,16 @@ export default {
             SELECT * FROM video_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
           `).bind(reqUserId).all<any>();
 
-          const formatted = (results || []).map((v: any) => ({
+          const audioExtList = ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'opus', 'amr', 'weba', 'caf', '3ga', 'oga', 'spx', 'm4b', 'm4p', 'mp2', 'mp1', 'wv', 'ape', 'ra', 'voc'];
+          const isAudioRec = (name?: string, ext?: string) => {
+            const n = (name || '').toLowerCase();
+            const e = (ext || '').toLowerCase();
+            return audioExtList.includes(e) || n.includes('whatsapp audio') || n.includes('ptt-') || n.includes('aud-') || n.endsWith('.opus') || n.endsWith('.ogg') || n.endsWith('.m4a') || n.endsWith('.mp3');
+          };
+
+          const formatted = (results || [])
+            .filter((v: any) => !isAudioRec(v.name, v.extension))
+            .map((v: any) => ({
             id: v.id,
             userId: v.user_id,
             name: v.name,
