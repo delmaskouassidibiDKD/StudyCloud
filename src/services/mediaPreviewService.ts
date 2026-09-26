@@ -200,7 +200,7 @@ export function generateAudioCreatorCover(title: string, artist?: string): strin
  * Renvoie une Data URL image JPEG/PNG si trouvée, sinon renvoie la pochette Créateur stylisée
  */
 export async function extractAudioCover(
-  fileOrBlob: File | Blob,
+  fileOrBlob: File | Blob | string,
   title?: string,
   artist?: string
 ): Promise<string> {
@@ -209,8 +209,34 @@ export async function extractAudioCover(
   }
 
   try {
+    let targetBlob: Blob | null = null;
+    if (typeof fileOrBlob === 'string') {
+      if (fileOrBlob.startsWith('data:image')) {
+        return fileOrBlob;
+      }
+      if (fileOrBlob.startsWith('http') || fileOrBlob.startsWith('/') || fileOrBlob.startsWith('blob:')) {
+        try {
+          const resp = await fetch(fileOrBlob, {
+            headers: { Range: 'bytes=0-524287' },
+          });
+          if (resp && (resp.ok || resp.status === 206)) {
+            targetBlob = await resp.blob();
+          }
+        } catch {
+          // Si le range request échoue (ex: CORS), fallback sur cover SVG
+          return generateAudioCreatorCover(title || '', artist);
+        }
+      }
+    } else if (fileOrBlob instanceof Blob) {
+      targetBlob = fileOrBlob;
+    }
+
+    if (!targetBlob) {
+      return generateAudioCreatorCover(title || '', artist);
+    }
+
     // Lire les premiers 512 Ko du fichier audio (là où se trouvent les métadonnées ID3v2)
-    const headerSlice = fileOrBlob.slice(0, 512 * 1024);
+    const headerSlice = targetBlob.slice(0, 512 * 1024);
     const buffer = await headerSlice.arrayBuffer();
     const bytes = new Uint8Array(buffer);
 
@@ -365,6 +391,8 @@ export async function generateVideoThumbnail(
         clearTimeout(timeout);
         fallback();
       };
+
+      video.load();
     } catch {
       resolve(generateVideoFallbackPoster(title || 'Vidéo'));
     }

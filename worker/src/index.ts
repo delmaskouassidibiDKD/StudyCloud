@@ -5903,9 +5903,9 @@ export default {
         // Récupérer les fichiers récents pour l'espace cloud (toutes catégories confondues)
         const [recentDocs, recentImages, recentAudio, recentVideos] = await Promise.all([
           env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, preview_url as previewUrl, "documents" as category, created_at FROM document_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, "images" as category, created_at FROM image_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, artist, "audio" as category, created_at FROM audio_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
-          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, "videos" as category, created_at FROM video_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, image_url as previewUrl, thumbnail_url as thumbnailUrl, "images" as category, created_at FROM image_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, audio_url as audioUrl, cover_url as coverUrl, cover_url as previewUrl, artist, "audio" as category, created_at FROM audio_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
+          env.DB.prepare('SELECT id, name, size, size_bytes as sizeBytes, date_formatted as date, video_url as videoUrl, thumbnail_url as thumbnailUrl, thumbnail_url as previewUrl, "videos" as category, created_at FROM video_files WHERE user_id = ? ORDER BY created_at DESC LIMIT 5').bind(reqUserId).all<any>(),
         ]);
 
         const recentFiles = [

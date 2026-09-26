@@ -98,6 +98,7 @@ import {
 import { CloudStorageAPI } from '../services/cloudStorageService';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
+import { AudioCardPreview } from './AudioCardPreview';
 import { generatePdfThumbnail, generateVideoThumbnail, extractAudioCover, generateAudioCreatorCover, setCachedMediaThumbnail } from '../services/mediaPreviewService';
 import { storeFileBlob, getFileBlobUrl, getFileBlob } from '../services/localFileStorage';
 import { ModernVideoPlayer } from './ModernVideoPlayer';
@@ -5219,10 +5220,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         className="w-full h-full object-cover group-hover:scale-105 transition-transform duration-300"
                         loading="lazy"
                       />
-                    ) : file.category === 'videos' ? (
+                    ) : (file.category === 'videos' || Boolean(file.videoUrl)) ? (
                       <VideoCardPreview vid={file} />
                     ) : file.category === 'documents' ? (
                       <DocumentCardPreview doc={file} />
+                    ) : (file.category === 'audio' || Boolean(file.audioUrl)) ? (
+                      <AudioCardPreview track={file} />
                     ) : file.previewUrl ? (
                       <img 
                         src={file.previewUrl} 
@@ -5864,6 +5867,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           ) : file.category === 'documents' ? (
             <div className="w-full h-24 rounded-xl overflow-hidden relative">
               <DocumentCardPreview doc={file} />
+            </div>
+          ) : (file.category === 'audio' || Boolean(file.audioUrl)) ? (
+            <div className="w-full h-24 rounded-xl overflow-hidden relative">
+              <AudioCardPreview track={file} />
             </div>
           ) : file.previewUrl ? (
             <img 
