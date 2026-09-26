@@ -1510,12 +1510,12 @@ export default function App() {
           ) : currentTab === 'ai-subscriptions' ? (
             <AiSubscriptionsView
               onBack={() => handleSetTab('folders')}
-              onOpenPricing={(tab = 'ai') => handleOpenAuthenticPricing(tab)}
+              onOpenPricing={(tab = 'ai') => handleOpenAuthenticPricing(tab as 'ai' | 'renewal' | 'storage')}
             />
           ) : currentTab === 'storage-menu' ? (
             <StorageMenuView
               onBack={() => handleSetTab('folders')}
-              onOpenPricing={(tab = 'storage') => handleOpenAuthenticPricing(tab)}
+              onOpenPricing={(tab = 'storage') => handleOpenAuthenticPricing(tab as 'ai' | 'renewal' | 'storage')}
             />
           ) : null}
 

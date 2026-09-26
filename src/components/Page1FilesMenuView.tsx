@@ -79,8 +79,10 @@ import {
   CheckSquare,
   Square,
   UserCheck,
-  Palette
+  Palette,
+  Loader2
 } from 'lucide-react';
+import { getWorkerApiUrl } from '../services/api';
 import { getDownloadedFiles, recordDownloadedFile, removeDownloadedFile, clearLegacyDownloadedFiles, DownloadedItem } from '../services/downloadsManager';
 import { 
   MODEL_1_FOLDERS, 
@@ -95,7 +97,7 @@ import {
   getDynamicCurrentDate,
   lightenColor
 } from './Folder3DModels';
-import { CloudStorageAPI } from '../services/cloudStorageService';
+import { CloudStorageAPI, type CloudOverviewData } from '../services/cloudStorageService';
 import { DocumentCardPreview } from './DocumentCardPreview';
 import { VideoCardPreview } from './VideoCardPreview';
 import { AudioCardPreview } from './AudioCardPreview';
@@ -107,6 +109,26 @@ import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 
+// Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
+if (typeof window !== 'undefined') {
+  try {
+    [
+      'studycloud_documents_files',
+      'studycloud_images_files',
+      'studycloud_videos_files',
+      'studycloud_audio_files',
+      'studycloud_recent_files',
+      'studycloud_folder_files_map',
+      'studycloud_trash_files',
+      'studycloud_secure_files',
+      'studycloud_secure_folder_files',
+      'studycloud_downloaded_items',
+      'studycloud_downloaded_files',
+      'studycloud_classeur_3d_folders',
+    ].forEach(k => localStorage.removeItem(k));
+  } catch {}
+}
+
 interface Page1FilesMenuViewProps {
   onBack: () => void;
   onOpenStudySpace?: (file?: any, folderName?: string, folderFiles?: any[], isFullscreen?: boolean) => void;
@@ -116,21 +138,31 @@ interface Page1FilesMenuViewProps {
 export interface FileItem {
   id: string;
   name: string;
-  category: 'images' | 'videos' | 'audio' | 'documents' | 'downloads' | 'apps';
-  source: string;
+  category: 'images' | 'videos' | 'audio' | 'documents' | 'downloads' | 'apps' | 'classeur' | 'folder' | string;
+  source?: string;
+  sourceCategory?: string;
   size: string;
-  sizeBytes: number;
+  sizeBytes?: number;
   date: string;
   previewUrl?: string;
   isImage?: boolean;
   videoUrl?: string;
   audioUrl?: string;
-  documentCategory?: 'COURS' | 'TD' | 'DEVOIRS' | "PAS D'INF...";
+  documentCategory?: 'COURS' | 'TD' | 'DEVOIRS' | "PAS D'INF..." | string;
   extension?: string;
   downloadsCount?: number;
   isFavorite?: boolean;
   isSecure?: boolean;
   isPinned?: boolean;
+  isFolder?: boolean;
+  isAudio?: boolean;
+  isVideo?: boolean;
+  isTrash?: boolean;
+  thumbnailUrl?: string;
+  coverUrl?: string;
+  metadata?: any;
+  type?: string;
+  folderId?: string;
   artist?: string;
   lyricsSnippet?: string;
   fullLyrics?: string[];
@@ -347,17 +379,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [draggedFileId, setDraggedFileId] = useState<string | null>(null);
   const [dragOverFileId, setDragOverFileId] = useState<string | null>(null);
 
-  // Liste ordonnée des dossiers 3D du Classeur avec persistance localStorage
-  const [classeur3DFolders, setClasseur3DFolders] = useState<ClasseurCreatedFolder[]>(() => {
-    const saved = localStorage.getItem('studycloud_classeur_3d_folders');
-    if (saved) {
-      try {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed;
-      } catch (e) {}
-    }
-    return [];
-  });
+  // Liste ordonnée des dossiers 3D du Classeur (en mémoire de session)
+  const [classeur3DFolders, setClasseur3DFolders] = useState<ClasseurCreatedFolder[]>([]);
 
   // État d'ouverture du menu d'options 3 traits pour les dossiers 3D du Classeur
   const [activeFolderMenuId, setActiveFolderMenuId] = useState<string | null>(null);
@@ -407,10 +430,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return 'absolute top-2.5 right-2.5 z-30 studycloud-menu-trigger';
   };
 
-  useEffect(() => {
-    localStorage.setItem('studycloud_classeur_3d_folders', JSON.stringify(classeur3DFolders));
-  }, [classeur3DFolders]);
-
   // Dossier 3D du Classeur actuellement ouvert pour afficher son menu dédié et ses fichiers
   const [opened3DFolder, setOpened3DFolder] = useState<ClasseurCreatedFolder | null>(null);
 
@@ -427,26 +446,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [noteTitleContent, setNoteTitleContent] = useState<string>('');
   const [isNoteSavedIndicator, setIsNoteSavedIndicator] = useState<boolean>(true);
 
-  // Table des fichiers par dossier 3D créé (chaque dossier possède son propre menu et ses fichiers indépendants)
-  const [folderFilesMap, setFolderFilesMap] = useState<Record<string, FileItem[]>>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_folder_files_map');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (typeof parsed === 'object' && parsed !== null) return parsed;
-      }
-    } catch (e) {}
-    return {};
-  });
+  // Table des fichiers par dossier 3D créé (en mémoire de session)
+  const [folderFilesMap, setFolderFilesMap] = useState<Record<string, FileItem[]>>({});
 
   const folderFileInputRef = useRef<HTMLInputElement>(null);
   const [isDraggingOverFolder, setIsDraggingOverFolder] = useState<boolean>(false);
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_folder_files_map', JSON.stringify(folderFilesMap));
-    } catch (e) {}
-  }, [folderFilesMap]);
 
   // Progression d'enregistrement en arrière-plan des fichiers importés (fileId -> pourcentage 0 à 100)
   const [savingFileProgress, setSavingFileProgress] = useState<Record<string, number>>({});
@@ -743,8 +747,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       let changed = false;
       const next = { ...prev };
       for (const [folderId, files] of Object.entries(next)) {
-        if (files.some(f => f.id === targetId)) {
-          next[folderId] = files.map(f => f.id === targetId ? {
+        const fileList = files as FileItem[];
+        if (Array.isArray(fileList) && fileList.some(f => f.id === targetId)) {
+          next[folderId] = fileList.map(f => f.id === targetId ? {
             ...f,
             content: newText,
             noteTitle: titleToSave,
@@ -1233,12 +1238,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return () => window.removeEventListener('keydown', handleDocKeyDown);
   }, [docLayoutMode, splitSelectedFile]);
 
-  // Téléchargements réels synchronisés
-  const [downloadedItems, setDownloadedItems] = useState<DownloadedItem[]>(() => getDownloadedFiles());
+  // Téléchargements réels synchronisés (en mémoire de session)
+  const [downloadedItems, setDownloadedItems] = useState<DownloadedItem[]>([]);
 
   useEffect(() => {
-    const handleUpdate = () => {
-      setDownloadedItems(getDownloadedFiles());
+    const handleUpdate = (e: any) => {
+      if (e?.detail) {
+        if (e.detail.deleted) {
+          setDownloadedItems(prev => prev.filter(f => f.id !== e.detail.id && f.name !== e.detail.id));
+        } else if (e.detail.id) {
+          setDownloadedItems(prev => [e.detail, ...prev.filter(f => f.id !== e.detail.id && f.name !== e.detail.name)]);
+        }
+      }
     };
     window.addEventListener('studycloud_download_updated', handleUpdate);
     return () => window.removeEventListener('studycloud_download_updated', handleUpdate);
@@ -1322,100 +1333,80 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // État de l'onglet actif dans l'Espace Cloud (Classeur sélectionné par défaut comme demandé)
   const [cloudActiveTab, setCloudActiveTab] = useState<'classeur' | 'downloads' | 'images' | 'videos' | 'audio' | 'documents' | 'apps' | 'favorites' | 'secure-folder' | 'trash'>('classeur');
   const [selectedClasseurFolder, setSelectedClasseurFolder] = useState<string | null>(null);
-  const [trashFiles, setTrashFiles] = useState<FileItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_trash_files');
-      return saved ? JSON.parse(saved) : [];
-    } catch {
-      return [];
-    }
+  const [trashFiles, setTrashFiles] = useState<FileItem[]>([]);
+
+  // Suivi de l'état de chargement en direct de chaque catégorie / menu
+  const [loadingCategories, setLoadingCategories] = useState({
+    overview: true,
+    classeur: true,
+    documents: true,
+    images: true,
+    videos: true,
+    audio: true,
+    downloads: true,
+    trash: true,
+    secure: true,
+    favorites: true,
+    cloudStorage: true
   });
+  const [cloudOverview, setCloudOverview] = useState<CloudOverviewData | null>(null);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_trash_files', JSON.stringify(trashFiles));
-    } catch {}
-  }, [trashFiles]);
-
-  useEffect(() => {
-    const isCloud = currentSubView?.id === 'studycloud-collection-cloud-storage';
-    if (currentSubView?.id === 'studycloud-collection-trash' || (isCloud && cloudActiveTab === 'trash')) {
-      try {
-        const saved = localStorage.getItem('studycloud_trash_files');
-        if (saved) {
-          const parsed = JSON.parse(saved);
-          if (Array.isArray(parsed)) {
-            setTrashFiles(parsed);
-          }
-        }
-      } catch {}
-    }
-  }, [currentSubView, cloudActiveTab]);
-
-  // Synchronisation initiale complète avec Cloudflare D1 et R2 (Option B)
+  // Synchronisation initiale complète et PARALLÈLE avec Cloudflare D1 et R2 (Option B)
   useEffect(() => {
     let isMounted = true;
 
-    async function loadCloudBackendData() {
-      try {
-        // 0. Aperçu général et récents (filtrés strictement pour ne jamais faire revenir un fichier supprimé)
-        const overview = await CloudStorageAPI.getOverview();
-        if (isMounted && overview && Array.isArray(overview.recentFiles)) {
-          const deletedRecentIds = getDeletedRecentIds();
-          const locallyDeletedIds = getLocallyDeletedFileIds();
-          const trashRaw = localStorage.getItem('studycloud_trash_files');
-          let trashIdSet = new Set<string>();
-          try {
-            if (trashRaw) {
-              const parsed = JSON.parse(trashRaw);
-              if (Array.isArray(parsed)) trashIdSet = new Set(parsed.map((t: any) => t.id));
-            }
-          } catch {}
+    // Helper de filtrage strict pour ne jamais afficher de fichiers supprimés ou de mock
+    const deletedRecentIds = getDeletedRecentIds();
+    const locallyDeletedIds = getLocallyDeletedFileIds();
+    const isCleanFile = (f: any) =>
+      f &&
+      !isMockFile(f) &&
+      !deletedRecentIds.has(f.id) &&
+      (!f.name || !deletedRecentIds.has(f.name)) &&
+      !locallyDeletedIds.has(f.id) &&
+      (!f.name || !locallyDeletedIds.has(f.name));
 
-          const cleanRecentFiles = overview.recentFiles.filter((f: any) => 
-            !isMockFile(f) &&
-            !deletedRecentIds.has(f.id) &&
-            !deletedRecentIds.has(f.name) &&
-            !locallyDeletedIds.has(f.id) &&
-            !locallyDeletedIds.has(f.name) &&
-            !trashIdSet.has(f.id)
-          );
+    // Requête partagée : Favoris et Épinglés réels
+    const favsPromise = Promise.all([
+      CloudStorageAPI.getFavorites().catch(() => []),
+      CloudStorageAPI.getPinned().catch(() => [])
+    ]).then(([cloudFavorites, cloudPinned]) => {
+      const favIdSet = new Set((cloudFavorites || []).map((f: any) => f.item_id || f.id));
+      const pinIdSet = new Set((cloudPinned || []).map((p: any) => p.item_id || p.id));
+      return { favIdSet, pinIdSet };
+    }).catch(() => ({ favIdSet: new Set<string>(), pinIdSet: new Set<string>() }));
 
-          setCloudRecentFiles(prev => {
-            const newMap = new Map<string, FileItem>();
-            // Préserver d'abord les fichiers récents ajoutés lors de cette session
-            prev.forEach(p => {
-              if (
-                !deletedRecentIds.has(p.id) && 
-                (!p.name || !deletedRecentIds.has(p.name)) &&
-                !locallyDeletedIds.has(p.id) && 
-                (!p.name || !locallyDeletedIds.has(p.name)) &&
-                !trashIdSet.has(p.id)
-              ) {
-                newMap.set(p.id, p);
-              }
-            });
-            // Compléter avec les récents du backend non supprimés
-            cleanRecentFiles.forEach((b: any) => {
-              if (!newMap.has(b.id)) {
-                newMap.set(b.id, b);
-              }
-            });
-            return Array.from(newMap.values()).slice(0, 6);
+    // 0. Aperçu général et récents en parallèle
+    CloudStorageAPI.getOverview().then(overview => {
+      if (!isMounted || !overview) return;
+      setCloudOverview(overview);
+      if (Array.isArray(overview.recentFiles)) {
+        const cleanRecentFiles = overview.recentFiles.filter(isCleanFile);
+        setCloudRecentFiles(prev => {
+          const newMap = new Map<string, FileItem>();
+          prev.forEach(p => {
+            if (isCleanFile(p)) newMap.set(p.id, p);
           });
-        }
+          cleanRecentFiles.forEach((b: any) => {
+            if (!newMap.has(b.id)) newMap.set(b.id, b);
+          });
+          return Array.from(newMap.values()).slice(0, 6);
+        });
+      }
+    }).catch(e => console.warn('[Page1FilesMenuView] Overview err:', e))
+      .finally(() => {
+        if (isMounted) setLoadingCategories(prev => ({ ...prev, overview: false, cloudStorage: false }));
+      });
 
-        // Favoris et Épinglés réels depuis Cloudflare D1
-        const [cloudFavorites, cloudPinned] = await Promise.all([
-          CloudStorageAPI.getFavorites().catch(() => []),
-          CloudStorageAPI.getPinned().catch(() => [])
+    // 1. Classeur : Dossiers 3D et leurs fichiers en parallèle
+    (async () => {
+      try {
+        const [{ favIdSet, pinIdSet }, cloudFolders] = await Promise.all([
+          favsPromise,
+          CloudStorageAPI.getClasseurFolders().catch(() => [])
         ]);
-        const favIdSet = new Set((cloudFavorites || []).map((f: any) => f.item_id || f.id));
-        const pinIdSet = new Set((cloudPinned || []).map((p: any) => p.item_id || p.id));
-
-        // 1. Dossiers 3D du Classeur
-        const cloudFolders = await CloudStorageAPI.getClasseurFolders();
-        if (isMounted && cloudFolders) {
+        if (!isMounted) return;
+        if (cloudFolders && Array.isArray(cloudFolders)) {
           const mappedFolders = cloudFolders.map(f => ({
             ...f,
             isFavorite: favIdSet.has(f.id),
@@ -1423,119 +1414,183 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           }));
           setClasseur3DFolders(mappedFolders);
 
-          // 2. Fichiers et bloc-notes de chaque dossier
-          const filesMap: Record<string, FileItem[]> = {};
-          for (const folder of mappedFolders) {
-            const files = await CloudStorageAPI.getClasseurFiles(folder.id);
-            if (files && files.length > 0) {
-              filesMap[folder.id] = files.map(file => ({
-                ...file,
-                isFavorite: favIdSet.has(file.id),
-                isPinned: pinIdSet.has(file.id)
-              }));
-            }
-          }
+          // Chargement en parallèle de tous les fichiers de chaque dossier
+          const filesEntries = await Promise.all(mappedFolders.map(async folder => {
+            const files = await CloudStorageAPI.getClasseurFiles(folder.id).catch(() => []);
+            const cleanFiles = (files || []).map(file => ({
+              ...file,
+              isFavorite: favIdSet.has(file.id),
+              isPinned: pinIdSet.has(file.id)
+            }));
+            return [folder.id, cleanFiles] as [string, FileItem[]];
+          }));
+
           if (isMounted) {
+            const filesMap: Record<string, FileItem[]> = {};
+            for (const [folderId, files] of filesEntries) {
+              filesMap[folderId] = files;
+            }
             setFolderFilesMap(filesMap);
           }
         }
+      } catch (e) {
+        console.warn('[Page1FilesMenuView] Classeur fetch err:', e);
+      } finally {
+        if (isMounted) setLoadingCategories(prev => ({ ...prev, classeur: false }));
+      }
+    })();
 
-        // 3. Corbeille
-        const trash = await CloudStorageAPI.getTrashFiles();
-        if (isMounted && trash) {
-          setTrashFiles(trash);
-        }
-
-        // 4. Dossier Sécurisé
-        const deletedRecentIds = getDeletedRecentIds();
-        const locallyDeletedIds = getLocallyDeletedFileIds();
-        const isNotDeleted = (item: any) => 
-          item &&
-          !isMockFile(item) &&
-          !deletedRecentIds.has(item.id) &&
-          (!item.name || !deletedRecentIds.has(item.name)) &&
-          !locallyDeletedIds.has(item.id) &&
-          (!item.name || !locallyDeletedIds.has(item.name));
-
-        const secFiles = await CloudStorageAPI.getSecureFiles();
-        if (isMounted && secFiles) {
-          setSecureFolderFiles(secFiles.filter(isNotDeleted));
-        }
-
-        // 5. Audio
-        const audio = await CloudStorageAPI.getAudioList();
-        if (isMounted && audio) {
-          setAudioList(audio.filter(isNotDeleted).map(a => ({
-            ...a,
-            isFavorite: favIdSet.has(a.id),
-            isPinned: pinIdSet.has(a.id)
-          })));
-        }
-
-        // 6. Images
-        const images = await CloudStorageAPI.getImagesList();
-        if (isMounted && images) {
-          setImagesList(images.filter(isNotDeleted).map(img => ({
-            ...img,
-            isFavorite: favIdSet.has(img.id),
-            isPinned: pinIdSet.has(img.id)
-          })));
-        }
-
-        // 7. Vidéos
-        const videos = await CloudStorageAPI.getVideosList();
-        if (isMounted && videos) {
-          setVideosList(videos.filter(isNotDeleted).map(v => ({
-            ...v,
-            isFavorite: favIdSet.has(v.id),
-            isPinned: pinIdSet.has(v.id)
-          })));
-        }
-
-        // 8. Documents
-        const docs = await CloudStorageAPI.getDocumentsList();
-        if (isMounted && docs) {
-          setDocumentsList(docs.filter(isNotDeleted).map(d => ({
+    // 2. Documents en parallèle
+    (async () => {
+      try {
+        const [{ favIdSet, pinIdSet }, docs] = await Promise.all([
+          favsPromise,
+          CloudStorageAPI.getDocumentsList().catch(() => [])
+        ]);
+        if (isMounted && docs && Array.isArray(docs)) {
+          setDocumentsList(docs.filter(isCleanFile).map(d => ({
             ...d,
             isFavorite: favIdSet.has(d.id),
             isPinned: pinIdSet.has(d.id)
           })));
         }
+      } catch (e) {
+        console.warn('[Page1FilesMenuView] Docs fetch err:', e);
+      } finally {
+        if (isMounted) setLoadingCategories(prev => ({ ...prev, documents: false }));
+      }
+    })();
 
-        // 9. Téléchargements réels depuis Cloudflare D1
-        const cloudDownloads = await CloudStorageAPI.getDownloadsList();
-        if (isMounted) {
-          if (cloudDownloads && cloudDownloads.length > 0) {
-            const mapped: DownloadedItem[] = cloudDownloads.filter(isNotDeleted).map(dl => ({
-              id: dl.id,
-              name: dl.name,
-              category: (dl.category as any) || 'downloads',
-              size: dl.size || '0 o',
-              sizeBytes: dl.sizeBytes,
-              date: dl.date || (dl as any).downloadedAt || "Aujourd'hui",
-              timestamp: dl.timestamp || Date.now(),
-              url: dl.url || (dl as any).file_url,
-              extension: dl.extension || (dl.name.includes('.') ? dl.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-              type: dl.type,
-              previewUrl: dl.previewUrl || dl.url,
-              videoUrl: dl.videoUrl || dl.url,
-              audioUrl: dl.audioUrl || dl.url,
-              documentCategory: dl.documentCategory || 'COURS',
-              isFavorite: favIdSet.has(dl.id),
-              isPinned: pinIdSet.has(dl.id),
-            }));
-            setDownloadedItems(mapped);
-          } else {
-            setDownloadedItems([]);
-            clearLegacyDownloadedFiles();
-          }
+    // 3. Images en parallèle
+    (async () => {
+      try {
+        const [{ favIdSet, pinIdSet }, images] = await Promise.all([
+          favsPromise,
+          CloudStorageAPI.getImagesList().catch(() => [])
+        ]);
+        if (isMounted && images && Array.isArray(images)) {
+          setImagesList(images.filter(isCleanFile).map(img => ({
+            ...img,
+            isFavorite: favIdSet.has(img.id),
+            isPinned: pinIdSet.has(img.id)
+          })));
         }
       } catch (e) {
-        console.warn('[Page1FilesMenuView] Chargement D1/R2 local fallback:', e);
+        console.warn('[Page1FilesMenuView] Images fetch err:', e);
+      } finally {
+        if (isMounted) setLoadingCategories(prev => ({ ...prev, images: false }));
       }
-    }
+    })();
 
-    loadCloudBackendData();
+    // 4. Vidéos en parallèle
+    (async () => {
+      try {
+        const [{ favIdSet, pinIdSet }, videos] = await Promise.all([
+          favsPromise,
+          CloudStorageAPI.getVideosList().catch(() => [])
+        ]);
+        if (isMounted && videos && Array.isArray(videos)) {
+          setVideosList(videos.filter(isCleanFile).map(v => ({
+            ...v,
+            isFavorite: favIdSet.has(v.id),
+            isPinned: pinIdSet.has(v.id)
+          })));
+        }
+      } catch (e) {
+        console.warn('[Page1FilesMenuView] Videos fetch err:', e);
+      } finally {
+        if (isMounted) setLoadingCategories(prev => ({ ...prev, videos: false }));
+      }
+    })();
+
+    // 5. Audio en parallèle
+    (async () => {
+      try {
+        const [{ favIdSet, pinIdSet }, audio] = await Promise.all([
+          favsPromise,
+          CloudStorageAPI.getAudioList().catch(() => [])
+        ]);
+        if (isMounted && audio && Array.isArray(audio)) {
+          setAudioList(audio.filter(isCleanFile).map(a => ({
+            ...a,
+            isFavorite: favIdSet.has(a.id),
+            isPinned: pinIdSet.has(a.id)
+          })));
+        }
+      } catch (e) {
+        console.warn('[Page1FilesMenuView] Audio fetch err:', e);
+      } finally {
+        if (isMounted) setLoadingCategories(prev => ({ ...prev, audio: false }));
+      }
+    })();
+
+    // 6. Téléchargements en parallèle
+    (async () => {
+      try {
+        const [{ favIdSet, pinIdSet }, cloudDownloads] = await Promise.all([
+          favsPromise,
+          CloudStorageAPI.getDownloadsList().catch(() => [])
+        ]);
+        if (isMounted && cloudDownloads && Array.isArray(cloudDownloads)) {
+          const mapped: DownloadedItem[] = cloudDownloads.filter(isCleanFile).map(dl => ({
+            id: dl.id,
+            name: dl.name,
+            category: (dl.category as any) || 'downloads',
+            size: dl.size || '0 o',
+            sizeBytes: dl.sizeBytes,
+            date: dl.date || (dl as any).downloadedAt || "Aujourd'hui",
+            timestamp: dl.timestamp || Date.now(),
+            url: dl.url || (dl as any).file_url,
+            extension: dl.extension || (dl.name.includes('.') ? dl.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+            type: dl.type,
+            previewUrl: dl.previewUrl || dl.url,
+            videoUrl: dl.videoUrl || dl.url,
+            audioUrl: dl.audioUrl || dl.url,
+            documentCategory: dl.documentCategory || 'COURS',
+            isFavorite: favIdSet.has(dl.id),
+            isPinned: pinIdSet.has(dl.id),
+          }));
+          setDownloadedItems(mapped);
+        }
+      } catch (e) {
+        console.warn('[Page1FilesMenuView] Downloads fetch err:', e);
+      } finally {
+        if (isMounted) setLoadingCategories(prev => ({ ...prev, downloads: false }));
+      }
+    })();
+
+    // 7. Dossier Sécurisé en parallèle
+    (async () => {
+      try {
+        const secFiles = await CloudStorageAPI.getSecureFiles().catch(() => []);
+        if (isMounted && secFiles && Array.isArray(secFiles)) {
+          setSecureFolderFiles(secFiles.filter(isCleanFile));
+        }
+      } catch (e) {
+        console.warn('[Page1FilesMenuView] Secure fetch err:', e);
+      } finally {
+        if (isMounted) setLoadingCategories(prev => ({ ...prev, secure: false }));
+      }
+    })();
+
+    // 8. Corbeille en parallèle
+    (async () => {
+      try {
+        const trash = await CloudStorageAPI.getTrashFiles().catch(() => []);
+        if (isMounted && trash && Array.isArray(trash)) {
+          setTrashFiles(trash);
+        }
+      } catch (e) {
+        console.warn('[Page1FilesMenuView] Trash fetch err:', e);
+      } finally {
+        if (isMounted) setLoadingCategories(prev => ({ ...prev, trash: false }));
+      }
+    })();
+
+    // Favoris et collections
+    favsPromise.finally(() => {
+      if (isMounted) setLoadingCategories(prev => ({ ...prev, favorites: false }));
+    });
 
     return () => {
       isMounted = false;
@@ -1604,6 +1659,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const restoredFolder: ClasseurCreatedFolder = {
         id: file.id,
         name: file.name,
+        model: (meta.model || 1) as (1 | 2 | 3 | 4),
         modelId: meta.modelId || '1',
         primaryColor: meta.primaryColor || '#EA580C',
         accentColor: meta.accentColor || '#F97316',
@@ -1612,9 +1668,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         positionX: meta.positionX || 0,
         positionY: meta.positionY || 0,
         dateText: file.date || new Date().toLocaleDateString('fr-FR'),
+        createdAt: meta.createdAt || Date.now(),
         zoomLevel: meta.zoomLevel || 10,
         displayOrder: meta.displayOrder || 0,
-        parentId: meta.parentId || null
+        parentId: meta.parentId || undefined
       };
       setClasseur3DFolders(prev => prev.some(f => f.id === file.id) ? prev : [restoredFolder, ...prev]);
     } else if (file.originalFolderId) {
@@ -1651,6 +1708,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         const restoredFolder: ClasseurCreatedFolder = {
           id: file.id,
           name: file.name,
+          model: (meta.model || 1) as (1 | 2 | 3 | 4),
           modelId: meta.modelId || '1',
           primaryColor: meta.primaryColor || '#EA580C',
           accentColor: meta.accentColor || '#F97316',
@@ -1659,9 +1717,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           positionX: meta.positionX || 0,
           positionY: meta.positionY || 0,
           dateText: file.date || new Date().toLocaleDateString('fr-FR'),
+          createdAt: meta.createdAt || Date.now(),
           zoomLevel: meta.zoomLevel || 10,
           displayOrder: meta.displayOrder || 0,
-          parentId: meta.parentId || null
+          parentId: meta.parentId || undefined
         };
         setClasseur3DFolders(prev => prev.some(f => f.id === file.id) ? prev : [restoredFolder, ...prev]);
       } else if (file.originalFolderId) {
@@ -1801,114 +1860,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return true;
   };
 
-  // 1. DOCUMENTS (Stockage réel Cloudflare D1/R2)
-  const [documentsList, setDocumentsList] = useState<FileItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_documents_files');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.filter(isAllowedInitialFile);
-      }
-    } catch {}
-    return [];
-  });
+  // 1. DOCUMENTS (Stockage réel Cloudflare D1/R2 en mémoire de session)
+  const [documentsList, setDocumentsList] = useState<FileItem[]>([]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_documents_files', JSON.stringify(documentsList));
-    } catch {}
-  }, [documentsList]);
+  // 2. IMAGES (Stockage réel Cloudflare D1/R2 en mémoire de session)
+  const [imagesList, setImagesList] = useState<FileItem[]>([]);
 
-  // 2. IMAGES (Stockage réel Cloudflare D1/R2)
-  const [imagesList, setImagesList] = useState<FileItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_images_files');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.filter(isAllowedInitialFile);
-      }
-    } catch {}
-    return [];
-  });
+  // 3. VIDÉOS (Stockage réel Cloudflare D1/R2 en mémoire de session)
+  const [videosList, setVideosList] = useState<FileItem[]>([]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_images_files', JSON.stringify(imagesList));
-    } catch {}
-  }, [imagesList]);
-
-  // 3. VIDÉOS (Stockage réel Cloudflare D1/R2)
-  const [videosList, setVideosList] = useState<FileItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_videos_files');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.filter(isAllowedInitialFile);
-      }
-    } catch {}
-    return [];
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_videos_files', JSON.stringify(videosList));
-    } catch {}
-  }, [videosList]);
-
-  // 4. AUDIO / MUSIQUE (Stockage réel Cloudflare D1/R2)
-  const [audioList, setAudioList] = useState<FileItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_audio_files');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.filter(isAllowedInitialFile);
-      }
-    } catch {}
-    return [];
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_audio_files', JSON.stringify(audioList));
-    } catch {}
-  }, [audioList]);
+  // 4. AUDIO / MUSIQUE (Stockage réel Cloudflare D1/R2 en mémoire de session)
+  const [audioList, setAudioList] = useState<FileItem[]>([]);
 
   // FICHIERS RÉCENTS : STUDYCLOUD (Strictement fichiers réels de l'utilisateur, 6 éléments max)
   const DEFAULT_RECENT_FILES: FileItem[] = [];
 
-  // État des fichiers récents avec persistance locale
-  const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>(() => {
-    try {
-      const deletedRecentIds = getDeletedRecentIds();
-      const locallyDeletedIds = getLocallyDeletedFileIds();
-      const saved = localStorage.getItem('studycloud_recent_files');
-      if (saved !== null) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) {
-          return parsed.filter(f => 
-            !isMockFile(f) &&
-            !deletedRecentIds.has(f.id) &&
-            (!f.name || !deletedRecentIds.has(f.name)) &&
-            !locallyDeletedIds.has(f.id) &&
-            (!f.name || !locallyDeletedIds.has(f.name))
-          );
-        }
-      }
-    } catch {
-      // ignore
-    }
-    return DEFAULT_RECENT_FILES;
-  });
-
-  // Synchronisation de la liste des récents dans le stockage local
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_recent_files', JSON.stringify(cloudRecentFiles));
-    } catch {
-      // ignore
-    }
-  }, [cloudRecentFiles]);
-
+  // État des fichiers récents (en mémoire de session)
+  const [cloudRecentFiles, setCloudRecentFiles] = useState<FileItem[]>(DEFAULT_RECENT_FILES);
 
   // Effacer complètement un élément des récents et de tout le stockage local / cloud
   const handleRemoveRecentFile = (fileId: string, fileItem?: FileItem) => {
@@ -1920,13 +1888,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     markFileLocallyDeleted(fileId, fileName);
 
     // 2. Retirer immédiatement des récents
-    setCloudRecentFiles(prev => {
-      const updated = prev.filter(f => f.id !== fileId && (!fileName || f.name !== fileName));
-      try {
-        localStorage.setItem('studycloud_recent_files', JSON.stringify(updated));
-      } catch {}
-      return updated;
-    });
+    setCloudRecentFiles(prev => prev.filter(f => f.id !== fileId && (!fileName || f.name !== fileName)));
 
     // 3. Purger complètement le binaire local IndexedDB
     deleteFileBlob(fileId).catch(() => {});
@@ -1941,17 +1903,13 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     setDownloadedItems(prev => prev.filter(dl => dl.id !== fileId && (!fileName || dl.name !== fileName)));
     setSecureFolderFiles(prev => prev.filter(s => s.id !== fileId && (!fileName || s.name !== fileName)));
     setTrashFiles(prev => prev.filter(t => t.id !== fileId && (!fileName || t.name !== fileName)));
-    setFavoriteFiles(prev => prev.filter(f => f.id !== fileId && (!fileName || f.name !== fileName)));
 
     // 5. Retirer de tous les dossiers du classeur 3D
     setFolderFilesMap(prev => {
       const updated: Record<string, FileItem[]> = {};
       for (const [folderId, files] of Object.entries(prev)) {
-        updated[folderId] = files.filter(f => f.id !== fileId && (!fileName || f.name !== fileName));
+        updated[folderId] = (files as FileItem[]).filter(f => f.id !== fileId && (!fileName || f.name !== fileName));
       }
-      try {
-        localStorage.setItem('studycloud_folder_files_map', JSON.stringify(updated));
-      } catch {}
       return updated;
     });
 
@@ -1961,22 +1919,6 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setIsAudioPlaying(false);
       setIsVideoPlaying(false);
     }
-
-    // 7. Nettoyer immédiatement les clés localStorage pour éviter toute réapparition au F5
-    try {
-      ['studycloud_documents_files', 'studycloud_images_files', 'studycloud_videos_files', 'studycloud_audio_files', 'studycloud_downloaded_items', 'studycloud_trash_files', 'studycloud_secure_folder_files'].forEach(key => {
-        const raw = localStorage.getItem(key);
-        if (raw) {
-          try {
-            const arr = JSON.parse(raw);
-            if (Array.isArray(arr)) {
-              const filtered = arr.filter((x: any) => x.id !== fileId && (!fileName || x.name !== fileName));
-              localStorage.setItem(key, JSON.stringify(filtered));
-            }
-          } catch {}
-        }
-      });
-    } catch {}
 
     // 8. Supprimer dans Cloudflare D1/R2 pour que le serveur ne le renvoie plus
     if (file) {
@@ -2343,23 +2285,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     })();
   };
 
-  // DOSSIER SÉCURISÉ (Fichiers protégés par coffre-fort et isolés réels)
-  const [secureFolderFiles, setSecureFolderFiles] = useState<FileItem[]>(() => {
-    try {
-      const saved = localStorage.getItem('studycloud_secure_files');
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed)) return parsed.filter(f => !isMockFile(f));
-      }
-    } catch {}
-    return [];
-  });
-
-  useEffect(() => {
-    try {
-      localStorage.setItem('studycloud_secure_files', JSON.stringify(secureFolderFiles));
-    } catch {}
-  }, [secureFolderFiles]);
+  // DOSSIER SÉCURISÉ (Fichiers protégés par coffre-fort en mémoire de session)
+  const [secureFolderFiles, setSecureFolderFiles] = useState<FileItem[]>([]);
 
 
   const getStoredPin = () => localStorage.getItem('studycloud_secure_folder_pin');
@@ -2511,7 +2438,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           videosList.find(f => f.id === id) ||
           audioList.find(f => f.id === id) ||
           downloadedItems.find(f => f.id === id) ||
-          Object.values(folderFilesMap).flat().find(f => f.id === id);
+          (Object.values(folderFilesMap).flat() as FileItem[]).find(f => f.id === id);
 
         if (item) {
           const locked: FileItem = {
@@ -2570,6 +2497,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         const restoredFolder: ClasseurCreatedFolder = {
           id: file.id,
           name: file.name,
+          model: (meta.model || 1) as (1 | 2 | 3 | 4),
           modelId: meta.modelId || '1',
           primaryColor: meta.primaryColor || '#EA580C',
           accentColor: meta.accentColor || '#F97316',
@@ -2578,9 +2506,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           positionX: meta.positionX || 0,
           positionY: meta.positionY || 0,
           dateText: file.date || new Date().toLocaleDateString('fr-FR'),
+          createdAt: meta.createdAt || Date.now(),
           zoomLevel: meta.zoomLevel || 10,
           displayOrder: meta.displayOrder || 0,
-          parentId: meta.parentId || null
+          parentId: meta.parentId || undefined
         };
         setClasseur3DFolders(prev => prev.some(f => f.id === file.id) ? prev : [restoredFolder, ...prev]);
       } else {
@@ -2995,10 +2924,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         }
         // Persistance dans la table user_favorites D1
         if (newFav) {
-          CloudStorageAPI.addFavorite(file.id, file.category, file.name).catch(console.error);
+          CloudStorageAPI.addFavorite(file.id, file.category).catch(console.error);
           showToast('Ajouté aux favoris !');
         } else {
-          CloudStorageAPI.removeFavorite(file.id, file.category).catch(console.error);
+          CloudStorageAPI.removeFavorite(file.id).catch(console.error);
           showToast('Retiré des favoris');
         }
         break;
@@ -3039,7 +2968,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           CloudStorageAPI.addPinned(file.id, file.category).catch(console.error);
           showToast(`"${file.name}" épinglé au début !`);
         } else {
-          CloudStorageAPI.removePinned(file.id, file.category).catch(console.error);
+          CloudStorageAPI.removePinned(file.id).catch(console.error);
           showToast(`"${file.name}" désépinglé`);
         }
         break;
@@ -3169,7 +3098,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           videosList.find(f => f.id === id) ||
           audioList.find(f => f.id === id) ||
           downloadedItems.find(f => f.id === id) ||
-          Object.values(folderFilesMap).flat().find(f => f.id === id);
+          (Object.values(folderFilesMap).flat() as FileItem[]).find(f => f.id === id);
 
         if (found) {
           deletedItems.push({
@@ -3264,7 +3193,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           videosList.find(f => f.id === id) ||
           audioList.find(f => f.id === id) ||
           downloadedItems.find(f => f.id === id) ||
-          Object.values(folderFilesMap).flat().find(f => f.id === id);
+          (Object.values(folderFilesMap).flat() as FileItem[]).find(f => f.id === id);
         if (item) {
           filesToDownload.push(item);
         }
@@ -3325,7 +3254,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           videosList.find(f => f.id === id) ||
           audioList.find(f => f.id === id) ||
           downloadedItems.find(f => f.id === id) ||
-          Object.values(folderFilesMap).flat().find(f => f.id === id);
+          (Object.values(folderFilesMap).flat() as FileItem[]).find(f => f.id === id);
         if (item) {
           filesToShare.push({
             id: item.id,
@@ -3489,79 +3418,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
 
-  // Catégories StudyCloud
-  const categories = [
-    {
-      id: 'downloads',
-      name: 'Téléchargements',
-      size: `${downloadedItems.length} fichier${downloadedItems.length > 1 ? 's' : ''}`,
-      icon: Download,
-      color: 'text-sky-400'
-    },
-    {
-      id: 'images',
-      name: 'Images',
-      size: '7,5 Go',
-      icon: ImageIcon,
-      color: 'text-emerald-400'
-    },
-    {
-      id: 'videos',
-      name: 'Vidéos',
-      size: '20 Go',
-      icon: Film,
-      color: 'text-purple-400'
-    },
-    {
-      id: 'audio',
-      name: 'Audio',
-      size: '4,8 Go',
-      icon: Music,
-      color: 'text-amber-400'
-    },
-    {
-      id: 'documents',
-      name: 'Documents',
-      size: '3,5 Go',
-      icon: FileText,
-      color: 'text-blue-400'
-    },
-    {
-      id: 'apps',
-      name: 'Applications',
-      size: '12 installées',
-      icon: LayoutGrid,
-      color: 'text-pink-400'
-    }
-  ];
 
-  // Collections StudyCloud
-  const collections = [
-    {
-      id: 'favorites',
-      name: 'Favoris',
-      icon: Star,
-      color: 'text-amber-400'
-    },
-    {
-      id: 'secure-folder',
-      name: 'Dossier sécurisé',
-      icon: Lock,
-      color: 'text-blue-400'
-    },
-    {
-      id: 'cloud-storage',
-      name: 'Espace Cloud',
-      icon: Cloud,
-      color: 'text-sky-400'
-    },
-    {
-      id: 'trash',
-      name: 'Corbeille',
-      icon: Trash2,
-      color: 'text-rose-400'
-    }
-  ];
 
   // Filtrage selon la recherche (strictement 6 éléments maximum sur l'accueil, sans fichiers supprimés)
   const displayedFiles = useMemo(() => {
@@ -3797,40 +3654,194 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     });
   }, [downloadedItems, subSearchQuery]);
 
-  // Éléments de la barre horizontale de navigation Espace Cloud (Image 2 + Classeur Image 3, SANS Espace Cloud)
+  // Calcul dynamique et formatage lisible de l'espace occupé par chaque catégorie
+  const formatCategoryDisplaySize = (bytes: number, count: number, singularUnit: string) => {
+    if (bytes > 0) {
+      if (bytes < 1024) return `${bytes} o`;
+      if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} Ko`;
+      if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} Mo`;
+      return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} Go`;
+    }
+    return `${count} ${singularUnit}${count > 1 ? 's' : ''}`;
+  };
+
+  const calculateListBytes = (files: (FileItem | DownloadedItem)[]) => {
+    return files.reduce((acc, f) => {
+      if (f.sizeBytes && typeof f.sizeBytes === 'number') return acc + f.sizeBytes;
+      if (typeof f.size === 'string') {
+        const match = f.size.match(/([\d.,]+)\s*([KkMmGgTt]?[oO])/);
+        if (match) {
+          const val = parseFloat(match[1].replace(',', '.'));
+          const unit = match[2].toUpperCase();
+          if (unit.startsWith('K')) return acc + val * 1024;
+          if (unit.startsWith('M')) return acc + val * 1024 * 1024;
+          if (unit.startsWith('G')) return acc + val * 1024 * 1024 * 1024;
+          return acc + val;
+        }
+      }
+      return acc;
+    }, 0);
+  };
+
+  const imagesTotalBytes = useMemo(() => calculateListBytes(imagesList), [imagesList]);
+  const videosTotalBytes = useMemo(() => calculateListBytes(videosList), [videosList]);
+  const audioTotalBytes = useMemo(() => calculateListBytes(audioList), [audioList]);
+  const docsTotalBytes = useMemo(() => calculateListBytes(documentsList), [documentsList]);
+  const downloadsTotalBytes = useMemo(() => calculateListBytes(downloadedItems), [downloadedItems]);
+
+  // Catégories StudyCloud calculées dynamiquement depuis la base de données en direct
+  const categories = useMemo(() => [
+    {
+      id: 'downloads',
+      name: 'Téléchargements',
+      size: loadingCategories.downloads
+        ? 'Chargement...'
+        : formatCategoryDisplaySize(downloadsTotalBytes, downloadedItems.length, 'fichier'),
+      icon: Download,
+      color: 'text-sky-400'
+    },
+    {
+      id: 'images',
+      name: 'Images',
+      size: loadingCategories.images
+        ? 'Chargement...'
+        : formatCategoryDisplaySize(imagesTotalBytes, imagesList.length, 'image'),
+      icon: ImageIcon,
+      color: 'text-emerald-400'
+    },
+    {
+      id: 'videos',
+      name: 'Vidéos',
+      size: loadingCategories.videos
+        ? 'Chargement...'
+        : formatCategoryDisplaySize(videosTotalBytes, videosList.length, 'vidéo'),
+      icon: Film,
+      color: 'text-purple-400'
+    },
+    {
+      id: 'audio',
+      name: 'Audio',
+      size: loadingCategories.audio
+        ? 'Chargement...'
+        : formatCategoryDisplaySize(audioTotalBytes, audioList.length, 'piste'),
+      icon: Music,
+      color: 'text-amber-400'
+    },
+    {
+      id: 'documents',
+      name: 'Documents',
+      size: loadingCategories.documents
+        ? 'Chargement...'
+        : formatCategoryDisplaySize(docsTotalBytes, documentsList.length, 'document'),
+      icon: FileText,
+      color: 'text-blue-400'
+    },
+    {
+      id: 'apps',
+      name: 'Applications',
+      size: '12 installées',
+      icon: LayoutGrid,
+      color: 'text-pink-400'
+    }
+  ], [
+    loadingCategories,
+    downloadsTotalBytes, downloadedItems.length,
+    imagesTotalBytes, imagesList.length,
+    videosTotalBytes, videosList.length,
+    audioTotalBytes, audioList.length,
+    docsTotalBytes, documentsList.length
+  ]);
+
+  // Collections StudyCloud avec sous-titres dynamiques
+  const collections = useMemo(() => [
+    {
+      id: 'favorites',
+      name: 'Favoris',
+      subtitle: loadingCategories.favorites
+        ? 'Chargement...'
+        : `${favoriteFiles.length} favori${favoriteFiles.length > 1 ? 's' : ''}`,
+      icon: Star,
+      color: 'text-amber-400'
+    },
+    {
+      id: 'secure-folder',
+      name: 'Dossier sécurisé',
+      subtitle: loadingCategories.secure
+        ? 'Chargement...'
+        : `${secureFolderFiles.length} fichier${secureFolderFiles.length > 1 ? 's' : ''}`,
+      icon: Lock,
+      color: 'text-blue-400'
+    },
+    {
+      id: 'cloud-storage',
+      name: 'Espace Cloud',
+      subtitle: loadingCategories.cloudStorage
+        ? 'Chargement...'
+        : (cloudOverview?.totalFormatted || 'Cloud D1/R2'),
+      icon: Cloud,
+      color: 'text-sky-400'
+    },
+    {
+      id: 'trash',
+      name: 'Corbeille',
+      subtitle: loadingCategories.trash
+        ? 'Chargement...'
+        : `${trashFiles.length} élément${trashFiles.length > 1 ? 's' : ''}`,
+      icon: Trash2,
+      color: 'text-rose-400'
+    }
+  ], [
+    loadingCategories,
+    favoriteFiles.length,
+    secureFolderFiles.length,
+    trashFiles.length,
+    cloudOverview
+  ]);
+
+  // Éléments de la barre horizontale de navigation Espace Cloud
   const cloudNavItems = useMemo(() => [
     {
       id: 'downloads' as const,
       name: 'Téléchargements',
-      subtitle: `${filteredDownloads.length} fichier${filteredDownloads.length > 1 ? 's' : ''}`,
+      subtitle: loadingCategories.downloads
+        ? 'Chargement...'
+        : formatCategoryDisplaySize(downloadsTotalBytes, downloadedItems.length, 'fichier'),
       icon: Download,
       color: 'text-cyan-400'
     },
     {
       id: 'images' as const,
       name: 'Images',
-      subtitle: '7,5 Go',
+      subtitle: loadingCategories.images
+        ? 'Chargement...'
+        : formatCategoryDisplaySize(imagesTotalBytes, imagesList.length, 'image'),
       icon: ImageIcon,
       color: 'text-emerald-400'
     },
     {
       id: 'videos' as const,
       name: 'Vidéos',
-      subtitle: '20 Go',
+      subtitle: loadingCategories.videos
+        ? 'Chargement...'
+        : formatCategoryDisplaySize(videosTotalBytes, videosList.length, 'vidéo'),
       icon: Film,
       color: 'text-purple-400'
     },
     {
       id: 'audio' as const,
       name: 'Audio',
-      subtitle: '4,8 Go',
+      subtitle: loadingCategories.audio
+        ? 'Chargement...'
+        : formatCategoryDisplaySize(audioTotalBytes, audioList.length, 'piste'),
       icon: Music,
       color: 'text-amber-400'
     },
     {
       id: 'documents' as const,
       name: 'Documents',
-      subtitle: '3,5 Go',
+      subtitle: loadingCategories.documents
+        ? 'Chargement...'
+        : formatCategoryDisplaySize(docsTotalBytes, documentsList.length, 'document'),
       icon: FileText,
       color: 'text-blue-400'
     },
@@ -3844,22 +3855,103 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     {
       id: 'favorites' as const,
       name: 'Favoris',
+      subtitle: loadingCategories.favorites
+        ? 'Chargement...'
+        : `${favoriteFiles.length} favori${favoriteFiles.length > 1 ? 's' : ''}`,
       icon: Star,
       color: 'text-amber-400'
     },
     {
       id: 'secure-folder' as const,
       name: 'Dossier sécurisé',
+      subtitle: loadingCategories.secure
+        ? 'Chargement...'
+        : `${secureFolderFiles.length} fichier${secureFolderFiles.length > 1 ? 's' : ''}`,
       icon: Lock,
       color: 'text-blue-400'
     },
     {
       id: 'trash' as const,
       name: 'Corbeille',
+      subtitle: loadingCategories.trash
+        ? 'Chargement...'
+        : `${trashFiles.length} élément${trashFiles.length > 1 ? 's' : ''}`,
       icon: Trash2,
       color: 'text-rose-400'
     }
-  ], [filteredDownloads]);
+  ], [
+    loadingCategories,
+    downloadsTotalBytes, downloadedItems.length,
+    imagesTotalBytes, imagesList.length,
+    videosTotalBytes, videosList.length,
+    audioTotalBytes, audioList.length,
+    docsTotalBytes, documentsList.length,
+    favoriteFiles.length,
+    secureFolderFiles.length,
+    trashFiles.length
+  ]);
+
+  // Helper pour l'affichage progressif animé lors de l'accès direct et rapide à un menu
+  const renderCategoryProgressiveSkeleton = (
+    categoryName: string,
+    type: 'grid' | 'cards' | 'audio-list' | 'classeur-grid',
+    badgeColor: string = 'text-blue-400'
+  ) => (
+    <div className="space-y-4 animate-in fade-in duration-200">
+      <div className="flex items-center justify-between px-1 py-1">
+        <div className="flex items-center gap-2">
+          <Loader2 className={`w-4 h-4 animate-spin ${badgeColor}`} />
+          <span className="text-xs sm:text-sm font-black text-stone-900 dark:text-white tracking-wide">
+            Chargement {categoryName.toLowerCase()}...
+          </span>
+        </div>
+        <span className="text-[10px] text-stone-400 font-bold uppercase tracking-wider animate-pulse">
+          Synchronisation Cloud
+        </span>
+      </div>
+
+      {type === 'audio-list' ? (
+        <div className="space-y-2">
+          {[1, 2, 3, 4, 5, 6].map(i => (
+            <div key={i} className="h-16 rounded-2xl bg-gradient-to-r from-stone-200/60 to-stone-100/30 dark:from-[#0E1526] dark:to-[#070B14] border border-stone-300/40 dark:border-white/5 flex items-center px-4 gap-3 animate-pulse">
+              <div className="w-10 h-10 rounded-xl bg-amber-500/10 dark:bg-amber-400/10 shrink-0" />
+              <div className="flex-1 space-y-2">
+                <div className="h-3 w-1/3 rounded-full bg-stone-300/60 dark:bg-white/15" />
+                <div className="h-2 w-1/4 rounded-full bg-stone-300/40 dark:bg-white/10" />
+              </div>
+              <div className="w-12 h-3 rounded-full bg-stone-300/40 dark:bg-white/10 shrink-0" />
+            </div>
+          ))}
+        </div>
+      ) : type === 'classeur-grid' ? (
+        <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-4 gap-4 py-2">
+          {[1, 2, 3, 4].map(i => (
+            <div key={i} className="h-44 rounded-3xl bg-[#0E1526]/80 border border-white/10 p-4 flex flex-col justify-between animate-pulse">
+              <div className="w-20 h-16 rounded-2xl bg-orange-500/20 mx-auto" />
+              <div className="space-y-1.5 pt-2">
+                <div className="h-3 w-3/4 rounded-full bg-white/15 mx-auto" />
+                <div className="h-2 w-1/2 rounded-full bg-white/10 mx-auto" />
+              </div>
+            </div>
+          ))}
+        </div>
+      ) : (
+        <div className={`grid gap-2.5 sm:gap-3.5 ${
+          splitSelectedFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
+        }`}>
+          {[1, 2, 3, 4, 5, 6, 7, 8].map(i => (
+            <div key={i} className="aspect-square sm:aspect-auto sm:h-52 rounded-2xl bg-gradient-to-br from-stone-200/70 to-stone-100/40 dark:from-[#0E1526] dark:to-[#070B14] border border-stone-300/50 dark:border-white/10 p-3 flex flex-col justify-between overflow-hidden animate-pulse">
+              <div className="w-full h-28 rounded-xl bg-stone-300/40 dark:bg-white/10" />
+              <div className="space-y-1.5 pt-2">
+                <div className="h-3 w-4/5 rounded-full bg-stone-300/60 dark:bg-white/15" />
+                <div className="h-2 w-1/2 rounded-full bg-stone-300/40 dark:bg-white/10" />
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 
   // Navigation Audio (Suivant, Précédent avec support Aléatoire)
   const handleAudioNext = () => {
@@ -5091,10 +5183,10 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           prev.map(f => f.id === folder.id ? { ...f, isFavorite: newFav } : f)
         );
         if (newFav) {
-          CloudStorageAPI.addFavorite(folder.id, 'classeur_folder', folder.name).catch(console.error);
+          CloudStorageAPI.addFavorite(folder.id, 'classeur_folder').catch(console.error);
           showToast('Ajouté aux favoris !');
         } else {
-          CloudStorageAPI.removeFavorite(folder.id, 'classeur_folder').catch(console.error);
+          CloudStorageAPI.removeFavorite(folder.id).catch(console.error);
           showToast('Retiré des favoris');
         }
         break;
@@ -5117,7 +5209,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           CloudStorageAPI.addPinned(folder.id, 'classeur_folder').catch(console.error);
           showToast(`"${folder.name}" épinglé au début !`);
         } else {
-          CloudStorageAPI.removePinned(folder.id, 'classeur_folder').catch(console.error);
+          CloudStorageAPI.removePinned(folder.id).catch(console.error);
           showToast(`"${folder.name}" désépinglé`);
         }
         break;
@@ -5824,7 +5916,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       <VideoCardPreview vid={file} />
                     ) : file.category === 'documents' ? (
                       <DocumentCardPreview doc={file} />
-                    ) : (file.category === 'audio' || Boolean(file.audioUrl)) ? (
+                    ) : ((file.category as string) === 'audio' || Boolean(file.audioUrl)) ? (
                       <AudioCardPreview track={file} />
                     ) : file.previewUrl ? (
                       <img 
@@ -6502,7 +6594,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
             <div className="w-full h-24 rounded-xl overflow-hidden relative">
               <DocumentCardPreview doc={file} />
             </div>
-          ) : (file.category === 'audio' || Boolean(file.audioUrl)) ? (
+          ) : ((file.category as string) === 'audio' || Boolean(file.audioUrl)) ? (
             <div className="w-full h-24 rounded-xl overflow-hidden relative">
               <AudioCardPreview track={file} />
             </div>
@@ -9510,6 +9602,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                 <div className="w-full">
                   {opened3DFolder ? (
                     renderOpened3DFolderView(opened3DFolder)
+                  ) : loadingCategories.classeur ? (
+                    renderCategoryProgressiveSkeleton('Classeur', 'classeur-grid', 'text-orange-400')
                   ) : classeur3DFolders.filter(f => !f.parentId).length === 0 ? (
                     <div className="py-24 sm:py-32 flex flex-col items-center justify-center text-center text-stone-500 dark:text-slate-400">
                       <div className="w-16 h-16 sm:w-20 sm:h-20 rounded-3xl bg-orange-500/10 border border-orange-500/20 text-orange-400 flex items-center justify-center mb-4 shadow-sm">
@@ -9745,7 +9839,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {/* Bandeau d'action de sélection multiple si activé */}
                   {renderSelectionBanner(filteredDocuments)}
 
-                  {filteredDocuments.length === 0 ? (
+                  {loadingCategories.documents ? (
+                    renderCategoryProgressiveSkeleton('Documents', 'grid', 'text-blue-400')
+                  ) : filteredDocuments.length === 0 ? (
                     <div className="py-20 text-center text-stone-500 dark:text-slate-400">
                       <FileText className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-blue-400" />
                       <p className="text-sm font-semibold">Aucun document disponible</p>
@@ -9775,7 +9871,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {/* Bandeau d'action de sélection multiple si activé */}
                   {renderSelectionBanner(filteredImages)}
 
-                  {filteredImages.length === 0 ? (
+                  {loadingCategories.images ? (
+                    renderCategoryProgressiveSkeleton('Images', 'grid', 'text-emerald-400')
+                  ) : filteredImages.length === 0 ? (
                     <div className="py-20 text-center text-stone-500 dark:text-slate-400">
                       <ImageIcon className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-emerald-400" />
                       <p className="text-sm font-semibold">Aucune image disponible</p>
@@ -9805,7 +9903,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {/* Bandeau d'action de sélection multiple si activé */}
                   {renderSelectionBanner(filteredVideos)}
 
-                  {filteredVideos.length === 0 ? (
+                  {loadingCategories.videos ? (
+                    renderCategoryProgressiveSkeleton('Vidéos', 'grid', 'text-purple-400')
+                  ) : filteredVideos.length === 0 ? (
                     <div className="py-20 text-center text-stone-500 dark:text-slate-400">
                       <Film className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-purple-400" />
                       <p className="text-sm font-semibold">Aucune vidéo disponible</p>
@@ -9843,7 +9943,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {renderSelectionBanner(filteredAudio)}
 
                   {/* Liste des pistes ou état vide */}
-                  {filteredAudio.length === 0 ? (
+                  {loadingCategories.audio ? (
+                    renderCategoryProgressiveSkeleton('Audio', 'audio-list', 'text-amber-400')
+                  ) : filteredAudio.length === 0 ? (
                     <div className="py-20 text-center text-stone-500 dark:text-slate-400">
                       <Music className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
                       <p className="text-sm font-semibold">Aucun son disponible</p>
@@ -10039,7 +10141,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                   {/* Bandeau d'action de sélection multiple si activé */}
                   {renderSelectionBanner(filteredDownloads.map(toFileItem))}
 
-                  {filteredDownloads.length === 0 ? (
+                  {loadingCategories.downloads ? (
+                    renderCategoryProgressiveSkeleton('Téléchargements', 'grid', 'text-sky-400')
+                  ) : filteredDownloads.length === 0 ? (
                     <div className="py-16 text-center text-stone-500 dark:text-slate-400">
                       <Download className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5]" />
                       <p className="text-sm font-semibold">Aucun fichier téléchargé</p>
@@ -10151,7 +10255,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                       {/* Bandeau d'action de sélection multiple si activé */}
                       {renderSelectionBanner(filteredSecureFiles)}
 
-                      {filteredSecureFiles.length === 0 ? (
+                      {loadingCategories.secure ? (
+                        renderCategoryProgressiveSkeleton('Dossier sécurisé', 'grid', 'text-amber-400')
+                      ) : filteredSecureFiles.length === 0 ? (
                         <div className="py-20 text-center text-stone-500 dark:text-slate-400">
                           <Lock className="w-12 h-12 mx-auto mb-3 opacity-30 stroke-[1.5] text-amber-400" />
                           <p className="text-sm font-semibold">Le dossier sécurisé est vide</p>
@@ -10179,7 +10285,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* 8. FAVORIS (COLLECTION) */}
               {(currentSubView?.id === 'studycloud-collection-favorites' || (isCloudView && cloudActiveTab === 'favorites')) && (
                 <div className="space-y-4 animate-in fade-in duration-200">
-                  {favoriteFiles.length === 0 ? (
+                  {loadingCategories.favorites ? (
+                    renderCategoryProgressiveSkeleton('Favoris', 'grid', 'text-amber-400')
+                  ) : favoriteFiles.length === 0 ? (
                     <div className="py-28 text-center animate-in fade-in duration-200">
                       <p className="text-sm sm:text-base font-medium text-stone-500 dark:text-slate-400 tracking-wide">
                         Aucun favori pour le moment
@@ -10208,7 +10316,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                                   onClick={() => {
                                     setOpened3DFolder(folder);
                                     setCloudActiveTab('classeur');
-                                    handleOpenSubView('classeur', 'cloud-storage', 'Espace Cloud', Cloud, 'from-amber-600 to-amber-700');
+                                    handleOpenSubMenu('collection', 'cloud-storage', 'Espace Cloud', Cloud, 'text-sky-400');
                                   }}
                                   className="cursor-pointer group relative select-none rounded-2xl bg-[#0E1526]/85 hover:bg-[#141E34] border border-white/10 hover:border-orange-400/50 p-2 sm:p-2.5 shadow-lg hover:shadow-2xl transition-all"
                                   title={`Ouvrir le dossier « ${folder.name} »`}
@@ -10245,7 +10353,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               {/* 9. CORBEILLE (COLLECTION) */}
               {(currentSubView?.id === 'studycloud-collection-trash' || (isCloudView && cloudActiveTab === 'trash')) && (
                 <div className="space-y-4 animate-in fade-in duration-200">
-                  {filteredTrashFiles.length === 0 ? (
+                  {loadingCategories.trash ? (
+                    renderCategoryProgressiveSkeleton('Corbeille', 'grid', 'text-rose-400')
+                  ) : filteredTrashFiles.length === 0 ? (
                     <div className="py-28 text-center animate-in fade-in duration-200">
                       <p className="text-sm sm:text-base font-medium text-stone-500 dark:text-slate-400 tracking-wide">
                         Aucun élément dans la corbeille
@@ -11231,7 +11341,27 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
           <div className="flex-1 w-full px-3 sm:px-6 md:px-10 lg:px-12 py-3 sm:py-4 pb-48 sm:pb-64 space-y-4 sm:space-y-5">
 
             {/* SECTION 1 : RÉCENTS (STRICTEMENT 6 ÉLÉMENTS SUR 1 LIGNE) */}
-            {displayedFiles.length > 0 && (
+            {loadingCategories.overview ? (
+              <section className="space-y-2 animate-in fade-in duration-200">
+                <div className="flex items-center justify-between">
+                  <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight flex items-center gap-2">
+                    <span>Récents</span>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-blue-400" />
+                  </h2>
+                </div>
+                <div className="grid grid-cols-2 sm:grid-cols-3 md:grid-cols-6 gap-2.5 sm:gap-3 md:gap-3.5">
+                  {[1, 2, 3, 4, 5, 6].map(i => (
+                    <div key={i} className="h-36 rounded-2xl bg-[#151C2C]/70 border border-slate-800/80 p-2 flex flex-col justify-between animate-pulse">
+                      <div className="w-full h-20 rounded-xl bg-white/5" />
+                      <div className="space-y-1.5 pt-1">
+                        <div className="h-2.5 w-3/4 rounded-full bg-white/10" />
+                        <div className="h-2 w-1/2 rounded-full bg-white/5" />
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </section>
+            ) : displayedFiles.length > 0 && (
               <section className="space-y-2 animate-in fade-in duration-200">
                 <div className="flex items-center justify-between">
                   <h2 className="text-sm sm:text-base font-black text-stone-900 dark:text-white tracking-tight">
@@ -11472,6 +11602,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                         <h3 className="text-xs sm:text-sm font-black text-white truncate tracking-wide group-hover:text-blue-400 transition-colors">
                           {col.name}
                         </h3>
+                        {col.subtitle && (
+                          <p className="text-[10px] sm:text-[11px] font-bold text-slate-400 truncate mt-0.5">
+                            {col.subtitle}
+                          </p>
+                        )}
                       </div>
                     </div>
                   );

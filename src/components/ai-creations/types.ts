@@ -110,6 +110,8 @@ export interface QuizContent {
 
 export interface MindMapContent {
   root: MindMapNode;
+  root_title?: string;
+  branches?: any[];
 }
 
 export interface InfographicMetric {

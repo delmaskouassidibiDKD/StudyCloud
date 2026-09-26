@@ -1195,9 +1195,9 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
     const controller = new AbortController();
     abortControllerRef.current = controller;
 
+    let extractedDocText = '';
     try {
       // 1. Extraction éventuelle du texte du document sélectionné
-      let extractedDocText = '';
       if (previewItem) {
         try {
           extractedDocText = await extractDocumentText(previewItem);

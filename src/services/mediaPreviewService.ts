@@ -325,7 +325,7 @@ export async function generateVideoThumbnail(
   title?: string
 ): Promise<string> {
   if (typeof window === 'undefined') {
-    return generateVideoFallbackPoster(title || (typeof fileOrUrl === 'string' ? fileOrUrl : fileOrUrl.name));
+    return generateVideoFallbackPoster(title || (typeof fileOrUrl === 'string' ? fileOrUrl : (fileOrUrl as any).name || 'Vidéo'));
   }
 
   if (cacheKey && previewMemoryCache.has(cacheKey)) {
