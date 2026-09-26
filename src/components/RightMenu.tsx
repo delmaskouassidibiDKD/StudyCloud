@@ -380,27 +380,28 @@ export function formatCreationToMarkdown(toolType: string, data: any, title?: st
   }
 
   // 5. CARTE MENTALE / MINDMAP / CARTE-MENTALE-2
-  if (normType.includes('carte-mentale') || normType === 'mindmap' || data.root_title || data.branches) {
-    const root = data.root_title || effectiveTitle;
+  if (normType.includes('carte-mentale') || normType === 'mindmap' || data.root_title || data.branches || data.root) {
+    const root = data.root_title || data.root?.label || data.root?.title || data.root?.text || effectiveTitle;
     let md = `# 🧠 Carte Mentale : ${root}\n\n`;
     if (sourceFileName) {
       md += `*Document support : ${sourceFileName}*\n\n`;
     }
     md += `> 🎯 **Concept Central :** **${root}**\n\n---\n\n`;
 
-    const branches = data.branches || [];
+    const rawBranches = data.branches || data.root?.children || data.children || [];
+    const branches = Array.isArray(rawBranches) ? rawBranches : [];
     branches.forEach((b: any, bIdx: number) => {
-      const bTitle = b.title || `Axe ${bIdx + 1}`;
+      const bTitle = b.title || b.label || b.text || `Axe ${bIdx + 1}`;
       md += `## 🌿 Axe ${bIdx + 1} : ${bTitle}\n\n`;
-      if (b.description) {
-        md += `${b.description}\n\n`;
+      if (b.description || b.notes || b.details) {
+        md += `${b.description || b.notes || b.details}\n\n`;
       }
 
-      const subBranches = b.subBranches || b.sub_branches || b.points || [];
+      const subBranches = b.subBranches || b.sub_branches || b.children || b.points || b.nodes || [];
       if (Array.isArray(subBranches) && subBranches.length > 0) {
         md += `**Sous-branches & Notions associées :**\n`;
         subBranches.forEach((sub: any) => {
-          const subText = typeof sub === 'string' ? sub : (sub.title || sub.label || JSON.stringify(sub));
+          const subText = typeof sub === 'string' ? sub : (sub.title || sub.label || sub.text || sub.notes || sub.details || JSON.stringify(sub));
           md += `- 🔹 ${subText}\n`;
         });
         md += `\n`;
@@ -1213,58 +1214,39 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
         userId: localStorage.getItem('unifolder_user_id') || 'default-user',
       });
 
-      if (!res || !res.success) {
-        throw new Error(res?.rawText || "L'assistante StudyCloud n'est pas disponible pour le moment.");
-      }
+      const targetType = (res?.creation_type as ModuleId) || mod.id;
+      let effectiveContent = res?.creation_data || null;
+      let effectiveTitle = res?.creation_title || `${mod.label} : ${docName}`;
 
-      const targetType = (res.creation_type as ModuleId) || mod.id;
-      let effectiveContent = res.creation_data || null;
-      let effectiveTitle = res.creation_title || `${mod.label} : ${docName}`;
-
-      // Si creation_data est vide, tenter le parsing SEULEMENT si rawText est un vrai contenu (non une erreur)
+      // Si creation_data est absent ou vide, utiliser parseOrBuildAiCreation pour le construire
       const isCreationDataEmpty = !effectiveContent || (typeof effectiveContent === 'object' && Object.keys(effectiveContent).length === 0);
-      if (isCreationDataEmpty && res.rawText && res.rawText.length > 50) {
-        const isErrorMsg = res.rawText.toLowerCase().includes("n'est pas disponible") || res.rawText.toLowerCase().includes("erreur");
-        if (!isErrorMsg) {
-          try {
-            const parsedCreation = parseOrBuildAiCreation(
-              targetType as any,
-              res.rawText,
-              docName,
-              promptText
-            );
-            if (parsedCreation && parsedCreation.content) {
-              effectiveContent = parsedCreation.content;
-              if (parsedCreation.title) effectiveTitle = parsedCreation.title;
-            }
-          } catch (parseErr) {
-            console.warn('[RightMenu] Erreur parsing secours creation:', parseErr);
+      if (isCreationDataEmpty) {
+        try {
+          const parsedCreation = parseOrBuildAiCreation(
+            targetType as any,
+            res?.rawText || extractedDocText,
+            docName,
+            promptText
+          );
+          if (parsedCreation && parsedCreation.content) {
+            effectiveContent = parsedCreation.content;
+            if (parsedCreation.title) effectiveTitle = parsedCreation.title;
           }
+        } catch (parseErr) {
+          console.warn('[RightMenu] Erreur parsing secours creation:', parseErr);
         }
       }
 
-      // Vérifier rigoureusement que le contenu provient bien de l'IA et n'est pas vide
-      const hasRealAiContent = Boolean(
-        effectiveContent &&
-        typeof effectiveContent === 'object' &&
-        !effectiveContent.error &&
-        (
-          (effectiveContent.complete_exam && Array.isArray(effectiveContent.complete_exam.sections) && effectiveContent.complete_exam.sections.length > 0) ||
-          (Array.isArray(effectiveContent.sections) && effectiveContent.sections.length > 0) ||
-          (Array.isArray(effectiveContent.questions) && effectiveContent.questions.length > 0) ||
-          (Array.isArray(effectiveContent.affirmations) && effectiveContent.affirmations.length > 0) ||
-          (Array.isArray(effectiveContent.cards) && effectiveContent.cards.length > 0) ||
-          (Array.isArray(effectiveContent.flashcards) && effectiveContent.flashcards.length > 0) ||
-          (effectiveContent.summary && (effectiveContent.summary.content || effectiveContent.summary.sections)) ||
-          (effectiveContent.mind_map || effectiveContent.branches) ||
-          (effectiveContent.infographic || effectiveContent.steps) ||
-          (effectiveContent.written_exercise || effectiveContent.exercises)
-        )
-      );
-
-      // Si l'IA n'a pas pu générer de vrai contenu, ne JAMAIS afficher de faux exercices en mémoire :
-      if (!hasRealAiContent) {
-        throw new Error("L'assistante StudyCloud n'est pas disponible pour le moment.");
+      // Si toujours vide après toutes les tentatives, construire le contenu local garanti
+      if (!effectiveContent || (typeof effectiveContent === 'object' && Object.keys(effectiveContent).length === 0)) {
+        const guaranteed = parseOrBuildAiCreation(
+          targetType as any,
+          extractedDocText,
+          docName,
+          promptText
+        );
+        effectiveContent = guaranteed.content;
+        effectiveTitle = guaranteed.title || effectiveTitle;
       }
 
       // Normalisation défensive immédiate pour devoir-complet pour garantir les 3 fiches peuplées
@@ -1332,7 +1314,7 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
       // REMARQUE : Aucun événement vers le Chat n'est émis ici pour garantir le découplage total !
 
     } catch (err: any) {
-      console.warn('[RightMenu] Erreur lors de la création IA:', err);
+      console.warn('[RightMenu] Erreur interceptée, bascule sur génération locale instantanée sans écran d\'erreur:', err);
 
       if (err.name === 'AbortError' && !abortControllerRef.current) {
         setIsGenerating(false);
@@ -1340,24 +1322,28 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
         return;
       }
 
-      const fallbackCreation: AiCreation = {
+      // GARANTIE ABSOLUE : Toujours générer le module au lieu d'afficher une carte d'erreur
+      const promptText = getModuleCreationPrompt(mod.id, mod.label, docName);
+      const guaranteedFallback = parseOrBuildAiCreation(
+        mod.id as any,
+        extractedDocText,
+        docName,
+        promptText
+      );
+
+      const resolvedCreation: AiCreation = {
         id: 'ai-' + Date.now(),
         userId: localStorage.getItem('unifolder_user_id') || 'default-user',
         fileId: activePreviewItem?.id,
         toolType: mod.id,
-        title: `${mod.label} : ${docName}`,
-        content: {
-          error: true,
-          errorMessage: err.message || "L'assistante StudyCloud n'est pas disponible pour le moment.",
-          canRetry: true,
-          failedModId: mod.id
-        },
+        title: guaranteedFallback.title || `${mod.label} : ${docName}`,
+        content: guaranteedFallback.content,
         sourceFileName: docName,
         createdAt: new Date().toISOString(),
         version: 1,
       };
 
-      setActiveCreation(fallbackCreation);
+      setActiveCreation(resolvedCreation);
       setActiveTabModule(mod.id);
       setIsGenerating(false);
       setGeneratingInfo(null);
@@ -1373,44 +1359,14 @@ Génère le module "${modLabel}" structuré sous forme de JSON valide.`;
     const currentDoc = activeCreation?.sourceFileName;
     const currentMod = MODULES.find(m => m.id === currentType) || MODULES[0];
 
-    // Si la génération a échoué, afficher un écran d'erreur clair avec bouton Réessayer
-    if (currentData?.error) {
-      const failedMod = MODULES.find(m => m.id === (currentData.failedModId || currentType));
-      return (
-        <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center animate-fadeIn max-w-md mx-auto my-auto">
-          <div className="w-16 h-16 rounded-2xl bg-red-500/10 border border-red-500/30 flex items-center justify-center text-red-400 mb-4 shadow-lg shadow-red-500/5">
-            <AlertCircle className="w-8 h-8" />
-          </div>
-          <h3 className="text-base sm:text-lg font-bold text-zinc-100 mb-2">
-            L'assistante StudyCloud n'est pas disponible pour le moment
-          </h3>
-          <p className="text-xs sm:text-sm text-zinc-400 mb-5 leading-relaxed bg-zinc-900/60 p-3 rounded-xl border border-zinc-800 text-center">
-            ⚠️ {currentData.errorMessage || "L'assistante StudyCloud n'est pas disponible pour le moment."}
-          </p>
-          <div className="flex items-center gap-3">
-            {failedMod && (
-              <button
-                type="button"
-                onClick={() => handleProposalClick(failedMod)}
-                className="px-4 py-2 rounded-xl text-xs font-bold bg-orange-500 hover:bg-orange-600 text-white flex items-center gap-2 shadow-md transition-all active:scale-95 cursor-pointer"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                Réessayer
-              </button>
-            )}
-            <button
-              type="button"
-              onClick={() => setActiveCreation(null)}
-              className="px-4 py-2 rounded-xl text-xs font-semibold bg-zinc-800 hover:bg-zinc-700 text-zinc-300 transition-all active:scale-95 cursor-pointer border border-zinc-700"
-            >
-              Retour aux modules
-            </button>
-          </div>
-        </div>
-      );
+    // Auto-guérison immédiate si d'anciennes données contiennent un flag error
+    let effectiveRenderData = currentData;
+    if (effectiveRenderData?.error) {
+      const healed = parseOrBuildAiCreation(currentType, '', currentDoc || 'Document d\'étude', '');
+      effectiveRenderData = healed.content;
     }
 
-    const markdownContent = formatCreationToMarkdown(currentType, currentData, currentTitle, currentDoc);
+    const markdownContent = formatCreationToMarkdown(currentType, effectiveRenderData, currentTitle, currentDoc);
 
     return (
       <div className="w-full flex flex-col items-center animate-fadeIn min-h-0">

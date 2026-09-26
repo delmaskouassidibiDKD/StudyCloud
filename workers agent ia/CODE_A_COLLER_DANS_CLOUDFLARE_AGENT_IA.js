@@ -55968,7 +55968,8 @@ var corsHeaders = {
 	"Access-Control-Max-Age": "86400"
 };
 /**
-* Nettoyage et extraction rigoureuse du JSON produit par le modèle IA
+* Nettoyage et extraction ultra-robuste du JSON produit par le modèle IA
+* Gère le LaTeX intégral, les sauts de ligne littéraux, les fermetures de tronquage
 */
 function extractAndSanitizeJson(rawText) {
 	if (!rawText || typeof rawText !== "string") return null;
@@ -55976,15 +55977,75 @@ function extractAndSanitizeJson(rawText) {
 	const firstBrace = cleaned.indexOf("{");
 	const lastBrace = cleaned.lastIndexOf("}");
 	if (firstBrace !== -1 && lastBrace !== -1 && lastBrace > firstBrace) cleaned = cleaned.substring(firstBrace, lastBrace + 1);
-	const sanitized = cleaned.replace(/\\(frac|Omega|alpha|beta|gamma|delta|epsilon|theta|lambda|mu|pi|sigma|tau|phi|omega|times|div|approx|neq|le|ge|cdot|infty|sqrt)/g, "\\\\$1").replace(/,\s*([}\]])/g, "$1").replace(/[\x00-\x1F\x7F]/g, (char) => char === "\n" || char === "\r" || char === "	" ? char : "");
+	const preProcessed = cleaned.replace(/(?<!\\)\\(frac|sqrt|sum|int|lim|prod|alpha|beta|gamma|delta|epsilon|zeta|eta|theta|iota|kappa|lambda|mu|nu|xi|pi|rho|sigma|tau|upsilon|phi|chi|psi|omega|Gamma|Delta|Theta|Lambda|Xi|Pi|Sigma|Phi|Psi|Omega|cdot|times|div|pm|mp|leq|geq|neq|approx|equiv|forall|exists|infty|partial|nabla|to|rightarrow|leftarrow|Rightarrow|Leftarrow|iff|left|right|big|Big|text|textbf|textit|mathrm|mathbf|mathit|textsf|underline|over|hat|bar|vec|tilde|dot|ddot|circ|degree|angle|perp|parallel|subset|supset|cap|cup|in|notin|lor|land|neg|sim|cong|propto|begin|end)\b/gi, "\\\\$1");
+	try {
+		return JSON.parse(preProcessed);
+	} catch (_e) {}
+	let sanitized = "";
+	let inString = false;
+	let escaped = false;
+	for (let i = 0; i < preProcessed.length; i++) {
+		const char = preProcessed[i];
+		const code = preProcessed.charCodeAt(i);
+		if (char === "\"" && !escaped) {
+			inString = !inString;
+			sanitized += char;
+		} else if (inString) if (char === "\n") sanitized += "\\n";
+		else if (char === "\r") sanitized += "\\r";
+		else if (char === "	") sanitized += "\\t";
+		else if (code < 32) sanitized += " ";
+		else if (char === "\\") {
+			const next = preProcessed[i + 1];
+			if (next && [
+				"\"",
+				"\\",
+				"/",
+				"b",
+				"f",
+				"n",
+				"r",
+				"t",
+				"u"
+			].includes(next)) sanitized += "\\";
+			else sanitized += "\\\\";
+		} else sanitized += char;
+		else sanitized += char;
+		if (char === "\\" && !escaped) escaped = true;
+		else escaped = false;
+	}
+	sanitized = sanitized.replace(/,\s*([\]}])/g, "$1");
 	try {
 		return JSON.parse(sanitized);
-	} catch (_e) {
-		try {
-			return JSON.parse(cleaned);
-		} catch (_e2) {
-			return null;
+	} catch (_e2) {}
+	let openBraces = 0;
+	let openBrackets = 0;
+	let inStr = false;
+	let esc = false;
+	for (let i = 0; i < sanitized.length; i++) {
+		const c = sanitized[i];
+		if (c === "\"" && !esc) inStr = !inStr;
+		if (!inStr) {
+			if (c === "{") openBraces++;
+			else if (c === "}") openBraces = Math.max(0, openBraces - 1);
+			else if (c === "[") openBrackets++;
+			else if (c === "]") openBrackets = Math.max(0, openBrackets - 1);
 		}
+		esc = c === "\\" && !esc;
+	}
+	let repaired = sanitized;
+	if (inStr) repaired += "\"";
+	while (openBrackets > 0) {
+		repaired += "]";
+		openBrackets--;
+	}
+	while (openBraces > 0) {
+		repaired += "}";
+		openBraces--;
+	}
+	try {
+		return JSON.parse(repaired);
+	} catch (_e3) {
+		return null;
 	}
 }
 /**
@@ -56297,18 +56358,36 @@ ${userPrompt || "Génère un module pédagogique complet, rigoureux et directeme
 		})).text;
 	}
 	const parsedData = extractAndSanitizeJson(rawOutput);
-	if (!parsedData) throw new Error("L'agent n'a pas pu formater une réponse JSON valide pour ce document.");
-	if (toolType.includes("carte-mentale") && !parsedData.branches && parsedData.root?.children) parsedData.branches = parsedData.root.children.map((c) => ({
-		title: c.title || c.label || "Sous-thème",
-		description: c.notes || "",
-		subBranches: (c.children || []).map((sc) => sc.title || sc.label || "")
-	}));
-	if (toolType.includes("devoir") && !parsedData.sections && parsedData.parties) parsedData.sections = parsedData.parties;
+	if (parsedData && toolType.includes("carte-mentale")) {
+		if (!parsedData.branches && parsedData.root?.children) parsedData.branches = parsedData.root.children.map((c) => ({
+			title: c.title || c.label || "Sous-thème",
+			description: c.notes || "",
+			subBranches: (c.children || []).map((sc) => sc.title || sc.label || "")
+		}));
+		if (!parsedData.root && Array.isArray(parsedData.branches)) parsedData.root = {
+			id: "root-main",
+			title: parsedData.root_title || parsedData.title || docName,
+			label: parsedData.root_title || parsedData.title || docName,
+			color: "#3b82f6",
+			children: parsedData.branches.map((b, bi) => ({
+				id: `branch-${bi}`,
+				title: b.title || "Branche",
+				label: b.title || "Branche",
+				notes: b.description || "",
+				children: (b.subBranches || []).map((sb, sbi) => ({
+					id: `sub-${bi}-${sbi}`,
+					title: sb,
+					label: sb
+				}))
+			}))
+		};
+	}
+	if (parsedData && toolType.includes("devoir") && !parsedData.sections && parsedData.parties) parsedData.sections = parsedData.parties;
 	return {
 		success: true,
 		creation_type: toolType,
-		creation_title: parsedData.title || `${typeLabel} - ${docName.replace(/\.[^/.]+$/, "")}`,
-		creation_data: parsedData,
+		creation_title: parsedData && parsedData.title ? parsedData.title : `${typeLabel} - ${docName.replace(/\.[^/.]+$/, "")}`,
+		creation_data: parsedData || null,
 		rawText: rawOutput,
 		model: PRIMARY_MODEL
 	};

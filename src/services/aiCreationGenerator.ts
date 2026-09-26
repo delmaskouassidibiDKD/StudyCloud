@@ -212,7 +212,13 @@ function parseMindMapFromText(rawText: string, safeDocName: string): MindMapCont
       label: rootLabel,
       details: 'Thème central d\'apprentissage',
       children: branches
-    }
+    },
+    root_title: rootLabel,
+    branches: branches.map(b => ({
+      title: b.label,
+      description: b.details || '',
+      subBranches: (b.children || []).map(c => c.label)
+    }))
   };
 }
 
@@ -769,16 +775,26 @@ export function parseOrBuildAiCreation(
         }
         case 'mindmap': {
           const root = dataObj.root || dataObj;
-          if (root && (root.label || root.children)) {
+          if (root && (root.label || root.children || dataObj.branches)) {
+            const rawChildren = Array.isArray(root.children)
+              ? root.children
+              : (Array.isArray(dataObj.branches) ? dataObj.branches : []);
+            const rootLabel = sanitizeText(root.label || root.title || dataObj.root_title || safeDocName);
             return {
               title: sanitizeText(parsed.creation_title || dataObj.title) || `Carte Mentale : ${safeDocName}`,
               content: {
                 root: {
                   id: sanitizeText(root.id) || 'root-node',
-                  label: sanitizeText(root.label || root.title || safeDocName),
-                  details: sanitizeText(root.details),
-                  children: Array.isArray(root.children) ? root.children : []
-                }
+                  label: rootLabel,
+                  details: sanitizeText(root.details || 'Thème central'),
+                  children: rawChildren
+                },
+                root_title: rootLabel,
+                branches: rawChildren.map((b: any, bIdx: number) => ({
+                  title: b.title || b.label || `Axe ${bIdx + 1}`,
+                  description: b.description || b.details || '',
+                  subBranches: Array.isArray(b.children) ? b.children.map((c: any) => c.label || c.title || String(c)) : (b.subBranches || [])
+                }))
               }
             };
           }

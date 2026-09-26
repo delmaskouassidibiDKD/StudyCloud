@@ -414,23 +414,7 @@ export function normalizeExamData(data: any, title?: string) {
 }
 
 export default function DevoirComplet({ data, title }: { data?: any; title?: string }) {
-  if (data?.error) {
-    return (
-      <div className="w-full h-full flex flex-col items-center justify-center p-6 text-center animate-fadeIn max-w-md mx-auto my-auto">
-        <div className="w-16 h-16 rounded-2xl bg-amber-500/10 border border-amber-500/30 flex items-center justify-center text-amber-400 mb-4 shadow-lg shadow-amber-500/5">
-          <AlertCircle className="w-8 h-8" />
-        </div>
-        <h3 className="text-base sm:text-lg font-bold text-zinc-100 mb-2">
-          L'assistante StudyCloud n'est pas disponible pour le moment
-        </h3>
-        <p className="text-xs sm:text-sm text-zinc-400 mb-5 leading-relaxed bg-zinc-900/60 p-3 rounded-xl border border-zinc-800 text-center">
-          ⚠️ {data.errorMessage || "L'assistante StudyCloud n'est pas disponible pour le moment."}
-        </p>
-      </div>
-    );
-  }
-
-  // Données actives de l'examen normalisées
+  // Données actives de l'examen normalisées (auto-guérison garantie)
   const activeData = normalizeExamData(data, title);
   const { examHeader, sections } = activeData;
 

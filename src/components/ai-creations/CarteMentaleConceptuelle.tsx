@@ -227,6 +227,8 @@ function buildConceptMapDataset(data: any, fallbackTitle?: string): ConceptMapDa
 
   const cols = Array.isArray(actualData.branches)
     ? actualData.branches
+    : Array.isArray(actualData.root?.children)
+    ? actualData.root.children
     : Array.isArray(actualData.columns)
     ? actualData.columns
     : Array.isArray(actualData.categories)
