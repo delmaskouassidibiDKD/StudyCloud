@@ -1801,6 +1801,76 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig, preloade
 }
 
 
+
+/**
+ * Générateur intelligent de métadonnées pour toute NOUVELLE table Cloudflare D1 détectée automatiquement
+ */
+function inferTableMetadata(tableName, columns = [], sampleRow = null) {
+  const cleanLabel = tableName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+  const colNames = columns.map(c => (c.name || c || '').toLowerCase());
+  const hasUserId = colNames.some(c => ['user_id', 'seller_id', 'student_id', 'author_id'].includes(c));
+
+  let role = "Table applicative détectée dynamiquement par le scanner D1 de StudyCloud.";
+  let uiConnection = "Base de données Cloudflare D1 (Table active détectée en temps réel)";
+  let usage = "Lecture/Écriture en direct selon les fonctionnalités de la plateforme.";
+
+  const lower = tableName.toLowerCase();
+  if (lower.includes('file') || lower.includes('doc') || lower.includes('media') || lower.includes('video') || lower.includes('audio') || lower.includes('image')) {
+    role = "Stockage et gestion des métadonnées de fichiers ou documents de cours.";
+    uiConnection = "Section Fichiers / Documents / Médias";
+    usage = "Alimentée lors du téléversement ou de la consultation de fichiers.";
+  } else if (lower.includes('ai') || lower.includes('chat') || lower.includes('prompt') || lower.includes('bot') || lower.includes('gemini')) {
+    role = "Modules, prompts ou historiques d'intelligence artificielle pédagogique.";
+    uiConnection = "Espace d'étude IA / Assistant Delmas";
+    usage = "Enregistré lors des échanges avec le tuteur IA.";
+  } else if (lower.includes('shop') || lower.includes('product') || lower.includes('cart') || lower.includes('order') || lower.includes('item')) {
+    role = "Gestion de la boutique, des articles, paniers ou commandes d'étudiants.";
+    uiConnection = "Boutique StudyCloud DKD";
+    usage = "Alimentée lors des ajouts d'articles ou des achats.";
+  } else if (lower.includes('user') || lower.includes('auth') || lower.includes('session') || lower.includes('profile')) {
+    role = "Gestion des comptes, sessions d'authentification ou profils d'étudiants.";
+    uiConnection = "Comptes & Sécurité des utilisateurs";
+    usage = "Lue et vérifiée lors de l'accès aux services de la plateforme.";
+  } else if (lower.includes('grade') || lower.includes('exam') || lower.includes('note') || lower.includes('quiz') || lower.includes('cert')) {
+    role = "Suivi des évaluations scolaires, moyennes ou certifications.";
+    uiConnection = "Notes, Examens & Certifications";
+    usage = "Mise à jour lors de la saisie d'évaluations ou du passage de tests.";
+  } else if (lower.includes('sched') || lower.includes('cal') || lower.includes('alarm') || lower.includes('event')) {
+    role = "Organisation de l'emploi du temps, agenda et rappels d'étude.";
+    uiConnection = "Agenda & Planning hebdomadaire";
+    usage = "Consulté pour l'organisation quotidienne des cours.";
+  } else if (lower.includes('pay') || lower.includes('sub') || lower.includes('bill') || lower.includes('credit') || lower.includes('price')) {
+    role = "Comptabilité, forfaits d'abonnement ou transactions.";
+    uiConnection = "Gestion des forfaits et paiements";
+    usage = "Enregistrement des paiements ou souscriptions de forfaits.";
+  }
+
+  let exampleStr = `{ table: "${tableName}", status: "auto_detected" }`;
+  if (sampleRow && typeof sampleRow === 'object') {
+    try {
+      exampleStr = JSON.stringify(sampleRow, null, 2);
+    } catch (e) {}
+  } else if (columns.length > 0) {
+    const obj = {};
+    columns.slice(0, 5).forEach(c => {
+      const name = c.name || c;
+      obj[name] = (name.includes('id') ? 'id_auto' : (name.includes('date') || name.includes('at') ? '2026-09-27' : 'valeur'));
+    });
+    exampleStr = JSON.stringify(obj, null, 2);
+  }
+
+  return {
+    table: tableName,
+    label: cleanLabel + ' (Détectée en direct)',
+    uiConnection,
+    role,
+    usage,
+    example: exampleStr,
+    isAutoDetected: true,
+    hasUserId
+  };
+}
+
 async function inspectAllD1TablesGlobal(db) {
   let dbTables = [];
   try {
@@ -1850,16 +1920,16 @@ async function inspectAllD1TablesGlobal(db) {
 
   for (const tableName of allTableNames) {
     let meta = metadataMap.get(tableName);
+    let columns = [];
+    let sampleRow = null;
+
     if (!meta) {
-      const cleanLabel = tableName.replace(/_/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
-      meta = {
-        table: tableName,
-        label: cleanLabel,
-        uiConnection: "Base de données Cloudflare D1 (Table applicative)",
-        role: "Table de stockage de données dynamiques pour StudyCloud",
-        usage: "Lecture/Écriture en temps réel selon les fonctionnalités actives",
-        example: `{ table: "${tableName}", status: "active" }`
-      };
+      try {
+        const colInfo = await safeQuery(db, `PRAGMA table_info("${tableName}")`, [], null);
+        if (colInfo && colInfo.results) columns = colInfo.results;
+        sampleRow = await safeFirst(db, `SELECT * FROM "${tableName}" LIMIT 1`, [], null);
+      } catch (eMeta) {}
+      meta = inferTableMetadata(tableName, columns, sampleRow);
     }
     dynamicTablesMeta.push(meta);
 
@@ -1945,6 +2015,8 @@ async function inspectRealR2Global(bucket, db, detailedUsers) {
     'trash/': { count: 0, bytes: 0, formatted: '0 Octets' }
   };
 
+  const dynamicR2Meta = [...R2_FOLDERS_METADATA];
+  const knownFoldersSet = new Set(R2_FOLDERS_METADATA.map(r => r.folder));
   let bucketScanned = false;
 
   // 1. Scan réel direct du Bucket Cloudflare R2
@@ -1982,6 +2054,19 @@ async function inspectRealR2Global(bucket, db, detailedUsers) {
               }
               folders[rootFolder].count++;
               folders[rootFolder].bytes += sz;
+
+              if (!knownFoldersSet.has(rootFolder)) {
+                knownFoldersSet.add(rootFolder);
+                const cleanFolderLabel = rootFolder.replace(/\/$/, '').replace(/[_-]/g, ' ').replace(/\b\w/g, l => l.toUpperCase());
+                dynamicR2Meta.push({
+                  folder: rootFolder,
+                  name: cleanFolderLabel + ' (Dossier R2 Détecté Automatiquement)',
+                  uiConnection: "Stockage Cloudflare R2 > Bucket Objets",
+                  role: "Nouveau dossier physique détecté automatiquement lors du scan du bucket R2",
+                  examples: key,
+                  isAutoDetected: true
+                });
+              }
             }
           }
         }
@@ -2072,7 +2157,7 @@ async function inspectRealR2Global(bucket, db, detailedUsers) {
     totalR2Bytes,
     totalR2Files,
     r2FoldersGlobal: folders,
-    r2Meta: R2_FOLDERS_METADATA
+    r2Meta: dynamicR2Meta
   };
 }
 
@@ -4684,14 +4769,14 @@ function renderDashboardHtml(data) {
         <!-- BARRE DE RECALCUL ET AUDIT DIRECT DES 36 TABLES -->
         <div class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex-wrap">
           <div class="flex items-center gap-2">
-            <span class="text-xs font-bold text-slate-200">📊 Audit D1 / R2 (${tablesMeta.length} Tables) :</span>
+            <span class="text-xs font-bold text-slate-200">📊 Audit D1 / R2 (\${tablesMeta.length} Tables) :</span>
             <span class="text-[11px] px-2 py-0.5 rounded-md bg-orange-500/20 text-orange-400 font-mono font-bold">\${s.original ? s.original.totalFormatted : displayTotalFormatted} facturés</span>
           </div>
           <button 
             onclick="recalculateUserStorage('\${u.id}')" 
             id="btn-recalc-storage-\${u.id}"
             class="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-md shadow-orange-600/30 cursor-pointer"
-            title="Recalculer les ${tablesMeta.length} tables D1 et les dossiers R2 de cet utilisateur en temps réel"
+            title="Recalculer les \${tablesMeta.length} tables D1 et les dossiers R2 de cet utilisateur en temps réel"
           >
             <span>🔄</span> <span>Recalculer le stockage en direct</span>
           </button>
@@ -4793,6 +4878,7 @@ function renderDashboardHtml(data) {
                     <div class="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
                       <span class="font-mono font-bold text-white bg-slate-800 px-1.5 py-0.5 rounded border border-slate-700 text-[10px] shrink-0">\${t.table}</span>
                       <span class="text-slate-400 text-[10px] truncate max-w-[130px] sm:max-w-[200px] md:max-w-[280px]">\${t.label}</span>
+                      \${t.isAutoDetected ? '<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">⚡ Auto</span>' : ''}
                       \${isExempt ? \`
                         <span class="px-1.5 py-0.5 rounded text-[8px] font-medium bg-slate-800 text-slate-400 border border-slate-700 shrink-0">🌐 Public</span>
                       \` : \`
@@ -4840,6 +4926,7 @@ function renderDashboardHtml(data) {
                     <div class="flex items-center gap-1.5 min-w-0 flex-1 overflow-hidden">
                       <span class="font-mono font-bold text-orange-400 bg-orange-500/10 px-1.5 py-0.5 rounded border border-orange-500/20 text-[10px] shrink-0">\${r.folder}</span>
                       <span class="text-slate-400 text-[10px] truncate max-w-[130px] sm:max-w-[200px] md:max-w-[280px]">\${r.name}</span>
+                      \${r.isAutoDetected ? '<span class="px-1.5 py-0.5 rounded text-[8px] font-bold bg-amber-500/20 text-amber-300 border border-amber-500/30 shrink-0">⚡ Auto</span>' : ''}
                       \${isExempt ? \`
                         <span class="px-1.5 py-0.5 rounded text-[8px] font-medium bg-slate-800 text-slate-400 border border-slate-700 shrink-0">🌐 Public</span>
                       \` : \`
