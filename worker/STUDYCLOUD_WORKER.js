@@ -4777,16 +4777,29 @@ var index_default = {
         const contentType = request.headers.get("Content-Type") || "application/octet-stream";
         const normMime = (contentType || "").toLowerCase().trim();
         const ext = fileName.includes(".") ? (fileName.split(".").pop() || "").toLowerCase().trim() : "";
-        const imageExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico", "tiff", "tif", "heic", "heif", "avif", "raw"];
-        const videoExts = ["mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "3gp", "m4v", "ts", "ogv", "mpg", "mpeg"];
-        const audioExts = ["mp3", "wav", "ogg", "flac", "m4a", "aac", "wma", "opus", "aiff", "alac", "mid", "midi"];
+        const imageExts = ["jpg", "jpeg", "png", "gif", "webp", "svg", "bmp", "ico", "tiff", "tif", "heic", "heif", "avif", "raw", "psd", "ai", "eps"];
+        const videoExts = ["mp4", "mov", "avi", "mkv", "webm", "flv", "wmv", "3gp", "m4v", "ts", "ogv", "mpg", "mpeg", "vob", "m2ts", "divx"];
+        const audioExts = ["mp3", "wav", "ogg", "flac", "m4a", "aac", "wma", "opus", "amr", "weba", "aiff", "alac", "mid", "midi", "caf", "3ga", "m4b", "m4p", "oga"];
+        const docExts = ["pdf", "doc", "docx", "xls", "xlsx", "ppt", "pptx", "txt", "csv", "odt", "ods", "odp", "rtf", "tex", "epub", "md", "xml", "json"];
+        
+        // DÉTECTION INVIOLABLE : L'extension est prioritaire sur le MIME car Chrome marque souvent .m4a en video/mp4 ou .opus en video/ogg
         let detectedNature = "documents";
-        if (normMime.startsWith("image/") || imageExts.includes(ext)) {
-          detectedNature = "images";
-        } else if (normMime.startsWith("video/") || videoExts.includes(ext)) {
-          detectedNature = "videos";
-        } else if (normMime.startsWith("audio/") || audioExts.includes(ext)) {
+        if (audioExts.includes(ext)) {
           detectedNature = "audio";
+        } else if (imageExts.includes(ext)) {
+          detectedNature = "images";
+        } else if (videoExts.includes(ext)) {
+          detectedNature = "videos";
+        } else if (docExts.includes(ext)) {
+          detectedNature = "documents";
+        } else if (normMime.startsWith("audio/")) {
+          detectedNature = "audio";
+        } else if (normMime.startsWith("image/")) {
+          detectedNature = "images";
+        } else if (normMime.startsWith("video/")) {
+          detectedNature = "videos";
+        } else {
+          detectedNature = "documents";
         }
         let finalCategory;
         if (requestedCategory === "auto" || requestedCategory === "" || requestedCategory === "all") {

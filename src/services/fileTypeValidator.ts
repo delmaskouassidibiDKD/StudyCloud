@@ -1,18 +1,31 @@
 /**
  * StudyCloud - Validation et Routage Intelligent des Fichiers
  *
- * 1. Détection universelle de la nature réelle d'un fichier (MIME + Extension).
+ * 1. Détection universelle et inviolable de la nature réelle d'un fichier (Extension prioritaire sur MIME erroné).
  * 2. Option A (Rejet Strict) : Utilisé dans les sous-menus spécifiques (Images, Vidéos, Audio, Documents).
+ *    Le navigateur bloque immédiatement le fichier : aucun enregistrement en cache, aucun upload, aucune apparition.
  * 3. Option B (Routage Intelligent) : Utilisé pour le bouton "+ Importer" de l'Accueil.
  */
 
 export type FileCategory = 'images' | 'videos' | 'audio' | 'documents' | 'classeur';
 
 export const EXTENSION_MAP = {
-  images: ['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif', 'heic', 'heif', 'avif', 'raw'],
-  videos: ['mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', '3gp', 'm4v', 'ts', 'ogv', 'mpg', 'mpeg'],
-  audio: ['mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'opus', 'amr', 'weba', 'aiff', 'alac', 'mid', 'midi', 'caf', '3ga'],
-  documents: ['pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'odt', 'ods', 'odp', 'rtf', 'tex', 'epub'],
+  images: [
+    'jpg', 'jpeg', 'png', 'gif', 'webp', 'svg', 'bmp', 'ico', 'tiff', 'tif',
+    'heic', 'heif', 'avif', 'raw', 'psd', 'ai', 'eps'
+  ],
+  videos: [
+    'mp4', 'mov', 'avi', 'mkv', 'webm', 'flv', 'wmv', '3gp', 'm4v', 'ts',
+    'ogv', 'mpg', 'mpeg', 'vob', 'm2ts', 'divx', 'asf'
+  ],
+  audio: [
+    'mp3', 'wav', 'ogg', 'flac', 'm4a', 'aac', 'wma', 'opus', 'amr', 'weba',
+    'aiff', 'alac', 'mid', 'midi', 'caf', '3ga', 'm4b', 'm4p', 'oga'
+  ],
+  documents: [
+    'pdf', 'doc', 'docx', 'xls', 'xlsx', 'ppt', 'pptx', 'txt', 'csv', 'odt',
+    'ods', 'odp', 'rtf', 'tex', 'epub', 'md', 'xml', 'json', 'log'
+  ],
 };
 
 export const CATEGORY_LABELS: Record<FileCategory, string> = {
@@ -24,22 +37,52 @@ export const CATEGORY_LABELS: Record<FileCategory, string> = {
 };
 
 /**
- * Détecte la véritable nature d'un fichier en inspectant son type MIME et son extension
+ * Détecte la véritable nature d'un fichier.
+ * RÈGLE D'OR : L'extension est PRIORITAIRE sur le type MIME car sous Windows/Chrome,
+ * des fichiers audio (.m4a, .opus, .ogg, .weba) sont fréquemment marqués avec des MIME vidéo (video/mp4, video/ogg, video/webm).
  */
-export function detectFileCategory(file: File): 'images' | 'videos' | 'audio' | 'documents' {
-  const normName = (file.name || '').toLowerCase().trim();
-  const mime = (file.type || '').toLowerCase().trim();
+export function detectFileCategory(file: { name?: string; type?: string }): 'images' | 'videos' | 'audio' | 'documents' {
+  const normName = ((file && file.name) || '').toLowerCase().trim();
+  const mime = ((file && file.type) || '').toLowerCase().trim();
   const ext = normName.includes('.') ? (normName.split('.').pop() || '').toLowerCase().trim() : '';
 
-  if (mime.startsWith('image/') || EXTENSION_MAP.images.includes(ext)) {
-    return 'images';
-  }
-  if (mime.startsWith('video/') || EXTENSION_MAP.videos.includes(ext)) {
-    return 'videos';
-  }
-  if (mime.startsWith('audio/') || EXTENSION_MAP.audio.includes(ext)) {
+  // 1. EXTENSIONS STRICTES (Priorité absolue pour empêcher tout faux classement)
+  if (EXTENSION_MAP.audio.includes(ext)) {
     return 'audio';
   }
+  if (EXTENSION_MAP.images.includes(ext)) {
+    return 'images';
+  }
+  if (EXTENSION_MAP.videos.includes(ext)) {
+    return 'videos';
+  }
+  if (EXTENSION_MAP.documents.includes(ext)) {
+    return 'documents';
+  }
+
+  // 2. TYPES MIME (Seulement si l'extension est absente ou non répertoriée)
+  if (mime.startsWith('audio/')) {
+    return 'audio';
+  }
+  if (mime.startsWith('image/')) {
+    return 'images';
+  }
+  if (mime.startsWith('video/')) {
+    return 'videos';
+  }
+  if (
+    mime.startsWith('text/') ||
+    mime.includes('pdf') ||
+    mime.includes('document') ||
+    mime.includes('sheet') ||
+    mime.includes('presentation') ||
+    mime.includes('msword') ||
+    mime.includes('excel') ||
+    mime.includes('powerpoint')
+  ) {
+    return 'documents';
+  }
+
   return 'documents';
 }
 
@@ -57,6 +100,7 @@ export interface ValidationResult {
 /**
  * Validation Option A (Rejet Strict) pour les menus dédiés
  * Si un fichier ne correspond pas au menu cible, il est rejeté avec un motif clair.
+ * Le navigateur bloque son apparition, son enregistrement et son téléchargement.
  */
 export function validateFilesForMenu(
   files: File[],
@@ -82,7 +126,7 @@ export function validateFilesForMenu(
       rejectedFiles.push({
         file,
         detectedCategory: detected,
-        reason: `"${file.name}" est un fichier ${detectedLabel}. Le menu "${expectedLabel}" n'accepte que des fichiers ${expectedLabel.toLowerCase()}.`,
+        reason: `« ${file.name} » est un fichier ${detectedLabel}. Le menu « ${expectedLabel} » n'accepte strictement que des fichiers ${expectedLabel.toLowerCase()}. L'apparition et l'importation de ce fichier ont été bloquées par le navigateur.`,
       });
     }
   }

@@ -1407,9 +1407,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       }
     });
 
+    // Empêche le comportement natif du navigateur (ouvrir ou télécharger le fichier) lors d'un glisser-déposer
+    const handleWindowDragOver = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    const handleWindowDrop = (e: DragEvent) => {
+      e.preventDefault();
+    };
+    window.addEventListener('dragover', handleWindowDragOver);
+    window.addEventListener('drop', handleWindowDrop);
+
     return () => {
       isMounted = false;
       unsubscribe();
+      window.removeEventListener('dragover', handleWindowDragOver);
+      window.removeEventListener('drop', handleWindowDrop);
     };
   }, []);
 
@@ -1798,7 +1810,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (viewId === 'studycloud-category-images' || currentTab === 'images') {
       return {
         category: 'images' as const,
-        accept: 'image/*',
+        accept: 'image/*,.jpg,.jpeg,.png,.gif,.webp,.svg,.bmp,.ico,.tiff,.tif,.heic,.heif,.avif,.raw,.psd,.ai,.eps',
         label: 'Importer',
         fullLabel: 'Importer une image',
         title: 'Importer une image dans Images',
@@ -1807,11 +1819,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       };
     }
 
-    // Vidéos (Prend la couleur violette du logo Vidéos)
+    // Vidéos (Prend la couleur violette du logo Vidéos - strictement les vidéos)
     if (viewId === 'studycloud-category-videos' || currentTab === 'videos') {
       return {
         category: 'videos' as const,
-        accept: 'video/*',
+        accept: 'video/*,.mp4,.mov,.avi,.mkv,.webm,.flv,.wmv,.3gp,.m4v,.ts,.ogv,.mpg,.mpeg,.vob,.m2ts,.divx',
         label: 'Importer',
         fullLabel: 'Importer une vidéo',
         title: 'Importer une vidéo dans Vidéos',
@@ -1824,7 +1836,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (viewId === 'studycloud-category-audio' || currentTab === 'audio') {
       return {
         category: 'audio' as const,
-        accept: 'audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus,.wma,.amr,.weba,.aiff,.alac,.mid,.midi,.caf,.3ga',
+        accept: 'audio/*,.mp3,.wav,.ogg,.m4a,.aac,.flac,.opus,.wma,.amr,.weba,.aiff,.alac,.mid,.midi,.caf,.3ga,.m4b,.m4p,.oga',
         label: 'Importer',
         fullLabel: 'Importer un audio',
         title: 'Importer un fichier audio dans Musique',
@@ -1837,7 +1849,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     if (viewId === 'studycloud-category-documents' || currentTab === 'documents') {
       return {
         category: 'documents' as const,
-        accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.odt,.rtf',
+        accept: '.pdf,.doc,.docx,.xls,.xlsx,.ppt,.pptx,.txt,.csv,.odt,.ods,.odp,.rtf,.tex,.epub,.md,.xml,.json,.log',
         label: 'Importer',
         fullLabel: 'Importer un document',
         title: 'Importer un document dans Documents',
@@ -1851,15 +1863,112 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   const menuImportConfig = getMenuImportConfig();
 
-  // 1. Traiter les fichiers importés depuis l'Accueil (Option B : Routage Intelligent automatique)
-  const handleHomeFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const fileList = e.target.files;
-    if (!fileList || fileList.length === 0) return;
-    const files = Array.from(fileList) as File[];
+  // A. EXÉCUTION OPTION A (REJET STRICT DANS LES SOUS-MENUS SPÉCIFIQUES)
+  // Bloque immédiatement le fichier au niveau du navigateur si non conforme :
+  // Aucun stockage local, aucun téléversement, aucune apparition dans l'interface !
+  const processMenuFiles = (files: File[], importConfig: NonNullable<ReturnType<typeof getMenuImportConfig>>) => {
+    if (!files || files.length === 0) return;
 
-    if (fileInputRef.current) fileInputRef.current.value = '';
+    const { validFiles, rejectedFiles } = validateFilesForMenu(files, importConfig.category as any);
 
-    // Détection et attribution automatique pour chaque fichier
+    if (rejectedFiles.length > 0) {
+      if (validFiles.length === 0) {
+        // Blocage total : l'utilisateur a tenté d'importer un type interdit dans ce menu (ex: audio dans vidéo)
+        const first = rejectedFiles[0];
+        showProfileToast(
+          `❌ Fichier bloqué par le navigateur : ${first.reason}`,
+          'error'
+        );
+        // Arrêt immédiat : aucun enregistrement, aucun upload, aucune apparition !
+        return;
+      } else {
+        // Cas mixte : avertissement pour les fichiers interdits bloqués
+        showProfileToast(
+          `⚠️ ${rejectedFiles.length} fichier(s) bloqué(s) (format interdit dans ${CATEGORY_LABELS[importConfig.category as any] || 'ce menu'}). ${validFiles.length} fichier(s) valide(s) accepté(s).`,
+          'warning'
+        );
+      }
+    }
+
+    if (validFiles.length === 0) return;
+
+    // Création des FileItems UNIQUEMENT pour les fichiers strictement autorisés
+    const newItemsWithFiles = validFiles.map((file, idx) => {
+      const localBlobUrl = URL.createObjectURL(file);
+      const normName = file.name.toLowerCase();
+      const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
+      const fileId = `cf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
+      const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
+
+      // Sauvegarde IndexedDB immédiate pour le fichier validé
+      storeFileBlob(fileId, file).catch(() => {});
+
+      const actualCat = importConfig.category === 'classeur' ? 'documents' : importConfig.category;
+      const isAud = actualCat === 'audio';
+      const isVid = actualCat === 'videos';
+
+      const item: FileItem = {
+        id: fileId,
+        name: file.name,
+        category: actualCat,
+        source: importConfig.category === 'classeur' && opened3DFolder ? opened3DFolder.name : 'StudyCloud Local',
+        size: sizeKb,
+        sizeBytes: file.size,
+        date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
+        extension: ext,
+        url: localBlobUrl,
+        previewUrl: isAud ? undefined : localBlobUrl,
+        videoUrl: isVid ? localBlobUrl : undefined,
+        audioUrl: isAud ? localBlobUrl : undefined,
+        originalFolderId: importConfig.folderId
+      };
+      return { file, item };
+    });
+
+    const newItems = newItemsWithFiles.map(x => x.item);
+    const fileIds = newItems.map(x => x.id);
+
+    // Ajout immédiat à la liste du menu dédié
+    newItems.forEach(item => {
+      unmarkRecentLocallyDeleted(item.id, item.name);
+      unmarkFileLocallyDeleted(item.id, item.name);
+    });
+    if (importConfig.category === 'images') {
+      setImagesList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
+    } else if (importConfig.category === 'videos') {
+      setVideosList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
+    } else if (importConfig.category === 'audio') {
+      setAudioList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
+    } else if (importConfig.category === 'documents') {
+      setDocumentsList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
+    } else if (importConfig.category === 'classeur' && importConfig.folderId) {
+      setFolderFilesMap(prev => ({
+        ...prev,
+        [importConfig.folderId!]: [...newItems, ...(prev[importConfig.folderId!] || []).filter(f => !fileIds.includes(f.id))]
+      }));
+    }
+    setCloudRecentFiles(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
+
+    // Animation de trait qui se remplit
+    startSavingAnimation(fileIds);
+
+    // Envoi en tâche de fond via UploadQueue
+    UploadQueue.enqueueExisting(newItemsWithFiles, {
+      category: importConfig.category as any,
+      folderId: importConfig.folderId,
+      folderName: opened3DFolder?.name
+    });
+
+    if (rejectedFiles.length === 0) {
+      showProfileToast(`${validFiles.length} fichier(s) importé(s) dans ${CATEGORY_LABELS[importConfig.category as any] || 'ce menu'} !`, 'success');
+    }
+  };
+
+  // B. EXÉCUTION OPTION B (ROUTAGE INTELLIGENT DEPUIS L'ACCUEIL)
+  // Détecte la nature exacte de chaque fichier et le classe automatiquement dans son menu
+  const processHomeFiles = (files: File[]) => {
+    if (!files || files.length === 0) return;
+
     const newItemsWithFiles = files.map((file, idx) => {
       const localBlobUrl = URL.createObjectURL(file);
       const normName = file.name.toLowerCase();
@@ -1867,7 +1976,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const fileId = `cf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
       const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
 
-      // Détection de la véritable nature du fichier
+      // Détection fiable de la nature réelle du fichier
       const autoCat = detectFileCategory(file);
 
       // Sauvegarde binaire locale immédiate dans IndexedDB
@@ -1893,7 +2002,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const newItems = newItemsWithFiles.map(x => x.item);
     const fileIds = newItems.map(x => x.id);
 
-    // Ajout immédiat aux listes respectives (affichage instantané selon la catégorie attribuée)
+    // Distribution immédiate dans les menus respectifs
     newItems.forEach(item => {
       unmarkRecentLocallyDeleted(item.id, item.name);
       unmarkFileLocallyDeleted(item.id, item.name);
@@ -1904,13 +2013,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     });
     setCloudRecentFiles(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
 
-    // Démarrer l'animation de progression sur les cartes ("un trait qui se remplit")
     startSavingAnimation(fileIds);
-
-    // Envoi en arrière-plan via UploadQueue (concurrence max 2, auto-retry, notifications)
     UploadQueue.enqueueExisting(newItemsWithFiles);
 
-    // Notification claire du routage automatique
     const counts = { images: 0, videos: 0, audio: 0, documents: 0 };
     newItems.forEach(item => {
       if (item.category && counts[item.category as keyof typeof counts] !== undefined) {
@@ -1929,108 +2034,59 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     );
   };
 
-  // 2. Traiter les fichiers importés depuis un sous-menu spécifique (Option A : Rejet Strict)
+  // 1. Bouton "+ Importer" de l'Accueil (ou fallback sous-menu sécurisé)
+  const handleHomeFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const fileList = e.target.files;
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList) as File[];
+
+    if (fileInputRef.current) fileInputRef.current.value = '';
+
+    // SÉCURITÉ GARANTIE : Si l'utilisateur est actuellement à l'intérieur d'un sous-menu spécifique,
+    // appliquer STRICTEMENT le Rejet Option A au lieu du routage automatique !
+    const activeImportConfig = getMenuImportConfig();
+    if (activeImportConfig) {
+      processMenuFiles(files, activeImportConfig);
+      return;
+    }
+
+    processHomeFiles(files);
+  };
+
+  // 2. Bouton "+ Importer" dédié d'un sous-menu spécifique (Option A : Rejet Strict)
   const handleMenuFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
     const files = Array.from(fileList) as File[];
 
+    if (categoryFileInputRef.current) categoryFileInputRef.current.value = '';
+
     const importConfig = getMenuImportConfig();
     if (!importConfig) return;
 
-    if (categoryFileInputRef.current) categoryFileInputRef.current.value = '';
+    processMenuFiles(files, importConfig);
+  };
 
-    // VALIDATION STRICTE OPTION A : Vérifier que les fichiers correspondent exactement au menu dédié
-    const { validFiles, rejectedFiles } = validateFilesForMenu(files, importConfig.category as any);
+  // 3. Gestionnaire universel de Drag & Drop (Déposer un fichier sur la fenêtre)
+  const handleGlobalDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const fileList = e.dataTransfer?.files;
+    if (!fileList || fileList.length === 0) return;
+    const files = Array.from(fileList) as File[];
 
-    if (rejectedFiles.length > 0) {
-      if (validFiles.length === 0) {
-        // Tous les fichiers sélectionnés sont refusés
-        const first = rejectedFiles[0];
-        showProfileToast(
-          `❌ Fichier refusé : ${first.reason}`,
-          'error'
-        );
-        return;
-      } else {
-        // Sélection mixte : avertissement clair pour les fichiers rejetés
-        showProfileToast(
-          `⚠️ ${rejectedFiles.length} fichier(s) refusé(s) (format non autorisé dans ${CATEGORY_LABELS[importConfig.category as any] || 'ce menu'}). ${validFiles.length} fichier(s) valide(s) accepté(s).`,
-          'warning'
-        );
-      }
+    if (opened3DFolder) {
+      handleFolderFileUpload({ target: { files: fileList } } as any, opened3DFolder.id);
+      return;
     }
 
-    if (validFiles.length === 0) return;
-
-    // 1. Créer immédiatement les objets FileItem pour les fichiers strictement validés
-    const newItemsWithFiles = validFiles.map((file, idx) => {
-      const localBlobUrl = URL.createObjectURL(file);
-      const normName = file.name.toLowerCase();
-      const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
-      const fileId = `cf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
-      const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
-
-      // Stocker le binaire immédiatement dans IndexedDB
-      storeFileBlob(fileId, file).catch(() => {});
-
-      const isAudio = importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i);
-      const isVideo = importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv|flv|wmv|3gp|m4v)$/i);
-
-      const item: FileItem = {
-        id: fileId,
-        name: file.name,
-        category: importConfig.category === 'classeur' ? 'documents' : importConfig.category,
-        source: importConfig.category === 'classeur' && opened3DFolder ? opened3DFolder.name : 'StudyCloud Local',
-        size: sizeKb,
-        sizeBytes: file.size,
-        date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
-        extension: ext,
-        url: localBlobUrl,
-        previewUrl: isAudio ? undefined : localBlobUrl,
-        videoUrl: isVideo ? localBlobUrl : undefined,
-        audioUrl: isAudio ? localBlobUrl : undefined,
-        originalFolderId: importConfig.folderId
-      };
-      return { file, item };
-    });
-
-    const newItems = newItemsWithFiles.map(x => x.item);
-    const fileIds = newItems.map(x => x.id);
-
-    // 2. Ajout immédiat à la liste du menu : les cartes apparaissent instantanément
-    newItems.forEach(item => {
-      unmarkRecentLocallyDeleted(item.id, item.name);
-      unmarkFileLocallyDeleted(item.id, item.name);
-    });
-    if (importConfig.category === 'images') {
-      setImagesList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
-    } else if (importConfig.category === 'videos') {
-      setVideosList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
-    } else if (importConfig.category === 'audio') {
-      setAudioList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
-    } else if (importConfig.category === 'documents') {
-      setDocumentsList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
-    } else if (importConfig.category === 'classeur' && importConfig.folderId) {
-      setFolderFilesMap(prev => ({
-        ...prev,
-        [importConfig.folderId!]: [...newItems, ...(prev[importConfig.folderId!] || []).filter(f => !fileIds.includes(f.id))]
-      }));
-    }
-    setCloudRecentFiles(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
-
-    // 3. Lancer l'animation de trait qui se remplit sur chaque fichier importé
-    startSavingAnimation(fileIds);
-
-    // 4. Envoi en arrière-plan via UploadQueue (concurrence max 2, auto-retry, notifications)
-    UploadQueue.enqueueExisting(newItemsWithFiles, {
-      category: importConfig.category as any,
-      folderId: importConfig.folderId,
-      folderName: opened3DFolder?.name
-    });
-
-    if (rejectedFiles.length === 0) {
-      showProfileToast(`${validFiles.length} fichier(s) importé(s) dans ${CATEGORY_LABELS[importConfig.category as any] || 'ce menu'} !`, 'success');
+    const activeConfig = getMenuImportConfig();
+    if (activeConfig) {
+      // Déposé dans un sous-menu dédié (ex: Vidéos) : Option A (Rejet Strict)
+      processMenuFiles(files, activeConfig);
+    } else {
+      // Déposé sur l'accueil : Option B (Routage Intelligent)
+      processHomeFiles(files);
     }
   };
 
@@ -3263,52 +3319,56 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     return result;
   };
 
-  // Liste des documents pour le sous-menu Documents (Image 1)
+  // Liste des documents pour le sous-menu Documents (Image 1) - Filtrage strict par nature
   const filteredDocuments = useMemo(() => {
     const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
     const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+    const isDoc = (f: FileItem) => detectFileCategory({ name: f.name, type: f.type || '' }) === 'documents';
 
-    const list = [...documentsList, ...cloudRecentFiles.filter(f => (f.category === 'documents' || /\.(pdf|docx?|xlsx?|pptx?|txt|csv)$/i.test(f.name)) && !documentsList.some(s => s.id === f.id || s.name === f.name))].filter(isClean);
+    const list = [...documentsList, ...cloudRecentFiles.filter(f => isDoc(f) && !documentsList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isDoc);
     const filtered = list.filter(doc => {
       return subSearchQuery.trim() === '' || doc.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
     return applySorting(filtered);
   }, [documentsList, cloudRecentFiles, subSearchQuery, sortOption]);
 
-  // Liste des images pour le sous-menu Images (Image 2)
+  // Liste des images pour le sous-menu Images (Image 2) - Filtrage strict par nature
   const filteredImages = useMemo(() => {
     const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
     const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+    const isImg = (f: FileItem) => detectFileCategory({ name: f.name, type: f.type || '' }) === 'images';
 
-    const list = [...imagesList, ...cloudRecentFiles.filter(f => (f.category === 'images' || f.isImage || /\.(jpe?g|png|webp|gif|svg|avif)$/i.test(f.name)) && !imagesList.some(s => s.id === f.id || s.name === f.name))].filter(isClean);
+    const list = [...imagesList, ...cloudRecentFiles.filter(f => isImg(f) && !imagesList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isImg);
     const filtered = list.filter(img => {
       return subSearchQuery.trim() === '' || img.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
     return applySorting(filtered);
   }, [imagesList, cloudRecentFiles, subSearchQuery, sortOption]);
 
-  // Liste des vidéos pour le sous-menu Vidéos (Image 3)
+  // Liste des vidéos pour le sous-menu Vidéos (Image 3) - FILTRAGE STRICT : AUCUN AUDIO OU AUTRE FORMAT NE PEUT APPARAÎTRE
   const filteredVideos = useMemo(() => {
     const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
     const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+    const isVid = (f: FileItem) => detectFileCategory({ name: f.name, type: f.type || '' }) === 'videos';
 
-    const list = [...videosList, ...cloudRecentFiles.filter(f => (f.category === 'videos' || f.isVideo || Boolean(f.videoUrl) || /\.(mp4|webm|mkv|mov|avi|flv|wmv|m4v|3gp)$/i.test(f.name)) && !videosList.some(s => s.id === f.id || s.name === f.name))].filter(isClean);
+    const list = [...videosList, ...cloudRecentFiles.filter(f => isVid(f) && !videosList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isVid);
     const filtered = list.filter(vid => {
       return subSearchQuery.trim() === '' || vid.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
     return applySorting(filtered);
   }, [videosList, cloudRecentFiles, subSearchQuery, sortOption]);
 
-  // Liste audio pour le sous-menu Audio (Image 4)
+  // Liste audio pour le sous-menu Audio (Image 4) - FILTRAGE STRICT : UNIQUEMENT DES FICHIERS AUDIO
   const filteredAudio = useMemo(() => {
     const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
     const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
+    const isAud = (f: FileItem) => detectFileCategory({ name: f.name, type: f.type || '' }) === 'audio';
 
-    const list = [...audioList, ...cloudRecentFiles.filter(f => (f.category === 'audio' || f.isAudio || Boolean(f.audioUrl) || /\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i.test(f.name)) && !audioList.some(s => s.id === f.id || s.name === f.name))].filter(isClean);
+    const list = [...audioList, ...cloudRecentFiles.filter(f => isAud(f) && !audioList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isAud);
     const filtered = list.filter(aud => {
       return subSearchQuery.trim() === '' || aud.name.toLowerCase().includes(subSearchQuery.toLowerCase());
     });
@@ -9753,7 +9813,11 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   );
 
   return (
-    <div className={`transition-colors duration-300 bg-[#F4F6F8] dark:bg-[#0C111D] text-stone-900 dark:text-slate-100 flex flex-col overflow-y-auto selection:bg-blue-600 selection:text-white ${
+    <div 
+      onDragOver={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      onDragEnter={(e) => { e.preventDefault(); e.stopPropagation(); }}
+      onDrop={handleGlobalDrop}
+      className={`transition-colors duration-300 bg-[#F4F6F8] dark:bg-[#0C111D] text-stone-900 dark:text-slate-100 flex flex-col overflow-y-auto selection:bg-blue-600 selection:text-white ${
       isFullscreen
         ? 'fixed inset-0 z-[1000] w-screen h-screen'
         : 'fixed top-[64px] md:top-[68px] bottom-0 left-0 md:left-64 right-0 z-30 min-h-[calc(100vh-68px)]'
