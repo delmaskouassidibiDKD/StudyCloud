@@ -6010,7 +6010,7 @@ var index_default = {
         }
         return jsonResponse({ success: true, verified: true, message: "Dossier s\xE9curis\xE9 d\xE9verrouill\xE9" }, 200, origin);
       }
-      if (path === "/api/cloud/secure/files") {
+      if (path === "/api/cloud/secure/files" || path === "/api/cloud/secure") {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {

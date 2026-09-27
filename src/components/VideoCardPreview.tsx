@@ -84,7 +84,7 @@ export const VideoCardPreview: React.FC<VideoCardPreviewProps> = ({ vid }) => {
     return () => {
       isMounted = false;
     };
-  }, [vid.id, targetVideoUrl, thumbUrl, vid.name, vid.size]);
+  }, [vid.id, targetVideoUrl]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // Si on a une miniature image valide et pas d'erreur de chargement
   if (thumbUrl && !hasError) {

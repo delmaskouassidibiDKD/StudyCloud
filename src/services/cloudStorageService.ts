@@ -60,6 +60,21 @@ export interface ReorderFileItem {
   positionY?: number;
 }
 
+// ─── Helper : fetch avec timeout strict (évite les requêtes bloquées indéfiniment) ───
+async function fetchWithTimeout(
+  url: string,
+  options: RequestInit = {},
+  timeoutMs = 4000
+): Promise<Response> {
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    return await fetch(url, { ...options, signal: controller.signal });
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export const CloudStorageAPI = {
   // --------------------------------------------------------------------------
   // Vue d'ensemble Espace Cloud (Synthèse sans table dédiée)
@@ -67,7 +82,7 @@ export const CloudStorageAPI = {
   async getOverview(): Promise<CloudOverviewData | null> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/overview?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/overview?userId=${getUserIdParam()}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -86,7 +101,7 @@ export const CloudStorageAPI = {
   async getClasseurFolders(): Promise<ClasseurCreatedFolder[]> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/classeur/folders?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/classeur/folders?userId=${getUserIdParam()}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -120,7 +135,7 @@ export const CloudStorageAPI = {
   async saveClasseurFolder(folder: ClasseurCreatedFolder): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/classeur/folders?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/classeur/folders?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -150,7 +165,7 @@ export const CloudStorageAPI = {
   async reorderClasseurFolders(reorderList: ReorderFolderItem[]): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/classeur/folders?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/classeur/folders?userId=${getUserIdParam()}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({ reorderList }),
@@ -165,7 +180,7 @@ export const CloudStorageAPI = {
   async updateClasseurFolder(id: string, updates: Partial<ClasseurCreatedFolder>): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/classeur/folders?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/classeur/folders?userId=${getUserIdParam()}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({ id, ...updates }),
@@ -180,7 +195,7 @@ export const CloudStorageAPI = {
   async deleteClasseurFolder(folderId: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/classeur/folders?id=${encodeURIComponent(folderId)}&userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/classeur/folders?id=${encodeURIComponent(folderId)}&userId=${getUserIdParam()}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -200,7 +215,7 @@ export const CloudStorageAPI = {
       const url = folderId
         ? `${baseUrl}/api/cloud/classeur/files?folderId=${encodeURIComponent(folderId)}&userId=${getUserIdParam()}`
         : `${baseUrl}/api/cloud/classeur/files?userId=${getUserIdParam()}`;
-      const res = await fetch(url, {
+      const res = await fetchWithTimeout(url, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -216,7 +231,7 @@ export const CloudStorageAPI = {
   async saveClasseurFile(file: FileItem, folderId: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/classeur/files?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/classeur/files?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({
@@ -252,7 +267,7 @@ export const CloudStorageAPI = {
   async reorderClasseurFiles(reorderList: ReorderFileItem[]): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/classeur/files?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/classeur/files?userId=${getUserIdParam()}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({ reorderList }),
@@ -267,7 +282,7 @@ export const CloudStorageAPI = {
   async updateClasseurFile(fileId: string, updates: Partial<FileItem>): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/classeur/files?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/classeur/files?userId=${getUserIdParam()}`, {
         method: 'PUT',
         headers: getAuthHeaders(),
         body: JSON.stringify({ id: fileId, ...updates }),
@@ -282,7 +297,7 @@ export const CloudStorageAPI = {
   async deleteClasseurFile(fileId: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/classeur/files?id=${encodeURIComponent(fileId)}&userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/classeur/files?id=${encodeURIComponent(fileId)}&userId=${getUserIdParam()}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -299,7 +314,7 @@ export const CloudStorageAPI = {
   async getAudioList(): Promise<FileItem[]> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/audio?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/audio?userId=${getUserIdParam()}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -327,7 +342,7 @@ export const CloudStorageAPI = {
   async saveAudio(item: FileItem): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/audio?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/audio?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(item),
@@ -342,7 +357,7 @@ export const CloudStorageAPI = {
   async deleteAudio(id: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/audio?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/audio?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -359,7 +374,7 @@ export const CloudStorageAPI = {
   async getImagesList(): Promise<FileItem[]> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/images?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/images?userId=${getUserIdParam()}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -375,7 +390,7 @@ export const CloudStorageAPI = {
   async saveImage(item: FileItem): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/images?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/images?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(item),
@@ -390,7 +405,7 @@ export const CloudStorageAPI = {
   async deleteImage(id: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/images?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/images?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -407,7 +422,7 @@ export const CloudStorageAPI = {
   async getVideosList(): Promise<FileItem[]> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/videos?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/videos?userId=${getUserIdParam()}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -434,7 +449,7 @@ export const CloudStorageAPI = {
   async saveVideo(item: FileItem): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/videos?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/videos?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(item),
@@ -449,7 +464,7 @@ export const CloudStorageAPI = {
   async deleteVideo(id: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/videos?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/videos?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -466,7 +481,7 @@ export const CloudStorageAPI = {
   async getDocumentsList(): Promise<FileItem[]> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/documents?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/documents?userId=${getUserIdParam()}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -482,7 +497,7 @@ export const CloudStorageAPI = {
   async saveDocument(item: FileItem): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/documents?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/documents?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(item),
@@ -497,7 +512,7 @@ export const CloudStorageAPI = {
   async deleteDocument(id: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/documents?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/documents?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -514,7 +529,7 @@ export const CloudStorageAPI = {
   async getDownloadsList(): Promise<FileItem[]> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/downloads?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/downloads?userId=${getUserIdParam()}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -530,7 +545,7 @@ export const CloudStorageAPI = {
   async saveDownload(item: FileItem): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/downloads?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/downloads?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify(item),
@@ -545,7 +560,7 @@ export const CloudStorageAPI = {
   async deleteDownload(id: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/downloads?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/downloads?id=${encodeURIComponent(id)}&userId=${getUserIdParam()}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -562,7 +577,7 @@ export const CloudStorageAPI = {
   async checkSecurePinConfigured(): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/secure/config?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/secure/config?userId=${getUserIdParam()}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -577,7 +592,7 @@ export const CloudStorageAPI = {
   async setSecurePin(pin: string, oldPin?: string): Promise<{ success: boolean; error?: string }> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/secure/set-pin?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/secure/set-pin?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ pin, oldPin }),
@@ -595,7 +610,7 @@ export const CloudStorageAPI = {
   async verifySecurePin(pin: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/secure/verify-pin?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/secure/verify-pin?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ pin }),
@@ -616,7 +631,7 @@ export const CloudStorageAPI = {
   async getSecureFiles(): Promise<FileItem[]> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/secure/files?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/secure/files?userId=${getUserIdParam()}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -632,7 +647,7 @@ export const CloudStorageAPI = {
   async moveToSecureFolder(file: FileItem, fromCategory: string, fromFolderId?: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/secure/files?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/secure/files?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ file, fromCategory, fromFolderId }),
@@ -647,7 +662,7 @@ export const CloudStorageAPI = {
   async restoreFromSecureFolder(fileId: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/secure/files?id=${encodeURIComponent(fileId)}&userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/secure/files?id=${encodeURIComponent(fileId)}&userId=${getUserIdParam()}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -664,7 +679,7 @@ export const CloudStorageAPI = {
   async getTrashFiles(): Promise<FileItem[]> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/trash?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/trash?userId=${getUserIdParam()}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -680,7 +695,7 @@ export const CloudStorageAPI = {
   async restoreTrashItem(id: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/trash?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/trash?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ id }),
@@ -695,7 +710,7 @@ export const CloudStorageAPI = {
   async restoreMultipleTrash(ids: string[]): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/trash?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/trash?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ ids }),
@@ -710,7 +725,7 @@ export const CloudStorageAPI = {
   async deleteTrashPermanently(ids: string[]): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/trash?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/trash?userId=${getUserIdParam()}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
         body: JSON.stringify({ ids }),
@@ -725,7 +740,7 @@ export const CloudStorageAPI = {
   async emptyTrash(): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/trash?empty=true&userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/trash?empty=true&userId=${getUserIdParam()}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -742,7 +757,7 @@ export const CloudStorageAPI = {
   async saveMediaThumbnail(fileId: string, category: string, dataUrl: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/thumbnail?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/thumbnail?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ fileId, category, dataUrl }),
@@ -773,7 +788,7 @@ export const CloudStorageAPI = {
         headers['x-thumbnail-data'] = thumbnailDataUrl;
       }
 
-      const res = await fetch(uploadUrl, {
+      const res = await fetchWithTimeout(uploadUrl, {
         method: 'POST',
         headers,
         body: file,
@@ -823,7 +838,7 @@ export const CloudStorageAPI = {
   async getFavorites(): Promise<{ itemId: string; category: string }[]> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/favorites?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/favorites?userId=${getUserIdParam()}`, {
         headers: getAuthHeaders(),
       });
       if (!res.ok) return [];
@@ -841,7 +856,7 @@ export const CloudStorageAPI = {
   async addFavorite(itemId: string, category: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/favorites?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/favorites?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ itemId, category }),
@@ -856,7 +871,7 @@ export const CloudStorageAPI = {
   async removeFavorite(itemId: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/favorites?itemId=${encodeURIComponent(itemId)}&userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/favorites?itemId=${encodeURIComponent(itemId)}&userId=${getUserIdParam()}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -873,7 +888,7 @@ export const CloudStorageAPI = {
   async getPinned(): Promise<{ itemId: string; category: string }[]> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/pinned?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/pinned?userId=${getUserIdParam()}`, {
         headers: getAuthHeaders(),
       });
       if (!res.ok) return [];
@@ -891,7 +906,7 @@ export const CloudStorageAPI = {
   async addPinned(itemId: string, category: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/pinned?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/pinned?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ itemId, category }),
@@ -906,7 +921,7 @@ export const CloudStorageAPI = {
   async removePinned(itemId: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/pinned?itemId=${encodeURIComponent(itemId)}&userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/pinned?itemId=${encodeURIComponent(itemId)}&userId=${getUserIdParam()}`, {
         method: 'DELETE',
         headers: getAuthHeaders(),
       });
@@ -923,7 +938,7 @@ export const CloudStorageAPI = {
   async renameItem(id: string, name: string, category: string, folderId?: string): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/rename?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/rename?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ id, name, category, folderId }),
@@ -941,7 +956,7 @@ export const CloudStorageAPI = {
   async duplicateItem(id: string, category: string, folderId?: string, name?: string): Promise<any> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/duplicate?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/duplicate?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ id, category, folderId, name }),
@@ -961,7 +976,7 @@ export const CloudStorageAPI = {
   async moveOrCopyItems(items: any[], targetFolderIds: string[], mode: 'move' | 'copy' = 'move'): Promise<boolean> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetch(`${baseUrl}/api/cloud/move?userId=${getUserIdParam()}`, {
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/move?userId=${getUserIdParam()}`, {
         method: 'POST',
         headers: getAuthHeaders(),
         body: JSON.stringify({ items, targetFolderIds, mode }),

@@ -108,6 +108,7 @@ import { ModernImageViewer } from './ModernImageViewer';
 import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
+import { CloudDataStore } from '../services/cloudDataStore';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
 if (typeof window !== 'undefined') {
@@ -258,8 +259,7 @@ const RecentImageCardPreview: React.FC<{ file: FileItem }> = ({ file }) => {
 
   useEffect(() => {
     let isMounted = true;
-    if (imgSrc && !hasError && !imgSrc.startsWith('blob:')) return;
-
+    // Only run once per file.id - avoid re-triggering when imgSrc/hasError change
     if (file.id) {
       getFileBlobUrl(file.id).then(blobUrl => {
         if (isMounted && blobUrl) {
@@ -272,7 +272,7 @@ const RecentImageCardPreview: React.FC<{ file: FileItem }> = ({ file }) => {
     return () => {
       isMounted = false;
     };
-  }, [file.id, file.url, file.previewUrl, hasError, imgSrc]);
+  }, [file.id]); // eslint-disable-line react-hooks/exhaustive-deps
 
   if (imgSrc && !hasError) {
     return (
@@ -1364,248 +1364,45 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   const [cloudOverview, setCloudOverview] = useState<CloudOverviewData | null>(null);
 
   // Synchronisation initiale complète et PARALLÈLE avec Cloudflare D1 et R2 (Option B)
+  // === Cache-First + Stale-While-Revalidate (architecture type Google Drive) ===
   useEffect(() => {
     let isMounted = true;
 
-    // Helper de filtrage strict pour ne jamais afficher de fichiers supprimés ou de mock
-    const deletedRecentIds = getDeletedRecentIds();
-    const locallyDeletedIds = getLocallyDeletedFileIds();
-    const isCleanFile = (f: any) =>
-      f &&
-      !isMockFile(f) &&
-      !deletedRecentIds.has(f.id) &&
-      (!f.name || !deletedRecentIds.has(f.name)) &&
-      !locallyDeletedIds.has(f.id) &&
-      (!f.name || !locallyDeletedIds.has(f.name));
+    // S'abonner au store global - mise à jour instantanée depuis le cache local
+    const unsubscribe = CloudDataStore.subscribe((state) => {
+      if (!isMounted) return;
+      setClasseur3DFolders(state.classeurFolders);
+      setFolderFilesMap(state.folderFilesMap);
+      setDownloadedItems(state.downloads as any);
+      setDocumentsList(state.documents);
+      setImagesList(state.images);
+      setVideosList(state.videos);
+      setAudioList(state.audio);
+      setCloudRecentFiles(state.recentFiles);
+      setSecureFolderFiles(state.secure);
+      setTrashFiles(state.trash);
+      setCloudOverview(state.overview);
+      setLoadingCategories({
+        overview: false, classeur: false, documents: false, images: false,
+        videos: false, audio: false, downloads: false, trash: false,
+        secure: false, favorites: false, cloudStorage: false
+      });
+    });
 
-    // Requête partagée : Favoris et Épinglés réels
-    const favsPromise = Promise.all([
-      CloudStorageAPI.getFavorites().catch(() => []),
-      CloudStorageAPI.getPinned().catch(() => [])
-    ]).then(([cloudFavorites, cloudPinned]) => {
-      const favIdSet = new Set((cloudFavorites || []).map((f: any) => f.item_id || f.id));
-      const pinIdSet = new Set((cloudPinned || []).map((p: any) => p.item_id || p.id));
-      return { favIdSet, pinIdSet };
-    }).catch(() => ({ favIdSet: new Set<string>(), pinIdSet: new Set<string>() }));
-
-    // 0. Aperçu général et récents en parallèle
-    CloudStorageAPI.getOverview().then(overview => {
-      if (!isMounted || !overview) return;
-      setCloudOverview(overview);
-      if (Array.isArray(overview.recentFiles)) {
-        const cleanRecentFiles = overview.recentFiles.filter(isCleanFile);
-        setCloudRecentFiles(prev => {
-          const newMap = new Map<string, FileItem>();
-          prev.forEach(p => {
-            if (isCleanFile(p)) newMap.set(p.id, p);
-          });
-          cleanRecentFiles.forEach((b: any) => {
-            if (!newMap.has(b.id)) newMap.set(b.id, b);
-          });
-          return Array.from(newMap.values()).slice(0, 6);
+    // Synchronisation en arrière-plan (avec cooldown 15s) - ne bloque jamais l'UI
+    CloudDataStore.sync().catch(() => {}).finally(() => {
+      if (isMounted) {
+        setLoadingCategories({
+          overview: false, classeur: false, documents: false, images: false,
+          videos: false, audio: false, downloads: false, trash: false,
+          secure: false, favorites: false, cloudStorage: false
         });
       }
-    }).catch(e => console.warn('[Page1FilesMenuView] Overview err:', e))
-      .finally(() => {
-        if (isMounted) setLoadingCategories(prev => ({ ...prev, overview: false, cloudStorage: false }));
-      });
-
-    // 1. Classeur : Dossiers 3D et leurs fichiers en parallèle
-    (async () => {
-      try {
-        const [{ favIdSet, pinIdSet }, cloudFolders] = await Promise.all([
-          favsPromise,
-          CloudStorageAPI.getClasseurFolders().catch(() => [])
-        ]);
-        if (!isMounted) return;
-        if (cloudFolders && Array.isArray(cloudFolders)) {
-          const mappedFolders = cloudFolders.map(f => ({
-            ...f,
-            isFavorite: favIdSet.has(f.id),
-            isPinned: pinIdSet.has(f.id)
-          }));
-          setClasseur3DFolders(mappedFolders);
-
-          // Chargement en parallèle de tous les fichiers de chaque dossier
-          const filesEntries = await Promise.all(mappedFolders.map(async folder => {
-            const files = await CloudStorageAPI.getClasseurFiles(folder.id).catch(() => []);
-            const cleanFiles = (files || []).map(file => ({
-              ...file,
-              isFavorite: favIdSet.has(file.id),
-              isPinned: pinIdSet.has(file.id)
-            }));
-            return [folder.id, cleanFiles] as [string, FileItem[]];
-          }));
-
-          if (isMounted) {
-            const filesMap: Record<string, FileItem[]> = {};
-            for (const [folderId, files] of filesEntries) {
-              filesMap[folderId] = files;
-            }
-            setFolderFilesMap(filesMap);
-          }
-        }
-      } catch (e) {
-        console.warn('[Page1FilesMenuView] Classeur fetch err:', e);
-      } finally {
-        if (isMounted) setLoadingCategories(prev => ({ ...prev, classeur: false }));
-      }
-    })();
-
-    // 2. Documents en parallèle
-    (async () => {
-      try {
-        const [{ favIdSet, pinIdSet }, docs] = await Promise.all([
-          favsPromise,
-          CloudStorageAPI.getDocumentsList().catch(() => [])
-        ]);
-        if (isMounted && docs && Array.isArray(docs)) {
-          setDocumentsList(docs.filter(isCleanFile).map(d => ({
-            ...d,
-            isFavorite: favIdSet.has(d.id),
-            isPinned: pinIdSet.has(d.id)
-          })));
-        }
-      } catch (e) {
-        console.warn('[Page1FilesMenuView] Docs fetch err:', e);
-      } finally {
-        if (isMounted) setLoadingCategories(prev => ({ ...prev, documents: false }));
-      }
-    })();
-
-    // 3. Images en parallèle
-    (async () => {
-      try {
-        const [{ favIdSet, pinIdSet }, images] = await Promise.all([
-          favsPromise,
-          CloudStorageAPI.getImagesList().catch(() => [])
-        ]);
-        if (isMounted && images && Array.isArray(images)) {
-          setImagesList(images.filter(isCleanFile).map(img => ({
-            ...img,
-            isFavorite: favIdSet.has(img.id),
-            isPinned: pinIdSet.has(img.id)
-          })));
-        }
-      } catch (e) {
-        console.warn('[Page1FilesMenuView] Images fetch err:', e);
-      } finally {
-        if (isMounted) setLoadingCategories(prev => ({ ...prev, images: false }));
-      }
-    })();
-
-    // 4. Vidéos en parallèle
-    (async () => {
-      try {
-        const [{ favIdSet, pinIdSet }, videos] = await Promise.all([
-          favsPromise,
-          CloudStorageAPI.getVideosList().catch(() => [])
-        ]);
-        if (isMounted && videos && Array.isArray(videos)) {
-          setVideosList(videos.filter(isCleanFile).map(v => ({
-            ...v,
-            isFavorite: favIdSet.has(v.id),
-            isPinned: pinIdSet.has(v.id)
-          })));
-        }
-      } catch (e) {
-        console.warn('[Page1FilesMenuView] Videos fetch err:', e);
-      } finally {
-        if (isMounted) setLoadingCategories(prev => ({ ...prev, videos: false }));
-      }
-    })();
-
-    // 5. Audio en parallèle
-    (async () => {
-      try {
-        const [{ favIdSet, pinIdSet }, audio] = await Promise.all([
-          favsPromise,
-          CloudStorageAPI.getAudioList().catch(() => [])
-        ]);
-        if (isMounted && audio && Array.isArray(audio)) {
-          setAudioList(audio.filter(isCleanFile).map(a => ({
-            ...a,
-            isFavorite: favIdSet.has(a.id),
-            isPinned: pinIdSet.has(a.id)
-          })));
-        }
-      } catch (e) {
-        console.warn('[Page1FilesMenuView] Audio fetch err:', e);
-      } finally {
-        if (isMounted) setLoadingCategories(prev => ({ ...prev, audio: false }));
-      }
-    })();
-
-    // 6. Téléchargements en parallèle
-    (async () => {
-      try {
-        const [{ favIdSet, pinIdSet }, cloudDownloads] = await Promise.all([
-          favsPromise,
-          CloudStorageAPI.getDownloadsList().catch(() => [])
-        ]);
-        if (isMounted && cloudDownloads && Array.isArray(cloudDownloads)) {
-          const mapped: DownloadedItem[] = cloudDownloads.filter(isCleanFile).map(dl => ({
-            id: dl.id,
-            name: dl.name,
-            category: (dl.category as any) || 'downloads',
-            size: dl.size || '0 o',
-            sizeBytes: dl.sizeBytes,
-            date: dl.date || (dl as any).downloadedAt || "Aujourd'hui",
-            timestamp: dl.timestamp || Date.now(),
-            url: dl.url || (dl as any).file_url,
-            extension: dl.extension || (dl.name.includes('.') ? dl.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-            type: dl.type,
-            previewUrl: dl.previewUrl || dl.url,
-            videoUrl: dl.videoUrl || dl.url,
-            audioUrl: dl.audioUrl || dl.url,
-            documentCategory: dl.documentCategory || 'COURS',
-            isFavorite: favIdSet.has(dl.id),
-            isPinned: pinIdSet.has(dl.id),
-          }));
-          setDownloadedItems(mapped);
-        }
-      } catch (e) {
-        console.warn('[Page1FilesMenuView] Downloads fetch err:', e);
-      } finally {
-        if (isMounted) setLoadingCategories(prev => ({ ...prev, downloads: false }));
-      }
-    })();
-
-    // 7. Dossier Sécurisé en parallèle
-    (async () => {
-      try {
-        const secFiles = await CloudStorageAPI.getSecureFiles().catch(() => []);
-        if (isMounted && secFiles && Array.isArray(secFiles)) {
-          setSecureFolderFiles(secFiles.filter(isCleanFile));
-        }
-      } catch (e) {
-        console.warn('[Page1FilesMenuView] Secure fetch err:', e);
-      } finally {
-        if (isMounted) setLoadingCategories(prev => ({ ...prev, secure: false }));
-      }
-    })();
-
-    // 8. Corbeille en parallèle
-    (async () => {
-      try {
-        const trash = await CloudStorageAPI.getTrashFiles().catch(() => []);
-        if (isMounted && trash && Array.isArray(trash)) {
-          setTrashFiles(trash);
-        }
-      } catch (e) {
-        console.warn('[Page1FilesMenuView] Trash fetch err:', e);
-      } finally {
-        if (isMounted) setLoadingCategories(prev => ({ ...prev, trash: false }));
-      }
-    })();
-
-    // Favoris et collections
-    favsPromise.finally(() => {
-      if (isMounted) setLoadingCategories(prev => ({ ...prev, favorites: false }));
     });
 
     return () => {
       isMounted = false;
+      unsubscribe();
     };
   }, []);
 
