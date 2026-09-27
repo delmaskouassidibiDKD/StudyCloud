@@ -849,10 +849,11 @@ export const CloudStorageAPI = {
     };
   },
 
-  async getStorageUsage(): Promise<any> {
+  async getStorageUsage(userId?: string): Promise<any> {
     try {
       const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
-      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/storage-usage?userId=${getUserIdParam()}`, {
+      const uid = userId ? encodeURIComponent(userId) : getUserIdParam();
+      const res = await fetchWithTimeout(`${baseUrl}/api/cloud/storage-usage?userId=${uid}`, {
         method: 'GET',
         headers: getAuthHeaders(),
       });
@@ -860,6 +861,27 @@ export const CloudStorageAPI = {
       return await res.json();
     } catch (e) {
       console.warn('[CloudStorageAPI] getStorageUsage error:', e);
+      return null;
+    }
+  },
+
+  async getAllUsersStorage(params?: { search?: string; page?: number; limit?: number }): Promise<any> {
+    try {
+      const baseUrl = getWorkerApiUrl().replace(/\/+$/, '');
+      const queryParams = new URLSearchParams();
+      if (params?.search) queryParams.set('search', params.search);
+      if (params?.page) queryParams.set('page', String(params.page));
+      if (params?.limit) queryParams.set('limit', String(params.limit));
+      const qs = queryParams.toString();
+      const url = `${baseUrl}/api/cloud/all-users-storage${qs ? `?${qs}` : ''}`;
+      const res = await fetchWithTimeout(url, {
+        method: 'GET',
+        headers: getAuthHeaders(),
+      });
+      if (!res.ok) return null;
+      return await res.json();
+    } catch (e) {
+      console.warn('[CloudStorageAPI] getAllUsersStorage error:', e);
       return null;
     }
   },

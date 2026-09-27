@@ -5491,6 +5491,106 @@ var index_default = {
           data: stats
         }, 200, origin);
       }
+      if ((path === "/api/cloud/all-users-storage" || path === "/api/admin/users-storage") && method === "GET") {
+        if (!env.DB) return errorResponse("Base de donn\xE9es D1 indisponible", 500, origin);
+        await ensureCompressionAndStorageTables(env.DB);
+        
+        const search = url.searchParams.get("search") || "";
+        const limit = Math.min(100, Math.max(1, parseInt(url.searchParams.get("limit") || "50", 10)));
+        const page = Math.max(1, parseInt(url.searchParams.get("page") || "1", 10));
+        const offset = (page - 1) * limit;
+
+        let query = `
+          SELECT 
+            u.id as user_id,
+            u.name,
+            u.email,
+            u.school,
+            u.filiere,
+            u.country,
+            u.avatar_url,
+            COALESCE(s.total_original_bytes, 0) as total_original_bytes,
+            COALESCE(s.total_original_formatted, '0 o') as total_original_formatted,
+            COALESCE(s.total_r2_compressed_bytes, 0) as total_r2_compressed_bytes,
+            COALESCE(s.total_r2_formatted, '0 o') as total_r2_formatted,
+            COALESCE(s.total_d1_database_bytes, 0) as total_d1_database_bytes,
+            COALESCE(s.total_d1_formatted, '0 o') as total_d1_formatted,
+            COALESCE(s.total_saved_bytes, 0) as total_saved_bytes,
+            COALESCE(s.total_saved_formatted, '0 o') as total_saved_formatted,
+            COALESCE(s.compression_ratio, 0.0) as compression_ratio,
+            COALESCE(s.total_files_count, 0) as total_files_count,
+            COALESCE(s.breakdown_json, '{}') as breakdown_json,
+            COALESCE(s.updated_at, u.created_at) as updated_at
+          FROM users u
+          LEFT JOIN user_storage_usage s ON u.id = s.user_id
+        `;
+        const params = [];
+        if (search.trim()) {
+          query += " WHERE u.name LIKE ? OR u.email LIKE ? OR u.school LIKE ? OR u.filiere LIKE ?";
+          const s = `%${search.trim()}%`;
+          params.push(s, s, s, s);
+        }
+        query += " ORDER BY s.total_original_bytes DESC, u.created_at DESC LIMIT ? OFFSET ?";
+        params.push(limit, offset);
+
+        const { results } = await env.DB.prepare(query).bind(...params).all().catch(() => ({ results: [] }));
+        
+        // Totaux globaux de tous les utilisateurs
+        const globalStats = await env.DB.prepare(`
+          SELECT 
+            COUNT(DISTINCT u.id) as total_users,
+            COALESCE(SUM(s.total_original_bytes), 0) as global_original_bytes,
+            COALESCE(SUM(s.total_r2_compressed_bytes), 0) as global_r2_bytes,
+            COALESCE(SUM(s.total_d1_database_bytes), 0) as global_d1_bytes,
+            COALESCE(SUM(s.total_saved_bytes), 0) as global_saved_bytes,
+            COALESCE(SUM(s.total_files_count), 0) as global_files_count
+          FROM users u
+          LEFT JOIN user_storage_usage s ON u.id = s.user_id
+        `).first().catch(() => ({}));
+
+        return jsonResponse({
+          success: true,
+          page,
+          limit,
+          users: (results || []).map(r => {
+            let breakdown = {};
+            try { breakdown = JSON.parse(r.breakdown_json || '{}'); } catch {}
+            return {
+              userId: r.user_id,
+              name: r.name,
+              email: r.email,
+              school: r.school,
+              filiere: r.filiere,
+              country: r.country,
+              avatarUrl: r.avatar_url,
+              totalOriginalBytes: r.total_original_bytes,
+              totalOriginalFormatted: r.total_original_formatted,
+              totalR2CompressedBytes: r.total_r2_compressed_bytes,
+              totalR2Formatted: r.total_r2_formatted,
+              totalD1DatabaseBytes: r.total_d1_database_bytes,
+              totalD1Formatted: r.total_d1_formatted,
+              totalSavedBytes: r.total_saved_bytes,
+              totalSavedFormatted: r.total_saved_formatted,
+              compressionRatio: r.compression_ratio,
+              totalFilesCount: r.total_files_count,
+              breakdown,
+              updatedAt: r.updated_at
+            };
+          }),
+          globalOverview: {
+            totalUsers: Number(globalStats?.total_users || 0),
+            globalOriginalBytes: Number(globalStats?.global_original_bytes || 0),
+            globalOriginalFormatted: formatBytes(Number(globalStats?.global_original_bytes || 0)),
+            globalR2Bytes: Number(globalStats?.global_r2_bytes || 0),
+            globalR2Formatted: formatBytes(Number(globalStats?.global_r2_bytes || 0)),
+            globalD1Bytes: Number(globalStats?.global_d1_bytes || 0),
+            globalD1Formatted: formatBytes(Number(globalStats?.global_d1_bytes || 0)),
+            globalSavedBytes: Number(globalStats?.global_saved_bytes || 0),
+            globalSavedFormatted: formatBytes(Number(globalStats?.global_saved_bytes || 0)),
+            globalFilesCount: Number(globalStats?.global_files_count || 0)
+          }
+        }, 200, origin);
+      }
       if (path === "/api/cloud/classeur/folders") {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);

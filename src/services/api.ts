@@ -1328,6 +1328,22 @@ export const StudyCloudAPI = {
   },
 
   // --------------------------------------------------------------------------
+  // Suivi Consommation Stockage & Facturation (D1 + R2)
+  // --------------------------------------------------------------------------
+  async getUserStorageUsage(userId: string) {
+    return request<{ success: boolean; data: any }>(`/api/cloud/storage-usage?userId=${encodeURIComponent(userId)}`);
+  },
+
+  async getAllUsersStorage(params?: { search?: string; page?: number; limit?: number }) {
+    const q = new URLSearchParams();
+    if (params?.search) q.set('search', params.search);
+    if (params?.page) q.set('page', String(params.page));
+    if (params?.limit) q.set('limit', String(params.limit));
+    const qs = q.toString();
+    return request<{ success: boolean; users: any[]; globalOverview: any }>(`/api/cloud/all-users-storage${qs ? `?${qs}` : ''}`);
+  },
+
+  // --------------------------------------------------------------------------
   // Partages (Stock de liens & QR Codes)
   // --------------------------------------------------------------------------
   async getShares(userId?: string, publicOnly?: boolean) {
