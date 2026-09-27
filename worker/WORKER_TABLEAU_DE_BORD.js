@@ -77,6 +77,71 @@ async function ensureStorageTables(db) {
   if (!db || _tablesEnsured) return;
   _tablesEnsured = true;
   try {
+    // 0. Tables maîtresses de stockage utilisateur et compression
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS user_storage_usage (
+        user_id TEXT PRIMARY KEY,
+        total_original_bytes INTEGER DEFAULT 0,
+        total_original_formatted TEXT DEFAULT '0 o',
+        total_r2_compressed_bytes INTEGER DEFAULT 0,
+        total_r2_formatted TEXT DEFAULT '0 o',
+        total_d1_database_bytes INTEGER DEFAULT 0,
+        total_d1_formatted TEXT DEFAULT '0 o',
+        total_saved_bytes INTEGER DEFAULT 0,
+        total_saved_formatted TEXT DEFAULT '0 o',
+        compression_ratio REAL DEFAULT 0.0,
+        total_files_count INTEGER DEFAULT 0,
+        breakdown_json TEXT DEFAULT '{}',
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS file_compression_records (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        file_name TEXT NOT NULL,
+        category TEXT NOT NULL,
+        folder_id TEXT DEFAULT '',
+        original_size_bytes INTEGER NOT NULL,
+        original_size_formatted TEXT NOT NULL,
+        compressed_size_bytes INTEGER NOT NULL,
+        compressed_size_formatted TEXT NOT NULL,
+        saved_bytes INTEGER NOT NULL,
+        compression_ratio REAL NOT NULL,
+        r2_key TEXT DEFAULT '',
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    await db.prepare(`
+      CREATE TABLE IF NOT EXISTS study_files (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        name TEXT NOT NULL,
+        size INTEGER DEFAULT 0,
+        size_bytes INTEGER DEFAULT 0,
+        original_size_bytes INTEGER DEFAULT 0,
+        compressed_size_bytes INTEGER DEFAULT 0,
+        compression_ratio REAL DEFAULT 0.0,
+        type TEXT DEFAULT 'application/octet-stream',
+        extension TEXT DEFAULT '',
+        r2_key TEXT DEFAULT '',
+        file_url TEXT DEFAULT '',
+        is_favorite INTEGER DEFAULT 0,
+        imported_at INTEGER,
+        created_at TEXT DEFAULT CURRENT_TIMESTAMP,
+        updated_at TEXT DEFAULT CURRENT_TIMESTAMP
+      )
+    `).run().catch(() => {});
+
+    const mediaTables = ['files', 'study_files', 'video_files', 'audio_files', 'image_files', 'document_files', 'classeur_files'];
+    for (const tbl of mediaTables) {
+      try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN is_study_session INTEGER DEFAULT 0`).run(); } catch (e) {}
+      try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN original_size_bytes INTEGER DEFAULT 0`).run(); } catch (e) {}
+      try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN compressed_size_bytes INTEGER DEFAULT 0`).run(); } catch (e) {}
+      try { await db.prepare(`ALTER TABLE ${tbl} ADD COLUMN compression_ratio REAL DEFAULT 0.0`).run(); } catch (e) {}
+    }
     await db.prepare(`
       CREATE TABLE IF NOT EXISTS storage_global_config (
         id TEXT PRIMARY KEY DEFAULT 'default',
@@ -490,6 +555,90 @@ async function ensureStorageTables(db) {
  */
 const TABLES_METADATA = [
   {
+    table: 'study_files',
+    label: 'Fichiers d\'étude & Documents importés',
+    uiConnection: "Espace d'étude IA > Documents importés, Page 1 Fichiers d'étude",
+    role: "Enregistre tous les documents, cours et polycopiés importés par l'étudiant pour ses sessions d'étude assistées par l'IA.",
+    usage: "Lecture/Écriture lors de l'import d'un support de cours pour analyse Delmas IA.",
+    example: "{ id: 'sf_1', name: 'Synthese_Thermodynamique.pdf', size_bytes: 3120000, r2_key: 'study-files/...' }"
+  },
+  {
+    table: 'video_files',
+    label: 'Vidéos de cours enregistrées',
+    uiConnection: "Page 1 > Mes fichiers > Onglet Vidéos",
+    role: "Gère les fichiers vidéo de cours, enregistrements de visio-conférences et tutoriels vidéo de l'élève.",
+    usage: "Stockage physique R2 et métadonnées D1.",
+    example: "{ id: 'vid_1', name: 'Cours_Oscilloscope.mp4', size_bytes: 45000000 }"
+  },
+  {
+    table: 'audio_files',
+    label: 'Enregistrements audio & Podcasts de cours',
+    uiConnection: "Page 1 > Mes fichiers > Onglet Audio",
+    role: "Conserve les enregistrements vocaux d'amphithéâtre, mémos oraux et podcasts éducatifs.",
+    usage: "Lecture audio et synchronisation R2/D1.",
+    example: "{ id: 'aud_1', name: 'Audio_Amphi_Droit.mp3', size_bytes: 12500000 }"
+  },
+  {
+    table: 'image_files',
+    label: 'Images de cours & Schémas d\'exercices',
+    uiConnection: "Page 1 > Mes fichiers > Onglet Images",
+    role: "Photos de tableau noir, diagrammes, schémas de circuits électroniques et figures géométriques.",
+    usage: "Affichage dans la galerie et zoom de document.",
+    example: "{ id: 'img_1', name: 'Schema_Montage_Inverseur.png', size_bytes: 1850000 }"
+  },
+  {
+    table: 'document_files',
+    label: 'Documents PDF, Word & Fiches de révision',
+    uiConnection: "Page 1 > Mes fichiers > Onglet Documents",
+    role: "Documents écrits de cours, fiches de TD, polycopiés et résumés personnels.",
+    usage: "Visualisation dans la liseuse PDF intégrée.",
+    example: "{ id: 'doc_1', name: 'Polycopie_Automatique.pdf', size_bytes: 4200000 }"
+  },
+  {
+    table: 'classeur_files',
+    label: 'Fichiers classés dans les classeurs',
+    uiConnection: "Page 1 > Mes fichiers > Classeurs thématiques",
+    role: "Documents et médias organisés minutieusement par matière ou semestre.",
+    usage: "Navigation par dossier classeur.",
+    example: "{ id: 'clf_1', folder_id: 'cl_maths', name: 'DS_2026.pdf', size_bytes: 2100000 }"
+  },
+  {
+    table: 'classeur_folders',
+    label: 'Dossiers et classeurs de l\'étudiant',
+    uiConnection: "Page 1 > Mes fichiers > Mes classeurs",
+    role: "Structure arborescente des dossiers créés par l'utilisateur pour ranger ses cours.",
+    usage: "Affichage des dossiers.",
+    example: "{ id: 'cl_1', name: 'Semestre 1 - Électronique' }"
+  },
+  {
+    table: 'user_storage_usage',
+    label: 'Table de consommation & facturation D1/R2',
+    uiConnection: "Tableau de bord admin > Consommation des Utilisateurs, Menu Mon Stockage",
+    role: "Table maîtresse consolidée stockant en temps réel le total brut facturé, l'espace physique R2 compressé, les octets D1, l'économie réalisée et le détail JSON de chaque table.",
+    usage: "Calcul du quota et facturation sans perte. Mise à jour automatique à chaque action.",
+    example: "{ user_id: 'usr_1', total_original_bytes: 25400000, total_r2_compressed_bytes: 8400000, compression_ratio: 66.9 }",
+    isExempted: true,
+    exemptReason: "Table technique centrale de facturation et de traçabilité (strictement non décomptée)"
+  },
+  {
+    table: 'file_compression_records',
+    label: 'Historique des compressions de fichiers',
+    uiConnection: "Administration & Télémétrie Cloudflare",
+    role: "Trace pour chaque document importé la taille avant/après compression et le ratio d'économie.",
+    usage: "Journal d'audit de l'optimisation serveur.",
+    example: "{ id: 'fcr_1', original_size_bytes: 5000000, compressed_size_bytes: 1200000, saved_bytes: 3800000 }",
+    isExempted: true,
+    exemptReason: "Journal technique de compression (non décompté du quota personnel)"
+  },
+  {
+    table: 'chat_messages',
+    label: 'Messages échangés avec l\'IA d\'assistance',
+    uiConnection: "Espace d'étude IA > Chat avec Delmas Robot",
+    role: "Messages directs posés au tuteur IA pendant l'étude d'un document.",
+    usage: "Historique de chat de travail.",
+    example: "{ id: 'cm_1', user_id: 'user_1', message_text: 'Explique-moi la formule de Shannon' }"
+  },
+  {
     table: 'files',
     label: 'Fichiers personnels & Sessions IA',
     uiConnection: "Écran d'accueil > Mes fichiers, Menu latéral gauche > Mes fichiers & Matières, Espace d'étude IA",
@@ -898,7 +1047,261 @@ const R2_FOLDERS_METADATA = [
 /**
  * Analyse détaillée et complète de TOUTES les tables D1 pour un utilisateur spécifique
  */
-async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
+
+/**
+ * Recalcule rigoureusement le stockage de l'utilisateur sur les 36 tables
+ * et met à jour user_storage_usage.
+ */
+async function recalculateAndSaveUserStorage(db, userId) {
+  if (!db || !userId) return null;
+  try {
+    await ensureStorageTables(db);
+
+    const [
+      videoStats,
+      audioStats,
+      imageStats,
+      docStats,
+      classeurStats,
+      matiereFileStats,
+      studyFileStats,
+      downloadStats,
+      secureStats,
+      trashStats,
+      folderCount,
+      productStats,
+      shopStats,
+      cartStats,
+      sellerFollowStats,
+      prodInteractionStats,
+      chatStats,
+      sessionStats,
+      aiContentStats,
+      alarmStats,
+      gradeStats,
+      noteStats,
+      linkStats,
+      calendarStats,
+      scheduleConfigStats,
+      scheduleStats,
+      matiereMetaStats,
+      favStats,
+      pinnedStats,
+      sharedFolderStats,
+      sharedFilesStats,
+      secureConfigStats,
+      userProfileStats,
+      userPrefsStats,
+      notifStats,
+      referralStats
+    ] = await Promise.all([
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM video_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM audio_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM image_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM document_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size_bytes END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size_bytes END), 0) as compBytes FROM classeur_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE size END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE size END), 0) as compBytes FROM files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(CASE WHEN original_size_bytes > 0 THEN original_size_bytes ELSE COALESCE(size_bytes, size) END), 0) as origBytes, COALESCE(SUM(CASE WHEN compressed_size_bytes > 0 THEN compressed_size_bytes ELSE COALESCE(size_bytes, size) END), 0) as compBytes FROM study_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(size_bytes), 0) as compBytes FROM download_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(size_bytes), 0) as compBytes FROM secure_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(size_bytes), 0) as origBytes, COALESCE(SUM(size_bytes), 0) as compBytes FROM trash_files WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, origBytes: 0, compBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt FROM classeur_folders WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0 })),
+      
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(description) + LENGTH(COALESCE(image_urls_json, '[]')) + LENGTH(COALESCE(category, '')) + LENGTH(COALESCE(seller_phone, '')) + LENGTH(COALESCE(seller_whatsapp, ''))), 0) as textBytes FROM products WHERE seller_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(shop_name) + LENGTH(COALESCE(shop_description, '')) + LENGTH(COALESCE(shop_phone, '')) + LENGTH(COALESCE(shop_whatsapp, '')) + LENGTH(COALESCE(shop_avatar_url, '')) + LENGTH(COALESCE(shop_banner_url, ''))), 0) as textBytes FROM shop_profiles WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(product_id) + LENGTH(COALESCE(notes, ''))), 0) as textBytes FROM cart_items WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(seller_id)), 0) as textBytes FROM seller_follows WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(product_id) + LENGTH(COALESCE(interaction_type, ''))), 0) as textBytes FROM user_product_interactions WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(message_text) + LENGTH(COALESCE(sender, ''))), 0) as textBytes FROM chat_messages WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(matiere_name)), 0) as textBytes FROM study_sessions WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(content) + LENGTH(COALESCE(subject, '')) + LENGTH(COALESCE(type, ''))), 0) as textBytes FROM ai_generated_contents WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(label) + LENGTH(COALESCE(days_json, '')) + LENGTH(COALESCE(time, '')) + LENGTH(COALESCE(sound, ''))), 0) as textBytes FROM alarms WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(subject_name) + LENGTH(COALESCE(sub_grades_json, ''))), 0) as textBytes FROM grades WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(content) + LENGTH(COALESCE(category, '')) + LENGTH(COALESCE(color, ''))), 0) as textBytes FROM notes WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(url) + LENGTH(COALESCE(category, ''))), 0) as textBytes FROM app_external_links WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(description, '')) + LENGTH(COALESCE(start_date, '')) + LENGTH(COALESCE(end_date, ''))), 0) as textBytes FROM calendar_events WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(COALESCE(start_time, '')) + LENGTH(COALESCE(end_time, '')) + LENGTH(COALESCE(slot_duration, '')) + LENGTH(COALESCE(days_json, ''))), 0) as textBytes FROM schedule_config WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(day_name) + LENGTH(subject_name) + LENGTH(COALESCE(room, '')) + LENGTH(COALESCE(professor, ''))), 0) as textBytes FROM schedule_slots WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(name) + LENGTH(COALESCE(icon, '')) + LENGTH(COALESCE(color, ''))), 0) as textBytes FROM matieres WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(item_id) + LENGTH(category)), 0) as textBytes FROM user_favorites WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(item_id) + LENGTH(category)), 0) as textBytes FROM pinned_items WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(name) + LENGTH(COALESCE(share_code, ''))), 0) as textBytes FROM shared_folders WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(file_id) + LENGTH(COALESCE(file_name, ''))), 0) as textBytes FROM shared_folder_files WHERE folder_id IN (SELECT id FROM shared_folders WHERE user_id = ?)").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(COALESCE(pin_hash, '')) + LENGTH(COALESCE(hint, ''))), 0) as textBytes FROM secure_folder_config WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(name) + LENGTH(email) + LENGTH(COALESCE(avatar_url, '')) + LENGTH(COALESCE(school, '')) + LENGTH(COALESCE(filiere, '')) + LENGTH(COALESCE(country, '')) + LENGTH(COALESCE(phone, '')) + LENGTH(COALESCE(bio, ''))), 0) as textBytes FROM users WHERE id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(COALESCE(theme, '')) + LENGTH(COALESCE(language, '')) + LENGTH(COALESCE(preferences_json, ''))), 0) as textBytes FROM user_preferences WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(title) + LENGTH(message) + LENGTH(COALESCE(type, ''))), 0) as textBytes FROM notifications WHERE user_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 })),
+      db.prepare("SELECT COUNT(*) as cnt, COALESCE(SUM(LENGTH(referred_user_id) + LENGTH(COALESCE(referred_user_name, ''))), 0) as textBytes FROM referrals WHERE referrer_id = ?").bind(userId).first().catch(() => ({ cnt: 0, textBytes: 0 }))
+    ]);
+
+    const totalFiles = Number(videoStats?.cnt || 0) + Number(audioStats?.cnt || 0) + Number(imageStats?.cnt || 0) + 
+                       Number(docStats?.cnt || 0) + Number(classeurStats?.cnt || 0) + Number(matiereFileStats?.cnt || 0) + 
+                       Number(studyFileStats?.cnt || 0) +
+                       Number(downloadStats?.cnt || 0) + Number(secureStats?.cnt || 0) + Number(trashStats?.cnt || 0);
+
+    const totalFileR2Bytes = Number(videoStats?.compBytes || 0) + Number(audioStats?.compBytes || 0) + 
+                             Number(imageStats?.compBytes || 0) + Number(docStats?.compBytes || 0) + 
+                             Number(classeurStats?.compBytes || 0) + Number(matiereFileStats?.compBytes || 0) + 
+                             Number(studyFileStats?.compBytes || 0) +
+                             Number(downloadStats?.compBytes || 0) + Number(secureStats?.compBytes || 0) + 
+                             Number(trashStats?.compBytes || 0);
+
+    const productCount = Number(productStats?.cnt || 0);
+    const estimatedProductR2Bytes = productCount * 350 * 1024;
+    const totalR2Bytes = totalFileR2Bytes + estimatedProductR2Bytes;
+
+    const totalD1TextBytes = Number(productStats?.textBytes || 0) + Number(shopStats?.textBytes || 0) + Number(cartStats?.textBytes || 0) +
+                             Number(sellerFollowStats?.textBytes || 0) + Number(prodInteractionStats?.textBytes || 0) +
+                             Number(chatStats?.textBytes || 0) + Number(sessionStats?.textBytes || 0) + Number(aiContentStats?.textBytes || 0) +
+                             Number(alarmStats?.textBytes || 0) + Number(gradeStats?.textBytes || 0) + Number(noteStats?.textBytes || 0) +
+                             Number(linkStats?.textBytes || 0) + Number(calendarStats?.textBytes || 0) +
+                             Number(scheduleConfigStats?.textBytes || 0) + Number(scheduleStats?.textBytes || 0) +
+                             Number(matiereMetaStats?.textBytes || 0) +
+                             Number(favStats?.textBytes || 0) + Number(pinnedStats?.textBytes || 0) +
+                             Number(sharedFolderStats?.textBytes || 0) + Number(sharedFilesStats?.textBytes || 0) +
+                             Number(secureConfigStats?.textBytes || 0) +
+                             Number(userProfileStats?.textBytes || 0) + Number(userPrefsStats?.textBytes || 0) +
+                             Number(notifStats?.textBytes || 0) + Number(referralStats?.textBytes || 0);
+
+    const totalD1Rows = totalFiles + Number(folderCount?.cnt || 0) +
+                        productCount + Number(shopStats?.cnt || 0) + Number(cartStats?.cnt || 0) +
+                        Number(sellerFollowStats?.cnt || 0) + Number(prodInteractionStats?.cnt || 0) +
+                        Number(chatStats?.cnt || 0) + Number(sessionStats?.cnt || 0) + Number(aiContentStats?.cnt || 0) +
+                        Number(alarmStats?.cnt || 0) + Number(gradeStats?.cnt || 0) + Number(noteStats?.cnt || 0) +
+                        Number(linkStats?.cnt || 0) + Number(calendarStats?.cnt || 0) +
+                        Number(scheduleConfigStats?.cnt || 0) + Number(scheduleStats?.cnt || 0) +
+                        Number(matiereMetaStats?.cnt || 0) +
+                        Number(favStats?.cnt || 0) + Number(pinnedStats?.cnt || 0) +
+                        Number(sharedFolderStats?.cnt || 0) + Number(sharedFilesStats?.cnt || 0) +
+                        Number(secureConfigStats?.cnt || 0) +
+                        Number(userProfileStats?.cnt || 0) + Number(userPrefsStats?.cnt || 0) +
+                        Number(notifStats?.cnt || 0) + Number(referralStats?.cnt || 0);
+
+    const estimatedD1Bytes = Math.max(1024, totalD1TextBytes + (totalD1Rows * 160));
+
+    const totalFileOriginalBytes = Number(videoStats?.origBytes || 0) + Number(audioStats?.origBytes || 0) + 
+                                   Number(imageStats?.origBytes || 0) + Number(docStats?.origBytes || 0) + 
+                                   Number(classeurStats?.origBytes || 0) + Number(matiereFileStats?.origBytes || 0) + 
+                                   Number(studyFileStats?.origBytes || 0) +
+                                   Number(downloadStats?.origBytes || 0) + Number(secureStats?.origBytes || 0) + 
+                                   Number(trashStats?.origBytes || 0);
+
+    const totalOriginalBytes = totalFileOriginalBytes + estimatedProductR2Bytes + estimatedD1Bytes;
+    const totalActuallyConsumed = totalR2Bytes + estimatedD1Bytes;
+    const savedBytes = Math.max(0, totalOriginalBytes - totalActuallyConsumed);
+    const compRatio = totalOriginalBytes > 0 ? Math.round((savedBytes / totalOriginalBytes) * 1000) / 10 : 0;
+
+    const breakdown = {
+      fichiers_media: {
+        videos: { count: Number(videoStats?.cnt || 0), originalBytes: Number(videoStats?.origBytes || 0), compressedBytes: Number(videoStats?.compBytes || 0) },
+        audio: { count: Number(audioStats?.cnt || 0), originalBytes: Number(audioStats?.origBytes || 0), compressedBytes: Number(audioStats?.compBytes || 0) },
+        images: { count: Number(imageStats?.cnt || 0), originalBytes: Number(imageStats?.origBytes || 0), compressedBytes: Number(imageStats?.compBytes || 0) },
+        documents: { count: Number(docStats?.cnt || 0), originalBytes: Number(docStats?.origBytes || 0), compressedBytes: Number(docStats?.compBytes || 0) },
+        classeur: { count: Number(classeurStats?.cnt || 0), originalBytes: Number(classeurStats?.origBytes || 0), compressedBytes: Number(classeurStats?.compBytes || 0) },
+        matieres_files: { count: Number(matiereFileStats?.cnt || 0), originalBytes: Number(matiereFileStats?.origBytes || 0), compressedBytes: Number(matiereFileStats?.compBytes || 0) },
+        study_files: { count: Number(studyFileStats?.cnt || 0), originalBytes: Number(studyFileStats?.origBytes || 0), compressedBytes: Number(studyFileStats?.compBytes || 0) },
+        downloads: { count: Number(downloadStats?.cnt || 0), originalBytes: Number(downloadStats?.origBytes || 0), compressedBytes: Number(downloadStats?.compBytes || 0) },
+        secure: { count: Number(secureStats?.cnt || 0), originalBytes: Number(secureStats?.origBytes || 0), compressedBytes: Number(secureStats?.compBytes || 0) },
+        trash: { count: Number(trashStats?.cnt || 0), originalBytes: Number(trashStats?.origBytes || 0), compressedBytes: Number(trashStats?.compBytes || 0) },
+      },
+      boutique: {
+        products_count: productCount,
+        products_d1_bytes: Number(productStats?.textBytes || 0),
+        products_r2_bytes: estimatedProductR2Bytes,
+        shop_profile_bytes: Number(shopStats?.textBytes || 0),
+        cart_items_count: Number(cartStats?.cnt || 0),
+        cart_items_bytes: Number(cartStats?.textBytes || 0),
+        seller_follows_count: Number(sellerFollowStats?.cnt || 0),
+        interactions_count: Number(prodInteractionStats?.cnt || 0)
+      },
+      espace_etude_ia: {
+        chat_messages_count: Number(chatStats?.cnt || 0),
+        chat_messages_bytes: Number(chatStats?.textBytes || 0),
+        study_sessions_count: Number(sessionStats?.cnt || 0),
+        study_sessions_bytes: Number(sessionStats?.textBytes || 0),
+        ai_creations_count: Number(aiContentStats?.cnt || 0),
+        ai_creations_bytes: Number(aiContentStats?.textBytes || 0),
+        imported_study_files_count: Number(studyFileStats?.cnt || 0),
+        imported_study_files_bytes: Number(studyFileStats?.origBytes || 0)
+      },
+      applications: {
+        horloge_alarmes: { count: Number(alarmStats?.cnt || 0), bytes: Number(alarmStats?.textBytes || 0) },
+        moyennes_notes: { count: Number(gradeStats?.cnt || 0), bytes: Number(gradeStats?.textBytes || 0) },
+        bloc_notes: { count: Number(noteStats?.cnt || 0), bytes: Number(noteStats?.textBytes || 0) },
+        liens_crees: { count: Number(linkStats?.cnt || 0), bytes: Number(linkStats?.textBytes || 0) },
+        agenda_calendrier: { count: Number(calendarStats?.cnt || 0), bytes: Number(calendarStats?.textBytes || 0) },
+        emploi_du_temps: { count: Number(scheduleStats?.cnt || 0) + Number(scheduleConfigStats?.cnt || 0), bytes: Number(scheduleStats?.textBytes || 0) + Number(scheduleConfigStats?.textBytes || 0) },
+        matieres_creees: { count: Number(matiereMetaStats?.cnt || 0), bytes: Number(matiereMetaStats?.textBytes || 0) },
+        favoris_epingles: { count: Number(favStats?.cnt || 0) + Number(pinnedStats?.cnt || 0), bytes: Number(favStats?.textBytes || 0) + Number(pinnedStats?.textBytes || 0) },
+        dossiers_partages: { count: Number(sharedFolderStats?.cnt || 0), bytes: Number(sharedFolderStats?.textBytes || 0) + Number(sharedFilesStats?.textBytes || 0) },
+        profil_et_compte: { count: Number(userProfileStats?.cnt || 0), bytes: Number(userProfileStats?.textBytes || 0) + Number(userPrefsStats?.textBytes || 0) },
+        notifications: { count: Number(notifStats?.cnt || 0), bytes: Number(notifStats?.textBytes || 0) },
+        parrainages: { count: Number(referralStats?.cnt || 0), bytes: Number(referralStats?.textBytes || 0) }
+      }
+    };
+
+    const totalOriginalFormatted = formatBytes(totalOriginalBytes);
+    const totalR2Formatted = formatBytes(totalR2Bytes);
+    const totalD1Formatted = formatBytes(estimatedD1Bytes);
+    const totalSavedFormatted = formatBytes(savedBytes);
+    const breakdownJson = JSON.stringify(breakdown);
+
+    await db.prepare(`
+      INSERT INTO user_storage_usage (
+        user_id, total_original_bytes, total_original_formatted,
+        total_r2_compressed_bytes, total_r2_formatted,
+        total_d1_database_bytes, total_d1_formatted,
+        total_saved_bytes, total_saved_formatted,
+        compression_ratio, total_files_count, breakdown_json, updated_at
+      ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, CURRENT_TIMESTAMP)
+      ON CONFLICT(user_id) DO UPDATE SET
+        total_original_bytes = excluded.total_original_bytes,
+        total_original_formatted = excluded.total_original_formatted,
+        total_r2_compressed_bytes = excluded.total_r2_compressed_bytes,
+        total_r2_formatted = excluded.total_r2_formatted,
+        total_d1_database_bytes = excluded.total_d1_database_bytes,
+        total_d1_formatted = excluded.total_d1_formatted,
+        total_saved_bytes = excluded.total_saved_bytes,
+        total_saved_formatted = excluded.total_saved_formatted,
+        compression_ratio = excluded.compression_ratio,
+        total_files_count = excluded.total_files_count,
+        breakdown_json = excluded.breakdown_json,
+        updated_at = CURRENT_TIMESTAMP
+    `).bind(
+      userId, totalOriginalBytes, totalOriginalFormatted,
+      totalR2Bytes, totalR2Formatted,
+      estimatedD1Bytes, totalD1Formatted,
+      savedBytes, totalSavedFormatted,
+      compRatio, totalFiles, breakdownJson
+    ).run().catch(() => {});
+
+    return {
+      user_id: userId,
+      total_original_bytes: totalOriginalBytes,
+      total_original_formatted: totalOriginalFormatted,
+      total_r2_compressed_bytes: totalR2Bytes,
+      total_r2_formatted: totalR2Formatted,
+      total_d1_database_bytes: estimatedD1Bytes,
+      total_d1_formatted: totalD1Formatted,
+      total_saved_bytes: savedBytes,
+      total_saved_formatted: totalSavedFormatted,
+      compression_ratio: compRatio,
+      total_files_count: totalFiles,
+      breakdown_json: breakdownJson,
+      breakdown: breakdown
+    };
+  } catch (err) {
+    console.warn("[recalculateAndSaveUserStorage] Error:", err);
+    return null;
+  }
+}
+
+
+async function inspectUserStorageDetail(db, bucket, user, globalConfig, preloadedUsage = null) {
   const userId = user.id;
 
   // 1. Quota personnalisé de l'utilisateur (ou initialisation par défaut)
@@ -941,284 +1344,156 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
   const totalAllowedMb = welcomeTotalMb + paidTotalMb + bonusTotalMb;
   const totalAllowedBytes = totalAllowedMb * 1024 * 1024;
 
-  // 2. FICHIERS PERSONNELS & MATIERES (R2 via Table files)
-  const filesStats = await safeFirst(db, `
-    SELECT 
-      COUNT(*) AS total_count,
-      COALESCE(SUM(size), 0) AS total_bytes,
-      COALESCE(SUM(CASE WHEN is_study_session = 1 THEN 1 ELSE 0 END), 0) AS ai_files_count,
-      COALESCE(SUM(CASE WHEN is_study_session = 1 THEN size ELSE 0 END), 0) AS ai_files_bytes,
-      COALESCE(SUM(CASE WHEN is_study_session = 0 THEN 1 ELSE 0 END), 0) AS personal_files_count,
-      COALESCE(SUM(CASE WHEN is_study_session = 0 THEN size ELSE 0 END), 0) AS personal_files_bytes
-    FROM files 
-    WHERE user_id = ?
-  `, [userId], { total_count: 0, total_bytes: 0, ai_files_count: 0, ai_files_bytes: 0, personal_files_count: 0, personal_files_bytes: 0 });
+  // 2. RECUPERATION DE user_storage_usage (préchargé ou calculé à la volée)
+  let usage = preloadedUsage;
+  if (!usage) {
+    usage = await safeFirst(db, `SELECT * FROM user_storage_usage WHERE user_id = ?`, [userId]);
+  }
+  if (!usage) {
+    // Calcul complet et enregistrement persistant dans user_storage_usage
+    usage = await recalculateAndSaveUserStorage(db, userId);
+  }
 
-  // 3. FICHIERS PUBLIES DANS LA BIBLIOTHEQUE PUBLIQUE (Exemptés du quota personnel)
+  let breakdown = {};
+  if (usage && usage.breakdown_json) {
+    try {
+      breakdown = typeof usage.breakdown_json === 'string' ? JSON.parse(usage.breakdown_json) : usage.breakdown_json;
+    } catch (e) {
+      breakdown = {};
+    }
+  }
+
+  const media = breakdown.fichiers_media || {};
+  const boutique = breakdown.boutique || {};
+  const ia = breakdown.espace_etude_ia || {};
+  const apps = breakdown.applications || {};
+
+  // Données de stockage consolidées
+  const origTotalBytes = Number(usage?.total_original_bytes || 0);
+  const origTotalFormatted = usage?.total_original_formatted || formatBytes(origTotalBytes);
+  const r2TotalBytes = Number(usage?.total_r2_compressed_bytes || 0);
+  const r2TotalFormatted = usage?.total_r2_formatted || formatBytes(r2TotalBytes);
+  const d1TotalBytes = Number(usage?.total_d1_database_bytes || 0);
+  const d1TotalFormatted = usage?.total_d1_formatted || formatBytes(d1TotalBytes);
+  const savedTotalBytes = Number(usage?.total_saved_bytes || 0);
+  const savedTotalFormatted = usage?.total_saved_formatted || formatBytes(savedTotalBytes);
+  const compressionRatio = Number(usage?.compression_ratio || 0);
+  const totalFilesCount = Number(usage?.total_files_count || 0);
+
+  // Pourcentage par rapport au quota total alloué (basé sur le volume original non compressé pour ne pas perdre d'argent)
+  const usagePercentage = totalAllowedBytes > 0 
+    ? Math.min(100, parseFloat(((origTotalBytes / totalAllowedBytes) * 100).toFixed(1)))
+    : 0;
+
+  // Éléments exemptés (Bibliothèque publique, téléchargements, vues, mots, abonnements)
   const pubStats = await safeFirst(db, `
     SELECT COUNT(*) AS count, COALESCE(SUM(file_size), 0) AS total_bytes, COALESCE(SUM(views_count), 0) AS total_views, COALESCE(SUM(downloads_count), 0) AS total_downloads
     FROM published_documents WHERE user_id = ?
   `, [userId], { count: 0, total_bytes: 0, total_views: 0, total_downloads: 0 });
 
-  // 3b. INTERACTIONS DE VUES SUR LES DOCUMENTS (Exemptées du quota personnel)
-  const viewsInteractionsStats = await safeFirst(db, `
-    SELECT COUNT(*) AS count FROM user_document_interactions WHERE user_id = ?
-  `, [userId], { count: 0 });
-
-  // 3c. TELECHARGEMENTS SUR LES DOCUMENTS (Exemptés du quota personnel)
-  const pubDownloadsStats = await safeFirst(db, `
-    SELECT COUNT(*) AS count FROM published_document_downloads WHERE user_id = ?
-  `, [userId], { count: 0 });
-
-  // 3d. COMPTEURS DU NOMBRE DE MOTS (Exemptés du quota personnel)
-  const wordCountStats = await safeFirst(db, `
+  const wordStats = await safeFirst(db, `
     SELECT COUNT(*) AS count, COALESCE(SUM(word_count), 0) AS total_words, COALESCE(SUM(token_count), 0) AS total_tokens
     FROM user_word_counts WHERE user_id = ?
   `, [userId], { count: 0, total_words: 0, total_tokens: 0 });
 
-  // 4. FICHIERS DE LIENS DE PARTAGE
-  const shareStats = await safeFirst(db, `
-    SELECT COUNT(DISTINCT sf.id) AS folders_count, COUNT(sff.id) AS files_count, COALESCE(SUM(sff.size), 0) AS total_bytes
-    FROM shared_folders sf LEFT JOIN shared_folder_files sff ON sff.shared_folder_id = sf.id
-    WHERE sf.user_id = ?
-  `, [userId], { folders_count: 0, files_count: 0, total_bytes: 0 });
+  const viewsInteractionsStats = await safeFirst(db, `SELECT COUNT(*) AS count FROM user_document_interactions WHERE user_id = ?`, [userId], { count: 0 });
+  const pubDownloadsStats = await safeFirst(db, `SELECT COUNT(*) AS count FROM published_document_downloads WHERE user_id = ?`, [userId], { count: 0 });
 
-  // 5. BOUTIQUE : PRODUITS PUBLIES POUR LES COMMANDES (Images & données écrites)
-  const shopStats = await safeFirst(db, `
-    SELECT COUNT(*) AS products_count, 
-           COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(description, '')) + LENGTH(COALESCE(price, '')) + LENGTH(COALESCE(image_urls_json, ''))), 0) AS d1_text_bytes
-    FROM products WHERE seller_id = ?
-  `, [userId], { products_count: 0, d1_text_bytes: 0 });
-  const shopImagesBytes = (shopStats.products_count || 0) * 120000;
+  const exemptR2Bytes = Number(pubStats.total_bytes || 0);
+  const exemptD1Bytes = (pubStats.count * 450) + ((viewsInteractionsStats.count || pubStats.total_views) * 64) + ((pubDownloadsStats.count || pubStats.total_downloads) * 64) + (wordStats.count * 128) + 140;
+  const totalExemptBytes = exemptR2Bytes + exemptD1Bytes;
 
-  // 6. CONTENUS GENERES PAR L'IA (Fiches mémoires, résumés, quiz...)
-  const aiContentsStats = await safeFirst(db, `
-    SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(content_json, ''))), 0) AS d1_text_bytes
-    FROM ai_generated_contents WHERE user_id = ?
-  `, [userId], { count: 0, d1_text_bytes: 0 });
-
-  // 7. ESPACE DE TRAVAIL IA / WORKSPACE (Brouillons, notes, fichiers attachés)
-  const aiWorkspaceStats = await safeFirst(db, `
-    SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(message_text) + LENGTH(COALESCE(attached_file_content, '')) + LENGTH(COALESCE(user_notes, ''))), 0) AS d1_text_bytes
-    FROM user_ai_workspace WHERE user_id = ?
-  `, [userId], { count: 0, d1_text_bytes: 0 });
-
-  // 8. DISCUSSIONS & CHAT IA ENREGISTREES (Conversations et messages IA)
-  const chatStats = await safeFirst(db, `
-    SELECT COUNT(DISTINCT c.id) AS conversations_count, COUNT(m.id) AS messages_count, COALESCE(SUM(LENGTH(m.content) + LENGTH(COALESCE(m.metadata, ''))), 0) AS d1_text_bytes
-    FROM conversations c LEFT JOIN messages m ON m.conversation_id = c.id
-    WHERE c.user_id = ?
-  `, [userId], { conversations_count: 0, messages_count: 0, d1_text_bytes: 0 });
-
-  // 9. NOTES DE BLOC-NOTES
-  const notesStats = await safeFirst(db, `
-    SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(title) + LENGTH(COALESCE(content, ''))), 0) AS d1_text_bytes
-    FROM notes WHERE user_id = ?
-  `, [userId], { count: 0, d1_text_bytes: 0 });
-
-  // 10. MATIERES
-  const matieresStats = await safeFirst(db, `
-    SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(name)), 0) AS d1_text_bytes
-    FROM matieres WHERE user_id = ?
-  `, [userId], { count: 0, d1_text_bytes: 0 });
-
-  // 11. EMPLOI DU TEMPS
-  const scheduleStats = await safeFirst(db, `
-    SELECT COUNT(*) AS slots_count, COALESCE(SUM(LENGTH(subject) + LENGTH(COALESCE(room, '')) + LENGTH(COALESCE(note_or_teacher, ''))), 0) AS d1_text_bytes
-    FROM schedule_slots WHERE user_id = ?
-  `, [userId], { slots_count: 0, d1_text_bytes: 0 });
-
-  // 12. NOTES D'EVALUATION
-  const gradesStats = await safeFirst(db, `
-    SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(subject_name) + LENGTH(COALESCE(sub_grades_json, ''))), 0) AS d1_text_bytes
-    FROM grades WHERE user_id = ?
-  `, [userId], { count: 0, d1_text_bytes: 0 });
-
-  // 13. CALENDRIER & SESSIONS D'ETUDE (HORLOGE)
-  const calendarStats = await safeFirst(db, `SELECT COUNT(*) AS count, COALESCE(SUM(LENGTH(title)), 0) AS d1_text_bytes FROM calendar_events WHERE user_id = ?`, [userId], { count: 0, d1_text_bytes: 0 });
-  const studySessionsStats = await safeFirst(db, `SELECT COUNT(*) AS count, COALESCE(SUM(duration_seconds), 0) AS total_study_seconds FROM study_sessions WHERE user_id = ?`, [userId], { count: 0, total_study_seconds: 0 });
-
-  // 14. AVATAR / ICONE PERSONNALISEE
-  const hasCustomAvatar = user.avatar_url && (user.avatar_url.includes('avatars/') || user.avatar_url.startsWith('http') || user.avatar_url.startsWith('data:image'));
-  const avatarEstimatedBytes = hasCustomAvatar ? 85000 : 0;
-
-  // 15. BOUTIQUE DE SERVICES & STATUT
+  // Statut boutique & profil
+  const hasShop = (boutique.products_count > 0) || (user.shop_name && user.shop_name.length > 0);
   const shopProfile = await safeFirst(db, `SELECT * FROM shop_profiles WHERE user_id = ?`, [userId]);
-  const hasShop = (shopStats.products_count > 0) || Boolean(shopProfile);
-  const shopProductsCount = shopStats.products_count || 0;
-  let shopName = shopProfile?.shop_name || '';
-  let shopPhone = shopProfile?.shop_phone || '';
-  let shopWhatsapp = shopProfile?.shop_whatsapp || '';
-  let shopCategory = shopProfile?.shop_category || '';
-  let shopAvatarUrl = shopProfile?.shop_avatar_url || '';
-  let shopUpdatedAt = shopProfile?.updated_at || '';
+  const shopName = shopProfile?.shop_name || user.shop_name || (hasShop ? ('Boutique de ' + (user.name || 'l\'étudiant')) : '');
+  const shopPhone = shopProfile?.shop_phone || user.phone || '';
+  const shopWhatsapp = shopProfile?.shop_whatsapp || '';
+  const shopCategory = shopProfile?.shop_category || 'Vente digital (PDF)';
+  const shopAvatarUrl = shopProfile?.shop_avatar_url || '';
+  const shopUpdatedAt = shopProfile?.updated_at || '';
 
-  // Si pas de shop_profiles mais des articles en vente dans la boutique
-  if (!shopProfile && shopStats.products_count > 0) {
-    const firstProd = await safeFirst(db, `SELECT seller_name, seller_phone, seller_whatsapp, seller_avatar_url, category, updated_at FROM products WHERE seller_id = ? LIMIT 1`, [userId]);
-    if (firstProd) {
-      shopName = firstProd.seller_name || '';
-      shopPhone = firstProd.seller_phone || '';
-      shopWhatsapp = firstProd.seller_whatsapp || '';
-      shopCategory = firstProd.category || '';
-      shopAvatarUrl = firstProd.seller_avatar_url || '';
-      shopUpdatedAt = firstProd.updated_at || '';
-    }
-  }
-
-  if (hasShop) {
-    if (!shopName) shopName = 'Boutique de ' + (user.name || 'l\'étudiant');
-    if (!shopPhone) shopPhone = user.phone || '';
-    if (!shopCategory) shopCategory = 'Vente digital (PDF)';
-  }
-
-  // 16. STATUT DE CONNEXION / EN LIGNE
-  const activeSession = await safeFirst(db, `
-    SELECT * FROM auth_sessions 
-    WHERE user_id = ? AND expires_at > CURRENT_TIMESTAMP 
-    ORDER BY created_at DESC LIMIT 1
-  `, [userId]);
-
+  // Statut en ligne
+  const activeSession = await safeFirst(db, `SELECT * FROM auth_sessions WHERE user_id = ? AND expires_at > CURRENT_TIMESTAMP ORDER BY created_at DESC LIMIT 1`, [userId]);
   let isOnline = false;
   let lastSeenText = "Non connecté récemment";
   if (user.last_active_at) {
     let dateStr = String(user.last_active_at).trim();
-    if (!dateStr.endsWith('Z') && !dateStr.includes('+')) {
-      dateStr = dateStr.replace(' ', 'T') + 'Z';
-    }
+    if (!dateStr.endsWith('Z') && !dateStr.includes('+')) dateStr = dateStr.replace(' ', 'T') + 'Z';
     const lastActiveTime = new Date(dateStr).getTime();
-    const now = Date.now();
-    const diffMinutes = Math.floor((now - lastActiveTime) / 60000);
+    const diffMinutes = Math.floor((Date.now() - lastActiveTime) / 60000);
     if (!isNaN(diffMinutes) && diffMinutes >= 0) {
-      if (diffMinutes <= 20) {
-        isOnline = true;
-        lastSeenText = "En ligne maintenant";
-      } else if (diffMinutes < 60) {
-        lastSeenText = `Vu il y a ${diffMinutes} min`;
-      } else if (diffMinutes < 1440) {
-        const h = Math.floor(diffMinutes / 60);
-        lastSeenText = `Vu il y a ${h}h`;
-      } else {
-        const d = Math.floor(diffMinutes / 1440);
-        lastSeenText = `Vu il y a ${d} j`;
-      }
+      if (diffMinutes <= 20) { isOnline = true; lastSeenText = "En ligne maintenant"; }
+      else if (diffMinutes < 60) { lastSeenText = `Vu il y a ${diffMinutes} min`; }
+      else if (diffMinutes < 1440) { lastSeenText = `Vu il y a ${Math.floor(diffMinutes / 60)}h`; }
+      else { lastSeenText = `Vu il y a ${Math.floor(diffMinutes / 1440)} j`; }
     }
   }
-
   if (!isOnline && activeSession && activeSession.created_at) {
     let sDate = String(activeSession.created_at).trim();
     if (!sDate.endsWith('Z') && !sDate.includes('+')) sDate = sDate.replace(' ', 'T') + 'Z';
-    const sTime = new Date(sDate).getTime();
-    const sDiff = Math.floor((Date.now() - sTime) / 60000);
+    const sDiff = Math.floor((Date.now() - new Date(sDate).getTime()) / 60000);
     if (!isNaN(sDiff) && sDiff >= 0 && sDiff <= 20) {
       isOnline = true;
       lastSeenText = "En ligne (session active)";
     }
   }
 
-  // Profil
-  const userProfileBytes = (user.name?.length || 0) + (user.email?.length || 0) + (user.school?.length || 0) + (user.filiere?.length || 0) + (user.phone?.length || 0) + 120;
-
-  // CALCULS R2 DIRECTS :
-  // Net R2 (Facturé) : fichiers personnels + liens partagés + avatar + images boutique
-  // Fichiers de ressources publiques (published_documents) STRICTEMENT EXCLUS du net facturé
-  const netR2Bytes = (filesStats.total_bytes || 0) + (shareStats.total_bytes || 0) + avatarEstimatedBytes + shopImagesBytes;
-  const exemptR2Bytes = (pubStats.total_bytes || 0);
-  const grossR2Bytes = netR2Bytes + exemptR2Bytes;
-
-  // CALCULS D1 DIRECTS :
-  // Net D1 (Facturé) : textes personnels + créations IA + discussions + bloc-notes + boutique + horloge + profil + SQLite row overhead
-  const netD1TextBytes = (shopStats.d1_text_bytes || 0) + (aiContentsStats.d1_text_bytes || 0) + (aiWorkspaceStats.d1_text_bytes || 0) +
-                         (chatStats.d1_text_bytes || 0) + (notesStats.d1_text_bytes || 0) + (matieresStats.d1_text_bytes || 0) + 
-                         (scheduleStats.d1_text_bytes || 0) + (gradesStats.d1_text_bytes || 0) + (calendarStats.d1_text_bytes || 0) + userProfileBytes;
-
-  const netD1Rows = (filesStats.total_count || 0) + (shareStats.folders_count || 0) + (shareStats.files_count || 0) +
-                    (shopStats.products_count || 0) + (aiContentsStats.count || 0) + (aiWorkspaceStats.count || 0) +
-                    (chatStats.conversations_count || 0) + (chatStats.messages_count || 0) + (notesStats.count || 0) + 
-                    (matieresStats.count || 0) + (scheduleStats.slots_count || 0) + (gradesStats.count || 0) + (calendarStats.count || 0) + (studySessionsStats.count || 0) + 1;
-
-  const netD1Bytes = netD1TextBytes + (netD1Rows * 128);
-
-  // Éléments D1 exemptés (strictement non comptés ni pénalisés dans le net) :
-  // 1. Fichiers publiés comme ressource dans le menu ressources
-  const pubDocsD1Bytes = (pubStats.count * 128) + (pubStats.count * 350);
-  // 2. Nombre de vues des fichiers
-  const viewsD1Bytes = ((viewsInteractionsStats.count || pubStats.total_views) * 64);
-  // 3. Nombre de téléchargements (fichiers & liens)
-  const downloadsD1Bytes = ((pubDownloadsStats.count || pubStats.total_downloads) * 64);
-  // 4. Table pour stocker les nombres de mots de chaque utilisateur
-  const wordCountD1Bytes = (wordCountStats.count * 128) + 140;
-
-  const exemptD1Bytes = pubDocsD1Bytes + viewsD1Bytes + downloadsD1Bytes + wordCountD1Bytes;
-  const exemptD1Rows = (pubStats.count || 0) + (viewsInteractionsStats.count || 0) + (pubDownloadsStats.count || 0) + (wordCountStats.count || 0);
-
-  const grossD1Bytes = netD1Bytes + exemptD1Bytes;
-  const userD1Rows = netD1Rows + exemptD1Rows;
-
-  // Totaux Brut & Net
-  const netTotalBytes = netR2Bytes + netD1Bytes;
-  const grossTotalBytes = grossR2Bytes + grossD1Bytes;
-  const totalExemptBytes = exemptR2Bytes + exemptD1Bytes;
-
-  const grossUsagePercentage = totalAllowedBytes > 0 
-    ? Math.min(100, parseFloat(((grossTotalBytes / totalAllowedBytes) * 100).toFixed(1)))
-    : 0;
-
-  const netUsagePercentage = totalAllowedBytes > 0 
-    ? Math.min(100, parseFloat(((netTotalBytes / totalAllowedBytes) * 100).toFixed(1)))
-    : 0;
-
-  // Dictionnaire individuel table par table pour cet utilisateur
+  // Dictionnaire individuel table par table alimenté par le recalcul précis
   const userTablesStats = {
-    files: { count: filesStats.total_count, bytes: filesStats.total_bytes, formatted: formatBytes(filesStats.total_bytes), isExempted: false },
-    notes: { count: notesStats.count, bytes: notesStats.d1_text_bytes, formatted: formatBytes(notesStats.d1_text_bytes), isExempted: false },
-    matieres: { count: matieresStats.count, bytes: matieresStats.d1_text_bytes, formatted: formatBytes(matieresStats.d1_text_bytes), isExempted: false },
-    ai_generated_contents: { count: aiContentsStats.count, bytes: aiContentsStats.d1_text_bytes, formatted: formatBytes(aiContentsStats.d1_text_bytes), isExempted: false },
-    user_ai_workspace: { count: aiWorkspaceStats.count, bytes: aiWorkspaceStats.d1_text_bytes, formatted: formatBytes(aiWorkspaceStats.d1_text_bytes), isExempted: false },
-    conversations: { count: chatStats.conversations_count, bytes: chatStats.conversations_count * 150, formatted: formatBytes(chatStats.conversations_count * 150), isExempted: false },
-    messages: { count: chatStats.messages_count, bytes: (chatStats.messages_count * 128) + (chatStats.d1_text_bytes || 0), formatted: formatBytes((chatStats.messages_count * 128) + (chatStats.d1_text_bytes || 0)), isExempted: false },
-    ai_creations: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
-    ai_tasks: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
-    user_certificates: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
-    schedule_slots: { count: scheduleStats.slots_count, bytes: scheduleStats.d1_text_bytes, formatted: formatBytes(scheduleStats.d1_text_bytes), isExempted: false },
-    schedule_config: { count: 1, bytes: 180, formatted: formatBytes(180), isExempted: false },
-    grades: { count: gradesStats.count, bytes: gradesStats.d1_text_bytes, formatted: formatBytes(gradesStats.d1_text_bytes), isExempted: false },
-    grade_settings: { count: 1, bytes: 80, formatted: formatBytes(80), isExempted: false },
-    calendar_events: { count: calendarStats.count, bytes: calendarStats.d1_text_bytes, formatted: formatBytes(calendarStats.d1_text_bytes), isExempted: false },
-    alarms: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
-    study_sessions: { count: studySessionsStats.count, bytes: studySessionsStats.count * 90, formatted: formatBytes(studySessionsStats.count * 90), isExempted: false },
-    published_documents: { count: pubStats.count, bytes: pubDocsD1Bytes, formatted: formatBytes(pubDocsD1Bytes), isExempted: true, exemptReason: "Ressource publique de la bibliothèque pour tout le monde" },
-    user_document_interactions: { count: viewsInteractionsStats.count || pubStats.total_views, bytes: viewsD1Bytes, formatted: formatBytes(viewsD1Bytes), isExempted: true, exemptReason: "Nombre de vues des fichiers" },
-    published_document_downloads: { count: pubDownloadsStats.count || pubStats.total_downloads, bytes: downloadsD1Bytes, formatted: formatBytes(downloadsD1Bytes), isExempted: true, exemptReason: "Nombre de téléchargements (fichiers et liens)" },
-    user_word_counts: { count: wordCountStats.count || 1, bytes: wordCountD1Bytes, formatted: formatBytes(wordCountD1Bytes), isExempted: true, exemptReason: "Table pour stocker les nombres de mots" },
-    shared_folders: { count: shareStats.folders_count, bytes: shareStats.folders_count * 250, formatted: formatBytes(shareStats.folders_count * 250), isExempted: false },
-    shared_folder_files: { count: shareStats.files_count, bytes: shareStats.total_bytes, formatted: formatBytes(shareStats.total_bytes), isExempted: false },
-    shop_profiles: { count: hasShop ? 1 : 0, bytes: 180, formatted: formatBytes(180), isExempted: false },
-    products: { count: shopStats.products_count, bytes: shopStats.d1_text_bytes, formatted: formatBytes(shopStats.d1_text_bytes), isExempted: false },
-    cart_items: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
-    seller_follows: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
-    notifications: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
-    users: { count: 1, bytes: userProfileBytes, formatted: formatBytes(userProfileBytes), isExempted: false },
-    user_preferences: { count: 1, bytes: 90, formatted: formatBytes(90), isExempted: false },
-    user_subscriptions: { count: 1, bytes: 110, formatted: formatBytes(110), isExempted: false },
-    user_storage_quotas: { count: 1, bytes: 140, formatted: formatBytes(140), isExempted: false },
-    storage_global_config: { count: 1, bytes: 80, formatted: formatBytes(80), isExempted: false },
-    referrals: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
-    referral_rewards_config: { count: 1, bytes: 120, formatted: formatBytes(120), isExempted: false },
-    auth_sessions: { count: activeSession ? 1 : 0, bytes: 128, formatted: formatBytes(128), isExempted: false },
-    email_verifications: { count: 1, bytes: 120, formatted: formatBytes(120), isExempted: false },
-    password_resets: { count: 0, bytes: 0, formatted: '0 Octets', isExempted: false },
-    app_external_links: { count: 3, bytes: 380, formatted: formatBytes(380), isExempted: false }
+    study_files: { count: media.study_files?.count || 0, bytes: media.study_files?.originalBytes || 0, formatted: formatBytes(media.study_files?.originalBytes || 0), isExempted: false },
+    video_files: { count: media.videos?.count || 0, bytes: media.videos?.originalBytes || 0, formatted: formatBytes(media.videos?.originalBytes || 0), isExempted: false },
+    audio_files: { count: media.audio?.count || 0, bytes: media.audio?.originalBytes || 0, formatted: formatBytes(media.audio?.originalBytes || 0), isExempted: false },
+    image_files: { count: media.images?.count || 0, bytes: media.images?.originalBytes || 0, formatted: formatBytes(media.images?.originalBytes || 0), isExempted: false },
+    document_files: { count: media.documents?.count || 0, bytes: media.documents?.originalBytes || 0, formatted: formatBytes(media.documents?.originalBytes || 0), isExempted: false },
+    classeur_files: { count: media.classeur?.count || 0, bytes: media.classeur?.originalBytes || 0, formatted: formatBytes(media.classeur?.originalBytes || 0), isExempted: false },
+    files: { count: media.matieres_files?.count || 0, bytes: media.matieres_files?.originalBytes || 0, formatted: formatBytes(media.matieres_files?.originalBytes || 0), isExempted: false },
+    notes: { count: apps.bloc_notes?.count || 0, bytes: apps.bloc_notes?.bytes || 0, formatted: formatBytes(apps.bloc_notes?.bytes || 0), isExempted: false },
+    matieres: { count: apps.matieres_creees?.count || 0, bytes: apps.matieres_creees?.bytes || 0, formatted: formatBytes(apps.matieres_creees?.bytes || 0), isExempted: false },
+    products: { count: boutique.products_count || 0, bytes: boutique.products_d1_bytes || 0, formatted: formatBytes(boutique.products_d1_bytes || 0), isExempted: false },
+    shop_profiles: { count: hasShop ? 1 : 0, bytes: boutique.shop_profile_bytes || 180, formatted: formatBytes(boutique.shop_profile_bytes || 180), isExempted: false },
+    cart_items: { count: boutique.cart_items_count || 0, bytes: boutique.cart_items_bytes || 0, formatted: formatBytes(boutique.cart_items_bytes || 0), isExempted: false },
+    seller_follows: { count: boutique.seller_follows_count || 0, bytes: (boutique.seller_follows_count || 0) * 64, formatted: formatBytes((boutique.seller_follows_count || 0) * 64), isExempted: false },
+    chat_messages: { count: ia.chat_messages_count || 0, bytes: ia.chat_messages_bytes || 0, formatted: formatBytes(ia.chat_messages_bytes || 0), isExempted: false },
+    conversations: { count: ia.chat_messages_count ? Math.ceil(ia.chat_messages_count / 10) : 0, bytes: 250, formatted: '250 Octets', isExempted: false },
+    messages: { count: ia.chat_messages_count || 0, bytes: ia.chat_messages_bytes || 0, formatted: formatBytes(ia.chat_messages_bytes || 0), isExempted: false },
+    ai_generated_contents: { count: ia.ai_creations_count || 0, bytes: ia.ai_creations_bytes || 0, formatted: formatBytes(ia.ai_creations_bytes || 0), isExempted: false },
+    ai_creations: { count: ia.ai_creations_count || 0, bytes: ia.ai_creations_bytes || 0, formatted: formatBytes(ia.ai_creations_bytes || 0), isExempted: false },
+    user_ai_workspace: { count: ia.imported_study_files_count || 0, bytes: ia.imported_study_files_bytes || 0, formatted: formatBytes(ia.imported_study_files_bytes || 0), isExempted: false },
+    study_sessions: { count: ia.study_sessions_count || 0, bytes: ia.study_sessions_bytes || 0, formatted: formatBytes(ia.study_sessions_bytes || 0), isExempted: false },
+    alarms: { count: apps.horloge_alarmes?.count || 0, bytes: apps.horloge_alarmes?.bytes || 0, formatted: formatBytes(apps.horloge_alarmes?.bytes || 0), isExempted: false },
+    grades: { count: apps.moyennes_notes?.count || 0, bytes: apps.moyennes_notes?.bytes || 0, formatted: formatBytes(apps.moyennes_notes?.bytes || 0), isExempted: false },
+    grade_settings: { count: 1, bytes: 80, formatted: '80 Octets', isExempted: false },
+    calendar_events: { count: apps.agenda_calendrier?.count || 0, bytes: apps.agenda_calendrier?.bytes || 0, formatted: formatBytes(apps.agenda_calendrier?.bytes || 0), isExempted: false },
+    schedule_slots: { count: apps.emploi_du_temps?.count || 0, bytes: apps.emploi_du_temps?.bytes || 0, formatted: formatBytes(apps.emploi_du_temps?.bytes || 0), isExempted: false },
+    schedule_config: { count: 1, bytes: 180, formatted: '180 Octets', isExempted: false },
+    user_favorites: { count: apps.favoris_epingles?.count || 0, bytes: apps.favoris_epingles?.bytes || 0, formatted: formatBytes(apps.favoris_epingles?.bytes || 0), isExempted: false },
+    pinned_items: { count: apps.favoris_epingles?.count || 0, bytes: apps.favoris_epingles?.bytes || 0, formatted: formatBytes(apps.favoris_epingles?.bytes || 0), isExempted: false },
+    shared_folders: { count: apps.dossiers_partages?.count || 0, bytes: apps.dossiers_partages?.bytes || 0, formatted: formatBytes(apps.dossiers_partages?.bytes || 0), isExempted: false },
+    shared_folder_files: { count: apps.dossiers_partages?.count || 0, bytes: apps.dossiers_partages?.bytes || 0, formatted: formatBytes(apps.dossiers_partages?.bytes || 0), isExempted: false },
+    secure_folder_config: { count: 1, bytes: 140, formatted: '140 Octets', isExempted: false },
+    users: { count: 1, bytes: apps.profil_et_compte?.bytes || 400, formatted: formatBytes(apps.profil_et_compte?.bytes || 400), isExempted: false },
+    user_preferences: { count: 1, bytes: 90, formatted: '90 Octets', isExempted: false },
+    notifications: { count: apps.notifications?.count || 0, bytes: apps.notifications?.bytes || 0, formatted: formatBytes(apps.notifications?.bytes || 0), isExempted: false },
+    referrals: { count: apps.parrainages?.count || 0, bytes: apps.parrainages?.bytes || 0, formatted: formatBytes(apps.parrainages?.bytes || 0), isExempted: false },
+    user_storage_usage: { count: 1, bytes: 240, formatted: '240 Octets', isExempted: true, exemptReason: "Table maîtresse de calcul et suivi" },
+    file_compression_records: { count: totalFilesCount, bytes: totalFilesCount * 128, formatted: formatBytes(totalFilesCount * 128), isExempted: true, exemptReason: "Journal technique d\'optimisation Cloudflare" },
+    published_documents: { count: pubStats.count, bytes: pubStats.count * 450, formatted: formatBytes(pubStats.count * 450), isExempted: true, exemptReason: "Bibliothèque publique du Menu Ressources pour toute la communauté" },
+    user_document_interactions: { count: viewsInteractionsStats.count || pubStats.total_views, bytes: (viewsInteractionsStats.count || pubStats.total_views) * 64, formatted: formatBytes((viewsInteractionsStats.count || pubStats.total_views) * 64), isExempted: true, exemptReason: "Nombre de vues des fichiers publics" },
+    published_document_downloads: { count: pubDownloadsStats.count || pubStats.total_downloads, bytes: (pubDownloadsStats.count || pubStats.total_downloads) * 64, formatted: formatBytes((pubDownloadsStats.count || pubStats.total_downloads) * 64), isExempted: true, exemptReason: "Traçabilité des téléchargements publics" },
+    user_word_counts: { count: wordStats.count || 1, bytes: 140, formatted: '140 Octets', isExempted: true, exemptReason: "Compteur technique de mots rédigés" },
+    user_subscriptions: { count: 1, bytes: 120, formatted: '120 Octets', isExempted: true, exemptReason: "Historique d\'abonnement de l\'utilisateur" },
+    user_storage_quotas: { count: 1, bytes: 140, formatted: '140 Octets', isExempted: true, exemptReason: "Attribution des quotas administratifs" },
+    storage_global_config: { count: 1, bytes: 80, formatted: '80 Octets', isExempted: true, exemptReason: "Paramètres globaux du serveur" }
   };
 
-  // Dictionnaire individuel R2 pour cet utilisateur
   const userR2FoldersStats = {
-    'user-files/': { count: filesStats.personal_files_count, bytes: filesStats.personal_files_bytes, formatted: formatBytes(filesStats.personal_files_bytes), isExempted: false },
-    'ai-studies/': { count: filesStats.ai_files_count, bytes: filesStats.ai_files_bytes, formatted: formatBytes(filesStats.ai_files_bytes), isExempted: false },
-    'published/files/': { count: pubStats.count, bytes: pubStats.total_bytes, formatted: formatBytes(pubStats.total_bytes), isExempted: true, exemptReason: "Ressource publique du menu Ressources pour toute la communauté" },
-    'shared-links/files/': { count: shareStats.files_count, bytes: shareStats.total_bytes, formatted: formatBytes(shareStats.total_bytes), isExempted: false },
-    'products/images/': { count: shopStats.products_count, bytes: shopStats.products_count * 120000, formatted: formatBytes(shopStats.products_count * 120000), isExempted: false },
-    'avatars/': { count: hasCustomAvatar ? 1 : 0, bytes: avatarEstimatedBytes, formatted: formatBytes(avatarEstimatedBytes), isExempted: false }
+    'user-files/': { count: (media.matieres_files?.count || 0) + (media.documents?.count || 0) + (media.classeur?.count || 0), bytes: (media.matieres_files?.compressedBytes || 0) + (media.documents?.compressedBytes || 0) + (media.classeur?.compressedBytes || 0), formatted: formatBytes((media.matieres_files?.compressedBytes || 0) + (media.documents?.compressedBytes || 0) + (media.classeur?.compressedBytes || 0)), isExempted: false },
+    'ai-studies/': { count: media.study_files?.count || 0, bytes: media.study_files?.compressedBytes || 0, formatted: formatBytes(media.study_files?.compressedBytes || 0), isExempted: false },
+    'products/images/': { count: boutique.products_count || 0, bytes: boutique.products_r2_bytes || 0, formatted: formatBytes(boutique.products_r2_bytes || 0), isExempted: false },
+    'shared-links/files/': { count: apps.dossiers_partages?.count || 0, bytes: apps.dossiers_partages?.bytes || 0, formatted: formatBytes(apps.dossiers_partages?.bytes || 0), isExempted: false },
+    'avatars/': { count: (user.avatar_url && user.avatar_url.includes('avatars/')) ? 1 : 0, bytes: (user.avatar_url && user.avatar_url.includes('avatars/')) ? 85000 : 0, formatted: formatBytes((user.avatar_url && user.avatar_url.includes('avatars/')) ? 85000 : 0), isExempted: false },
+    'published/files/': { count: pubStats.count, bytes: exemptR2Bytes, formatted: formatBytes(exemptR2Bytes), isExempted: true, exemptReason: "Ressources publiques de la bibliothèque partagée" }
   };
 
   return {
@@ -1238,7 +1513,7 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
       lastSeenText,
       hasActiveSession: Boolean(activeSession),
       hasShop,
-      shopProductsCount,
+      shopProductsCount: boutique.products_count || 0,
       shopName,
       shopPhone,
       shopWhatsapp,
@@ -1262,28 +1537,51 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
       notes: quotaRow.notes || ''
     },
     storage: {
-      totalBytes: netTotalBytes,
-      totalFormatted: formatBytes(netTotalBytes),
-      usagePercentage: netUsagePercentage,
+      totalBytes: origTotalBytes,
+      totalFormatted: origTotalFormatted,
+      usagePercentage,
+      original: {
+        totalBytes: origTotalBytes,
+        totalFormatted: origTotalFormatted,
+        billableFormatted: origTotalFormatted
+      },
+      r2: {
+        totalBytes: r2TotalBytes,
+        totalFormatted: r2TotalFormatted,
+        folders: userR2FoldersStats
+      },
+      d1: {
+        totalBytes: d1TotalBytes,
+        totalFormatted: d1TotalFormatted,
+        totalRows: Number(usage?.total_files_count || 0) + 15,
+        tables: userTablesStats
+      },
+      compression: {
+        savedBytes: savedTotalBytes,
+        savedFormatted: savedTotalFormatted,
+        ratio: compressionRatio
+      },
+      filesCount: totalFilesCount,
+      breakdown: breakdown,
       net: {
-        totalBytes: netTotalBytes,
-        totalFormatted: formatBytes(netTotalBytes),
-        usagePercentage: netUsagePercentage,
-        r2Bytes: netR2Bytes,
-        r2Formatted: formatBytes(netR2Bytes),
-        d1Bytes: netD1Bytes,
-        d1Formatted: formatBytes(netD1Bytes),
-        d1Rows: netD1Rows
+        totalBytes: origTotalBytes,
+        totalFormatted: origTotalFormatted,
+        usagePercentage,
+        r2Bytes: r2TotalBytes,
+        r2Formatted: r2TotalFormatted,
+        d1Bytes: d1TotalBytes,
+        d1Formatted: d1TotalFormatted,
+        d1Rows: Number(usage?.total_files_count || 0) + 15
       },
       gross: {
-        totalBytes: grossTotalBytes,
-        totalFormatted: formatBytes(grossTotalBytes),
-        usagePercentage: grossUsagePercentage,
-        r2Bytes: grossR2Bytes,
-        r2Formatted: formatBytes(grossR2Bytes),
-        d1Bytes: grossD1Bytes,
-        d1Formatted: formatBytes(grossD1Bytes),
-        d1Rows: userD1Rows
+        totalBytes: origTotalBytes + totalExemptBytes,
+        totalFormatted: formatBytes(origTotalBytes + totalExemptBytes),
+        usagePercentage,
+        r2Bytes: r2TotalBytes + exemptR2Bytes,
+        r2Formatted: formatBytes(r2TotalBytes + exemptR2Bytes),
+        d1Bytes: d1TotalBytes + exemptD1Bytes,
+        d1Formatted: formatBytes(d1TotalBytes + exemptD1Bytes),
+        d1Rows: Number(usage?.total_files_count || 0) + 25
       },
       exempted: {
         totalBytes: totalExemptBytes,
@@ -1292,33 +1590,17 @@ async function inspectUserStorageDetail(db, bucket, user, globalConfig) {
         r2Formatted: formatBytes(exemptR2Bytes),
         d1Bytes: exemptD1Bytes,
         d1Formatted: formatBytes(exemptD1Bytes),
-        exemptD1Rows,
         items: [
-          { name: "Ressources publiques dans le menu Ressources (R2 + D1)", bytes: exemptR2Bytes + pubDocsD1Bytes, formatted: formatBytes(exemptR2Bytes + pubDocsD1Bytes), icon: "📚" },
-          { name: "Nombre de vues des fichiers", bytes: viewsD1Bytes, formatted: formatBytes(viewsD1Bytes), icon: "👁️" },
-          { name: "Nombre de téléchargements (Fichiers & Liens partagés)", bytes: downloadsD1Bytes, formatted: formatBytes(downloadsD1Bytes), icon: "⬇️" },
-          { name: "Table de stockage des nombres de mots de l'utilisateur", bytes: wordCountD1Bytes, formatted: formatBytes(wordCountD1Bytes), icon: "📝" }
+          { name: "Ressources publiques partagées (Menu Ressources)", bytes: exemptR2Bytes, formatted: formatBytes(exemptR2Bytes), icon: "📚" },
+          { name: "Nombre de vues et avis des fichiers", bytes: (viewsInteractionsStats.count || pubStats.total_views) * 64, formatted: formatBytes((viewsInteractionsStats.count || pubStats.total_views) * 64), icon: "👁️" },
+          { name: "Nombre de téléchargements (Fichiers & Liens partagés)", bytes: (pubDownloadsStats.count || pubStats.total_downloads) * 64, formatted: formatBytes((pubDownloadsStats.count || pubStats.total_downloads) * 64), icon: "⬇️" },
+          { name: "Compteur de mots rédigés par l'utilisateur", bytes: 140, formatted: "140 Octets", icon: "📝" }
         ]
-      },
-      r2: {
-        totalBytes: netR2Bytes,
-        grossBytes: grossR2Bytes,
-        netBytes: netR2Bytes,
-        totalFormatted: formatBytes(netR2Bytes),
-        folders: userR2FoldersStats
-      },
-      d1: {
-        totalBytes: netD1Bytes,
-        grossBytes: grossD1Bytes,
-        netBytes: netD1Bytes,
-        totalFormatted: formatBytes(netD1Bytes),
-        totalRows: netD1Rows,
-        grossRows: userD1Rows,
-        tables: userTablesStats
       }
     }
   };
 }
+
 
 async function inspectAllD1TablesGlobal(db) {
   let dbTables = [];
@@ -1721,6 +2003,9 @@ function renderDashboardHtml(data) {
     </div>
 
     <div class="flex items-center gap-2">
+      <button onclick="switchView('users')" class="px-2.5 py-1.5 rounded-lg bg-orange-500/15 hover:bg-orange-500/25 text-xs font-bold text-orange-400 border border-orange-500/30 transition-all flex items-center gap-1.5 cursor-pointer shadow-sm">
+        <span>👥</span> <span class="hidden md:inline">Consommation Utilisateurs</span>
+      </button>
       <button onclick="manualRefreshLiveStats()" id="btn-manual-refresh" class="px-2.5 py-1.5 rounded-lg bg-slate-800 hover:bg-slate-700 text-xs font-bold text-slate-200 border border-slate-700 transition-all flex items-center gap-1.5 cursor-pointer">
         <span id="refresh-spinner">🔄</span> <span class="hidden sm:inline">Actualiser</span>
       </button>
@@ -1761,10 +2046,16 @@ function renderDashboardHtml(data) {
       <button 
         onclick="switchView('users')" 
         id="nav-btn-users"
-        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer"
+        class="w-full flex items-center gap-3 px-3.5 py-2.5 rounded-xl text-slate-300 hover:bg-slate-800/80 transition-all text-left cursor-pointer group"
       >
-        <span class="text-base">👥</span>
-        <span>Tout les Utilisateurs</span>
+        <span class="text-base text-orange-400 group-hover:scale-110 transition-transform">👥</span>
+        <div class="flex-1 overflow-hidden">
+          <div class="text-xs font-bold text-white flex items-center gap-1.5">
+            <span>Consommation Utilisateurs</span>
+            <span class="text-[9px] px-1.5 py-0.2 rounded-full bg-orange-500/20 text-orange-400 border border-orange-500/30 font-mono">D1/R2</span>
+          </div>
+          <div class="text-[10px] text-slate-400 font-normal truncate">Stockage facturé, réel & tables</div>
+        </div>
       </button>
 
       <button 
@@ -3979,8 +4270,11 @@ function renderDashboardHtml(data) {
               </div>
             </div>
             <div class="text-right shrink-0 font-mono text-[11px]">
-              <span class="font-bold text-orange-400">\${s.net ? s.net.totalFormatted : s.totalFormatted}</span>
-              <div class="text-[9px] text-slate-500">Quota: \${q.totalAllowedFormatted}</div>
+              <div class="font-bold text-orange-400 text-xs">\${s.original ? s.original.totalFormatted : (s.net ? s.net.totalFormatted : s.totalFormatted)}</div>
+              <div class="text-[9px] text-slate-400 flex items-center justify-end gap-1">
+                <span>Quota: \${q.totalAllowedFormatted}</span>
+                \${s.compression && s.compression.ratio > 0 ? \`<span class="px-1 rounded bg-emerald-500/20 text-emerald-400 font-mono text-[8px]" title="Gain compression R2">-\${s.compression.ratio}%</span>\` : ''}
+              </div>
             </div>
           </div>
         \`;
@@ -3990,6 +4284,45 @@ function renderDashboardHtml(data) {
     function filterUsersLeft() {
       renderUsersLeftList(document.getElementById('users-search-left').value);
     }
+
+    
+    async function recalculateUserStorage(userId) {
+      if (!userId) return;
+      const btn = document.getElementById('btn-recalc-storage-' + userId);
+      if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '<span class="animate-spin inline-block">🔄</span> <span>Recalcul en cours...</span>';
+      }
+      try {
+        const resp = await fetch('/api/storage/recalculate-user', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ userId })
+        });
+        const res = await resp.json();
+        if (res.success && res.user) {
+          const idx = allUsers.findIndex(x => x.user.id === userId);
+          if (idx !== -1) {
+            allUsers[idx] = res.user;
+          } else {
+            allUsers.push(res.user);
+          }
+          renderUsersLeftList(document.getElementById('users-search-left')?.value || '');
+          renderUserRightDetails(userId);
+          showToast('✓ Stockage et 36 tables D1/R2 recalculés avec succès !');
+        } else {
+          showToast('⚠️ Erreur lors du recalcul : ' + (res.error || 'Erreur'));
+        }
+      } catch (e) {
+        showToast('⚠️ Erreur réseau lors du recalcul');
+      } finally {
+        if (btn) {
+          btn.disabled = false;
+          btn.innerHTML = '<span>🔄</span> <span>Recalculer le stockage en direct</span>';
+        }
+      }
+    }
+    window.recalculateUserStorage = recalculateUserStorage;
 
     function selectUser(userId) {
       selectedUserId = userId;
@@ -4134,30 +4467,58 @@ function renderDashboardHtml(data) {
           </div>
         </div>
 
-        <!-- 4 CARRÉS PERSONNELS POUR CET UTILISATEUR -->
+        <!-- BARRE DE RECALCUL ET AUDIT DIRECT DES 36 TABLES -->
+        <div class="flex items-center justify-between gap-2 p-2.5 rounded-xl bg-slate-900/90 border border-slate-800 flex-wrap">
+          <div class="flex items-center gap-2">
+            <span class="text-xs font-bold text-slate-200">📊 Audit D1 / R2 (36 Tables) :</span>
+            <span class="text-[11px] px-2 py-0.5 rounded-md bg-orange-500/20 text-orange-400 font-mono font-bold">\${s.original ? s.original.totalFormatted : displayTotalFormatted} facturés</span>
+          </div>
+          <button 
+            onclick="recalculateUserStorage('\${u.id}')" 
+            id="btn-recalc-storage-\${u.id}"
+            class="px-3 py-1.5 rounded-lg bg-orange-600 hover:bg-orange-500 text-white font-bold text-xs transition flex items-center gap-1.5 shadow-md shadow-orange-600/30 cursor-pointer"
+            title="Recalculer les 36 tables D1 et les dossiers R2 de cet utilisateur en temps réel"
+          >
+            <span>🔄</span> <span>Recalculer le stockage en direct</span>
+          </button>
+        </div>
+
+        <!-- 4 CARRÉS PERSONNELS : FACTURATION VS INFRASTRUCTURE RÉELLE CLOUDFLARE -->
         <div class="grid grid-cols-2 sm:grid-cols-4 gap-2">
-          <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-blue-500">
-            <span class="text-[10px] uppercase font-bold text-slate-400">Fichiers Personnels</span>
-            <div class="text-base font-black text-white mt-0.5">\${(r2.folders['user-files/']?.count || 0) + (r2.folders['ai-studies/']?.count || 0)}</div>
-            <div class="text-[10px] text-blue-400 font-medium truncate">\${(r2.folders['user-files/']?.count || 0)} cours, \${(r2.folders['ai-studies/']?.count || 0)} IA</div>
+          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-amber-500 shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] uppercase font-bold text-slate-400">Stockage Facturé</span>
+              <span class="text-[9px] px-1.5 py-0.2 rounded bg-amber-500/20 text-amber-300 font-bold">Quota</span>
+            </div>
+            <div class="text-lg font-black text-amber-400 mt-1">\${s.original ? s.original.totalFormatted : displayTotalFormatted}</div>
+            <div class="text-[10px] text-slate-400 font-medium truncate">Volume brut non compressé</div>
           </div>
 
-          <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-orange-500">
-            <span class="text-[10px] uppercase font-bold text-slate-400">Documents & Fichiers</span>
-            <div class="text-base font-black text-orange-400 mt-0.5">\${displayR2Formatted}</div>
-            <div class="text-[10px] text-slate-400 font-medium truncate">Stockage Cloudflare</div>
+          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-blue-500 shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] uppercase font-bold text-slate-400">Fichiers Physiques R2</span>
+              <span class="text-[9px] px-1.5 py-0.2 rounded bg-blue-500/20 text-blue-300 font-bold">R2 Réel</span>
+            </div>
+            <div class="text-lg font-black text-blue-400 mt-1">\${s.r2 ? s.r2.totalFormatted : displayR2Formatted}</div>
+            <div class="text-[10px] text-slate-400 font-medium truncate">\${(r2.folders['user-files/']?.count || 0) + (r2.folders['ai-studies/']?.count || 0) + (r2.folders['products/images/']?.count || 0)} fichiers hébergés</div>
           </div>
 
-          <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-emerald-500">
-            <span class="text-[10px] uppercase font-bold text-slate-400">Données & Base</span>
-            <div class="text-base font-black text-emerald-400 mt-0.5">\${displayD1Formatted}</div>
-            <div class="text-[10px] text-slate-400 font-medium truncate">\${displayD1Rows} lignes enregistrées</div>
+          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-emerald-500 shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] uppercase font-bold text-slate-400">Base SQLite D1</span>
+              <span class="text-[9px] px-1.5 py-0.2 rounded bg-emerald-500/20 text-emerald-300 font-bold">D1 Données</span>
+            </div>
+            <div class="text-lg font-black text-emerald-400 mt-1">\${s.d1 ? s.d1.totalFormatted : displayD1Formatted}</div>
+            <div class="text-[10px] text-slate-400 font-medium truncate">\${displayD1Rows} lignes SQL enregistrées</div>
           </div>
 
-          <div class="bg-slate-900/90 p-2.5 rounded-xl border border-slate-800 border-l-4 border-l-purple-500">
-            <span class="text-[10px] uppercase font-bold text-slate-400">Quota Utilisé</span>
-            <div class="text-base font-black text-purple-400 mt-0.5">\${displayUsagePercentage}%</div>
-            <div class="text-[10px] text-purple-300 font-medium truncate">Alloué : \${q.totalAllowedFormatted}</div>
+          <div class="bg-slate-900/90 p-3 rounded-xl border border-slate-800 border-l-4 border-l-purple-500 shadow-sm">
+            <div class="flex items-center justify-between">
+              <span class="text-[10px] uppercase font-bold text-slate-400">Économie Serveur</span>
+              <span class="text-[9px] px-1.5 py-0.2 rounded bg-purple-500/20 text-purple-300 font-bold">\${s.compression ? s.compression.ratio : 0}%</span>
+            </div>
+            <div class="text-lg font-black text-purple-400 mt-1">\${s.compression ? s.compression.savedFormatted : '0 o'}</div>
+            <div class="text-[10px] text-purple-300 font-medium truncate">Consommation : \${displayUsagePercentage}%</div>
           </div>
         </div>
 
@@ -9210,6 +9571,21 @@ function renderDashboardHtml(data) {
           const searchInput = document.getElementById('global-search-input');
           renderGlobalR2Folders(searchInput ? searchInput.value : '');
         }
+        // Actualisation automatique de la liste des utilisateurs et de leurs consommations
+        try {
+          const uResp = await fetch('/api/users');
+          if (uResp.ok) {
+            const uData = await uResp.json();
+            if (uData && Array.isArray(uData.users)) {
+              allUsers = uData.users;
+              if (currentView === 'users') {
+                renderUsersLeftList(document.getElementById('users-search-left')?.value || '');
+                if (selectedUserId) renderUserRightDetails(selectedUserId);
+              }
+            }
+          }
+        } catch(e) {}
+
 
         const badge = document.getElementById('live-indicator-badge');
         if (badge) {
@@ -10179,12 +10555,54 @@ export default {
         usersQuery = await safeQuery(db, `SELECT id, name, email FROM users`, [], { results: [] });
       }
 
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/storage/recalculate-user
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/storage/recalculate-user') {
+        const body = await request.json().catch(() => ({}));
+        const targetUserId = body.userId;
+        if (!targetUserId) {
+          return new Response(JSON.stringify({ success: false, error: 'userId requis' }), { status: 400, headers: corsHeaders(origin) });
+        }
+        const updatedUsage = await recalculateAndSaveUserStorage(db, targetUserId);
+        const userRow = await safeFirst(db, `SELECT * FROM users WHERE id = ?`, [targetUserId]);
+        const detailedUser = await inspectUserStorageDetail(db, bucket, userRow || { id: targetUserId }, globalConfigRow, updatedUsage);
+        return new Response(JSON.stringify({ success: true, user: detailedUser, usage: updatedUsage }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
+      // ----------------------------------------------------------------------
+      // ROUTE POST : /api/storage/recalculate-all
+      // ----------------------------------------------------------------------
+      if (request.method === 'POST' && path === '/api/storage/recalculate-all') {
+        const allU = await safeQuery(db, `SELECT id FROM users`, []);
+        const uList = (allU && allU.results) ? allU.results : [];
+        for (const u of uList) {
+          await recalculateAndSaveUserStorage(db, u.id);
+        }
+        return new Response(JSON.stringify({ success: true, count: uList.length }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json', ...corsHeaders(origin) }
+        });
+      }
+
       const rawUsers = usersQuery && usersQuery.results ? usersQuery.results : [];
+
+      // Préchargement ultra-rapide de user_storage_usage pour éviter tout timeout D1
+      const usageMap = new Map();
+      const usagesRes = await safeQuery(db, `SELECT * FROM user_storage_usage`, []);
+      if (usagesRes && usagesRes.results) {
+        for (const row of usagesRes.results) {
+          usageMap.set(row.user_id, row);
+        }
+      }
 
       // Inspection pour chaque utilisateur
       const detailedUsers = [];
       for (const u of rawUsers) {
-        const detail = await inspectUserStorageDetail(db, bucket, u, globalConfigRow);
+        const detail = await inspectUserStorageDetail(db, bucket, u, globalConfigRow, usageMap.get(u.id));
         detailedUsers.push(detail);
       }
 
@@ -10202,11 +10620,23 @@ export default {
       const r2FoldersGlobal = r2GlobalData.r2FoldersGlobal;
       const r2Meta = r2GlobalData.r2Meta;
 
-      // Synthèse globale RÉELLE de l'application entière
+      // Synthèse globale RÉELLE de l'application entière (incluant facturation et économie)
+      let sumOriginalBytes = 0;
+      let sumSavedBytes = 0;
+      for (const du of detailedUsers) {
+        sumOriginalBytes += du.storage?.original?.totalBytes || du.storage?.totalBytes || 0;
+        sumSavedBytes += du.storage?.compression?.savedBytes || 0;
+      }
+      if (sumOriginalBytes === 0) sumOriginalBytes = globalR2Bytes + globalD1Bytes;
+
       const globalSummary = {
         totalUsers: rawUsers.length,
         totalStorageBytes: globalR2Bytes + globalD1Bytes,
         totalStorageFormatted: formatBytes(globalR2Bytes + globalD1Bytes),
+        totalOriginalBytes: sumOriginalBytes,
+        totalOriginalFormatted: formatBytes(sumOriginalBytes),
+        totalSavedBytes: sumSavedBytes,
+        totalSavedFormatted: formatBytes(sumSavedBytes),
         totalR2Bytes: globalR2Bytes,
         totalR2Formatted: formatBytes(globalR2Bytes),
         totalR2Files: globalR2Files,
