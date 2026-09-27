@@ -42,7 +42,7 @@ function corsHeaders(origin = "*") {
     "Access-Control-Allow-Headers": "Content-Type, Authorization, x-user-id, Cache-Control, Pragma, *"
   };
 }
-function jsonResponse(data, status = 200, origin = "*") {
+function jsonResponse(data, status = 200, origin = "*", extraHeaders = {}) {
   return new Response(JSON.stringify(data), {
     status,
     headers: {
@@ -50,7 +50,8 @@ function jsonResponse(data, status = 200, origin = "*") {
       "Cache-Control": "no-store, no-cache, must-revalidate, max-age=0",
       "Pragma": "no-cache",
       "Expires": "0",
-      ...corsHeaders(origin)
+      ...corsHeaders(origin),
+      ...extraHeaders
     }
   });
 }
@@ -5178,14 +5179,30 @@ var index_default = {
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
           const folderId = url.searchParams.get("folderId");
+          const limitParam = parseInt(url.searchParams.get("limit") || "0", 10);
+          const cursor = url.searchParams.get("cursor");
           let query = "SELECT * FROM classeur_files WHERE user_id = ?";
           const params = [reqUserId];
           if (folderId) {
             query += " AND folder_id = ?";
             params.push(folderId);
           }
+          if (cursor) {
+            query += " AND created_at < ?";
+            params.push(cursor);
+          }
           query += " ORDER BY display_order ASC, created_at DESC";
+          if (limitParam > 0) {
+            query += " LIMIT ?";
+            params.push(limitParam);
+          }
           const { results } = await env.DB.prepare(query).bind(...params).all();
+          const latestId = results && results.length > 0 ? (results[0].id || results[0].created_at) : "empty";
+          const etag = `"${(results || []).length}-${latestId}"`;
+          const ifNoneMatch = request.headers.get("if-none-match");
+          if (ifNoneMatch && ifNoneMatch === etag) {
+            return new Response(null, { status: 304, headers: { ...corsHeaders(origin), "ETag": etag } });
+          }
           const formatted = (results || []).map((f) => ({
             id: f.id,
             userId: f.user_id,
@@ -5209,7 +5226,14 @@ var index_default = {
             isPinned: Boolean(f.is_pinned),
             isFavorite: Boolean(f.is_favorite)
           }));
-          return jsonResponse({ success: true, data: formatted }, 200, origin);
+          return jsonResponse({
+            success: true,
+            data: formatted,
+            pagination: limitParam > 0 ? {
+              hasMore: (results || []).length === limitParam,
+              nextCursor: (results || []).length === limitParam ? results[results.length - 1].created_at : null
+            } : undefined
+          }, 200, origin, { "ETag": etag });
         }
         if (method === "POST") {
           const body = await request.json().catch(() => ({}));
@@ -5445,9 +5469,26 @@ var index_default = {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
-          const { results } = await env.DB.prepare(`
-            SELECT * FROM audio_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId).all();
+          const limitParam = parseInt(url.searchParams.get("limit") || "0", 10);
+          const cursor = url.searchParams.get("cursor");
+          let query = "SELECT * FROM audio_files WHERE user_id = ?";
+          const params = [reqUserId];
+          if (cursor) {
+            query += " AND created_at < ?";
+            params.push(cursor);
+          }
+          query += " ORDER BY is_pinned DESC, created_at DESC";
+          if (limitParam > 0) {
+            query += " LIMIT ?";
+            params.push(limitParam);
+          }
+          const { results } = await env.DB.prepare(query).bind(...params).all();
+          const latestId = results && results.length > 0 ? (results[0].id || results[0].created_at) : "empty";
+          const etag = `"${(results || []).length}-${latestId}"`;
+          const ifNoneMatch = request.headers.get("if-none-match");
+          if (ifNoneMatch && ifNoneMatch === etag) {
+            return new Response(null, { status: 304, headers: { ...corsHeaders(origin), "ETag": etag } });
+          }
           const formatted = (results || []).map((a) => ({
             id: a.id,
             userId: a.user_id,
@@ -5469,7 +5510,14 @@ var index_default = {
             isFavorite: Boolean(a.is_favorite),
             isPinned: Boolean(a.is_pinned)
           }));
-          return jsonResponse({ success: true, data: formatted }, 200, origin);
+          return jsonResponse({
+            success: true,
+            data: formatted,
+            pagination: limitParam > 0 ? {
+              hasMore: (results || []).length === limitParam,
+              nextCursor: (results || []).length === limitParam ? results[results.length - 1].created_at : null
+            } : undefined
+          }, 200, origin, { "ETag": etag });
         }
         if (method === "POST") {
           const body = await request.json().catch(() => ({}));
@@ -5555,9 +5603,26 @@ var index_default = {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
-          const { results } = await env.DB.prepare(`
-            SELECT * FROM image_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId).all();
+          const limitParam = parseInt(url.searchParams.get("limit") || "0", 10);
+          const cursor = url.searchParams.get("cursor");
+          let query = "SELECT * FROM image_files WHERE user_id = ?";
+          const params = [reqUserId];
+          if (cursor) {
+            query += " AND created_at < ?";
+            params.push(cursor);
+          }
+          query += " ORDER BY is_pinned DESC, created_at DESC";
+          if (limitParam > 0) {
+            query += " LIMIT ?";
+            params.push(limitParam);
+          }
+          const { results } = await env.DB.prepare(query).bind(...params).all();
+          const latestId = results && results.length > 0 ? (results[0].id || results[0].created_at) : "empty";
+          const etag = `"${(results || []).length}-${latestId}"`;
+          const ifNoneMatch = request.headers.get("if-none-match");
+          if (ifNoneMatch && ifNoneMatch === etag) {
+            return new Response(null, { status: 304, headers: { ...corsHeaders(origin), "ETag": etag } });
+          }
           const formatted = (results || []).map((img) => ({
             id: img.id,
             userId: img.user_id,
@@ -5577,7 +5642,14 @@ var index_default = {
             isFavorite: Boolean(img.is_favorite),
             isPinned: Boolean(img.is_pinned)
           }));
-          return jsonResponse({ success: true, data: formatted }, 200, origin);
+          return jsonResponse({
+            success: true,
+            data: formatted,
+            pagination: limitParam > 0 ? {
+              hasMore: (results || []).length === limitParam,
+              nextCursor: (results || []).length === limitParam ? results[results.length - 1].created_at : null
+            } : undefined
+          }, 200, origin, { "ETag": etag });
         }
         if (method === "POST") {
           const body = await request.json().catch(() => ({}));
@@ -5653,9 +5725,26 @@ var index_default = {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
-          const { results } = await env.DB.prepare(`
-            SELECT * FROM video_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId).all();
+          const limitParam = parseInt(url.searchParams.get("limit") || "0", 10);
+          const cursor = url.searchParams.get("cursor");
+          let query = "SELECT * FROM video_files WHERE user_id = ?";
+          const params = [reqUserId];
+          if (cursor) {
+            query += " AND created_at < ?";
+            params.push(cursor);
+          }
+          query += " ORDER BY is_pinned DESC, created_at DESC";
+          if (limitParam > 0) {
+            query += " LIMIT ?";
+            params.push(limitParam);
+          }
+          const { results } = await env.DB.prepare(query).bind(...params).all();
+          const latestId = results && results.length > 0 ? (results[0].id || results[0].created_at) : "empty";
+          const etag = `"${(results || []).length}-${latestId}"`;
+          const ifNoneMatch = request.headers.get("if-none-match");
+          if (ifNoneMatch && ifNoneMatch === etag) {
+            return new Response(null, { status: 304, headers: { ...corsHeaders(origin), "ETag": etag } });
+          }
           const formatted = (results || []).map((v) => ({
             id: v.id,
             userId: v.user_id,
@@ -5675,7 +5764,14 @@ var index_default = {
             isFavorite: Boolean(v.is_favorite),
             isPinned: Boolean(v.is_pinned)
           }));
-          return jsonResponse({ success: true, data: formatted }, 200, origin);
+          return jsonResponse({
+            success: true,
+            data: formatted,
+            pagination: limitParam > 0 ? {
+              hasMore: (results || []).length === limitParam,
+              nextCursor: (results || []).length === limitParam ? results[results.length - 1].created_at : null
+            } : undefined
+          }, 200, origin, { "ETag": etag });
         }
         if (method === "POST") {
           const body = await request.json().catch(() => ({}));
@@ -5751,9 +5847,26 @@ var index_default = {
         const reqUserId = await extractRequestUserId();
         if (!reqUserId) return errorResponse("Authentification requise", 401, origin);
         if (method === "GET") {
-          const { results } = await env.DB.prepare(`
-            SELECT * FROM document_files WHERE user_id = ? ORDER BY is_pinned DESC, created_at DESC
-          `).bind(reqUserId).all();
+          const limitParam = parseInt(url.searchParams.get("limit") || "0", 10);
+          const cursor = url.searchParams.get("cursor");
+          let query = "SELECT * FROM document_files WHERE user_id = ?";
+          const params = [reqUserId];
+          if (cursor) {
+            query += " AND created_at < ?";
+            params.push(cursor);
+          }
+          query += " ORDER BY is_pinned DESC, created_at DESC";
+          if (limitParam > 0) {
+            query += " LIMIT ?";
+            params.push(limitParam);
+          }
+          const { results } = await env.DB.prepare(query).bind(...params).all();
+          const latestId = results && results.length > 0 ? (results[0].id || results[0].created_at) : "empty";
+          const etag = `"${(results || []).length}-${latestId}"`;
+          const ifNoneMatch = request.headers.get("if-none-match");
+          if (ifNoneMatch && ifNoneMatch === etag) {
+            return new Response(null, { status: 304, headers: { ...corsHeaders(origin), "ETag": etag } });
+          }
           const formatted = (results || []).map((d) => ({
             id: d.id,
             userId: d.user_id,
@@ -5775,7 +5888,14 @@ var index_default = {
             isFavorite: Boolean(d.is_favorite),
             isPinned: Boolean(d.is_pinned)
           }));
-          return jsonResponse({ success: true, data: formatted }, 200, origin);
+          return jsonResponse({
+            success: true,
+            data: formatted,
+            pagination: limitParam > 0 ? {
+              hasMore: (results || []).length === limitParam,
+              nextCursor: (results || []).length === limitParam ? results[results.length - 1].created_at : null
+            } : undefined
+          }, 200, origin, { "ETag": etag });
         }
         if (method === "POST") {
           const body = await request.json().catch(() => ({}));

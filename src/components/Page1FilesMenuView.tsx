@@ -109,6 +109,8 @@ import { ModernAudioPlayer } from './ModernAudioPlayer';
 import { ModernDocumentViewer } from './ModernDocumentViewer';
 import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 import { CloudDataStore } from '../services/cloudDataStore';
+import { UploadQueue } from '../services/uploadQueue';
+import { UploadQueueWidget } from './UploadQueueWidget';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
 if (typeof window !== 'undefined') {
@@ -513,76 +515,23 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const targetFolder = classeur3DFolders.find(f => f.id === folderId);
     const folderName = targetFolder ? targetFolder.name : 'Dossier';
 
-    const newFiles: FileItem[] = files.map((f: File, idx) => {
-      const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || '' : '';
-      let category: FileItem['category'] = 'documents';
-      if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) category = 'images';
-      else if (['mp4', 'webm', 'mkv', 'avi', 'mov'].includes(ext)) category = 'videos';
-      else if (['mp3', 'wav', 'ogg', 'm4a', 'flac'].includes(ext)) category = 'audio';
-
-      const k = 1024;
-      const sizes = ['o', 'Ko', 'Mo', 'Go'];
-      const i = f.size > 0 ? Math.floor(Math.log(f.size) / Math.log(k)) : 0;
-      const sizeStr = f.size > 0 ? parseFloat((f.size / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i] : '0 o';
-      const fileId = `cf-${folderId}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
-      const localBlobUrl = URL.createObjectURL(f);
-
-      // Stocker le binaire immédiatement dans IndexedDB pour lecture instantanée
-      storeFileBlob(fileId, f).catch(() => {});
-
-      return {
-        id: fileId,
-        name: f.name,
-        category,
-        source: folderName,
-        size: sizeStr,
-        sizeBytes: f.size,
-        date: getDynamicCurrentDate().full,
-        extension: ext.toUpperCase(),
-        url: localBlobUrl,
-        previewUrl: localBlobUrl,
-        videoUrl: category === 'videos' ? localBlobUrl : undefined,
-        audioUrl: category === 'audio' ? localBlobUrl : undefined,
-        positionX: idx * 25,
-        positionY: 0,
-        displayOrder: idx
-      };
-    });
-
-    setFolderFilesMap(prev => ({
-      ...prev,
-      [folderId]: [...newFiles, ...(prev[folderId] || [])]
-    }));
-
-    startSavingAnimation(newFiles.map(f => f.id));
-
-    // Débloquer des récents supprimés et afficher dans les récents
-    newFiles.forEach(f => {
-      unmarkRecentLocallyDeleted(f.id, f.name);
-      unmarkFileLocallyDeleted(f.id, f.name);
-    });
-    setCloudRecentFiles(prev => {
-      const existingIds = new Set(newFiles.map(f => f.id));
-      return [...newFiles, ...prev.filter(f => !existingIds.has(f.id))].slice(0, 6);
-    });
-
-    // Sauvegarde en arrière-plan dans Cloudflare R2 dédié classeur et Cloudflare D1 classeur_files
-    files.forEach(async (file, idx) => {
-      try {
-        const item = newFiles[idx];
-        const uploadRes = await CloudStorageAPI.uploadFileToCategoryR2(file, 'classeur', file.name, folderId);
-        const fileToSave: FileItem = {
-          ...item,
-          url: uploadRes.url,
-          r2Key: uploadRes.key
-        };
-        await CloudStorageAPI.saveClasseurFile(fileToSave, folderId);
-      } catch (err) {
-        console.warn('[handleFolderFileUpload] Erreur upload R2/D1:', err);
+    const newFiles = UploadQueue.enqueue(files, {
+      category: 'classeur',
+      folderId,
+      folderName,
+      onOptimisticItem: (item) => {
+        setFolderFilesMap(prev => ({
+          ...prev,
+          [folderId]: [item, ...(prev[folderId] || []).filter(f => f.id !== item.id)]
+        }));
+        unmarkRecentLocallyDeleted(item.id, item.name);
+        unmarkFileLocallyDeleted(item.id, item.name);
+        setCloudRecentFiles(prev => [item, ...prev.filter(f => f.id !== item.id)].slice(0, 6));
       }
     });
 
-    showToast(`${newFiles.length} fichier(s) importé(s) dans "${folderName}" !`);
+    startSavingAnimation(newFiles.map(f => f.id));
+    showToast(`${newFiles.length} fichier(s) en cours d'importation dans "${folderName}" !`);
     e.target.value = '';
   };
 
@@ -591,752 +540,25 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const targetFolder = classeur3DFolders.find(f => f.id === folderId);
     const folderName = targetFolder ? targetFolder.name : 'Dossier';
 
-    const newFiles: FileItem[] = files.map((f: File, idx) => {
-      const ext = f.name.includes('.') ? f.name.split('.').pop()?.toLowerCase() || '' : '';
-      let category: FileItem['category'] = 'documents';
-      if (['jpg', 'jpeg', 'png', 'gif', 'webp', 'svg'].includes(ext)) category = 'images';
-      else if (['mp4', 'webm', 'mkv', 'avi', 'mov'].includes(ext)) category = 'videos';
-      else if (['mp3', 'wav', 'ogg', 'm4a', 'flac'].includes(ext)) category = 'audio';
-
-      const k = 1024;
-      const sizes = ['o', 'Ko', 'Mo', 'Go'];
-      const i = f.size > 0 ? Math.floor(Math.log(f.size) / Math.log(k)) : 0;
-      const sizeStr = f.size > 0 ? parseFloat((f.size / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i] : '0 o';
-      const fileId = `cf-${folderId}-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 6)}`;
-      const localBlobUrl = URL.createObjectURL(f);
-
-      // Stocker le binaire immédiatement dans IndexedDB
-      storeFileBlob(fileId, f).catch(() => {});
-
-      return {
-        id: fileId,
-        name: f.name,
-        category,
-        source: folderName,
-        size: sizeStr,
-        sizeBytes: f.size,
-        date: getDynamicCurrentDate().full,
-        extension: ext.toUpperCase(),
-        url: localBlobUrl,
-        previewUrl: localBlobUrl,
-        videoUrl: category === 'videos' ? localBlobUrl : undefined,
-        audioUrl: category === 'audio' ? localBlobUrl : undefined,
-        positionX: idx * 25,
-        positionY: 0,
-        displayOrder: idx
-      };
+    const newFiles = UploadQueue.enqueue(files, {
+      category: 'classeur',
+      folderId,
+      folderName,
+      onOptimisticItem: (item) => {
+        setFolderFilesMap(prev => ({
+          ...prev,
+          [folderId]: [item, ...(prev[folderId] || []).filter(f => f.id !== item.id)]
+        }));
+        unmarkRecentLocallyDeleted(item.id, item.name);
+        unmarkFileLocallyDeleted(item.id, item.name);
+        setCloudRecentFiles(prev => [item, ...prev.filter(f => f.id !== item.id)].slice(0, 6));
+      }
     });
-
-    setFolderFilesMap(prev => ({
-      ...prev,
-      [folderId]: [...newFiles, ...(prev[folderId] || [])]
-    }));
 
     startSavingAnimation(newFiles.map(f => f.id));
-
-    // Les récents d'accueil affichent les fichiers nouvellement importés
-    newFiles.forEach(f => {
-      unmarkRecentLocallyDeleted(f.id, f.name);
-      unmarkFileLocallyDeleted(f.id, f.name);
-    });
-    setCloudRecentFiles(prev => {
-      const existingIds = new Set(newFiles.map(f => f.id));
-      return [...newFiles, ...prev.filter(f => !existingIds.has(f.id))].slice(0, 6);
-    });
-
-    // Sauvegarde en arrière-plan dans Cloudflare R2 dédié classeur et Cloudflare D1 classeur_files
-    files.forEach(async (file, idx) => {
-      try {
-        const item = newFiles[idx];
-        const uploadRes = await CloudStorageAPI.uploadFileToCategoryR2(file, 'classeur', file.name, folderId);
-        const fileToSave: FileItem = {
-          ...item,
-          url: uploadRes.url,
-          r2Key: uploadRes.key
-        };
-        await CloudStorageAPI.saveClasseurFile(fileToSave, folderId);
-      } catch (err) {
-        console.warn('[handleDirectFilesImportToFolder] Erreur upload R2/D1:', err);
-      }
-    });
-
-    showToast(`${newFiles.length} fichier(s) importé(s) dans "${folderName}" !`);
+    showToast(`${newFiles.length} fichier(s) en cours d'importation dans "${folderName}" !`);
   };
 
-  const handleDeleteFileFromFolder = (folderId: string, fileId: string) => {
-    const fileToDelete = (folderFilesMap[folderId] || []).find(f => f.id === fileId);
-    if (fileToDelete) {
-      setTrashFiles(prev => [{ ...fileToDelete, originalFolderId: folderId }, ...prev.filter(f => f.id !== fileId)]);
-      markFileLocallyDeleted(fileId, fileToDelete.name);
-      markRecentLocallyDeleted(fileId, fileToDelete.name);
-    } else {
-      markFileLocallyDeleted(fileId);
-      markRecentLocallyDeleted(fileId);
-    }
-    setFolderFilesMap(prev => ({
-      ...prev,
-      [folderId]: (prev[folderId] || []).filter(f => f.id !== fileId)
-    }));
-    setCloudRecentFiles(prev => prev.filter(f => f.id !== fileId && (!fileToDelete || f.name !== fileToDelete.name)));
-    removeDownloadedFile(fileId);
-    if (fileToDelete?.name) removeDownloadedFile(fileToDelete.name);
-    deleteFileBlob(fileId).catch(() => {});
-    CloudStorageAPI.deleteClasseurFile(fileId).catch(() => {});
-    showToast('Fichier déplacé dans la corbeille');
-  };
-
-  const handleRenameFileInFolder = (folderId: string, file: FileItem) => {
-    const currentName = file.name;
-    const newName = window.prompt('Modifier le nom du fichier :', currentName);
-    if (newName && newName.trim() && newName.trim() !== currentName) {
-      const trimmed = newName.trim();
-      const finalName = (file.isNotepad && !trimmed.toLowerCase().endsWith('.txt')) ? `${trimmed}.txt` : trimmed;
-      setFolderFilesMap(prev => ({
-        ...prev,
-        [folderId]: (prev[folderId] || []).map(f => f.id === file.id ? { ...f, name: finalName } : f)
-      }));
-      CloudStorageAPI.updateClasseurFile(file.id, { name: finalName }).catch(() => {});
-      showToast(`Fichier renommé en "${finalName}" !`);
-    }
-  };
-
-  const handleCreateNewNote = () => {
-    if (!opened3DFolder) return;
-    const trimmed = newNoteNameInput.trim();
-    const baseName = trimmed || 'Note sans titre';
-    const finalName = baseName.toLowerCase().endsWith('.txt') ? baseName : `${baseName}.txt`;
-    const realDate = getDynamicCurrentDate();
-
-    const newNoteFile: FileItem = {
-      id: `note-${opened3DFolder.id}-${Date.now()}-${Math.random().toString(36).substring(2, 6)}`,
-      name: finalName,
-      category: 'documents',
-      source: opened3DFolder.name,
-      size: '0 o',
-      sizeBytes: 0,
-      date: realDate.full,
-      extension: 'txt',
-      isNotepad: true,
-      content: '',
-      positionX: 0,
-      positionY: 0,
-      displayOrder: 0
-    };
-
-    setFolderFilesMap(prev => ({
-      ...prev,
-      [opened3DFolder.id]: [newNoteFile, ...(prev[opened3DFolder.id] || [])]
-    }));
-
-    // Persister dans la table D1 classeur_files
-    CloudStorageAPI.saveClasseurFile(newNoteFile, opened3DFolder.id).catch(() => {});
-
-    setIsNewNoteModalOpen(false);
-    setNewNoteNameInput('');
-    showToast(`Document "${finalName}" créé !`);
-
-    // Ouvrir immédiatement le bloc-notes dans le volet divisé pour écrire dedans
-    handleSelectFile(newNoteFile);
-    setNoteTextContent('');
-    setNoteTitleContent('');
-    setIsNoteSavedIndicator(true);
-  };
-
-  const handleUpdateNoteContent = (newText: string, newTitle?: string, fileId?: string) => {
-    const targetId = fileId || splitSelectedFile?.id || activeEditingNote?.id;
-    if (!targetId) return;
-
-    const titleToSave = newTitle !== undefined ? newTitle : noteTitleContent;
-    const combinedContent = (titleToSave ? `${titleToSave}\n\n` : '') + newText;
-    const byteLength = new Blob([combinedContent]).size;
-    const k = 1024;
-    const sizes = ['o', 'Ko', 'Mo', 'Go'];
-    const i = byteLength > 0 ? Math.floor(Math.log(byteLength) / Math.log(k)) : 0;
-    const sizeStr = byteLength > 0 ? parseFloat((byteLength / Math.pow(k, i)).toFixed(1)) + ' ' + sizes[i] : '0 o';
-
-    // 1. Mettre à jour folderFilesMap pour tous les dossiers contenant cette note
-    setFolderFilesMap(prev => {
-      let changed = false;
-      const next = { ...prev };
-      for (const [folderId, files] of Object.entries(next)) {
-        const fileList = files as FileItem[];
-        if (Array.isArray(fileList) && fileList.some(f => f.id === targetId)) {
-          next[folderId] = fileList.map(f => f.id === targetId ? {
-            ...f,
-            content: newText,
-            noteTitle: titleToSave,
-            size: sizeStr,
-            sizeBytes: byteLength
-          } : f);
-          changed = true;
-        }
-      }
-      return changed ? next : prev;
-    });
-
-    // 2. Mettre à jour la liste des documents
-    setDocumentsList(prev => prev.map(f => {
-      if (f.id === targetId) {
-        return {
-          ...f,
-          content: newText,
-          noteTitle: titleToSave,
-          size: sizeStr,
-          sizeBytes: byteLength
-        };
-      }
-      return f;
-    }));
-
-    // 3. Mettre à jour les fichiers récents Cloud si présent
-    setCloudRecentFiles(prev => prev.map(f => {
-      if (f.id === targetId) {
-        return {
-          ...f,
-          content: newText,
-          noteTitle: titleToSave,
-          size: sizeStr,
-          sizeBytes: byteLength
-        };
-      }
-      return f;
-    }));
-
-    // 4. Mettre à jour dans le visualiseur actif
-    if (splitSelectedFile && splitSelectedFile.id === targetId) {
-      setSplitSelectedFile(prev => prev ? {
-        ...prev,
-        content: newText,
-        noteTitle: titleToSave,
-        size: sizeStr,
-        sizeBytes: byteLength
-      } : null);
-    }
-
-    setIsNoteSavedIndicator(true);
-
-    // 5. Sauvegarde automatique fiable dans Cloudflare D1 avec debounce 300ms
-    if (noteSaveTimeoutRef.current) {
-      clearTimeout(noteSaveTimeoutRef.current);
-    }
-    noteSaveTimeoutRef.current = setTimeout(() => {
-      CloudStorageAPI.updateClasseurFile(targetId, {
-        noteTitle: titleToSave,
-        content: newText,
-        size: sizeStr,
-        sizeBytes: byteLength
-      }).catch(err => console.error('[StudyCloud Note AutoSave Error]', err));
-    }, 300);
-  };
-
-  const handleSaveAndCloseNote = () => {
-    if (activeEditingNote) {
-      handleUpdateNoteContent(noteTextContent, noteTitleContent, activeEditingNote.id);
-      if (noteSaveTimeoutRef.current) {
-        clearTimeout(noteSaveTimeoutRef.current);
-      }
-      CloudStorageAPI.updateClasseurFile(activeEditingNote.id, {
-        noteTitle: noteTitleContent,
-        content: noteTextContent,
-      }).catch(() => {});
-    }
-    setActiveEditingNote(null);
-    setNoteTextContent('');
-    setNoteTitleContent('');
-    setIsNoteSavedIndicator(true);
-  };
-
-  // État et refs de Drag & Drop pour réordonner les dossiers 3D dans le Classeur
-  interface FolderDragState {
-    folder: ClasseurCreatedFolder;
-    x: number;
-    y: number;
-    width: number;
-    height: number;
-    offsetX: number;
-    offsetY: number;
-  }
-
-  const [folderDragState, setFolderDragState] = useState<FolderDragState | null>(null);
-  const [holdingFolderId, setHoldingFolderId] = useState<string | null>(null);
-  const folderPointerDownRef = useRef<{
-    x: number;
-    y: number;
-    currentX: number;
-    currentY: number;
-    folder: ClasseurCreatedFolder;
-    cardRect: DOMRect;
-    isDragging: boolean;
-    isHoldActive: boolean;
-  } | null>(null);
-  const folderLongPressTimerRef = useRef<any>(null);
-  const folderLastSwapTimeRef = useRef<number>(0);
-
-  // Gestion des événements Pointer globaux pour réordonner fluidement les dossiers
-  useEffect(() => {
-    const handleGlobalPointerMove = (e: PointerEvent) => {
-      const p = folderPointerDownRef.current;
-      if (!p) return;
-
-      p.currentX = e.clientX;
-      p.currentY = e.clientY;
-
-      const deltaX = Math.abs(e.clientX - p.x);
-      const deltaY = Math.abs(e.clientY - p.y);
-
-      // Si l'utilisateur bouge de manière significative (> 12px) avant la fin du maintien continu requis,
-      // on annule le timer de maintien pour éviter tout déplacement intempestif
-      if (!p.isHoldActive && (deltaX > 12 || deltaY > 12)) {
-        if (folderLongPressTimerRef.current) {
-          clearTimeout(folderLongPressTimerRef.current);
-          folderLongPressTimerRef.current = null;
-        }
-      }
-
-      // Le glissement est actif UNIQUEMENT après que le maintien continu ait été validé
-      if (p.isDragging && p.isHoldActive) {
-        setFolderDragState(prev => prev ? { ...prev, x: e.clientX, y: e.clientY } : null);
-
-        const now = Date.now();
-        if (now - folderLastSwapTimeRef.current > 140) {
-          const element = document.elementFromPoint(e.clientX, e.clientY);
-          const cardElement = element?.closest('[data-classeur-folder-id]');
-          if (cardElement) {
-            const targetId = cardElement.getAttribute('data-classeur-folder-id');
-            if (targetId && targetId !== p.folder.id) {
-              folderLastSwapTimeRef.current = Date.now();
-              setClasseur3DFolders(prevList => {
-                const fromIndex = prevList.findIndex(f => f.id === p.folder.id);
-                const toIndex = prevList.findIndex(f => f.id === targetId);
-                if (fromIndex < 0 || toIndex < 0 || fromIndex === toIndex) return prevList;
-                const next = [...prevList];
-                const [moved] = next.splice(fromIndex, 1);
-                next.splice(toIndex, 0, moved);
-                return next;
-              });
-            }
-          }
-        }
-      }
-    };
-
-    const handleGlobalPointerUp = (e: PointerEvent) => {
-      if (folderLongPressTimerRef.current) {
-        clearTimeout(folderLongPressTimerRef.current);
-        folderLongPressTimerRef.current = null;
-      }
-
-      document.body.style.cursor = '';
-      setHoldingFolderId(null);
-
-      const p = folderPointerDownRef.current;
-      if (p && !p.isDragging) {
-        const deltaX = Math.abs(e.clientX - p.x);
-        const deltaY = Math.abs(e.clientY - p.y);
-        // Clic simple rapide sans maintien continu : ouvre le dossier avec le curseur flèche normal
-        if (deltaX < 12 && deltaY < 12) {
-          setOpened3DFolder(p.folder);
-        }
-      } else if (p && p.isDragging) {
-        // Sauvegarde de l'ordre et des positions X/Y dans Cloudflare D1
-        setClasseur3DFolders(currentFolders => {
-          const reorderPayload = currentFolders.map((f, idx) => ({
-            id: f.id,
-            displayOrder: idx,
-            positionX: f.positionX || 0,
-            positionY: f.positionY || 0,
-            zoomLevel: folderZoomLevel
-          }));
-          CloudStorageAPI.reorderClasseurFolders(reorderPayload).catch(() => {});
-          return currentFolders;
-        });
-      }
-      folderPointerDownRef.current = null;
-      setFolderDragState(null);
-    };
-
-    window.addEventListener('pointermove', handleGlobalPointerMove);
-    window.addEventListener('pointerup', handleGlobalPointerUp);
-    window.addEventListener('pointercancel', handleGlobalPointerUp);
-    return () => {
-      window.removeEventListener('pointermove', handleGlobalPointerMove);
-      window.removeEventListener('pointerup', handleGlobalPointerUp);
-      window.removeEventListener('pointercancel', handleGlobalPointerUp);
-    };
-  }, []);
-
-  // Empêcher le défilement tactile natif de la page quand un dossier 3D est en cours de déplacement
-  useEffect(() => {
-    const preventTouchScroll = (e: TouchEvent) => {
-      if (folderPointerDownRef.current?.isDragging) {
-        if (e.cancelable) e.preventDefault();
-      }
-    };
-
-    window.addEventListener('touchmove', preventTouchScroll, { passive: false });
-    return () => {
-      window.removeEventListener('touchmove', preventTouchScroll);
-    };
-  }, []);
-
-  const handleFolderPointerDown = (e: React.PointerEvent, folder: ClasseurCreatedFolder) => {
-    if ((e.target as HTMLElement).closest('button') || (e.target as HTMLElement).closest('.studycloud-file-menu-panel') || (e.target as HTMLElement).closest('.studycloud-menu-trigger')) return;
-
-    // Sur ordinateur avec souris : uniquement clic gauche
-    if (e.pointerType === 'mouse' && e.button !== 0) return;
-
-    const cardElement = (e.currentTarget as HTMLElement);
-    const rect = cardElement.getBoundingClientRect();
-
-    folderPointerDownRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      currentX: e.clientX,
-      currentY: e.clientY,
-      folder,
-      cardRect: rect,
-      isDragging: false,
-      isHoldActive: false,
-    };
-
-    if (folderLongPressTimerRef.current) {
-      clearTimeout(folderLongPressTimerRef.current);
-      folderLongPressTimerRef.current = null;
-    }
-
-    // Maintien continu obligatoire pour activer le glissement (sur ordinateur comme sur mobile)
-    folderLongPressTimerRef.current = setTimeout(() => {
-      if (folderPointerDownRef.current) {
-        folderPointerDownRef.current.isHoldActive = true;
-        folderPointerDownRef.current.isDragging = true;
-        setHoldingFolderId(folder.id);
-
-        if (typeof navigator !== 'undefined' && navigator.vibrate) {
-          try { navigator.vibrate(35); } catch {}
-        }
-
-        // Le curseur devient la paume qui a saisi le fichier pour le déplacer
-        document.body.style.cursor = 'grabbing';
-
-        setFolderDragState({
-          folder,
-          x: folderPointerDownRef.current.currentX,
-          y: folderPointerDownRef.current.currentY,
-          width: rect.width,
-          height: rect.height,
-          offsetX: folderPointerDownRef.current.x - rect.left,
-          offsetY: folderPointerDownRef.current.y - rect.top,
-        });
-      }
-    }, 280);
-  };
-
-  const handleDeleteCreatedFolder = (folderId: string) => {
-    CloudStorageAPI.deleteClasseurFolder(folderId).catch(() => {});
-    const getDescendantFolderIds = (id: string, all: ClasseurCreatedFolder[]): string[] => {
-      const children = all.filter(f => f.parentId === id);
-      return [id, ...children.flatMap(c => getDescendantFolderIds(c.id, all))];
-    };
-
-    const targetFolder = classeur3DFolders.find(f => f.id === folderId);
-
-    setClasseur3DFolders(prev => {
-      const toDeleteIds = getDescendantFolderIds(folderId, prev);
-      setFolderFilesMap(mapPrev => {
-        const next = { ...mapPrev };
-        const deletedFolderFiles: FileItem[] = [];
-        toDeleteIds.forEach(id => {
-          if (next[id] && next[id].length > 0) {
-            deletedFolderFiles.push(...next[id].map(f => ({ ...f, originalFolderId: id, isTrash: true })));
-            delete next[id];
-          }
-        });
-        const folderTrashItems: FileItem[] = toDeleteIds.map(fId => {
-          const fObj = prev.find(pf => pf.id === fId) || (fId === targetFolder?.id ? targetFolder : null);
-          return {
-            id: fId,
-            name: fObj?.name || 'Dossier',
-            category: 'documents' as const,
-            source: 'Classeur',
-            sourceCategory: 'classeur_folder',
-            size: '1 dossier 3D',
-            sizeBytes: 2048,
-            date: fObj?.dateText || new Date().toLocaleDateString('fr-FR'),
-            isTrash: true,
-            metadata: fObj
-          } as FileItem;
-        });
-        setTrashFiles(tPrev => [...folderTrashItems, ...deletedFolderFiles, ...tPrev.filter(t => !toDeleteIds.includes(t.id))]);
-        return next;
-      });
-      return prev.filter(f => !toDeleteIds.includes(f.id));
-    });
-  };
-
-  // Lecteur Vidéo
-  const [isVideoPlaying, setIsVideoPlaying] = useState(false);
-  const [videoCurrentTime, setVideoCurrentTime] = useState(0);
-  const [videoDuration, setVideoDuration] = useState(90);
-  const [videoVolume, setVideoVolume] = useState(0.9);
-  const [isVideoMuted, setIsVideoMuted] = useState(false);
-  const videoRef = useRef<HTMLVideoElement | null>(null);
-
-  // Lecteur Document (Pages & Mode d'affichage Vertical/Horizontal)
-  const [docCurrentPage, setDocCurrentPage] = useState(1);
-  const totalDocPages = 4;
-  const [docLayoutMode, setDocLayoutMode] = useState<'vertical' | 'horizontal'>('vertical');
-
-  // Gestion du glissement tactile (main/doigt) et souris pour le mode horizontal du document
-  const [docDragOffset, setDocDragOffset] = useState<number>(0);
-  const [isDocDragging, setIsDocDragging] = useState<boolean>(false);
-  const docDragStartRef = useRef<{ x: number; y: number; time: number } | null>(null);
-  const docIsHorizontalDragRef = useRef<boolean>(false);
-  const docHasMovedRef = useRef<boolean>(false);
-  const lastDocWheelTimeRef = useRef<number>(0);
-
-  // Glissement tactile (Écran tactile / Mobile / Tablette)
-  const handleDocTouchStart = (e: React.TouchEvent) => {
-    if (docLayoutMode !== 'horizontal') return;
-    const touch = e.touches[0];
-    docDragStartRef.current = {
-      x: touch.clientX,
-      y: touch.clientY,
-      time: Date.now()
-    };
-    docIsHorizontalDragRef.current = false;
-    docHasMovedRef.current = false;
-  };
-
-  const handleDocTouchMove = (e: React.TouchEvent) => {
-    if (docLayoutMode !== 'horizontal' || !docDragStartRef.current) return;
-    const touch = e.touches[0];
-    const deltaX = touch.clientX - docDragStartRef.current.x;
-    const deltaY = touch.clientY - docDragStartRef.current.y;
-
-    if (!docIsHorizontalDragRef.current) {
-      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
-        docDragStartRef.current = null;
-        return;
-      }
-      if (Math.abs(deltaX) > 8) {
-        docIsHorizontalDragRef.current = true;
-        setIsDocDragging(true);
-        docHasMovedRef.current = true;
-      }
-    }
-
-    if (docIsHorizontalDragRef.current) {
-      let adjustedDelta = deltaX;
-      if (docCurrentPage === 1 && deltaX > 0) {
-        adjustedDelta = deltaX * 0.25;
-      } else if (docCurrentPage === totalDocPages && deltaX < 0) {
-        adjustedDelta = deltaX * 0.25;
-      }
-      setDocDragOffset(adjustedDelta);
-    }
-  };
-
-  const handleDocTouchEnd = () => {
-    if (docLayoutMode !== 'horizontal' || !docDragStartRef.current) return;
-    const deltaX = docDragOffset;
-    const threshold = 40;
-
-    if (deltaX < -threshold && docCurrentPage < totalDocPages) {
-      setDocCurrentPage(prev => Math.min(totalDocPages, prev + 1));
-    } else if (deltaX > threshold && docCurrentPage > 1) {
-      setDocCurrentPage(prev => Math.max(1, prev - 1));
-    }
-
-    setDocDragOffset(0);
-    setIsDocDragging(false);
-    docDragStartRef.current = null;
-    docIsHorizontalDragRef.current = false;
-  };
-
-  // Glissement à la souris (Clic gauche maintenu et glissement gauche/droite)
-  const handleDocMouseDown = (e: React.MouseEvent) => {
-    if (docLayoutMode !== 'horizontal' || e.button !== 0) return;
-    if ((e.target as HTMLElement).closest('button, a, input, select')) return;
-    docDragStartRef.current = {
-      x: e.clientX,
-      y: e.clientY,
-      time: Date.now()
-    };
-    docIsHorizontalDragRef.current = false;
-    docHasMovedRef.current = false;
-  };
-
-  const handleDocMouseMove = (e: React.MouseEvent) => {
-    if (docLayoutMode !== 'horizontal' || !docDragStartRef.current) return;
-    const deltaX = e.clientX - docDragStartRef.current.x;
-    const deltaY = e.clientY - docDragStartRef.current.y;
-
-    if (!docIsHorizontalDragRef.current) {
-      if (Math.abs(deltaY) > Math.abs(deltaX) && Math.abs(deltaY) > 8) {
-        docDragStartRef.current = null;
-        return;
-      }
-      if (Math.abs(deltaX) > 5) {
-        docIsHorizontalDragRef.current = true;
-        setIsDocDragging(true);
-        docHasMovedRef.current = true;
-      }
-    }
-
-    if (docIsHorizontalDragRef.current) {
-      let adjustedDelta = deltaX;
-      if (docCurrentPage === 1 && deltaX > 0) {
-        adjustedDelta = deltaX * 0.25;
-      } else if (docCurrentPage === totalDocPages && deltaX < 0) {
-        adjustedDelta = deltaX * 0.25;
-      }
-      setDocDragOffset(adjustedDelta);
-    }
-  };
-
-  const handleDocMouseUp = () => {
-    if (docLayoutMode !== 'horizontal' || !docDragStartRef.current) return;
-    const deltaX = docDragOffset;
-    const threshold = 40;
-
-    if (deltaX < -threshold && docCurrentPage < totalDocPages) {
-      setDocCurrentPage(prev => Math.min(totalDocPages, prev + 1));
-    } else if (deltaX > threshold && docCurrentPage > 1) {
-      setDocCurrentPage(prev => Math.max(1, prev - 1));
-    }
-
-    setDocDragOffset(0);
-    setIsDocDragging(false);
-    docDragStartRef.current = null;
-    docIsHorizontalDragRef.current = false;
-  };
-
-  // Support navigation par molette ou défilement horizontal trackpad
-  const handleDocWheel = (e: React.WheelEvent) => {
-    if (docLayoutMode !== 'horizontal') return;
-    const now = Date.now();
-    if (now - lastDocWheelTimeRef.current < 450) return;
-
-    if (Math.abs(e.deltaX) > 28 || (e.shiftKey && Math.abs(e.deltaY) > 28)) {
-      const delta = Math.abs(e.deltaX) > 28 ? e.deltaX : e.deltaY;
-      if (delta > 0 && docCurrentPage < totalDocPages) {
-        lastDocWheelTimeRef.current = now;
-        setDocCurrentPage(prev => Math.min(totalDocPages, prev + 1));
-      } else if (delta < 0 && docCurrentPage > 1) {
-        lastDocWheelTimeRef.current = now;
-        setDocCurrentPage(prev => Math.max(1, prev - 1));
-      }
-    }
-  };
-
-  // Navigation clavier pour le mode horizontal (Flèches gauche / droite)
-  useEffect(() => {
-    const isDoc = Boolean(
-      splitSelectedFile &&
-      (splitSelectedFile.category === 'documents' || /\.(pdf|docx?|pptx?|xlsx?|odt|rtf)$/i.test(splitSelectedFile.name)) &&
-      !splitSelectedFile.isNotepad &&
-      !splitSelectedFile.name.toLowerCase().endsWith('.txt')
-    );
-    if (docLayoutMode !== 'horizontal' || !isDoc) return;
-    const handleDocKeyDown = (e: KeyboardEvent) => {
-      if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement) return;
-      if (e.key === 'ArrowRight' || e.key === 'PageDown') {
-        setDocCurrentPage(prev => Math.min(totalDocPages, prev + 1));
-      } else if (e.key === 'ArrowLeft' || e.key === 'PageUp') {
-        setDocCurrentPage(prev => Math.max(1, prev - 1));
-      }
-    };
-    window.addEventListener('keydown', handleDocKeyDown);
-    return () => window.removeEventListener('keydown', handleDocKeyDown);
-  }, [docLayoutMode, splitSelectedFile]);
-
-  // Téléchargements réels synchronisés (en mémoire de session)
-  const [downloadedItems, setDownloadedItems] = useState<DownloadedItem[]>([]);
-
-  useEffect(() => {
-    const handleUpdate = (e: any) => {
-      if (e?.detail) {
-        if (e.detail.deleted) {
-          setDownloadedItems(prev => prev.filter(f => f.id !== e.detail.id && f.name !== e.detail.id));
-        } else if (e.detail.id) {
-          setDownloadedItems(prev => [e.detail, ...prev.filter(f => f.id !== e.detail.id && f.name !== e.detail.name)]);
-        }
-      }
-    };
-    window.addEventListener('studycloud_download_updated', handleUpdate);
-    return () => window.removeEventListener('studycloud_download_updated', handleUpdate);
-  }, []);
-
-  // Écoute de la touche Échap pour réduire le mode plein écran / agrandi
-  useEffect(() => {
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape' && isViewerMaximized) {
-        setIsViewerMaximized(false);
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [isViewerMaximized]);
-
-  // Réinitialiser le plein écran et agrandi dès que l'espace d'étude s'ouvre pour éviter toute bande noire
-  useEffect(() => {
-    const handleStudySpaceOpened = () => {
-      setIsFullscreen(false);
-      setIsViewerMaximized(false);
-    };
-    window.addEventListener('studycloud_open_study_space', handleStudySpaceOpened);
-    return () => window.removeEventListener('studycloud_open_study_space', handleStudySpaceOpened);
-  }, []);
-
-  // Fermer les menus déroulants lors d'un clic extérieur ou touche Échap SANS jamais bloquer le défilement de la page
-  useEffect(() => {
-    if (!activeMenuFileId && !docMenuOpenId && !audioMenuSongId && !menuOpenId && !isPlayerMenuOpen && !isHeaderMenuOpen && !activeFolderMenuId) {
-      return;
-    }
-
-    const handleClickOutside = (e: MouseEvent) => {
-      const target = e.target as HTMLElement | null;
-      if (!target) return;
-      if (target.closest('.studycloud-file-menu-panel') || target.closest('.studycloud-menu-trigger')) {
-        return;
-      }
-      setActiveMenuFileId(null);
-      setDocMenuOpenId(null);
-      setAudioMenuSongId(null);
-      setMenuOpenId(null);
-      setIsPlayerMenuOpen(false);
-      setIsHeaderMenuOpen(false);
-      setActiveFolderMenuId(null);
-    };
-
-    const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === 'Escape') {
-        setActiveMenuFileId(null);
-        setDocMenuOpenId(null);
-        setAudioMenuSongId(null);
-        setMenuOpenId(null);
-        setIsPlayerMenuOpen(false);
-        setIsHeaderMenuOpen(false);
-        setActiveFolderMenuId(null);
-      }
-    };
-
-    // Timeout de 10ms pour ne pas capturer le clic d'ouverture du menu lui-même
-    const timer = setTimeout(() => {
-      document.addEventListener('click', handleClickOutside);
-    }, 10);
-    window.addEventListener('keydown', handleKeyDown);
-
-    return () => {
-      clearTimeout(timer);
-      document.removeEventListener('click', handleClickOutside);
-      window.removeEventListener('keydown', handleKeyDown);
-    };
-  }, [activeMenuFileId, docMenuOpenId, audioMenuSongId, menuOpenId, isPlayerMenuOpen, isHeaderMenuOpen, activeFolderMenuId]);
-
-  // Références et état pour l'import de fichier
-  const fileInputRef = useRef<HTMLInputElement>(null);
-  const categoryFileInputRef = useRef<HTMLInputElement>(null);
   const [isUploading, setIsUploading] = useState(false);
 
   // Sous-page ouverte
@@ -1703,6 +925,12 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   // 4. AUDIO / MUSIQUE (Stockage réel Cloudflare D1/R2 en mémoire de session)
   const [audioList, setAudioList] = useState<FileItem[]>([]);
 
+  // Pagination par blocs (Infinite Scroll / Grid Virtualization légère type Google Drive)
+  const [visibleDocsCount, setVisibleDocsCount] = useState(30);
+  const [visibleImagesCount, setVisibleImagesCount] = useState(30);
+  const [visibleVideosCount, setVisibleVideosCount] = useState(30);
+  const [visibleClasseurCount, setVisibleClasseurCount] = useState(30);
+
   // FICHIERS RÉCENTS : STUDYCLOUD (Strictement fichiers réels de l'utilisateur, 6 éléments max)
   const DEFAULT_RECENT_FILES: FileItem[] = [];
 
@@ -1872,109 +1100,20 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     if (fileInputRef.current) fileInputRef.current.value = '';
 
-    // Créer immédiatement les objets FileItem avec prévisualisation locale et stockage IndexedDB
-    const newItemsWithFiles = files.map((file, idx) => {
-      const localBlobUrl = URL.createObjectURL(file);
-      const normName = file.name.toLowerCase();
-      const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
-      const fileId = `cf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
-      const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
-
-      let autoCat: 'images' | 'videos' | 'audio' | 'documents' = 'documents';
-      if (normName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/i)) autoCat = 'images';
-      else if (normName.match(/\.(mp4|mov|webm|avi|mkv|flv|wmv|3gp|m4v)$/i)) autoCat = 'videos';
-      else if (normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i)) autoCat = 'audio';
-
-      // Sauvegarde binaire locale immédiate dans IndexedDB
-      storeFileBlob(fileId, file).catch(() => {});
-
-      const item: FileItem = {
-        id: fileId,
-        name: file.name,
-        category: autoCat,
-        source: 'StudyCloud Local',
-        size: sizeKb,
-        sizeBytes: file.size,
-        date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
-        extension: ext,
-        url: localBlobUrl,
-        previewUrl: autoCat === 'audio' ? undefined : localBlobUrl,
-        videoUrl: autoCat === 'videos' ? localBlobUrl : undefined,
-        audioUrl: autoCat === 'audio' ? localBlobUrl : undefined,
-      };
-      return { file, item };
+    const newItems = UploadQueue.enqueue(files, {
+      onOptimisticItem: (item) => {
+        unmarkRecentLocallyDeleted(item.id, item.name);
+        unmarkFileLocallyDeleted(item.id, item.name);
+        if (item.category === 'images') setImagesList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+        else if (item.category === 'videos') setVideosList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+        else if (item.category === 'audio') setAudioList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+        else setDocumentsList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+        setCloudRecentFiles(prev => [item, ...prev.filter(f => f.id !== item.id)].slice(0, 6));
+      }
     });
 
-    const newItems = newItemsWithFiles.map(x => x.item);
-    const fileIds = newItems.map(x => x.id);
-
-    // Ajout immédiat aux listes respectives (affichage instantané)
-    newItems.forEach(item => {
-      unmarkRecentLocallyDeleted(item.id, item.name);
-      unmarkFileLocallyDeleted(item.id, item.name);
-      if (item.category === 'images') setImagesList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
-      else if (item.category === 'videos') setVideosList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
-      else if (item.category === 'audio') setAudioList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
-      else setDocumentsList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
-    });
-    setCloudRecentFiles(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
-
-    // Démarrer l'animation de progression sur les cartes ("un trait qui se remplit")
-    startSavingAnimation(fileIds);
-
-    // Envoi en arrière-plan vers Cloudflare D1/R2 sans bloquer l'UI
-    (async () => {
-      let successCount = 0;
-      for (const { file, item } of newItemsWithFiles) {
-        try {
-          const normName = file.name.toLowerCase();
-          let previewDataUrl: string | null = null;
-          if (item.category === 'videos') {
-            previewDataUrl = await generateVideoThumbnail(file, file.name, file.name);
-          } else if (item.category === 'audio') {
-            previewDataUrl = await extractAudioCover(file, file.name, 'Créateur StudyCloud');
-          } else if (normName.endsWith('.pdf')) {
-            previewDataUrl = await generatePdfThumbnail(file, file.name);
-          }
-
-          if (previewDataUrl) {
-            setCachedMediaThumbnail(item.id, previewDataUrl);
-            CloudStorageAPI.saveMediaThumbnail(item.id, item.category, previewDataUrl).catch(() => {});
-          }
-
-          const res = await CloudStorageAPI.uploadFile(file, 'auto', file.name, undefined, previewDataUrl || undefined);
-          if (res?.success && res.file) {
-            const uploadedFile = res.file;
-            const updateItemFn = (prev: FileItem[]) => prev.map(f => {
-              if (f.id === item.id) {
-                return {
-                  ...f,
-                  ...uploadedFile,
-                  url: uploadedFile.url || f.url,
-                  videoUrl: uploadedFile.videoUrl || f.videoUrl,
-                  audioUrl: uploadedFile.audioUrl || f.audioUrl,
-                  previewUrl: previewDataUrl || uploadedFile.previewUrl || f.previewUrl,
-                  thumbnailUrl: previewDataUrl || uploadedFile.thumbnailUrl || f.thumbnailUrl,
-                  coverUrl: previewDataUrl || uploadedFile.coverUrl || f.coverUrl,
-                };
-              }
-              return f;
-            });
-            if (item.category === 'images') setImagesList(updateItemFn);
-            else if (item.category === 'videos') setVideosList(updateItemFn);
-            else if (item.category === 'audio') setAudioList(updateItemFn);
-            else setDocumentsList(updateItemFn);
-            setCloudRecentFiles(updateItemFn);
-          }
-          successCount++;
-        } catch (err: any) {
-          console.warn('[handleHomeFileSelected] Background upload:', err);
-        }
-      }
-      if (successCount > 0) {
-        showToast(`${successCount} fichier(s) classé(s) automatiquement dans vos menus !`);
-      }
-    })();
+    startSavingAnimation(newItems.map(f => f.id));
+    showToast(`${newItems.length} fichier(s) classé(s) automatiquement en cours d'importation !`);
   };
 
   // 2. Traiter les fichiers importés depuis un sous-menu spécifique (Validation stricte par le worker)
@@ -1988,132 +1127,33 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     if (categoryFileInputRef.current) categoryFileInputRef.current.value = '';
 
-    // 1. Créer immédiatement les objets FileItem avec prévisualisation locale et stockage IndexedDB
-    const newItemsWithFiles = files.map((file, idx) => {
-      const localBlobUrl = URL.createObjectURL(file);
-      const normName = file.name.toLowerCase();
-      const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
-      const fileId = `cf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
-      const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
-
-      // Stocker le binaire immédiatement dans IndexedDB pour que le document soit disponible instantanément
-      storeFileBlob(fileId, file).catch(() => {});
-
-      const isAudio = importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i);
-      const isVideo = importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv|flv|wmv|3gp|m4v)$/i);
-
-      const item: FileItem = {
-        id: fileId,
-        name: file.name,
-        category: importConfig.category === 'classeur' ? 'documents' : importConfig.category,
-        source: importConfig.category === 'classeur' && opened3DFolder ? opened3DFolder.name : 'StudyCloud Local',
-        size: sizeKb,
-        sizeBytes: file.size,
-        date: `Aujourd'hui, ${new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' })}`,
-        extension: ext,
-        url: localBlobUrl,
-        previewUrl: isAudio ? undefined : localBlobUrl,
-        videoUrl: isVideo ? localBlobUrl : undefined,
-        audioUrl: isAudio ? localBlobUrl : undefined,
-        originalFolderId: importConfig.folderId
-      };
-      return { file, item };
-    });
-
-    const newItems = newItemsWithFiles.map(x => x.item);
-    const fileIds = newItems.map(x => x.id);
-
-    // 2. Ajout immédiat à la liste du menu : les cartes apparaissent instantanément
-    newItems.forEach(item => {
-      unmarkRecentLocallyDeleted(item.id, item.name);
-      unmarkFileLocallyDeleted(item.id, item.name);
-    });
-    if (importConfig.category === 'images') {
-      setImagesList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
-    } else if (importConfig.category === 'videos') {
-      setVideosList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
-    } else if (importConfig.category === 'audio') {
-      setAudioList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
-    } else if (importConfig.category === 'documents') {
-      setDocumentsList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
-    } else if (importConfig.category === 'classeur' && importConfig.folderId) {
-      setFolderFilesMap(prev => ({
-        ...prev,
-        [importConfig.folderId!]: [...newItems, ...(prev[importConfig.folderId!] || []).filter(f => !fileIds.includes(f.id))]
-      }));
-    }
-    setCloudRecentFiles(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))].slice(0, 6));
-
-    // 3. Lancer l'animation de trait qui se remplit sur chaque fichier importé
-    startSavingAnimation(fileIds);
-
-    // 4. Téléversement et génération d'aperçus en arrière-plan sans bloquer l'UI
-    (async () => {
-      let successCount = 0;
-      for (const { file, item } of newItemsWithFiles) {
-        try {
-          const normName = file.name.toLowerCase();
-          let previewDataUrl: string | null = null;
-          if (importConfig.category === 'videos' || normName.match(/\.(mp4|mov|webm|avi|mkv)$/i)) {
-            previewDataUrl = await generateVideoThumbnail(file, file.name, file.name);
-          } else if (importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i)) {
-            previewDataUrl = await extractAudioCover(file, file.name, 'Créateur StudyCloud');
-          } else if (normName.endsWith('.pdf')) {
-            previewDataUrl = await generatePdfThumbnail(file, file.name);
-          }
-
-          if (previewDataUrl) {
-            setCachedMediaThumbnail(item.id, previewDataUrl);
-            CloudStorageAPI.saveMediaThumbnail(item.id, importConfig.category, previewDataUrl).catch(() => {});
-          }
-
-          const res = await CloudStorageAPI.uploadFile(
-            file, 
-            importConfig.category, 
-            file.name, 
-            importConfig.folderId,
-            previewDataUrl || undefined
-          );
-
-          if (res?.success && res.file) {
-            const uploadedFile = res.file;
-            const updateItemFn = (prev: FileItem[]) => prev.map(f => {
-              if (f.id === item.id) {
-                return {
-                  ...f,
-                  ...uploadedFile,
-                  url: uploadedFile.url || f.url,
-                  videoUrl: uploadedFile.videoUrl || f.videoUrl,
-                  audioUrl: uploadedFile.audioUrl || f.audioUrl,
-                  previewUrl: (f.category === 'audio' || uploadedFile.category === 'audio') ? undefined : (previewDataUrl || uploadedFile.previewUrl || f.previewUrl),
-                  thumbnailUrl: previewDataUrl || uploadedFile.thumbnailUrl || f.thumbnailUrl,
-                  coverUrl: previewDataUrl || uploadedFile.coverUrl || f.coverUrl,
-                };
-              }
-              return f;
-            });
-
-            if (importConfig.category === 'images') setImagesList(updateItemFn);
-            else if (importConfig.category === 'videos') setVideosList(updateItemFn);
-            else if (importConfig.category === 'audio') setAudioList(updateItemFn);
-            else if (importConfig.category === 'documents') setDocumentsList(updateItemFn);
-            else if (importConfig.category === 'classeur' && importConfig.folderId) {
-              setFolderFilesMap(prev => ({
-                ...prev,
-                [importConfig.folderId!]: (prev[importConfig.folderId!] || []).map(f => f.id === item.id ? { ...f, ...uploadedFile } : f)
-              }));
-            }
-            setCloudRecentFiles(updateItemFn);
-          }
-          successCount++;
-        } catch (err: any) {
-          console.warn('[handleMenuFileSelected] Erreur upload arrière-plan:', err);
+    const newItems = UploadQueue.enqueue(files, {
+      category: (importConfig.category === 'classeur' ? 'classeur' : importConfig.category) as any,
+      folderId: importConfig.folderId,
+      folderName: opened3DFolder?.name,
+      onOptimisticItem: (item) => {
+        unmarkRecentLocallyDeleted(item.id, item.name);
+        unmarkFileLocallyDeleted(item.id, item.name);
+        if (importConfig.category === 'images') {
+          setImagesList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+        } else if (importConfig.category === 'videos') {
+          setVideosList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+        } else if (importConfig.category === 'audio') {
+          setAudioList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+        } else if (importConfig.category === 'documents') {
+          setDocumentsList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
+        } else if (importConfig.category === 'classeur' && importConfig.folderId) {
+          setFolderFilesMap(prev => ({
+            ...prev,
+            [importConfig.folderId!]: [item, ...(prev[importConfig.folderId!] || []).filter(f => f.id !== item.id)]
+          }));
         }
+        setCloudRecentFiles(prev => [item, ...prev.filter(f => f.id !== item.id)].slice(0, 6));
       }
-      if (successCount > 0) {
-        showToast(`${successCount} fichier(s) importé(s) avec succès !`);
-      }
-    })();
+    });
+
+    startSavingAnimation(newItems.map(f => f.id));
+    showToast(`${newItems.length} fichier(s) en cours d'importation !`);
   };
 
   // DOSSIER SÉCURISÉ (Fichiers protégés par coffre-fort en mémoire de session)
@@ -5446,7 +4486,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
               );
             })}
 
-            {sortedFiles.map((file) => {
+            {sortedFiles.slice(0, visibleClasseurCount).map((file) => {
               const isTxtNote = file.isNotepad || file.extension === 'txt' || file.name.toLowerCase().endsWith('.txt');
               const isSelected = splitSelectedFile?.id === file.id;
               const isChecked = selectedItemIds.includes(file.id);
@@ -10346,7 +9386,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     <div className={`grid gap-2.5 sm:gap-3.5 ${
                       selectedDocFile ? 'grid-cols-2 min-[480px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                     }`}>
-                      {filteredDocuments.map((doc, idx) => renderDocumentCard(doc, idx))}
+                      {filteredDocuments.slice(0, visibleDocsCount).map((doc, idx) => renderDocumentCard(doc, idx))}
+                      {filteredDocuments.length > visibleDocsCount && (
+                        <div className="col-span-full py-6 flex justify-center">
+                          <button
+                            type="button"
+                            onClick={() => setVisibleDocsCount(prev => prev + 30)}
+                            className="px-6 py-2.5 rounded-xl bg-white/90 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 text-xs font-semibold text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-white/10 shadow-sm transition-all"
+                          >
+                            Charger plus de documents ({visibleDocsCount} sur {filteredDocuments.length})
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -10624,7 +9675,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     <div className={`grid gap-2 sm:gap-3 ${
                       selectedVideoFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                     }`}>
-                      {filteredVideos.map((vid, idx) => renderVideoCard(vid, idx))}
+                      {filteredVideos.slice(0, visibleVideosCount).map((vid, idx) => renderVideoCard(vid, idx))}
+                      {filteredVideos.length > visibleVideosCount && (
+                        <div className="col-span-full py-6 flex justify-center">
+                          <button
+                            type="button"
+                            onClick={() => setVisibleVideosCount(prev => prev + 30)}
+                            className="px-6 py-2.5 rounded-xl bg-white/90 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 text-xs font-semibold text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-white/10 shadow-sm transition-all"
+                          >
+                            Charger plus de vidéos ({visibleVideosCount} sur {filteredVideos.length})
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -10678,7 +9740,18 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
                     <div className={`grid gap-2 sm:gap-3 ${
                       selectedImageFile ? 'grid-cols-2 min-[420px]:grid-cols-3 md:grid-cols-3 xl:grid-cols-3' : 'grid-cols-2 sm:grid-cols-3 md:grid-cols-4 lg:grid-cols-5 xl:grid-cols-6'
                     }`}>
-                      {filteredImages.map((img, idx) => renderImageCard(img, idx))}
+                      {filteredImages.slice(0, visibleImagesCount).map((img, idx) => renderImageCard(img, idx))}
+                      {filteredImages.length > visibleImagesCount && (
+                        <div className="col-span-full py-6 flex justify-center">
+                          <button
+                            type="button"
+                            onClick={() => setVisibleImagesCount(prev => prev + 30)}
+                            className="px-6 py-2.5 rounded-xl bg-white/90 dark:bg-white/10 hover:bg-white dark:hover:bg-white/20 text-xs font-semibold text-slate-700 dark:text-slate-200 border border-slate-200/80 dark:border-white/10 shadow-sm transition-all"
+                          >
+                            Charger plus d'images ({visibleImagesCount} sur {filteredImages.length})
+                          </button>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
@@ -11776,6 +10849,9 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
         </div>,
         document.body
       )}
+
+      {/* Widget flottant file d'attente type Google Drive */}
+      <UploadQueueWidget />
 
     </div>
   );

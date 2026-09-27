@@ -1,11 +1,9 @@
 /**
- * StudyCloud - Magasin Global de Données & Cache Haute Performance (Architecture type Google Drive)
- * 
- * 1. Démarrage instantané (0 ms) : Charge immédiatement les données depuis la mémoire et le localStorage.
- * 2. Zéro blocage / Zéro écran gris : L'utilisateur voit ses fichiers et compteurs immédiatement.
- * 3. Synchronisation discrète en tâche de fond (Stale-While-Revalidate) avec timeout strict de 4 secondes.
- * 4. Déduplication des requêtes : Empêche le mitraillage réseau en boucle lors des changements d'onglets.
- * 5. Mises à jour optimistes : Les créations, suppressions et renommages sont visibles instantanément.
+ * StudyCloud - Cache v3.0 - Architecture IndexedDB (type Google Drive)
+ *
+ * TIER 1: RAM (0ms)         - currentState singleton
+ * TIER 2: IndexedDB (~50ms) - plusieurs GB (vs 5MB localStorage avant)
+ * TIER 3: Reseau (15s)      - Cloudflare D1/R2, source de verite
  */
 
 import { CloudStorageAPI, CloudOverviewData } from './cloudStorageService';
@@ -44,6 +42,8 @@ export interface FileItem {
   isFavorite?: boolean;
   isPinned?: boolean;
   folderId?: string;
+  isUploading?: boolean;
+  uploadProgress?: number;
 }
 
 export interface CloudDataState {
@@ -66,161 +66,180 @@ export interface CloudDataState {
   lastSyncTime: number;
 }
 
-const CACHE_STORAGE_KEY = 'studycloud_data_cache_v2';
-const SYNC_COOLDOWN_MS = 15000; // Ne pas re-synchroniser si fait il y a moins de 15s
+const SYNC_COOLDOWN_MS = 15000;
 
-// État initial vide par défaut
+// IndexedDB constants - capacite plusieurs GB
+const IDB_DB_NAME    = 'StudyCloudCacheDB';
+const IDB_DB_VERSION = 3;
+const IDB_STORE_NAME = 'cloud_data';
+const IDB_CACHE_KEY  = 'main_cache';
+// Flag leger dans localStorage uniquement pour hasData() synchrone (<100 bytes)
+const LS_FLAG_KEY = 'sc_idb_has_data';
+
+let _idbInstance: IDBDatabase | null = null;
+let _idbOpenPromise: Promise<IDBDatabase | null> | null = null;
+
+function openIDB(): Promise<IDBDatabase | null> {
+  if (_idbInstance) return Promise.resolve(_idbInstance);
+  if (_idbOpenPromise) return _idbOpenPromise;
+  _idbOpenPromise = new Promise((resolve) => {
+    if (typeof window === 'undefined' || !window.indexedDB) { resolve(null); return; }
+    const req = window.indexedDB.open(IDB_DB_NAME, IDB_DB_VERSION);
+    req.onupgradeneeded = (e) => {
+      const db = (e.target as IDBOpenDBRequest).result;
+      if (!db.objectStoreNames.contains(IDB_STORE_NAME)) {
+        db.createObjectStore(IDB_STORE_NAME);
+      }
+    };
+    req.onsuccess = (e) => { _idbInstance = (e.target as IDBOpenDBRequest).result; resolve(_idbInstance); };
+    req.onerror   = () => { console.warn('[CloudDataStore] IndexedDB unavailable'); resolve(null); };
+  });
+  return _idbOpenPromise;
+}
+
+async function idbGet(key: string): Promise<any> {
+  const db = await openIDB();
+  if (!db) return null;
+  return new Promise((resolve) => {
+    const tx  = db.transaction(IDB_STORE_NAME, 'readonly');
+    const req = tx.objectStore(IDB_STORE_NAME).get(key);
+    req.onsuccess = () => resolve(req.result ?? null);
+    req.onerror   = () => resolve(null);
+  });
+}
+
+async function idbSet(key: string, value: any): Promise<void> {
+  const db = await openIDB();
+  if (!db) {
+    // Fallback localStorage si IndexedDB non disponible
+    try { localStorage.setItem('sc_fallback_' + key, JSON.stringify(value)); } catch {}
+    return;
+  }
+  return new Promise((resolve) => {
+    const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+    tx.objectStore(IDB_STORE_NAME).put(value, key);
+    tx.oncomplete = () => resolve();
+    tx.onerror    = () => resolve();
+  });
+}
+
+// Etat en memoire (Tier 1 - synchrone 0ms)
 const defaultState: CloudDataState = {
-  overview: null,
-  classeurFolders: [],
-  folderFilesMap: {},
-  documents: [],
-  images: [],
-  videos: [],
-  audio: [],
-  downloads: [],
-  secure: [],
-  trash: [],
-  favorites: [],
-  favIdSet: new Set<string>(),
-  pinIdSet: new Set<string>(),
-  recentFiles: [],
-  isLoaded: false,
-  isSyncing: false,
-  lastSyncTime: 0,
+  overview: null, classeurFolders: [], folderFilesMap: {},
+  documents: [], images: [], videos: [], audio: [], downloads: [],
+  secure: [], trash: [], favorites: [],
+  favIdSet: new Set<string>(), pinIdSet: new Set<string>(),
+  recentFiles: [], isLoaded: false, isSyncing: false, lastSyncTime: 0,
 };
 
-// Singleton en mémoire
 let currentState: CloudDataState = { ...defaultState };
 const listeners = new Set<(state: CloudDataState) => void>();
 let inFlightSyncPromise: Promise<void> | null = null;
 
-// Hydratation synchrone immédiate depuis le stockage local (0 milliseconde au chargement)
-function hydrateFromLocalStorage(): boolean {
-  if (typeof window === 'undefined') return false;
+let hydrationResolve: (() => void) | null = null;
+const hydrationComplete = new Promise<void>((res) => { hydrationResolve = res; });
+
+// Hydratation async depuis IndexedDB (Tier 2)
+async function hydrateFromIndexedDB(): Promise<boolean> {
   try {
-    const raw = localStorage.getItem(CACHE_STORAGE_KEY);
-    if (!raw) return false;
-    const parsed = JSON.parse(raw);
+    const parsed = await idbGet(IDB_CACHE_KEY);
     if (parsed && typeof parsed === 'object') {
       currentState = {
         ...currentState,
-        overview: parsed.overview || null,
+        overview:        parsed.overview || null,
         classeurFolders: Array.isArray(parsed.classeurFolders) ? parsed.classeurFolders : [],
-        folderFilesMap: parsed.folderFilesMap || {},
-        documents: Array.isArray(parsed.documents) ? parsed.documents : [],
-        images: Array.isArray(parsed.images) ? parsed.images : [],
-        videos: Array.isArray(parsed.videos) ? parsed.videos : [],
-        audio: Array.isArray(parsed.audio) ? parsed.audio : [],
-        downloads: Array.isArray(parsed.downloads) ? parsed.downloads : [],
-        secure: Array.isArray(parsed.secure) ? parsed.secure : [],
-        trash: Array.isArray(parsed.trash) ? parsed.trash : [],
-        favorites: Array.isArray(parsed.favorites) ? parsed.favorites : [],
-        favIdSet: new Set(Array.isArray(parsed.favIds) ? parsed.favIds : []),
-        pinIdSet: new Set(Array.isArray(parsed.pinIds) ? parsed.pinIds : []),
-        recentFiles: Array.isArray(parsed.recentFiles) ? parsed.recentFiles : [],
-        isLoaded: true,
-        lastSyncTime: Number(parsed.lastSyncTime) || 0,
+        folderFilesMap:  parsed.folderFilesMap  || {},
+        documents:       Array.isArray(parsed.documents)       ? parsed.documents       : [],
+        images:          Array.isArray(parsed.images)          ? parsed.images          : [],
+        videos:          Array.isArray(parsed.videos)          ? parsed.videos          : [],
+        audio:           Array.isArray(parsed.audio)           ? parsed.audio           : [],
+        downloads:       Array.isArray(parsed.downloads)       ? parsed.downloads       : [],
+        secure:          Array.isArray(parsed.secure)          ? parsed.secure          : [],
+        trash:           Array.isArray(parsed.trash)           ? parsed.trash           : [],
+        favorites:       Array.isArray(parsed.favorites)       ? parsed.favorites       : [],
+        favIdSet:        new Set(Array.isArray(parsed.favIds)  ? parsed.favIds          : []),
+        pinIdSet:        new Set(Array.isArray(parsed.pinIds)  ? parsed.pinIds          : []),
+        recentFiles:     Array.isArray(parsed.recentFiles)     ? parsed.recentFiles     : [],
+        isLoaded:        true,
+        lastSyncTime:    Number(parsed.lastSyncTime) || 0,
       };
+      try { localStorage.setItem(LS_FLAG_KEY, '1'); } catch {}
+      hydrationResolve?.();
       return true;
     }
   } catch (e) {
-    console.warn('[CloudDataStore] Hydrate parse error:', e);
+    console.warn('[CloudDataStore] Hydration error:', e);
   }
+  hydrationResolve?.();
   return false;
 }
 
-// Sauvegarde synchrone vers le cache local
-function persistToLocalStorage() {
-  if (typeof window === 'undefined') return;
+// Persistance async dans IndexedDB (non-bloquant)
+async function persistToIndexedDB(): Promise<void> {
   try {
-    const serializable = {
-      overview: currentState.overview,
+    await idbSet(IDB_CACHE_KEY, {
+      overview:        currentState.overview,
       classeurFolders: currentState.classeurFolders,
-      folderFilesMap: currentState.folderFilesMap,
-      documents: currentState.documents,
-      images: currentState.images,
-      videos: currentState.videos,
-      audio: currentState.audio,
-      downloads: currentState.downloads,
-      secure: currentState.secure,
-      trash: currentState.trash,
-      favorites: currentState.favorites,
-      favIds: Array.from(currentState.favIdSet),
-      pinIds: Array.from(currentState.pinIdSet),
-      recentFiles: currentState.recentFiles,
-      lastSyncTime: currentState.lastSyncTime,
-    };
-    localStorage.setItem(CACHE_STORAGE_KEY, JSON.stringify(serializable));
+      folderFilesMap:  currentState.folderFilesMap,
+      documents:       currentState.documents,
+      images:          currentState.images,
+      videos:          currentState.videos,
+      audio:           currentState.audio,
+      downloads:       currentState.downloads,
+      secure:          currentState.secure,
+      trash:           currentState.trash,
+      favorites:       currentState.favorites,
+      favIds:          Array.from(currentState.favIdSet),
+      pinIds:          Array.from(currentState.pinIdSet),
+      recentFiles:     currentState.recentFiles,
+      lastSyncTime:    currentState.lastSyncTime,
+    });
+    try { localStorage.setItem(LS_FLAG_KEY, '1'); } catch {}
   } catch (e) {
     console.warn('[CloudDataStore] Persist error:', e);
   }
 }
 
-// Notifier tous les composants abonnés
 function notify() {
-  listeners.forEach(fn => {
-    try {
-      fn(currentState);
-    } catch (e) {
-      console.error('[CloudDataStore] Listener notification error:', e);
-    }
-  });
+  listeners.forEach(fn => { try { fn(currentState); } catch (e) { console.error('[CloudDataStore]', e); } });
 }
 
-// Hydratation au chargement du module
-hydrateFromLocalStorage();
+// Hydratation au demarrage du module (non-bloquant)
+hydrateFromIndexedDB().then(hasData => {
+  if (hasData) notify();
+});
 
 export const CloudDataStore = {
-  // Récupérer l'état actuel synchrone
-  getState(): CloudDataState {
-    return currentState;
-  },
+  getState(): CloudDataState { return currentState; },
 
-  // S'abonner aux changements d'état
   subscribe(listener: (state: CloudDataState) => void): () => void {
     listeners.add(listener);
-    return () => {
-      listeners.delete(listener);
-    };
+    return () => { listeners.delete(listener); };
   },
 
-  // Vérifier si des données existent déjà en cache
   hasData(): boolean {
-    return currentState.isLoaded || currentState.documents.length > 0 || currentState.videos.length > 0 || currentState.images.length > 0 || currentState.classeurFolders.length > 0;
+    if (currentState.isLoaded) return true;
+    if (currentState.documents.length > 0 || currentState.images.length > 0) return true;
+    // Flag leger synchrone - sert a detecter si IndexedDB a des donnees avant hydratation
+    try { return localStorage.getItem(LS_FLAG_KEY) === '1'; } catch {}
+    return false;
   },
 
-  // Synchronisation en tâche de fond (Stale-While-Revalidate)
+  whenReady(): Promise<void> { return hydrationComplete; },
+
   async sync(force: boolean = false): Promise<void> {
     const now = Date.now();
-    // Déduplication : si une synchronisation est déjà en cours, retourner la même promesse
-    if (inFlightSyncPromise) {
-      return inFlightSyncPromise;
-    }
-
-    // Cooldown : ne pas requêter le serveur si fait il y a moins de 15s (sauf demande explicite)
-    if (!force && currentState.isLoaded && (now - currentState.lastSyncTime < SYNC_COOLDOWN_MS)) {
-      return;
-    }
+    if (inFlightSyncPromise) return inFlightSyncPromise;
+    if (!force && currentState.isLoaded && (now - currentState.lastSyncTime < SYNC_COOLDOWN_MS)) return;
 
     currentState = { ...currentState, isSyncing: true };
     notify();
 
     inFlightSyncPromise = (async () => {
       try {
-        // Exécuter les requêtes distantes avec isolation par utilisateur et timeout 4s
         const [
-          cloudOverview,
-          favsData,
-          pinnedData,
-          folders,
-          docs,
-          imgs,
-          vids,
-          auds,
-          dls,
-          sec,
-          trash
+          cloudOverview, favsData, pinnedData, folders,
+          docs, imgs, vids, auds, dls, sec, trash
         ] = await Promise.all([
           CloudStorageAPI.getOverview().catch(() => null),
           CloudStorageAPI.getFavorites().catch(() => []),
@@ -232,131 +251,69 @@ export const CloudDataStore = {
           CloudStorageAPI.getAudioList().catch(() => []),
           CloudStorageAPI.getDownloadsList().catch(() => []),
           CloudStorageAPI.getSecureFiles().catch(() => []),
-          CloudStorageAPI.getTrashFiles().catch(() => [])
+          CloudStorageAPI.getTrashFiles().catch(() => []),
         ]);
 
-        const favIdSet = new Set((favsData || []).map((f: any) => f.item_id || f.id));
-        const pinIdSet = new Set((pinnedData || []).map((p: any) => p.item_id || p.id));
+        const favIdSet = new Set<string>((favsData || []).map((f: any) => f.item_id || f.id));
+        const pinIdSet = new Set<string>((pinnedData || []).map((p: any) => p.item_id || p.id));
 
-        // Mapper les dossiers 3D
-        const mappedFolders: ClasseurCreatedFolder[] = (folders || []).map(f => ({
-          ...f,
-          isFavorite: favIdSet.has(f.id),
-          isPinned: pinIdSet.has(f.id),
+        const mappedFolders: ClasseurCreatedFolder[] = (folders || []).map((f: any) => ({
+          ...f, isFavorite: favIdSet.has(f.id), isPinned: pinIdSet.has(f.id),
         }));
 
-        // Fichiers des dossiers du classeur (chargés avec timeout)
-        const folderFilesEntries = await Promise.all(mappedFolders.map(async folder => {
+        const folderFilesEntries = await Promise.all(mappedFolders.map(async (folder) => {
           const files = await CloudStorageAPI.getClasseurFiles(folder.id).catch(() => []);
-          const cleanFiles = (files || []).map(file => ({
-            ...file,
-            isFavorite: favIdSet.has(file.id),
-            isPinned: pinIdSet.has(file.id)
-          }));
-          return [folder.id, cleanFiles] as [string, FileItem[]];
+          return [folder.id, (files || []).map((file: any) => ({
+            ...file, isFavorite: favIdSet.has(file.id), isPinned: pinIdSet.has(file.id),
+          }))] as [string, FileItem[]];
         }));
 
         const folderFilesMap: Record<string, FileItem[]> = {};
-        for (const [folderId, files] of folderFilesEntries) {
-          folderFilesMap[folderId] = files;
-        }
+        for (const [fId, files] of folderFilesEntries) folderFilesMap[fId] = files;
 
-        const mappedDocs: FileItem[] = (docs || []).map(d => ({
-          ...d,
-          isFavorite: favIdSet.has(d.id),
-          isPinned: pinIdSet.has(d.id)
+        const flag = (arr: any[]) => (arr || []).map((f: any) => ({
+          ...f, isFavorite: favIdSet.has(f.id), isPinned: pinIdSet.has(f.id),
         }));
 
-        const mappedImages: FileItem[] = (imgs || []).map(img => ({
-          ...img,
-          isFavorite: favIdSet.has(img.id),
-          isPinned: pinIdSet.has(img.id)
-        }));
-
-        const mappedVideos: FileItem[] = (vids || []).map(v => ({
-          ...v,
-          isFavorite: favIdSet.has(v.id),
-          isPinned: pinIdSet.has(v.id)
-        }));
-
-        const mappedAudio: FileItem[] = (auds || []).map(a => ({
-          ...a,
-          isFavorite: favIdSet.has(a.id),
-          isPinned: pinIdSet.has(a.id)
-        }));
-
-        const mappedDownloads: DownloadedItem[] = (dls || []).map(dl => ({
-          id: dl.id,
-          name: dl.name,
-          category: (dl.category as any) || 'downloads',
-          size: dl.size || '0 o',
-          sizeBytes: dl.sizeBytes,
-          date: dl.date || (dl as any).downloadedAt || "Aujourd'hui",
+        const mappedDownloads: DownloadedItem[] = (dls || []).map((dl: any) => ({
+          id: dl.id, name: dl.name, category: dl.category || 'downloads',
+          size: dl.size || '0 o', sizeBytes: dl.sizeBytes,
+          date: dl.date || dl.downloadedAt || "Aujourd'hui",
           timestamp: dl.timestamp || Date.now(),
-          url: dl.url || (dl as any).file_url,
-          extension: dl.extension || (dl.name.includes('.') ? dl.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
-          type: dl.type,
-          previewUrl: dl.previewUrl || dl.url,
-          videoUrl: dl.videoUrl || dl.url,
-          audioUrl: dl.audioUrl || dl.url,
+          url: dl.url || dl.file_url,
+          extension: dl.extension || (dl.name?.includes('.') ? dl.name.split('.').pop()?.toUpperCase() || 'FICHIER' : 'FICHIER'),
+          type: dl.type, previewUrl: dl.previewUrl || dl.url,
+          videoUrl: dl.videoUrl || dl.url, audioUrl: dl.audioUrl || dl.url,
           documentCategory: dl.documentCategory || 'COURS',
-          isFavorite: favIdSet.has(dl.id),
-          isPinned: pinIdSet.has(dl.id),
+          isFavorite: favIdSet.has(dl.id), isPinned: pinIdSet.has(dl.id),
         }));
 
-        const mappedSecure: FileItem[] = (sec || []).map(s => ({
-          ...s,
-          isFavorite: favIdSet.has(s.id),
-          isPinned: pinIdSet.has(s.id)
-        }));
+        const mappedDocs   = flag(docs);
+        const mappedImages = flag(imgs);
+        const mappedVideos = flag(vids);
+        const mappedAudio  = flag(auds);
 
-        const mappedTrash: FileItem[] = (trash || []).map(t => ({
-          ...t,
-          isFavorite: favIdSet.has(t.id),
-          isPinned: pinIdSet.has(t.id)
-        }));
-
-        // Fichiers récents
-        const recentFiles: FileItem[] = cloudOverview && Array.isArray(cloudOverview.recentFiles) && cloudOverview.recentFiles.length > 0
+        const recentFiles: FileItem[] = cloudOverview?.recentFiles?.length
           ? cloudOverview.recentFiles
           : [...mappedDocs, ...mappedImages, ...mappedVideos, ...mappedAudio].slice(0, 6);
 
-        // Fichiers favoris consolidés
-        const allFiles = [
-          ...mappedDocs,
-          ...mappedImages,
-          ...mappedVideos,
-          ...mappedAudio,
-          ...Object.values(folderFilesMap).flat()
-        ];
-        const favoriteFiles = allFiles.filter(f => favIdSet.has(f.id));
+        const allFiles = [...mappedDocs, ...mappedImages, ...mappedVideos, ...mappedAudio, ...Object.values(folderFilesMap).flat()];
 
-        // Mettre à jour l'état
         currentState = {
           overview: cloudOverview,
-          classeurFolders: mappedFolders,
-          folderFilesMap,
-          documents: mappedDocs,
-          images: mappedImages,
-          videos: mappedVideos,
-          audio: mappedAudio,
-          downloads: mappedDownloads,
-          secure: mappedSecure,
-          trash: mappedTrash,
-          favorites: favoriteFiles,
-          favIdSet,
-          pinIdSet,
-          recentFiles,
-          isLoaded: true,
-          isSyncing: false,
-          lastSyncTime: Date.now(),
+          classeurFolders: mappedFolders, folderFilesMap,
+          documents: mappedDocs, images: mappedImages, videos: mappedVideos,
+          audio: mappedAudio, downloads: mappedDownloads,
+          secure: flag(sec), trash: flag(trash),
+          favorites: allFiles.filter(f => favIdSet.has(f.id)),
+          favIdSet, pinIdSet, recentFiles,
+          isLoaded: true, isSyncing: false, lastSyncTime: Date.now(),
         };
 
-        // Sauvegarder dans le cache local
-        persistToLocalStorage();
+        persistToIndexedDB().catch(() => {});
         notify();
       } catch (err) {
-        console.warn('[CloudDataStore] Background sync warning:', err);
+        console.warn('[CloudDataStore] Sync warning:', err);
         currentState = { ...currentState, isLoaded: true, isSyncing: false };
         notify();
       } finally {
@@ -367,64 +324,115 @@ export const CloudDataStore = {
     return inFlightSyncPromise;
   },
 
-  // Mises à jour optimistes (0 milliseconde pour l'utilisateur)
-  setDocuments(docs: FileItem[]) {
-    currentState = { ...currentState, documents: docs };
-    persistToLocalStorage();
+  setDocuments(docs: FileItem[])             { currentState = { ...currentState, documents: docs };         persistToIndexedDB().catch(() => {}); notify(); },
+  setVideos(videos: FileItem[])              { currentState = { ...currentState, videos };                   persistToIndexedDB().catch(() => {}); notify(); },
+  setImages(images: FileItem[])              { currentState = { ...currentState, images };                   persistToIndexedDB().catch(() => {}); notify(); },
+  setAudio(audio: FileItem[])               { currentState = { ...currentState, audio };                    persistToIndexedDB().catch(() => {}); notify(); },
+  setDownloads(downloads: DownloadedItem[]) { currentState = { ...currentState, downloads };                 persistToIndexedDB().catch(() => {}); notify(); },
+  setClasseurFolders(folders: ClasseurCreatedFolder[]) { currentState = { ...currentState, classeurFolders: folders }; persistToIndexedDB().catch(() => {}); notify(); },
+  setFolderFilesMap(map: Record<string, FileItem[]>)   { currentState = { ...currentState, folderFilesMap: map };      persistToIndexedDB().catch(() => {}); notify(); },
+  setTrashFiles(trash: FileItem[])          { currentState = { ...currentState, trash };                    persistToIndexedDB().catch(() => {}); notify(); },
+  setSecureFiles(secure: FileItem[])        { currentState = { ...currentState, secure };                   persistToIndexedDB().catch(() => {}); notify(); },
+  setRecentFiles(recent: FileItem[])        { currentState = { ...currentState, recentFiles: recent };      persistToIndexedDB().catch(() => {}); notify(); },
+
+  addOptimisticFile(file: FileItem, folderId?: string) {
+    const cat = file.category || 'documents';
+    const recent = [file, ...currentState.recentFiles.filter(f => f.id !== file.id)].slice(0, 6);
+    if (cat === 'classeur' && folderId) {
+      const currentList = currentState.folderFilesMap[folderId] || [];
+      currentState = {
+        ...currentState,
+        recentFiles: recent,
+        folderFilesMap: {
+          ...currentState.folderFilesMap,
+          [folderId]: [file, ...currentList.filter(f => f.id !== file.id)]
+        }
+      };
+    } else if (cat === 'images') {
+      currentState = {
+        ...currentState,
+        recentFiles: recent,
+        images: [file, ...currentState.images.filter(f => f.id !== file.id)]
+      };
+    } else if (cat === 'videos') {
+      currentState = {
+        ...currentState,
+        recentFiles: recent,
+        videos: [file, ...currentState.videos.filter(f => f.id !== file.id)]
+      };
+    } else if (cat === 'audio') {
+      currentState = {
+        ...currentState,
+        recentFiles: recent,
+        audio: [file, ...currentState.audio.filter(f => f.id !== file.id)]
+      };
+    } else {
+      currentState = {
+        ...currentState,
+        recentFiles: recent,
+        documents: [file, ...currentState.documents.filter(f => f.id !== file.id)]
+      };
+    }
+    persistToIndexedDB().catch(() => {});
     notify();
   },
 
-  setVideos(videos: FileItem[]) {
-    currentState = { ...currentState, videos };
-    persistToLocalStorage();
+  updateFile(fileId: string, updates: Partial<FileItem>, folderId?: string) {
+    const updateFn = (list: FileItem[]) => list.map(f => f.id === fileId ? { ...f, ...updates } : f);
+    const updatedMap = { ...currentState.folderFilesMap };
+    if (folderId && updatedMap[folderId]) {
+      updatedMap[folderId] = updateFn(updatedMap[folderId]);
+    } else {
+      for (const k of Object.keys(updatedMap)) {
+        updatedMap[k] = updateFn(updatedMap[k]);
+      }
+    }
+    currentState = {
+      ...currentState,
+      folderFilesMap: updatedMap,
+      documents: updateFn(currentState.documents),
+      images: updateFn(currentState.images),
+      videos: updateFn(currentState.videos),
+      audio: updateFn(currentState.audio),
+      secure: updateFn(currentState.secure),
+      recentFiles: updateFn(currentState.recentFiles),
+    };
+    persistToIndexedDB().catch(() => {});
     notify();
   },
 
-  setImages(images: FileItem[]) {
-    currentState = { ...currentState, images };
-    persistToLocalStorage();
+  removeFile(fileId: string, folderId?: string) {
+    const filterFn = (list: FileItem[]) => list.filter(f => f.id !== fileId);
+    const updatedMap = { ...currentState.folderFilesMap };
+    if (folderId && updatedMap[folderId]) {
+      updatedMap[folderId] = filterFn(updatedMap[folderId]);
+    }
+    currentState = {
+      ...currentState,
+      folderFilesMap: updatedMap,
+      documents: filterFn(currentState.documents),
+      images: filterFn(currentState.images),
+      videos: filterFn(currentState.videos),
+      audio: filterFn(currentState.audio),
+      secure: filterFn(currentState.secure),
+      recentFiles: filterFn(currentState.recentFiles),
+    };
+    persistToIndexedDB().catch(() => {});
     notify();
   },
 
-  setAudio(audio: FileItem[]) {
-    currentState = { ...currentState, audio };
-    persistToLocalStorage();
+  async clearCache(): Promise<void> {
+    currentState = { ...defaultState };
+    try { localStorage.removeItem(LS_FLAG_KEY); } catch {}
+    const db = await openIDB();
+    if (db) {
+      await new Promise<void>((resolve) => {
+        const tx = db.transaction(IDB_STORE_NAME, 'readwrite');
+        tx.objectStore(IDB_STORE_NAME).delete(IDB_CACHE_KEY);
+        tx.oncomplete = () => resolve();
+        tx.onerror    = () => resolve();
+      });
+    }
     notify();
   },
-
-  setDownloads(downloads: DownloadedItem[]) {
-    currentState = { ...currentState, downloads };
-    persistToLocalStorage();
-    notify();
-  },
-
-  setClasseurFolders(folders: ClasseurCreatedFolder[]) {
-    currentState = { ...currentState, classeurFolders: folders };
-    persistToLocalStorage();
-    notify();
-  },
-
-  setFolderFilesMap(map: Record<string, FileItem[]>) {
-    currentState = { ...currentState, folderFilesMap: map };
-    persistToLocalStorage();
-    notify();
-  },
-
-  setTrashFiles(trash: FileItem[]) {
-    currentState = { ...currentState, trash };
-    persistToLocalStorage();
-    notify();
-  },
-
-  setSecureFiles(secure: FileItem[]) {
-    currentState = { ...currentState, secure };
-    persistToLocalStorage();
-    notify();
-  },
-
-  setRecentFiles(recent: FileItem[]) {
-    currentState = { ...currentState, recentFiles: recent };
-    persistToLocalStorage();
-    notify();
-  }
 };
