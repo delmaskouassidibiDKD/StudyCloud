@@ -111,6 +111,7 @@ import { PdfHorizontalViewer } from './PdfHorizontalViewer';
 import { CloudDataStore } from '../services/cloudDataStore';
 import { UploadQueue } from '../services/uploadQueue';
 import { UploadQueueWidget } from './UploadQueueWidget';
+import { detectFileCategory, validateFilesForMenu, CATEGORY_LABELS } from '../services/fileTypeValidator';
 
 // Nettoyage immédiat de tout fichier figé en localStorage pour éviter le plantage QuotaExceededError
 if (typeof window !== 'undefined') {
@@ -1636,14 +1637,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
   };
 
   const [profileToastMessage, setProfileToastMessage] = useState<string | null>(null);
+  const [profileToastType, setProfileToastType] = useState<'success' | 'error' | 'warning'>('success');
   const profileToastTimerRef = useRef<any>(null);
 
-  const showProfileToast = (msg: string) => {
+  const showProfileToast = (msg: string, type: 'success' | 'error' | 'warning' = 'success') => {
     if (profileToastTimerRef.current) clearTimeout(profileToastTimerRef.current);
     setProfileToastMessage(msg);
+    setProfileToastType(type);
     profileToastTimerRef.current = setTimeout(() => {
       setProfileToastMessage(null);
-    }, 3500);
+    }, type === 'error' ? 6000 : 3500);
   };
 
   const handleRestoreDefaultWallpaperAndAvatar = () => {
@@ -1848,7 +1851,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
   const menuImportConfig = getMenuImportConfig();
 
-  // 1. Traiter les fichiers importés depuis l'Accueil (Analyse auto par le worker, jamais classeur)
+  // 1. Traiter les fichiers importés depuis l'Accueil (Option B : Routage Intelligent automatique)
   const handleHomeFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
@@ -1856,7 +1859,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     if (fileInputRef.current) fileInputRef.current.value = '';
 
-    // Créer immédiatement les objets FileItem avec prévisualisation locale et stockage IndexedDB
+    // Détection et attribution automatique pour chaque fichier
     const newItemsWithFiles = files.map((file, idx) => {
       const localBlobUrl = URL.createObjectURL(file);
       const normName = file.name.toLowerCase();
@@ -1864,10 +1867,8 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       const fileId = `cf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
       const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
 
-      let autoCat: 'images' | 'videos' | 'audio' | 'documents' = 'documents';
-      if (normName.match(/\.(jpg|jpeg|png|gif|webp|svg|bmp|ico|avif)$/i)) autoCat = 'images';
-      else if (normName.match(/\.(mp4|mov|webm|avi|mkv|flv|wmv|3gp|m4v)$/i)) autoCat = 'videos';
-      else if (normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i)) autoCat = 'audio';
+      // Détection de la véritable nature du fichier
+      const autoCat = detectFileCategory(file);
 
       // Sauvegarde binaire locale immédiate dans IndexedDB
       storeFileBlob(fileId, file).catch(() => {});
@@ -1892,7 +1893,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const newItems = newItemsWithFiles.map(x => x.item);
     const fileIds = newItems.map(x => x.id);
 
-    // Ajout immédiat aux listes respectives (affichage instantané)
+    // Ajout immédiat aux listes respectives (affichage instantané selon la catégorie attribuée)
     newItems.forEach(item => {
       unmarkRecentLocallyDeleted(item.id, item.name);
       unmarkFileLocallyDeleted(item.id, item.name);
@@ -1908,9 +1909,27 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     // Envoi en arrière-plan via UploadQueue (concurrence max 2, auto-retry, notifications)
     UploadQueue.enqueueExisting(newItemsWithFiles);
+
+    // Notification claire du routage automatique
+    const counts = { images: 0, videos: 0, audio: 0, documents: 0 };
+    newItems.forEach(item => {
+      if (item.category && counts[item.category as keyof typeof counts] !== undefined) {
+        counts[item.category as keyof typeof counts]++;
+      }
+    });
+    const parts = [];
+    if (counts.images > 0) parts.push(`${counts.images} image(s) dans Images`);
+    if (counts.videos > 0) parts.push(`${counts.videos} vidéo(s) dans Vidéos`);
+    if (counts.audio > 0) parts.push(`${counts.audio} musique(s) dans Audio`);
+    if (counts.documents > 0) parts.push(`${counts.documents} document(s) dans Documents`);
+
+    showProfileToast(
+      `${files.length} fichier(s) classé(s) automatiquement : ${parts.join(', ')} !`,
+      'success'
+    );
   };
 
-  // 2. Traiter les fichiers importés depuis un sous-menu spécifique (Validation stricte par le worker)
+  // 2. Traiter les fichiers importés depuis un sous-menu spécifique (Option A : Rejet Strict)
   const handleMenuFileSelected = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const fileList = e.target.files;
     if (!fileList || fileList.length === 0) return;
@@ -1921,15 +1940,38 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
     if (categoryFileInputRef.current) categoryFileInputRef.current.value = '';
 
-    // 1. Créer immédiatement les objets FileItem avec prévisualisation locale et stockage IndexedDB
-    const newItemsWithFiles = files.map((file, idx) => {
+    // VALIDATION STRICTE OPTION A : Vérifier que les fichiers correspondent exactement au menu dédié
+    const { validFiles, rejectedFiles } = validateFilesForMenu(files, importConfig.category as any);
+
+    if (rejectedFiles.length > 0) {
+      if (validFiles.length === 0) {
+        // Tous les fichiers sélectionnés sont refusés
+        const first = rejectedFiles[0];
+        showProfileToast(
+          `❌ Fichier refusé : ${first.reason}`,
+          'error'
+        );
+        return;
+      } else {
+        // Sélection mixte : avertissement clair pour les fichiers rejetés
+        showProfileToast(
+          `⚠️ ${rejectedFiles.length} fichier(s) refusé(s) (format non autorisé dans ${CATEGORY_LABELS[importConfig.category as any] || 'ce menu'}). ${validFiles.length} fichier(s) valide(s) accepté(s).`,
+          'warning'
+        );
+      }
+    }
+
+    if (validFiles.length === 0) return;
+
+    // 1. Créer immédiatement les objets FileItem pour les fichiers strictement validés
+    const newItemsWithFiles = validFiles.map((file, idx) => {
       const localBlobUrl = URL.createObjectURL(file);
       const normName = file.name.toLowerCase();
       const ext = normName.includes('.') ? (normName.split('.').pop()?.toUpperCase() || 'FICHIER') : 'FICHIER';
       const fileId = `cf-${Date.now()}-${idx}-${Math.random().toString(36).substring(2, 7)}`;
       const sizeKb = file.size > 0 ? (file.size < 1024 * 1024 ? `${(file.size / 1024).toFixed(1)} Ko` : `${(file.size / (1024 * 1024)).toFixed(1)} Mo`) : '0 o';
 
-      // Stocker le binaire immédiatement dans IndexedDB pour que le document soit disponible instantanément
+      // Stocker le binaire immédiatement dans IndexedDB
       storeFileBlob(fileId, file).catch(() => {});
 
       const isAudio = importConfig.category === 'audio' || normName.match(/\.(mp3|wav|ogg|m4a|aac|flac|wma|opus|amr|weba|aiff|alac|mid|midi|caf|3ga)$/i);
@@ -1980,12 +2022,16 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     // 3. Lancer l'animation de trait qui se remplit sur chaque fichier importé
     startSavingAnimation(fileIds);
 
-    // Envoi en arrière-plan via UploadQueue (concurrence max 2, auto-retry, notifications)
+    // 4. Envoi en arrière-plan via UploadQueue (concurrence max 2, auto-retry, notifications)
     UploadQueue.enqueueExisting(newItemsWithFiles, {
       category: importConfig.category as any,
       folderId: importConfig.folderId,
       folderName: opened3DFolder?.name
     });
+
+    if (rejectedFiles.length === 0) {
+      showProfileToast(`${validFiles.length} fichier(s) importé(s) dans ${CATEGORY_LABELS[importConfig.category as any] || 'ce menu'} !`, 'success');
+    }
   };
 
   // DOSSIER SÉCURISÉ (Fichiers protégés par coffre-fort en mémoire de session)
@@ -11630,9 +11676,21 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
 
       {/* Toast Notification sans 3D, au-dessus de tous les éléments via Portal */}
       {profileToastMessage && createPortal(
-        <div className="fixed top-6 left-1/2 -translate-x-1/2 z-[9999999] pointer-events-auto max-w-md w-[92%] sm:w-auto px-4 py-2.5 rounded-xl bg-[#0f172a] border border-emerald-500/50 text-white shadow-xl flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-200">
+        <div className={`fixed top-6 left-1/2 -translate-x-1/2 z-[9999999] pointer-events-auto max-w-lg w-[92%] sm:w-auto px-4 py-3 rounded-xl bg-[#0f172a]/95 backdrop-blur-xl border text-white shadow-2xl flex items-center justify-between gap-3 animate-in fade-in slide-in-from-top-2 duration-200 ${
+          profileToastType === 'error'
+            ? 'border-red-500/80 shadow-red-950/50'
+            : profileToastType === 'warning'
+            ? 'border-amber-500/80 shadow-amber-950/50'
+            : 'border-emerald-500/60 shadow-emerald-950/50'
+        }`}>
           <div className="flex items-center gap-2.5">
-            <Check className="w-4 h-4 text-emerald-400 shrink-0 stroke-[2.5]" />
+            {profileToastType === 'error' ? (
+              <AlertCircle className="w-5 h-5 text-red-400 shrink-0 stroke-[2.2]" />
+            ) : profileToastType === 'warning' ? (
+              <AlertCircle className="w-5 h-5 text-amber-400 shrink-0 stroke-[2.2]" />
+            ) : (
+              <Check className="w-5 h-5 text-emerald-400 shrink-0 stroke-[2.5]" />
+            )}
             <span className="text-xs sm:text-sm font-semibold text-white tracking-wide">
               {profileToastMessage}
             </span>
