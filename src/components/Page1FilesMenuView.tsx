@@ -1381,10 +1381,26 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
       setClasseur3DFolders(state.classeurFolders);
       setFolderFilesMap(state.folderFilesMap);
       setDownloadedItems(state.downloads as any);
-      setDocumentsList(state.documents);
-      setImagesList(state.images);
-      setVideosList(state.videos);
-      setAudioList(state.audio);
+      setDocumentsList(prev => {
+        const stateIds = new Set(state.documents.map(d => d.id));
+        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading));
+        return [...pending, ...state.documents];
+      });
+      setImagesList(prev => {
+        const stateIds = new Set(state.images.map(img => img.id));
+        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading));
+        return [...pending, ...state.images];
+      });
+      setVideosList(prev => {
+        const stateIds = new Set(state.videos.map(v => v.id));
+        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading));
+        return [...pending, ...state.videos];
+      });
+      setAudioList(prev => {
+        const stateIds = new Set(state.audio.map(a => a.id));
+        const pending = prev.filter(p => !stateIds.has(p.id) && (p.id.startsWith('cf-') || p.isUploading));
+        return [...pending, ...state.audio];
+      });
       setCloudRecentFiles(state.recentFiles);
       setSecureFolderFiles(state.secure);
       setTrashFiles(state.trash);
@@ -1951,6 +1967,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     newItems.forEach(item => {
       unmarkRecentLocallyDeleted(item.id, item.name);
       unmarkFileLocallyDeleted(item.id, item.name);
+      CloudDataStore.addOptimisticFile(item as any, importConfig.category === 'classeur' ? importConfig.folderId : undefined);
     });
     if (importConfig.category === 'images') {
       setImagesList(prev => [...newItems, ...prev.filter(f => !fileIds.includes(f.id))]);
@@ -2025,6 +2042,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     newItems.forEach(item => {
       unmarkRecentLocallyDeleted(item.id, item.name);
       unmarkFileLocallyDeleted(item.id, item.name);
+      CloudDataStore.addOptimisticFile(item as any);
       if (item.category === 'images') setImagesList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
       else if (item.category === 'videos') setVideosList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
       else if (item.category === 'audio') setAudioList(prev => [item, ...prev.filter(f => f.id !== item.id)]);
@@ -3343,7 +3361,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
     const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
-    const isDoc = (f: FileItem) => detectFileCategory({ name: f.name, type: f.type || '' }) === 'documents';
+    const isDoc = (f: FileItem) => (f.category === 'documents' || detectFileCategory({ name: f.name, type: f.type || '' }) === 'documents') && f.category !== 'videos' && f.category !== 'audio' && f.category !== 'images';
 
     const list = [...documentsList, ...cloudRecentFiles.filter(f => isDoc(f) && !documentsList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isDoc);
     const filtered = list.filter(doc => {
@@ -3357,7 +3375,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
     const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
-    const isImg = (f: FileItem) => detectFileCategory({ name: f.name, type: f.type || '' }) === 'images';
+    const isImg = (f: FileItem) => (f.category === 'images' || Boolean(f.previewUrl && !f.videoUrl && !f.audioUrl) || f.isImage || detectFileCategory({ name: f.name, type: f.type || '' }) === 'images') && f.category !== 'videos' && f.category !== 'audio' && f.category !== 'documents';
 
     const list = [...imagesList, ...cloudRecentFiles.filter(f => isImg(f) && !imagesList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isImg);
     const filtered = list.filter(img => {
@@ -3371,7 +3389,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
     const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
-    const isVid = (f: FileItem) => detectFileCategory({ name: f.name, type: f.type || '' }) === 'videos';
+    const isVid = (f: FileItem) => (f.category === 'videos' || Boolean(f.videoUrl) || f.isVideo || detectFileCategory({ name: f.name, type: f.type || '' }) === 'videos') && f.category !== 'audio' && f.category !== 'images' && f.category !== 'documents';
 
     const list = [...videosList, ...cloudRecentFiles.filter(f => isVid(f) && !videosList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isVid);
     const filtered = list.filter(vid => {
@@ -3385,7 +3403,7 @@ export const Page1FilesMenuView: React.FC<Page1FilesMenuViewProps> = ({ onBack, 
     const delRecent = getDeletedRecentIds();
     const delLocal = getLocallyDeletedFileIds();
     const isClean = (f: FileItem) => !delRecent.has(f.id) && (!f.name || !delRecent.has(f.name)) && !delLocal.has(f.id) && (!f.name || !delLocal.has(f.name));
-    const isAud = (f: FileItem) => detectFileCategory({ name: f.name, type: f.type || '' }) === 'audio';
+    const isAud = (f: FileItem) => (f.category === 'audio' || Boolean(f.audioUrl) || f.isAudio || detectFileCategory({ name: f.name, type: f.type || '' }) === 'audio') && f.category !== 'videos' && f.category !== 'images' && f.category !== 'documents';
 
     const list = [...audioList, ...cloudRecentFiles.filter(f => isAud(f) && !audioList.some(s => s.id === f.id || s.name === f.name))].filter(isClean).filter(isAud);
     const filtered = list.filter(aud => {

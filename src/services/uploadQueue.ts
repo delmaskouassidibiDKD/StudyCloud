@@ -198,6 +198,11 @@ class UploadQueueManager {
   ): void {
     const now = Date.now();
     itemsWithFiles.forEach(({ file, item }) => {
+      // 1. Sauvegarde binaire IndexedDB (accès 0ms)
+      storeFileBlob(item.id, file).catch(() => {});
+      // 2. Ajout optimiste immédiat dans CloudDataStore pour que tous les stores et vues le conservent
+      CloudDataStore.addOptimisticFile(item, options.folderId || item.folderId);
+
       const task: UploadTask = {
         id: item.id,
         file,
@@ -274,11 +279,13 @@ class UploadQueueManager {
       // Étape B : Upload vers Cloudflare R2 + Enregistrement D1
       let uploadUrl = '';
       let r2Key = '';
+      let serverFileId: string | undefined = undefined;
 
       if (category === 'classeur' && folderId) {
         const uploadRes = await CloudStorageAPI.uploadFileToCategoryR2(file, 'classeur', fileName, folderId);
         uploadUrl = uploadRes.url;
         r2Key = uploadRes.key;
+        serverFileId = uploadRes.id;
 
         const fileToSave = {
           ...task.fileItem,
@@ -301,9 +308,11 @@ class UploadQueueManager {
         if (res?.success && res.file) {
           uploadUrl = res.file.url || '';
           r2Key = (res.file as any).r2Key || '';
+          serverFileId = res.file.id;
         } else if ((res as any)?.url) {
           uploadUrl = (res as any).url;
           r2Key = (res as any).key || '';
+          serverFileId = (res as any).id;
         }
       }
 
@@ -312,7 +321,12 @@ class UploadQueueManager {
       task.progress = 100;
       task.completedAt = Date.now();
 
+      if (serverFileId && serverFileId !== id) {
+        storeFileBlob(serverFileId, file).catch(() => {});
+      }
+
       CloudDataStore.updateFile(id, {
+        id: serverFileId || id,
         url: uploadUrl || task.fileItem.url,
         r2Key: r2Key || task.fileItem.r2Key,
         previewUrl: previewDataUrl || uploadUrl || task.fileItem.previewUrl,

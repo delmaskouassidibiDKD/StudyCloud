@@ -289,10 +289,22 @@ export const CloudDataStore = {
           isFavorite: favIdSet.has(dl.id), isPinned: pinIdSet.has(dl.id),
         }));
 
-        const mappedDocs   = flag(docs);
-        const mappedImages = flag(imgs);
-        const mappedVideos = flag(vids);
-        const mappedAudio  = flag(auds);
+        // Préserver les fichiers optimistes locaux (en cours d'upload ou récemment créés) qui ne sont pas encore renvoyés par l'API
+        const mergeOptimistic = (serverList: FileItem[], currentList: FileItem[]) => {
+          const serverIds = new Set(serverList.map(s => s.id));
+          const serverNames = new Set(serverList.map(s => (s.name || '').toLowerCase()));
+          const pending = (currentList || []).filter(c => 
+            !serverIds.has(c.id) && 
+            !serverNames.has((c.name || '').toLowerCase()) && 
+            (c.isUploading || (c.id && c.id.startsWith('cf-')))
+          );
+          return [...pending, ...serverList];
+        };
+
+        const mappedDocs   = mergeOptimistic(flag(docs), currentState.documents);
+        const mappedImages = mergeOptimistic(flag(imgs), currentState.images);
+        const mappedVideos = mergeOptimistic(flag(vids), currentState.videos);
+        const mappedAudio  = mergeOptimistic(flag(auds), currentState.audio);
 
         const recentFiles: FileItem[] = cloudOverview?.recentFiles?.length
           ? cloudOverview.recentFiles
@@ -379,7 +391,7 @@ export const CloudDataStore = {
   },
 
   updateFile(fileId: string, updates: Partial<FileItem>, folderId?: string) {
-    const updateFn = (list: FileItem[]) => list.map(f => f.id === fileId ? { ...f, ...updates } : f);
+    const updateFn = (list: FileItem[]) => list.map(f => (f.id === fileId || (updates.id && f.id === updates.id)) ? { ...f, ...updates } : f);
     const updatedMap = { ...currentState.folderFilesMap };
     if (folderId && updatedMap[folderId]) {
       updatedMap[folderId] = updateFn(updatedMap[folderId]);
